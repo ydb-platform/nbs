@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
@@ -342,6 +343,11 @@ TServerModuleFactories::TServerModuleFactories()
     NotifyServiceFactory = [](auto...)
     {
         return NNotify::CreateServiceStub();
+    };
+
+    LocalNVMeServiceFactory = [](auto...)
+    {
+        return CreateLocalNVMeServiceStub();
     };
 }
 
@@ -808,6 +814,10 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("PartitionBudgetManager initialized")
 
+    LocalNVMeService = ServerModuleFactories->LocalNVMeServiceFactory(logging);
+
+    STORAGE_INFO("Local NVMe service initialized");
+
     NStorage::TServerActorSystemArgs args;
     args.ModuleFactories = ModuleFactories;
     args.NodeId = nodeId;
@@ -855,6 +865,7 @@ void TBootstrapYdb::InitKikimrService()
     args.TemporaryServer = Configs->Options->TemporaryServer;
     args.BackgroundThreadPool = BackgroundThreadPool;
     args.PartitionBudgetManager = PartitionBudgetManager;
+    args.LocalNVMeService = LocalNVMeService;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

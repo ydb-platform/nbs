@@ -1,6 +1,8 @@
 #include "test_env.h"
 
+#include "disk_agent_mock.h"
 #include "disk_registry_proxy_mock.h"
+#include "local_nvme_mock.h"
 #include "root_kms_key_provider_mock.h"
 #include "test_runtime.h"
 
@@ -13,6 +15,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
@@ -344,6 +347,31 @@ ui32 TTestEnv::CreateBlockStoreNode(
     Runtime.RegisterService(
         MakeDiskRegistryProxyServiceId(),
         drProxyId,
+        nodeIdx);
+
+    TVector<NProto::TNVMeDevice> NVMeDevices;
+    {
+        NProto::TNVMeDevice& disk = NVMeDevices.emplace_back();
+        disk.SetSerialNumber("NVME_0");
+        disk.SetPCIAddress("0000:00:1f.0");
+        disk.SetIOMMUGroup(42);
+        disk.SetVendorId(100);
+        disk.SetDeviceId(500);
+        disk.SetModel("Test NVMe disk");
+    }
+
+    auto diskAgent = std::make_unique<TDiskAgentMock>(
+        google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>(),
+        TDiskAgentStatePtr(),
+        CreateLocalNVMeServiceMock(std::move(NVMeDevices)));
+    auto diskAgentId = Runtime.Register(
+        diskAgent.release(),
+        nodeIdx,
+        appData->UserPoolId);
+    Runtime.EnableScheduleForActor(diskAgentId);
+    Runtime.RegisterService(
+        MakeDiskAgentServiceId(Runtime.GetNodeId(nodeIdx)),
+        diskAgentId,
         nodeIdx);
 
     auto volumeProxy = CreateVolumeProxy(storageConfig, TraceSerializer, false);

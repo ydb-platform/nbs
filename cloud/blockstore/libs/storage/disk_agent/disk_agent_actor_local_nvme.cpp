@@ -1,4 +1,4 @@
-#include "disk_agent_mock.h"
+#include "disk_agent_actor.h"
 
 #include <cloud/blockstore/libs/local_nvme/service.h>
 
@@ -8,24 +8,42 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskAgentMock::HandleListNVMeDevices(
-    TEvDiskAgentPrivate::TEvListNVMeDevicesRequest::TPtr& ev,
+void TDiskAgentActor::HandleListNVMeDevices(
+    const TEvDiskAgentPrivate::TEvListNVMeDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (!State) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
+                MakeError(E_REJECTED, "Not ready"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
     auto [disks, error] = LocalNVMeService->ListNVMeDevices();
 
     auto response =
         std::make_unique<TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
-            std::move(error),
+            error,
             std::move(disks));
 
-    Reply(ctx, *ev, std::move(response));
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TDiskAgentMock::HandleAcquireNVMeDevice(
-    TEvDiskAgentPrivate::TEvAcquireNVMeDeviceRequest::TPtr& ev,
+void TDiskAgentActor::HandleAcquireNVMeDevice(
+    const TEvDiskAgentPrivate::TEvAcquireNVMeDeviceRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (!State) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvAcquireNVMeDeviceResponse>(
+                MakeError(E_REJECTED, "Not ready"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
     auto* msg = ev->Get();
 
     LocalNVMeService->AcquireNVMeDevice(msg->SerialNumber)
@@ -48,10 +66,19 @@ void TDiskAgentMock::HandleAcquireNVMeDevice(
             });
 }
 
-void TDiskAgentMock::HandleReleaseNVMeDevice(
-    TEvDiskAgentPrivate::TEvReleaseNVMeDeviceRequest::TPtr& ev,
+void TDiskAgentActor::HandleReleaseNVMeDevice(
+    const TEvDiskAgentPrivate::TEvReleaseNVMeDeviceRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (!State) {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvReleaseNVMeDeviceResponse>(
+                MakeError(E_REJECTED, "Not ready"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
     auto* msg = ev->Get();
 
     LocalNVMeService->ReleaseNVMeDevice(msg->SerialNumber)

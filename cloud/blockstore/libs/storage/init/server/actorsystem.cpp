@@ -309,7 +309,8 @@ public:
                 Args.Logging,
                 Args.RdmaServer,
                 Args.NvmeManager,
-                Args.BackgroundThreadPool);
+                Args.BackgroundThreadPool,
+                Args.LocalNVMeService);
 
             setup->LocalServices.emplace_back(
                 MakeDiskAgentServiceId(Args.NodeId),

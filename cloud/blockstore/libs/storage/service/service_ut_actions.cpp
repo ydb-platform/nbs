@@ -1987,6 +1987,85 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 volumeConfig.GetVhostDiscardEnabled());
         }
     }
+
+    Y_UNIT_TEST(ShouldListNVMeDevices)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const auto response = service.ExecuteAction("ListNVMeDevices", TString());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        NProto::TNVMeDeviceList list;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &list)
+                .ok());
+        UNIT_ASSERT_VALUES_EQUAL(1, list.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL("NVME_0", list.GetDevices(0).GetSerialNumber());
+    }
+
+    Y_UNIT_TEST(ShouldAcquireNVMeDevice)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        {
+            service.SendExecuteActionRequest("AcquireNVMeDevice", TString());
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            service.SendExecuteActionRequest(
+                "AcquireNVMeDevice",
+                R"({"SerialNumber":"foo"})");
+            auto response = service.RecvExecuteActionResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                R"(Disk "foo" not found)",
+                response->GetErrorReason());
+        }
+
+        service.ExecuteAction("AcquireNVMeDevice", R"({"SerialNumber":"NVME_0"})");
+    }
+
+    Y_UNIT_TEST(ShouldReleaseNVMeDevice)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        {
+            service.SendExecuteActionRequest("ReleaseNVMeDevice", TString());
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            service.SendExecuteActionRequest(
+                "ReleaseNVMeDevice",
+                R"({"SerialNumber":"foo"})");
+            auto response = service.RecvExecuteActionResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                R"(Disk "foo" not found)",
+                response->GetErrorReason());
+        }
+
+        service.ExecuteAction("ReleaseNVMeDevice", R"({"SerialNumber":"NVME_0"})");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

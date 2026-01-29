@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/endpoints_grpc/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
@@ -83,6 +84,7 @@ protected:
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
     NRdma::IServerPtr RdmaRequestServer;
     IStartablePtr RdmaTarget;
+    ILocalNVMeServicePtr LocalNVMeService;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;

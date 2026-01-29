@@ -41,6 +41,7 @@
 #include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
@@ -97,10 +98,10 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
-#include <cloud/storage/core/libs/grpc/init.h>
-#include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -947,6 +948,7 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
     START_COMMON_COMPONENT(FileIOServiceProvider);
+    START_COMMON_COMPONENT(LocalNVMeService);
     START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
@@ -1030,6 +1032,8 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(EndpointManager);
 
     STOP_KIKIMR_COMPONENT(ActorSystem);
+
+    STOP_COMMON_COMPONENT(LocalNVMeService);
 
     // stop FileIOServiceProvider after ActorSystem to ensure that there are no
     // in-flight I/O requests from TDiskAgentActor
