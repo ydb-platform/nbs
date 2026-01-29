@@ -423,10 +423,13 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
             continue;
         }
 
-        std::invoke(
-            handler.second,
-            this,
-            config.GetNamedConfigs(it->second).GetConfig());
+        const auto& namedConfig = config.GetNamedConfigs(it->second);
+
+        STORAGE_INFO(
+            "Apply config from CMS: TAppConfig::NamedConfig "
+            << namedConfig.GetName());
+
+        std::invoke(handler.second, this, namedConfig.GetConfig());
     }
 }
 
@@ -437,11 +440,30 @@ void TConfigInitializerYdb::ApplyBlockstoreConfig(
         return;
     }
 
+    STORAGE_INFO("Apply config from CMS: TAppConfig::BlockstoreConfig");
+
     const auto& blockstoreConfig = config.GetBlockstoreConfig();
 
     auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
         blockstoreConfig.GetVolumePreemptionType());
     StorageConfig->SetVolumePreemptionType(volumePreemptionType);
+}
+
+void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
+    const NKikimrConfig::TAppConfig& config)
+{
+    if (!config.HasFeatureFlags()) {
+        return;
+    }
+
+    STORAGE_INFO("Apply config from CMS: TAppConfig::FeatureFlags (allowed)");
+
+    const auto& kikimrFeatureFlags = config.GetFeatureFlags();
+
+    if (kikimrFeatureFlags.HasEnableNodeBrokerDeltaProtocol()) {
+        KikimrConfig->MutableFeatureFlags()->SetEnableNodeBrokerDeltaProtocol(
+            kikimrFeatureFlags.GetEnableNodeBrokerDeltaProtocol());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -451,6 +473,7 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(
 {
     ApplyNamedConfigs(config);
     ApplyBlockstoreConfig(config);
+    ApplyAllowedKikimrFeatureFlags(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer
