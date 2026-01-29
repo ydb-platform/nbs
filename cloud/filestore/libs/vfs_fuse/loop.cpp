@@ -134,56 +134,57 @@ public:
         fuse_req_t req,
         TCallContextPtr context)
     {
-        TGuard g{RequestsLock};
+        Y_UNUSED(req, context);
+        // TGuard g{RequestsLock};
 
         if (ShouldStop) {
             return CancelCode;
         }
 
-        Requests[req] = std::move(context);
+        // Requests[req] = std::move(context);
         return Nothing();
     }
 
     int Complete(fuse_req_t req, TCompletionCallback cb) noexcept override
     {
-        with_lock (RequestsLock) {
-            if (!Requests.erase(req)) {
-                return 0;
-            }
-            CompletingCount.Inc();
-        }
+        // with_lock (RequestsLock) {
+        //     if (!Requests.erase(req)) {
+        //         return 0;
+        //     }
+        //     CompletingCount.Inc();
+        // }
 
         int ret = cb(req);
-        auto completingCount = CompletingCount.Dec();
-        bool noCompleting = completingCount == 0;
+        // auto completingCount = CompletingCount.Dec();
+        // bool noCompleting = completingCount == 0;
 
         if (ShouldStop) {
-            STORAGE_INFO("[f:%s] Complete: completing left: %ld",
-                FileSystemId.c_str(),
-                completingCount);
+            // STORAGE_INFO("[f:%s] Complete: completing left: %ld",
+            //     FileSystemId.c_str(),
+            //     completingCount);
 
-            if (noCompleting) {
-                bool noInflight = false;
-                ui32 requestsSize = 0;
-                with_lock (RequestsLock) {
-                    noInflight = Requests.empty();
-                    requestsSize = Requests.size();
-                    // double-checking needed because inflight count and completing
-                    // count should be checked together atomically
-                    completingCount = CompletingCount.Val();
-                    noCompleting = completingCount == 0;
-                }
+            // if (noCompleting) {
+            //     bool noInflight = false;
+            //     ui32 requestsSize = 0;
+            //     with_lock (RequestsLock) {
+            //         noInflight = Requests.empty();
+            //         requestsSize = Requests.size();
+            //         // double-checking needed because inflight count and completing
+            //         // count should be checked together atomically
+            //         completingCount = CompletingCount.Val();
+            //         noCompleting = completingCount == 0;
+            //     }
 
-                STORAGE_INFO("[f:%s] Complete: completing left: %ld"
-                    ", requests left: %u",
-                    FileSystemId.c_str(),
-                    completingCount,
-                    requestsSize);
+            //     STORAGE_INFO("[f:%s] Complete: completing left: %ld"
+            //         ", requests left: %u",
+            //         FileSystemId.c_str(),
+            //         completingCount,
+            //         requestsSize);
 
-                if (noInflight && noCompleting) {
+            //     if (noInflight && noCompleting) {
                     StopPromise.TrySetValue();
-                }
-            }
+            //     }
+            // }
         }
 
         return ret;
