@@ -14,10 +14,11 @@
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
-using TVolumeThrottlingRules =
-    google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using TVolumeThrottlingRules =
+    google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>;
 
 bool SpecificDiskFilterApplies(
     const NProto::TSpecificDiskFilter& filter,
