@@ -75,10 +75,6 @@ void TBackupDiskRegistryStateActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    if (request->Record.GetBackupLocalDB()) {
-        request->Record.SetSource(NProto::BDRSS_LOCAL_DB);
-    }
-
     Become(&TThis::StateWork);
 
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
