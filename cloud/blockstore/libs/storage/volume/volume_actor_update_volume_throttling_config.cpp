@@ -14,6 +14,8 @@
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
+using TVolumeThrottlingRules =
+    google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,34 +44,27 @@ bool DiskFilterApplies(
     }
 
     const auto& mediaKinds = filter.GetMediaKinds();
-    if (!mediaKinds.empty() && Find(mediaKinds, mediaKind) == mediaKinds.end())
-    {
-        return false;
-    }
-
-    return true;
+    return mediaKinds.empty() ||
+           Find(mediaKinds, mediaKind) != mediaKinds.end();
 }
 
-using TVolumeThrottlingRule = ::google::protobuf::RepeatedPtrField<
-    NCloud::NBlockStore::NProto::TVolumeThrottlingRule>;
-
-auto GetThrottlingRuleForVolume(
-    const TVolumeThrottlingRule& rules,
+NProto::TVolumeThrottlingRule GetThrottlingRuleForVolume(
+    const TVolumeThrottlingRules& rules,
     const TString& diskId,
     const TString& cloudId,
     const TString& folderId,
-    const NProto::EStorageMediaKind& mediaKind) -> NProto::TVolumeThrottlingRule
+    const NProto::EStorageMediaKind& mediaKind)
 {
     const NProto::TVolumeThrottlingRule* resultPtr = nullptr;
 
     for (const auto& rule: rules) {
         switch (rule.GetSelectorCase()) {
-            case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::kDisks:
+            case NProto::TVolumeThrottlingRule::kDisks:
                 if (SpecificDiskFilterApplies(rule.GetDisks(), diskId)) {
                     return rule;
                 }
                 break;
-            case NCloud::NBlockStore::NProto::TVolumeThrottlingRule::kFilter:
+            case NProto::TVolumeThrottlingRule::kFilter:
                 if (DiskFilterApplies(
                         rule.GetFilter(),
                         cloudId,
@@ -79,6 +74,7 @@ auto GetThrottlingRuleForVolume(
                     // Pointer is used to avoid copying here
                     resultPtr = &rule;
                 }
+                break;
             default:
                 break;
         }
@@ -105,10 +101,11 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
     if (throttlingConfig.GetVersion() <=
         State->GetThrottlingPolicy().GetVolatileThrottlingVersion())
     {
-        LOG_DEBUG(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Got TVolumeThrottlingConfig version less then known: (%lu) <= (%lu): ",
+            "Got TVolumeThrottlingConfig version less than known: (%u) <= "
+            "(%u): ",
             throttlingConfig.GetVersion(),
             State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
         return;
