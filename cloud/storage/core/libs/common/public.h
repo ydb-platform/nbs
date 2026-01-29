@@ -50,6 +50,8 @@ constexpr const char* StartTime = "startTime";
 
 constexpr ui32 DefaultBlockSize = 4_KB;
 
+constexpr ui32 DefaultLocalSSDBlockSize = 512_B;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCallContextBase;

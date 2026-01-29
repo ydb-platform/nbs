@@ -271,8 +271,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                MaxVolumeBlocksCount + 1
-            );
+                MaxDiskRegistryBasedVolumeBlocksCount + 1);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
