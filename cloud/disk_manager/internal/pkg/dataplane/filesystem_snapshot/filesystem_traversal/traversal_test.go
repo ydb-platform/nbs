@@ -215,7 +215,7 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 	defer fixture.client.DestroySession(fixture.ctx, session)
 
 	rootDir := nfs_testing.RandomDirectoryTree(
-		3,  // maxDepth
+		3,   // maxDepth
 		10,  // maxDirsPerDir
 		100, // maxFilesPerDir
 	)
