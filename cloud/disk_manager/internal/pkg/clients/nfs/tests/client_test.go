@@ -137,7 +137,7 @@ func TestListNodesFileSystem(t *testing.T) {
 		),
 	)
 	model := nfs_testing.NewFileSystemModel(t, ctx, client, session, rootDir)
-	model.Create()
+	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively()
 	require.Equal(t, len(model.ExpectedNodes), len(nodes))
@@ -195,7 +195,7 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 
 	rootDir := nfs_testing.Root(nfs_testing.Dir("first"), nfs_testing.File("second"))
 	model := nfs_testing.NewFileSystemModel(t, ctx, client, session, rootDir)
-	model.Create()
+	model.CreateAllNodesRecursively()
 
 	checkpointID := "checkpoint_1"
 	nodeID := uint64(0)
@@ -213,7 +213,7 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 		checkpointID,
 	)
 
-	model.CreateNodes(nfs.RootNodeID, nfs_testing.Dir("after_checkpoint"))
+	model.CreateNodesRecursively(nfs.RootNodeID, nfs_testing.Dir("after_checkpoint"))
 	nodes := model.ListAllNodesRecursively()
 	require.Equal(t, []string{
 		"after_checkpoint",

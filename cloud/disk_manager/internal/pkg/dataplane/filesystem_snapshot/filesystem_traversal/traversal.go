@@ -7,7 +7,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -26,40 +25,41 @@ type OnListedNodesFunc func(
 
 type FilesystemTraverser struct {
 	scheduledNodes           chan *storage.NodeQueueEntry
-	processedNodes           chan uint64
+	processedNodeIDs           chan uint64
 	workersCount             int
 	filesystemSnapshotID     string
 	filesystemID             string
-	checkpointID             string
+	filesystemCheckpointID             string
 	client                   nfs.Client
 	storage                  storage.Storage
 	stateSaver               StateSaver
-	selectLimit              uint64
+	selectNodesToListLimit              uint64
 	rootNodeAlreadyScheduled bool
 }
 
 func NewFilesystemTraverser(
 	filesystemSnapshotID string,
 	filesystemID string,
-	checkpointID string,
+	filesystemCheckpointID string,
 	client nfs.Client,
 	snapshotStorage storage.Storage,
 	stateSaver StateSaver,
 	workersCount int,
-	selectLimit uint64,
+	selectNodesToListLimit uint64,
 	rootNodeAlreadyScheduled bool,
 ) *FilesystemTraverser {
+
 	return &FilesystemTraverser{
 		scheduledNodes:           make(chan *storage.NodeQueueEntry),
-		processedNodes:           make(chan uint64),
+		processedNodeIDs:           make(chan uint64),
 		workersCount:             workersCount,
 		filesystemSnapshotID:     filesystemSnapshotID,
 		filesystemID:             filesystemID,
-		checkpointID:             checkpointID,
+		filesystemCheckpointID:             filesystemCheckpointID,
 		client:                   client,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
-		selectLimit:              selectLimit,
+		selectNodesToListLimit:              selectNodesToListLimit,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 	}
 }
@@ -72,13 +72,13 @@ func (t *FilesystemTraverser) Traverse(
 	if !t.rootNodeAlreadyScheduled {
 		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
 		if err != nil {
-			return errors.NewRetriableErrorf("failed to schedule root node: %w", err)
+			return err
 		}
 
 		if t.stateSaver != nil {
 			err = t.stateSaver(ctx)
 			if err != nil {
-				return errors.NewRetriableErrorf("failed to save state: %w", err)
+				return err
 			}
 		}
 	}
@@ -110,7 +110,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case nodeID := <-t.processedNodes:
+			case nodeID := <-t.processedNodeIDs:
 				delete(processingNodes, nodeID)
 			case t.scheduledNodes <- node:
 				pendingNodes = pendingNodes[:len(pendingNodes)-1]
@@ -123,10 +123,10 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			ctx,
 			t.filesystemSnapshotID,
 			processingNodes,
-			t.selectLimit,
+			t.selectNodesToListLimit,
 		)
 		if err != nil {
-			return errors.NewRetriableErrorf("failed to select nodes: %w", err)
+			return err
 		}
 
 		if len(entries) == 0 {
@@ -137,7 +137,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case nodeID := <-t.processedNodes:
+			case nodeID := <-t.processedNodeIDs:
 				delete(processingNodes, nodeID)
 			}
 			continue
@@ -158,9 +158,9 @@ func (t *FilesystemTraverser) directoryLister(
 	onListedNodes OnListedNodesFunc,
 ) error {
 
-	session, err := t.client.CreateSession(ctx, t.filesystemID, t.checkpointID, true)
+	session, err := t.client.CreateSession(ctx, t.filesystemID, t.filesystemCheckpointID, true)
 	if err != nil {
-		return errors.NewRetriableErrorf("failed to create session: %w", err)
+		return err
 	}
 
 	cleanupCtx := context.WithoutCancel(ctx)
@@ -192,7 +192,7 @@ func (t *FilesystemTraverser) directoryLister(
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case t.processedNodes <- node.NodeID:
+			case t.processedNodeIDs <- node.NodeID:
 			}
 		}
 	}
@@ -214,26 +214,20 @@ func (t *FilesystemTraverser) listNode(
 			cookie,
 		)
 		if err != nil {
-			return errors.NewRetriableErrorf(
-				"failed to list node %d: %w",
-				node.NodeID,
-				err,
-			)
+			return err
 		}
 
 		if len(nodes) > 0 {
 			err = onListedNodes(ctx, nodes, session, t.client)
 			if err != nil {
-				return errors.NewRetriableErrorf(
-					"callback failed for node %d: %w",
-					node.NodeID,
-					err,
-				)
+				return err
 			}
 		}
 
 		var childDirs []nfs.Node
 		for _, n := range nodes {
+			// In case of filesystem scrubbing, ListNodes may return InvalidNodeID
+			// for nodes present in index tablet and absent in shard.
 			// See: https://github.com/ydb-platform/nbs/issues/5094
 			if node.NodeID == nfs.InvalidNodeID {
 				continue
@@ -253,11 +247,7 @@ func (t *FilesystemTraverser) listNode(
 			childDirs,
 		)
 		if err != nil {
-			return errors.NewRetriableErrorf(
-				"failed to schedule children for node %d: %w",
-				node.NodeID,
-				err,
-			)
+			return err
 		}
 
 		if nextCookie == "" {

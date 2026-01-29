@@ -890,7 +890,7 @@ func (s *storageYDB) scheduleRootNodeForListing(
 		declare $cookie as String;
 		declare $depth as Uint64;
 
-		upsert into directory_listing_queue (filesystem_backup_id, node_id, cookie, depth)
+		upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie, depth)
 		values ($snapshot_id, $root_node_id, $cookie, $depth)
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
@@ -934,7 +934,7 @@ func (s *storageYDB) selectNodesToList(
 
 		select node_id, cookie, depth
 		from directory_listing_queue
-		where filesystem_backup_id = $snapshot_id
+		where filesystem_snapshot_id = $snapshot_id
 			and node_id not in $exclude_node_ids
 		limit $limit
 	`, s.tablesPath),
@@ -996,7 +996,7 @@ func (s *storageYDB) scheduleNodesForListing(
 			declare $node_id as Uint64;
 
 			delete from directory_listing_queue
-			where filesystem_backup_id = $snapshot_id and node_id = $node_id
+			where filesystem_snapshot_id = $snapshot_id and node_id = $node_id
 		`, s.tablesPath),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 			persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
@@ -1010,7 +1010,7 @@ func (s *storageYDB) scheduleNodesForListing(
 			declare $cookie as String;
 			declare $depth as Uint64;
 
-			upsert into directory_listing_queue (filesystem_backup_id, node_id, cookie, depth)
+			upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie, depth)
 			values ($snapshot_id, $node_id, $cookie, $depth)
 		`, s.tablesPath),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
@@ -1028,7 +1028,7 @@ func (s *storageYDB) scheduleNodesForListing(
 		childEntries := make([]persistence.Value, 0, len(children))
 		for _, child := range children {
 			childEntries = append(childEntries, persistence.StructValue(
-				persistence.StructFieldValue("filesystem_backup_id", persistence.UTF8Value(snapshotID)),
+				persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
 				persistence.StructFieldValue("node_id", persistence.Uint64Value(child.NodeID)),
 				persistence.StructFieldValue("cookie", persistence.StringValue([]byte(""))),
 				persistence.StructFieldValue("depth", persistence.Uint64Value(childDepth)),
@@ -1039,7 +1039,7 @@ func (s *storageYDB) scheduleNodesForListing(
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
 			declare $entries as List<Struct<
-				filesystem_backup_id: Utf8,
+				filesystem_snapshot_id: Utf8,
 				node_id: Uint64,
 				cookie: String,
 				depth: Uint64
@@ -1105,6 +1105,8 @@ func (s *storageYDB) ScheduleNodesForListing(
 	children []nfs.Node,
 ) error {
 
+	// Depth is required for filesystem snapshot restoration.
+	// Child inodes can not be created without creating parent directories first.
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {

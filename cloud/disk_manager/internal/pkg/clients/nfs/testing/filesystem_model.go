@@ -117,7 +117,11 @@ type FileSystemModel struct {
 	ExpectedNodes []nfs.Node
 }
 
-func (f *FileSystemModel) CreateNodes(parentID uint64, nodeToCreate Node) {
+func (f *FileSystemModel) CreateNodesRecursively(
+	parentID uint64,
+	nodeToCreate Node,
+) {
+
 	mode := f.fileMode
 	if nodeToCreate.FileType.IsDirectory() {
 		mode = f.directoryMode
@@ -147,11 +151,11 @@ func (f *FileSystemModel) CreateNodes(parentID uint64, nodeToCreate Node) {
 		},
 	)
 	for _, child := range nodeToCreate.Children {
-		f.CreateNodes(id, child)
+		f.CreateNodesRecursively(id, child)
 	}
 }
 
-func (f *FileSystemModel) Create() {
+func (f *FileSystemModel) CreateAllNodesRecursively() {
 	slices.SortFunc(
 		f.root.Children,
 		func(i, j Node) int {
@@ -159,7 +163,7 @@ func (f *FileSystemModel) Create() {
 		},
 	)
 	for _, child := range f.root.Children {
-		f.CreateNodes(nfs.RootNodeID, child)
+		f.CreateNodesRecursively(nfs.RootNodeID, child)
 	}
 }
 
