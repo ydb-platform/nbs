@@ -127,7 +127,6 @@ on:
 
 env:
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
-  vm_preset: ${{ inputs.vm_preset != '' && inputs.vm_preset || vars.POOLED_HEAVY_VM_PRESET }}
 
 jobs:
   provide-runner:
@@ -181,7 +180,7 @@ jobs:
           vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
           vm_platform_id: ${{ vars.POOLED_HEAVY_PLATFORM_ID }}
-          vm_preset: ${{ env.vm_preset }}
+          vm_preset: ${{ inputs.vm_preset != '' && inputs.vm_preset || vars.POOLED_HEAVY_VM_PRESET }}
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: 1023
           vm_subnet: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
