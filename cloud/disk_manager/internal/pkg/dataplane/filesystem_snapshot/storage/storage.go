@@ -100,6 +100,7 @@ type Storage interface {
 		ctx context.Context,
 	) (tasks_common.StringSet, error)
 
+	// saves the root node to the directory listing queue.
 	ScheduleRootNodeForListing(
 		ctx context.Context,
 		snapshotID string,
