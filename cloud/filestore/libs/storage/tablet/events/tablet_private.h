@@ -57,6 +57,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CompleteUnlinkNode,                     __VA_ARGS__)                   \
     xxx(DeleteOpLogEntry,                       __VA_ARGS__)                   \
     xxx(GetOpLogEntry,                          __VA_ARGS__)                   \
+    xxx(WriteOpLogEntry,                        __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -712,14 +713,17 @@ struct TEvIndexTabletPrivate
         NProtoPrivate::TRenameNodeInDestinationRequest Request;
         NProto::TError OriginalError;
         NProto::TError Error;
+        const ui64 OpLogEntryId;
 
         TUnlinkDirectoryNodeAbortedInShard(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TRenameNodeInDestinationRequest request,
-                NProto::TError originalError)
+                NProto::TError originalError,
+                ui64 opLogEntryId)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
             , OriginalError(std::move(originalError))
+            , OpLogEntryId(opLogEntryId)
         {
         }
     };
@@ -734,6 +738,7 @@ struct TEvIndexTabletPrivate
         NProtoPrivate::TRenameNodeInDestinationRequest Request;
         NProto::TNodeAttr SourceNodeAttr;
         NProto::TNodeAttr DestinationNodeAttr;
+        ui64 OpLogEntryId = 0;
         NProto::TError Error;
 
         TDoRenameNodeInDestination(
@@ -893,6 +898,25 @@ struct TEvIndexTabletPrivate
     struct TGetOpLogEntryResponse
     {
         TMaybe<NProto::TOpLogEntry> OpLogEntry;
+    };
+
+    //
+    // WriteOpLogEntry
+    //
+
+    struct TWriteOpLogEntryRequest
+    {
+        NProto::TOpLogEntry OpLogEntry;
+
+        explicit TWriteOpLogEntryRequest(NProto::TOpLogEntry entry)
+            : OpLogEntry(std::move(entry))
+        {
+        }
+    };
+
+    struct TWriteOpLogEntryResponse
+    {
+        ui64 OpLogEntryId = 0;
     };
 
     //

@@ -46,7 +46,6 @@ namespace NCloud::NFileStore{
     xxx(LocalFsFailedToRefreshSnapshotsDir)                                    \
     xxx(LocalFsFailedToLoadSnapshotDir)                                        \
     xxx(IsNotDirectory)                                                        \
-    xxx(NotPreparedForUnlink)                                                  \
     xxx(TryingToUseTwoBytesShardNoWithObsoleteHandles)                         \
 // FILESTORE_CRITICAL_EVENTS
 
@@ -77,6 +76,7 @@ namespace NCloud::NFileStore{
     xxx(InvalidNodeRefUponCompleteUnlinkNode)                                  \
     xxx(UnknownOpLogEntry)                                                     \
     xxx(InvalidShardIdx)                                                       \
+    xxx(MissingOpLogEntryId)                                                   \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
