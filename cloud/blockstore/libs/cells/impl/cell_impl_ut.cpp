@@ -64,11 +64,9 @@ struct TTestHostEndpointsSetupProvider: public ICellHostEndpointBootstrap
 
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
-        const TCellHostConfig& config,
-        IBlockStorePtr client) override
+        const TCellHostConfig& config) override
     {
         Y_UNUSED(bootstrap);
-        Y_UNUSED(client);
 
         return Hosts[config.GetFqdn()].RdmaSetupPromise.GetFuture();
     }
