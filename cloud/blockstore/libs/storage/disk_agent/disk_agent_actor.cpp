@@ -31,7 +31,8 @@ TDiskAgentActor::TDiskAgentActor(
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
-        ITaskQueuePtr backgroundThreadPool)
+        ITaskQueuePtr backgroundThreadPool,
+        ILocalNVMeServicePtr localNVMeService)
     : Config(std::move(config))
     , AgentConfig(std::move(agentConfig))
     , RdmaConfig(std::move(rdmaConfig))
@@ -40,6 +41,7 @@ TDiskAgentActor::TDiskAgentActor(
     , StorageProvider(std::move(storageProvider))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , LocalNVMeService(std::move(localNVMeService))
     , Logging(std::move(logging))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
@@ -439,6 +441,18 @@ STFUNC(TDiskAgentActor::StateIdle)
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskAgent)
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvListNVMeDevicesRequest,
+            HandleListNVMeDevices);
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvAcquireNVMeDeviceRequest,
+            HandleAcquireNVMeDevice);
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvReleaseNVMeDeviceRequest,
+            HandleReleaseNVMeDevice);
 
         default:
             if (!RejectRequests(ev)) {

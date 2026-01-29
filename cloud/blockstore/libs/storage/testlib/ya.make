@@ -5,6 +5,7 @@ SRCS(
     diagnostics.cpp
     disk_agent_mock.cpp
     disk_registry_proxy_mock.cpp
+    local_nvme_mock.cpp
     root_kms_key_provider_mock.cpp
     service_client.cpp
     ss_proxy_client.cpp
@@ -25,6 +26,7 @@ PEERDIR(
     cloud/blockstore/libs/service
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/disk_agent/actors
     cloud/blockstore/libs/storage/service
     cloud/blockstore/libs/storage/ss_proxy
     cloud/blockstore/libs/storage/stats_service

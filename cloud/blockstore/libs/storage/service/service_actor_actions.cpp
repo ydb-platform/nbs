@@ -92,6 +92,10 @@ void TServiceActor::HandleExecuteAction(
         {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
         {"getclustercapacity",                &TServiceActor::CreateGetClusterCapacityActor                },
         {"setvhostdiscardenabledflag",        &TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor  },
+        // Local NVMe disks
+        {"listnvmedevices",                   &TServiceActor::CreateListNVMeDevicesActor                   },
+        {"acquirenvmedevice",                 &TServiceActor::CreateAcquireNVMeDeviceActor                 },
+        {"releasenvmedevice",                 &TServiceActor::CreateReleaseNVMeDeviceActor                 },
     };
 
     NProto::TError error;
