@@ -29,8 +29,7 @@ struct ICellHostEndpointBootstrap
 
     virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
-        const TCellHostConfig& config,
-        IBlockStorePtr client) = 0;
+        const TCellHostConfig& config) = 0;
 
     virtual ~ICellHostEndpointBootstrap() = default;
 };
