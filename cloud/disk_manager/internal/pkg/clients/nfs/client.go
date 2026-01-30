@@ -5,6 +5,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	nfs_protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -20,6 +21,8 @@ type Session nfs_client.Session
 
 const (
 	maxConsecutiveRetries = 3
+	InvalidNodeID         = uint64(nfs_protos.ENodeConstants_E_INVALID_NODE_ID)
+	RootNodeID            = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
 )
 
 func getStorageMediaKind(
