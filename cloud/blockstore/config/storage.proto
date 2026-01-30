@@ -1416,4 +1416,7 @@ message TStorageServiceConfig
     // If true, disk registry doesn't replace devices of mirrored disks in one
     // row per reallocation.
     optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
+
+    // Timeout for attach/detach path requests (in milliseconds).
+    optional uint32 AttachDetachPathRequestTimeout = 480;
 }

@@ -130,6 +130,9 @@ private:
 
     TTransactionTimeTracker TransactionTimeTracker;
 
+    THashMap<TString, NActors::TActorId>
+        AgentsWithDetachRequestsInProgress;
+
 public:
     TDiskRegistryActor(
         const NActors::TActorId& owner,
@@ -328,6 +331,13 @@ private:
 
     void ReplaceBrokenDevicesAfterRestart(const NActors::TActorContext& ctx);
 
+    void TryToDetachPaths(
+        const NActors::TActorContext& ctx,
+        const TString& agentId,
+        TVector<TString> paths,
+        TRequestInfoPtr requestInfo,
+        NProto::TAction_EType actionType);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -518,6 +528,11 @@ private:
 
     void HandleSwitchAgentDisksToReadOnlyReshedule(
         const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDetachPathsOperationCompleted(
+        const TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)
