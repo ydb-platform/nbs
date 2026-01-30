@@ -209,6 +209,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFlusher::TFlusher() = default;
+TFlusher::TFlusher(TFlusher&&) noexcept = default;
+TFlusher& TFlusher::operator=(TFlusher&&) noexcept = default;
 TFlusher::~TFlusher() = default;
 
 TFlusher::TFlusher(

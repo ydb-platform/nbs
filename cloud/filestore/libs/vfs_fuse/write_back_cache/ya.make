@@ -6,7 +6,6 @@ SRCS(
     node_cache.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
-    read_write_range_lock.cpp
     sequence_id_generator.cpp
     utils.cpp
     write_back_cache.cpp

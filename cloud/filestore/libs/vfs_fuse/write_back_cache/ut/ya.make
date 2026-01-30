@@ -10,7 +10,6 @@ SRCS(
     node_cache_ut.cpp
     overlapping_interval_set_ut.cpp
     persistent_storage_ut.cpp
-    read_write_range_lock_ut.cpp
     test/test_persistent_storage.cpp
     test/test_write_back_cache_stats.cpp
     utils_ut.cpp
