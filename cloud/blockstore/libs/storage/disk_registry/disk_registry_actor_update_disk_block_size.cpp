@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -45,7 +47,7 @@ void TDiskRegistryActor::HandleUpdateDiskBlockSize(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received UpdateDiskBlockSize request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        record.ShortDebugString().c_str(),
+        SafeDebugPrint(record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateDiskBlockSize>(

@@ -11,6 +11,7 @@ SRCS(
     device_path.cpp
     iovector.cpp
     request_checksum_helpers.cpp
+    safe_debug_print.cpp
     typeinfo.cpp
 )
 

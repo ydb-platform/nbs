@@ -1,5 +1,6 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -67,7 +68,7 @@ void TDiskRegistryActor::HandleAllocateDisk(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received AllocateDisk request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     Y_DEBUG_ABORT_UNLESS(
@@ -317,7 +318,7 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received DeallocateDisk request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     const auto& diskId = msg->Record.GetDiskId();
@@ -328,7 +329,7 @@ void TDiskRegistryActor::HandleDeallocateDisk(
             TBlockStoreComponents::DISK_REGISTRY,
             "%s Postpone DeallocateDisk response: %s",
             LogTitle.GetWithTime().c_str(),
-            msg->Record.ShortDebugString().c_str());
+            SafeDebugPrint(msg->Record).c_str());
 
         AddPendingDeallocation(ctx, diskId, std::move(requestInfo));
 
