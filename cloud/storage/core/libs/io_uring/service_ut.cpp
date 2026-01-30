@@ -61,10 +61,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         const TFsPath filePath = TryGetRamDrivePath() / "test";
 
-        auto handle = TFileHandle(
-            filePath.GetPath(),
+        FileData = TFileHandle(
+            filePath,
             OpenAlways | RdWr | DirectAligned | Sync);
-        FileData.Swap(handle);
         FileData.Resize(BlockCount * BlockSize);
 
         auto factory = CreateIoUringServiceFactory({

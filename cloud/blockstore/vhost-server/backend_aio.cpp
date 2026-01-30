@@ -254,6 +254,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
 
             fileLen = chunk.ByteCount;
             offset = 0;
+            file = {};
         } else {
             fileLen = file.Seek(0, sEnd);
             Y_ABORT_UNLESS(
