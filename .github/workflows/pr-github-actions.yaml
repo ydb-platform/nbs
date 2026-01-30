@@ -244,6 +244,17 @@ jobs:
           if_true: "github-pr-review"
           if_false: "github-check"
 
+      - name: Prepare s3
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ vars.POOLED_LIGHT_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: "relwithdebinfo"
+          install: false
 
       - name: set up python environment
         uses: actions/setup-python@v5.0.0
@@ -254,7 +265,6 @@ jobs:
         run: |
           pip install -r .github/scripts/requirements.txt
           pip install -r .github/scripts/requirements_dev.txt
-
 
       - name: flake8
         uses: reviewdog/action-flake8@v3.8.0
@@ -293,6 +303,13 @@ jobs:
         with:
           name: pytest-report-html
           path: pytest-report.html 
+      - name: upload test results to s3
+        if: ${{ always() }}
+        run: |
+          set -x
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-report.html "$S3_BUCKET_PATH/test_reports/pytest-report.html"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-test-results.xml "$S3_BUCKET_PATH/test_reports/pytest-test-results.xml"
+
       - name: comment on issue (${{ steps.pytest.outcome }})
         if: ${{ github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v7.0.1
@@ -302,7 +319,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: 'status: ${{ steps.pytest.outcome == 'success' && ':green_circle:' || ':red_circle:' }} [pytest result](${{ steps.upload.outputs.artifact-url }}) [pytest report](${{ steps.upload-html.outputs.artifact-url }})'
+              body: 'status: ${{ steps.pytest.outcome == 'success' && ':green_circle:' || ':red_circle:' }} [pytest result (artifact)](${{ steps.upload.outputs.artifact-url }}) [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }}) [pytest report (s3)](' + '$S3_BUCKET_WEBSITE_PATH' + '/test_reports/pytest-report.html) [pytest results (s3)](' + '$S3_BUCKET_WEBSITE_PATH' + '/test_reports/pytest-test-results.xml)'
             })
 
 
@@ -326,6 +343,18 @@ jobs:
           tool_versions: |
             action-validator 0.8.0 
 
+      - name: Prepare s3
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ vars.POOLED_LIGHT_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: "relwithdebinfo"
+          install: false
+
       - name: check workflows syntax
         id: lint
         run: |
@@ -337,6 +366,14 @@ jobs:
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)" >> "$GITHUB_OUTPUT"
+          echo "OUTPUT_FILE=$TMP_OUT" >> "$GITHUB_ENV"
+
+      - name: upload workflow lint results
+        if: ${{ always() }}
+        id: upload-workflow-lint-to-s3
+        run: |
+          set -x
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
 
       - name: comment on issue
         uses: actions/github-script@v7.0.1
@@ -347,7 +384,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '${{ steps.lint.outputs.WORKFLOW_LINT }}'
+              body: 'status: ${{ steps.lint.outcome == 'success' && ':green_circle:' || ':red_circle:' }} [workflow lint result (s3)](' + '$S3_BUCKET_WEBSITE_PATH' + '/workflow_lint/workflow-lint.txt)'
             })
   nbs-github-actions:
     needs: [set-env, check-running-allowed]
