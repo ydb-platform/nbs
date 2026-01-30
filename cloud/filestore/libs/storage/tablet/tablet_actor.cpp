@@ -1394,26 +1394,19 @@ bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
 bool TIndexTabletActor::HasNodesLeft() const
 {
     if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
-        if (GetUsedNodesCount() >= GetNodesCount()) {
-            return false;
-        }
-    } else {
-        // A new way to count available nodes uses the count aggregated by all
-        // shards.
-        TABLET_VERIFY(Metrics.AggregateUsedNodesCount >= 0);
-        TABLET_VERIFY(Metrics.TotalNodesCount >= 0);
-        // It makes sense for shardless filesystems, as it eliminates 15s delay
-        // in AggregateUsedNodesCount calculation.
-        const ui64 usedNodes = Max<ui64>(
-            static_cast<ui64>(Metrics.AggregateUsedNodesCount.load()),
-            GetUsedNodesCount());
-
-        if (usedNodes >= static_cast<ui64>(Metrics.TotalNodesCount.load())) {
-            return false;
-        }
+        return GetUsedNodesCount() < GetNodesCount();
     }
 
-    return true;
+    // A new way to count available nodes uses the count aggregated by all
+    // shards.
+    TABLET_VERIFY(Metrics.AggregateUsedNodesCount >= 0);
+    // It makes sense for shardless filesystems, as it eliminates 15s delay
+    // in AggregateUsedNodesCount calculation.
+    const ui64 usedNodes = Max<ui64>(
+        static_cast<ui64>(Metrics.AggregateUsedNodesCount.load()),
+        GetUsedNodesCount());
+
+    return usedNodes < GetNodesCount();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
