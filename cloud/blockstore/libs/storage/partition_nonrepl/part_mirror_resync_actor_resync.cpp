@@ -24,7 +24,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorPartitionResyncActor::ContinueResyncIfNeeded(
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     if (ResyncFinished) {
         return;
@@ -58,7 +58,7 @@ void TMirrorPartitionResyncActor::ScheduleResyncNextRange(
     const TActorContext& ctx)
 {
     ctx.Schedule(
-        ResyncNextRangeInterval,
+        Config->GetResyncNextRangeInterval(),
         new TEvNonreplPartitionPrivate::TEvResyncNextRange());
 }
 
@@ -66,7 +66,8 @@ void TMirrorPartitionResyncActor::ScheduleRetryResyncNextRange(
     const TActorContext& ctx)
 {
     ctx.Schedule(
-        ResyncNextRangeInterval + BackoffProvider.GetDelayAndIncrease(),
+        Config->GetResyncNextRangeInterval() +
+            BackoffProvider.GetDelayAndIncrease(),
         new TEvNonreplPartitionPrivate::TEvResyncNextRange());
 }
 
@@ -130,6 +131,20 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         State.GetReplicaInfos()[0].Config->GetParentActorId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled());
     ctx.Register(resyncActor.release());
+}
+
+void TMirrorPartitionResyncActor::ResyncRangeAfterError(
+    TBlockRange64 range,
+    const TActorContext& ctx)
+{
+    const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
+    for (ui32 id = rangeId.first; id <= rangeId.second; ++id) {
+        const auto blockRange =
+            RangeId2BlockRange(id, PartConfig->GetBlockSize());
+        if (!State.IsResynced(blockRange) && State.AddPendingResyncRange(id)) {
+            ResyncNextRange(ctx);
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

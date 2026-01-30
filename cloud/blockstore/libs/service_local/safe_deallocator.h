@@ -21,6 +21,9 @@ NThreading::TFuture<NProto::TError> SafeDeallocateDevice(
     ui64 startIndex,
     ui64 blocksCount,
     ui32 blockSize,
-    NNvme::INvmeManagerPtr nvmeManager);
+    NNvme::INvmeManagerPtr nvmeManager,
+    ui32 validatedBlocksRatio   //    1000 means every thousandth or
+                                //    0.1% of blocks in device
+);
 
 }   // namespace NCloud::NBlockStore::NServer

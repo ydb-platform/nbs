@@ -244,6 +244,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
                  E_ARGUMENT,
                  E_IO_SILENT,
                  E_IO,
+                 E_BS_MOUNT_CONFLICT,
              })
         {
             requestsCount = 0;

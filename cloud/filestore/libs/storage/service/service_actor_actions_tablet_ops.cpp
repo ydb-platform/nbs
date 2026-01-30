@@ -138,6 +138,18 @@ IActorPtr TStorageServiceActor::CreateUnsafeGetNodeRefActionActor(
         std::move(input));
 }
 
+NActors::IActorPtr TStorageServiceActor::CreateUnsafeCreateHandleActor(
+        TRequestInfoPtr requestInfo,
+        TString input)
+{
+    using TUnsafeCreateHandleActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeCreateHandleRequest,
+        TEvIndexTablet::TEvUnsafeCreateHandleResponse>;
+    return std::make_unique<TUnsafeCreateHandleActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // RestartTablet
 

@@ -56,12 +56,14 @@ LinkedDiskFillBandwidth {
 }
 
 # SchemeShard proxy
-UseSchemeCache: true
 PathDescriptionBackupFilePath: "backups.1/nbs-path-description-backup.txt"
 #SSProxyFallbackMode: true
+UseBinaryFormatForPathDescriptionBackup: false
+UseSchemeCache: true
 
 # Hive proxy
 TabletBootInfoBackupFilePath: "backups.1/nbs-tablet-boot-info-backup.txt"
+UseBinaryFormatForTabletBootInfoBackup: false
 
 # Volume Throttling Manager
 VolumeThrottlingManagerEnabled: true

@@ -1,6 +1,5 @@
 LIBRARY()
 
-GENERATE_ENUM_SERIALIZATION(tablet_private.h)
 GENERATE_ENUM_SERIALIZATION(session.h)
 
 SRCS(
@@ -72,6 +71,8 @@ SRCS(
     tablet_actor_throttling.cpp
     tablet_actor_truncate.cpp
     tablet_actor_unlinknode.cpp
+    tablet_actor_unlinknode_abort.cpp
+    tablet_actor_unlinknode_prepare.cpp
     tablet_actor_unsafe_node_ops.cpp
     tablet_actor_updateconfig.cpp
     tablet_actor_waitready.cpp
@@ -82,7 +83,6 @@ SRCS(
     tablet_actor_zerorange.cpp
     tablet_counters.cpp
     tablet_database.cpp
-    tablet_private.cpp
     tablet_schema.cpp
     tablet_state.cpp
     tablet_state_cache.cpp
@@ -103,6 +103,7 @@ PEERDIR(
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
     cloud/filestore/libs/storage/tablet/actors
+    cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
 

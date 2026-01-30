@@ -44,7 +44,6 @@ class TSafeDeallocator
     : public std::enable_shared_from_this<TSafeDeallocator>
 {
 private:
-    static constexpr ui64 ValidatedBlocksRatio = 1000; // 0.1% of blocks in device
     static constexpr ui64 MaxDeallocateChunkSize = 1_GB;
 
     const TString Filename;
@@ -69,13 +68,14 @@ private:
 
 public:
     TSafeDeallocator(
-            TString filename,
-            TFileHandle fd,
-            IFileIOServicePtr fileIO,
-            ui64 startIndex,
-            ui64 blocksCount,
-            ui32 blockSize,
-            NNvme::INvmeManagerPtr nvmeManager)
+        TString filename,
+        TFileHandle fd,
+        IFileIOServicePtr fileIO,
+        ui64 startIndex,
+        ui64 blocksCount,
+        ui32 blockSize,
+        NNvme::INvmeManagerPtr nvmeManager,
+        ui64 validatedBlocksRatio)
         : Filename(std::move(filename))
         , Fd(std::move(fd))
         , StartIndex(startIndex)
@@ -84,7 +84,7 @@ public:
         , FileIO(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
         , Response(NewPromise<NProto::TError>())
-        , ValidateRemainingBlockCount(BlocksCount / ValidatedBlocksRatio)
+        , ValidateRemainingBlockCount(BlocksCount / validatedBlocksRatio)
         , ValidatedBlockIndex(StartIndex)
         , DeallocateNextBlockIndex(StartIndex)
         , Buffer(Allocate(BlockSize))
@@ -212,7 +212,8 @@ TFuture<NProto::TError> SafeDeallocateDevice(
     ui64 startIndex,
     ui64 blocksCount,
     ui32 blockSize,
-    NNvme::INvmeManagerPtr nvmeManager)
+    NNvme::INvmeManagerPtr nvmeManager,
+    ui32 validatedBlocksRatio)
 {
     Y_ENSURE(fileIO);
     Y_ENSURE(nvmeManager);
@@ -224,7 +225,8 @@ TFuture<NProto::TError> SafeDeallocateDevice(
         startIndex,
         blocksCount,
         blockSize,
-        std::move(nvmeManager));
+        std::move(nvmeManager),
+        validatedBlocksRatio ? validatedBlocksRatio : 1);
 
     return deallocator->Deallocate();
 }

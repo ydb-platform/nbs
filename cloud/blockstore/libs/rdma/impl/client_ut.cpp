@@ -2,6 +2,7 @@
 
 #include "test_verbs.h"
 
+#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -232,6 +233,13 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
     Y_UNIT_TEST(ShouldProcessRequests)
     {
+        // TODO(drbasic) reset to (RDMA_MAX_REQID - 1) or extract
+        // TActiveRequests and make simple unit-test for requestId overflow
+        constexpr size_t RequestCount = 10;
+
+        constexpr size_t RequestBytes = 1024;
+        constexpr size_t ResponseBytes = 1024;
+
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -256,9 +264,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint(
-            "::",
-            10020);
+        auto clientEndpoint = client->StartEndpoint("::", 10020);
 
         auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
 
@@ -270,58 +276,61 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             size_t Bytes = 0;
         };
 
-        TManualEvent ev;
-        TResponse response;
-
-        auto makeContext = [&]()
+        auto makeContext = [](TManualEvent* ev, TResponse* response)
         {
             auto ctx = std::make_unique<TRequestContext>();
-            ctx->Handler = [&](TStringBuf requestBuffer,
+            ctx->Handler = [ev, response](
+                               TStringBuf requestBuffer,
                                TStringBuf responseBuffer,
                                ui32 status,
                                size_t responseBytes)
             {
                 Y_UNUSED(requestBuffer);
 
-                response =
-                    TResponse{true, responseBuffer, status, responseBytes};
-                ev.Signal();
+                response->Received = true;
+                response->Buffer = responseBuffer;
+                response->Status = status;
+                response->Bytes = responseBytes;
+
+                ev->Signal();
             };
             return ctx;
         };
 
-        size_t requestBytes = 1024;
-        size_t responseBytes = 1024;
-
-        auto handleRequest = [&]()
+        auto handleRequest = [](NVerbs::TTestContext& testContext)
         {
             while (true) {
-                with_lock (testContext->CompletionLock) {
-                    if (testContext->RecvEvents && testContext->ReqIds) {
-                        auto* re = testContext->RecvEvents.front();
+                with_lock (testContext.CompletionLock) {
+                    if (testContext.RecvEvents && testContext.ReqIds) {
+                        auto* re = testContext.RecvEvents.front();
                         auto* responseMsg = reinterpret_cast<TResponseMessage*>(
                             re->sg_list[0].addr);
                         Zero(*responseMsg);
                         InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
-                        responseMsg->ReqId = testContext->ReqIds.front();
+                        responseMsg->ReqId = testContext.ReqIds.front();
 
-                        testContext->ReqIds.pop_front();
-                        testContext->RecvEvents.pop_front();
-                        testContext->ProcessedRecvEvents.push_back(re);
-                        testContext->CompletionHandle.Set();
+                        testContext.ReqIds.pop_front();
+                        testContext.RecvEvents.pop_front();
+                        testContext.ProcessedRecvEvents.push_back(re);
+                        testContext.CompletionHandle.Set();
                         break;
                     }
                 }
             }
         };
 
-        for (size_t i = 0; i < RDMA_MAX_REQID - 1; ++i) {
+        for (size_t i = 0; i < RequestCount; ++i) {
             {   // Successful request
+                TManualEvent ev;
+                TResponse response;
+
                 auto r = ep->AllocateRequest(
                     std::make_shared<TClientHandler>(),
-                    makeContext(),
-                    requestBytes,
-                    responseBytes);
+                    makeContext(&ev, &response),
+                    RequestBytes,
+                    ResponseBytes);
+                UNIT_ASSERT_VALUES_EQUAL(false, HasError(r.GetError()));
+
                 auto request = r.ExtractResult();
                 auto callContext = MakeIntrusive<TCallContext>();
 
@@ -334,25 +343,27 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                     GetCycleCount() - retryDelay);
                 ep->SendRequest(std::move(request), callContext);
 
-                handleRequest();
+                handleRequest(*testContext);
 
                 ev.WaitT(TDuration::Seconds(5));
                 UNIT_ASSERT(response.Received);
                 UNIT_ASSERT_VALUES_EQUAL(
                     static_cast<ui32>(RDMA_PROTO_OK),
                     response.Status);
-
-                ev.Reset();
-                response = TResponse{};
             }
 
             // Timed out request
             if (i == 0 || i == RDMA_MAX_REQID - 3) {
+                TManualEvent ev;
+                TResponse response;
+
                 auto r = ep->AllocateRequest(
                     std::make_shared<TClientHandler>(),
-                    makeContext(),
-                    requestBytes,
-                    responseBytes);
+                    makeContext(&ev, &response),
+                    RequestBytes,
+                    ResponseBytes);
+                UNIT_ASSERT_VALUES_EQUAL(false, HasError(r.GetError()));
+
                 auto request = r.ExtractResult();
                 auto callContext = MakeIntrusive<TCallContext>();
 
@@ -371,17 +382,13 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                     static_cast<ui32>(RDMA_PROTO_FAIL),
                     response.Status);
 
-                NProto::TError error;
-                bool parsed = error.ParseFromArray(
-                    response.Buffer.Head(response.Bytes).data(),
-                    response.Bytes);
+                NProto::TError error =
+                    ParseError(response.Buffer.Head(response.Bytes));
 
-                UNIT_ASSERT_VALUES_EQUAL(parsed, true);
                 UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
 
-                handleRequest();
-                ev.Reset();
-                response = TResponse{};
+                // handle the request after timeout
+                handleRequest(*testContext);
             }
         }
     }

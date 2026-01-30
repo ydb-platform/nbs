@@ -42,12 +42,17 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ForcedOperationStatus,      __VA_ARGS__)                               \
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
-    xxx(RenameNodeInDestination,    __VA_ARGS__)                               \
+                                                                               \
+    xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
+    xxx(PrepareUnlinkDirectoryNodeInShard,  __VA_ARGS__)                       \
+    xxx(AbortUnlinkDirectoryNodeInShard,    __VA_ARGS__)                       \
                                                                                \
     xxx(ReadNodeRefs,              __VA_ARGS__)                                \
                                                                                \
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
+                                                                               \
+    xxx(UnsafeCreateHandle,         __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,6 +159,15 @@ struct TEvIndexTablet
 
         EvUnsafeGetNodeRefRequest = EvBegin + 61,
         EvUnsafeGetNodeRefResponse,
+
+        EvUnsafeCreateHandleRequest = EvBegin + 63,
+        EvUnsafeCreateHandleResponse,
+
+        EvPrepareUnlinkDirectoryNodeInShardRequest = EvBegin + 65,
+        EvPrepareUnlinkDirectoryNodeInShardResponse,
+
+        EvAbortUnlinkDirectoryNodeInShardRequest = EvBegin + 67,
+        EvAbortUnlinkDirectoryNodeInShardResponse,
 
         EvEnd
     };

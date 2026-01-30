@@ -158,6 +158,9 @@ void TVolumeActor::OnPartitionStateChanged(
                     std::move(partitionActors)),
                 TActorsStack::EActorPurpose::MultiPartitionWrapper);
 
+            actorStack =
+                WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), true);
+
             State->SetMultiPartitionWrapperActor(std::move(actorStack));
         }
     } else {
@@ -922,8 +925,12 @@ void TVolumeActor::HandleTabletStatus(
             auto actorStack = TActorsStack(
                 msg->TabletUser,
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
-            actorStack =
-                WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), true);
+            if (State->GetPartitions().size() == 1) {
+                actorStack = WrapWithFollowerActorIfNeeded(
+                    ctx,
+                    std::move(actorStack),
+                    true);
+            }
             partition->SetStarted(std::move(actorStack));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,

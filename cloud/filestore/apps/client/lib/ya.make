@@ -26,6 +26,7 @@ SRCS(
     mount.cpp
     mv.cpp
     performance_profile_params.cpp
+    ping.cpp
     read.cpp
     remove_cluster_node.cpp
     reset_session.cpp

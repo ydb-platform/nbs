@@ -239,22 +239,41 @@ protected:
         static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
         static constexpr bool IsReadOnly = false;                              \
                                                                                \
-        template <typename T, typename ...Args>                                \
-        static bool PrepareTx(T& target, Args&& ...args)                       \
+        template <typename T, typename Args>                                   \
+        static bool PrepareTx(                                                 \
+            T& target,                                                         \
+            const NActors::TActorContext& ctx,                                 \
+            NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
+            Args& args)                                                        \
         {                                                                      \
-            return target.PrepareTx_##name(std::forward<Args>(args)...);       \
+            return target.PrepareTx_##name(ctx, tx, args);                     \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
-        static void ExecuteTx(T& target, Args&& ...args)                       \
+        template <typename T, typename Args>                                   \
+        static void ExecuteTx(                                                 \
+            T& target,                                                         \
+            const NActors::TActorContext& ctx,                                 \
+            NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
+            Args& args)                                                        \
         {                                                                      \
-            target.ExecuteTx_##name(std::forward<Args>(args)...);              \
+            target.ExecuteTx_##name(ctx, tx, args);                            \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
-        static void CompleteTx(T& target, Args&& ...args)                      \
+        template <typename T, typename Args>                                   \
+        static void CompleteTx(                                                \
+            T& target,                                                         \
+            const NActors::TActorContext& ctx,                                 \
+            Args& args)                                                        \
         {                                                                      \
-            target.CompleteAndUpdateState(std::forward<Args>(args)...);        \
+            target.CompleteAndUpdateState(ctx, args);                          \
+            if constexpr (std::is_base_of_v<TErrorAware, Args>) {              \
+                if (args.CommitIdOverflow) {                                   \
+                    target.ScheduleRebootTabletOnCommitIdOverflow(             \
+                        ctx,                                                   \
+                        args.CommitIdOverflowMessage                           \
+                        ? args.CommitIdOverflowMessage : #name);               \
+                }                                                              \
+            }                                                                  \
         }                                                                      \
     };                                                                         \
                                                                                \

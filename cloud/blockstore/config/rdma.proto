@@ -31,6 +31,9 @@ message TRdmaServer
 
     // bind to the first non local address of this interface
     string SourceInterface = 12;
+
+    // use ibv_create_qp instead of rdma_create_qp
+    bool VerbsQP = 13;
 }
 
 message TRdmaClient
@@ -46,6 +49,9 @@ message TRdmaClient
 
     // bind to the first non local address of this interface
     string SourceInterface = 9;
+
+    // use ibv_create_qp instead of rdma_create_qp
+    bool VerbsQP = 10;
 }
 
 message TRdmaTarget

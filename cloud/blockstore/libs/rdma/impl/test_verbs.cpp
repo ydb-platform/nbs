@@ -508,21 +508,33 @@ struct TTestVerbs
         }
     }
 
-    void CreateQP(rdma_cm_id* id, ibv_qp_init_attr* qp_attrs) override
+    void RdmaCreateQP(rdma_cm_id* id, ibv_qp_init_attr* attr) override
     {
         if (TestContext->CreateQP) {
-            TestContext->CreateQP(id, qp_attrs);
+            TestContext->CreateQP(id, attr);
         }
 
         auto g = Guard(TestContext->CompletionLock);
         TestContext->HandleCompletionEvent = nullptr;
     }
 
-    void DestroyQP(rdma_cm_id* id) override
+    void RdmaDestroyQP(rdma_cm_id* id) override
     {
         if (TestContext->DestroyQP) {
             TestContext->DestroyQP(id);
         }
+    }
+
+    ibv_qp* CreateQP(ibv_pd* pd, ibv_qp_init_attr* attr) override
+    {
+        Y_UNUSED(pd);
+        Y_UNUSED(attr);
+        return nullptr;
+    }
+
+    void DestroyQP(ibv_qp* qp) override
+    {
+        Y_UNUSED(qp);
     }
 
     void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) override

@@ -138,10 +138,8 @@ void TVolumeActor::UpdateDelayCounter(
             VolumeSelfCounters->ThrottlerDelayRequestCounters.DescribeBlocks
                 .Increment(time.MicroSeconds());
             return;
-        case TVolumeThrottlingPolicy::EOpType::Last:
-        default:
-            Y_DEBUG_ABORT_UNLESS(0);
     }
+    Y_DEBUG_ABORT_UNLESS(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

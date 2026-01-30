@@ -114,3 +114,6 @@ contrib/ydb/apps/ydbd/ydbd
 contrib/ydb/apps/ydb/ydb
 contrib/ydb/library/yql/providers/generic/style/ydb-library-yql-providers-generic-style
 contrib/ydb/library/yql/public/udf/tz/gen/tz_gen
+
+# env files
+.env

@@ -303,7 +303,7 @@ runs:
           echo "::group::s3-sync-logs"
           if [ "$SYNC_TO_S3" = "true" ];
           then
-            sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${i}/"
+            sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${i}/"
           fi
           echo "::endgroup::"
 
@@ -395,7 +395,7 @@ runs:
             if [ "$SYNC_TO_S3" = "true" ];
             then
               du -h "$TESTS_DATA_DIR/"
-              sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${i}/"
+              sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${i}/"
             fi
             touch "$LOG_DIR/${i}_test_data_synced"
             echo "::endgroup::"
@@ -436,7 +436,7 @@ runs:
           fi
 
           echo "::group::s3-sync"
-          sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+          sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
           touch "$LOG_DIR/${i}_artifacts_synced"
           echo "::endgroup::"
 
@@ -477,7 +477,7 @@ runs:
         sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
         sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
         sudo chown -R github:github "$LOG_DIR/system_logs/" || true
-        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
 
     - name: sync logs in case of cancel and additional debug info
@@ -497,7 +497,7 @@ runs:
 
         sudo chown -R github:github "$LOG_DIR/"
 
-        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/" || true
 
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
           echo "Syncing artifacts dir"
@@ -511,7 +511,7 @@ runs:
             done
             echo "::endgroup::"
           fi
-          sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
+          sudo -E -H -u github aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
         fi
 
     - name: Finish with END_EXIT_CODE
@@ -529,7 +529,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
-        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
         echo "::endgroup::"
 
     - name: Display links to s3 summary

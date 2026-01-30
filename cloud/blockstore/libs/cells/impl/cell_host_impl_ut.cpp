@@ -50,12 +50,10 @@ struct TestCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
-        const TCellHostConfig& config,
-        IBlockStorePtr client) override
+        const TCellHostConfig& config) override
     {
         Y_UNUSED(bootstrap);
         Y_UNUSED(config);
-        Y_UNUSED(client);
 
         RdmaSetupPromise = NewPromise<TResultOrError<IBlockStorePtr>>();
 

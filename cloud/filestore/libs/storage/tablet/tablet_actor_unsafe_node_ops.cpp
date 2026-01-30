@@ -60,7 +60,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNode(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeDeleteNode");
+        return args.OnCommitIdOverflow();
     }
 
     if (!args.Node) {
@@ -144,7 +144,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeUpdateNode");
+        return args.OnCommitIdOverflow();
     }
 
     NProto::TNode prevNode;
@@ -155,24 +155,27 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
         prevNode = args.Node->Attrs;
         node = args.Node->Attrs;
         nodeCommitId = args.Node->MinCommitId;
+
+        ConvertAttrsToNode(args.Request.GetNode(), &node);
+        UpdateNode(
+            db,
+            args.Request.GetNode().GetId(),
+            nodeCommitId,
+            commitId,
+            node,
+            prevNode);
     } else {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        // Create new node with specified ID
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s UnsafeUpdateNode: %s - node not found, creating",
             LogTag.c_str(),
             args.Request.DebugString().Quote().c_str());
 
-        // creation here is still done via UpdateNode since CreateNode generates
-        // a new nodeId
+        ConvertAttrsToNode(args.Request.GetNode(), &node);
+        CreateNodeWithId(db, args.Request.GetNode().GetId(), commitId, node);
     }
-
-    ConvertAttrsToNode(args.Request.GetNode(), &node);
-    UpdateNode(
-        db,
-        args.Request.GetNode().GetId(),
-        nodeCommitId,
-        commitId,
-        node,
-        prevNode);
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
@@ -192,7 +195,8 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
         oldNode.Quote().c_str());
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeResponse>();
+        std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeResponse>(
+            std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
@@ -332,8 +336,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -373,10 +376,6 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNodeRef(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeCreateNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -435,7 +434,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -478,10 +477,6 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNodeRef(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeDeleteNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -540,8 +535,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNodeRef(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -591,10 +585,6 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNodeRef(
         std::make_unique<TEvIndexTablet::TEvUnsafeUpdateNodeRefResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnsafeUpdateNodeRef");
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -672,6 +662,103 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNodeRef(
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeGetNodeRef: %s, result: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        response->Record.ShortUtf8DebugString().Quote().c_str());
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeCreateHandle(
+    const TEvIndexTablet::TEvUnsafeCreateHandleRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddTransaction<TEvIndexTablet::TUnsafeCreateHandleMethod>(*requestInfo);
+
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeCreateHandle: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeCreateHandle>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_UnsafeCreateHandle(
+        const TActorContext& ctx,
+        TTransactionContext& tx,
+        TTxIndexTablet::TUnsafeCreateHandle& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_UnsafeCreateHandle(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeCreateHandle& args)
+{
+    Y_UNUSED(ctx);
+
+    TSession* session = FindSession(args.Request.GetSessionId());
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(
+            TStringBuilder()
+            << "CreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
+
+    TIndexTabletDatabase db(tx.DB);
+
+    TSessionHandle* handle = UnsafeCreateHandle(
+        db,
+        session,
+        args.Request.GetHandle(),
+        args.Request.GetNodeId(),
+        args.Request.GetCommitId(),
+        args.Request.GetFlags());
+
+    if (!handle) {
+        TString message = ReportFailedToCreateHandle(
+            TStringBuilder()
+            << "UnsafeCreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeCreateHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeCreateHandle& args)
+{
+    RemoveTransaction(*args.RequestInfo);
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeCreateHandleResponse>(
+            args.Error);
+
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeCreateHandle: %s, result: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
         response->Record.ShortUtf8DebugString().Quote().c_str());

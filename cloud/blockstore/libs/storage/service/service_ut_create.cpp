@@ -6,9 +6,9 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
-#include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 
@@ -156,7 +156,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
     Y_UNIT_TEST(ShouldValidateVolumeSize)
     {
         TTestEnvState state;
-        for (ui32 i = 0; i < 512 * 3; ++i) {
+        for (ui32 i = 0; i < 1024 * 3; ++i) {
             auto& device = state.DiskRegistryState->Devices.emplace_back();
             device.SetNodeId(0);
             device.SetBlocksCount(1_TB / DefaultBlockSize);
@@ -183,9 +183,27 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_HDD_LOCAL,
+            NProto::STORAGE_MEDIA_SSD_LOCAL,
+        };
+
+        auto getMaxBlockCount = [&](NProto::EStorageMediaKind mediaKind) -> ui64
+        {
+            switch (mediaKind) {
+                case NProto::STORAGE_MEDIA_SSD_LOCAL:
+                    return MaxSsdLocalVolumeBlocksCount;
+                case NProto::STORAGE_MEDIA_HDD_LOCAL:
+                    return MaxHddLocalVolumeBlocksCount;
+                default:
+                    return MaxDiskRegistryBasedVolumeBlocksCount;
+            }
         };
 
         for (const auto mediaKind: mediaKinds) {
+            const ui32 blockSize = mediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL
+                                       ? 512
+                                       : DefaultBlockSize;
+
             const auto diskId = TStringBuilder() << DefaultDiskId
                 << "-" << static_cast<int>(mediaKind);
 
@@ -204,8 +222,25 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             {
                 auto request = service.CreateCreateVolumeRequest(
                     diskId,
-                    MaxVolumeBlocksCount + 1
+                    getMaxBlockCount(mediaKind) + 1);
+                service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+                auto response = service.RecvCreateVolumeResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    response->GetStatus(),
+                    response->GetErrorReason()
                 );
+            }
+
+            if (!IsDiskRegistryLocalMediaKind(mediaKind)) {
+                auto request = service.CreateCreateVolumeRequest(
+                    diskId,
+                    1000_GB / blockSize,   // Not a multiple of AllocationUnit
+                    blockSize,
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
@@ -219,31 +254,11 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             {
                 auto request = service.CreateCreateVolumeRequest(
                     diskId,
-                    1000_GB / DefaultBlockSize,
-                    DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
-                service.SendRequest(MakeStorageServiceId(), std::move(request));
-
-                auto response = service.RecvCreateVolumeResponse();
-                UNIT_ASSERT_VALUES_EQUAL_C(
-                    E_ARGUMENT,
-                    response->GetStatus(),
-                    response->GetErrorReason()
-                );
-            }
-
-            {
-                auto request = service.CreateCreateVolumeRequest(
-                    diskId,
-                    1_TB / DefaultBlockSize,
-                    DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
+                    1_TB / blockSize,
+                    blockSize,
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
@@ -257,12 +272,11 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             {
                 auto request = service.CreateCreateVolumeRequest(
                     diskId + "2",
-                    256_TB / DefaultBlockSize,
-                    DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
+                    256_TB / blockSize,
+                    blockSize,
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
@@ -276,12 +290,11 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             {
                 auto request = service.CreateCreateVolumeRequest(
                     diskId + "3",
-                    257_TB / DefaultBlockSize,
-                    DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
+                    257_TB / blockSize,
+                    blockSize,
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();

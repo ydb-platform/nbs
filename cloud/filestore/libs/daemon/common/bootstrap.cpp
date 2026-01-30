@@ -290,6 +290,7 @@ void TBootstrapCommon::InitActorSystem()
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
     args.StorageConfig = Configs->StorageConfig;
+    args.StorageConfig->SetFeaturesConfig(Configs->FeaturesConfig);
     args.ProfileLog = ProfileLog;
     args.TraceSerializer = TraceSerializer;
     args.DiagnosticsConfig = Configs->DiagnosticsConfig;

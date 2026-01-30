@@ -21,12 +21,32 @@ namespace NCloud::NBlockStore::NStorage {
 #define BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(xxx, ...)                       \
     xxx(RegisterAgent,              __VA_ARGS__)                               \
     xxx(CollectStats,               __VA_ARGS__)                               \
+    xxx(ListNVMeDevices,            __VA_ARGS__)                               \
+    xxx(AcquireNVMeDevice,          __VA_ARGS__)                               \
+    xxx(ReleaseNVMeDevice,          __VA_ARGS__)                               \
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEvDiskAgentPrivate
 {
+    struct TControlPlaneRequestNumber
+    {
+        ui64 Generation = 0;
+        ui64 RequestNumber = 0;
+
+        TControlPlaneRequestNumber() = default;
+
+        explicit TControlPlaneRequestNumber(
+            const NProto::TControlPlaneRequestNumber& controlPlaneRequestNumber)
+            : Generation(controlPlaneRequestNumber.GetDiskRegistryGeneration())
+            , RequestNumber(controlPlaneRequestNumber.GetRequestNumber())
+        {}
+
+        std::strong_ordering operator<=>(
+            const TControlPlaneRequestNumber&) const = default;
+    };
+
     //
     // InitAgent
     //
@@ -212,6 +232,9 @@ struct TEvDiskAgentPrivate
     struct TPathsDetached
     {
         TVector<TString> PathsToDetach;
+        TVector<TString> AlreadyDetachedPaths;
+
+        TControlPlaneRequestNumber ControlPlaneRequestNumber;
     };
 
     //
@@ -226,7 +249,45 @@ struct TEvDiskAgentPrivate
 
         TVector<TString> PathsToAttach;
         TVector<TString> AlreadyAttachedPaths;
+
+        TControlPlaneRequestNumber ControlPlaneRequestNumber;
     };
+
+    //
+    // ListNVMeDevices
+    //
+
+    struct TListNVMeDevicesRequest
+    {};
+
+    struct TListNVMeDevicesResponse
+    {
+        TVector<NProto::TNVMeDevice> NVMeDevices;
+    };
+
+    //
+    // AcquireNVMeDevice
+    //
+
+    struct TAcquireNVMeDeviceRequest
+    {
+        TString SerialNumber;
+    };
+
+    struct TAcquireNVMeDeviceResponse
+    {};
+
+    //
+    // ReleaseNVMeDevice
+    //
+
+    struct TReleaseNVMeDeviceRequest
+    {
+        TString SerialNumber;
+    };
+
+    struct TReleaseNVMeDeviceResponse
+    {};
 
     //
     // Events declaration

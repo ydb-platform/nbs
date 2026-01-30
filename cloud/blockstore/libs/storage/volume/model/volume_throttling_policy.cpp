@@ -68,14 +68,29 @@ TDuration CalculateBoostRefillTime(const NProto::TVolumePerformanceProfile& conf
 
 struct TVolumeThrottlingPolicy::TImpl
 {
-    const NProto::TVolumePerformanceProfile Config;
+    // Recalculated values are slightly larger and are used to improve the user
+    // experience by delivering the exact maximum bandwidth and IOPS quotas.
+    struct TMaxQuota
+    {
+        ui64 Bandwidth = 0;
+        ui64 Iops = 0;
+        ui64 RecalculatedBandwidth = 0;
+        ui64 RecalculatedIops = 0;
+    };
+
+    using TMaxQuotas =
+        std::array<TMaxQuota, static_cast<size_t>(EOpType::Last) + 1>;
+
     const NProto::TVolumeThrottlingRule ThrottlingRule;
+    const NProto::TVolumePerformanceProfile OriginalConfig;
+    const NProto::TVolumePerformanceProfile Config;
     const ui32 PolicyVersion;
     const ui32 VolatileVersion;
     const TDuration MaxDelay;
     const ui32 MaxWriteCostMultiplier;
     const ui64 DefaultPostponedRequestWeight;
     const bool UseDiskSpaceScore;
+    const TMaxQuotas MaxQuotas;
     TBoostedTimeBucket Bucket;
     TVector<TBackpressureReport> PartitionBackpressures;
     TBackpressureReport CurrentBackpressure;
@@ -95,29 +110,30 @@ struct TVolumeThrottlingPolicy::TImpl
             const ui64 defaultPostponedRequestWeight,
             const TDuration initialBoostBudget,
             const bool useDiskSpaceScore)
-        : Config(std::move(config))
-        , ThrottlingRule(std::move(throttlingRule))
+        : ThrottlingRule(std::move(throttlingRule))
+        , OriginalConfig(std::move(config))
+        , Config(CalculateProfile(ThrottlingRule))
         , PolicyVersion(policyVersion)
         , VolatileVersion(volatileVersion)
         , MaxDelay(maxDelay)
         , MaxWriteCostMultiplier(maxWriteCostMultiplier)
         , DefaultPostponedRequestWeight(defaultPostponedRequestWeight)
         , UseDiskSpaceScore(useDiskSpaceScore)
+        , MaxQuotas(CalculateMaxQuotas())
         , Bucket(
-            CalcBurstTime(),
-            CalculateBoostRate(CurrentProfile()),
-            CalculateBoostTime(CurrentProfile()),
-            CalculateBoostRefillTime(CurrentProfile()),
-            initialBoostBudget
-        )
-    {
-    }
+              CalcBurstTime(),
+              CalculateBoostRate(Config),
+              CalculateBoostTime(Config),
+              CalculateBoostRefillTime(Config),
+              initialBoostBudget)
+    {}
 
-    NProto::TVolumePerformanceProfile CurrentProfile() const
+    NProto::TVolumePerformanceProfile CalculateProfile(
+        const NProto::TVolumeThrottlingRule& throttlingRule) const
     {
-        NProto::TVolumePerformanceProfile result = Config;
+        NProto::TVolumePerformanceProfile result = OriginalConfig;
 
-        const auto& coefficients = ThrottlingRule.GetCoefficients();
+        const auto& coefficients = throttlingRule.GetCoefficients();
         // Volatile throttling can override ThrottlingEnabled
         if (coefficients.HasThrottlingEnabled()) {
             result.SetThrottlingEnabled(coefficients.GetThrottlingEnabled());
@@ -125,55 +141,101 @@ struct TVolumeThrottlingPolicy::TImpl
         // Volatile throttling can multiply PerformanceProfile by coefficients
         if (coefficients.HasMaxReadBandwidth()) {
             result.SetMaxReadBandwidth(
-                Config.GetMaxReadBandwidth() *
+                OriginalConfig.GetMaxReadBandwidth() *
                 coefficients.GetMaxReadBandwidth());
         }
         if (coefficients.HasMaxPostponedWeight()) {
             result.SetMaxPostponedWeight(
-                Config.GetMaxPostponedWeight() *
+                OriginalConfig.GetMaxPostponedWeight() *
                 coefficients.GetMaxPostponedWeight());
         }
         if (coefficients.HasMaxReadIops()) {
             result.SetMaxReadIops(
-                Config.GetMaxReadIops() * coefficients.GetMaxReadIops());
+                OriginalConfig.GetMaxReadIops() *
+                coefficients.GetMaxReadIops());
         }
         if (coefficients.HasBoostTime()) {
             result.SetBoostTime(
-                Config.GetBoostTime() * coefficients.GetBoostTime());
+                OriginalConfig.GetBoostTime() * coefficients.GetBoostTime());
         }
         if (coefficients.HasBoostRefillTime()) {
             result.SetBoostRefillTime(
-                Config.GetBoostRefillTime() *
+                OriginalConfig.GetBoostRefillTime() *
                 coefficients.GetBoostRefillTime());
         }
         if (coefficients.HasBoostPercentage()) {
             result.SetBoostPercentage(
-                Config.GetBoostPercentage() *
+                OriginalConfig.GetBoostPercentage() *
                 coefficients.GetBoostPercentage());
         }
         if (coefficients.HasMaxWriteBandwidth()) {
             result.SetMaxWriteBandwidth(
-                Config.GetMaxWriteBandwidth() *
+                OriginalConfig.GetMaxWriteBandwidth() *
                 coefficients.GetMaxWriteBandwidth());
         }
         if (coefficients.HasMaxWriteIops()) {
             result.SetMaxWriteIops(
-                Config.GetMaxWriteIops() * coefficients.GetMaxWriteIops());
+                OriginalConfig.GetMaxWriteIops() *
+                coefficients.GetMaxWriteIops());
         }
         if (coefficients.HasBurstPercentage()) {
             result.SetBurstPercentage(
-                Config.GetBurstPercentage() *
+                OriginalConfig.GetBurstPercentage() *
                 coefficients.GetBurstPercentage());
         }
 
         return result;
     }
 
+    TMaxQuotas CalculateMaxQuotas() const
+    {
+        TMaxQuotas result;
+        for (size_t i = 0; i <= static_cast<size_t>(EOpType::Last); ++i) {
+            const ui64 bandwidth =
+                CalculateMaxBandwidth(static_cast<EOpType>(i));
+            const ui64 iops = CalculateMaxIops(static_cast<EOpType>(i));
+            result[i] = TMaxQuota{
+                .Bandwidth = bandwidth,
+                .Iops = iops,
+                .RecalculatedBandwidth = CalculateThrottlerC2(iops, bandwidth),
+                .RecalculatedIops = CalculateThrottlerC1(iops, bandwidth)};
+        }
+        return result;
+    }
+
+    ui64 CalculateMaxBandwidth(EOpType opType) const
+    {
+        if (opType == EOpType::Write && Config.GetMaxWriteBandwidth()) {
+            return Config.GetMaxWriteBandwidth();
+        }
+
+        if (opType == EOpType::Describe) {
+            // Disabling throttling by bandwidth for DescribeBlocks requests -
+            // they will be throttled only by iops
+            // See NBS-2733
+            return 0;
+        }
+        return Config.GetMaxReadBandwidth();
+    }
+
+    ui32 CalculateMaxIops(EOpType opType) const
+    {
+        if (opType == EOpType::Write && Config.GetMaxWriteIops()) {
+            return Config.GetMaxWriteIops();
+        }
+
+        return Config.GetMaxReadIops();
+    }
+
+    const NProto::TVolumePerformanceProfile& CurrentProfile() const
+    {
+        return Config;
+    }
+
     TDuration CalcBurstTime() const
     {
-        const auto& config = CurrentProfile();
         return SecondsToDuration(
-            (config.GetBurstPercentage() ? config.GetBurstPercentage() : 10)
+            (Config.GetBurstPercentage() ? Config.GetBurstPercentage() : 10)
             / 100.);
     }
 
@@ -244,7 +306,7 @@ struct TVolumeThrottlingPolicy::TImpl
         Y_UNUSED(ts);
 
         const auto newWeight = PostponedWeight + weight;
-        if (newWeight <= CurrentProfile().GetMaxPostponedWeight()) {
+        if (newWeight <= Config.GetMaxPostponedWeight()) {
             PostponedWeight = newWeight;
             return true;
         }
@@ -262,30 +324,48 @@ struct TVolumeThrottlingPolicy::TImpl
         );
     }
 
-    ui32 MaxIops(EOpType opType) const
+    ui64 GetMaxIops(EOpType opType) const
     {
-        const auto& config = CurrentProfile();
-        if (opType == EOpType::Write && config.GetMaxWriteIops()) {
-            return config.GetMaxWriteIops();
-        }
-
-        return config.GetMaxReadIops();
+        Y_ABORT_UNLESS(opType <= EOpType::Last);
+        return MaxQuotas[static_cast<size_t>(opType)].Iops;
     }
 
-    ui64 MaxBandwidth(EOpType opType) const
+    ui64 GetRecalculatedMaxIops(EOpType opType) const
     {
-        const auto& config = CurrentProfile();
-        if (opType == EOpType::Write && config.GetMaxWriteBandwidth()) {
-            return config.GetMaxWriteBandwidth();
-        }
+        Y_ABORT_UNLESS(opType <= EOpType::Last);
+        return MaxQuotas[static_cast<size_t>(opType)].RecalculatedIops;
+    }
 
-        if (opType == EOpType::Describe) {
-            // Disabling throttling by bandwidth for DescribeBlocks requests -
-            // they will be throttled only by iops
-            // See NBS-2733
-            return 0;
-        }
-        return config.GetMaxReadBandwidth();
+    ui64 GetMaxBandwidth(EOpType opType) const
+    {
+        Y_ABORT_UNLESS(opType <= EOpType::Last);
+        return MaxQuotas[static_cast<size_t>(opType)].Bandwidth;
+    }
+
+    ui64 GetRecalculatedMaxBandwidth(EOpType opType) const
+    {
+        Y_ABORT_UNLESS(opType <= EOpType::Last);
+        return MaxQuotas[static_cast<size_t>(opType)].RecalculatedBandwidth;
+    }
+
+    double GetMultiplier(EOpType opType) const
+    {
+        return opType == EOpType::Read ? 1.0 : WriteCostMultiplier;
+    }
+
+    [[nodiscard]] TDuration GetRequestCost(
+        const TThrottlingRequestInfo& requestInfo) const
+    {
+        const auto opType = static_cast<EOpType>(requestInfo.OpType);
+        const double multiplier = GetMultiplier(opType);
+        const ui64 recalculatedMaxIops = GetRecalculatedMaxIops(opType);
+        const ui64 recalculatedMaxBandwidth =
+            GetRecalculatedMaxBandwidth(opType);
+
+        return multiplier * CostPerIO(
+                                recalculatedMaxIops,
+                                recalculatedMaxBandwidth,
+                                requestInfo.ByteCount);
     }
 
     TMaybe<TDuration> SuggestDelay(
@@ -303,37 +383,21 @@ struct TVolumeThrottlingPolicy::TImpl
             return TDuration::Zero();
         }
 
-        const ui64 bandwidthUpdate = requestInfo.ByteCount;
-        double m = static_cast<EOpType>(requestInfo.OpType) == EOpType::Read
-            ? 1.0
-            : WriteCostMultiplier;
-
-        const auto maxBandwidth =
-            MaxBandwidth(static_cast<EOpType>(requestInfo.OpType));
-        const auto maxIops = MaxIops(static_cast<EOpType>(requestInfo.OpType));
-
-        const auto recalculatedMaxIops =
-            CalculateThrottlerC1(maxIops, maxBandwidth);
-        const auto recalculatedMaxBandwidth =
-            CalculateThrottlerC2(maxIops, maxBandwidth);
-
-        auto d = Bucket.Register(
-            ts,
-            m * CostPerIO(
-                    recalculatedMaxIops,
-                    recalculatedMaxBandwidth,
-                    bandwidthUpdate));
-
+        auto d = Bucket.Register(ts, GetRequestCost(requestInfo));
         if (!d.GetValue()) {
             // 0 is special value which disables throttling by byteCount
-            if (recalculatedMaxBandwidth) {
+            const auto opType = static_cast<EOpType>(requestInfo.OpType);
+            const double multiplier = GetMultiplier(opType);
+            if (ui64 recalculatedMaxBandwidth =
+                    GetRecalculatedMaxBandwidth(opType))
+            {
                 UsedBandwidthQuota +=
-                    m * (static_cast<double>(bandwidthUpdate) /
-                         static_cast<double>(recalculatedMaxBandwidth));
+                    multiplier *
+                    (static_cast<double>(requestInfo.ByteCount) /
+                     static_cast<double>(recalculatedMaxBandwidth));
             }
-            if (recalculatedMaxIops) {
-                UsedIopsQuota += m * (1.0 / recalculatedMaxIops);
-            }
+            UsedIopsQuota +=
+                multiplier * (1.0 / GetRecalculatedMaxIops(opType));
             return TDuration::Zero();
         }
 
@@ -382,8 +446,7 @@ TVolumeThrottlingPolicy::TVolumeThrottlingPolicy(
     Reset(config, throttlerConfig);
 }
 
-TVolumeThrottlingPolicy::~TVolumeThrottlingPolicy()
-{}
+TVolumeThrottlingPolicy::~TVolumeThrottlingPolicy() = default;
 
 void TVolumeThrottlingPolicy::Reset(
     const NProto::TVolumePerformanceProfile& config,
@@ -395,7 +458,7 @@ void TVolumeThrottlingPolicy::Reset(
     TDuration initialBoostBudget,
     bool useDiskSpaceScore)
 {
-    Impl.reset(new TImpl(
+    Impl = std::make_unique<TImpl>(
         config,
         throttlingRule,
         ++PolicyVersion,
@@ -404,7 +467,7 @@ void TVolumeThrottlingPolicy::Reset(
         maxWriteCostMultiplier,
         defaultPostponedRequestWeight,
         initialBoostBudget,
-        useDiskSpaceScore));
+        useDiskSpaceScore);
 }
 
 void TVolumeThrottlingPolicy::Reset(
@@ -429,7 +492,7 @@ void TVolumeThrottlingPolicy::Reset(
     const TVolumeThrottlingPolicy& policy)
 {
     Reset(
-        policy.Impl->Config,
+        policy.Impl->OriginalConfig,
         policy.Impl->ThrottlingRule,
         policy.Impl->VolatileVersion,
         policy.Impl->MaxDelay,
@@ -444,7 +507,7 @@ void TVolumeThrottlingPolicy::Reset(
     ui32 volatileVersion)
 {
     Reset(
-        Impl->Config,
+        Impl->OriginalConfig,
         throttlingRule,
         volatileVersion,
         Impl->MaxDelay,
@@ -535,12 +598,12 @@ NProto::TVolumePerformanceProfile TVolumeThrottlingPolicy::GetCurrentPerformance
 
 ui64 TVolumeThrottlingPolicy::C1(EOpType opType) const
 {
-    return CalculateThrottlerC1(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
+    return Impl->GetRecalculatedMaxIops(opType);
 }
 
 ui64 TVolumeThrottlingPolicy::C2(EOpType opType) const
 {
-    return CalculateThrottlerC2(Impl->MaxIops(opType), Impl->MaxBandwidth(opType));
+    return Impl->GetRecalculatedMaxBandwidth(opType);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -26,18 +26,16 @@ auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
 
 auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
     const TBootstrap& bootstrap,
-    const TCellHostConfig& config,
-    IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture
+    const TCellHostConfig& config) -> TRdmaEndpointBootstrapFuture
 {
     NClient::TRdmaEndpointConfig rdmaEndpoint{
         .Address = config.GetFqdn(),
         .Port = config.GetRdmaPort(),
     };
 
-    return CreateRdmaEndpointClientAsync(
+    return CreateRdmaDataEndpointAsync(
         bootstrap.Logging,
         bootstrap.RdmaClient,
-        std::move(client),
         bootstrap.TraceSerializer,
         bootstrap.RdmaTaskQueue,
         rdmaEndpoint);

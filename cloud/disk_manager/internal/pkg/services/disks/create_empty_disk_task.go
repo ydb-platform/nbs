@@ -47,7 +47,7 @@ func (t *createEmptyDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := SelectCell(
+	client, err := SelectCellForDisk(
 		ctx,
 		execCtx,
 		t.state,

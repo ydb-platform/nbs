@@ -109,11 +109,14 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
 {
     FILESTORE_VALIDATE_TX_ERROR(SetNodeXAttr, args);
 
+    Y_UNUSED(ctx);
+
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "SetXAttr");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     if (args.Attr) {

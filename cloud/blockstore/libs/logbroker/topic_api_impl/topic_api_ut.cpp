@@ -104,8 +104,6 @@ struct TFixture
 
     auto Read(size_t count)
     {
-        using namespace NYdb::NTopic;
-
         auto session = Client->CreateReadSession(NYdb::NTopic::TReadSessionSettings()
             .ConsumerName(TestConsumer)
             .AppendTopics(TestTopic)
@@ -122,7 +120,7 @@ struct TFixture
             auto events = session->GetEvents();
             for (auto& event: events) {
                 std::visit(TOverloaded {
-                    [&] (TReadSessionEvent::TDataReceivedEvent& ev) {
+                    [&] (NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent& ev) {
                         UNIT_ASSERT(!ev.HasCompressedMessages());
 
                         for (auto& m: ev.GetMessages()) {
@@ -140,13 +138,13 @@ struct TFixture
                             session->Close(1s);
                         }
                     },
-                    [&] (TReadSessionEvent::TStartPartitionSessionEvent& ev) {
+                    [&] (NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent& ev) {
                         ev.Confirm();
                     },
-                    [&] (TReadSessionEvent::TStopPartitionSessionEvent& ev) {
+                    [&] (NYdb::NTopic::TReadSessionEvent::TStopPartitionSessionEvent& ev) {
                         ev.Confirm();
                     },
-                    [&] (TSessionClosedEvent& ev) {
+                    [&] (NYdb::NTopic::TSessionClosedEvent& ev) {
                         UNIT_ASSERT_C(ev.IsSuccess(), ev.DebugString());
                         sessionClosed = true;
                     },

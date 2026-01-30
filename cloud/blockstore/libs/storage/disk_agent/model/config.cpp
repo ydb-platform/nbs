@@ -19,6 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// clang-format off
+
 #define BLOCKSTORE_AGENT_CONFIG(xxx)                                           \
     xxx(Enabled,                    bool,               false                 )\
     xxx(AgentId,                    TString,            ""                    )\
@@ -38,6 +40,7 @@ namespace {
     xxx(DeviceEraseMethod,                                                     \
         NProto::EDeviceEraseMethod,                                            \
         NProto::DEVICE_ERASE_METHOD_ZERO_FILL                                 )\
+    xxx(ValidatedBlocksRatio,       ui32,               1000                  )\
                                                                                \
     xxx(AcquireRequired,                    bool,       false                 )\
     xxx(ReleaseInactiveSessionsTimeout,     TDuration,  10s                   )\
@@ -66,6 +69,8 @@ namespace {
     xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
 // BLOCKSTORE_AGENT_CONFIG
 
+// clang-format on
+
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \
 // BLOCKSTORE_DECLARE_CONFIG
@@ -77,13 +82,13 @@ BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return TTarget(value);
 }
 
 template <>
-TDuration ConvertValue<TDuration, ui32>(ui32 value)
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
 }

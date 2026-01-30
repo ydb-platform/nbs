@@ -127,6 +127,28 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
     }
 
+    Y_UNIT_TEST(ShouldCreateMmapRegionForNestedPath)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath());
+
+        const size_t fileSize = 4096;
+        TString relativePath = env.CreateTestFile(JoinFsPaths(
+            "nested",
+            "path",
+            "to",
+            "test_file.dat"), fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize);
+
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        auto mmapInfo = result.ExtractResult();
+        UNIT_ASSERT(mmapInfo.Address != nullptr);
+        UNIT_ASSERT(mmapInfo.Id != 0);
+        UNIT_ASSERT_GT(mmapInfo.LatestActivityTimestamp, TInstant());
+    }
+
     Y_UNIT_TEST(ShouldFailCreateMmapRegionForNonExistentFile)
     {
         TTestEnv env;

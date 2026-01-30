@@ -9,6 +9,7 @@ SRCS(
     disk_agent_actor_disable.cpp
     disk_agent_actor_init.cpp
     disk_agent_actor_io.cpp
+    disk_agent_actor_local_nvme.cpp
     disk_agent_actor_monitoring.cpp
     disk_agent_actor_partial_suspend.cpp
     disk_agent_actor_register.cpp
@@ -18,6 +19,7 @@ SRCS(
     disk_agent_actor_waitready.cpp
     disk_agent_actor.cpp
     disk_agent_counters.cpp
+    disk_agent_private.cpp
     disk_agent_state.cpp
     disk_agent.cpp
     hash_table_storage.cpp
@@ -62,6 +64,7 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     benchmark
+    stress_tests
     ut
     ut_actor
     ut_large

@@ -24,8 +24,7 @@ struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 
     auto SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
-        const TCellHostConfig& config,
-        IBlockStorePtr client) -> TRdmaEndpointBootstrapFuture override;
+        const TCellHostConfig& config) -> TRdmaEndpointBootstrapFuture override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

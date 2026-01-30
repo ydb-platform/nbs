@@ -33,6 +33,14 @@ IBlockStorePtr CreateRdmaEndpointClient(
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config);
 
+NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
+    ILoggingServicePtr logging,
+    NRdma::IClientPtr client,
+    IBlockStorePtr volumeClient,
+    ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue,
+    const TRdmaEndpointConfig& config);
+
 IBlockStorePtr CreateRdmaDataEndpoint(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
@@ -40,10 +48,9 @@ IBlockStorePtr CreateRdmaDataEndpoint(
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue);
 
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
+NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
-    IBlockStorePtr volumeClient,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config);

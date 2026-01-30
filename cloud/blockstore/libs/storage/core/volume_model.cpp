@@ -467,14 +467,15 @@ ui32 ComputeAllocationUnitCount(
         return 1;
     }
 
-    double volumeSize = volumeParams.GetBlocksCount() * volumeParams.BlockSize;
+    const ui64 volumeSize =
+        volumeParams.GetBlocksCount() * volumeParams.BlockSize;
 
-    const auto unit = GetAllocationUnit(config, volumeParams.MediaKind);
+    const ui64 unit = GetAllocationUnit(config, volumeParams.MediaKind);
+    const ui64 unitCount = (volumeSize + unit - 1) / unit;
 
-    ui32 unitCount = std::ceil(volumeSize / unit);
     Y_DEBUG_ABORT_UNLESS(unitCount >= 1);
 
-    return unitCount;
+    return unitCount > Max<ui32>() ? Max<ui32>() : unitCount;
 }
 
 ui32 GetExistingChannelCount(
@@ -843,7 +844,14 @@ ui64 ComputeMaxBlocks(
     ui32 currentPartitions)
 {
     if (IsDiskRegistryMediaKind(mediaKind)) {
-        return MaxVolumeBlocksCount;
+        switch (mediaKind) {
+            case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL:
+                return MaxSsdLocalVolumeBlocksCount;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL:
+                return MaxHddLocalVolumeBlocksCount;
+            default:
+                return MaxDiskRegistryBasedVolumeBlocksCount;
+        }
     }
 
     if (currentPartitions) {
