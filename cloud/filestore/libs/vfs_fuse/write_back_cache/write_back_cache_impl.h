@@ -83,14 +83,6 @@ public:
 
     static bool IsSorted(const TVector<TWriteDataEntryPart>& parts);
     static bool IsContiguousSequence(const TVector<TWriteDataEntryPart>& parts);
-
-    static NProto::TError ValidateReadDataRequest(
-        const NProto::TReadDataRequest& request,
-        const TString& expectedFileSystemId);
-
-    static NProto::TError ValidateWriteDataRequest(
-        const NProto::TWriteDataRequest& request,
-        const TString& expectedFileSystemId);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

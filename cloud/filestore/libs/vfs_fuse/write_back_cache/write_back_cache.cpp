@@ -3,6 +3,7 @@
 #include "persistent_storage.h"
 #include "read_write_range_lock.h"
 #include "sequence_id_generator.h"
+#include "utils.h"
 #include "write_data_request_builder.h"
 #include "write_data_request.h"
 #include "write_data_request_manager.h"
@@ -408,7 +409,7 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        auto error = TUtil::ValidateReadDataRequest(*request, FileSystemId);
+        auto error = TUtils::ValidateReadDataRequest(*request, FileSystemId);
         if (HasError(error)) {
             Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TReadDataResponse response;
@@ -472,7 +473,7 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        auto error = TUtil::ValidateWriteDataRequest(*request, FileSystemId);
+        auto error = TUtils::ValidateWriteDataRequest(*request, FileSystemId);
         if (HasError(error)) {
             Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TWriteDataResponse response;

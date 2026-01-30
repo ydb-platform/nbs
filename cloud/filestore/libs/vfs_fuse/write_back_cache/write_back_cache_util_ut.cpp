@@ -1,6 +1,7 @@
 #include "write_back_cache_impl.h"
 #include "write_data_request_builder.h"
 #include "write_data_request_manager.h"
+#include "utils.h"
 
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
@@ -241,24 +242,6 @@ struct TTestUtilBootstrap
         }
 
         return res;
-    }
-
-    NProto::TError ValidateReadDataRequest(
-        const NProto::TReadDataRequest& request,
-        const TString& expectedFileSystemId)
-    {
-        return TWriteBackCache::TUtil::ValidateReadDataRequest(
-            request,
-            expectedFileSystemId);
-    }
-
-    NProto::TError ValidateWriteDataRequest(
-        const NProto::TWriteDataRequest& request,
-        const TString& expectedFileSystemId)
-    {
-        return TWriteBackCache::TUtil::ValidateWriteDataRequest(
-            request,
-            expectedFileSystemId);
     }
 };
 
@@ -736,89 +719,6 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             RandomNumber<ui64>(MaxLength - rangeOffset) + 1;
 
         TestShouldCorrectlyInvertDataParts(entries, rangeOffset, rangeLength);
-    }
-
-    Y_UNIT_TEST(ShouldValidateWriteDataRequests)
-    {
-        TTestUtilBootstrap b;
-
-        const TString FileSystemId = "fs_id";
-
-        {
-            // No buffer and iovecs
-            auto rq = std::make_shared<NProto::TWriteDataRequest>();
-            rq->SetFileSystemId(FileSystemId);
-
-            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
-        }
-
-        {
-            // Invalid buffer offset
-            auto rq = std::make_shared<NProto::TWriteDataRequest>();
-            rq->SetFileSystemId(FileSystemId);
-            rq->SetBuffer("abc");
-            rq->SetBufferOffset(3);
-
-            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
-        }
-
-        {
-            // Both buffer and iovecs
-            auto rq = std::make_shared<NProto::TWriteDataRequest>();
-            rq->SetFileSystemId(FileSystemId);
-            rq->SetBuffer("abc");
-            rq->AddIovecs()->SetBase(0);
-            rq->AddIovecs()->SetLength(2);
-
-            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
-        }
-
-        {
-            // Invalid iovec length
-            auto rq = std::make_shared<NProto::TWriteDataRequest>();
-            rq->SetFileSystemId(FileSystemId);
-            auto* iovec = rq->AddIovecs();
-            iovec->SetBase(0);
-            iovec->SetLength(0);
-
-            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
-        }
-
-        {
-            // Invalid FileSystemId
-            auto rq = std::make_shared<NProto::TWriteDataRequest>();
-            rq->SetFileSystemId("fs_id_bad");
-            rq->SetBuffer("123");
-
-            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
-        }
-
-        {
-            // Normal request with buffer
-            auto rq = std::make_shared<NProto::TWriteDataRequest>();
-            rq->SetFileSystemId(FileSystemId);
-            rq->SetBuffer("123");
-
-            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, e.GetCode());
-        }
-
-        {
-            // Normal request with iovecs
-            auto rq = std::make_shared<NProto::TWriteDataRequest>();
-            rq->SetFileSystemId(FileSystemId);
-            auto* iovec = rq->AddIovecs();
-            iovec->SetBase(0);
-            iovec->SetLength(1);
-
-            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, e.GetCode());
-        }
     }
 }
 

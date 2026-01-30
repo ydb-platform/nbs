@@ -11,6 +11,7 @@ SRCS(
     read_write_range_lock_ut.cpp
     test/test_persistent_storage.cpp
     test/test_write_back_cache_stats.cpp
+    utils_ut.cpp
     write_back_cache_ut.cpp
     write_back_cache_util_ut.cpp
     write_data_request_builder_ut.cpp
