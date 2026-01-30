@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package filesystem_scrubbing;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_scrubbing/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ScrubFilesystemRequest {
+    types.Filesystem Filesystem = 1;
+    string FilesystemCheckpointId = 2;
+}
+
+message ScrubFilesystemTaskState {
+    bool RootNodeScheduled = 1;
+}
