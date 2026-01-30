@@ -6976,5 +6976,83 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false)->Record;
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponseRegular.NodesSize());
     }
+
+    void DoShouldShardedFileSystemHitNodesCountLimit(
+        NProto::TStorageConfig config,
+        const bool strictFileSystemSizeEnforcementEnabled)
+    {
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 512;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 2;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+        const ui32 sizeToNodeRatio = 64_KB;
+        // Strict and non-strict filesystems enforce the allowed number of nodes
+        // differently. Strict systems use the total filesystem size, while in
+        // non-strict systems the limit is enforced per shard, based on the size
+        // of each individual shard.
+        const ui64 filesPerFs =
+            strictFileSystemSizeEnforcementEnabled
+                ? (fsSize * blockSize) / sizeToNodeRatio
+                : (2 * shardAllocationUnit) / sizeToNodeRatio;
+
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(
+            strictFileSystemSizeEnforcementEnabled);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+        config.SetAutomaticallyCreatedShardSize(shardAllocationUnit);
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        config.SetSizeToNodesRatio(sizeToNodeRatio);
+        config.SetDefaultNodesLimit(filesPerFs / 2);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+
+        WaitForTabletStart(service);
+
+        THeaders headers = service.InitSession(fsId, "client");
+
+        // Create maximum allowed number of files.
+        for (ui64 i = 0; i < filesPerFs; ++i) {
+            service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(
+                    RootNodeId,
+                    TStringBuilder() << "file_" << i));
+        }
+
+        // Update statistics to have correct AggregateNodesCount
+        // in the main FS and all the shards.
+        if (strictFileSystemSizeEnforcementEnabled) {
+            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TDispatchOptions::TFinalEventCondition(
+                    TEvIndexTabletPrivate::EvUpdateCounters,
+                    shardCount + 2));
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        // Creation of one more file should fail.
+        service.AssertCreateNodeFailed(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "too_many_files"));
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldShardedFileSystemHitNodesCountLimit)
+    {
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+    }
 }
 }   // namespace NCloud::NFileStore::NStorage
