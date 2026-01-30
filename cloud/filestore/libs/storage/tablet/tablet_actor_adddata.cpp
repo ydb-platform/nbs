@@ -206,7 +206,11 @@ void TIndexTabletActor::CompleteTx_AddData(
     }
 
     NProto::TBackendInfo backendInfo;
-    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+    BuildBackendInfo(
+        *Config,
+        *SystemCounters,
+        Metrics.CPUUsageRate,
+        &backendInfo);
 
     auto actor = std::make_unique<TAddDataActor>(
         TraceSerializer,

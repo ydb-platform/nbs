@@ -7718,7 +7718,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
         storageConfig.SetCpuLackOverloadThreshold(50);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env({} /* config */, std::move(storageConfig));
         env.CreateSubDomain("nfs");
 
         auto systemCounters = env.GetSystemCounters();
@@ -7824,6 +7824,114 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         registry->Visit(TInstant::Zero(), visitor);
         visitor.ValidateExpectedCounters({
             {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+        });
+        // clang-format on
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
+        // setting a tiny value to make sure that we're always "overloaded"
+        storageConfig.SetTabletActorCpuUsageOverloadThreshold(1);
+
+        TTestEnv env(
+            {} /* config */,
+            std::move(storageConfig),
+            {} /* cachesConfig */,
+            CreateProfileLogStub(),
+            {} /* diagConfig */,
+            true /* useRealThreads */);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        //
+        // Double UpdateStats call - after this CPU usage rate should be
+        // calculated.
+        //
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+
+        {
+            //
+            // Small write - uses CompleteResponse<> code path.
+            //
+
+            auto response =
+                tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Fresh read - uses CompleteResponse<> code path.
+            //
+
+            auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(*buffer, tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Large write - uses separate actor code path.
+            //
+
+            auto response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Blob read - uses separate actor code path.
+            //
+
+            auto response =
+                tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(
+                CompareBuffer(*buffer, 3 * tabletConfig.BlockSize, 'a'));
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        auto registry = env.GetRegistry();
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+        });
+
+        const auto pred = [] (i64 val) {
+            return val > 0;
+        };
+        visitor.ValidateExpectedCountersWithPredicate({
+            {{{"sensor", "CPUUsageMicros"}, {"filesystem", "test"}}, pred},
         });
         // clang-format on
 

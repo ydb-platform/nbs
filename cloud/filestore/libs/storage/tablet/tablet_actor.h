@@ -56,28 +56,37 @@ namespace NCloud::NFileStore::NStorage {
 inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
     //
-    // Keeping it simple for now - checking only CpuWait. We might decide to add
-    // some other metrics into consideration here - e.g. network usage and
-    // tablet executor cpu usage.
+    // Keeping it simple for now - checking only CpuWait and tablet actor cpu
+    // usage. We might decide to add some other metrics into consideration here
+    // - e.g. network usage.
     //
 
     const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
-    backendInfo->SetIsOverloaded(cl >= config.GetCpuLackOverloadThreshold());
+    backendInfo->SetIsOverloaded(
+        tabletActorCpuUsageRate
+            >= config.GetTabletActorCpuUsageOverloadThreshold()
+        || cl >= config.GetCpuLackOverloadThreshold());
 }
 
 template <typename T>
 void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    ui32 tabletActorCpuUsageRate,
     T& response)
 {
     if constexpr (HasResponseHeaders<T>()) {
         auto* responseHeaders = response.MutableHeaders();
         auto* backendInfo = responseHeaders->MutableBackendInfo();
-        BuildBackendInfo(config, systemCounters, backendInfo);
+        BuildBackendInfo(
+            config,
+            systemCounters,
+            tabletActorCpuUsageRate,
+            backendInfo);
     }
 }
 
@@ -376,6 +385,10 @@ private:
         std::atomic<i64> Suffer{0};
         std::atomic<i64> OverloadedCount{0};
 
+        TInstant PrevCPUUsageMicrosTs;
+        std::atomic<i64> CPUUsageMicros{0};
+        i64 CPUUsageRate = 0;
+
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
 
@@ -519,6 +532,7 @@ private:
     void UpdateDelayCounter(
         TThrottlingPolicy::EOpType opType,
         TDuration time);
+    void CalculateActorCPUUsage(const NActors::TActorContext& ctx);
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);

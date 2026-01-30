@@ -556,6 +556,15 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_LOCAL(Suffer, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(OverloadedCount, EMetricType::MT_DERIVATIVE);
 
+    //
+    // Exporting this metric to be able to see what's our tablet actor's opinion
+    // about its own CPU usage. ActorSystem's ElapsedMicrosecByActivity metric
+    // should in theory give the same value but being able to verify it via
+    // an explicit counter is useful.
+    //
+
+    REGISTER_AGGREGATABLE_SUM(CPUUsageMicros, EMetricType::MT_DERIVATIVE);
+
 #undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
@@ -878,6 +887,34 @@ void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
     resourceMetrics->TryUpdate(ctx);
 }
 
+void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
+{
+    TExecutorPoolStats poolStats;
+    TVector<TExecutorThreadStats> threadStats;
+    auto& actorSystem = *ctx.ExecutorThread.ActorSystem;
+    const ui32 poolId = ctx.SelfID.PoolID();
+    actorSystem.GetPoolStats(poolId, poolStats, threadStats);
+    i64 ticks = 0;
+    for (ui64 i = 0; i < threadStats.size(); ++i) {
+        ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType()];
+    }
+
+    const i64 prevUsageMicros =
+        Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
+    const i64 curUsageMicros = ::NHPTimer::GetSeconds(ticks) * 1'000'000;
+    const TInstant ts = ctx.Now();
+    if (Metrics.PrevCPUUsageMicrosTs) {
+        const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
+        if (timeDiff) {
+            const double usageDiff = curUsageMicros - prevUsageMicros;
+            Metrics.CPUUsageRate = 100 * (usageDiff / timeDiff.MicroSeconds());
+        }
+    }
+
+    Metrics.PrevCPUUsageMicrosTs = ts;
+    Store(Metrics.CPUUsageMicros, curUsageMicros);
+}
+
 void TIndexTabletActor::HandleUpdateCounters(
     const TEvIndexTabletPrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
@@ -903,6 +940,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
         GetHandlesStats());
+    CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;

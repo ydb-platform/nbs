@@ -378,6 +378,7 @@ public:
     bool GetWriteBlobDisabled() const;
 
     ui32 GetCpuLackOverloadThreshold() const;
+    ui32 GetTabletActorCpuUsageOverloadThreshold() const;
 
     ui32 GetMaxTabletStep() const;
 
