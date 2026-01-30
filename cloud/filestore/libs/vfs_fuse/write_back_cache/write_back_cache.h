@@ -82,25 +82,7 @@ public:
     ui64 AcquireNodeStateRef();
     void ReleaseNodeStateRef(ui64 refId);
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
-
-private:
-    // Only for testing purposes
-    friend struct TTestUtilBootstrap;
-
-    struct TCachedWriteDataRequest;
-    struct TGlobalListTag;
-    struct TNodeListTag;
-    class TWriteDataEntry;
-    struct TWriteDataEntryDeserializationStats;
-    struct TWriteDataEntryPart;
-    struct TNodeState;
-    struct TFlushState;
-    class TUtil;
-    struct TQueuedOperations;
-    class TContiguousWriteDataEntryPartsReader;
-    class TWriteDataEntryIntervalMap;
+    ui64 GetCachedDataEndOffset(ui64 nodeId) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

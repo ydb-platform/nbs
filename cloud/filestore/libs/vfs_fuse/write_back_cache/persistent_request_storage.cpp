@@ -211,12 +211,12 @@ void TPersistentRequestStorage::UnflushedRequestsPushBack(
 {
     if (UnflushedRequests.Empty()) {
         Stats.WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Cached,
+            EWriteDataRequestStatus::Unflushed,
             request->GetTime());
     }
 
     UnflushedRequests.PushBack(request);
-    Stats.WriteDataRequestEnteredStatus(EWriteDataRequestStatus::Cached);
+    Stats.WriteDataRequestEnteredStatus(EWriteDataRequestStatus::Unflushed);
 }
 
 void TPersistentRequestStorage::UnflushedRequestsRemove(
@@ -225,7 +225,7 @@ void TPersistentRequestStorage::UnflushedRequestsRemove(
     const auto prevMinTime = UnflushedRequests.Front()->GetTime();
 
     Stats.WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus::Cached,
+        EWriteDataRequestStatus::Unflushed,
         Timer.Now() - request->GetTime());
 
     UnflushedRequests.Remove(request);
@@ -236,7 +236,7 @@ void TPersistentRequestStorage::UnflushedRequestsRemove(
 
     if (prevMinTime != minTime) {
         Stats.WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Cached,
+            EWriteDataRequestStatus::Unflushed,
             minTime);
     }
 }

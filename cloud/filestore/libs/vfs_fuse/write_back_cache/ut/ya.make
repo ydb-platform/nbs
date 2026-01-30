@@ -11,13 +11,11 @@ SRCS(
     overlapping_interval_set_ut.cpp
     persistent_request_storage_ut.cpp
     persistent_storage_ut.cpp
-    read_write_range_lock_ut.cpp
     test/persistent_storage_test.cpp
     test/write_back_cache_stats_test.cpp
     utils_ut.cpp
     write_back_cache_state_ut.cpp
     write_back_cache_ut.cpp
-    write_back_cache_util_ut.cpp
     write_data_request_builder_ut.cpp
 )
 

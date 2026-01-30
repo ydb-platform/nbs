@@ -148,7 +148,7 @@ void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
 {
     if (WriteBackCache) {
         const auto cachedNodeSize =
-            WriteBackCache.GetCachedNodeSize(attrs.GetId());
+            WriteBackCache.GetCachedDataEndOffset(attrs.GetId());
         attrs.SetSize(Max(attrs.GetSize(), cachedNodeSize));
     }
 }

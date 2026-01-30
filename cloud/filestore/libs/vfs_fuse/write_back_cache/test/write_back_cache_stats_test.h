@@ -20,7 +20,6 @@ struct TTestWriteDataRequestStats
 
 struct TTestReadDataRequestStats
 {
-    TVector<TDuration> Data;
     ui64 CacheMissCount = 0;
     ui64 CachePartialHitCount = 0;
     ui64 CacheFullHitCount = 0;
@@ -35,8 +34,7 @@ struct TTestWriteBackCacheStats: public IWriteBackCacheStats
     ui64 NodeCount = 0;
 
     TTestWriteDataRequestStats PendingStats;
-    TTestWriteDataRequestStats CachedStats;
-    TTestWriteDataRequestStats FlushingStats;
+    TTestWriteDataRequestStats UnflushedStats;
     TTestWriteDataRequestStats FlushedStats;
 
     TTestReadDataRequestStats ReadStats;
@@ -71,9 +69,7 @@ struct TTestWriteBackCacheStats: public IWriteBackCacheStats
         EWriteDataRequestStatus status,
         TInstant minTime) override;
 
-    void AddReadDataStats(
-        EReadDataRequestCacheStatus status,
-        TDuration pendingDuration) override;
+    void AddReadDataStats(EReadDataRequestCacheStatus status) override;
 
     void UpdatePersistentStorageStats(
         const TPersistentStorageStats& stats) override;
