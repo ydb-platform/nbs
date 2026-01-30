@@ -195,13 +195,26 @@ def test_build_matrix_multiple_sanitizers():
 
 def test_build_matrix_large_tests_propagates_to_all_rows():
     inp = mk_inputs(
-        contains={"tasks": True},
+        contains={"storage": True},
         san={"asan": True},
         large_tests=True,
     )
     matrix = build_matrix(inp)
 
-    # one regular + one asan
+    # one regular + one asan (storage is SAN-eligible)
     assert len(matrix) == 2
     for row in matrix:
         assert row["test_size"] == "small,medium,large"
+
+
+def test_build_matrix_skips_empty_san_targets():
+    # tasks is not SAN-eligible; SAN targets become empty and should be ignored
+    inp = mk_inputs(
+        contains={"tasks": True},
+        san={"asan": True},
+    )
+    matrix = build_matrix(inp)
+
+    # only the regular row should remain
+    assert len(matrix) == 1
+    assert matrix[0]["san"] == ""

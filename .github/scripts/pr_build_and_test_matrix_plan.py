@@ -142,6 +142,10 @@ def build_matrix(inp: Inputs) -> list[dict]:
         for san in SAN_TYPES:
             if inp.has_san.get(san, False):
                 preset, suffix = SAN_PRESET[san]
+                # Skip sanitizer rows that would carry empty targets; they do nothing and
+                # can break downstream steps.
+                if not build_target_san[san] or not test_target_san[san]:
+                    continue
                 include.append(
                     {
                         "mode": mode,

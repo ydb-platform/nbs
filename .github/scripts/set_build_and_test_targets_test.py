@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from .set_build_and_test_targets import Inputs, compute_matrix_include
 
@@ -172,3 +173,14 @@ def test_san_custom_target_disables_split_even_if_flag_true():
     )
     assert len(inc) == 1
     assert inc[0]["build_target"] == "cloud/blockstore/libs/"
+
+
+def test_empty_targets_raise():
+    with pytest.raises(ValueError):
+        parse(
+            mk(
+                build_target="",
+                test_target="",
+                build_preset="relwithdebinfo",
+            )
+        )

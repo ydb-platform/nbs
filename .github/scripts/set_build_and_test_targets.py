@@ -141,6 +141,9 @@ def compute_matrix_include(inp: Inputs) -> str:
     allowed_build = set(build_roots.values())
     allowed_test = set(test_roots.values())
 
+    if not inp.build_target or not inp.test_target:
+        raise ValueError("BUILD_TARGET and TEST_TARGET must be non-empty")
+
     preset = inp.build_preset
     is_san = is_san_preset(preset)
     san = san_from_preset(preset)
