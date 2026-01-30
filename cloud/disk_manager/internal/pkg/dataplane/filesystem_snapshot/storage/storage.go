@@ -115,7 +115,7 @@ type Storage interface {
 	) ([]NodeQueueEntry, error)
 
 	// Updates the node cookie after listing and saves child nodes to the listing queue.
-	ScheduleNodesForListing(
+	ScheduleChildNodesForListing(
 		ctx context.Context,
 		snapshotID string,
 		nodeID uint64,

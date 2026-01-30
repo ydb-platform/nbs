@@ -648,7 +648,7 @@ func TestNodesScheduling(t *testing.T) {
 
 	require.NoError(
 		t,
-		f.storage.ScheduleNodesForListing(
+		f.storage.ScheduleChildNodesForListing(
 			f.ctx,
 			filesystemSnapshotID,
 			1,
@@ -664,7 +664,7 @@ func TestNodesScheduling(t *testing.T) {
 	)
 	require.NoError(
 		t,
-		f.storage.ScheduleNodesForListing(
+		f.storage.ScheduleChildNodesForListing(
 			f.ctx,
 			filesystemSnapshotID,
 			2,
@@ -681,7 +681,7 @@ func TestNodesScheduling(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(
 		t,
-		f.storage.ScheduleNodesForListing(
+		f.storage.ScheduleChildNodesForListing(
 			f.ctx,
 			otherSnapshot,
 			1, // nodeID
@@ -734,7 +734,7 @@ func TestNodesScheduling(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 0)
 
-	f.storage.ScheduleNodesForListing(
+	f.storage.ScheduleChildNodesForListing(
 		f.ctx,
 		otherSnapshot,
 		99,                                      // nodeID

@@ -148,7 +148,7 @@ func (s *StorageMock) SelectNodesToList(
 	return args.Get(0).([]storage.NodeQueueEntry), args.Error(1)
 }
 
-func (s *StorageMock) ScheduleNodesForListing(
+func (s *StorageMock) ScheduleChildNodesForListing(
 	ctx context.Context,
 	snapshotID string,
 	nodeID uint64,

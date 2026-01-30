@@ -263,7 +263,7 @@ func (t *FilesystemTraverser) listNode(
 			}
 		}
 
-		err = t.storage.ScheduleNodesForListing(
+		err = t.storage.ScheduleChildNodesForListing(
 			ctx,
 			t.filesystemSnapshotID,
 			node.NodeID,

@@ -969,7 +969,7 @@ func (s *storageYDB) selectNodesToList(
 	return entries, nil
 }
 
-func (s *storageYDB) scheduleNodesForListing(
+func (s *storageYDB) scheduleChildNodesForListing(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
@@ -1096,7 +1096,7 @@ func (s *storageYDB) SelectNodesToList(
 	return entries, err
 }
 
-func (s *storageYDB) ScheduleNodesForListing(
+func (s *storageYDB) ScheduleChildNodesForListing(
 	ctx context.Context,
 	snapshotID string,
 	nodeID uint64,
@@ -1110,7 +1110,7 @@ func (s *storageYDB) ScheduleNodesForListing(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.scheduleNodesForListing(
+			return s.scheduleChildNodesForListing(
 				ctx,
 				session,
 				snapshotID,
