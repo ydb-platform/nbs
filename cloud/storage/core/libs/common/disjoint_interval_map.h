@@ -63,6 +63,11 @@ public:
         Data.erase(iterator);
     }
 
+    void Clear()
+    {
+        Data.clear();
+    }
+
     // Visit each interval that intersects with [begin, end)
     // Note: it is allowed to remove the current element from the visitor
     void VisitOverlapping(TKey begin, TKey end, const TVisitor& visitor)
