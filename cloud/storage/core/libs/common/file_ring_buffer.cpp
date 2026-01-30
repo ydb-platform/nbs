@@ -735,6 +735,8 @@ TFileRingBuffer::TFileRingBuffer(
     : Impl(new TImpl(filePath, dataCapacity, metadataCapacity))
 {}
 
+TFileRingBuffer::TFileRingBuffer(TFileRingBuffer&&) noexcept = default;
+
 TFileRingBuffer::~TFileRingBuffer() = default;
 
 bool TFileRingBuffer::PushBack(TStringBuf data)

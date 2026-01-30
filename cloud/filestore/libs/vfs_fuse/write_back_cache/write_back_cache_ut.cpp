@@ -1,6 +1,7 @@
 #include "write_back_cache.h"
 
 #include "overlapping_interval_set.h"
+#include "write_back_cache_stats.h"
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
@@ -27,10 +28,9 @@
 namespace NCloud::NFileStore::NFuse {
 
 using namespace std::chrono_literals;
-
 using namespace NThreading;
+using namespace NWriteBackCache;
 
-using EWriteDataRequestStatus = TWriteBackCache::EWriteDataRequestStatus;
 using TIovecs = TVector<TStringBuf>;
 
 namespace {
@@ -168,7 +168,7 @@ struct TWriteBackCacheStats
 
     TReadDataRequestStats ReadStats;
 
-    TWriteBackCache::TPersistentQueueStats PersistentQueueStats;
+    NWriteBackCache::TPersistentQueueStats PersistentQueueStats;
 
     // Do not store more than the specified amount of elements in the following
     // vectors in order to prevent OOM for large tests
@@ -228,14 +228,14 @@ struct TWriteBackCacheStats
     }
 
     void WriteDataRequestEnteredStatus(
-        TWriteBackCache::EWriteDataRequestStatus status) override
+        EWriteDataRequestStatus status) override
     {
         auto& stats = GetWriteStats(status);
         stats.InProgressCount++;
     }
 
     void WriteDataRequestExitedStatus(
-        TWriteBackCache::EWriteDataRequestStatus status,
+        EWriteDataRequestStatus status,
         TDuration duration) override
     {
         auto& stats = GetWriteStats(status);
@@ -247,7 +247,7 @@ struct TWriteBackCacheStats
     }
 
     void WriteDataRequestUpdateMinTime(
-        TWriteBackCache::EWriteDataRequestStatus status,
+        EWriteDataRequestStatus status,
         TInstant minTime) override
     {
         auto& stats = GetWriteStats(status);
@@ -255,7 +255,7 @@ struct TWriteBackCacheStats
     }
 
     void AddReadDataStats(
-        IWriteBackCacheStats::EReadDataRequestCacheStatus status,
+        EReadDataRequestCacheStatus status,
         TDuration pendingDuration) override
     {
         if (ReadStats.Data.size() < MaxItems) {
@@ -277,7 +277,7 @@ struct TWriteBackCacheStats
     }
 
     void UpdatePersistentQueueStats(
-        const TWriteBackCache::TPersistentQueueStats& stats) override
+        const TPersistentQueueStats& stats) override
     {
         PersistentQueueStats = stats;
     }
@@ -509,21 +509,21 @@ struct TBootstrap
         STORAGE_INFO("Recreating cache");
 
         Cache = TWriteBackCache(
-            Session,
-            Scheduler,
-            Timer,
-            Stats,
-            Log,
-            "FileSystemId",
-            "ClientId",
-            TempFileHandle.GetName(),
-            CacheCapacityBytes,
-            CacheAutomaticFlushPeriod,
-            CacheFlushRetryPeriod,
-            MaxWriteRequestSize,
-            MaxWriteRequestsCount,
-            MaxSumWriteRequestsSize,
-            ZeroCopyWriteEnabled);
+            {.Session = Session,
+             .Scheduler = Scheduler,
+             .Timer = Timer,
+             .Stats = Stats,
+             .Log = Log,
+             .FileSystemId = "FileSystemId",
+             .ClientId = "ClientId",
+             .FilePath = TempFileHandle.GetName(),
+             .CapacityBytes = CacheCapacityBytes,
+             .AutomaticFlushPeriod = CacheAutomaticFlushPeriod,
+             .FlushRetryPeriod = CacheFlushRetryPeriod,
+             .FlushMaxWriteRequestSize = MaxWriteRequestSize,
+             .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
+             .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
+             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled});
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(

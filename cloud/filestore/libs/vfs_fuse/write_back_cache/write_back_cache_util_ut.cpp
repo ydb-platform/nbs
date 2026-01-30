@@ -1,4 +1,6 @@
 #include "write_back_cache_impl.h"
+#include "write_data_request_builder_impl.h"
+#include "utils.h"
 
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -185,11 +187,41 @@ struct TTestUtilBootstrap
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize)
     {
-        return TWriteBackCache::TUtil::CalculateEntriesCountToFlush(
-            entries,
-            maxWriteRequestSize,
-            maxWriteRequestsCount,
-            maxSumWriteRequestsSize);
+        struct TData
+        {
+            ui64 Offset = 0;
+            TString Data;
+        };
+
+        TVector<TData> requests;
+
+        for (const auto* entry: entries) {
+            requests.push_back({
+                .Offset = entry->GetOffset(),
+                .Data = TString(entry->GetByteCount(), 'a')
+            });
+        }
+
+        NWriteBackCache::TWriteDataRequestBuilder builder({
+            .MaxWriteRequestSize = maxWriteRequestSize,
+            .MaxWriteRequestsCount = maxWriteRequestsCount,
+            .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
+            .ZeroCopyWriteEnabled = false,
+        });
+
+        auto res = builder.BuildWriteDataRequests(
+            "test",
+            0,
+            [&](const auto& visitor)
+            {
+                for (const auto& it: requests) {
+                    if (!visitor(0, it.Offset, it.Data)) {
+                        break;
+                    }
+                }
+            });
+
+        return res.AffectedRequestCount;
     }
 
     bool IsSorted(const TVector<TWriteDataEntryPart>& parts)
@@ -275,7 +307,8 @@ struct TTestUtilBootstrap
                     data,
                     maxWriteRequestSize,
                     maxWriteRequestsCount,
-                    maxSumWriteRequestsSize))
+                    maxSumWriteRequestsSize) &&
+                count > 0)
             {
                 return count;
             }
@@ -288,7 +321,7 @@ struct TTestUtilBootstrap
         const NProto::TReadDataRequest& request,
         const TString& expectedFileSystemId)
     {
-        return TWriteBackCache::TUtil::ValidateReadDataRequest(
+        return NWriteBackCache::TUtils::ValidateReadDataRequest(
             request,
             expectedFileSystemId);
     }
@@ -297,7 +330,7 @@ struct TTestUtilBootstrap
         const NProto::TWriteDataRequest& request,
         const TString& expectedFileSystemId)
     {
-        return TWriteBackCache::TUtil::ValidateWriteDataRequest(
+        return NWriteBackCache::TUtils::ValidateWriteDataRequest(
             request,
             expectedFileSystemId);
     }
@@ -825,10 +858,10 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         UNIT_ASSERT_EQUAL(1, b.CalculateEntriesCountToFlush(
             singleEntry.EntryPtrs, 100, 100, 1000));
 
-        UNIT_ASSERT_EQUAL(0, b.CalculateEntriesCountToFlush(
+        UNIT_ASSERT_EQUAL(1, b.CalculateEntriesCountToFlush(
             singleEntry.EntryPtrs, 1, 2, 1000));
 
-        UNIT_ASSERT_EQUAL(0, b.CalculateEntriesCountToFlush(
+        UNIT_ASSERT_EQUAL(1, b.CalculateEntriesCountToFlush(
             singleEntry.EntryPtrs, 100, 100, 2));
 
 
@@ -898,7 +931,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         constexpr ui64 MaxLength = 10;
         constexpr size_t MaxIntervalCount = 10;
 
-        auto stats = CreateDummyWriteBackCacheStats();
+        auto stats = NWriteBackCache::CreateDummyWriteBackCacheStats();
 
         for (size_t iter = 0; iter < IterationCount; iter++) {
             size_t intervalCount = RandomNumber(MaxIntervalCount) + 1;
