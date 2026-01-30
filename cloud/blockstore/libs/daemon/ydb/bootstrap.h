@@ -85,8 +85,10 @@ struct TServerModuleFactories
         ILoggingServicePtr logging)>
         NotifyServiceFactory;
 
-    std::function<ILocalNVMeServicePtr(ILoggingServicePtr logging)>
-        LocalNVMeServiceFactory;
+    std::function<ILocalNVMeDeviceProviderPtr(
+        ILoggingServicePtr logging,
+        const TString& uri)>
+        LocalNVMeDeviceProviderFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

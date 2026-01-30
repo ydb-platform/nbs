@@ -21,14 +21,26 @@ void TDiskAgentActor::HandleListNVMeDevices(
         return;
     }
 
-    auto [disks, error] = LocalNVMeService->ListNVMeDevices();
+    LocalNVMeService->ListNVMeDevices().Subscribe(
+        [actorSystem = TActivationContext::ActorSystem(),
+         replyTo = ev->Sender,
+         replyFrom = ctx.SelfID,
+         cookie = ev->Cookie](const auto& future)
+        {
+            auto [devices, error] = future.GetValue();
 
-    auto response =
-        std::make_unique<TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
-            error,
-            std::move(disks));
+            auto response = std::make_unique<
+                TEvDiskAgentPrivate::TEvListNVMeDevicesResponse>(
+                error,
+                devices);
 
-    NCloud::Reply(ctx, *ev, std::move(response));
+            actorSystem->Send(new IEventHandle{
+                replyTo,
+                replyFrom,
+                response.release(),
+                0,   // flags
+                cookie});
+        });
 }
 
 void TDiskAgentActor::HandleAcquireNVMeDevice(

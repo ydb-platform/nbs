@@ -174,6 +174,17 @@ void TConfigInitializerYdb::InitComputeClientConfig()
     ComputeClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::InitLocalNVMeConfig()
+{
+    NProto::TLocalNVMeConfig config;
+
+    if (Options->LocalNVMeConfig) {
+        ParseProtoTextFromFile(Options->LocalNVMeConfig, config);
+    }
+
+    LocalNVMeConfig = std::move(config);
+}
+
 bool TConfigInitializerYdb::GetUseNonreplicatedRdmaActor() const
 {
     if (!StorageConfig) {
@@ -374,6 +385,14 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
     ComputeClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::ApplyLocalNVMeConfig(const TString& text)
+{
+    NProto::TLocalNVMeConfig config;
+    ParseProtoTextFromString(text, config);
+
+    LocalNVMeConfig = std::move(config);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TConfigInitializerYdb::ApplyNamedConfigs(
@@ -415,6 +434,7 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
         { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
         { "RootKmsConfig",           &TSelf::ApplyRootKmsConfig           },
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
+        { "LocalNVMeConfig",         &TSelf::ApplyLocalNVMeConfig         },
     };
 
     for (const auto& handler: configHandlers) {

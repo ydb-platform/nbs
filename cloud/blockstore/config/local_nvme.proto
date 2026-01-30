@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLocalNVMeConfig {
+    // Source URI for retrieving the list of NVMe devices to use (e.g. file:///etc/nbs/devices.txt)
+    optional string DevicesSourceUri = 1;
+}
