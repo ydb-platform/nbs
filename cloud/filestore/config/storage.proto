@@ -726,4 +726,8 @@ message TStorageConfig
     // propagated to newly created files (including directories, symlinks, etc.)
     // inside that directory.
     optional bool GidPropagationEnabled = 481;
+
+    // If tablet actor CPU usage goes over this threshold, tablets will start
+    // setting the IsOverloaded flag in their responses.
+    optional uint32 TabletActorCpuUsageOverloadThreshold = 482;
 }
