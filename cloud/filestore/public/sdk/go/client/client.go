@@ -1,6 +1,8 @@
 package client
 
 import (
+	"fmt"
+
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -63,6 +65,27 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t NodeType) String() string {
+	switch t {
+	case NODE_KIND_INVALID:
+		return "INVALID"
+	case NODE_KIND_FILE:
+		return "FILE"
+	case NODE_KIND_DIR:
+		return "DIR"
+	case NODE_KIND_SYMLINK:
+		return "SYMLINK"
+	case NODE_KIND_LINK:
+		return "LINK"
+	case NODE_KIND_SOCK:
+		return "SOCK"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", uint32(t))
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Node struct {
 	ParentID   uint64
 	NodeID     uint64
@@ -76,6 +99,16 @@ type Node struct {
 	GID        uint64
 	Type       NodeType
 	LinkTarget string
+}
+
+func (n *Node) String() string {
+	return fmt.Sprintf(
+		"Node{ParentID: %d, NodeID: %d, Name: %q, Type: %v}",
+		n.ParentID,
+		n.NodeID,
+		n.Name,
+		n.Type,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
