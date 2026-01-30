@@ -1095,43 +1095,43 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         profileLog->Start();
 
         service.CreateFileStore("test", 1'000);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Requests.size());
 
         service.AlterFileStore("test", "yyyy", "zzzz");
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
 
         service.ResizeFileStore("test", 100'000'000);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, profileLog->Requests.size());
 
-        service.DescribeFileStoreModel(1_GB/DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        service.DescribeFileStoreModel(1_GB / DefaultBlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(3, profileLog->Requests.size());
 
         service.ListFileStores();
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(4, profileLog->Requests.size());
 
         auto headers = service.InitSession("test", "client");
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, profileLog->Requests.size());
 
         service.PingSession(headers);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, profileLog->Requests.size());
 
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"));
-        UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(6, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::CreateNode)].size());
 
         service.ListNodes(headers, 1);
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(7, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::ListNodes)].size());
 
         service.DestroySession(headers);
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(8, profileLog->Requests.size());
 
         service.DestroyFileStore("test");
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(9, profileLog->Requests.size());
 
         profileLog->Stop();
     }
