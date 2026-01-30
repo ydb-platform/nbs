@@ -19,6 +19,24 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func matchClusterCapacities(t *testing.T, expected cells_storage.ClusterCapacity) interface{} {
+	return mock.MatchedBy(func(actual []cells_storage.ClusterCapacity) bool {
+		if len(actual) != 1 {
+			return false
+		}
+
+		got := actual[0]
+		if expected.CreatedAt.Sub(got.CreatedAt).Abs() >= time.Minute {
+			return false
+		}
+
+		got.CreatedAt = expected.CreatedAt
+		return got == expected
+	})
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestCollectClusterCapacityTask(t *testing.T) {
 	ctx := newContext()
 	execCtx := tasks_mocks.NewExecutionContextMock()
@@ -56,41 +74,47 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 
 	storage.On("UpdateClusterCapacities",
 		mock.Anything, // ctx.
-		[]cells_storage.ClusterCapacity{
-			{
+		matchClusterCapacities(
+			t,
+			cells_storage.ClusterCapacity{
 				ZoneID:     "zone-a",
 				CellID:     "zone-a-cell1",
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
-		},
+		),
 		deleteOlderThanExpectation,
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		mock.Anything, // ctx.
-		[]cells_storage.ClusterCapacity{
-			{
+		matchClusterCapacities(
+			t,
+			cells_storage.ClusterCapacity{
 				ZoneID:     "zone-a",
 				CellID:     "zone-a",
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
-		},
+		),
 		deleteOlderThanExpectation,
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		mock.Anything, // ctx.
-		[]cells_storage.ClusterCapacity{
-			{
+		matchClusterCapacities(
+			t,
+			cells_storage.ClusterCapacity{
 				ZoneID:     "zone-b",
 				CellID:     "zone-b",
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
-		},
+		),
 		deleteOlderThanExpectation,
 	).Return(nil).Once()
 
@@ -163,15 +187,17 @@ func TestCollectClusterCapacityFailureNbsReturnsError(t *testing.T) {
 	// Only the successful cell should be updated
 	storage.On("UpdateClusterCapacities",
 		mock.Anything, // ctx.
-		[]cells_storage.ClusterCapacity{
-			{
+		matchClusterCapacities(
+			t,
+			cells_storage.ClusterCapacity{
 				ZoneID:     "zone-a",
 				CellID:     "zone-a",
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
-		},
+		),
 		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 
@@ -232,28 +258,32 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 
 	storage.On("UpdateClusterCapacities",
 		mock.Anything, // ctx.
-		[]cells_storage.ClusterCapacity{
-			{
+		matchClusterCapacities(
+			t,
+			cells_storage.ClusterCapacity{
 				ZoneID:     "zone-a",
 				CellID:     "zone-a",
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
-		},
+		),
 		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 	storage.On("UpdateClusterCapacities",
 		mock.Anything,
-		[]cells_storage.ClusterCapacity{
-			{
+		matchClusterCapacities(
+			t,
+			cells_storage.ClusterCapacity{
 				ZoneID:     "zone-a",
 				CellID:     "zone-a-cell1",
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
-		},
+		),
 		mock.Anything, // deleteOlderThan.
 	).Return(assert.AnError).Once()
 
@@ -313,15 +343,17 @@ func TestCollectClusterCapacityOneCellHasAlreadyBeenProcessed(t *testing.T) {
 
 	storage.On("UpdateClusterCapacities",
 		mock.Anything, // ctx.
-		[]cells_storage.ClusterCapacity{
-			{
+		matchClusterCapacities(
+			t,
+			cells_storage.ClusterCapacity{
 				ZoneID:     "zone-a",
 				CellID:     "zone-a",
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
-		},
+		),
 		mock.Anything, // deleteOlderThan.
 	).Return(nil).Once()
 
