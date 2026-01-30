@@ -64,6 +64,13 @@ func NewClient(t *testing.T, ctx context.Context) nfs.Client {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type FilesystemLayerConfig struct {
+	DirsCount  int
+	FilesCount int
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Node struct {
 	Name     string
 	Children []Node
@@ -103,28 +110,27 @@ func Root(children ...Node) Node {
 	}
 }
 
-func RandomDirectory(
+func generateDirectoryRecursive(
 	name string,
-	maxDepth,
-	maxDirsPerDir,
-	maxFilesPerDir int,
+	maxDepth int,
+	countFunc func(maxDepth int) (nDirs int, nFiles int),
+	parentNumber int,
 ) Node {
 
 	if maxDepth <= 0 {
 		return Dir(name)
 	}
 
-	nDirs := rand.Intn(maxDirsPerDir + 1)
-	nFiles := rand.Intn(maxFilesPerDir + 1)
+	nDirs, nFiles := countFunc(maxDepth)
 	children := make([]Node, 0, nDirs+nFiles)
 	for i := 0; i < nDirs; i++ {
 		children = append(
 			children,
-			RandomDirectory(
-				fmt.Sprintf("dir_%d_%d", i, maxDepth),
+			generateDirectoryRecursive(
+				fmt.Sprintf("dir_%d_%d_parent_%d", i, maxDepth, parentNumber),
 				maxDepth-1,
-				maxDirsPerDir,
-				maxFilesPerDir,
+				countFunc,
+				i,
 			),
 		)
 	}
@@ -132,7 +138,14 @@ func RandomDirectory(
 	for i := 0; i < nFiles; i++ {
 		children = append(
 			children,
-			File(fmt.Sprintf("file_%d_%d", i, maxDepth)),
+			File(
+				fmt.Sprintf(
+					"file_%d_%d_parent_%d",
+					i,
+					maxDepth,
+					parentNumber,
+				),
+			),
 		)
 	}
 
@@ -141,11 +154,38 @@ func RandomDirectory(
 
 func RandomDirectoryTree(maxDepth, maxDirsPerDir, maxFilesPerDir int) Node {
 	return Root(
-		RandomDirectory("base", maxDepth, maxDirsPerDir, maxFilesPerDir),
+		generateDirectoryRecursive(
+			"base",
+			maxDepth,
+			func(maxDepth int) (nDirs int, nFiles int) {
+				return rand.Intn(maxDirsPerDir + 1), rand.Intn(maxFilesPerDir + 1)
+			},
+			0,
+		),
 	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func HomogeneousDirectoryTree(layers []FilesystemLayerConfig) Node {
+	maxDepth := len(layers)
+	return Root(
+		generateDirectoryRecursive(
+			"base",
+			maxDepth,
+			func(maxDepth int) (nDirs int, nFiles int) {
+				layerIndex := len(layers) - maxDepth
+				if layerIndex < 0 || layerIndex >= len(layers) {
+					return 0, 0
+				}
+
+				layer := layers[layerIndex]
+				return layer.DirsCount, layer.FilesCount
+			},
+			0,
+		),
+	)
+}
 
 type FileSystemModel struct {
 	root          Node
