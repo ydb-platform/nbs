@@ -448,7 +448,7 @@ class TestDiskRegistryTablet:
 
         state = self.client.backup_disk_registry_state()
 
-        for agent in state["Backup"]["Agents"]:
+        for agent in state["LocalDBBackup"]["Agents"]:
             for device in agent["Devices"]:
                 if device["DeviceUUID"] == "FileDevice-1":
                     assert device["State"] == "DEVICE_STATE_WARNING"
@@ -491,7 +491,7 @@ class TestDiskRegistryTablet:
 
         state = self.client.backup_disk_registry_state()
 
-        for agent in state["Backup"]["Agents"]:
+        for agent in state["LocalDBBackup"]["Agents"]:
             if agent["AgentId"] == "localhost":
                 assert agent["State"] == "AGENT_STATE_WARNING"
 

@@ -30,11 +30,9 @@ namespace {
 auto GetBackup(TDiskRegistryClient& dr)
     -> NProto::TDiskRegistryStateBackup
 {
-    auto response = dr.BackupDiskRegistryState(
-        false // localDB
-    );
+    auto response = dr.BackupDiskRegistryState(NProto::BDRSS_MEMORY);
 
-    return response->Record.GetBackup();
+    return response->Record.GetMemoryBackup();
 }
 
 auto GetDirtyDeviceCount(TDiskRegistryClient& dr)
