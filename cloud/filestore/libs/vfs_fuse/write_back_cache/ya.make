@@ -10,6 +10,7 @@ SRCS(
     persistent_storage.cpp
     read_write_range_lock.cpp
     sequence_id_generator.cpp
+    utils.cpp
     write_back_cache.cpp
     write_back_cache_state.cpp
     write_back_cache_stats.cpp

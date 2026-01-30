@@ -1,5 +1,6 @@
 #include "write_back_cache_impl.h"
 #include "write_data_request_builder_impl.h"
+#include "utils.h"
 
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -320,7 +321,7 @@ struct TTestUtilBootstrap
         const NProto::TReadDataRequest& request,
         const TString& expectedFileSystemId)
     {
-        return TWriteBackCache::TUtil::ValidateReadDataRequest(
+        return NWriteBackCache::TUtils::ValidateReadDataRequest(
             request,
             expectedFileSystemId);
     }
@@ -329,7 +330,7 @@ struct TTestUtilBootstrap
         const NProto::TWriteDataRequest& request,
         const TString& expectedFileSystemId)
     {
-        return TWriteBackCache::TUtil::ValidateWriteDataRequest(
+        return NWriteBackCache::TUtils::ValidateWriteDataRequest(
             request,
             expectedFileSystemId);
     }
