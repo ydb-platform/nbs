@@ -1,6 +1,8 @@
 #include "disk_registry_actor.h"
+
 #include "disk_registry_database.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -49,7 +51,7 @@ void TDiskRegistryActor::HandleRegisterAgent(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received RegisterAgent request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TAddAgent>(
@@ -198,7 +200,7 @@ void TDiskRegistryActor::HandleUnregisterAgent(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received UnregisterAgent request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TRemoveAgent>(

@@ -1,12 +1,12 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
+#include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
-#include <cloud/blockstore/libs/kikimr/events.h>
-
-#include <util/string/join.h>
 #include <util/generic/cast.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -418,7 +418,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received AcquireDisk request: %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str());
+        SafeDebugPrint(msg->Record).c_str());
 
     TDiskInfo diskInfo;
     auto error = State->StartAcquireDisk(diskId, diskInfo);
@@ -429,7 +429,7 @@ void TDiskRegistryActor::HandleAcquireDisk(
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "%s AcquireDisk %s error: %s",
             LogTitle.GetWithTime().c_str(),
-            msg->Record.ShortDebugString().c_str(),
+            SafeDebugPrint(msg->Record).c_str(),
             FormatError(error).c_str());
 
         NCloud::Reply(

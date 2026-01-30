@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -22,7 +24,7 @@ void TDiskRegistryActor::HandleAllocateCheckpoint(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received AllocateCheckpoint request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     NProto::TCheckpointReplica checkpointReplica;
@@ -103,7 +105,7 @@ void TDiskRegistryActor::HandleDeallocateCheckpoint(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received DeallocateCheckpoint request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TDeallocateCheckpoint>(
@@ -183,7 +185,7 @@ void TDiskRegistryActor::HandleGetCheckpointDataState(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received GetCheckpointDataState request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     NProto::ECheckpointState checkpointState = {};
@@ -217,7 +219,7 @@ void TDiskRegistryActor::HandleSetCheckpointDataState(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received SetCheckpointDataState request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TSetCheckpointDataState>(
