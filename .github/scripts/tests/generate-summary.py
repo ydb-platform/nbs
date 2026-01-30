@@ -4,6 +4,7 @@ import dataclasses
 import os
 import json
 import sys
+from contextlib import nullcontext
 from github import Github, Auth as GithubAuth
 from github.PullRequest import PullRequest
 from enum import Enum
@@ -313,23 +314,21 @@ def write_summary(summary: TestSummary, summary_out_env_path=""):
     else:
         summary_fn = summary_out_env_path
 
-    if summary_fn:
-        fp = open(summary_fn, "at")
-    else:
-        fp = sys.stdout
+    fp_ctx = (
+        open(summary_fn, "at")  # noqa: SIM115
+        if summary_fn
+        else nullcontext(sys.stdout)
+    )
+    with fp_ctx as fp:
+        if summary.is_empty:
+            fp.write(
+                ":red_circle: Test run completed, no test results found. Please check build logs."
+            )
+        else:
+            for line in summary.render(add_footnote=True):
+                fp.write(f"{line}\n")
 
-    if summary.is_empty:
-        fp.write(
-            ":red_circle: Test run completed, no test results found. Please check build logs."
-        )
-    else:
-        for line in summary.render(add_footnote=True):
-            fp.write(f"{line}\n")
-
-    fp.write("\n")
-
-    if summary_fn:
-        fp.close()
+        fp.write("\n")
 
 
 def gen_summary(summary_url_prefix, summary_out_folder, paths):
@@ -359,17 +358,33 @@ def gen_summary(summary_url_prefix, summary_out_folder, paths):
 
 
 def get_comment_text(
-    pr: PullRequest, summary: TestSummary, build_preset: str, test_history_url: str
+    pr: PullRequest,
+    summary: TestSummary,
+    build_preset: str,
+    test_history_url: str,
+    test_target: str,
+    test_time: str,
 ):
+    test_target_message = ""
+    if test_target != "":
+        test_target_message = f" target: **{test_target}**"
+
+    test_time_message = ""
+    if test_time and test_time != "0":
+        test_time_message = f" (test time: {test_time}s)"
+
     if summary.is_empty:
-        return [
-            f":red_circle: **{build_preset}**: Test run completed, no test results found for commit {pr.head.sha}. "
-            f"Please check build logs."
-        ]
+        empty_summary = (
+            f":red_circle: **{build_preset}**{test_target_message}{test_time_message}"
+        )
+        empty_summary += (
+            f" Test run completed, no test results found for commit {pr.head.sha}."
+        )
+        return [empty_summary, "Please check build logs."]
     elif summary.is_failed or BUILD_FAILED_COUNT > 0:
-        result = f":red_circle: **{build_preset}**: some tests FAILED"
+        result = f":red_circle: **{build_preset}**{test_target_message}{test_time_message}: some tests FAILED"
     else:
-        result = f":green_circle: **{build_preset}**: all tests PASSED"
+        result = f":green_circle: **{build_preset}**{test_target_message}{test_time_message}: all tests PASSED"
 
     body = [f"{result} for commit {pr.head.sha}."]
 
@@ -388,6 +403,8 @@ def update_pr_comment(
     summary: TestSummary,
     build_preset: str,
     test_history_url: str,
+    test_target: str,
+    test_time: str,
     is_dry_run: bool,
 ):
     header = f"<!-- status pr={pr.number}, run={run_number}, build_preset={build_preset}, dry_run={is_dry_run} -->"
@@ -423,7 +440,16 @@ def update_pr_comment(
     else:
         body.extend(["", ""])
 
-    body.extend(get_comment_text(pr, summary, build_preset, test_history_url))
+    body.extend(
+        get_comment_text(
+            pr,
+            summary,
+            build_preset,
+            test_history_url,
+            test_target,
+            test_time,
+        )
+    )
 
     body = "\n".join(body)
 
@@ -449,12 +475,14 @@ def main():
     parser.add_argument(
         "--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False
     )
+    parser.add_argument("--test-target", default="", required=False)
     parser.add_argument(
         "--is-dry-run",
         default=False,
         action="store_true",
         help="Add mark in comments that this is simulation, not real result",
     )
+    parser.add_argument("--test-time", default="0", required=False)
     parser.add_argument("args", nargs="+", metavar="TITLE html_out path")
     args = parser.parse_args()
 
@@ -482,6 +510,8 @@ def main():
             summary,
             args.build_preset,
             args.test_history_url,
+            args.test_target,
+            args.test_time,
             args.is_dry_run,
         )
 
