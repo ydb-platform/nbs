@@ -52,7 +52,7 @@ NProto::TError MakeDescribeSchemeError(
     const NKikimrScheme::TEvDescribeSchemeResult& result)
 {
     auto error = MakeSchemeShardError(result.GetStatus(), result.GetReason());
-    if (HasError(error)) {
+    if (HasError(error) && result.GetPath()) {
         // Enrich the error message with the path to improve diagnostics
         error.SetMessage(
             TStringBuilder()
