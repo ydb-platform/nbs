@@ -113,7 +113,7 @@ void TAbortUnlinkDirectoryInShardActor::HandleAbortUnlinkResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Got AbortUnlinkResponse %s, %lu",
+        "%s Got AbortUnlinkResponse %s",
         LogTag.c_str(),
         msg->Record.ShortUtf8DebugString().Quote().c_str());
 

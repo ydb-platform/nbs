@@ -23,9 +23,21 @@ NProto::TError ValidateRequest(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+//
+// This actor is needed to prepare the dst node (pointed to by NewName) for
+// unlinking. If the dst node is a directory then special processing needs to
+// be done. The actor performs the following steps:
+// 1. gets NodeAttr for the src and dst nodes
+// 2. if dst is not a directory, replies and dies
+// 3. if dst is a directory, prepare-unlink is needed but first we need to write
+//  an abort-unlink op to the tablet OpLog to make sure that if this whole op
+//  fails at any point, we release the corresponding locks.
+// 4. sends a prepare-unlink request to the shard in charge of the dst node
+// 5. replies and dies
+//
 
-class TGetExtraSourceAndDestinationInfoActor final
-    : public TActorBootstrapped<TGetExtraSourceAndDestinationInfoActor>
+class TGetNodeInfoAndPrepareUnlinkActor final
+    : public TActorBootstrapped<TGetNodeInfoAndPrepareUnlinkActor>
 {
 private:
     const TString LogTag;
@@ -45,7 +57,7 @@ private:
         TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardResponse;
 
 public:
-    TGetExtraSourceAndDestinationInfoActor(
+    TGetNodeInfoAndPrepareUnlinkActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
@@ -91,7 +103,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetExtraSourceAndDestinationInfoActor::TGetExtraSourceAndDestinationInfoActor(
+TGetNodeInfoAndPrepareUnlinkActor::TGetNodeInfoAndPrepareUnlinkActor(
         TString logTag,
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
@@ -105,13 +117,13 @@ TGetExtraSourceAndDestinationInfoActor::TGetExtraSourceAndDestinationInfoActor(
     , Result(std::move(requestInfo), std::move(request))
 {}
 
-void TGetExtraSourceAndDestinationInfoActor::Bootstrap(const TActorContext& ctx)
+void TGetNodeInfoAndPrepareUnlinkActor::Bootstrap(const TActorContext& ctx)
 {
     SendRequests(ctx);
     Become(&TThis::StateWork);
 }
 
-void TGetExtraSourceAndDestinationInfoActor::SendRequest(
+void TGetNodeInfoAndPrepareUnlinkActor::SendRequest(
     const TActorContext& ctx,
     const TString& shardId,
     const TString& shardNodeName,
@@ -138,7 +150,7 @@ void TGetExtraSourceAndDestinationInfoActor::SendRequest(
         cookie);
 }
 
-void TGetExtraSourceAndDestinationInfoActor::SendRequests(const TActorContext& ctx)
+void TGetNodeInfoAndPrepareUnlinkActor::SendRequests(const TActorContext& ctx)
 {
     SendRequest(
         ctx,
@@ -153,7 +165,7 @@ void TGetExtraSourceAndDestinationInfoActor::SendRequests(const TActorContext& c
         DstCookie);
 }
 
-void TGetExtraSourceAndDestinationInfoActor::LogAbort(
+void TGetNodeInfoAndPrepareUnlinkActor::LogAbort(
     const TActorContext& ctx)
 {
     NProto::TOpLogEntry entry;
@@ -169,14 +181,14 @@ void TGetExtraSourceAndDestinationInfoActor::LogAbort(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Sending WriteOpLogEntryRequest to parent",
+        "%s Sending WriteOpLogEntryRequest to parent %s",
         LogTag.c_str(),
         request->OpLogEntry.ShortUtf8DebugString().Quote().c_str());
 
     ctx.Send(ParentId, request.release());
 }
 
-void TGetExtraSourceAndDestinationInfoActor::PrepareUnlink(
+void TGetNodeInfoAndPrepareUnlinkActor::PrepareUnlink(
     const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvPrepareUnlinkRequest>();
@@ -195,7 +207,7 @@ void TGetExtraSourceAndDestinationInfoActor::PrepareUnlink(
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
-void TGetExtraSourceAndDestinationInfoActor::HandleGetNodeAttrResponse(
+void TGetNodeInfoAndPrepareUnlinkActor::HandleGetNodeAttrResponse(
     const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -233,7 +245,7 @@ void TGetExtraSourceAndDestinationInfoActor::HandleGetNodeAttrResponse(
     ReplyAndDie(ctx, MakeError(S_OK));
 }
 
-void TGetExtraSourceAndDestinationInfoActor::HandleLogAbortResponse(
+void TGetNodeInfoAndPrepareUnlinkActor::HandleLogAbortResponse(
     const TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -262,7 +274,7 @@ void TGetExtraSourceAndDestinationInfoActor::HandleLogAbortResponse(
     PrepareUnlink(ctx);
 }
 
-void TGetExtraSourceAndDestinationInfoActor::HandlePrepareUnlinkResponse(
+void TGetNodeInfoAndPrepareUnlinkActor::HandlePrepareUnlinkResponse(
     const TEvPrepareUnlinkResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -271,14 +283,14 @@ void TGetExtraSourceAndDestinationInfoActor::HandlePrepareUnlinkResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Got PrepareUnlinkResponse %s, %lu",
+        "%s Got PrepareUnlinkResponse %s",
         LogTag.c_str(),
         msg->Record.ShortUtf8DebugString().Quote().c_str());
 
     ReplyAndDie(ctx, msg->GetError());
 }
 
-void TGetExtraSourceAndDestinationInfoActor::HandlePoisonPill(
+void TGetNodeInfoAndPrepareUnlinkActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -286,7 +298,7 @@ void TGetExtraSourceAndDestinationInfoActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
-void TGetExtraSourceAndDestinationInfoActor::ReplyAndDie(
+void TGetNodeInfoAndPrepareUnlinkActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
@@ -299,7 +311,7 @@ void TGetExtraSourceAndDestinationInfoActor::ReplyAndDie(
     Die(ctx);
 }
 
-STFUNC(TGetExtraSourceAndDestinationInfoActor::StateWork)
+STFUNC(TGetNodeInfoAndPrepareUnlinkActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -666,7 +678,7 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 {
     if (args.SecondPassRequired) {
         if (args.NewChildRef) {
-            using TActor = TGetExtraSourceAndDestinationInfoActor;
+            using TActor = TGetNodeInfoAndPrepareUnlinkActor;
             auto actor = std::make_unique<TActor>(
                 LogTag,
                 args.RequestInfo,
