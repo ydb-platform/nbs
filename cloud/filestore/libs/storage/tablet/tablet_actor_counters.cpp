@@ -530,7 +530,6 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(RenameNodeInDestination);
     REGISTER_REQUEST(PrepareUnlinkDirectoryNodeInShard);
     REGISTER_REQUEST(AbortUnlinkDirectoryNodeInShard);
-    REGISTER_REQUEST(SetHasXAttrs);
 
     REGISTER_REQUEST(ReadData);
     REGISTER_REQUEST(WriteData);
@@ -739,7 +738,6 @@ void TIndexTabletActor::TMetrics::Update(
     RenameNodeInDestination.UpdatePrev(now);
     PrepareUnlinkDirectoryNodeInShard.UpdatePrev(now);
     AbortUnlinkDirectoryNodeInShard.UpdatePrev(now);
-    SetHasXAttrs.UpdatePrev(now);
 
     ReadData.UpdatePrev(now);
     WriteData.UpdatePrev(now);

@@ -357,7 +357,6 @@ private:
         TRequestMetrics RenameNodeInDestination;
         TRequestMetrics PrepareUnlinkDirectoryNodeInShard;
         TRequestMetrics AbortUnlinkDirectoryNodeInShard;
-        TRequestMetrics SetHasXAttrs;
 
         // public requests
         TRequestMetrics ReadData;

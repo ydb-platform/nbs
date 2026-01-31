@@ -59,13 +59,6 @@ void TIndexTabletActor::CompleteTx_SetHasXAttrs(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    if (!HasError(args.Error)) {
-        Metrics.SetHasXAttrs.Update(
-            1,
-            0,
-            ctx.Now() - args.RequestInfo->StartedTs);
-    }
-
     auto response = std::make_unique<TEvIndexTablet::TEvSetHasXAttrsResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
