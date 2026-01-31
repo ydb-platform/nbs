@@ -102,11 +102,6 @@ public:
               Log)
     {}
 
-    virtual ~TSession()
-    {
-        UnlockFile(SessionFileLock);
-    }
-
     NProto::TError TryInit(bool restoreClientSession)
     {
         auto handlesPath = StatePath / "handles";
