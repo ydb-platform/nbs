@@ -762,7 +762,7 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 
     RemoveTransaction(*args.RequestInfo);
 
-    Metrics.RenameNode.Update(
+    Metrics.RenameNodeInDestination.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
@@ -802,7 +802,7 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
 
     RemoveTransaction(*msg->RequestInfo);
 
-    Metrics.RenameNode.Update(
+    Metrics.RenameNodeInDestination.Update(
         1,
         0,
         ctx.Now() - msg->RequestInfo->StartedTs);

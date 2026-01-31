@@ -343,17 +343,25 @@ private:
             std::atomic<i64> RequestedBytesPrecharge{0};
         };
 
-        // private requests
+        // internal requests
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
 
+        // private requests
+        TRequestMetrics DescribeData;
+        TRequestMetrics GenerateBlobIds;
+        TRequestMetrics AddData;
+        TRequestMetrics GetStorageStats;
+        TRequestMetrics GetNodeAttrBatch;
+        TRequestMetrics RenameNodeInDestination;
+        TRequestMetrics PrepareUnlinkDirectoryNodeInShard;
+        TRequestMetrics AbortUnlinkDirectoryNodeInShard;
+        TRequestMetrics SetHasXAttrs;
+
         // public requests
         TRequestMetrics ReadData;
-        TRequestMetrics DescribeData;
         TRequestMetrics WriteData;
-        TRequestMetrics AddData;
-        TRequestMetrics GenerateBlobIds;
         TListNodesMetrics ListNodes;
         TRequestMetrics GetNodeAttr;
         TRequestMetrics CreateHandle;

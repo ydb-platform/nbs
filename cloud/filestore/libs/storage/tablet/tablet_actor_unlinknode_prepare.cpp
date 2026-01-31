@@ -135,6 +135,13 @@ void TIndexTabletActor::CompleteTx_PrepareUnlinkDirectoryNode(
     RemoveTransaction(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
+    if (!HasError(args.Error)) {
+        Metrics.PrepareUnlinkDirectoryNodeInShard.Update(
+            1,
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
+    }
+
     using TResponse =
         TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardResponse;
     auto response = std::make_unique<TResponse>(args.Error);

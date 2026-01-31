@@ -282,6 +282,7 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
             ctx);
 
         Metrics.GetNodeAttr.Update(cacheHits, 0, TDuration::Zero());
+        Metrics.GetNodeAttrBatch.Update(1, 0, TDuration::Zero());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -447,6 +448,10 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
 
         Metrics.GetNodeAttr.Update(
             args.Request.NamesSize(),
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
+        Metrics.GetNodeAttrBatch.Update(
+            1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
     }
