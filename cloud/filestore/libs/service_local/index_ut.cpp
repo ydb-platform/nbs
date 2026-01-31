@@ -43,7 +43,6 @@ protected:
         StatePath.MkDir();
 
         TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
-        index.Init();
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -110,7 +109,6 @@ protected:
         StatePath.MkDir();
 
         TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
-        index.Init();
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -172,8 +170,6 @@ protected:
     void CheckNestedDir(ui32 pathLen, const TMap<TString, ui64>& nodeMap)
     {
         TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
-        index.Init();
-
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -202,8 +198,6 @@ protected:
     void CheckMissingNodes(ui32 pathLen, const TVector<ui64>& nodeIds)
     {
         TLocalIndex index(RootPath, StatePath, pathLen, false, 1000, Log);
-        index.Init();
-
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -312,8 +306,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             false,
             1000,
             Log);
-        index->Init();
-
         auto rootNode = index->LookupNode(RootNodeId);
 
         // create /dir1
@@ -355,7 +347,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             false,
             1000,
             Log);
-        index->Init();
 
         // /dir1 and /dir2 restored
         UNIT_ASSERT_C(index->LookupNode(node1->GetNodeId()),
@@ -389,7 +380,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             10,   // nodeCleanupBatchSize
             Log,
             nodeLoader);
-        index->Init();
 
         auto rootNode = index->LookupNode(RootNodeId);
         UNIT_ASSERT_C(rootNode, "Failed to lookup root node");
@@ -423,7 +413,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             2,    // nodeCleanupBatchSize
             Log,
             nodeLoader);
-        index->Init();
 
         auto rootNode = index->LookupNode(RootNodeId);
         UNIT_ASSERT_C(rootNode, "Failed to lookup root node");

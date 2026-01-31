@@ -104,10 +104,9 @@ public:
         , SessionFileLock(std::move(sessionFileLock))
     {}
 
-    NProto::TError TryInit(bool restoreClientSession)
+    void Init(bool restoreClientSession)
     {
         auto handlesPath = StatePath / "handles";
-        Index.Init();
 
         bool isNewSession = !restoreClientSession || !HasStateFile("session") ||
                             !HasStateFile("fuse_state");
@@ -177,8 +176,6 @@ public:
         }
 
         NextHandleId = maxHandleId + 1;
-
-        return NProto::TError{};
     }
 
     [[nodiscard]] TResultOrError<ui64>
