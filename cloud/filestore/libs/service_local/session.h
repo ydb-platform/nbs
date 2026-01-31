@@ -83,7 +83,8 @@ public:
              ui32 maxHandleCount,
              bool openNodeByHandleEnabled,
              ui32 nodeCleanupBatchSize,
-             ILoggingServicePtr logging)
+             ILoggingServicePtr logging,
+             THolder<TFileLock> sessionFileLock = nullptr)
         : RootPath(root.RealPath())
         , StatePath(statePath.RealPath())
         , ClientId(std::move(clientId))
@@ -100,21 +101,12 @@ public:
               OpenNodeByHandleEnabled,
               NodeCleanupBatchSize,
               Log)
+        , SessionFileLock(std::move(sessionFileLock))
     {}
 
     NProto::TError TryInit(bool restoreClientSession)
     {
         auto handlesPath = StatePath / "handles";
-
-        auto lockPath = StatePath / "session.lock";
-        if (!TryLockFile(lockPath, SessionFileLock))
-        {
-            return MakeError(
-                E_FAIL,
-                TStringBuilder()
-                    << "Failed to lock session state file " << lockPath);
-        }
-
         Index.Init();
 
         bool isNewSession = !restoreClientSession || !HasStateFile("session") ||
@@ -347,18 +339,6 @@ private:
     void DeleteStateFile(const TString &fileName)
     {
         return (StatePath / fileName).DeleteIfExists();
-    }
-
-    static bool TryLockFile(const TFsPath& filePath, THolder<TFileLock>& fileLock)
-    {
-        filePath.Touch();
-        fileLock = MakeHolder<TFileLock>(filePath.GetPath());
-        return fileLock->TryAcquire();
-    }
-
-    static void UnlockFile(THolder<TFileLock>& fileLock)
-    {
-        fileLock->Release();
     }
 };
 
