@@ -51,7 +51,6 @@ protected:
             false,
             TDuration::Zero(),
             Log);
-        index.Init();
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -126,7 +125,6 @@ protected:
             false,
             TDuration::Zero(),
             Log);
-        index.Init();
 
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
@@ -196,8 +194,6 @@ protected:
             false,
             TDuration::Zero(),
             Log);
-        index.Init();
-
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -234,8 +230,6 @@ protected:
             false,
             TDuration::Zero(),
             Log);
-        index.Init();
-
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup root node");
 
@@ -367,8 +361,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             false,
             TDuration::Zero(),
             Log);
-        index->Init();
-
         auto rootNode = index->LookupNode(RootNodeId);
 
         // create /dir1
@@ -412,7 +404,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             false,
             TDuration::Zero(),
             Log);
-        index->Init();
 
         // /dir1 and /dir2 restored
         UNIT_ASSERT_C(index->LookupNode(node1->GetNodeId()),
@@ -448,7 +439,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             TDuration::Zero(),
             Log,
             nodeLoader);
-        index->Init();
 
         auto rootNode = index->LookupNode(RootNodeId);
         UNIT_ASSERT_C(rootNode, "Failed to lookup root node");
@@ -556,7 +546,6 @@ Y_UNIT_TEST_SUITE(TLocalIndex)
             TDuration::Zero(),
             Log,
             nodeLoader);
-        index->Init();
 
         auto rootNode = index->LookupNode(RootNodeId);
         UNIT_ASSERT_C(rootNode, "Failed to lookup root node");

@@ -258,6 +258,7 @@ public:
         , NodeLoader(std::move(nodeLoader))
         , NodeMapper(nullptr)
     {
+        Init();
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
@@ -379,6 +380,7 @@ public:
         ClearLocked();
     }
 
+private:
     void Init()
     {
         auto root = TIndexNode::CreateRoot(RootPath);
@@ -440,7 +442,6 @@ public:
 
     }
 
-private:
     void RecoverNodesFromPersistentTable()
     {
         // enties are ordered by NodeId in TMap but this doesn't mean that

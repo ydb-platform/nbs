@@ -123,7 +123,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Logging,
         std::move(fileLock));
 
-    session->TryInit(request.GetRestoreClientSession());
+    session->Init(request.GetRestoreClientSession());
     session->AddSubSession(sessionSeqNo, readOnly);
 
     SessionsList.push_front(session);
