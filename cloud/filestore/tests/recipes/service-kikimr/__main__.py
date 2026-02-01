@@ -25,12 +25,12 @@ from cloud.storage.core.tests.common import (
     process_recipe_err_files,
 )
 
+logger = logging.getLogger(__name__)
+
 PID_FILE_NAME = "local_kikimr_nfs_server_recipe.pid"
 KIKIMR_PID_FILE_NAME = "local_kikimr_nfs_server_recipe.kikimr_pid"
 ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nfs_server_recipe.err_log_files"
 PDISK_SIZE = 32 * 1024 * 1024 * 1024
-
-logger = logging.getLogger(__name__)
 
 
 def start(argv):
@@ -67,6 +67,9 @@ def start(argv):
 
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
     kikimr_cluster.start()
+
+    with open(KIKIMR_PID_FILE_NAME, "w") as f:
+        f.write(str(list(kikimr_cluster.nodes.values())[0].pid))
 
     kikimr_port = list(kikimr_cluster.nodes.values())[0].port
 
@@ -151,13 +154,10 @@ def start(argv):
     )
     filestore_server.start()
 
-    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.stderr_file_name)
-
     with open(PID_FILE_NAME, "w") as f:
         f.write(str(filestore_server.pid))
 
-    with open(KIKIMR_PID_FILE_NAME, "w") as f:
-        f.write(str(list(kikimr_cluster.nodes.values())[0].pid))
+    append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, filestore_server.stderr_file_name)
 
     wait_for_filestore_server(filestore_server, filestore_configurator.port)
 
@@ -171,19 +171,18 @@ def start(argv):
 
 
 def stop(argv):
-    logging.info(os.system("ss -tpna"))
-    logging.info(os.system("ps aux"))
+    logger.info(os.system("ss -tpna"))
+    logger.info(os.system("ps aux"))
 
-    if not os.path.exists(PID_FILE_NAME):
-        return
+    if os.path.exists(PID_FILE_NAME):
+        with open(PID_FILE_NAME) as f:
+            pid = int(f.read())
+            shutdown(pid)
 
-    with open(PID_FILE_NAME) as f:
-        pid = int(f.read())
-        shutdown(pid)
-
-    with open(KIKIMR_PID_FILE_NAME) as f:
-        pid = int(f.read())
-        shutdown(pid)
+    if os.path.exists(KIKIMR_PID_FILE_NAME):
+        with open(KIKIMR_PID_FILE_NAME) as f:
+            pid = int(f.read())
+            shutdown(pid)
 
     errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
     if errors:

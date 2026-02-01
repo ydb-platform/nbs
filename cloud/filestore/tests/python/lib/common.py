@@ -1,9 +1,12 @@
+import logging
 import os
 import signal
 import time
 import yatest.common as common
 
 import cloud.filestore.public.sdk.python.client as client
+
+logger = logging.getLogger(__name__)
 
 
 def wait_for(predicate, timeout_seconds=5.0, step_seconds=0.5, multiply=2, max_step_seconds=5.0):
@@ -26,6 +29,7 @@ def __is_dead(pid):
 
 
 def shutdown(pid, timeout=60):
+    logger.info(f"shutting down process with pid {pid}")
     try:
         os.kill(pid, signal.SIGTERM)
         if not wait_for(lambda: __is_dead(pid), timeout):
