@@ -24,6 +24,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
     }
@@ -36,6 +37,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenSeqNo());
@@ -44,6 +46,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         subsessions.UpdateSubSession(
             1,
             false,
+            TActorId(1, 1),
             TActorId(1, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
@@ -62,6 +65,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             subsessions.UpdateSubSession(
                 2,
                 true,
+                TActorId(2, 1),
                 TActorId(2, 1),
                 TabletGeneration);
             UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
@@ -83,22 +87,6 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
-            TabletGeneration);
-        {
-            auto subsession = subsessions.GetSubSessionBySeqNo(1);
-            UNIT_ASSERT(subsession);
-            UNIT_ASSERT_VALUES_EQUAL(
-                TabletGeneration,
-                ExtractTabletGeneration(subsession->OwnerGeneration));
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                ExtractSubSessionOwnerGeneration(
-                    subsession->OwnerGeneration));
-        }
-
-        subsessions.UpdateSubSession(
-            1,
-            false,
             TActorId(0, 1),
             TabletGeneration);
         {
@@ -116,6 +104,25 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         subsessions.UpdateSubSession(
             1,
             false,
+            TActorId(0, 1),
+            TActorId(0, 1),
+            TabletGeneration);
+        {
+            auto subsession = subsessions.GetSubSessionBySeqNo(1);
+            UNIT_ASSERT(subsession);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TabletGeneration,
+                ExtractTabletGeneration(subsession->OwnerGeneration));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                ExtractSubSessionOwnerGeneration(
+                    subsession->OwnerGeneration));
+        }
+
+        subsessions.UpdateSubSession(
+            1,
+            false,
+            TActorId(1, 1),
             TActorId(1, 1),
             TabletGeneration);
         {
@@ -140,6 +147,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
@@ -148,6 +156,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             2,
             false,
             TActorId(1, 1),
+            TActorId(1, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
@@ -155,6 +164,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         ans = subsessions.UpdateSubSession(
             3,
             true,
+            TActorId(2, 1),
             TActorId(2, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
@@ -174,6 +184,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
@@ -181,6 +192,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         ans = subsessions.UpdateSubSession(
             2,
             true,
+            TActorId(1, 1),
             TActorId(1, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
@@ -206,6 +218,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             false,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
@@ -213,6 +226,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         ans = subsessions.UpdateSubSession(
             2,
             true,
+            TActorId(1, 1),
             TActorId(1, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
@@ -233,6 +247,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             false,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
@@ -240,6 +255,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         ans = subsessions.UpdateSubSession(
             2,
             true,
+            TActorId(1, 1),
             TActorId(1, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
@@ -260,6 +276,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
@@ -267,6 +284,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         ans = subsessions.UpdateSubSession(
             2,
             false,
+            TActorId(1, 1),
             TActorId(1, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());

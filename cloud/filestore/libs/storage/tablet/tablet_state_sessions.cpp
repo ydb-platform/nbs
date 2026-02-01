@@ -132,6 +132,7 @@ TSession* TIndexTabletState::CreateSession(
     ui64 seqNo,
     bool readOnly,
     const TActorId& owner,
+    const TActorId& pipeServer,
     const NProto::TSessionOptions& sessionOptions)
 {
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
@@ -160,8 +161,13 @@ TSession* TIndexTabletState::CreateSession(
         SessionHistoryEntryCount);
     IncrementUsedSessionsCount(db);
 
-    auto* session =
-        CreateSession(proto, seqNo, readOnly, owner, sessionOptions);
+    auto* session = CreateSession(
+        proto,
+        seqNo,
+        readOnly,
+        owner,
+        pipeServer,
+        sessionOptions);
     TABLET_VERIFY(session);
 
     return session;
@@ -187,14 +193,20 @@ TSession* TIndexTabletState::CreateSession(
     ui64 seqNo,
     bool readOnly,
     const TActorId& owner,
+    const TActorId& pipeServer,
     const NProto::TSessionOptions& sessionOptions)
 {
     auto session = std::make_unique<TSession>(proto, sessionOptions);
-    session->UpdateSubSession(seqNo, readOnly, owner, GetGeneration());
+    session->UpdateSubSession(
+        seqNo,
+        readOnly,
+        owner,
+        pipeServer,
+        GetGeneration());
 
     Impl->Sessions.PushBack(session.get());
     Impl->SessionById.emplace(session->GetSessionId(), session.get());
-    TrackSessionOwner(owner, session.get());
+    TrackSessionByPipeServer(pipeServer, session.get());
     Impl->SessionByClient.emplace(session->GetClientId(), session.get());
 
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
@@ -207,17 +219,17 @@ TSession* TIndexTabletState::CreateSession(
     return session.release();
 }
 
-void TIndexTabletState::TrackSessionOwner(
-    const TActorId& owner,
+void TIndexTabletState::TrackSessionByPipeServer(
+    const TActorId& pipeServer,
     TSession* session)
 {
     // The main tablet holds the sessions: it tracks and destroys them,
     // and sends them to shards through SyncSessions (see
-    // ScheduleSyncSessions). SessionByOwner is only used by the logic that
-    // marks a session as orphan when its pipe disconnects, and only the
-    // main tablet marks sessions as orphan.
+    // ScheduleSyncSessions). SessionByPipeServer is only used by the logic
+    // that marks a session as orphan when its pipe disconnects, and only
+    // the main tablet marks sessions as orphan.
     if (IsMainTablet()) {
-        Impl->SessionByOwner.emplace(owner, session);
+        Impl->SessionByPipeServer.emplace(pipeServer, session);
     }
 }
 
@@ -225,24 +237,16 @@ NActors::TActorId TIndexTabletState::RecoverSession(
     TSession* session,
     ui64 sessionSeqNo,
     bool readOnly,
-    const TActorId& owner)
+    const TActorId& owner,
+    const TActorId& pipeServer)
 {
     auto oldOwner =
         session->UpdateSubSession(
             sessionSeqNo,
             readOnly,
             owner,
+            pipeServer,
             GetGeneration());
-    if (oldOwner) {
-        Impl->SessionByOwner.erase(oldOwner);
-
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-            "%s removed old owner for session c: %s, s: %s, owner: %s",
-            LogTag.c_str(),
-            session->GetClientId().c_str(),
-            session->GetSessionId().c_str(),
-            oldOwner.ToString().c_str());
-    }
 
     if (oldOwner != owner) {
         session->InactivityDeadline = {};
@@ -250,7 +254,7 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         session->Unlink();
         Impl->Sessions.PushBack(session);
 
-        TrackSessionOwner(owner, session);
+        TrackSessionByPipeServer(pipeServer, session);
 
         LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
             "%s added new owner for session c: %s, s: %s, owner: %s",
@@ -302,36 +306,38 @@ TSession* TIndexTabletState::FindSession(
     return nullptr;
 }
 
-void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
+void TIndexTabletState::OrphanSession(
+    const TActorId& pipeServer,
+    TInstant deadline)
 {
-    auto it = Impl->SessionByOwner.find(owner);
-    if (it == Impl->SessionByOwner.end()) {
+    auto it = Impl->SessionByPipeServer.find(pipeServer);
+    if (it == Impl->SessionByPipeServer.end()) {
         return; // not a session pipe
     }
 
     auto* session = it->second;
 
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-        "%s orphaning session c: %s, s: %s, owner: %s",
+        "%s orphaning session c: %s, s: %s, pipeServer: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
         session->GetSessionId().c_str(),
-        owner.ToString().c_str());
+        pipeServer.ToString().c_str());
 
-    if (!session->DeleteSubSession(owner)) {
+    if (!session->DeleteSubSessionByPipeServer(pipeServer)) {
         session->InactivityDeadline = deadline;
 
         session->Unlink();
         Impl->OrphanSessions.PushBack(session);
 
-        Impl->SessionByOwner.erase(it);
+        Impl->SessionByPipeServer.erase(it);
 
         LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-            "%s removed last owner for session c: %s, s: %s, owner: %s",
+            "%s removed last owner for session c: %s, s: %s, pipeServer: %s",
             LogTag.c_str(),
             session->GetClientId().c_str(),
             session->GetSessionId().c_str(),
-            owner.ToString().c_str());
+            pipeServer.ToString().c_str());
     }
 }
 
@@ -407,8 +413,8 @@ void TIndexTabletState::RemoveSession(TSession* session)
         session->GetClientId().c_str(),
         session->GetSessionId().c_str());
 
-    for (const auto& s: session->GetSubSessions()) {
-        Impl->SessionByOwner.erase(s);
+    for (const auto& s: session->GetSubSessionsPipeServer()) {
+        Impl->SessionByPipeServer.erase(s);
     }
 
     std::unique_ptr<TSession> holder(session);
