@@ -14,7 +14,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
     {
         TSubSessions subsessions(0, 0);
 
-        subsessions.UpdateSubSession(1, true, TActorId(0, 1));
+        subsessions.UpdateSubSession(1, true, TActorId(0, 1), TActorId(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
     }
 
@@ -22,12 +22,12 @@ Y_UNIT_TEST_SUITE(TSubSessions)
     {
         TSubSessions subsessions(0, 0);
 
-        subsessions.UpdateSubSession(1, true, TActorId(0, 1));
+        subsessions.UpdateSubSession(1, true, TActorId(0, 1), TActorId(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenSeqNo());
         UNIT_ASSERT_VALUES_EQUAL(0, subsessions.GetMaxSeenRwSeqNo());
 
-        subsessions.UpdateSubSession(1, false, TActorId(1, 1));
+        subsessions.UpdateSubSession(1, false, TActorId(1, 1), TActorId(1, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenSeqNo());
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenRwSeqNo());
@@ -41,7 +41,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         }
 
         {
-            subsessions.UpdateSubSession(2, true, TActorId(2, 1));
+            subsessions.UpdateSubSession(2, true, TActorId(2, 1), TActorId(2, 1));
             UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
             auto subsession = subsessions.GetSubSessionBySeqNo(2);
             UNIT_ASSERT_VALUES_EQUAL(true, subsession.has_value());
@@ -58,15 +58,15 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TSubSessions subsessions(0, 0);
         TActorId ans;
 
-        ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1));
+        ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1) , TActorId(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(2, false, TActorId(1, 1));
+        ans = subsessions.UpdateSubSession(2, false, TActorId(1, 1), TActorId(1, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(3, true, TActorId(2, 1));
+        ans = subsessions.UpdateSubSession(3, true, TActorId(2, 1), TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans);
 
@@ -80,11 +80,11 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1));
+        ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1), TActorId(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1));
+        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1), TActorId(1, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
@@ -104,11 +104,11 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(1, false, TActorId(0, 1));
+        ans = subsessions.UpdateSubSession(1, false, TActorId(0, 1), TActorId(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1));
+        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1), TActorId(1, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
@@ -123,11 +123,11 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(1, false, TActorId(0, 1));
+        ans = subsessions.UpdateSubSession(1, false, TActorId(0, 1), TActorId(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1));
+        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1), TActorId(1, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
@@ -142,11 +142,11 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1));
+        ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1), TActorId(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(2, false, TActorId(1, 1));
+        ans = subsessions.UpdateSubSession(2, false, TActorId(1, 1), TActorId(1, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 

@@ -197,13 +197,12 @@ TSession* TIndexTabletState::CreateSession(
     const NProto::TSessionOptions& sessionOptions)
 {
     auto session = std::make_unique<TSession>(proto, sessionOptions);
-    session->UpdateSubSession(seqNo, readOnly, owner);
+    session->UpdateSubSession(seqNo, readOnly, owner, pipeServer);
 
     Impl->Sessions.PushBack(session.get());
     Impl->SessionById.emplace(session->GetSessionId(), session.get());
-    Impl->SessionByOwner.emplace(owner, session.get());
+    Impl->SessionByPipeServer.emplace(pipeServer, session.get());
     Impl->SessionByClient.emplace(session->GetClientId(), session.get());
-    Impl->SessionOwnerByPipeServerId.emplace(pipeServer, owner);
 
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
         "%s created session c: %s, s: %s, owner: %s",
@@ -223,17 +222,7 @@ NActors::TActorId TIndexTabletState::RecoverSession(
     const TActorId& pipeServer)
 {
     auto oldOwner =
-        session->UpdateSubSession(sessionSeqNo, readOnly, owner);
-    if (oldOwner) {
-        Impl->SessionByOwner.erase(oldOwner);
-
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-            "%s removed old owner for session c: %s, s: %s, owner: %s",
-            LogTag.c_str(),
-            session->GetClientId().c_str(),
-            session->GetSessionId().c_str(),
-            oldOwner.ToString().c_str());
-    }
+        session->UpdateSubSession(sessionSeqNo, readOnly, owner, pipeServer);
 
     if (oldOwner != owner) {
         session->InactivityDeadline = {};
@@ -241,8 +230,7 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         session->Unlink();
         Impl->Sessions.PushBack(session);
 
-        Impl->SessionByOwner.emplace(owner, session);
-        Impl->SessionOwnerByPipeServerId.emplace(pipeServer, owner);
+        Impl->SessionByPipeServer.emplace(pipeServer, session);
 
         LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
             "%s added new owner for session c: %s, s: %s, owner: %s",
@@ -355,42 +343,34 @@ void TIndexTabletState::OrphanSession(
     const TActorId& pipeServer,
     TInstant deadline)
 {
-    auto it = Impl->SessionOwnerByPipeServerId.find(pipeServer);
-    if (it == Impl->SessionOwnerByPipeServerId.end()) {
+    auto it = Impl->SessionByPipeServer.find(pipeServer);
+    if (it == Impl->SessionByPipeServer.end()) {
         return; // not a session pipe
     }
 
-    const auto& owner = it->second;
-    auto sit = Impl->SessionByOwner.find(owner);
-    if (sit == Impl->SessionByOwner.end()) {
-        Impl->SessionOwnerByPipeServerId.erase(it);
-        return; // no session for this owner
-    }
-
-    auto* session = sit->second;
-
+    auto* session = it->second;
+    
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-        "%s orphaning session c: %s, s: %s, owner: %s",
+        "%s orphaning session c: %s, s: %s, pipeServer: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
         session->GetSessionId().c_str(),
-        owner.ToString().c_str());
+        pipeServer.ToString().c_str());
 
-    if (!session->DeleteSubSession(owner)) {
+    if (!session->DeleteSubSessionByPipeServer(pipeServer)) {
         session->InactivityDeadline = deadline;
 
         session->Unlink();
         Impl->OrphanSessions.PushBack(session);
 
-        Impl->SessionByOwner.erase(sit);
-        Impl->SessionOwnerByPipeServerId.erase(it);
+        Impl->SessionByPipeServer.erase(it);
 
         LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-            "%s removed last owner for session c: %s, s: %s, owner: %s",
+            "%s removed last owner for session c: %s, s: %s, pipeServer: %s",
             LogTag.c_str(),
             session->GetClientId().c_str(),
             session->GetSessionId().c_str(),
-            owner.ToString().c_str());
+            pipeServer.ToString().c_str());
     }
 }
 
@@ -466,8 +446,8 @@ void TIndexTabletState::RemoveSession(TSession* session)
         session->GetClientId().c_str(),
         session->GetSessionId().c_str());
 
-    for (const auto& s: session->GetSubSessions()) {
-        Impl->SessionByOwner.erase(s);
+    for (const auto& s: session->GetSubSessionsPipeServer()) {
+        Impl->SessionByPipeServer.erase(s);
     }
 
     std::unique_ptr<TSession> holder(session);
