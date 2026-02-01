@@ -715,7 +715,7 @@ private:
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
-            if (AppCtx.CellId && cellId && cellId != AppCtx.CellId) {
+            if (cellId && cellId != AppCtx.CellId) {
                 const auto* msg = "DescribeVolume response cell id mismatch";
                 ReportWrongCellIdInDescribeVolume(
                     msg,
@@ -828,10 +828,6 @@ private:
         auto& error = *response.MutableError();
         error.SetCode(e.GetCode());
         error.SetMessage(e.what());
-
-        if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
-            response.SetCellId(AppCtx.CellId);
-        }
 
         return response;
     }
