@@ -73,9 +73,8 @@ using IStatsPtr = std::shared_ptr<IStats>;
 struct IStatsUpdater;
 using IStatsUpdaterPtr = std::shared_ptr<IStatsUpdater>;
 
-struct IIncompleteRequestProcessor;
-using IIncompleteRequestProcessorPtr =
-    std::shared_ptr<IIncompleteRequestProcessor>;
+struct IStatsHandler;
+using IStatsHandlerPtr = std::shared_ptr<IStatsHandler>;
 
 struct IPostponeTimePredictor;
 using IPostponeTimePredictorPtr = std::shared_ptr<IPostponeTimePredictor>;

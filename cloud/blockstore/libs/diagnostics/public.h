@@ -60,6 +60,9 @@ using IMetricConsumerPtr = std::shared_ptr<NMonitoring::IMetricConsumer>;
 struct IIncompleteRequestProvider;
 using IIncompleteRequestProviderPtr = std::shared_ptr<IIncompleteRequestProvider>;
 
+using IIncompleteRequestProcessor = NCloud::IStatsHandler;
+using IIncompleteRequestProcessorPtr = NCloud::IStatsHandlerPtr;
+
 struct IProfileLog;
 using IProfileLogPtr = std::shared_ptr<IProfileLog>;
 

@@ -28,6 +28,6 @@ struct IStatsUpdater
 IStatsUpdaterPtr CreateStatsUpdater(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
-    IIncompleteRequestProcessorPtr collector);
+    IStatsHandlerPtr statsHandler);
 
 }   // namespace NCloud
