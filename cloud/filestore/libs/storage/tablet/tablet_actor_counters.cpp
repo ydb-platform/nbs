@@ -522,11 +522,17 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(WriteBlob);
     REGISTER_REQUEST(PatchBlob);
 
-    REGISTER_REQUEST(ReadData);
     REGISTER_REQUEST(DescribeData);
-    REGISTER_REQUEST(WriteData);
-    REGISTER_REQUEST(AddData);
     REGISTER_REQUEST(GenerateBlobIds);
+    REGISTER_REQUEST(AddData);
+    REGISTER_REQUEST(GetStorageStats);
+    REGISTER_REQUEST(GetNodeAttrBatch);
+    REGISTER_REQUEST(RenameNodeInDestination);
+    REGISTER_REQUEST(PrepareUnlinkDirectoryNodeInShard);
+    REGISTER_REQUEST(AbortUnlinkDirectoryNodeInShard);
+
+    REGISTER_REQUEST(ReadData);
+    REGISTER_REQUEST(WriteData);
     REGISTER_REQUEST(ListNodes);
     REGISTER_AGGREGATABLE_SUM(
         ListNodes.RequestedBytesPrecharge,
@@ -724,11 +730,17 @@ void TIndexTabletActor::TMetrics::Update(
     WriteBlob.UpdatePrev(now);
     PatchBlob.UpdatePrev(now);
 
-    ReadData.UpdatePrev(now);
     DescribeData.UpdatePrev(now);
-    WriteData.UpdatePrev(now);
-    AddData.UpdatePrev(now);
     GenerateBlobIds.UpdatePrev(now);
+    AddData.UpdatePrev(now);
+    GetStorageStats.UpdatePrev(now);
+    GetNodeAttrBatch.UpdatePrev(now);
+    RenameNodeInDestination.UpdatePrev(now);
+    PrepareUnlinkDirectoryNodeInShard.UpdatePrev(now);
+    AbortUnlinkDirectoryNodeInShard.UpdatePrev(now);
+
+    ReadData.UpdatePrev(now);
+    WriteData.UpdatePrev(now);
     ListNodes.UpdatePrev(now);
     GetNodeAttr.UpdatePrev(now);
     CreateHandle.UpdatePrev(now);
@@ -1116,6 +1128,7 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     if (req.GetAllowCache() || shardIds.empty()) {
         Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
+        Metrics.GetStorageStats.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -1171,6 +1184,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         if (!isBackgroundRequest) {
             Metrics.StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
         }
+        Metrics.GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
         UpdateShardBalancer(CachedShardStats);
