@@ -41,6 +41,7 @@ NActors::TActorId TSubSessions::AddSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
+    const NActors::TActorId& pipeServer,
     ui32 tabletGeneration)
 {
     MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
@@ -51,6 +52,7 @@ NActors::TActorId TSubSessions::AddSubSession(
         {seqNo,
          readOnly,
          owner,
+         pipeServer,
          MakeSubSessionOwnerGeneration(
              tabletGeneration,
              1 /* ownerGeneration */)});
@@ -72,6 +74,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
+    const NActors::TActorId& pipeServer,
     ui32 tabletGeneration)
 {
     MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
@@ -88,6 +91,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
         if (subsession->Owner != owner) {
             auto toKill = subsession->Owner;
             subsession->Owner = owner;
+            subsession->PipeServer = pipeServer;
             subsession->OwnerGeneration = MakeSubSessionOwnerGeneration(
                 tabletGeneration,
                 ExtractSubSessionOwnerGeneration(
@@ -96,7 +100,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
         }
         return {};
     }
-    return AddSubSession(seqNo, readOnly, owner, tabletGeneration);
+    return AddSubSession(seqNo, readOnly, owner, pipeServer, tabletGeneration);
 }
 
 ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
@@ -105,6 +109,35 @@ ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
         SubSessions,
         [&] (const auto& subsession) {
             return subsession.Owner == owner;
+        });
+    if (subsession == SubSessions.end()) {
+        return true;
+    }
+
+    auto sessionSeqNo = subsession->SeqNo;
+    SubSessions.erase(subsession);
+
+    auto alive = !ReadyToDestroy(sessionSeqNo);
+    if (!alive) {
+        return false;
+    }
+
+    if (sessionSeqNo == MaxSeenRwSeqNo) {
+        MaxSeenRwSeqNo = 0;
+    }
+    if (sessionSeqNo == MaxSeenSeqNo) {
+        MaxSeenSeqNo = MaxSeenRwSeqNo;
+    }
+
+    return true;
+}
+
+ui32 TSubSessions::DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer)
+{
+    auto subsession = FindIf(
+        SubSessions,
+        [&] (const auto& subsession) {
+            return subsession.PipeServer == pipeServer;
         });
     if (subsession == SubSessions.end()) {
         return true;
@@ -162,6 +195,15 @@ TVector<NActors::TActorId> TSubSessions::GetSubSessions() const
     TVector<NActors::TActorId> ans;
     for (const auto& s: SubSessions) {
         ans.push_back(s.Owner);
+    }
+    return ans;
+}
+
+TVector<NActors::TActorId> TSubSessions::GetSubSessionsPipeServer() const
+{
+    TVector<NActors::TActorId> ans;
+    for (const auto& s: SubSessions) {
+        ans.push_back(s.PipeServer);
     }
     return ans;
 }
