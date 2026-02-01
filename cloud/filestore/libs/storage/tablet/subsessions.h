@@ -18,6 +18,7 @@ struct TSubSession
     ui64 SeqNo;
     bool ReadOnly;
     NActors::TActorId Owner;
+    NActors::TActorId PipeServer;
     ui64 OwnerGeneration = 0;
 };
 
@@ -48,18 +49,22 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         ui32 tabletGeneration);
 
     NActors::TActorId UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         ui32 tabletGeneration);
 
     ui32 DeleteSubSession(const NActors::TActorId& owner);
+    ui32 DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer);
     ui32 DeleteSubSession(ui64 sessionSeqNo);
 
     TVector<NActors::TActorId> GetSubSessions() const;
+    TVector<NActors::TActorId> GetSubSessionsPipeServer() const;
     TVector<TSubSession> GetAllSubSessions() const;
 
     bool HasSeqNo(ui64 seqNo) const;
