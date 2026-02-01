@@ -248,9 +248,10 @@ public:
     NActors::TActorId UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner)
+        const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer)
     {
-        auto result = SubSessions.UpdateSubSession(seqNo, readOnly, owner);
+        auto result = SubSessions.UpdateSubSession(seqNo, readOnly, owner, pipeServer);
         UpdateSeqNo();
         return result;
     }
@@ -258,6 +259,13 @@ public:
     ui32 DeleteSubSession(const NActors::TActorId& owner)
     {
         auto result = SubSessions.DeleteSubSession(owner);
+        UpdateSeqNo();
+        return result;
+    }
+
+    ui32 DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer)
+    {
+        auto result = SubSessions.DeleteSubSessionByPipeServer(pipeServer);
         UpdateSeqNo();
         return result;
     }
@@ -272,6 +280,11 @@ public:
     TVector<NActors::TActorId> GetSubSessions() const
     {
         return SubSessions.GetSubSessions();
+    }
+
+    TVector<NActors::TActorId> GetSubSessionsPipeServer() const
+    {
+        return SubSessions.GetSubSessionsPipeServer();
     }
 
     ui64 GenerateDupCacheEntryId()

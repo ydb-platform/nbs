@@ -1093,7 +1093,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         }
     }
 
-    Y_UNIT_TEST(ShouldMarkSessionAsOrphanAfterPipeDisconnetion)
+    Y_UNIT_TEST(ShouldMarkSessionAsOrphanAfterPipeDisconnect)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -1103,13 +1103,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         
-        bool pipeDisconnectionObserved = false;
+        bool pipeDisconnectObserved = false;
         env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
             Y_UNUSED(runtime);
 
             switch (event->GetTypeRewrite()) {
                 case NKikimr::TEvTabletPipe::EvServerDisconnected: {
-                    pipeDisconnectionObserved = true;
+                    pipeDisconnectObserved = true;
                 }
             }
 
@@ -1122,7 +1122,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
 
         // Check that pipe was disconnected
-        UNIT_ASSERT(pipeDisconnectionObserved);
+        UNIT_ASSERT(pipeDisconnectObserved);
 
         // Check that the tablet handles pipe disconnection 
         // and marks the session as orphaned.
