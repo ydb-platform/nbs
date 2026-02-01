@@ -18,8 +18,14 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError MakeKikimrError(NKikimrProto::EReplyStatus status, TString errorReason = {});
-NProto::TError MakeSchemeShardError(NKikimrScheme::EStatus status, TString errorReason = {});
+NProto::TError MakeKikimrError(
+    NKikimrProto::EReplyStatus status,
+    TString errorReason = {});
+NProto::TError MakeSchemeShardError(
+    NKikimrScheme::EStatus status,
+    TString errorReason = {});
+NProto::TError MakeDescribeSchemeError(
+    const NKikimrScheme::TEvDescribeSchemeResult& result);
 
 inline void PipeSend(
     const NActors::TActorContext& ctx,
