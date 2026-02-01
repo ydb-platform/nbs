@@ -933,6 +933,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
@@ -950,8 +951,11 @@ public:
         TSession* session,
         ui64 sessionSeqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
-    void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
+        const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer);
+    void OrphanSession(
+        const NActors::TActorId& pipeServer,
+        TInstant inactivityDeadline);
     void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
@@ -982,11 +986,14 @@ private:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(TSession* session);
 
-    void TrackSessionOwner(const NActors::TActorId& owner, TSession* session);
+    void TrackSessionByPipeServer(
+        const NActors::TActorId& pipeServer,
+        TSession* session);
 
     //
     // Handles
