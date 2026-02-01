@@ -1113,7 +1113,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             UNIT_ASSERT_VALUES_EQUAL(session.GetSessionId(), "session");
             UNIT_ASSERT_VALUES_EQUAL(session.GetIsOrphan(), true);
         }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 94e93db539 (fix)
     }
 }
 
