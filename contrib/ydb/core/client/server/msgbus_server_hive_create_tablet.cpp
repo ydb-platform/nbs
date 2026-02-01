@@ -1,4 +1,5 @@
 #include "msgbus_tabletreq.h"
+#include <contrib/ydb/core/client/server/msgbus_securereq.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/storage_pools.h>
 #include <contrib/ydb/core/protos/hive.pb.h>
@@ -14,9 +15,9 @@ namespace {
 
 template <typename ResponseType>
 class TMessageBusHiveCreateTablet
-        : public TActorBootstrapped<TMessageBusHiveCreateTablet<ResponseType>>
-        , public TMessageBusSessionIdentHolder {
-using TBase = TActorBootstrapped<TMessageBusHiveCreateTablet<ResponseType>>;
+        : public TMessageBusSecureRequest<TMessageBusServerRequestBase<TMessageBusHiveCreateTablet<ResponseType>>> {
+
+    using TBase = TMessageBusSecureRequest<TMessageBusServerRequestBase<TMessageBusHiveCreateTablet<ResponseType>>>;
 
     struct TRequest {
         TEvHive::EEv Event;
@@ -60,6 +61,7 @@ using TBase = TActorBootstrapped<TMessageBusHiveCreateTablet<ResponseType>>;
     TActorId PipeClient;
 
     TDeque<TRequest> Requests;
+    std::optional<ui64> HiveId;
     NKikimrProto::EReplyStatus Status;
     ui32 ResponsesReceived;
     ui32 DomainUid;
@@ -70,12 +72,16 @@ public:
     }
 
     TMessageBusHiveCreateTablet(TBusMessageContext &msg)
-            : TMessageBusSessionIdentHolder(msg)
+            : TBase(msg)
             , Status(NKikimrProto::UNKNOWN)
             , ResponsesReceived(0)
             , DomainUid(0)
     {
         const auto &record = static_cast<TBusHiveCreateTablet *>(msg.GetMessage())->Record;
+
+        TBase::SetSecurityToken(record.GetSecurityToken());
+        TBase::SetPeerName(msg.GetPeerName());
+        TBase::SetRequireAdminAccess(true);
 
         bool isOk = true;
         ui32 cmdCount = record.CmdCreateTabletSize();
@@ -111,7 +117,7 @@ public:
 
         DomainUid = isOk ? record.GetDomainUid() : 0;
         Status = isOk ? NKikimrProto::OK : NKikimrProto::ERROR;
-
+        HiveId = record.HasHiveId() ? std::make_optional(record.GetHiveId()) : std::nullopt;
         WithRetry = true;
         Timeout = TDuration::MilliSeconds(DefaultTimeout);
     }
@@ -215,7 +221,7 @@ public:
         Y_UNUSED(ev);
         PipeClient = TActorId();
         ErrorReason = Sprintf("Client pipe to Hive destroyed (connection lost), Marker# HC9");
-        SendReplyMove(CreateErrorReply(MSTATUS_ERROR, ctx));
+        this->SendReplyMove(CreateErrorReply(MSTATUS_ERROR, ctx));
         return Die(ctx);
     }
 
@@ -229,7 +235,7 @@ public:
             NTabletPipe::CloseClient(ctx, PipeClient);
             PipeClient = TActorId();
         }
-        TActorBootstrapped<TMessageBusHiveCreateTablet>::Die(ctx);
+        TBase::Die(ctx);
     }
 
     virtual NBus::TBusMessage* CreateErrorReply(EResponseStatus status, const TActorContext &ctx) {
@@ -246,7 +252,7 @@ public:
     }
 
     void SendReplyAndDie(NBus::TBusMessage *reply, const TActorContext &ctx) {
-        SendReplyMove(reply);
+        this->SendReplyMove(reply);
         return Die(ctx);
     }
 
@@ -261,17 +267,14 @@ public:
             clientConfig.RetryPolicy = NTabletPipe::TClientRetryPolicy::WithRetries();
         }
 
-        auto &domainsInfo = *AppData(ctx)->DomainsInfo;
-        auto domainIt = domainsInfo.Domains.find(DomainUid);
-        if (domainIt == domainsInfo.Domains.end()) {
+        auto &domainsInfo = AppData(ctx)->DomainsInfo;
+        if (!domainsInfo->Domain || domainsInfo->GetDomain()->DomainUid != DomainUid) {
             // Report details
             ErrorReason = Sprintf("Incorrect DomainUid# %" PRIu64
                 " or kikimr domian configuration, Marker# HC9", (ui64)DomainUid);
             return SendReplyAndDie(CreateErrorReply(MSTATUS_ERROR, ctx), ctx);
         }
-        auto &domain = domainIt->second;
-        ui64 hiveUid = domain->DefaultHiveUid;
-        ui64 hiveTabletId = domainsInfo.GetHive(hiveUid);
+        ui64 hiveTabletId = HiveId.value_or(domainsInfo->GetHive());
 
         if (Status == NKikimrProto::OK) {
             PipeClient = ctx.RegisterWithSameMailbox(NTabletPipe::CreateClient(ctx.SelfID, hiveTabletId, clientConfig));

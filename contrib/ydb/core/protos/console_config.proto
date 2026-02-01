@@ -113,6 +113,7 @@ message TConfigItem {
         MeteringConfigItem = 45;
         HiveConfigItem = 46;
         DataShardConfigItem = 49;
+        GraphConfigItem = 50;
         FederatedQueryConfigItem = 58;
         CompactionConfigItem = 52;
         HttpProxyConfigItem = 53;
@@ -137,10 +138,15 @@ message TConfigItem {
         AllowEditYamlInUiItem = 75;
         S3ProxyResolverConfigItem = 76;
         BackgroundCleaningConfigItem = 77;
+        MetadataCacheConfigItem = 80;
+        ReplicationConfigItem = 83;
         BlockstoreConfigItem = 93;
 
         NamedConfigsItem = 100;
         ClusterYamlConfigItem = 101;
+
+        // synthetic kind for audit purposes only
+        YamlConfigChangeItem = 32768;
     }
 
     enum EMergeStrategy {
@@ -254,6 +260,7 @@ message TConfigureResponse {
 message TSetYamlConfigRequest {
     optional Ydb.DynamicConfig.SetConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TSetYamlConfigResponse {
@@ -263,6 +270,7 @@ message TSetYamlConfigResponse {
 message TReplaceYamlConfigRequest {
     optional Ydb.DynamicConfig.ReplaceConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TReplaceYamlConfigResponse {
@@ -272,6 +280,7 @@ message TReplaceYamlConfigResponse {
 message TDropConfigRequest {
     optional Ydb.DynamicConfig.DropConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TDropConfigResponse {
@@ -280,6 +289,7 @@ message TDropConfigResponse {
 message TAddVolatileConfigRequest {
     optional Ydb.DynamicConfig.AddVolatileConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TAddVolatileConfigResponse {
@@ -288,6 +298,7 @@ message TAddVolatileConfigResponse {
 message TGetAllConfigsRequest {
     optional Ydb.DynamicConfig.GetConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TGetAllConfigsResponse {
@@ -297,6 +308,7 @@ message TGetAllConfigsResponse {
 
 message TIsYamlReadOnlyRequest {
     optional bytes UserToken = 1;
+    optional string PeerName = 3;
 }
 
 message TIsYamlReadOnlyResponse {
@@ -306,6 +318,7 @@ message TIsYamlReadOnlyResponse {
 message TGetNodeLabelsRequest {
     optional Ydb.DynamicConfig.GetNodeLabelsRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TGetNodeLabelsResponse {
@@ -315,6 +328,7 @@ message TGetNodeLabelsResponse {
 message TGetAllMetadataRequest {
     optional Ydb.DynamicConfig.GetMetadataRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TGetAllMetadataResponse {
@@ -324,6 +338,7 @@ message TGetAllMetadataResponse {
 message TRemoveVolatileConfigRequest {
     optional Ydb.DynamicConfig.RemoveVolatileConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TRemoveVolatileConfigResponse {
@@ -332,6 +347,7 @@ message TRemoveVolatileConfigResponse {
 message TResolveConfigRequest {
     optional Ydb.DynamicConfig.ResolveConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TResolveConfigResponse {
@@ -341,6 +357,7 @@ message TResolveConfigResponse {
 message TResolveAllConfigRequest {
     optional Ydb.DynamicConfig.ResolveAllConfigRequest Request = 1;
     optional bytes UserToken = 2;
+    optional string PeerName = 3;
 }
 
 message TResolveAllConfigResponse {
@@ -484,6 +501,7 @@ message TConfigSubscriptionNotification {
     optional string YamlConfig = 5;
     optional bool YamlConfigNotChanged = 6;
     repeated TVolatileYamlConfig VolatileConfigs = 7;
+    optional NKikimrConfig.TAppConfig RawConsoleConfig = 103; // Used for correct next startup config prediction
 }
 
 message TSubscription {

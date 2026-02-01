@@ -2,10 +2,10 @@
 #include "stream.h"
 #include "parsing.h"
 #include <contrib/ydb/core/formats/arrow/dictionary/conversion.h>
-#include <contrib/ydb/core/formats/arrow/common/validation.h>
 
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/formats/arrow/common/validation.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/ipc/dictionary.h>
 #include <contrib/libs/apache/arrow/cpp/src/arrow/buffer.h>
@@ -22,7 +22,7 @@ arrow::Result<std::shared_ptr<arrow::RecordBatch>> TNativeSerializer::DoDeserial
 
     std::shared_ptr<arrow::Buffer> buffer(std::make_shared<TBufferOverString>(data));
     arrow::io::BufferReader readerStream(buffer);
-    auto reader = TStatusValidator::GetValid(arrow::ipc::RecordBatchStreamReader::Open(&readerStream));
+    auto reader = TStatusValidator::GetValid(arrow::ipc::RecordBatchStreamReader::Open(&readerStream, options));
 
     std::shared_ptr<arrow::RecordBatch> batch;
     auto readResult = reader->ReadNext(&batch);

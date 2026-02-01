@@ -25,18 +25,21 @@ void TPDisk::RenderState(IOutputStream &str, THttpInfo &httpInfo) {
             TABLEBODY() {
                 TABLER() {
                     TABLED() {str << "PDisk";}
+                    TString stateStr = TStringBuilder() << TPDiskMon::TPDisk::StateToStr(Mon.PDiskState->Val()) << (Cfg->ReadOnly ? " (readonly)" : "");
+                    TString briefStateStr = TPDiskMon::TPDisk::BriefStateToStr(Mon.PDiskBriefState->Val());
                     switch(Mon.PDiskBriefState->Val()) {
                     case TPDiskMon::TPDisk::OK:
-                        TABLED() {GREEN_TEXT(str, TPDiskMon::TPDisk::StateToStr(Mon.PDiskState->Val()));}
-                        TABLED() {GREEN_TEXT(str, TPDiskMon::TPDisk::BriefStateToStr(Mon.PDiskBriefState->Val()));}
+                        TABLED() {GREEN_TEXT(str, stateStr);}
+                        TABLED() {GREEN_TEXT(str, briefStateStr);}
                         break;
                     case TPDiskMon::TPDisk::Booting:
-                        TABLED() {YELLOW_TEXT(str, TPDiskMon::TPDisk::StateToStr(Mon.PDiskState->Val()));}
-                        TABLED() {YELLOW_TEXT(str, TPDiskMon::TPDisk::BriefStateToStr(Mon.PDiskBriefState->Val()));}
+                        TABLED() {YELLOW_TEXT(str, stateStr);}
+                        TABLED() {YELLOW_TEXT(str, briefStateStr);}
                         break;
                     case TPDiskMon::TPDisk::Error:
-                        TABLED() {RED_TEXT(str, TPDiskMon::TPDisk::StateToStr(Mon.PDiskState->Val()));}
-                        TABLED() {RED_TEXT(str, TPDiskMon::TPDisk::BriefStateToStr(Mon.PDiskBriefState->Val()));}
+                    case TPDiskMon::TPDisk::Stopped:
+                        TABLED() {RED_TEXT(str, stateStr);}
+                        TABLED() {RED_TEXT(str, briefStateStr);}
                         break;
                     }
                     TABLED() {str << TPDiskMon::TPDisk::DetailedStateToStr(Mon.PDiskDetailedState->Val());}
@@ -77,6 +80,22 @@ void TPDisk::RenderState(IOutputStream &str, THttpInfo &httpInfo) {
                         }
                     }
                 }
+                TABLER() {
+                    TABLED() {str << "PlainDataChunks";}
+                    TABLED() {
+                        if (Format.IsPlainDataChunks()) {
+                            RED_TEXT(str, "Plain data chunks are not supported in this version");
+                            if (!Cfg->PlainDataChunks) {
+                                YELLOW_TEXT(str, "notice: config is set for encrypted chunks");
+                            }
+                        } else {
+                            GREEN_TEXT(str, "Encrypted data chunks are in use");
+                            if (Cfg->PlainDataChunks) {
+                                YELLOW_TEXT(str, "notice: config is set for plain chunks<br>(not supported in this version, nothing is gonna happen)");
+                            }
+                        }
+                    }
+                }
             }
         }
         TAG(TH4) {str << "State description"; }
@@ -100,17 +119,40 @@ void TPDisk::RenderState(IOutputStream &str, THttpInfo &httpInfo) {
         DIV() {
             str << R"___(
                 <script>
-                    function reloadPage() {
-                        window.location.replace(window.location.href);
+                    function reloadPage(data) {
+                        if (data.result) {
+                            window.location.replace(window.location.href);
+                        } else {
+                            alert(data.error);
+                        }
                     }
 
-                    function sendReloadRequest() {
+                    function toggleButtonColor() {
+                        var checkbox = document.getElementById("ignoreChecks");
+                        var okButton = document.getElementById("restartOkButton");
+                        
+                        if (checkbox.checked) {
+                            okButton.classList.remove("btn-primary");
+                            okButton.classList.add("btn-danger");
+                        } else {
+                            okButton.classList.remove("btn-danger");
+                            okButton.classList.add("btn-primary");
+                        }
+                    }
+
+                    function sendRestartRequest() {
+                        let ignoreChecks = document.getElementById("ignoreChecks").checked;
+                        let requestData = "restartPDisk=";
+                        if (ignoreChecks) {
+                            requestData += "&ignoreChecks=true";
+                        }
                         $.ajax({
                             url: "",
-                            data: "restartPDisk=",
+                            data: requestData,
                             method: "POST",
                             success: reloadPage
                         });
+                        $('#restartModal').modal('hide');
                     }
 
                     function sendStopRequest() {
@@ -123,19 +165,41 @@ void TPDisk::RenderState(IOutputStream &str, THttpInfo &httpInfo) {
                     }
                 </script>
             )___";
-            str << "<button onClick='sendReloadRequest()' name='restartPDisk' class='btn btn-default' ";
-            if (Cfg->SectorMap || Mon.PDiskBriefState->Val() == TPDiskMon::TPDisk::Error) {
-                str << "style='background:Tomato; margin:5px' ";
-            } else {
-                str << "disabled ";
-                str << "style='background:LightGray; margin:5px' ";
-            }
-            str << ">";
-            str << "Restart";
-            str << "</button>";
+
+            str << R"___(
+                <button type="button" class="btn btn-default" style="background: LightGray; margin: 5px" 
+                        data-toggle="modal" data-target="#restartModal">
+                    Restart
+                </button>
+
+                <div id="restartModal" class="modal fade" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <button type="button" class="close" data-dismiss="modal">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                                <h4 class="modal-title">Confirm Restart</h4>
+                            </div>
+                            <div class="modal-body">
+                                <p>Are you sure you want to restart?</p>
+                                <div class="checkbox">
+                                    <label>
+                                        <input type="checkbox" id="ignoreChecks" onchange="toggleButtonColor()"> Ignore all checks
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="restartOkButton" onclick="sendRestartRequest()">Restart</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )___";
 
             if (Cfg->SectorMap) {
-                str << "<button onClick='sendStopRequest()' name='stopPDisk' class='btn btn-default' ";
+                str << "<button onclick='sendStopRequest()' name='stopPDisk' class='btn btn-default' ";
                 str << "style='background:Tomato; margin:5px'>";
                 str << "Stop";
                 str << "</button>";
@@ -215,7 +279,7 @@ void TPDisk::OutputHtmlOwners(TStringStream &str) {
                     if (data.VDiskId != TVDiskID::InvalidId) {
                         TABLER() {
                             TABLED() { str << (ui32) owner;}
-                            TABLED() { str << data.VDiskId.ToStringWOGeneration(); }
+                            TABLED() { str << data.VDiskId.ToStringWOGeneration() << "<br/>(" << data.VDiskId.GroupID << ")"; }
                             TABLED() { str << chunksOwned[owner]; }
                             TABLED() { str << data.CutLogId.ToString(); }
                             TABLED() { str << data.WhiteboardProxyId; }
@@ -276,7 +340,7 @@ void TPDisk::OutputHtmlLogChunksDetails(TStringStream &str) {
                         if (id == TVDiskID::InvalidId) {
                             TABLEH() {str << "o" << owner << "v--"; }
                         } else {
-                            TABLEH() {str << "o" << owner << "v" << id.ToStringWOGeneration(); }
+                            TABLEH() {str << "o" << owner << "v" << id.ToStringWOGeneration() << "<br/>(" << id.GroupID << ")"; }
                         }
                     }
                 }

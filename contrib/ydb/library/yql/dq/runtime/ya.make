@@ -12,6 +12,7 @@ PEERDIR(
     contrib/ydb/library/yql/dq/expr_nodes
     contrib/ydb/library/yql/dq/type_ann
     contrib/ydb/library/yql/parser/pg_wrapper/interface
+    contrib/ydb/library/yql/providers/common/comp_nodes
     contrib/ydb/library/yql/providers/common/schema/mkql
     contrib/ydb/library/actors/util
 )

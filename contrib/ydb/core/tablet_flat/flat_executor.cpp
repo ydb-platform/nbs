@@ -324,7 +324,7 @@ void TExecutor::SendReassignYellowChannels(const TVector<ui32> &yellowChannels) 
     if (Owner->ReassignChannelsEnabled()) {
         auto* info = Owner->Info();
         if (Y_LIKELY(info) && info->HiveId) {
-            Send(MakePipePeNodeCacheID(false),
+            Send(MakePipePerNodeCacheID(false),
                 new TEvPipeCache::TEvForward(
                     new TEvHive::TEvReassignTabletSpace(info->TabletID, yellowChannels),
                     info->HiveId,
@@ -414,6 +414,8 @@ void TExecutor::ActivateFollower(const TActorContext &ctx) {
     RecreatePageCollectionsCache();
     ReflectSchemeSettings();
 
+    RequestInMemPagesForDatabase();
+
     Become(&TThis::StateFollower);
     Stats->IsActive = true;
     Stats->IsFollower = true;
@@ -487,6 +489,18 @@ void TExecutor::Active(const TActorContext &ctx) {
     }
 
     MakeLogSnapshot();
+
+    if (loadedState->ShouldSnapshotScheme) {
+        TTxStamp stamp = Stamp();
+        auto alter = Database->GetScheme().GetSnapshot();
+        alter->SetRewrite(true);
+        auto change = alter->SerializeAsString();
+        Database->RollUp(stamp, change, {}, {});
+        auto commit = CommitManager->Begin(true, ECommit::Misc, {});
+        LogicAlter->Clear();
+        LogicAlter->WriteLog(*commit, std::move(change));
+        CommitManager->Commit(commit);
+    }
 
     if (auto error = CheckBorrowConsistency()) {
         if (auto logl = Logger->Log(ELnLev::Crit))
@@ -651,16 +665,21 @@ void TExecutor::TranslateCacheTouchesToSharedCache() {
     Send(MakeSharedPageCacheId(), new NSharedCache::TEvTouch(std::move(touches)));
 }
 
-void TExecutor::RequestInMemPagesForDatabase() {
-    const auto &scheme = Scheme();
-    for (auto &sxpair : scheme.Tables) {
-        auto stickyColumns = GetStickyColumns(sxpair.first);
+void TExecutor::RequestInMemPagesForDatabase(bool pendingOnly) {
+    const auto& scheme = Scheme();
+    for (auto& pr : scheme.Tables) {
+        const ui32 tid = pr.first;
+        if (pendingOnly && !pr.second.PendingCacheEnable) {
+            continue;
+        }
+        auto stickyColumns = GetStickyColumns(tid);
         if (stickyColumns) {
-            auto subset = Database->Subset(sxpair.first, NTable::TEpoch::Max(), { } , { });
+            auto subset = Database->Subset(tid, NTable::TEpoch::Max(), { } , { });
 
             for (auto &partView: subset->Flatten)
-                RequestInMemPagesForPartStore(sxpair.first, partView, stickyColumns);
+                RequestInMemPagesForPartStore(tid, partView, stickyColumns);
         }
+        pr.second.PendingCacheEnable = false;
     }
 }
 
@@ -971,6 +990,7 @@ void TExecutor::ApplyFollowerUpdate(THolder<TEvTablet::TFUpdateBody> update) {
         if (schemeUpdate) {
             ReadResourceProfile();
             ReflectSchemeSettings();
+            RequestInMemPagesForDatabase(/* pendingOnly */ true);
             Owner->OnFollowerSchemaUpdated();
         }
 
@@ -1181,7 +1201,7 @@ bool TExecutor::PrepareExternalPart(TPendingPartSwitch &partSwitch, TPendingPart
     }
 
     if (auto* stage = bundle.GetStage<TPendingPartSwitch::TLoaderStage>()) {
-        if (auto fetch = stage->Loader.Run()) {
+        if (auto fetch = stage->Loader.Run(PreloadTablesData.contains(partSwitch.TableId))) {
             Y_ABORT_UNLESS(fetch.size() == 1, "Cannot handle loads from more than one page collection");
 
             for (auto req : fetch) {
@@ -1299,6 +1319,10 @@ void TExecutor::AdvancePendingPartSwitches() {
     if (PendingPartSwitches.empty()) {
         PlanTransactionActivation();
         MaybeRelaxRejectProbability();
+
+        if (NeedFollowerSnapshot) {
+            MakeLogSnapshot();
+        }
     }
 }
 
@@ -1348,6 +1372,7 @@ void TExecutor::RequestInMemPagesForPartStore(ui32 tableId, const NTable::TPartV
             for (ui32 pageId : req->Pages)
                 PrivatePageCache->MarkSticky(pageId, info);
 
+            // TODO: only request missing pages
             RequestFromSharedCache(req, NBlockIO::EPriority::Bkgr, EPageCollectionRequest::CacheSync);
         }
     }
@@ -1357,6 +1382,10 @@ THashSet<NTable::TTag> TExecutor::GetStickyColumns(ui32 tableId) {
     auto *tableInfo = Scheme().GetTableInfo(tableId);
 
     THashSet<NTable::TTag> stickyColumns;
+    if (!tableInfo) {
+        return stickyColumns;
+    }
+
     for (const auto &column : tableInfo->Columns) {
         const auto* family = tableInfo->Families.FindPtr(column.second.Family);
         if (family && family->Cache == NTable::NPage::ECache::Ever) {
@@ -1771,7 +1800,7 @@ void TExecutor::ExecuteTransaction(TAutoPtr<TSeat> seat, const TActorContext &ct
         Y_ABORT_UNLESS(!seat->CapturedMemory);
         if (!PrivatePageCache->GetStats().CurrentCacheMisses && !seat->RequestedMemory && !txc.IsRescheduled()) {
             Y_Fail(NFmt::Do(*this) << " " << NFmt::Do(*seat) << " type "
-                    << NFmt::Do(*seat->Self) << " postoned w/o demands");
+                    << NFmt::Do(*seat->Self) << " postponed w/o demands");
         }
         PostponeTransaction(seat, env, prod.Change, cpuTimer, ctx);
     }
@@ -1815,16 +1844,14 @@ void TExecutor::PostponeTransaction(TAutoPtr<TSeat> seat, TPageCollectionTxEnv &
     TTxType txType = seat->Self->GetTxType();
 
     ui32 touchedPages = 0;
-    ui64 touchedBytes = 0;
     ui32 newPinnedPages = 0;
-    ui32 waitPages = 0;
     ui32 loadPages = 0;
-    ui64 loadBytes = 0;
     ui64 prevTouched = seat->MemoryTouched;
 
     PrivatePageCache->PinTouches(seat->Pinned, touchedPages, newPinnedPages, seat->MemoryTouched);
 
-    touchedBytes = seat->MemoryTouched - prevTouched;
+    ui32 newTouchedPages = newPinnedPages;
+    ui64 newTouchedBytes = seat->MemoryTouched - prevTouched;
     prevTouched = seat->MemoryTouched;
 
     PrivatePageCache->PinToLoad(seat->Pinned, newPinnedPages, seat->MemoryTouched);
@@ -1838,7 +1865,7 @@ void TExecutor::PostponeTransaction(TAutoPtr<TSeat> seat, TPageCollectionTxEnv &
     if (auto logl = Logger->Log(ELnLev::Debug)) {
         logl
             << NFmt::Do(*this) << " " << NFmt::Do(*seat)
-            << " touch new " << touchedBytes << "b"
+            << " touch new " << newTouchedBytes << "b"
             << ", " << (seat->MemoryTouched - prevTouched) << "b lo load"
             << " (" << seat->MemoryTouched << "b in total)"
             << ", " << requestedMemory << "b requested for data"
@@ -1911,6 +1938,8 @@ void TExecutor::PostponeTransaction(TAutoPtr<TSeat> seat, TPageCollectionTxEnv &
     auto *const pad = padHolder.Get();
     TransactionWaitPads[pad] = std::move(padHolder);
 
+    ui32 waitPages = 0;
+    ui64 loadBytes = 0;
     auto toLoad = PrivatePageCache->GetToLoad();
     for (auto &xpair : toLoad) {
         TPrivatePageCache::TInfo *pageCollectionInfo = xpair.first;
@@ -1919,6 +1948,17 @@ void TExecutor::PostponeTransaction(TAutoPtr<TSeat> seat, TPageCollectionTxEnv &
 
         const std::pair<ui32, ui64> toLoad = PrivatePageCache->Request(pages, pad, pageCollectionInfo);
         if (toLoad.first) {
+            if (auto logl = Logger->Log(ELnLev::Dbg03)) {
+                logl
+                    << NFmt::Do(*this) << " requests PageCollection " << pageCollectionInfo->PageCollection->Label()
+                    << " " << toLoad.second << " bytes, " << toLoad.first << " pages: [";
+                for (auto i : xrange(pages.size())) {
+                    if (i != 0) logl << ", ";
+                    logl << pages[i] << " " << ui32(pageCollectionInfo->GetPageType(pages[i]));
+                }
+                logl << "]";
+            }
+            
             auto *req = new NPageCollection::TFetch(0, pageCollectionInfo->PageCollection, std::move(pages), pad->GetWaitingTraceId());
 
             loadPages += toLoad.first;
@@ -1941,13 +1981,15 @@ void TExecutor::PostponeTransaction(TAutoPtr<TSeat> seat, TPageCollectionTxEnv &
     if (AppTxCounters && txType != UnknownTxType)
         AppTxCounters->TxCumulative(txType, COUNTER_TT_POSTPONED).Increment(1);
 
+    // Note: count all new touched pages (were obtained from cache), even not on the first attempt
+    Counters->Cumulative()[TExecutorCounters::TX_CACHE_HITS].Increment(newTouchedPages);
+    Counters->Cumulative()[TExecutorCounters::TX_BYTES_CACHED].Increment(newTouchedBytes);
     if (pad->Seat->Retries == 1) {
         Counters->Cumulative()[TExecutorCounters::TX_RETRIED].Increment(1);
-        Counters->Cumulative()[TExecutorCounters::TX_CACHE_HITS].Increment(touchedPages);
     }
 
-    Counters->Cumulative()[TExecutorCounters::TX_BYTES_READ].Increment(loadBytes);
     Counters->Cumulative()[TExecutorCounters::TX_CACHE_MISSES].Increment(loadPages);
+    Counters->Cumulative()[TExecutorCounters::TX_BYTES_READ].Increment(loadBytes);
     if (AppTxCounters && txType != UnknownTxType) {
         AppTxCounters->TxCumulative(txType, COUNTER_TT_LOADED_BLOCKS).Increment(loadPages);
         AppTxCounters->TxCumulative(txType, COUNTER_TT_BYTES_READ).Increment(loadBytes);
@@ -1968,8 +2010,17 @@ void TExecutor::CommitTransactionLog(TAutoPtr<TSeat> seat, TPageCollectionTxEnv 
     if (AppTxCounters && txType != UnknownTxType)
         AppTxCounters->TxCumulative(txType, COUNTER_TT_TOUCHED_BLOCKS).Increment(touchedBlocks);
 
-    if (seat->Retries == 1) {
-        Counters->Cumulative()[TExecutorCounters::TX_CACHE_HITS].Increment(touchedBlocks);
+    // Note: count all new touched pages (were obtained from cache), even not on the first attempt
+    ui32 newTouchedPages = 0;
+    ui64 newTouchedBytes = 0, pinnedTouchedBytes = 0;
+    PrivatePageCache->CountTouches(seat->Pinned, newTouchedPages, newTouchedBytes, pinnedTouchedBytes);
+    Counters->Cumulative()[TExecutorCounters::TX_CACHE_HITS].Increment(newTouchedPages);
+    Counters->Cumulative()[TExecutorCounters::TX_BYTES_CACHED].Increment(newTouchedBytes);
+    if (seat->MemoryTouched >= pinnedTouchedBytes) {
+        // memory that was pinned (for instance by Precharge) but wasn't used during the last successful execution
+        Counters->Cumulative()[TExecutorCounters::TX_BYTES_WASTED].Increment(seat->MemoryTouched - pinnedTouchedBytes);
+    } else {
+        Y_DEBUG_ABORT("Cache counters are out of sync");
     }
 
     UnpinTransactionPages(*seat);
@@ -2042,6 +2093,7 @@ void TExecutor::CommitTransactionLog(TAutoPtr<TSeat> seat, TPageCollectionTxEnv 
 
             ReadResourceProfile();
             ReflectSchemeSettings();
+            RequestInMemPagesForDatabase(/* pendingOnly */ true);
 
             // For every table that changed strategy we need to generate a
             // special part switch that notifies bootlogic about new strategy
@@ -2940,6 +2992,8 @@ void TExecutor::Handle(TEvTablet::TEvCommitResult::TPtr &ev, const TActorContext
         Y_ABORT("unknown event cookie");
     }
 
+    Database->UpdateApproximateFreeSharesByChannel(msg->ApproximateFreeSpaceShareByChannel);
+
     CheckYellow(std::move(msg->YellowMoveChannels), std::move(msg->YellowStopChannels));
 
     ProcessIoStats(
@@ -3442,7 +3496,7 @@ void TExecutor::Handle(NOps::TEvResult *ops, TProdCompact *msg, bool cancelled) 
             const auto &newPart = result.Part;
 
             TPageCollectionProtoHelper::Snap(snap, newPart, tableId, logicResult.Changes.NewPartsLevel);
-            TPageCollectionProtoHelper(true, true).Do(bySwitchAux->AddHotBundles(), newPart);
+            TPageCollectionProtoHelper(true, false).Do(bySwitchAux->AddHotBundles(), newPart);
         }
     }
 
@@ -3518,23 +3572,23 @@ void TExecutor::Handle(NOps::TEvResult *ops, TProdCompact *msg, bool cancelled) 
 }
 
 void TExecutor::UpdateUsedTabletMemory() {
-    UsedTabletMemory = 0;
-    // Estimate memory usage for internal executor structures.
-    UsedTabletMemory += 50 << 10; // 50kb
-    // Count the number of bytes exclusive to private cache.
+    // Estimate memory usage for internal executor structures:
+    UsedTabletMemory = 50 << 10; // 50kb
+
+    // Count the number of bytes kept in private cache (can't be offloaded right now):
     if (PrivatePageCache) {
-        UsedTabletMemory += PrivatePageCache->GetStats().TotalExclusive;
+        UsedTabletMemory += PrivatePageCache->GetStats().TotalPinnedBody;
+        UsedTabletMemory += PrivatePageCache->GetStats().PinnedLoadSize;
     }
-    // Estimate memory used by database structures.
+
+    // Estimate memory used by internal database structures:
     auto &counters = Database->Counters();
     UsedTabletMemory += counters.MemTableWaste;
     UsedTabletMemory += counters.MemTableBytes;
-    UsedTabletMemory += counters.Parts.IndexBytes;
     UsedTabletMemory += counters.Parts.OtherBytes;
-    UsedTabletMemory += counters.Parts.ByKeyBytes;
     UsedTabletMemory += Stats->PacksMetaBytes;
 
-    // Add tablet memory usage.
+    // Add tablet memory usage:
     UsedTabletMemory += Owner->GetMemoryUsage();
 }
 
@@ -3552,10 +3606,22 @@ void TExecutor::UpdateCounters(const TActorContext &ctx) {
             { /* Memory consumption of common for leader and follower components */
                 Counters->Simple()[TExecutorCounters::DB_WARM_BYTES].Set(dbCounters.MemTableBytes);
                 Counters->Simple()[TExecutorCounters::DB_META_BYTES].Set(Stats->PacksMetaBytes);
-                Counters->Simple()[TExecutorCounters::DB_INDEX_BYTES].Set(dbCounters.Parts.IndexBytes);
+                Counters->Simple()[TExecutorCounters::DB_FLAT_INDEX_BYTES].Set(dbCounters.Parts.FlatIndexBytes);
+                Counters->Simple()[TExecutorCounters::DB_B_TREE_INDEX_BYTES].Set(dbCounters.Parts.BTreeIndexBytes);
+                Counters->Simple()[TExecutorCounters::DB_INDEX_BYTES].Set(dbCounters.Parts.FlatIndexBytes + dbCounters.Parts.BTreeIndexBytes);
                 Counters->Simple()[TExecutorCounters::DB_OTHER_BYTES].Set(dbCounters.Parts.OtherBytes);
                 Counters->Simple()[TExecutorCounters::DB_BYKEY_BYTES].Set(dbCounters.Parts.ByKeyBytes);
                 Counters->Simple()[TExecutorCounters::USED_TABLET_MEMORY].Set(UsedTabletMemory);
+            }
+
+            // Runtime stats related to uncommitted changes
+            auto runtimeCounters = Database->RuntimeCounters();
+            {
+                Counters->Simple()[TExecutorCounters::DB_OPEN_TX_COUNT].Set(runtimeCounters.OpenTxCount);
+                Counters->Simple()[TExecutorCounters::DB_TXS_WITH_DATA_COUNT].Set(runtimeCounters.TxsWithDataCount);
+                Counters->Simple()[TExecutorCounters::DB_COMMITTED_TX_COUNT].Set(runtimeCounters.CommittedTxCount);
+                Counters->Simple()[TExecutorCounters::DB_REMOVED_TX_COUNT].Set(runtimeCounters.RemovedTxCount);
+                Counters->Simple()[TExecutorCounters::DB_REMOVED_COMMITTED_TXS].Set(runtimeCounters.RemovedCommittedTxs);
             }
 
             if (CommitManager) /* exists only on leader, mostly storage usage data */ {
@@ -4241,7 +4307,7 @@ TString TExecutor::CheckBorrowConsistency() {
 
 TTransactionWaitPad::TTransactionWaitPad(THolder<TSeat> seat)
     : Seat(std::move(seat))
-    , WaitingSpan(NWilson::TSpan(TWilsonTablet::Tablet, Seat->GetTxTraceId(), "Tablet.Transaction.Wait"))
+    , WaitingSpan(NWilson::TSpan(TWilsonTablet::TabletDetailed, Seat->GetTxTraceId(), "Tablet.Transaction.Wait"))
 {}
 
 TTransactionWaitPad::~TTransactionWaitPad()
@@ -4263,7 +4329,7 @@ const NTable::TScheme& TExecutor::DatabaseScheme()
     return Scheme();
 }
 
-TIntrusiveConstPtr<NTable::TRowScheme> TExecutor::RowScheme(ui32 table)
+TIntrusiveConstPtr<NTable::TRowScheme> TExecutor::RowScheme(ui32 table) const
 {
     return Database->GetRowScheme(table);
 }
@@ -4304,8 +4370,85 @@ const NTable::TRowVersionRanges& TExecutor::TableRemovedRowVersions(ui32 table)
     return Database->GetRemovedRowVersions(table);
 }
 
+bool TExecutor::HasSchemaChanges(ui32 table) const {
+    auto *tableInfo = Scheme().GetTableInfo(table);
+    auto rowScheme = RowScheme(table);
+    if (!tableInfo || !rowScheme) {
+        return false;
+    }
+
+    auto subset = Database->Subset(table, NTable::TEpoch::Max(), { } , { });
+    for (const auto& partView : subset->Flatten) {
+        if (HasSchemaChanges(partView, *tableInfo, *rowScheme)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool TExecutor::HasSchemaChanges(const NTable::TPartView& partView, const NTable::TScheme::TTableInfo& tableInfo, const NTable::TRowScheme& rowScheme) const {
+    if (partView.Part->Stat.Rows == 0) {
+        return false;
+    }
+
+    { // Check by key filter existence
+        bool partByKeyFilter = bool(partView->ByKey);
+        bool schemeByKeyFilter = tableInfo.ByKeyFilter;
+        if (partByKeyFilter != schemeByKeyFilter) {
+            return true;
+        }
+    }
+
+    { // Check B-Tree index existence
+        if (AppData()->FeatureFlags.GetEnableLocalDBBtreeIndex() && !partView->IndexPages.HasBTree()) {
+            return true;
+        }
+    }
+
+    { // Check families
+        size_t partFamiliesCount = partView->GroupsCount;
+        size_t schemeFamiliesCount = rowScheme.Families.size();
+        if (partFamiliesCount != schemeFamiliesCount) {
+            return true;
+        }
+
+        for (size_t index : xrange(rowScheme.Families.size())) {
+            auto familyId = rowScheme.Families[index];
+            static const NTable::TScheme::TFamily defaultFamilySettings;
+            const auto& family = tableInfo.Families.ValueRef(familyId, defaultFamilySettings); // Workaround for KIKIMR-17222
+
+            const auto* schemeGroupRoom = tableInfo.Rooms.FindPtr(family.Room);
+            Y_ABORT_UNLESS(schemeGroupRoom, "Cannot find room %" PRIu32 " in table %" PRIu32, family.Room, tableInfo.Id);
+
+            ui32 partGroupChannel = partView.Part->GetGroupChannel(NTable::NPage::TGroupId(index));
+            if (partGroupChannel != schemeGroupRoom->Main) {
+                return true;
+            }
+        }
+    }
+
+    { // Check columns
+        THashMap<NTable::TTag, ui32> partColumnGroups, schemeColumnGroups;
+        for (const auto& column : partView->Scheme->AllColumns) {
+            partColumnGroups[column.Tag] = column.Group;
+        }
+        for (const auto& col : rowScheme.Cols) {
+            schemeColumnGroups[col.Tag] = col.Group;
+        }
+        if (partColumnGroups != schemeColumnGroups) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 ui64 TExecutor::BeginCompaction(THolder<NTable::TCompactionParams> params)
 {
+    if (auto logl = Logger->Log(ELnLev::Info))
+        logl << NFmt::Do(*this) << " starting compaction";
+
     using NTable::NPage::ECache;
 
     auto table = params->Table;
@@ -4321,7 +4464,8 @@ ui64 TExecutor::BeginCompaction(THolder<NTable::TCompactionParams> params)
 
     comp->Epoch = snapshot->Subset->Epoch(); /* narrows requested to actual */
     comp->Layout.Final = comp->Params->IsFinal;
-    comp->Layout.WriteBTreeIndex = false; // will be in 24-2: AppData()->FeatureFlags.GetEnableLocalDBBtreeIndex();
+    comp->Layout.WriteBTreeIndex = AppData()->FeatureFlags.GetEnableLocalDBBtreeIndex();
+    comp->Layout.WriteFlatIndex = AppData()->FeatureFlags.GetEnableLocalDBFlatIndex();
     comp->Writer.StickyFlatIndex = !comp->Layout.WriteBTreeIndex;
     comp->Layout.MaxRows = snapshot->Subset->MaxRows();
     comp->Layout.ByKeyFilter = tableInfo->ByKeyFilter;
@@ -4337,45 +4481,45 @@ ui64 TExecutor::BeginCompaction(THolder<NTable::TCompactionParams> params)
         comp->Writer.Slots.emplace_back(channel, group);
     };
 
+    auto addChannels = [&](const std::vector<ui8>& channels) {
+        for (auto channel : channels) {
+            addChannel(channel);
+        }
+    };
+
     for (size_t group : xrange(rowScheme->Families.size())) {
         auto familyId = rowScheme->Families[group];
-        const auto* family = tableInfo->Families.FindPtr(familyId);
-        if (Y_UNLIKELY(!family)) {
-            // FIXME: workaround for KIKIMR-17222
-            // Column families with default settings may be missing in schema,
-            // so we have to use a static variable as a substitute
-            static const NTable::TScheme::TFamily defaultFamilySettings;
-            family = &defaultFamilySettings;
-        }
-        Y_ABORT_UNLESS(family, "Cannot find family %" PRIu32 " in table %" PRIu32, familyId, table);
+        static const NTable::TScheme::TFamily defaultFamilySettings;
+        const auto& family = tableInfo->Families.ValueRef(familyId, defaultFamilySettings); // Workaround for KIKIMR-17222
 
-        auto roomId = family->Room;
-        auto* room = tableInfo->Rooms.FindPtr(roomId);
-        Y_ABORT_UNLESS(room, "Cannot find room %" PRIu32 " in table %" PRIu32, roomId, table);
+        auto* room = tableInfo->Rooms.FindPtr(family.Room);
+        Y_ABORT_UNLESS(room, "Cannot find room %" PRIu32 " in table %" PRIu32, family.Room, table);
 
         auto& pageGroup = comp->Layout.Groups.at(group);
         auto& writeGroup = comp->Writer.Groups.at(group);
 
-        pageGroup.Codec = family->Codec;
+        pageGroup.Codec = family.Codec;
         pageGroup.PageSize = policy->MinDataPageSize;
         pageGroup.BTreeIndexNodeTargetSize = policy->MinBTreeIndexNodeSize;
         pageGroup.BTreeIndexNodeKeysMin = policy->MinBTreeIndexNodeKeys;
 
-        writeGroup.Cache = Max(family->Cache, cache);
+        writeGroup.Cache = Max(family.Cache, cache);
         writeGroup.MaxBlobSize = NBlockIO::BlockSize;
         writeGroup.Channel = room->Main;
         addChannel(room->Main);
 
         if (group == 0) {
             // Small/Large edges are taken from the leader family
-            comp->Layout.SmallEdge = family->Small;
-            comp->Layout.LargeEdge = family->Large;
+            comp->Layout.SmallEdge = family.Small;
+            comp->Layout.LargeEdge = family.Large;
 
             // Small/Large channels are taken from the leader family
-            comp->Writer.BlobsChannel = room->Blobs;
+            comp->Writer.BlobsChannels = room->Blobs;
             comp->Writer.OuterChannel = room->Outer;
-            addChannel(room->Blobs);
+            addChannels(room->Blobs);
             addChannel(room->Outer);
+
+            comp->Writer.ChannelsShares = NUtil::TChannelsShares(Database->Counters().NormalizedFreeSpaceShareByChannel);
         }
     }
 
@@ -4425,11 +4569,17 @@ ui64 TExecutor::BeginCompaction(THolder<NTable::TCompactionParams> params)
     conf.Trace = true; /* Need for tracking gone blobs in GC */
     conf.Tablet = Owner->TabletID();
 
-    return Scans->StartSystem(table, scan, conf, std::move(snapshot));
+    auto result = Scans->StartSystem(table, scan, conf, std::move(snapshot));
+    if (auto logl = Logger->Log(ELnLev::Info))
+        logl << NFmt::Do(*this) << " started compaction " << result;
+    return result;
 }
 
 bool TExecutor::CancelCompaction(ui64 compactionId)
 {
+    if (auto logl = Logger->Log(ELnLev::Info))
+        logl << NFmt::Do(*this) << " cancelling compaction " << compactionId;
+
     return Scans->CancelSystem(compactionId);
 }
 
@@ -4734,6 +4884,10 @@ void TExecutor::ApplyCompactionChanges(
             }
         }
     }
+}
+
+void TExecutor::SetPreloadTablesData(THashSet<ui32> tables) {
+    PreloadTablesData = std::move(tables);
 }
 
 }

@@ -42,7 +42,8 @@ enum class ESchemeEntryType : i32 {
     Topic = 17,
     ExternalTable = 18,
     ExternalDataSource = 19,
-    View = 20
+    View = 20,
+    ResourcePool = 21
 };
 
 struct TVirtualTimestamp {
@@ -54,7 +55,7 @@ struct TVirtualTimestamp {
     TVirtualTimestamp(const ::Ydb::VirtualTimestamp& proto);
 
     TString ToString() const;
-    void Out(IOutputStream& o) const;
+    void Out(IOutputStream& out) const;
 
     bool operator<(const TVirtualTimestamp& rhs) const;
     bool operator<=(const TVirtualTimestamp& rhs) const;
@@ -75,6 +76,8 @@ struct TSchemeEntry {
 
     TSchemeEntry() = default;
     TSchemeEntry(const ::Ydb::Scheme::Entry& proto);
+
+    void Out(IOutputStream& out) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +92,9 @@ using TAsyncListDirectoryResult = NThreading::TFuture<TListDirectoryResult>;
 
 struct TMakeDirectorySettings : public TOperationRequestSettings<TMakeDirectorySettings> {};
 
-struct TRemoveDirectorySettings : public TOperationRequestSettings<TRemoveDirectorySettings> {};
+struct TRemoveDirectorySettings : public TOperationRequestSettings<TRemoveDirectorySettings> {
+    FLUENT_SETTING_DEFAULT(bool, NotExistsIsOk, false);
+};
 
 struct TDescribePathSettings : public TOperationRequestSettings<TDescribePathSettings> {};
 
@@ -163,6 +168,8 @@ public:
     TDescribePathResult(TStatus&& status, const TSchemeEntry& entry);
     const TSchemeEntry& GetEntry() const;
 
+    void Out(IOutputStream& out) const;
+
 private:
     TSchemeEntry Entry_;
 };
@@ -171,6 +178,8 @@ class TListDirectoryResult : public TDescribePathResult {
 public:
     TListDirectoryResult(TStatus&& status, const TSchemeEntry& self, TVector<TSchemeEntry>&& children);
     const TVector<TSchemeEntry>& GetChildren() const;
+
+    void Out(IOutputStream& out) const;
 
 private:
     TVector<TSchemeEntry> Children_;

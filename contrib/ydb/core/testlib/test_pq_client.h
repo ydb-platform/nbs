@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/persqueue/cluster_tracker.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/mind/address_classification/net_classifier.h>
+#include <contrib/ydb/public/api/protos/draft/persqueue_error_codes.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
@@ -499,9 +500,18 @@ private:
 public:
     void RunYqlSchemeQuery(TString query, bool expectSuccess = true) {
         auto tableClient = NYdb::NTable::TTableClient(*Driver);
-        auto result = tableClient.RetryOperationSync([&](NYdb::NTable::TSession session) {
-            return session.ExecuteSchemeQuery(query).GetValueSync();
-        });
+
+        NYdb::TStatus result(NYdb::EStatus::SUCCESS, NYql::TIssues());
+        for (size_t i = 0; i < 10; ++i) {
+            result = tableClient.RetryOperationSync([&](NYdb::NTable::TSession session) {
+                return session.ExecuteSchemeQuery(query).GetValueSync();
+            });
+            if (!expectSuccess || result.IsSuccess()) {
+                break;
+            }
+            Sleep(TDuration::Seconds(1));
+        }
+
         if (expectSuccess) {
             UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
         } else {
@@ -879,8 +889,8 @@ public:
 
     void GrantConsumerAccess(const TString& oldName, const TString& subj) {
         NACLib::TDiffACL acl;
-        acl.AddAccess(NACLib::EAccessType::Allow, NACLib::ReadAttributes, subj);
-        acl.AddAccess(NACLib::EAccessType::Allow, NACLib::WriteAttributes, subj);
+        // in future use right UseConsumer
+        acl.AddAccess(NACLib::EAccessType::Allow, NACLib::SelectRow, subj);
         auto name = NPersQueue::ConvertOldConsumerName(oldName);
         auto pos = name.rfind("/");
         Y_ABORT_UNLESS(pos != TString::npos);
@@ -1069,9 +1079,13 @@ public:
         return "";
     }
 
-    void ChooseProxy() {
+    void ChooseProxy(const TString& securityToken = {}) {
         NKikimrClient::TChooseProxyRequest request;
         NKikimrClient::TResponse response;
+
+        if (!securityToken.empty()) {
+            request.SetSecurityToken(securityToken);
+        }
 
         Cerr << "ChooseProxy request to server " << Client->GetConfig().Ip << ":" << Client->GetConfig().Port << "\n"
                 << PrintToString(request) << Endl;

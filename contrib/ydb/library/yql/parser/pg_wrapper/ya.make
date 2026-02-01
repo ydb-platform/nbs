@@ -38,6 +38,8 @@ SRCS(
     cost_mocks.cpp
     syscache.cpp
     pg_utils_wrappers.cpp
+    utils.cpp
+    ctors.cpp
 )
 
 IF (ARCH_X86_64)
@@ -55,10 +57,15 @@ INCLUDE(pg_sources.inc)
 
 INCLUDE(pg_kernel_sources.inc)
 
-IF (NOT OPENSOURCE AND NOT OS_WINDOWS AND NOT SANITIZER_TYPE AND NOT BUILD_TYPE == "DEBUG")
+IF (NOT OS_WINDOWS AND NOT SANITIZER_TYPE AND NOT BUILD_TYPE == "DEBUG")
+USE_LLVM_BC14()
 INCLUDE(pg_bc.all.inc)
 ELSE()
 CFLAGS(-DUSE_SLOW_PG_KERNELS)
+ENDIF()
+
+IF (BUILD_TYPE == "DEBUG")
+CFLAGS(-DDISABLE_COMPLEX_MACRO)
 ENDIF()
 
 PEERDIR(
@@ -73,6 +80,10 @@ PEERDIR(
     contrib/ydb/library/yql/public/issue
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/utils
+    contrib/ydb/library/yql/public/decimal
+    contrib/ydb/library/binary_json
+    contrib/ydb/library/dynumber
+    contrib/ydb/library/uuid
 
     contrib/libs/icu
     contrib/libs/libc_compat

@@ -1,12 +1,13 @@
 #pragma once
-#include "contrib/ydb/core/scheme/scheme_pathid.h"
+#include <contrib/ydb/core/scheme/scheme_pathid.h>
+#include <contrib/ydb/core/protos/base.pb.h>
 #include "statestorage.h"
 
 namespace NKikimr {
 
-inline TActorId MakeStateStorageReplicaID(ui32 node, ui64 stateStorageGroup, ui32 replicaIndex) {
+inline TActorId MakeStateStorageReplicaID(ui32 node, ui32 replicaIndex) {
     char x[12] = { 's', 't', 's' };
-    x[3] = (char)stateStorageGroup;
+    x[3] = (char)1; // stateStorageGroup
     memcpy(x + 5, &replicaIndex, sizeof(ui32));
     return TActorId(node, TStringBuf(x, 12));
 }
@@ -113,17 +114,21 @@ struct TEvStateStorage::TEvReplicaProbeDisconnected : public TEventLocal<TEvRepl
 
 struct TEvStateStorage::TEvResolveReplicas : public TEventLocal<TEvResolveReplicas, EvResolveReplicas> {
     const ui64 TabletID;
+    const bool Subscribe;
 
-    TEvResolveReplicas(ui64 tabletId)
+    TEvResolveReplicas(ui64 tabletId, bool subscribe = false)
         : TabletID(tabletId)
+        , Subscribe(subscribe)
     {}
 };
 
 struct TEvStateStorage::TEvResolveBoard : public TEventLocal<TEvResolveBoard, EvResolveBoard> {
     const TString Path;
+    const bool Subscribe;
 
-    TEvResolveBoard(const TString &path)
+    TEvResolveBoard(const TString &path, bool subscribe = false)
         : Path(path)
+        , Subscribe(subscribe)
     {}
 };
 
@@ -137,15 +142,18 @@ struct TEvStateStorage::TEvResolveSchemeBoard : public TEventLocal<TEvResolveSch
     const TPathId PathId;
 
     const EKeyType KeyType;
+    const bool Subscribe;
 
-    TEvResolveSchemeBoard(const TString &path)
+    TEvResolveSchemeBoard(const TString &path, bool subscribe = false)
         : Path(path)
         , KeyType(KeyTypePath)
+        , Subscribe(subscribe)
     {}
 
-    TEvResolveSchemeBoard(const TPathId& pathId)
+    TEvResolveSchemeBoard(const TPathId& pathId, bool subscribe = false)
         : PathId(pathId)
         , KeyType(KeyTypePathId)
+        , Subscribe(subscribe)
     {}
 };
 
@@ -155,6 +163,11 @@ struct TEvStateStorage::TEvResolveReplicasList : public TEventLocal<TEvResolveRe
 };
 
 struct TEvStateStorage::TEvListSchemeBoard : public TEventLocal<TEvListSchemeBoard, EvListSchemeBoard> {
+    const bool Subscribe = false;
+
+    TEvListSchemeBoard(bool subscribe)
+        : Subscribe(subscribe)
+    {}
 };
 
 struct TEvStateStorage::TEvListSchemeBoardResult : public TEventLocal<TEvListSchemeBoardResult, EvListSchemeBoardResult> {

@@ -9,6 +9,7 @@ IF (NOT OS_WINDOWS)
         contrib/ydb/library/actors/core
         library/cpp/digest/md5
         library/cpp/testing/unittest
+        contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core
         contrib/ydb/core/protos
         contrib/ydb/core/testlib/basics/default
         contrib/ydb/library/yql/minikql/comp_nodes/llvm14

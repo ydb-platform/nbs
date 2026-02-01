@@ -5,6 +5,8 @@
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+#include <contrib/ydb/core/protos/follower_group.pb.h>
+#include <contrib/ydb/core/protos/table_service_config.pb.h>
 
 #include <contrib/ydb/library/yql/dq/tasks/dq_connection_builder.h>
 #include <contrib/ydb/library/yql/dq/tasks/dq_tasks_graph.h>
@@ -89,9 +91,12 @@ struct TStageInfoMeta {
 struct TGraphMeta {
     IKqpGateway::TKqpSnapshot Snapshot;
     TMaybe<ui64> LockTxId;
+    ui32 LockNodeId;
     std::unordered_map<ui64, TActorId> ResultChannelProxies;
     TActorId ExecuterId;
     bool UseFollowers = false;
+    bool AllowInconsistentReads = false;
+    bool AllowWithSpilling = false;
     TIntrusivePtr<TProtoArenaHolder> Arena;
     TString Database;
     NKikimrConfig::TTableServiceConfig::EChannelTransportVersion ChannelTransportVersion;
@@ -113,6 +118,10 @@ struct TGraphMeta {
     void SetLockTxId(TMaybe<ui64> lockTxId) {
         LockTxId = lockTxId;
     }
+
+    void SetLockNodeId(ui32 lockNodeId) {
+        LockNodeId = lockNodeId;
+    }
 };
 
 struct TTaskInputMeta {
@@ -123,6 +132,7 @@ struct TTaskInputMeta {
 };
 
 struct TTaskOutputMeta {
+    NKikimrKqp::TKqpTableSinkSettings* SinkSettings = nullptr;
     THashMap<ui64, const TKeyDesc::TPartitionInfo*> ShardPartitions;
 };
 
@@ -166,6 +176,7 @@ public:
     ui32 Type = Unknown;
 
     TActorId ResultChannelActorId;
+    bool Completed = false;
     THashMap<TString, TString> TaskParams; // Params for sources/sinks
     TVector<TString> ReadRanges; // Partitioning for sources
     THashMap<TString, TString> SecureParams;
@@ -255,7 +266,6 @@ void BuildKqpStageChannels(TKqpTasksGraph& tasksGraph, const TStageInfo& stageIn
     ui64 txId, bool enableSpilling);
 
 NYql::NDqProto::TDqTask* ArenaSerializeTaskToProto(TKqpTasksGraph& tasksGraph, const TTask& task, bool serializeAsyncIoSettings);
-void SerializeTaskToProto(const TKqpTasksGraph& tasksGraph, const TTask& task, NYql::NDqProto::TDqTask* message, bool serializeAsyncIoSettings);
 void FillTableMeta(const TStageInfo& stageInfo, NKikimrTxDataShard::TKqpTransaction_TTableMeta* meta);
 void FillChannelDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TChannel& channelDesc, const NYql::NDq::TChannel& channel,
     const NKikimrConfig::TTableServiceConfig::EChannelTransportVersion chanTransportVersion, bool enableSpilling);

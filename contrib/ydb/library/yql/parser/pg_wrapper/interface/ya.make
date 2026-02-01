@@ -19,6 +19,7 @@ PEERDIR(
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/arrow
     contrib/ydb/library/yql/core/cbo
+    library/cpp/disjoint_sets
 )
 
 YQL_LAST_ABI_VERSION()

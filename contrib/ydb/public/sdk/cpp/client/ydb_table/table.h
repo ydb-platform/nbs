@@ -23,6 +23,8 @@ class CreateTableRequest;
 class Changefeed;
 class ChangefeedDescription;
 class DescribeTableResult;
+class ExplicitPartitions;
+class GlobalIndexSettings;
 class PartitioningSettings;
 class DateTypeColumnModeSettings;
 class TtlSettings;
@@ -97,19 +99,29 @@ private:
     TMaybe<TKeyBound> To_;
 };
 
+struct TSequenceDescription {
+    struct TSetVal {
+        i64 NextValue;
+        bool NextUsed;
+    };
+    std::optional<TSetVal> SetVal;
+};
+
 struct TTableColumn {
     TString Name;
     TType Type;
     TString Family;
     std::optional<bool> NotNull;
+    std::optional<TSequenceDescription> SequenceDescription;
 
     TTableColumn() = default;
 
-    TTableColumn(TString name, TType type, TString family = TString(), std::optional<bool> notNull = std::nullopt)
+    TTableColumn(TString name, TType type, TString family = TString(), std::optional<bool> notNull = std::nullopt, std::optional<TSequenceDescription> sequenceDescription = std::nullopt)
         : Name(std::move(name))
         , Type(std::move(type))
         , Family(std::move(family))
         , NotNull(std::move(notNull))
+        , SequenceDescription(std::move(sequenceDescription))
     { }
 
     // Conversion from TColumn for API compatibility
@@ -148,17 +160,63 @@ struct TAlterTableColumn {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//! Represents table partitioning settings
+class TPartitioningSettings {
+public:
+    TPartitioningSettings();
+    explicit TPartitioningSettings(const Ydb::Table::PartitioningSettings& proto);
+
+    const Ydb::Table::PartitioningSettings& GetProto() const;
+
+    TMaybe<bool> GetPartitioningBySize() const;
+    TMaybe<bool> GetPartitioningByLoad() const;
+    ui64 GetPartitionSizeMb() const;
+    ui64 GetMinPartitionsCount() const;
+    ui64 GetMaxPartitionsCount() const;
+
+private:
+    class TImpl;
+    std::shared_ptr<TImpl> Impl_;
+};
+
+struct TExplicitPartitions {
+    using TSelf = TExplicitPartitions;
+
+    FLUENT_SETTING_VECTOR(TValue, SplitPoints);
+
+    static TExplicitPartitions FromProto(const Ydb::Table::ExplicitPartitions& proto);
+    void SerializeTo(Ydb::Table::ExplicitPartitions& proto) const;
+};
+
+struct TGlobalIndexSettings {
+    using TUniformOrExplicitPartitions = std::variant<std::monostate, ui64, TExplicitPartitions>;
+
+    TPartitioningSettings PartitioningSettings;
+    TUniformOrExplicitPartitions Partitions;
+
+    static TGlobalIndexSettings FromProto(const Ydb::Table::GlobalIndexSettings& proto);
+    void SerializeTo(Ydb::Table::GlobalIndexSettings& proto) const;
+};
+
 //! Represents index description
 class TIndexDescription {
     friend class NYdb::TProtoAccessor;
 
 public:
     TIndexDescription(
-        const TString& name, EIndexType type,
+        const TString& name,
+        EIndexType type,
         const TVector<TString>& indexColumns,
-        const TVector<TString>& dataColumns = TVector<TString>());
+        const TVector<TString>& dataColumns = {},
+        const TGlobalIndexSettings& settings = {}
+    );
 
-    TIndexDescription(const TString& name, const TVector<TString>& indexColumns, const TVector<TString>& dataColumns = TVector<TString>());
+    TIndexDescription(
+        const TString& name,
+        const TVector<TString>& indexColumns,
+        const TVector<TString>& dataColumns = {},
+        const TGlobalIndexSettings& settings = {}
+    );
 
     const TString& GetIndexName() const;
     EIndexType GetIndexType() const;
@@ -182,6 +240,7 @@ private:
     EIndexType IndexType_;
     TVector<TString> IndexColumns_;
     TVector<TString> DataColumns_;
+    TGlobalIndexSettings GlobalIndexSettings_;
     ui64 SizeBytes = 0;
 };
 
@@ -213,9 +272,26 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-//! Represents index description
+//! Represents changefeed description
 class TChangefeedDescription {
     friend class NYdb::TProtoAccessor;
+
+public:
+    class TInitialScanProgress {
+    public:
+        TInitialScanProgress();
+        explicit TInitialScanProgress(ui32 total, ui32 completed);
+
+        TInitialScanProgress& operator+=(const TInitialScanProgress& other);
+
+        ui32 GetPartsTotal() const;
+        ui32 GetPartsCompleted() const;
+        float GetProgress() const; // percentage
+
+    private:
+        ui32 PartsTotal;
+        ui32 PartsCompleted;
+    };
 
 public:
     TChangefeedDescription(const TString& name, EChangefeedMode mode, EChangefeedFormat format);
@@ -244,6 +320,7 @@ public:
     bool GetInitialScan() const;
     const THashMap<TString, TString>& GetAttributes() const;
     const TString& GetAwsRegion() const;
+    const std::optional<TInitialScanProgress>& GetInitialScanProgress() const;
 
     void SerializeTo(Ydb::Table::Changefeed& proto) const;
     TString ToString() const;
@@ -267,6 +344,7 @@ private:
     bool InitialScan_ = false;
     THashMap<TString, TString> Attributes_;
     TString AwsRegion_;
+    std::optional<TInitialScanProgress> InitialScanProgress_;
 };
 
 bool operator==(const TChangefeedDescription& lhs, const TChangefeedDescription& rhs);
@@ -277,6 +355,7 @@ bool operator!=(const TChangefeedDescription& lhs, const TChangefeedDescription&
 struct TPartitionStats {
     ui64 Rows = 0;
     ui64 Size = 0;
+    ui32 LeaderNodeId = 0;
 };
 
 class TDateTypeColumnModeSettings {
@@ -425,25 +504,6 @@ private:
     std::shared_ptr<TImpl> Impl_;
 };
 
-//! Represents table partitioning settings
-class TPartitioningSettings {
-public:
-    TPartitioningSettings();
-    explicit TPartitioningSettings(const Ydb::Table::PartitioningSettings& proto);
-
-    const Ydb::Table::PartitioningSettings& GetProto() const;
-
-    TMaybe<bool> GetPartitioningBySize() const;
-    TMaybe<bool> GetPartitioningByLoad() const;
-    ui64 GetPartitionSizeMb() const;
-    ui64 GetMinPartitionsCount() const;
-    ui64 GetMaxPartitionsCount() const;
-
-private:
-    class TImpl;
-    std::shared_ptr<TImpl> Impl_;
-};
-
 //! Represents table read replicas settings
 class TReadReplicasSettings {
 public:
@@ -540,12 +600,13 @@ private:
     TTableDescription();
     explicit TTableDescription(const Ydb::Table::CreateTableRequest& request);
 
-    void AddColumn(const TString& name, const Ydb::Type& type, const TString& family, std::optional<bool> notNull);
+    void AddColumn(const TString& name, const Ydb::Type& type, const TString& family, std::optional<bool> notNull, std::optional<TSequenceDescription> sequenceDescription);
     void SetPrimaryKeyColumns(const TVector<TString>& primaryKeyColumns);
 
     // common
     void AddSecondaryIndex(const TString& indexName, EIndexType type, const TVector<TString>& indexColumns);
     void AddSecondaryIndex(const TString& indexName, EIndexType type, const TVector<TString>& indexColumns, const TVector<TString>& dataColumns);
+    void AddSecondaryIndex(const TIndexDescription& indexDescription);
     // sync
     void AddSyncSecondaryIndex(const TString& indexName, const TVector<TString>& indexColumns);
     void AddSyncSecondaryIndex(const TString& indexName, const TVector<TString>& indexColumns, const TVector<TString>& dataColumns);
@@ -629,6 +690,7 @@ public:
 
     TColumnFamilyBuilder& SetData(const TString& media);
     TColumnFamilyBuilder& SetCompression(EColumnFamilyCompression compression);
+    TColumnFamilyBuilder& SetKeepInMemory(bool enabled);
 
     TColumnFamilyDescription Build() const;
 
@@ -688,6 +750,11 @@ public:
 
     TTableColumnFamilyBuilder& SetCompression(EColumnFamilyCompression compression) {
         Builder_.SetCompression(compression);
+        return *this;
+    }
+
+    TTableColumnFamilyBuilder& SetKeepInMemory(bool enabled) {
+        Builder_.SetKeepInMemory(enabled);
         return *this;
     }
 
@@ -754,8 +821,10 @@ public:
     TTableBuilder& AddNonNullableColumn(const TString& name, const TPgType& type, const TString& family = TString());
     TTableBuilder& SetPrimaryKeyColumns(const TVector<TString>& primaryKeyColumns);
     TTableBuilder& SetPrimaryKeyColumn(const TString& primaryKeyColumn);
+    TTableBuilder& AddSerialColumn(const TString& name, const EPrimitiveType& type, TSequenceDescription sequenceDescription, const TString& family = TString());
 
     // common
+    TTableBuilder& AddSecondaryIndex(const TIndexDescription& indexDescription);
     TTableBuilder& AddSecondaryIndex(const TString& indexName, EIndexType type, const TVector<TString>& indexColumns, const TVector<TString>& dataColumns);
     TTableBuilder& AddSecondaryIndex(const TString& indexName, EIndexType type, const TVector<TString>& indexColumns);
     TTableBuilder& AddSecondaryIndex(const TString& indexName, EIndexType type, const TString& indexColumn);
@@ -1221,12 +1290,6 @@ struct TStoragePolicy {
     FLUENT_SETTING_VECTOR(TColumnFamilyPolicy, ColumnFamilies);
 };
 
-struct TExplicitPartitions {
-    using TSelf = TExplicitPartitions;
-
-    FLUENT_SETTING_VECTOR(TValue, SplitPoints);
-};
-
 struct TPartitioningPolicy {
     using TSelf = TPartitioningPolicy;
 
@@ -1326,6 +1389,11 @@ public:
 
     TAlterColumnFamilyBuilder& SetCompression(EColumnFamilyCompression compression) {
         Builder_.SetCompression(compression);
+        return *this;
+    }
+
+    TAlterColumnFamilyBuilder& SetKeepInMemory(bool enabled) {
+        Builder_.SetKeepInMemory(enabled);
         return *this;
     }
 
@@ -1530,6 +1598,8 @@ struct TDescribeTableSettings : public TOperationRequestSettings<TDescribeTableS
     FLUENT_SETTING_DEFAULT(bool, WithKeyShardBoundary, false);
     FLUENT_SETTING_DEFAULT(bool, WithTableStatistics, false);
     FLUENT_SETTING_DEFAULT(bool, WithPartitionStatistics, false);
+    FLUENT_SETTING_DEFAULT(bool, WithSetVal, false);
+    FLUENT_SETTING_DEFAULT(bool, WithShardNodesInfo, false);
 };
 
 struct TExplainDataQuerySettings : public TOperationRequestSettings<TExplainDataQuerySettings> {
@@ -1577,6 +1647,8 @@ struct TReadTableSettings : public TRequestSettings<TReadTableSettings> {
     FLUENT_SETTING_OPTIONAL(ui64, BatchLimitBytes);
 
     FLUENT_SETTING_OPTIONAL(ui64, BatchLimitRows);
+
+    FLUENT_SETTING_OPTIONAL(bool, ReturnNotNullAsOptional);
 };
 
 //! Represents all session operations
@@ -1855,6 +1927,8 @@ private:
     ui64 TxId_;
 };
 
+using TVirtualTimestamp = TReadTableSnapshot;
+
 template<typename TPart>
 class TSimpleStreamPart : public TStreamPartStatus {
 public:
@@ -1908,6 +1982,10 @@ public:
     const TString& GetDiagnostics() const { return *Diagnostics_; }
     TString&& ExtractDiagnostics() { return std::move(*Diagnostics_); }
 
+    bool HasVirtualTimestamp() const { return Vt_.has_value(); }
+    const TVirtualTimestamp& GetVirtualTimestamp() const { return *Vt_; }
+    TVirtualTimestamp&& ExtractVirtualTimestamp() { return std::move(*Vt_); }
+
     TScanQueryPart(TStatus&& status)
         : TStreamPartStatus(std::move(status))
     {}
@@ -1918,17 +1996,20 @@ public:
         , Diagnostics_(diagnostics)
     {}
 
-    TScanQueryPart(TStatus&& status, TResultSet&& resultSet, const TMaybe<TQueryStats>& queryStats, const TMaybe<TString>& diagnostics)
+    TScanQueryPart(TStatus&& status, TResultSet&& resultSet, const TMaybe<TQueryStats>& queryStats,
+        const TMaybe<TString>& diagnostics, std::optional<TVirtualTimestamp>&& vt)
         : TStreamPartStatus(std::move(status))
         , ResultSet_(std::move(resultSet))
         , QueryStats_(queryStats)
         , Diagnostics_(diagnostics)
+        , Vt_(std::move(vt))
     {}
 
 private:
     TMaybe<TResultSet> ResultSet_;
     TMaybe<TQueryStats> QueryStats_;
     TMaybe<TString> Diagnostics_;
+    std::optional<TVirtualTimestamp> Vt_;
 };
 
 using TAsyncScanQueryPart = NThreading::TFuture<TScanQueryPart>;
@@ -2008,19 +2089,3 @@ class TReadRowsResult : public TStatus {
 
 } // namespace NTable
 } // namespace NYdb
-
-Y_DECLARE_OUT_SPEC(inline, NYdb::NTable::TIndexDescription, o, x) {
-    return x.Out(o);
-}
-
-Y_DECLARE_OUT_SPEC(inline, NYdb::NTable::TChangefeedDescription, o, x) {
-    return x.Out(o);
-}
-
-Y_DECLARE_OUT_SPEC(inline, NYdb::NTable::TValueSinceUnixEpochModeSettings::EUnit, o, x) {
-    return NYdb::NTable::TValueSinceUnixEpochModeSettings::Out(o, x);
-}
-
-Y_DECLARE_OUT_SPEC(inline, NYdb::NTable::TTxSettings, o, x) {
-    return x.Out(o);
-}

@@ -16,7 +16,7 @@ PEERDIR(
     library/cpp/yson/node
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/persqueue/ut/common
-    contrib/ydb/core/testlib/default
+    contrib/ydb/core/testlib/pg
     contrib/ydb/public/sdk/cpp/client/draft
 )
 

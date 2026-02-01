@@ -13,6 +13,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/engine
+    contrib/ydb/library/yql/core
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
     contrib/ydb/core/util

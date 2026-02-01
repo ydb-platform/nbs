@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/wrappers/ut_helpers/s3_mock.h>
 #include <contrib/ydb/core/wrappers/s3_wrapper.h>
 #include <contrib/ydb/core/wrappers/fake_storage.h>
-#include <contrib/ydb/core/formats/arrow/hash/xx_hash.h>
+#include <contrib/ydb/library/formats/arrow/hash/xx_hash.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
 #include <contrib/ydb/services/metadata/manager/alter.h>
@@ -87,7 +87,6 @@ Y_UNIT_TEST_SUITE(ExternalIndex) {
             .SetUseRealThreads(false)
             .SetEnableMetadataProvider(true)
             .SetEnableExternalIndex(true)
-            .SetEnableBackgroundTasks(true)
             .SetEnableOlapSchemaOperations(true);
         ;
 

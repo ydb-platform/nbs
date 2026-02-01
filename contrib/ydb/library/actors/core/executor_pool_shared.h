@@ -1,6 +1,5 @@
 #pragma once
 
-#include "config.h"
 #include "executor_pool.h"
 #include "executor_thread_ctx.h"
 
@@ -8,7 +7,22 @@
 namespace NActors {
 
     struct TExecutorThreadCtx;
+    struct TSharedExecutorPoolConfig;
     class TBasicExecutorPool;
+
+    struct TSharedPoolState {
+        std::vector<i16> ThreadByPool;
+        std::vector<i16> PoolByThread;
+        std::vector<i16> BorrowedThreadByPool;
+        std::vector<i16> PoolByBorrowedThread;
+
+        TSharedPoolState(i16 poolCount, i16 threadCount)
+            : ThreadByPool(poolCount, -1)
+            , PoolByThread(threadCount)
+            , BorrowedThreadByPool(poolCount, -1)
+            , PoolByBorrowedThread(threadCount, -1)
+        {}
+    };
 
     class TSharedExecutorPool: public IActorThreadPool {
     public:
@@ -23,21 +37,21 @@ namespace NActors {
 
         TSharedExecutorThreadCtx *GetSharedThread(i16 poolId);
         void GetSharedStats(i16 pool, std::vector<TExecutorThreadStats>& statsCopy);
+        void GetSharedStatsForHarmonizer(i16 pool, std::vector<TExecutorThreadStats>& statsCopy);
         TCpuConsumption GetThreadCpuConsumption(i16 poolId, i16 threadIdx);
         std::vector<TCpuConsumption> GetThreadsCpuConsumption(i16 poolId);
 
-        void ReturnHalfThread(i16 pool);
+        void ReturnOwnHalfThread(i16 pool);
+        void ReturnBorrowedHalfThread(i16 pool);
         void GiveHalfThread(i16 from, i16 to);
 
         i16 GetSharedThreadCount() const;
 
+        TSharedPoolState GetState() const;
 
     private:
-        std::vector<i16> ThreadByPool;
-        std::vector<i16> PoolByThread;
-        std::vector<i16> BorrowedThreadByPool;
-        std::vector<i16> PoolByBorrowedThread;
-    
+        TSharedPoolState State;
+   
         std::vector<TBasicExecutorPool*> Pools;
 
         i16 PoolCount;

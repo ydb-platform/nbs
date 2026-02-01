@@ -225,16 +225,8 @@ class TDataShard::TTxApplyChangeRecords: public TTransactionBase<TDataShard> {
 
         ui64 keyBytes = 0;
         for (size_t i = 0; i < tableInfo.KeyColumnTypes.size(); ++i) {
-            const auto type = tableInfo.KeyColumnTypes.at(i);
+            const NScheme::TTypeId type = tableInfo.KeyColumnTypes.at(i).GetTypeId();
             const auto& cell = KeyCells.GetCells().at(i);
-
-            if (type.GetTypeId() == NScheme::NTypeIds::Uint8 && !cell.IsNull() && cell.AsValue<ui8>() > 127) {
-                AddRecordStatus(ctx, record.GetOrder(), NKikimrChangeExchange::TEvStatus::STATUS_REJECT,
-                    NKikimrChangeExchange::TEvStatus::REASON_SCHEME_ERROR,
-                    "Keys with Uint8 column values >127 are currently prohibited");
-                return false;
-            }
-
             keyBytes += cell.Size();
             Key.emplace_back(cell.AsRef(), type);
         }
@@ -290,7 +282,7 @@ class TDataShard::TTxApplyChangeRecords: public TTransactionBase<TDataShard> {
                         return false;
                     }
 
-                    Value.emplace_back(tag, NTable::ECellOp::Set, TRawTypeValue(cell.AsRef(), column->Type));
+                    Value.emplace_back(tag, NTable::ECellOp::Set, TRawTypeValue(cell.AsRef(), column->Type.GetTypeId()));
                 }
 
                 break;

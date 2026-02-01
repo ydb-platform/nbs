@@ -16,6 +16,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/tablet_resolver.h>
+#include <contrib/ydb/core/base/blobstorage_common.h>
 #include <contrib/ydb/core/blob_depot/agent/agent.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
@@ -40,6 +41,7 @@
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
 #include <google/protobuf/text_format.h>
+#include <google/protobuf/util/json_util.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>

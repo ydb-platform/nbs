@@ -55,7 +55,6 @@ NNodes::TExprBase DqBuildShuffleStage(NNodes::TExprBase node, TExprContext& ctx,
 
 NNodes::TExprBase DqBuildFinalizeByKeyStage(NNodes::TExprBase node, TExprContext& ctx,
     const TParentsMap& parentsMap, bool allowStageMultiUsage = true);
-NNodes::TExprBase DqBuildHashShuffleByKeyStage(NNodes::TExprBase node, TExprContext& ctx, const TParentsMap& parentsMap);
 
 NNodes::TExprBase DqBuildAggregationResultStage(NNodes::TExprBase node, TExprContext& ctx,
     IOptimizationContext& optCtx);
@@ -126,5 +125,7 @@ TVector<NYql::NNodes::TCoArgument> PrepareArgumentsReplacement(const NYql::NNode
     NYql::TExprContext& ctx, NYql::TNodeOnNodeOwnedMap& replaceMap);
 
 NNodes::TExprBase DqBuildStageWithSourceWrap(NNodes::TExprBase node, TExprContext& ctx);
+
+NNodes::TExprBase DqBuildStageWithReadWrap(NNodes::TExprBase node, TExprContext& ctx);
 
 } // namespace NYql::NDq

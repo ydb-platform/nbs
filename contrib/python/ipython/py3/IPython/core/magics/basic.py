@@ -40,6 +40,9 @@ class MagicsDisplay(object):
     def _repr_pretty_(self, p, cycle):
         p.text(self._lsmagic())
     
+    def __repr__(self):
+        return self.__str__()
+
     def __str__(self):
         return self._lsmagic()
     
@@ -124,7 +127,7 @@ class BasicMagics(Magics):
           In [6]: %whereami
           Out[6]: '/home/testuser'
 
-          In [7]: %alias_magic h history "-p -l 30" --line
+          In [7]: %alias_magic h history -p "-l 30" --line
           Created `%h` as an alias for `%history -l 30`.
         """
 

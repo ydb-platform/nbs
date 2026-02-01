@@ -49,7 +49,6 @@ SRCS(
     statestorage_proxy.cpp
     statestorage_replica.cpp
     statestorage_replica_probe.cpp
-    statestorage_warden.cpp
     storage_pools.cpp
     storage_pools.h
     subdomain.h
@@ -85,6 +84,7 @@ PEERDIR(
     library/cpp/lwtrace/mon
     library/cpp/random_provider
     library/cpp/time_provider
+    contrib/ydb/core/audit/audit_config
     contrib/ydb/core/base/services
     contrib/ydb/core/debug
     contrib/ydb/core/erasure
