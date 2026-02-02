@@ -5,6 +5,7 @@ SRCS(
     stats_service_actor.cpp
     stats_service_actor_bandwidth_limiter.cpp
     stats_service_actor_client_stats.cpp
+    stats_service_actor_pull_scheme.cpp
     stats_service_actor_solomon.cpp
     stats_service_actor_ydb.cpp
     stats_service_state.cpp
