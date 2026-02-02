@@ -76,6 +76,7 @@ struct TVerbs
         if (!mr) {
             RDMA_THROW_ERROR("ibv_reg_mr");
         }
+
         return WrapPtr(mr);
     }
 

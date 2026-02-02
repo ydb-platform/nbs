@@ -55,9 +55,6 @@ struct ICompletionHandler
     virtual void HandleCompletionEvent(ibv_wc* wc) = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-using TMemoryRegionHolder = std::unique_ptr<void, void(*)(void*)>;
 
 struct IVerbs
 {
