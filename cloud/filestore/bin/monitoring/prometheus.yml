@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: "filestore-vhost"
+    metrics_path: /counters/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8768']
+
+  - job_name: "filestore-server"
+    metrics_path: /counters/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8767']
