@@ -30,6 +30,8 @@ from cloud.storage.core.tests.common import (
     process_recipe_err_files,
 )
 
+logger = logging.getLogger(__name__)
+
 PID_FILE_NAME = "nfs_vhost_recipe.pid"
 ERR_LOG_FILE_NAMES_FILE = "nfs_vhost_recipe.err_log_files"
 
@@ -190,15 +192,13 @@ def start(argv):
 
 
 def stop(argv):
-    logging.info(os.system("ss -tpna"))
-    logging.info(os.system("ps aux"))
+    logger.info(os.system("ss -tpna"))
+    logger.info(os.system("ps aux"))
 
-    if not os.path.exists(PID_FILE_NAME):
-        return
-
-    with open(PID_FILE_NAME) as f:
-        pid = int(f.read())
-        shutdown(pid)
+    if os.path.exists(PID_FILE_NAME):
+        with open(PID_FILE_NAME) as f:
+            pid = int(f.read())
+            shutdown(pid)
 
     errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
     if errors:
