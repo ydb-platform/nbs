@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
+#include <cloud/blockstore/libs/local_nvme/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -178,13 +179,13 @@ void TConfigInitializerYdb::InitComputeClientConfig()
 
 void TConfigInitializerYdb::InitLocalNVMeConfig()
 {
-    NProto::TLocalNVMeConfig config;
+    NProto::TLocalNVMeConfig proto;
 
     if (Options->LocalNVMeConfig) {
-        ParseProtoTextFromFile(Options->LocalNVMeConfig, config);
+        ParseProtoTextFromFile(Options->LocalNVMeConfig, proto);
     }
 
-    LocalNVMeConfig = std::move(config);
+    LocalNVMeConfig = std::make_shared<TLocalNVMeConfig>(std::move(proto));
 }
 
 bool TConfigInitializerYdb::GetUseNonreplicatedRdmaActor() const
@@ -389,10 +390,10 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
 
 void TConfigInitializerYdb::ApplyLocalNVMeConfig(const TString& text)
 {
-    NProto::TLocalNVMeConfig config;
-    ParseProtoTextFromString(text, config);
+    NProto::TLocalNVMeConfig proto;
+    ParseProtoTextFromString(text, proto);
 
-    LocalNVMeConfig = std::move(config);
+    LocalNVMeConfig = std::make_shared<TLocalNVMeConfig>(std::move(proto));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

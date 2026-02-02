@@ -2,6 +2,7 @@ PROTO_LIBRARY()
 
 SRCS(
     disk.proto
+    local_nvme.proto
     part.proto
     volume.proto
 )

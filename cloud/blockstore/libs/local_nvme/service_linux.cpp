@@ -1,16 +1,20 @@
 #include "service.h"
 
+#include "config.h"
 #include "device_provider.h"
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
+#include <util/system/fs.h>
 
 namespace NCloud::NBlockStore {
 
@@ -48,6 +52,7 @@ class TLocalNVMeService final
     using TListDevicesResult = TResultOrError<TVector<NProto::TNVMeDevice>>;
 
 private:
+    const TLocalNVMeConfigPtr Config;
     const ILoggingServicePtr Logging;
     const ILocalNVMeDeviceProviderPtr DeviceProvider;
     const NNvme::INvmeManagerPtr NvmeManager;
@@ -57,9 +62,11 @@ private:
     TFuture<NProto::TError> Ready;
 
     THashMap<TString, NProto::TNVMeDevice> Devices;
+    THashSet<TString> AcquiredDevices;
 
 public:
     TLocalNVMeService(
+        TLocalNVMeConfigPtr config,
         ILoggingServicePtr logging,
         ILocalNVMeDeviceProviderPtr deviceProvider,
         NNvme::INvmeManagerPtr nvmeManager,
@@ -87,16 +94,22 @@ private:
     auto ListDevices() const -> TVector<NProto::TNVMeDevice>;
     auto EnsureIsReady() const -> NProto::TError;
     auto Initialize() -> NProto::TError;
+    auto FetchDevices() -> NProto::TError;
+    bool TryRestoreStateFromCache();
+    void UpdateStateCache();
+    auto CreateStateSnapshot() -> NProto::TLocalNVMeServiceState;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TLocalNVMeService::TLocalNVMeService(
+    TLocalNVMeConfigPtr config,
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor)
-    : Logging(std::move(logging))
+    : Config(std::move(config))
+    , Logging(std::move(logging))
     , DeviceProvider(std::move(deviceProvider))
     , NvmeManager(std::move(nvmeManager))
     , Executor(std::move(executor))
@@ -192,7 +205,7 @@ auto TLocalNVMeService::EnsureIsReady() const -> NProto::TError
     return MakeError(E_REJECTED, "not ready");
 }
 
-auto TLocalNVMeService::Initialize() -> NProto::TError
+auto TLocalNVMeService::FetchDevices() -> NProto::TError
 {
     auto future = DeviceProvider->ListNVMeDevices();
 
@@ -200,17 +213,106 @@ auto TLocalNVMeService::Initialize() -> NProto::TError
 
     if (HasError(error)) {
         STORAGE_ERROR(
-            "Failed to list NVMe devices from the provider: "
+            "Failed to fetch NVMe devices from the provider: "
             << FormatError(error));
         return error;
     }
 
     STORAGE_INFO(
-        "Found NVMe devices (" << devices.size()
-                               << "): " << Join(", ", devices));
+        "Fetched NVMe devices (" << devices.size()
+                                 << "): " << Join(", ", devices));
 
     for (const auto& device: devices) {
         Devices[device.GetSerialNumber()] = device;
+    }
+
+    UpdateStateCache();
+
+    return {};
+}
+
+auto TLocalNVMeService::CreateStateSnapshot() -> NProto::TLocalNVMeServiceState
+{
+    NProto::TLocalNVMeServiceState proto;
+    for (const auto& [_, device]: Devices) {
+        *proto.MutableDevices()->Add() = device;
+    }
+
+    for (const auto& sn: AcquiredDevices) {
+        proto.AddAcquiredDevices()->SetSerialNumber(sn);
+    }
+
+    return proto;
+}
+
+void TLocalNVMeService::UpdateStateCache()
+{
+    if (!Config->GetStateCacheFilePath()) {
+        return;
+    }
+
+    try {
+        const TString tmpPath{Config->GetStateCacheFilePath() + ".tmp"};
+
+        SerializeToTextFormat(CreateStateSnapshot(), tmpPath);
+
+        NFs::Rename(tmpPath, Config->GetStateCacheFilePath());
+
+        STORAGE_INFO("Service state stored in cache successfully");
+    } catch (...) {
+        STORAGE_ERROR(
+            "Failed to store the service state from the cache: "
+            << CurrentExceptionMessage());
+    }
+}
+
+bool TLocalNVMeService::TryRestoreStateFromCache()
+{
+    if (!Config->GetStateCacheFilePath() ||
+        !NFs::Exists(Config->GetStateCacheFilePath()))
+    {
+        return false;
+    }
+
+    NProto::TLocalNVMeServiceState proto;
+    try {
+        ParseProtoTextFromFile(Config->GetStateCacheFilePath(), proto);
+    } catch (...) {
+        STORAGE_ERROR(
+            "Failed to restore the service state from the cache: "
+            << CurrentExceptionMessage());
+        return false;
+    }
+
+    STORAGE_INFO(
+        "Found in cache NVMe devices ("
+        << proto.DevicesSize() << "): " << Join(", ", proto.GetDevices())
+        << "; acquired devices: " << Join(", ", proto.GetAcquiredDevices())
+        << ";");
+
+    for (auto& device: proto.GetDevices()) {
+        Devices.emplace(device.GetSerialNumber(), device);
+    }
+
+    for (const auto& device: proto.GetAcquiredDevices()) {
+        AcquiredDevices.emplace(device.GetSerialNumber());
+    }
+
+    return true;
+}
+
+auto TLocalNVMeService::Initialize() -> NProto::TError
+{
+    if (!TryRestoreStateFromCache()) {
+        STORAGE_DEBUG("Cache restore failed, fetching from provider");
+
+        return FetchDevices();
+    }
+
+    if (Devices.empty()) {
+        STORAGE_INFO("No NVMe devices in the cache, fetching from provider");
+
+        return FetchDevices();
     }
 
     return {};
@@ -226,6 +328,16 @@ auto TLocalNVMeService::AcquireDevice(const TString& serialNumber)
                 << "Device " << serialNumber.Quote() << " not found");
     }
 
+    auto [_, ok] = AcquiredDevices.insert(serialNumber);
+    if (!ok) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Device " << serialNumber.Quote() << " already acquired");
+    }
+
+    UpdateStateCache();
+
     // TODO
 
     return {};
@@ -240,6 +352,10 @@ auto TLocalNVMeService::ReleaseDevice(const TString& serialNumber)
             TStringBuilder()
                 << "Device " << serialNumber.Quote() << " not found");
     }
+
+    AcquiredDevices.erase(serialNumber);
+
+    UpdateStateCache();
 
     // TODO
 
@@ -265,12 +381,14 @@ auto TLocalNVMeService::ListDevices() const -> TVector<NProto::TNVMeDevice>
 ////////////////////////////////////////////////////////////////////////////////
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
+    TLocalNVMeConfigPtr config,
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TExecutorPtr executor)
 {
     return std::make_shared<TLocalNVMeService>(
+        std::move(config),
         std::move(logging),
         std::move(deviceProvider),
         std::move(nvmeManager),

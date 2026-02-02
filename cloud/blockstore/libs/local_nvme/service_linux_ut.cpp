@@ -1,5 +1,6 @@
 #include "service.h"
 
+#include "config.h"
 #include "device_provider.h"
 
 #include <cloud/blockstore/libs/nvme/nvme_stub.h>
@@ -9,11 +10,12 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
 
-#include <util/folder/tempdir.h>
 #include <util/stream/file.h>
+#include <util/system/tempfile.h>
 
 #include <chrono>
 #include <latch>
@@ -44,8 +46,10 @@ struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
+    TString StateCacheFile;
     TVector<NProto::TNVMeDevice> Devices;
 
+    TLocalNVMeConfigPtr Config;
     ILoggingServicePtr Logging;
     std::shared_ptr<TTestLocalNVMeDeviceProvider> DeviceProvider;
     NNvme::INvmeManagerPtr NVMeManager;
@@ -56,6 +60,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     void SetUp(NUnitTest::TTestContext& /*testContext*/) final
     {
         PrepareDevices();
+        PrepareConfigs();
 
         Logging =
             CreateLoggingService("console", {.FiltrationLevel = TLOG_DEBUG});
@@ -68,11 +73,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         Executor = TExecutor::Create("TestExecutor");
         Executor->Start();
 
-        Service = CreateLocalNVMeService(
-            Logging,
-            std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider),
-            NVMeManager,
-            Executor);
+        Service = CreateService();
         Service->Start();
     }
 
@@ -81,6 +82,20 @@ struct TFixture: public NUnitTest::TBaseFixture
         Service->Stop();
         Executor->Stop();
         Logging->Stop();
+
+        if (StateCacheFile) {
+            NFs::Remove(StateCacheFile);
+        }
+    }
+
+    auto CreateService() -> ILocalNVMeServicePtr
+    {
+        return CreateLocalNVMeService(
+            Config,
+            Logging,
+            std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider),
+            NVMeManager,
+            Executor);
     }
 
     void PrepareDevices()
@@ -112,14 +127,32 @@ struct TFixture: public NUnitTest::TBaseFixture
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
             }
+            Devices {
+                SerialNumber: "NVME_3"
+                PCIAddress: "34:00.0"
+                IOMMUGroup: 40
+                VendorId: 0x100
+                DeviceId: 0x200
+                Model: "Test NVMe 1"
+            }
         )",
             list);
 
-        UNIT_ASSERT_VALUES_EQUAL(3, list.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(4, list.DevicesSize());
 
         Devices.assign(
             std::make_move_iterator(list.MutableDevices()->begin()),
             std::make_move_iterator(list.MutableDevices()->end()));
+    }
+
+    void PrepareConfigs()
+    {
+        StateCacheFile = MakeTempName(nullptr, "nvme");
+
+        NProto::TLocalNVMeConfig proto;
+        proto.SetStateCacheFilePath(StateCacheFile);
+
+        Config = std::make_shared<TLocalNVMeConfig>(proto);
     }
 
     auto ListNVMeDevices()
@@ -132,6 +165,22 @@ struct TFixture: public NUnitTest::TBaseFixture
             }
             Sleep(100ms);
         }
+    }
+
+    auto LoadStateFromCache() const
+    {
+        NProto::TLocalNVMeServiceState proto;
+        ParseProtoTextFromFile(Config->GetStateCacheFilePath(), proto);
+
+        auto bySerialNumber = [](const auto& device)
+        {
+            return device.GetSerialNumber();
+        };
+
+        SortBy(*proto.MutableDevices(), bySerialNumber);
+        SortBy(*proto.MutableAcquiredDevices(), bySerialNumber);
+
+        return proto;
     }
 };
 
@@ -161,7 +210,8 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 error.GetCode(),
                 FormatError(error));
 
-            for (size_t i = 0; i != devices.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+            for (size_t i = 0; i != Devices.size(); ++i) {
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     Devices[i].DebugString(),
                     devices[i].DebugString(),
@@ -306,6 +356,226 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         for (auto& t: threads) {
             t.join();
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldUpdateStateCache, TFixture)
+    {
+        DeviceProvider->Promise.SetValue(Devices);
+        {
+            auto [_, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto proto = LoadStateFromCache();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                Devices.size(),
+                proto.DevicesSize(),
+                proto);
+            for (size_t i = 0; i != Devices.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    Devices[i].DebugString(),
+                    proto.GetDevices(i).DebugString(),
+                    "#" << i);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(0, proto.AcquiredDevicesSize());
+        }
+
+        {
+            auto future = Service->AcquireNVMeDevice("NVME_0");
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto future = Service->AcquireNVMeDevice("NVME_2");
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto proto = LoadStateFromCache();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                Devices.size(),
+                proto.DevicesSize(),
+                proto);
+            for (size_t i = 0; i != Devices.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    Devices[i].DebugString(),
+                    proto.GetDevices(i).DebugString(),
+                    "#" << i);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(2, proto.AcquiredDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "NVME_0",
+                proto.GetAcquiredDevices(0).GetSerialNumber());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "NVME_2",
+                proto.GetAcquiredDevices(1).GetSerialNumber());
+        }
+
+        {
+            auto future = Service->ReleaseNVMeDevice("NVME_0");
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto proto = LoadStateFromCache();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                Devices.size(),
+                proto.DevicesSize(),
+                proto);
+            for (size_t i = 0; i != Devices.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    Devices[i].DebugString(),
+                    proto.GetDevices(i).DebugString(),
+                    "#" << i);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(1, proto.AcquiredDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "NVME_2",
+                proto.GetAcquiredDevices(0).GetSerialNumber());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreStateFromCache, TFixture)
+    {
+        Service->Stop();
+        Service = nullptr;
+
+        {
+            NProto::TLocalNVMeServiceState proto;
+            proto.MutableDevices()->Assign(Devices.begin(), Devices.end());
+
+            proto.AddAcquiredDevices()->SetSerialNumber(
+                Devices[0].GetSerialNumber());
+            proto.AddAcquiredDevices()->SetSerialNumber(
+                Devices[2].GetSerialNumber());
+            SerializeToTextFormat(proto, Config->GetStateCacheFilePath());
+        }
+
+        Service = CreateService();
+        Service->Start();
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+            for (size_t i = 0; i != Devices.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    Devices[i].DebugString(),
+                    devices[i].DebugString(),
+                    "#" << i);
+            }
+        }
+
+        {
+            auto future =
+                Service->AcquireNVMeDevice(Devices[0].GetSerialNumber());
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto future =
+                Service->AcquireNVMeDevice(Devices[1].GetSerialNumber());
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            auto future =
+                Service->AcquireNVMeDevice(Devices[2].GetSerialNumber());
+            const auto& error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldFetchDevicesFromProviderIfCacheIsEmpty, TFixture)
+    {
+        Service->Stop();
+        Service = nullptr;
+
+        {
+            NProto::TLocalNVMeServiceState proto;
+            SerializeToTextFormat(proto, Config->GetStateCacheFilePath());
+        }
+
+        Service = CreateService();
+        Service->Start();
+
+        DeviceProvider->Promise.SetValue(Devices);
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+            for (size_t i = 0; i != Devices.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    Devices[i].DebugString(),
+                    devices[i].DebugString(),
+                    "#" << i);
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectBrokenCacheFile, TFixture)
+    {
+        Service->Stop();
+        Service = nullptr;
+
+        {
+            TFileOutput file{Config->GetStateCacheFilePath()};
+            file << "broken ;;";
+        }
+
+        Service = CreateService();
+        Service->Start();
+
+        DeviceProvider->Promise.SetValue(Devices);
+
+        {
+            auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+            for (size_t i = 0; i != Devices.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    Devices[i].DebugString(),
+                    devices[i].DebugString(),
+                    "#" << i);
+            }
         }
     }
 }

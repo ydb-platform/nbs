@@ -826,13 +826,14 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("PartitionBudgetManager initialized")
 
-    if (Configs->LocalNVMeConfig.GetDevicesSourceUri()) {
+    if (Configs->LocalNVMeConfig->GetDevicesSourceUri()) {
         auto deviceProvider =
             ServerModuleFactories->LocalNVMeDeviceProviderFactory(
                 logging,
-                Configs->LocalNVMeConfig.GetDevicesSourceUri());
+                Configs->LocalNVMeConfig->GetDevicesSourceUri());
 
         LocalNVMeService = CreateLocalNVMeService(
+            Configs->LocalNVMeConfig,
             logging,
             std::move(deviceProvider),
             NvmeManager,

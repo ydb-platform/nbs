@@ -6,7 +6,7 @@ from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.local_nvme_pb2 import TLocalNVMeConfig
-from cloud.blockstore.libs.storage.protos.disk_pb2 import TNVMeDevice, TNVMeDeviceList
+from cloud.blockstore.libs.storage.protos.local_nvme_pb2 import TNVMeDevice, TNVMeDeviceList
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
