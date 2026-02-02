@@ -55,7 +55,7 @@ void TIndexTabletActor::HandleResetSession(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TResetSessionMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TResetSessionMethod>(*requestInfo);
 
     ExecuteTx<TResetSession>(
         ctx,
@@ -181,7 +181,7 @@ void TIndexTabletActor::CompleteTx_ResetSession(
     const TActorContext& ctx,
     TTxIndexTablet::TResetSession& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvService::TEvResetSessionResponse>(args.Error);

@@ -74,7 +74,7 @@ void TIndexTabletActor::HandleSetNodeAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TSetNodeAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TSetNodeAttrMethod>(*requestInfo);
 
     ExecuteTx<TSetNodeAttr>(
         ctx,
@@ -202,7 +202,7 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
 {
     InvalidateNodeCaches(args.NodeId);
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvSetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {

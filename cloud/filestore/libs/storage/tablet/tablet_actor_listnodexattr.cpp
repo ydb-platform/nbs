@@ -39,7 +39,7 @@ void TIndexTabletActor::HandleListNodeXAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TListNodeXAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TListNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TListNodeXAttr>(
         ctx,
@@ -106,7 +106,7 @@ void TIndexTabletActor::CompleteTx_ListNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodeXAttr& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvListNodeXAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {

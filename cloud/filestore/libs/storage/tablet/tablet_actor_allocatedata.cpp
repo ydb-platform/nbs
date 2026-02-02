@@ -89,7 +89,7 @@ void TIndexTabletActor::HandleAllocateData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TAllocateDataMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TAllocateDataMethod>(*requestInfo);
 
     ExecuteTx<TAllocateData>(
         ctx,
@@ -243,7 +243,7 @@ void TIndexTabletActor::CompleteTx_AllocateData(
 {
     InvalidateNodeCaches(args.NodeId);
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

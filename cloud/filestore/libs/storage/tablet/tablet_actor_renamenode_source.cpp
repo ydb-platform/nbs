@@ -445,7 +445,7 @@ void TIndexTabletActor::HandleCommitRenameNodeInSource(
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction<TEvIndexTabletPrivate::TCommitRenameNodeInSourceMethod>(
+    AddInFlightRequest<TEvIndexTabletPrivate::TCommitRenameNodeInSourceMethod>(
         *requestInfo);
 
     ExecuteTx<TCommitRenameNodeInSource>(
@@ -581,7 +581,7 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
         return;
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (args.IsExplicitRequest) {
         using TResponse =

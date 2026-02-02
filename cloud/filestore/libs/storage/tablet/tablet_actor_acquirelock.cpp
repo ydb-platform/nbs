@@ -58,7 +58,7 @@ void TIndexTabletActor::HandleAcquireLock(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TAcquireLockMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TAcquireLockMethod>(*requestInfo);
 
     ExecuteTx<TAcquireLock>(
         ctx,
@@ -111,7 +111,7 @@ void TIndexTabletActor::CompleteTx_AcquireLock(
     const TActorContext& ctx,
     TTxIndexTablet::TAcquireLock& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvAcquireLockResponse>(args.Error);
     CompleteResponse<TEvService::TAcquireLockMethod>(

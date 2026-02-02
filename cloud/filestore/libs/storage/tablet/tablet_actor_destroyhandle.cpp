@@ -44,7 +44,7 @@ void TIndexTabletActor::HandleDestroyHandle(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TDestroyHandleMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TDestroyHandleMethod>(*requestInfo);
 
     ExecuteTx<TDestroyHandle>(
         ctx,
@@ -125,7 +125,7 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroyHandle& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (!HasError(args.Error)) {
         Metrics.DestroyHandle.Update(

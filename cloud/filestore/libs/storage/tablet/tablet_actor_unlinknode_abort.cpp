@@ -176,7 +176,7 @@ void TIndexTabletActor::HandleAbortUnlinkDirectoryNodeInShard(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TAbortUnlinkDirectoryNodeInShardMethod>(
+    AddInFlightRequest<TEvIndexTablet::TAbortUnlinkDirectoryNodeInShardMethod>(
         *requestInfo);
 
     ExecuteTx<TAbortUnlinkDirectoryNode>(
@@ -298,7 +298,7 @@ void TIndexTabletActor::CompleteTx_AbortUnlinkDirectoryNode(
 
     InvalidateNodeCaches(args.Request.GetNodeId());
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     if (!HasError(args.Error)) {

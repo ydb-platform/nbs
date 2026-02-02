@@ -63,7 +63,7 @@ void TIndexTabletActor::HandleListNodes(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TListNodesMethod>(*requestInfo);
 
     auto maxBytes = Min(
         Config->GetMaxResponseEntries() * MaxName,
@@ -182,7 +182,7 @@ void TIndexTabletActor::CompleteTx_ListNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodes& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {

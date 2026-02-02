@@ -530,7 +530,7 @@ void TIndexTabletActor::HandleCreateNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TCreateNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TCreateNodeMethod>(*requestInfo);
 
     ExecuteTx<TCreateNode>(
         ctx,
@@ -869,7 +869,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         return;
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvService::TEvCreateNodeResponse>(args.Error);
@@ -928,7 +928,7 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
     auto& res = msg->Result;
 
     if (msg->RequestInfo) {
-        RemoveTransaction(*msg->RequestInfo);
+        RemoveInFlightRequest(*msg->RequestInfo);
     }
 
     WorkerActors.erase(ev->Sender);

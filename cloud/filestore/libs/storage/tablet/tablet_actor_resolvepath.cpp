@@ -44,7 +44,7 @@ void TIndexTabletActor::HandleResolvePath(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TResolvePathMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TResolvePathMethod>(*requestInfo);
 
     ExecuteTx<TResolvePath>(
         ctx,
@@ -80,7 +80,7 @@ void TIndexTabletActor::CompleteTx_ResolvePath(
     const TActorContext& ctx,
     TTxIndexTablet::TResolvePath& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvResolvePathResponse>(args.Error);
     CompleteResponse<TEvService::TResolvePathMethod>(

@@ -169,7 +169,7 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
-    AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 
     ExecuteTx<TWriteData>(
         ctx,
@@ -392,7 +392,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
 {
     InvalidateNodeCaches(args.NodeId);
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto reply = [&] (
         const TActorContext& ctx,

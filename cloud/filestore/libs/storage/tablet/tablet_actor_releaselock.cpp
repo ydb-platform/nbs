@@ -24,7 +24,7 @@ void TIndexTabletActor::HandleReleaseLock(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TReleaseLockMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TReleaseLockMethod>(*requestInfo);
 
     ExecuteTx<TReleaseLock>(
         ctx,
@@ -92,7 +92,7 @@ void TIndexTabletActor::CompleteTx_ReleaseLock(
     const TActorContext& ctx,
     TTxIndexTablet::TReleaseLock& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvReleaseLockResponse>(args.Error);
     CompleteResponse<TEvService::TReleaseLockMethod>(
