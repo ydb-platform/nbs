@@ -3,7 +3,7 @@
 #include "incomplete_requests.h"
 #include "server_stats.h"
 
-#include <cloud/storage/core/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
 namespace NCloud::NBlockStore {
 

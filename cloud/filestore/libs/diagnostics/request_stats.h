@@ -7,7 +7,7 @@
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/service/request.h>
 
-#include <cloud/storage/core/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
@@ -52,7 +52,7 @@ struct IRequestStats
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IRequestStatsRegistry
-    : public IIncompleteRequestProcessor
+    : public IStatsHandler
 {
     virtual IRequestStatsPtr GetRequestStats() = 0;
 
