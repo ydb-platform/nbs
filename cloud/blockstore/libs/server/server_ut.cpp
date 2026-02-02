@@ -1512,7 +1512,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             endpoint->Stop();
         };
 
-        CheckDescribe(endpoint, "xyz", S_OK);
+        CheckDescribe(endpoint, "xyz", E_REJECTED);
         CheckDescribe(endpoint, "", S_OK);
     }
 }
