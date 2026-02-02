@@ -37,7 +37,7 @@ func GetEndpoint() string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newFactory(ctx context.Context) nfs.Factory {
+func NewFactory(ctx context.Context) nfs.Factory {
 	clientTimeout := "60s"
 	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
 	return nfs.NewFactory(
@@ -45,7 +45,7 @@ func newFactory(ctx context.Context) nfs.Factory {
 		&config.ClientConfig{
 			Zones: map[string]*config.Zone{
 				"zone": {
-					Endpoints: []string{GetEndpoint(), GetEndpoint()},
+					Endpoints: []string{GetEndpoint()},
 				},
 			},
 			RootCertsFile:        &rootCertsFile,
@@ -56,7 +56,7 @@ func newFactory(ctx context.Context) nfs.Factory {
 }
 
 func NewClient(t *testing.T, ctx context.Context) nfs.Client {
-	factory := newFactory(ctx)
+	factory := NewFactory(ctx)
 	client, err := factory.NewClient(ctx, "zone")
 	require.NoError(t, err)
 	return client
