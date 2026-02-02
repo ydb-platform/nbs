@@ -4,11 +4,11 @@ SET_APPEND(RECIPE_ARGS --nfs-only)
 SET_APPEND(RECIPE_ARGS --nemesis)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
+SIZE(LARGE)
+TAG(ya:fat)
+
 IF (RACE)
-    SIZE(LARGE)
     TAG(ya:fat ya:force_sandbox ya:sandbox_coverage)
-ELSE()
-    SIZE(MEDIUM)
 ENDIF()
 
 END()
