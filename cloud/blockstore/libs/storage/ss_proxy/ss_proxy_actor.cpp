@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/ss_proxy/ss_proxy.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
@@ -29,27 +31,12 @@ const THashSet<ui32> RetriableTxProxyErrors {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
-    const TStorageConfig& config)
-{
-    NTabletPipe::TClientConfig clientConfig;
-    clientConfig.RetryPolicy = {
-        .RetryLimitCount = config.GetPipeClientRetryCount(),
-        .MinRetryTime = config.GetPipeClientMinRetryTime(),
-        .MaxRetryTime = config.GetPipeClientMaxRetryTime()
-    };
-
-    return std::unique_ptr<NTabletPipe::IClientCache>(
-        NTabletPipe::CreateUnboundedClientCache(clientConfig));
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TSSProxyActor::TSSProxyActor(TStorageConfigPtr config)
-    : Config(config)
-    , ClientCache(CreateTabletPipeClientCache(*config))
+    : Config(std::move(config))
 {}
 
 void TSSProxyActor::Bootstrap(const TActorContext& ctx)
@@ -67,53 +54,16 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
         PathDescriptionBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-
-void TSSProxyActor::HandleConnect(
-    TEvTabletPipe::TEvClientConnected::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    if (!ClientCache->OnConnect(ev)) {
-        auto error = MakeKikimrError(msg->Status, TStringBuilder()
-            << "Connect to schemeshard " << msg->TabletId << " failed");
-
-        OnConnectionError(ctx, error, msg->TabletId);
-    }
-}
-
-void TSSProxyActor::HandleDisconnect(
-    TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    ClientCache->OnDisconnect(ev);
-
-    auto error = MakeError(E_REJECTED, TStringBuilder()
-        << "Disconnected from schemeshard " << msg->TabletId);
-
-    OnConnectionError(ctx, error, msg->TabletId);
-}
-
-void TSSProxyActor::OnConnectionError(
-    const TActorContext& ctx,
-    const NProto::TError& error,
-    ui64 schemeShard)
-{
-    Y_UNUSED(error);
-
-    // SchemeShard is a tablet, so it should eventually get up
-    // Re-send all outstanding requests
-    if (auto* state = SchemeShardStates.FindPtr(schemeShard)) {
-        for (const auto& kv : state->TxToRequests) {
-            ui64 txId = kv.first;
-            SendWaitTxRequest(ctx, schemeShard, txId);
-        }
-    }
+    auto actor = ::NCloud::NStorage::CreateSSProxy({
+        .LogComponent = TBlockStoreComponents::SS_PROXY,
+        .PipeClientRetryCount = Config->GetPipeClientRetryCount(),
+        .PipeClientMinRetryTime = Config->GetPipeClientMinRetryTime(),
+        .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
+        .SchemeShardDir = Config->GetSchemeShardDir(),
+        .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+    });
+    StorageSSProxyActor = NCloud::Register(ctx, std::move(actor));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -121,6 +71,9 @@ void TSSProxyActor::OnConnectionError(
 bool TSSProxyActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
+
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeRequest, HandleDescribeScheme);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
         BLOCKSTORE_SS_PROXY_REQUESTS(BLOCKSTORE_HANDLE_REQUEST, TEvSSProxy)
 
         default:
@@ -132,25 +85,37 @@ bool TSSProxyActor::HandleRequests(STFUNC_SIG)
 
 STFUNC(TSSProxyActor::StateWork)
 {
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
-        HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
-
-        HFunc(TEvSchemeShard::TEvNotifyTxCompletionRegistered, HandleTxRegistered);
-        HFunc(TEvSchemeShard::TEvNotifyTxCompletionResult, HandleTxResult);
-
-        default:
-            if (!HandleRequests(ev)) {
-                HandleUnexpectedEvent(
-                    ev,
-                    TBlockStoreComponents::SS_PROXY,
-                    __PRETTY_FUNCTION__);
-            }
-            break;
+    if (!HandleRequests(ev)) {
+        HandleUnexpectedEvent(
+            ev,
+            TBlockStoreComponents::SS_PROXY,
+            __PRETTY_FUNCTION__);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TSSProxyActor::HandleDescribeScheme(
+    const TEvStorageSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ctx.Send(ev->Forward(StorageSSProxyActor));
+}
+
+void TSSProxyActor::HandleModifyScheme(
+    const TEvStorageSSProxy::TEvModifySchemeRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ctx.Send(ev->Forward(StorageSSProxyActor));
+}
+
+void TSSProxyActor::HandleWaitSchemeTx(
+    const TEvStorageSSProxy::TEvWaitSchemeTxRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ctx.Send(ev->Forward(StorageSSProxyActor));
+}
+
 
 void TSSProxyActor::HandleBackupPathDescriptions(
     const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,

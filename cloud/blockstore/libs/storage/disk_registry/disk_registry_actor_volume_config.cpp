@@ -49,7 +49,7 @@ private:
         const TActorContext& ctx);
 
     void HandleModifySchemeResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     STFUNC(StateWork);
@@ -140,11 +140,11 @@ void TUpdateActor::UpdateVolumeConfig(
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+        std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
 }
 
 void TUpdateActor::HandleModifySchemeResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -193,7 +193,7 @@ STFUNC(TUpdateActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
 
     default:
         HandleUnexpectedEvent(

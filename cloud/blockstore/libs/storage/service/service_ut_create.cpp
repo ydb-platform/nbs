@@ -446,7 +446,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
@@ -480,7 +480,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg =
-                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                            event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
@@ -1364,7 +1364,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         runtime.SetObserverFunc( [nodeIdx, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvModifySchemeResponse>(
+                        auto response = std::make_unique<TEvStorageSSProxy::TEvModifySchemeResponse>(
                             MakeError(
                                 NKikimrScheme::StatusPathDoesNotExist,
                                 "path does not exist"));
@@ -1512,7 +1512,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
@@ -1721,7 +1721,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {

@@ -52,7 +52,7 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
         runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
+                        auto response = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
                             error);
                         runtime.Send(
                             new IEventHandle(

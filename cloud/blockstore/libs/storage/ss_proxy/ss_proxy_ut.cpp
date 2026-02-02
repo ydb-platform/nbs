@@ -83,10 +83,10 @@ void MkDir(TTestActorRuntime& runtime, const TString& path)
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+        std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(handle);
+    auto response = runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvModifySchemeResponse>(handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 }
 
@@ -98,10 +98,10 @@ void SendDescribeDir(TTestActorRuntime& runtime, const TString& path)
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path));
+        std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path));
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(handle);
+    auto response = runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvDescribeSchemeResponse>(handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
     UNIT_ASSERT_EQUAL(
         response->PathDescription.GetSelf().GetPathType(),
@@ -116,10 +116,10 @@ void SendWaitTx(TTestActorRuntime& runtime, ui64 tabletId, ui64 txId)
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvWaitSchemeTxRequest>(tabletId, txId));
+        std::make_unique<TEvStorageSSProxy::TEvWaitSchemeTxRequest>(tabletId, txId));
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvWaitSchemeTxResponse>(handle);
+    auto response = runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvWaitSchemeResponse>(handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 }
 
@@ -155,7 +155,7 @@ void FillVolumeConfig(
     partition->SetBlockCount(blocksCount);
 }
 
-TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribePath(
+TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr DescribePath(
     TTestActorRuntime& runtime,
     const TStorageConfigPtr& config,
     TString suffix = TString())
@@ -169,15 +169,15 @@ TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribePath(
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(
             std::move(path)));
 
     TAutoPtr<IEventHandle> handle;
     auto* response =
-        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
+        runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
             handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
-    return IEventHandle::Downcast<TEvSSProxy::TEvDescribeSchemeResponse>(
+    return IEventHandle::Downcast<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
         std::move(handle));
 }
 
@@ -228,12 +228,12 @@ void CreateVolumeViaModifyScheme(
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+        std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
             std::move(modifyScheme)));
 
     TAutoPtr<IEventHandle> handle;
     auto response =
-        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(handle);
+        runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvModifySchemeResponse>(handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 }
 
@@ -1030,7 +1030,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
                         auto response =
-                            std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
+                            std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
                                 error);
                         Send(
                             runtime,
@@ -1067,7 +1067,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         auto* msg =
-                            event->Get<TEvSSProxy::TEvDescribeSchemeResponse>();
+                            event->Get<TEvStrorageSSProxy::TEvDescribeSchemeResponse>();
                         if (FAILED(msg->GetError().GetCode())) {
                             break;
                         }
@@ -1099,7 +1099,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         auto* msg =
-                            event->Get<TEvSSProxy::TEvDescribeSchemeResponse>();
+                            event->Get<TEvStorageSSProxy::TEvDescribeSchemeResponse>();
                         if (FAILED(msg->GetError().GetCode())) {
                             break;
                         }
@@ -1349,14 +1349,14 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime,
             MakeSSProxyServiceId(),
             sender,
-            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+            std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
 
         // wait for background operations completion
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TAutoPtr<IEventHandle> modifyHandle;
         auto modifyResponse =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(modifyHandle);
+            runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvModifySchemeResponse>(modifyHandle);
 
         UNIT_ASSERT_C(FAILED(modifyResponse->GetStatus()), GetErrorReason(modifyResponse));
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, modifyResponse->GetError().GetCode());
@@ -1429,14 +1429,14 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime,
             MakeSSProxyServiceId(),
             sender,
-            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+            std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
 
         // wait for background operations completion
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TAutoPtr<IEventHandle> modifyHandle;
         auto modifyResponse =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(modifyHandle);
+            runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvModifySchemeResponse>(modifyHandle);
 
         UNIT_ASSERT_C(FAILED(modifyResponse->GetStatus()), GetErrorReason(modifyResponse));
         UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, modifyResponse->GetError().GetCode());
@@ -1510,11 +1510,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime,
                 MakeSSProxyServiceId(),
                 sender,
-                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>("volume"));
+                std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>("volume"));
 
             TAutoPtr<IEventHandle> describeHandle;
             auto describeResponse =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
+                runtime.GrabEdgeEventRethrow<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
                     describeHandle);
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1683,7 +1683,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 Y_UNUSED(runtime);
                 switch (ev->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
-                        using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                        using TEvent = TEvStorageSSProxy::TEvDescribeSchemeResponse;
                         using TDescription = NKikimrSchemeOp::TPathDescription;
                         auto* msg =
                             ev->template Get<TEvent>();
@@ -1726,7 +1726,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 Y_UNUSED(runtime);
                 switch (ev->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
-                        using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
+                        using TEvent = TEvStorageSSProxy::TEvDescribeSchemeResponse;
                         using TDescription = NKikimrSchemeOp::TPathDescription;
                         auto* msg =
                             ev->template Get<TEvent>();

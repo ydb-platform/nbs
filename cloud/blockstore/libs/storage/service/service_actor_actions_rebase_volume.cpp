@@ -70,7 +70,7 @@ private:
         const TActorContext& ctx);
 
     void HandleAlterVolumeResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWaitReadyResponse(
@@ -259,7 +259,7 @@ void TRebaseVolumeActionActor::HandleDescribeVolumeResponse(
 }
 
 void TRebaseVolumeActionActor::HandleAlterVolumeResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -341,7 +341,7 @@ STFUNC(TRebaseVolumeActionActor::StateDescribeVolume)
 STFUNC(TRebaseVolumeActionActor::StateAlterVolume)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleAlterVolumeResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleAlterVolumeResponse);
 
         default:
             HandleUnexpectedEvent(

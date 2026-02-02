@@ -50,7 +50,7 @@ private:
     void TryModifyScheme(const TActorContext& ctx);
 
     void HandleModifySchemeResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -128,13 +128,13 @@ void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
     }
 
     auto request =
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(modifyScheme);
+        std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(modifyScheme);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
 void TModifyVolumeActor::HandleModifySchemeResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto& msg = *ev->Get();
@@ -179,7 +179,7 @@ void TModifyVolumeActor::HandleModifySchemeResponse(
 STFUNC(TModifyVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
 
         default:
             HandleUnexpectedEvent(

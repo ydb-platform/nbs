@@ -56,9 +56,9 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvSSProxy::TEvCreateVolumeRequest, HandleCreateVolume);
             HFunc(TEvSSProxy::TEvModifyVolumeRequest, HandleDestroyVolume);
-            HFunc(TEvSSProxy::TEvDescribeSchemeRequest, HandleListVolumes);
+            HFunc(TEvStorageSSProxy::TEvDescribeSchemeRequest, HandleListVolumes);
             HFunc(TEvSSProxy::TEvDescribeVolumeRequest, HandleDescribeVolume);
-            HFunc(TEvSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
+            HFunc(TEvStorageSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
         }
     }
 
@@ -131,7 +131,7 @@ private:
     }
 
     void HandleListVolumes(
-        const TEvSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
+        const TEvStorageSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         const auto* msg = ev->Get();
@@ -192,17 +192,17 @@ private:
             }
         }
 
-        auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
+        auto response = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeResponse>(
             msg->Path, std::move(p));
 
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 
     void HandleModifyScheme(
-        const TEvSSProxy::TEvModifySchemeRequest::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        auto response = std::make_unique<TEvSSProxy::TEvModifySchemeResponse>();
+        auto response = std::make_unique<TEvStorageSSProxy::TEvModifySchemeResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 };

@@ -22,6 +22,7 @@ private:
     const TStorageConfigPtr Config;
 
     NActors::TActorId PathDescriptionBackup;
+    NActors::TActorId StorageSSProxy;
 
 public:
     explicit TSSProxyFallbackActor(TStorageConfigPtr config);
@@ -32,6 +33,13 @@ private:
     STFUNC(StateWork);
 
     bool HandleRequests(STFUNC_SIG);
+
+    void HandleDescribeScheme(
+        const TEvStorageSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleModifyScheme(
+        const TEvStorageSSProxy::TEvModifySchemeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_SS_PROXY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvSSProxy)
 };

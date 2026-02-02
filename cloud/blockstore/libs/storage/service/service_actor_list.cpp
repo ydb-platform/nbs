@@ -44,7 +44,7 @@ private:
     STFUNC(StateWork);
 
     void HandleDescribeResponse(
-        const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -69,7 +69,7 @@ void TDescribeActor::DescribePath(const TActorContext& ctx, const TString& path)
         "Sending describe request for path %s",
         path.Quote().data());
 
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
+    auto request = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
     RequestsScheduled++;
 
     NCloud::Send(
@@ -92,7 +92,7 @@ void TDescribeActor::ReplyAndDie(
 STFUNC(TDescribeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeResponse);
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -104,7 +104,7 @@ STFUNC(TDescribeActor::StateWork)
 }
 
 void TDescribeActor::HandleDescribeResponse(
-    const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     RequestsCompleted++;

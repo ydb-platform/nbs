@@ -4,11 +4,9 @@ SRCS(
     ss_proxy.cpp
     ss_proxy_actor.cpp
     ss_proxy_actor_createvolume.cpp
-    ss_proxy_actor_describescheme.cpp
     ss_proxy_actor_describevolume.cpp
     ss_proxy_actor_modifyscheme.cpp
     ss_proxy_actor_modifyvolume.cpp
-    ss_proxy_actor_waitschemetx.cpp
     ss_proxy_fallback_actor.cpp
     path_description_backup.cpp
 )

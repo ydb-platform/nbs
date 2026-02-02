@@ -77,7 +77,7 @@ private:
     STFUNC(StateWork);
 
     void HandleDescribeSchemeResponse(
-        const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWakeup(
@@ -147,7 +147,7 @@ TString TDescribeVolumeActor::GetFullPath() const
 void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
     auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(GetFullPath());
+        std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(GetFullPath());
 
     if (CheckedPaths.empty() || CheckedPaths.back() != GetFullPath()) {
         CheckedPaths.push_back(GetFullPath());
@@ -167,7 +167,7 @@ void TDescribeVolumeActor::ReplyAndDie(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDescribeVolumeActor::HandleDescribeSchemeResponse(
-    const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -309,7 +309,7 @@ void TDescribeVolumeActor::HandleWakeup(
 STFUNC(TDescribeVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 

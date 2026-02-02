@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
+#include <cloud/storage/core/libs/ss_proxy/ss_proxy.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -166,6 +168,16 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
         PathDescriptionBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
     }
+
+    auto actor = ::NCloud::NStorage::CreateSSProxy({
+        .LogComponent = TBlockStoreComponents::SS_PROXY,
+        .PipeClientRetryCount = Config->GetPipeClientRetryCount(),
+        .PipeClientMinRetryTime = Config->GetPipeClientMinRetryTime(),
+        .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
+        .SchemeShardDir = Config->GetSchemeShardDir(),
+        .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+    });
+    StorageSSProxy = NCloud::Register(ctx, std::move(actor));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -173,6 +185,9 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 bool TSSProxyFallbackActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeRequest, HandleDescribeScheme);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeRequest, HandleModifyScheme);
+
         BLOCKSTORE_SS_PROXY_REQUESTS(BLOCKSTORE_HANDLE_REQUEST, TEvSSProxy)
 
         default:
@@ -211,10 +226,10 @@ void TSSProxyFallbackActor::HandleCreateVolume(
 }
 
 void TSSProxyFallbackActor::HandleDescribeScheme(
-    const TEvSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
+    const TEvStorageSSProxy::TEvDescribeSchemeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    using TResponse = TEvSSProxy::TEvDescribeSchemeResponse;
+    using TResponse = TEvStorageSSProxy::TEvDescribeSchemeResponse;
 
     if (!PathDescriptionBackup) {
         // should not return fatal error to client
@@ -229,7 +244,7 @@ void TSSProxyFallbackActor::HandleDescribeScheme(
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext);
+        MakeIntrusive<TCallContext>()); //TODO
 
     NCloud::Register<TReadPathDescriptionBackupActor<TResponse>>(
         ctx,
@@ -273,13 +288,10 @@ void TSSProxyFallbackActor::HandleDescribeVolume(
 }
 
 void TSSProxyFallbackActor::HandleModifyScheme(
-    const TEvSSProxy::TEvModifySchemeRequest::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto error = MakeError(E_NOT_IMPLEMENTED);
-    auto response =
-        std::make_unique<TEvSSProxy::TEvModifySchemeResponse>(error);
-    NCloud::Reply(ctx, *ev, std::move(response));
+    ctx.Send(ev->Forward(StorageSSProxy));
 }
 
 void TSSProxyFallbackActor::HandleModifyVolume(
@@ -292,15 +304,12 @@ void TSSProxyFallbackActor::HandleModifyVolume(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TSSProxyFallbackActor::HandleWaitSchemeTx(
-    const TEvSSProxy::TEvWaitSchemeTxRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto error = MakeError(E_NOT_IMPLEMENTED);
-    auto response =
-        std::make_unique<TEvSSProxy::TEvWaitSchemeTxResponse>(error);
-    NCloud::Reply(ctx, *ev, std::move(response));
-}
+// void TSSProxyFallbackActor::HandleWaitSchemeTx(
+//     const TEvStorageSSProxy::TEvWaitSchemeTxRequest::TPtr& ev,
+//     const TActorContext& ctx)
+// {
+//     ctx.Send(ev->Forward(StorageSSProxy));
+// }
 
 void TSSProxyFallbackActor::HandleBackupPathDescriptions(
     const TEvSSProxy::TEvBackupPathDescriptionsRequest::TPtr& ev,

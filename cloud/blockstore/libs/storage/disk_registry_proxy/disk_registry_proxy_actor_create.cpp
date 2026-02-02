@@ -80,7 +80,7 @@ private:
         const TActorContext& ctx);
 
     void HandleDescribeSchemeResponse(
-        TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+        TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -101,7 +101,7 @@ void TCreateDiskRegistryActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+    auto request = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(
         StorageConfig->GetSchemeShardDir());
 
     NCloud::Send(
@@ -139,7 +139,7 @@ void TCreateDiskRegistryActor::ReplyAndDie(
 }
 
 void TCreateDiskRegistryActor::HandleDescribeSchemeResponse(
-    TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+    TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     if (ev->Cookie) {
@@ -247,7 +247,7 @@ void TCreateDiskRegistryActor::HandleCreateTablet(
 STFUNC(TCreateDiskRegistryActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
         HFunc(TEvHiveProxy::TEvCreateTabletResponse, HandleCreateTablet);
 
         default:

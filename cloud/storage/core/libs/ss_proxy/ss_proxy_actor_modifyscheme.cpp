@@ -115,6 +115,14 @@ void TModifySchemeActor::HandleStatus(
     auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus) record.GetStatus();
     switch (status) {
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:
+            if(record.GetPathCreateTxId() == 0) {
+                auto request = std::make_unique<TEvSSProxy::TEvWaitSchemeTxRequest>(
+                    SchemeShardTabletId,
+                    TxId);
+
+                NCloud::Send(ctx, Owner, std::move(request));
+                break;
+            }
             LOG_DEBUG(ctx, LogComponent,
                 "Request %s with TxId# %lu completed immediately",
                 NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),

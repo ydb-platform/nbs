@@ -73,19 +73,19 @@ private:
         const NKikimrBlockStore::TVolumeConfig& actual);
 
     void HandleDescribeVolumeBeforeCreateResponse(
-        const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleCreateVolumeResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleMkDirResponse(
-        const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleDescribeVolumeAfterCreateResponse(
-        const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+        const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void ReplyAndDie(
@@ -150,7 +150,7 @@ void TCreateVolumeActor::DescribeVolumeBeforeCreate(const TActorContext& ctx)
         volumePath.data());
 
     auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
+        std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(volumePath);
 
     NCloud::Send(
         ctx,
@@ -175,7 +175,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     op->MutableVolumeConfig()->CopyFrom(VolumeConfig);
 
     auto request =
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(modifyScheme);
+        std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(modifyScheme);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
         "Sending create request for %s in directory %s",
@@ -214,7 +214,7 @@ void TCreateVolumeActor::CreateNextDir(const TActorContext& ctx)
     op->SetName(itemName);
 
     auto request =
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+        std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(
             std::move(modifyScheme));
 
     NCloud::Send(
@@ -236,7 +236,7 @@ void TCreateVolumeActor::DescribeVolumeAfterCreate(const TActorContext& ctx)
         volumePath.data());
 
     auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
+        std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(volumePath);
 
     NCloud::Send(
         ctx,
@@ -345,7 +345,7 @@ bool TCreateVolumeActor::VerifyVolume(
 }
 
 void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
-    const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -412,7 +412,7 @@ void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
 }
 
 void TCreateVolumeActor::HandleCreateVolumeResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -454,7 +454,7 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
 }
 
 void TCreateVolumeActor::HandleMkDirResponse(
-    const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvModifySchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -479,7 +479,7 @@ void TCreateVolumeActor::HandleMkDirResponse(
 }
 
 void TCreateVolumeActor::HandleDescribeVolumeAfterCreateResponse(
-    const TEvSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
+    const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -563,7 +563,7 @@ void TCreateVolumeActor::ReplyAndDie(
 STFUNC(TCreateVolumeActor::StateDescribeVolumeBeforeCreate)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeBeforeCreateResponse);
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeBeforeCreateResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -577,7 +577,7 @@ STFUNC(TCreateVolumeActor::StateDescribeVolumeBeforeCreate)
 STFUNC(TCreateVolumeActor::StateCreateVolume)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleCreateVolumeResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -591,7 +591,7 @@ STFUNC(TCreateVolumeActor::StateCreateVolume)
 STFUNC(TCreateVolumeActor::StateCreateNextDir)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleMkDirResponse);
+        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleMkDirResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -605,7 +605,7 @@ STFUNC(TCreateVolumeActor::StateCreateNextDir)
 STFUNC(TCreateVolumeActor::StateDescribeVolumeAfterCreate)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeAfterCreateResponse);
+        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeAfterCreateResponse);
 
         default:
             HandleUnexpectedEvent(

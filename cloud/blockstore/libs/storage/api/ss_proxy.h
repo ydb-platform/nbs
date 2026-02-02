@@ -5,9 +5,10 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 
+#include <cloud/storage/core/libs/api/ss_proxy.h>
+
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -16,19 +17,34 @@ namespace NCloud::NBlockStore::NStorage {
 
 #define BLOCKSTORE_SS_PROXY_REQUESTS(xxx, ...)                                 \
     xxx(CreateVolume,       __VA_ARGS__)                                       \
-    xxx(ModifyScheme,       __VA_ARGS__)                                       \
     xxx(ModifyVolume,       __VA_ARGS__)                                       \
-    xxx(DescribeScheme,     __VA_ARGS__)                                       \
     xxx(DescribeVolume,     __VA_ARGS__)                                       \
-    xxx(WaitSchemeTx,       __VA_ARGS__)                                       \
                                                                                \
     xxx(BackupPathDescriptions, __VA_ARGS__)                                   \
 // BLOCKSTORE_SS_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TEvStorageSSProxy = ::NCloud::NStorage::TEvSSProxy;
+
+////////////////////////////////////////////////////////////////////////////////
 struct TEvSSProxy
 {
+    using TDescribeSchemeRequest =
+        ::NCloud::NStorage::TEvSSProxy::TDescribeSchemeRequest;
+    using TDescribeSchemeResponse =
+        ::NCloud::NStorage::TEvSSProxy::TDescribeSchemeResponse;
+
+    using TModifySchemeRequest =
+        ::NCloud::NStorage::TEvSSProxy::TModifySchemeRequest;
+    using TModifySchemeResponse =
+        ::NCloud::NStorage::TEvSSProxy::TModifySchemeResponse;
+
+    using TWaitSchemeTxRequest =
+        ::NCloud::NStorage::TEvSSProxy::TWaitSchemeTxRequest;
+    using TWaitSchemeTxResponse =
+        ::NCloud::NStorage::TEvSSProxy::TWaitSchemeTxResponse;
+
     //
     // CreateVolume
     //
@@ -52,36 +68,6 @@ struct TEvSSProxy
                 NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
                 TString reason = {})
             : Status(status)
-            , Reason(std::move(reason))
-        {}
-    };
-
-    //
-    // ModifyScheme
-    //
-
-    struct TModifySchemeRequest
-    {
-        const NKikimrSchemeOp::TModifyScheme ModifyScheme;
-
-        explicit TModifySchemeRequest(
-                NKikimrSchemeOp::TModifyScheme modifyScheme)
-            : ModifyScheme(std::move(modifyScheme))
-        {}
-    };
-
-    struct TModifySchemeResponse
-    {
-        const ui64 SchemeShardTabletId;
-        const NKikimrScheme::EStatus Status;
-        const TString Reason;
-
-        TModifySchemeResponse(
-                ui64 schemeShardTabletId = 0,
-                NKikimrScheme::EStatus status = NKikimrScheme::StatusSuccess,
-                TString reason = TString())
-            : SchemeShardTabletId(schemeShardTabletId)
-            , Status(status)
             , Reason(std::move(reason))
         {}
     };
@@ -137,34 +123,6 @@ struct TEvSSProxy
     };
 
     //
-    // DescribeScheme
-    //
-
-    struct TDescribeSchemeRequest
-    {
-        const TString Path;
-
-        explicit TDescribeSchemeRequest(TString path)
-            : Path(std::move(path))
-        {}
-    };
-
-    struct TDescribeSchemeResponse
-    {
-        const TString Path;
-        const NKikimrSchemeOp::TPathDescription PathDescription;
-
-        TDescribeSchemeResponse() = default;
-
-        TDescribeSchemeResponse(
-                TString path,
-                NKikimrSchemeOp::TPathDescription pathDescription)
-            : Path(std::move(path))
-            , PathDescription(std::move(pathDescription))
-        {}
-    };
-
-    //
     // DescribeVolume
     //
 
@@ -209,27 +167,6 @@ struct TEvSSProxy
     };
 
     //
-    // WaitSchemeTx
-    //
-
-    struct TWaitSchemeTxRequest
-    {
-        const ui64 SchemeShardTabletId;
-        const ui64 TxId;
-
-        TWaitSchemeTxRequest(
-                ui64 schemeShardTabletId,
-                ui64 txId)
-            : SchemeShardTabletId(schemeShardTabletId)
-            , TxId(txId)
-        {}
-    };
-
-    struct TWaitSchemeTxResponse
-    {
-    };
-
-    //
     // BackupPathDescriptions
     //
 
@@ -247,28 +184,34 @@ struct TEvSSProxy
 
     enum EEvents
     {
+        EvDescribeSchemeRequest =
+            ::NCloud::NStorage::TEvSSProxy::EEvents::EvDescribeSchemeRequest,
+        EvDescribeSchemeResponse =
+            ::NCloud::NStorage::TEvSSProxy::EEvents::EvDescribeSchemeResponse,
+
+        EvModifySchemeRequest =
+            ::NCloud::NStorage::TEvSSProxy::EEvents::EvModifySchemeRequest,
+        EvModifySchemeResponse =
+            ::NCloud::NStorage::TEvSSProxy::EEvents::EvModifySchemeResponse,
+
+        EvWaitSchemeTxRequest =
+            ::NCloud::NStorage::TEvSSProxy::EEvents::EvWaitSchemeTxRequest,
+        EvWaitSchemeTxResponse =
+            ::NCloud::NStorage::TEvSSProxy::EEvents::EvWaitSchemeTxResponse,
+
         EvBegin = TBlockStoreEvents::SS_PROXY_START,
 
         EvCreateVolumeRequest = EvBegin + 1,
         EvCreateVolumeResponse = EvBegin + 2,
 
-        EvModifySchemeRequest = EvBegin + 3,
-        EvModifySchemeResponse = EvBegin + 4,
+        EvModifyVolumeRequest = EvBegin + 3,
+        EvModifyVolumeResponse = EvBegin + 4,
 
-        EvModifyVolumeRequest = EvBegin + 5,
-        EvModifyVolumeResponse = EvBegin + 6,
+        EvDescribeVolumeRequest = EvBegin + 5,
+        EvDescribeVolumeResponse = EvBegin + 6,
 
-        EvDescribeSchemeRequest = EvBegin + 7,
-        EvDescribeSchemeResponse = EvBegin + 8,
-
-        EvDescribeVolumeRequest = EvBegin + 9,
-        EvDescribeVolumeResponse = EvBegin + 10,
-
-        EvWaitSchemeTxRequest = EvBegin + 11,
-        EvWaitSchemeTxResponse = EvBegin + 12,
-
-        EvBackupPathDescriptionsRequest = EvBegin + 13,
-        EvBackupPathDescriptionsResponse = EvBegin + 14,
+        EvBackupPathDescriptionsRequest = EvBegin + 7,
+        EvBackupPathDescriptionsResponse = EvBegin + 8,
 
         EvEnd
     };

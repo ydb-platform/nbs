@@ -805,14 +805,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->SetEventFilter([&](auto& runtime, auto& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvSSProxy::EvModifySchemeRequest:
-                    std::unique_ptr<TEvSSProxy::TEvModifySchemeResponse>
+                    std::unique_ptr<TEvStorageSSProxy::TEvModifySchemeResponse>
                         response;
                     if (modifyCount == 0) {
-                        response.reset(new TEvSSProxy::TEvModifySchemeResponse(
+                        response.reset(new TEvStorageSSProxy::TEvModifySchemeResponse(
                             MakeError(E_REJECTED)));
                     } else {
                         response.reset(
-                            new TEvSSProxy::TEvModifySchemeResponse());
+                            new TEvStorageSSProxy::TEvModifySchemeResponse());
                     }
                     runtime.Schedule(
                         new IEventHandle(
@@ -882,7 +882,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     new IEventHandle(
                         event->Sender,
                         event->Recipient,
-                        new TEvSSProxy::TEvModifySchemeResponse()),
+                        new TEvStorageSSProxy::TEvModifySchemeResponse()),
                     responseDelay);
                 handled = true;
                 break;

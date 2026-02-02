@@ -96,10 +96,10 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                             break;
                         }
                         letItPass = true;
-                        const auto* original = reinterpret_cast<TEvSSProxy::TEvModifySchemeRequest::TPtr*>(&event);
+                        const auto* original = reinterpret_cast<TEvStorageSSProxy::TEvModifySchemeRequest::TPtr*>(&event);
                         auto modifyScheme = (*original)->Get()->ModifyScheme;
                         modifyScheme.MutableApplyIf()->Mutable(0)->SetPathVersion(0);
-                        auto msg = std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme));
+                        auto msg = std::make_unique<TEvStorageSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme));
                         env.GetRuntime().Send(
                             new IEventHandle(
                                 event->Recipient,
@@ -392,7 +392,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         detectedResizeVolumeRequest = true;
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         const auto& alterRequest = msg->ModifyScheme.GetAlterBlockStoreVolume();
                         const auto& volumeConfig = alterRequest.GetVolumeConfig();
                         UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() > 4);
@@ -472,7 +472,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto errStr = "New volume space is over a limit";
                         auto response =
-                            std::make_unique<TEvSSProxy::TEvModifySchemeResponse>(
+                            std::make_unique<TEvStorageSSProxy::TEvModifySchemeResponse>(
                                 MakeError(errCode, errStr));
                         runtime.Send(
                             new IEventHandle(
@@ -586,7 +586,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
@@ -607,7 +607,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg = event->Get<TEvStorageSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume)
                         {

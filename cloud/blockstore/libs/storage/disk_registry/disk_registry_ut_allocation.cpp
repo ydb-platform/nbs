@@ -872,7 +872,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                         new IEventHandle(
                             event->Sender,
                             event->Recipient,
-                            new TEvSSProxy::TEvModifySchemeResponse()),
+                            new TEvStorageSSProxy::TEvModifySchemeResponse()),
                         2s);
                     return true;
                     break;
@@ -946,7 +946,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                         new IEventHandle(
                             event->Sender,
                             event->Recipient,
-                            new TEvSSProxy::TEvModifySchemeResponse()),
+                            new TEvStorageSSProxy::TEvModifySchemeResponse()),
                         2s);
                     return true;
                 case TEvService::EvDestroyPlacementGroupResponse:
