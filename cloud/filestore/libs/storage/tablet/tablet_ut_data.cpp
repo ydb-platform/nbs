@@ -7983,10 +7983,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             auto responseWrite = tablet.RecvWriteDataResponse();
             reconnectAndRecreateHandleIfNeeded();
 
-            if (FAILED(responseWrite->GetStatus())) {
-                UNIT_ASSERT_VALUES_EQUAL(
+            if (HasError(responseWrite->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
                     E_REJECTED,
-                    responseWrite->GetError().GetCode());
+                    responseWrite->GetError().GetCode(),
+                    FormatError(responseWrite->GetError()));
                 continue;
             }
 
@@ -7997,6 +7998,153 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.DestroyHandle(handle);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
+    }
+
+    TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastAllocatedSize)
+    {
+        const ui64 block = tabletConfig.BlockSize;
+        const ui32 maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        ui64 len = 0;
+        for (ui32 i = 0; i < 10; ++i) {
+            len += block;
+            tablet.SendAllocateDataRequest(handle, 0, len, 0);
+            auto responseAllocate = tablet.RecvAllocateDataResponse();
+            reconnectIfNeeded();
+
+            if (HasError(responseAllocate->GetError())) {
+                len -= block;
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    responseAllocate->GetError().GetCode(),
+                    FormatError(responseAllocate->GetError()));
+                continue;
+            }
+
+            auto responseGetAttr = tablet.GetNodeAttr(id);
+            UNIT_ASSERT_VALUES_EQUAL(
+                len,
+                responseGetAttr->Record.GetNode().GetSize());
+        }
+
+        tablet.RebootTablet();
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.RecoverSession();
+
+        tablet.DestroyHandle(handle);
+
+        UNIT_ASSERT_GT(len, 0);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
+    }
+
+    TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastSetSize)
+    {
+        const ui64 block = tabletConfig.BlockSize;
+        const ui32 maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        ui64 len = 0;
+        for (ui32 i = 0; i < 10; ++i) {
+            len += block;
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(len);
+            tablet.SendSetNodeAttrRequest(args);
+            auto responseSetAttr = tablet.RecvSetNodeAttrResponse();
+            reconnectIfNeeded();
+
+            if (HasError(responseSetAttr->GetError())) {
+                len -= block;
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    responseSetAttr->GetError().GetCode(),
+                    FormatError(responseSetAttr->GetError()));
+                continue;
+            }
+
+            auto responseGetAttr = tablet.GetNodeAttr(id);
+            UNIT_ASSERT_VALUES_EQUAL(
+                len,
+                responseGetAttr->Record.GetNode().GetSize());
+        }
+
+        UNIT_ASSERT_GT(len, 0);
         UNIT_ASSERT_C(
             rebootTracker.GetGenerationCount() >= 2,
             "Expected at least 2 different generations due to tablet reboot, "
