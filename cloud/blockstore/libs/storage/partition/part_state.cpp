@@ -376,7 +376,7 @@ ui32 TPartitionState::DecrementUnflushedFreshBlocksFromDbCount(size_t value)
     return counter;
 }
 
-void TPartitionState::WriteFreshBlocks(
+void TPartitionState::WriteFreshBlocksToDb(
     TPartitionDatabase& db,
     const TBlockRange32& writeRange,
     ui64 commitId,
@@ -388,11 +388,10 @@ void TPartitionState::WriteFreshBlocks(
         db,
         writeRange,
         commitId,
-        [&](ui32 index) { return sglist[index]; }
-    );
+        [&](ui32 index) { return sglist[index]; });
 }
 
-void TPartitionState::ZeroFreshBlocks(
+void TPartitionState::ZeroFreshBlocksToDb(
     TPartitionDatabase& db,
     const TBlockRange32& zeroRange,
     ui64 commitId)
@@ -401,11 +400,10 @@ void TPartitionState::ZeroFreshBlocks(
         db,
         zeroRange,
         commitId,
-        [](ui32) { return TBlockDataRef(); }
-    );
+        [](ui32) { return TBlockDataRef(); });
 }
 
-void TPartitionState::DeleteFreshBlock(
+void TPartitionState::DeleteFreshBlockFromDb(
     TPartitionDatabase& db,
     ui32 blockIndex,
     ui64 commitId)
@@ -413,7 +411,7 @@ void TPartitionState::DeleteFreshBlock(
     bool removed = Blocks.RemoveBlock(
         blockIndex,
         commitId,
-        true);  // isStoredInDb
+        true);   // isStoredInDb
 
     Y_ABORT_UNLESS(removed);
 

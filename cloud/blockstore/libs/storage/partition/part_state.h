@@ -537,18 +537,18 @@ private:
     }
 
 public:
-    void WriteFreshBlocks(
+    void WriteFreshBlocksToDb(
         TPartitionDatabase& db,
         const TBlockRange32& writeRange,
         ui64 commitId,
         TSgList sglist);
 
-    void ZeroFreshBlocks(
+    void ZeroFreshBlocksToDb(
         TPartitionDatabase& db,
         const TBlockRange32& zeroRange,
         ui64 commitId);
 
-    void DeleteFreshBlock(
+    void DeleteFreshBlockFromDb(
         TPartitionDatabase& db,
         ui32 blockIndex,
         ui64 commitId);

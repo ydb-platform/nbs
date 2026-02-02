@@ -795,11 +795,9 @@ void TPartitionActor::ExecuteFlushToDevNull(
 
     for (const auto& block: args.FreshBlocks) {
         if (block.IsStoredInDb) {
-            State->DeleteFreshBlock(db, block.BlockIndex, block.CommitId);
+            State->DeleteFreshBlockFromDb(db, block.BlockIndex, block.CommitId);
         } else {
-            State->TPartitionFreshBlocksState::DeleteFreshBlock(
-                block.BlockIndex,
-                block.CommitId);
+            State->DeleteFreshBlock(block.BlockIndex, block.CommitId);
         }
     }
 

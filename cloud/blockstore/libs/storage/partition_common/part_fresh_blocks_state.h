@@ -87,6 +87,11 @@ public:
     {
         return FlushedCommitIdsInProgress;
     }
+
+    [[nodiscard]] const THashSet<ui64>& GetFlushedCommitIdsInProgress() const
+    {
+        return FlushedCommitIdsInProgress;
+    }
 };
 
 class TPartitionFreshBlobState

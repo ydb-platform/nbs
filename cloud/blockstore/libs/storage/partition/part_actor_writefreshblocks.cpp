@@ -623,9 +623,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         auto& blockRange = msg->BlockRanges[i];
 
         if (!msg->WriteHandlers) {
-            State->TPartitionFreshBlocksState::ZeroFreshBlocks(
-                blockRange,
-                msg->CommitId);
+            State->ZeroFreshBlocks(blockRange, msg->CommitId);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
 
             continue;
@@ -637,10 +635,7 @@ void TPartitionActor::HandleAddFreshBlocks(
 
         if (auto guard = guardedSgList.Acquire()) {
             const auto& sgList = guard.Get();
-            State->TPartitionFreshBlocksState::WriteFreshBlocks(
-                blockRange,
-                msg->CommitId,
-                sgList);
+            State->WriteFreshBlocks(blockRange, msg->CommitId, sgList);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
         } else {
             LOG_ERROR(
@@ -734,7 +729,7 @@ void TPartitionActor::ExecuteWriteBlocks(
             }
         }
 
-        State->WriteFreshBlocks(db, sr.Range, commitId, sgList);
+        State->WriteFreshBlocksToDb(db, sr.Range, commitId, sgList);
 
         // update counters
         State->DecrementFreshBlocksInFlight(sr.Range.Size());
