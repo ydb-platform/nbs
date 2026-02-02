@@ -698,8 +698,8 @@ message TStatVolumeResponse
     // Volume Mount seq number.
     uint64 MountSeqNumber = 4;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 5;
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 5;
 
     // List of checkpoints.
     repeated string Checkpoints = 6;
@@ -723,6 +723,9 @@ message TStatVolumeResponse
     // Volatile (not persisted to volume tablet state) throttling config
     // applied to this volume via VolumeThrottlingManager
     TVolumeVolatileThrottlingInfo VolatileThrottlingInfo = 12;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

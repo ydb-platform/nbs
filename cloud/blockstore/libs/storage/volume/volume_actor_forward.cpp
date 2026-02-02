@@ -28,15 +28,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_HAS_MEMBER(SetThrottlerDelay);
+Y_HAS_MEMBER(SetDeprecatedThrottlerDelay);
 
-template <typename TResponse>
-void StoreThrottlerDelay(TResponse& response, TDuration delay)
+template <typename TMethod>
+void StoreThrottlerDelay(typename TMethod::TResponse& response, TDuration delay)
 {
-    using TProtoType = decltype(TResponse::Record);
-
-    if constexpr (THasSetThrottlerDelay<TProtoType>::value) {
-        response.Record.SetThrottlerDelay(delay.MicroSeconds());
+    using TProtoType = decltype(TMethod::TResponse::Record);
+    static_assert(
+        THasSetDeprecatedThrottlerDelay<TProtoType>::value ==
+        RequiresThrottling<TMethod>);
+    if constexpr (RequiresThrottling<TMethod>) {
+        response.Record.SetDeprecatedThrottlerDelay(delay.MicroSeconds());
+        response.Record.MutableHeaders()->MutableThrottler()->SetDelay(
+            delay.MicroSeconds());
     }
 }
 
@@ -53,7 +57,7 @@ void RejectVolumeRequest(
     auto response =
         std::make_unique<typename TMethod::TResponse>(std::move(error));
 
-    StoreThrottlerDelay(
+    StoreThrottlerDelay<TMethod>(
         *response,
         callContext.Time(EProcessingStage::Postponed));
 
@@ -307,13 +311,15 @@ void TVolumeActor::FillResponse(
 
     if (TraceSerializer->IsTraced(callContext.LWOrbit)) {
         TraceSerializer->BuildTraceInfo(
-            *response.Record.MutableTrace(),
+            *response.Record.MutableHeaders()->MutableTrace(),
             callContext.LWOrbit,
             startTime,
             GetCycleCount());
+        response.Record.MutableDeprecatedTrace()->CopyFrom(
+            response.Record.GetHeaders().GetTrace());
     }
 
-    StoreThrottlerDelay(
+    StoreThrottlerDelay<TMethod>(
         response,
         callContext.Time(EProcessingStage::Postponed));
 }
