@@ -16,6 +16,8 @@
 #include <util/stream/file.h>
 
 #include <chrono>
+#include <latch>
+#include <thread>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -256,6 +258,54 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 E_FAIL,
                 error.GetCode(),
                 FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldAcquireAndReleaseDeviceMT, TFixture)
+    {
+        const int threadNum = 4;
+        const int requestNum = 32;
+
+        std::latch start{threadNum + 1};
+
+        TVector<std::thread> threads;
+        for (int i = 0; i != threadNum; ++i) {
+            threads.emplace_back(
+                [&]
+                {
+                    start.arrive_and_wait();
+
+                    TVector<TFuture<NProto::TError>> futures;
+
+                    for (int i = 0; i != requestNum; ++i) {
+                        futures.push_back(Service->AcquireNVMeDevice("UNK"));
+                        futures.push_back(Service->ReleaseNVMeDevice("UNK"));
+                        Sleep(10ms);
+                    }
+
+                    for (const auto& f: futures) {
+                        const auto& error = f.GetValueSync();
+                        UNIT_ASSERT_VALUES_EQUAL_C(
+                            E_NOT_FOUND,
+                            error.GetCode(),
+                            FormatError(error));
+                    }
+                });
+        }
+
+        DeviceProvider->Promise.SetValue(Devices);
+        {
+            auto [_, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        start.arrive_and_wait();
+
+        for (auto& t: threads) {
+            t.join();
         }
     }
 }
