@@ -114,6 +114,7 @@ PEERDIR(
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/audit
     contrib/ydb/core/backup/common
+    contrib/ydb/core/backup/regexp
     contrib/ydb/core/base
     contrib/ydb/core/control
     contrib/ydb/core/discovery
@@ -149,6 +150,7 @@ PEERDIR(
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/library/protobuf_printer
     contrib/ydb/library/yaml_config
+    contrib/ydb/library/cloud_permissions
     yql/essentials/parser/pg_wrapper/interface
     yql/essentials/public/types
     yql/essentials/public/issue
@@ -174,4 +176,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     ut
+    grpc_request_check_actor_ut
 )

@@ -10,6 +10,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/grpc/server
+    contrib/ydb/library/cloud_permissions
     contrib/ydb/core/base
     contrib/ydb/core/client/server
     contrib/ydb/core/grpc_services

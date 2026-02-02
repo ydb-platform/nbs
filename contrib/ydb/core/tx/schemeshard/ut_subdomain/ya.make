@@ -18,6 +18,8 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
+    contrib/ydb/core/tx/columnshard/hooks/testing
+    contrib/ydb/core/tx/columnshard/test_helper
     yql/essentials/public/udf/service/exception_policy
 )
 

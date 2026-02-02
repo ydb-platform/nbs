@@ -28,7 +28,7 @@ if [ -z "$FORCE_IMPORT" ]; then
     fi
 fi
 
-if [ -z "$SKIP_GIT_CLONE" ] ; then	
+if [ -z "$SKIP_GIT_CLONE" ] ; then
     rm -rf "$GIT_ROOT"
     mkdir -p "$GIT_ROOT"
     git clone -b $SRC_BRANCH --depth 1 https://github.com/ydb-platform/ydb.git "$GIT_ROOT"
@@ -96,7 +96,7 @@ if [ -n "$ARC_SUBMIT" ]; then
         TRG_BRANCH_OPT="--to $TRG_BRANCH"
     fi
 
-    prlink=$(arc submit --publish --all --auto $TRG_BRANCH_OPT -m "$summary_mask $NEWITER" --label "$label" --no-verify)    
+    prlink=$(arc submit --publish --all --auto $TRG_BRANCH_OPT -m "$summary_mask $NEWITER" --label "$label" --no-verify)
     echo $prlink
     echo '{ "url": "'"$prlink"'", "module": "KIKIMR", "text": "PR to contrib/ydb" }' > $RESULT_BADGES_PATH/file1
 
