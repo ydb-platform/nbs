@@ -621,6 +621,64 @@ Y_UNIT_TEST_SUITE(TopicAutoscaling) {
         UNIT_ASSERT_VALUES_EQUAL_C(NYdb::EStatus::BAD_REQUEST, status.GetStatus(), "The consumer cannot commit an offset for inactive, read-to-the-end partitions.");
     }
 
+    Y_UNIT_TEST(PartitionSplit_ManySessions_NoCommits_AutoscaleAwareSDK) {
+        TTopicSdkTestSetup setup = CreateSetup();
+        TTopicClient client = setup.MakeClient();
+
+        TCreateTopicSettings createSettings;
+        createSettings
+            .BeginConfigurePartitioningSettings()
+            .MinActivePartitions(1)
+            .MaxActivePartitions(100)
+                .BeginConfigureAutoPartitioningSettings()
+                .UpUtilizationPercent(2)
+                .DownUtilizationPercent(1)
+                .StabilizationWindow(TDuration::Seconds(2))
+                .Strategy(EAutoPartitioningStrategy::ScaleUp)
+                .EndConfigureAutoPartitioningSettings()
+            .EndConfigurePartitioningSettings();
+
+        TConsumerSettings<TCreateTopicSettings> consumers(createSettings, TEST_CONSUMER);
+        createSettings.AppendConsumers(consumers);
+        client.CreateTopic(TEST_TOPIC, createSettings).Wait();
+
+        auto msg = TString(1_MB, 'a');
+
+        auto writeSession_1 = CreateWriteSession(client, "producer-1", 0, TString{TEST_TOPIC}, false);
+        auto writeSession_2 = CreateWriteSession(client, "producer-2", 0, TString{TEST_TOPIC}, false);
+
+        {
+            UNIT_ASSERT(writeSession_1->Write(Msg(msg, 1)));
+            UNIT_ASSERT(writeSession_1->Write(Msg(msg, 2)));
+            UNIT_ASSERT(writeSession_1->Write(Msg(msg, 3)));
+            UNIT_ASSERT(writeSession_1->Write(Msg(msg, 4)));
+            UNIT_ASSERT(writeSession_1->Write(Msg(msg, 5)));
+            UNIT_ASSERT(writeSession_2->Write(Msg(msg, 6)));
+            Sleep(TDuration::Seconds(15));
+            auto describe = client.DescribeTopic(TEST_TOPIC).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(describe.GetTopicDescription().GetPartitions().size(), 3);
+        }
+
+        TTestReadSession readSession1("Session-1", client, 6, false);
+        readSession1.WaitAndAssertPartitions({0, 1, 2}, "Must read all partition");
+        readSession1.WaitAllMessages();
+
+        TTestReadSession readSession2("Session-2", client, 0, false);
+
+        Sleep(TDuration::Seconds(1));
+
+        readSession1.Close();
+
+        TTestReadSession yetAnotherReadSession1("YetAnotherSession-1", client, 0, false);
+        yetAnotherReadSession1.SetOffset(0, 6); // read from end offset
+
+        Sleep(TDuration::Seconds(1));
+
+        readSession2.Close();
+
+        yetAnotherReadSession1.WaitAndAssertPartitions({0, 1, 2}, "Must read all children partitions");
+    }
+
     Y_UNIT_TEST(ControlPlane_CreateAlterDescribe) {
         auto autoscalingTestTopic = "autoscalit-topic";
         TTopicSdkTestSetup setup = CreateSetup();
@@ -905,8 +963,6 @@ Y_UNIT_TEST_SUITE(TopicAutoscaling) {
         auto tableClient = setup.MakeTableClient();
         auto session = tableClient.CreateSession().GetValueSync().GetSession();
 
-        setup.GetServer().AnnoyingClient->MkDir("/Root", "dir");
-
         ExecuteQuery(session, R"(
             --!syntax_v1
             CREATE TOPIC `/Root/dir/origin`
@@ -982,6 +1038,45 @@ Y_UNIT_TEST_SUITE(TopicAutoscaling) {
 
         auto result = client.AlterTopic("/Root/tbl/Feed", alterSettings).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), NYdb::EStatus::BAD_REQUEST);
+    }
+
+    Y_UNIT_TEST(BalancingAfterSplit_sessionsWithPartition) {
+        TTopicSdkTestSetup setup = CreateSetup();
+        setup.CreateTopicWithAutoscale(TEST_TOPIC, TEST_CONSUMER, 1, 100);
+
+        TTopicClient client = setup.MakeClient();
+
+        auto writeSession = CreateWriteSession(client, "producer-1", 0);
+        UNIT_ASSERT(writeSession->Write(Msg("message_1.1", 2)));
+
+        ui64 txId = 1023;
+        SplitPartition(setup, ++txId, 0, "a");
+
+        TTestReadSession readSession0("Session-0", client, 1, false, {0}, true);
+
+        readSession0.WaitAndAssertPartitions({0}, "Must read partition 0");
+        readSession0.WaitAllMessages();
+
+
+        for(size_t i = 0; i < 10; ++i) {
+            if (readSession0.Impl->EndedPartitionEvents.empty()) {
+                Sleep(TDuration::Seconds(1));
+                continue;
+            }
+            readSession0.Commit();
+            break;
+        }
+
+        TTestReadSession readSession1("Session-1", client, 0, false, {1}, true);
+        readSession1.WaitAndAssertPartitions({1}, "Must read partition 1");
+
+        TTestReadSession readSession2("Session-2", client, 0, false, {2}, true);
+        readSession2.WaitAndAssertPartitions({2}, "Must read partition 2");
+
+        writeSession->Close();
+        readSession0.Close();
+        readSession1.Close();
+        readSession2.Close();
     }
 
     Y_UNIT_TEST(MidOfRange) {

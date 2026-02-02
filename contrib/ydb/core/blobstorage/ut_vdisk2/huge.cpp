@@ -78,7 +78,7 @@ Y_UNIT_TEST_SUITE(VDiskTest) {
                 } while (minHugeBlobValue == lastMinHugeBlobValue);
                 lastMinHugeBlobValue = minHugeBlobValue;
                 env->ChangeMinHugeBlobSize(minHugeBlobValue);
-                Cerr << "Change MinHugeBlobSize# " << minHugeBlobValue << Endl;
+                Cerr << "Change MinHugeBlobSize# " << minHugeBlobValue << Endl; 
             }
 
             if (totalSize > maxTotalSize || (totalSize >= minTotalSize && RandomNumber(1000u) < 3)) {

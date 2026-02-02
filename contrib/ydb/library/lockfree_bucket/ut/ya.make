@@ -5,7 +5,7 @@ SRCS(
     main.cpp
 )
 PEERDIR(
-    ydb/library/lockfree_bucket
+    contrib/ydb/library/lockfree_bucket
 )
 
 END()

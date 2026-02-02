@@ -1,7 +1,7 @@
-#include <ydb/core/blobstorage/ut_blobstorage/lib/env.h>
-#include <ydb/core/blobstorage/ut_blobstorage/lib/common.h>
-#include <ydb/core/util/lz4_data_generator.h>
-#include <ydb/core/erasure/erasure.h>
+#include <contrib/ydb/core/blobstorage/ut_blobstorage/lib/env.h>
+#include <contrib/ydb/core/blobstorage/ut_blobstorage/lib/common.h>
+#include <contrib/ydb/core/util/lz4_data_generator.h>
+#include <contrib/ydb/core/erasure/erasure.h>
 
 namespace {
 

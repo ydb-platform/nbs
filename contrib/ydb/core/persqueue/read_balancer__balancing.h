@@ -16,7 +16,7 @@ struct TConsumer;
 class TBalancer;
 
 struct TPartition {
-    // Client had commited rad offset equals EndOffset of the partition
+    // Client had commited read offset equals EndOffset of the partition
     bool Commited = false;
     // ReadSession reach EndOffset of the partition
     bool ReadingFinished = false;
@@ -228,7 +228,7 @@ struct TConsumer {
     bool Unlock(const TActorId& sender, ui32 partitionId, const TActorContext& ctx);
 
     bool SetCommittedState(ui32 partitionId, ui32 generation, ui64 cookie);
-    bool ProccessReadingFinished(ui32 partitionId, const TActorContext& ctx);
+    bool ProccessReadingFinished(ui32 partitionId, bool wasInactive, const TActorContext& ctx);
     void StartReading(ui32 partitionId, const TActorContext& ctx);
     void FinishReading(TEvPersQueue::TEvReadingPartitionFinishedRequest::TPtr& ev, const TActorContext& ctx);
 

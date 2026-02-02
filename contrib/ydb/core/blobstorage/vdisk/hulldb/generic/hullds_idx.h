@@ -584,3 +584,4 @@ namespace NKikimr {
     extern template class TLevelIndex<TKeyBlock, TMemRecBlock>;
 
 } // NKikimr
+
