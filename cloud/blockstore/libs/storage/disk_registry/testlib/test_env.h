@@ -66,6 +66,21 @@ struct TByUUID
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDiskRegistryConfigs
+{
+    TStorageConfigPtr StorageConfig;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
+};
+
+struct TDiskRegistryTestRuntime: public NActors::TTestBasicRuntime
+{
+    using TTestBasicRuntime::TTestBasicRuntime;
+
+    std::shared_ptr<TDiskRegistryConfigs> Configs =
+        std::make_shared<TDiskRegistryConfigs>();
+};
+
+////////////////////////////////////////////////////////////////////////////////
 void WaitForSecureErase(
     NActors::TTestActorRuntime& runtime,
     size_t deviceCount);
@@ -476,19 +491,18 @@ private:
 struct TTestRuntimeBuilder
 {
     TVector<NActors::IActor*> DiskAgents;
-    std::function<TStorageConfigPtr()> StorageConfigFactory;
+    TStorageConfigPtr StorageConfig;
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NLogbroker::IServicePtr LogbrokerService;
     NNotify::IServicePtr NotifyService;
     ILoggingServicePtr Logging = CreateLoggingService("console");
 
-    std::unique_ptr<NActors::TTestActorRuntime> Build();
+    std::unique_ptr<TDiskRegistryTestRuntime> Build();
 
     TTestRuntimeBuilder& WithAgents(std::initializer_list<NActors::IActor*> agents);
     TTestRuntimeBuilder& WithAgents(const TVector<NProto::TAgentConfig>& configs);
     TTestRuntimeBuilder& With(NProto::TStorageServiceConfig config);
     TTestRuntimeBuilder& With(TStorageConfigPtr config);
-    TTestRuntimeBuilder& With(std::function<TStorageConfigPtr()> configFactory);
     TTestRuntimeBuilder& With(NLogbroker::IServicePtr service);
     TTestRuntimeBuilder& With(NNotify::IServicePtr service);
 };

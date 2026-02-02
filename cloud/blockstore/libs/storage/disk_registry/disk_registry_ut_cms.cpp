@@ -36,10 +36,10 @@ namespace {
 struct TFixture
     : public NUnitTest::TBaseFixture
 {
-    std::unique_ptr<NActors::TTestActorRuntime> Runtime;
+    std::unique_ptr<TDiskRegistryTestRuntime> Runtime;
     std::optional<TDiskRegistryClient> DiskRegistry;
 
-    void SetUpRuntime(std::unique_ptr<NActors::TTestActorRuntime> runtime)
+    void SetUpRuntime(std::unique_ptr<TDiskRegistryTestRuntime> runtime)
     {
         Runtime = std::move(runtime);
 
@@ -1483,24 +1483,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             {Device("dev-1", "uuid-1", "rack-1", 10_GB),
              Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        bool attachDetachPathsEnabled = false;
+        NProto::TStorageServiceConfig config;
+        config.SetAttachDetachPathsEnabled(false);
 
         SetUpRuntime(
-            TTestRuntimeBuilder()
-                .WithAgents({agent})
-                .With(
-                    [&]()
-                    {
-                        NProto::TStorageServiceConfig config;
-                        config.SetAttachDetachPathsEnabled(
-                            attachDetachPathsEnabled);
-
-                        return std::make_shared<TStorageConfig>(
-                            config,
-                            std::make_shared<NFeatures::TFeaturesConfig>(
-                                NCloud::NProto::TFeaturesConfig()));
-                    })
-                .Build());
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -1510,7 +1497,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         AddHost("agent-1");
 
-        attachDetachPathsEnabled = true;
+        config.SetAttachDetachPathsEnabled(true);
+
+        Runtime->Configs->StorageConfig = std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig()));
 
         DiskRegistry->RebootTablet();
 
@@ -1533,24 +1525,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             {Device("dev-1", "uuid-1", "rack-1", 10_GB),
              Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        bool attachDetachPathsEnabled = false;
+        NProto::TStorageServiceConfig config;
+        config.SetAttachDetachPathsEnabled(false);
 
         SetUpRuntime(
-            TTestRuntimeBuilder()
-                .WithAgents({agent})
-                .With(
-                    [&]()
-                    {
-                        NProto::TStorageServiceConfig config;
-                        config.SetAttachDetachPathsEnabled(
-                            attachDetachPathsEnabled);
-
-                        return std::make_shared<TStorageConfig>(
-                            config,
-                            std::make_shared<NFeatures::TFeaturesConfig>(
-                                NCloud::NProto::TFeaturesConfig()));
-                    })
-                .Build());
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -1560,7 +1539,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         AddHost("agent-1");
 
-        attachDetachPathsEnabled = true;
+        config.SetAttachDetachPathsEnabled(true);
+
+        Runtime->Configs->StorageConfig = std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig()));
 
         DiskRegistry->RebootTablet();
 
