@@ -23,11 +23,11 @@ type OnScrubbedCallback func([]nfs.Node)
 ////////////////////////////////////////////////////////////////////////////////
 
 type scrubFilesystemTask struct {
-	config  *scrubbing_config.FilesystemScrubbingConfig
-	factory nfs.Factory
-	storage filesystem_snapshot_storage.Storage
-	request *scrubbing_protos.ScrubFilesystemRequest
-	state   *scrubbing_protos.ScrubFilesystemTaskState
+	config   *scrubbing_config.FilesystemScrubbingConfig
+	factory  nfs.Factory
+	storage  filesystem_snapshot_storage.Storage
+	request  *scrubbing_protos.ScrubFilesystemRequest
+	state    *scrubbing_protos.ScrubFilesystemTaskState
 	callback OnScrubbedCallback
 }
 
