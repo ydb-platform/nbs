@@ -100,6 +100,7 @@ func (t *FilesystemTraverser) Traverse(
 	defer close(t.processedNodeIDs)
 
 	if !t.rootNodeAlreadyScheduled {
+		logging.Info(ctx, "scheduling root node for listing")
 		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
 		if err != nil {
 			return err
