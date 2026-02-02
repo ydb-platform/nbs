@@ -55,7 +55,6 @@ struct ICompletionHandler
     virtual void HandleCompletionEvent(ibv_wc* wc) = 0;
 };
 
-
 struct IVerbs
 {
     virtual ~IVerbs() = default;
