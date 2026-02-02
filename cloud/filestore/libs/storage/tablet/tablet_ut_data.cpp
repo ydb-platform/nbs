@@ -133,6 +133,80 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldStoreFreshBytes2)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto bgOp = [&] () {
+            if (RandomNumber<double>() < 0.03) {
+                tablet.Flush();
+            }
+
+            if (RandomNumber<double>() < 0.03) {
+                tablet.FlushBytes();
+            }
+        };
+
+        for (ui32 i = 0; i < 10000; ++i) {
+            auto id = CreateNode(
+                tablet,
+                TCreateNodeArgs::File(
+                    RootNodeId,
+                    TStringBuilder() << "test" << i));
+            ui64 handle = CreateHandle(tablet, id);
+
+            tablet.WriteData(handle, 2320, 51, '0');
+            bgOp();
+            tablet.WriteData(handle, 64, 1873, '1');
+            bgOp();
+            tablet.WriteData(handle, 1944, 88, '2');
+            bgOp();
+            tablet.WriteData(handle, 2376, 1272, '3');
+            bgOp();
+            tablet.WriteData(handle, 2032, 288, '4');
+            bgOp();
+            tablet.WriteData(handle, 3648, 219, '5');
+            bgOp();
+            tablet.WriteData(handle, 0, 64, '6');
+            bgOp();
+            tablet.WriteData(handle, 3872, 1472, '7');
+            bgOp();
+
+            TString expected;
+            expected.ReserveAndResize(5344);
+            memset(expected.begin(), 0, expected.size());
+            memset(expected.begin() + 2320, '0', 51);
+            memset(expected.begin() + 64, '1', 1873);
+            memset(expected.begin() + 1944, '2', 88);
+            memset(expected.begin() + 2376, '3', 1272);
+            memset(expected.begin() + 2032, '4', 288);
+            memset(expected.begin() + 3648, '5', 219);
+            memset(expected.begin() + 0, '6', 64);
+            memset(expected.begin() + 3872, '7', 1472);
+
+            {
+                auto response = tablet.ReadData(handle, 0, 8_KB);
+                const auto& buffer = response->Record.GetBuffer();
+                UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+            }
+
+            tablet.DestroyHandle(handle);
+        }
+
+        tablet.Flush();
+    }
+
     TABLET_TEST(ShouldLoadFreshBytesOnStartup)
     {
         TTestEnv env;
