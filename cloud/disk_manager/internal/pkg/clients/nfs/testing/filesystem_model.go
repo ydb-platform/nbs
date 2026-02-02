@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +15,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,6 +190,8 @@ func HomogeneousDirectoryTree(layers []FilesystemLayerConfig) Node {
 	)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 type FileSystemModel struct {
 	root          Node
 	t             *testing.T
@@ -329,6 +334,16 @@ func (f *FileSystemModel) Close() {
 	require.NoError(f.t, err)
 }
 
+func (f *FileSystemModel) ExpectedNodeNames() *tasks_common.StringSet {
+	result := tasks_common.NewStringSet()
+	for _, node := range f.ExpectedNodes {
+		result.Add(node.Name)
+	}
+
+	return &result
+}
+
+
 func NewFileSystemModel(
 	t *testing.T,
 	ctx context.Context,
@@ -359,4 +374,111 @@ func NodeNames(nodes []nfs.Node) []string {
 	}
 
 	return names
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type ParallelFilesystemModel struct {
+	ctx           context.Context
+	client        nfs.Client
+	session       nfs.Session
+	t             *testing.T
+	rootNode 	  Node
+	mu            sync.Mutex
+	ExpectedNames *tasks_common.StringSet
+}
+
+func (m *ParallelFilesystemModel) createChildren(
+	parentID uint64,
+	children []Node,
+) {
+	var childDirectories []struct{
+		parent uint64
+		children   []Node
+	}
+	eg, _ := errgroup.WithContext(m.ctx)
+	eg.SetLimit(100)
+	for _, child := range children {
+		child := child
+		eg.Go(func() error {
+			id, err := m.client.CreateNode(
+				m.ctx,
+				m.session,
+				nfs.Node{
+				ParentID:   parentID,
+				Name:       child.Name,
+				Type:       child.FileType,
+				Mode:       0o777,
+				UID:        1,
+				GID:        1,
+				LinkTarget: child.Target,
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			m.ExpectedNames.Add(child.Name)
+			if child.FileType.IsDirectory() {
+				childDirectories = append(
+					childDirectories,
+					struct{
+						parent uint64;
+						children []Node
+					}{
+						parent: id,
+						children: child.Children,
+					},
+				)
+			}
+
+			return nil
+		})
+	}
+	require.NoError(m.t, eg.Wait())
+
+	for _, dir := range childDirectories {
+		m.createChildren(dir.parent, dir.children)
+	}
+}
+
+func (m *ParallelFilesystemModel) ExpectedNodeNames() *tasks_common.StringSet {
+	return m.ExpectedNames
+}
+
+func (m *ParallelFilesystemModel) CreateAllNodesRecursively() {
+	m.createChildren(nfs.RootNodeID, m.rootNode.Children)
+}
+
+func (m *ParallelFilesystemModel) Close() {
+	err := m.client.DestroySession(m.ctx, m.session)
+	require.NoError(m.t, err)
+}
+
+func NewParallelFilesystemModel(
+	t *testing.T,
+	ctx context.Context,
+	client nfs.Client,
+	session nfs.Session,
+	rootDir Node,
+) *ParallelFilesystemModel {
+	set := tasks_common.NewStringSet()
+	return &ParallelFilesystemModel{
+		t:             t,
+		ctx:           ctx,
+		client:        client,
+		session:       session,
+		rootNode:     rootDir,
+		ExpectedNames: &set,
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type FilesystemModelInterface interface {
+	CreateAllNodesRecursively()
+	ExpectedNodeNames() *tasks_common.StringSet
+	Close()
 }
