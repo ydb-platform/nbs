@@ -166,6 +166,45 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 "c7f55aef7b99489f8a47d2f94f85a88b", d.GetDeviceId(), d);
         }
+
+        {   // Should get same DeviceId for NVMECOMPUTE01 and NVMECOMPUTE0001
+            gen("/dev/disk/by-partlabel/NVMECOMPUTE01",
+                local,
+                1,
+                1,
+                local.GetBlockSize(),
+                367_GB);
+            auto r01 = gen.ExtractResult();
+
+            gen("/dev/disk/by-partlabel/NVMECOMPUTE0001",
+                local,
+                1,
+                1,
+                local.GetBlockSize(),
+                367_GB);
+            auto r0001 = gen.ExtractResult();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                r01[0].GetDeviceId(),
+                r0001[0].GetDeviceId(),
+                r01[0].DebugString() + " <=> " + r0001[0].DebugString());
+        }
+
+        {   // Should get unique DeviceId for all 4-digits labels
+            // NVMECOMPUTE([0-9]{4})
+            TSet<TString> deviceIds;
+
+            for (int i = 0; i < 104; ++i) {
+                const auto path =
+                    Sprintf("/dev/disk/by-partlabel/NVMECOMPUTE%04u", i);
+
+                gen(path, local, i, 1, local.GetBlockSize(), 367_GB);
+                auto r = gen.ExtractResult();
+                const TString& deviceId = r[0].GetDeviceId();
+                auto [_, inserted] = deviceIds.insert(deviceId);
+                UNIT_ASSERT_VALUES_EQUAL_C(true, inserted, r[0]);
+            }
+        }
     }
 
     Y_UNIT_TEST_F(ShouldGenerateStableUUIDs, TFixture)
