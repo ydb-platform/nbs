@@ -6,10 +6,10 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessor(
+NCloud::IStatsHandlerPtr CreateIncompleteRequestProcessor(
     IServerStatsPtr stats,
     TVector<IIncompleteRequestProviderPtr> incompleteProviders);
 
-IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessorStub();
+NCloud::IStatsHandlerPtr CreateIncompleteRequestProcessorStub();
 
 }   // namespace NCloud::NBlockStore
