@@ -21,6 +21,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	tasks_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
@@ -124,10 +126,22 @@ func (f *fixture) fillFilesystem(
 	t *testing.T,
 	filesystemID string,
 	rootDir nfs_testing.Node,
-) *nfs_testing.FileSystemModel {
+	parallel bool,
+) nfs_testing.FilesystemModelInterface {
 
 	session, err := f.client.CreateSession(f.ctx, filesystemID, "", false)
 	require.NoError(t, err)
+	if parallel {
+		model := nfs_testing.NewParallelFilesystemModel(
+			t,
+			f.ctx,
+			f.client,
+			session,
+			rootDir,
+		)
+		model.CreateAllNodesRecursively()
+		return model
+	}
 	model := nfs_testing.NewFileSystemModel(
 		t,
 		f.ctx,
@@ -154,6 +168,11 @@ func withNemesis(
 	for {
 		runCtx, cancel := context.WithCancel(ctx)
 		delay := minDuration + time.Duration(rng.Int63n(int64(durationRange)))
+		logging.Info(
+			runCtx,
+			"task will be cancelled after %v",
+			delay,
+		)
 		timer := time.AfterFunc(delay, cancel)
 
 		err := runFunc(runCtx)
@@ -164,8 +183,11 @@ func withNemesis(
 		if err == nil {
 			return nil
 		}
-
 		if errors.Is(err, context.Canceled) {
+			continue
+		}
+
+		if tasks_errors.Is(err, tasks_errors.NewEmptyRetriableError()) {
 			continue
 		}
 
@@ -189,22 +211,18 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 			FilesCount: 0,
 		},
 		{
-			DirsCount:  10000,
+			DirsCount:  5,
 			FilesCount: 100000,
 		},
 		{
-			DirsCount:  3,
-			FilesCount: 3,
+			DirsCount:  10,
+			FilesCount: 10000,
 		},
 	}
 
 	root := nfs_testing.HomogeneousDirectoryTree(layers)
-	fsModel := f.fillFilesystem(t, filesystemID, root)
+	fsModel := f.fillFilesystem(t, filesystemID, root, true)
 	defer fsModel.Close()
-
-	expectedNodeNames := tasks_common.NewStringSet(
-		nfs_testing.NodeNames(fsModel.ExpectedNodes)...,
-	)
 
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	execCtx.On("GetTaskID").Return("scrub-task")
@@ -240,12 +258,13 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 	err := withNemesis(
 		f.ctx,
 		func(ctx context.Context) error {
+			// State is updated inside the run method, the task is not recreated
 			return task.Run(ctx, execCtx)
 		},
 		0,
-		10*time.Second,
+		5*time.Second,
 	)
 	require.NoError(t, err)
 
-	require.ElementsMatch(t, expectedNodeNames.List(), actualNodeNames.List())
+	require.True(t, fsModel.ExpectedNodeNames().Equals(actualNodeNames))
 }
