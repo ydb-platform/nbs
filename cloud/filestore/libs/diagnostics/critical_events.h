@@ -48,7 +48,7 @@ namespace NCloud::NFileStore{
     xxx(IsNotDirectory)                                                        \
     xxx(NotPreparedForUnlink)                                                  \
     xxx(TryingToUseTwoBytesShardNoWithObsoleteHandles)                         \
-    xxx(AggregateUsedNodesCountIsNegative)                                     \
+    xxx(CounterIsNegative)                                                     \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

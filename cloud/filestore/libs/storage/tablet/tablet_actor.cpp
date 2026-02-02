@@ -1401,7 +1401,7 @@ bool TIndexTabletActor::HasNodesLeft() const
     // shards.
 
     if (Metrics.AggregateUsedNodesCount < 0) {
-        ReportAggregateUsedNodesCountIsNegative(
+        ReportCounterIsNegative(
             TStringBuilder() << "FileSystem: " << GetFileSystemId()
                              << ". TMetrics::AggregateUsedNodesCount should "
                                 "always be positive.");

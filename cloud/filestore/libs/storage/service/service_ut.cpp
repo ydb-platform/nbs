@@ -4663,9 +4663,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.SendCreateNodeRequest(
             headers,
             TCreateNodeArgs::File(RootNodeId, "too_many_files"));
-        const ui32 status =
-            STATUS_FROM_CODE(service.RecvCreateNodeResponse()->GetStatus());
-        UNIT_ASSERT_EQUAL(static_cast<ui32>(NProto::E_FS_NOSPC), status);
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOSPC,
+            service.RecvCreateNodeResponse()->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldHitNodesCountLimit)
