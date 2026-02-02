@@ -169,6 +169,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(AddFreshBlocks,            __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
     xxx(Compaction,                __VA_ARGS__)                                \
+    xxx(CompactionTx,              __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
     xxx(ScanDiskBatch,             __VA_ARGS__)                                \
@@ -480,6 +481,30 @@ struct TEvPartitionPrivate
     };
 
     struct TCompactionResponse
+    {
+    };
+
+    //
+    // CompactionTx
+    //
+
+    struct TCompactionTxRequest
+    {
+        const ui64 CommitId;
+        const TCompactionOptions CompactionOptions;
+        TVector<std::pair<ui32, TBlockRange32>> Ranges;
+
+        TCompactionTxRequest(
+            ui64 commitId,
+            TCompactionOptions compactionOptions,
+            TVector<std::pair<ui32, TBlockRange32>> ranges)
+            : CommitId(commitId)
+            , CompactionOptions(compactionOptions)
+            , Ranges(std::move(ranges))
+        {}
+    };
+
+    struct TCompactionTxResponse
     {
     };
 
