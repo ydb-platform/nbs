@@ -2,6 +2,7 @@ package filesystem_scrubbing
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -67,7 +68,7 @@ func (t *scrubFilesystemTask) Run(
 	}
 
 	traverser := filesystem_traversal.NewFilesystemTraverser(
-		execCtx.GetTaskID(),
+		fmt.Sprintf("scrubbing_%s", execCtx.GetTaskID()),
 		filesystem.GetFilesystemId(),
 		t.request.GetFilesystemCheckpointId(),
 		client,
