@@ -8,6 +8,9 @@
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
