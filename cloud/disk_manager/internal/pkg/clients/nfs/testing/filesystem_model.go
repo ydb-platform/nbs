@@ -343,7 +343,6 @@ func (f *FileSystemModel) ExpectedNodeNames() *tasks_common.StringSet {
 	return &result
 }
 
-
 func NewFileSystemModel(
 	t *testing.T,
 	ctx context.Context,
@@ -383,7 +382,7 @@ type ParallelFilesystemModel struct {
 	client        nfs.Client
 	session       nfs.Session
 	t             *testing.T
-	rootNode 	  Node
+	rootNode      Node
 	mu            sync.Mutex
 	ExpectedNames *tasks_common.StringSet
 }
@@ -392,9 +391,9 @@ func (m *ParallelFilesystemModel) createChildren(
 	parentID uint64,
 	children []Node,
 ) {
-	var childDirectories []struct{
-		parent uint64
-		children   []Node
+	var childDirectories []struct {
+		parent   uint64
+		children []Node
 	}
 	eg, _ := errgroup.WithContext(m.ctx)
 	eg.SetLimit(100)
@@ -405,13 +404,13 @@ func (m *ParallelFilesystemModel) createChildren(
 				m.ctx,
 				m.session,
 				nfs.Node{
-				ParentID:   parentID,
-				Name:       child.Name,
-				Type:       child.FileType,
-				Mode:       0o777,
-				UID:        1,
-				GID:        1,
-				LinkTarget: child.Target,
+					ParentID:   parentID,
+					Name:       child.Name,
+					Type:       child.FileType,
+					Mode:       0o777,
+					UID:        1,
+					GID:        1,
+					LinkTarget: child.Target,
 				},
 			)
 			if err != nil {
@@ -424,11 +423,11 @@ func (m *ParallelFilesystemModel) createChildren(
 			if child.FileType.IsDirectory() {
 				childDirectories = append(
 					childDirectories,
-					struct{
-						parent uint64;
+					struct {
+						parent   uint64
 						children []Node
 					}{
-						parent: id,
+						parent:   id,
 						children: child.Children,
 					},
 				)
@@ -470,7 +469,7 @@ func NewParallelFilesystemModel(
 		ctx:           ctx,
 		client:        client,
 		session:       session,
-		rootNode:     rootDir,
+		rootNode:      rootDir,
 		ExpectedNames: &set,
 	}
 }
