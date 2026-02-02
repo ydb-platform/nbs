@@ -1,4 +1,5 @@
 #include "part_actor.h"
+#include "part_compaction.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -30,89 +31,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRangeCompactionInfo
-{
-    const TBlockRange32 BlockRange;
-    const TPartialBlobId OriginalBlobId;
-    const TPartialBlobId DataBlobId;
-    const TBlockMask DataBlobSkipMask;
-    const TPartialBlobId ZeroBlobId;
-    const TBlockMask ZeroBlobSkipMask;
-    const ui32 BlobsSkippedByCompaction;
-    const ui32 BlocksSkippedByCompaction;
-    const TVector<ui32> BlockChecksums;
-    const EChannelDataKind ChannelDataKind;
-
-    TGuardedBuffer<TBlockBuffer> BlobContent;
-    TVector<ui32> ZeroBlocks;
-    TAffectedBlobs AffectedBlobs;
-    TAffectedBlocks AffectedBlocks;
-    TVector<ui16> UnchangedBlobOffsets;
-    TArrayHolder<TEvBlobStorage::TEvPatch::TDiff> Diffs;
-    ui32 DiffCount = 0;
-
-    TRangeCompactionInfo(
-            TBlockRange32 blockRange,
-            TPartialBlobId originalBlobId,
-            TPartialBlobId dataBlobId,
-            TBlockMask dataBlobSkipMask,
-            TPartialBlobId zeroBlobId,
-            TBlockMask zeroBlobSkipMask,
-            ui32 blobsSkippedByCompaction,
-            ui32 blocksSkippedByCompaction,
-            TVector<ui32> blockChecksums,
-            EChannelDataKind channelDataKind,
-            TBlockBuffer blobContent,
-            TVector<ui32> zeroBlocks,
-            TAffectedBlobs affectedBlobs,
-            TAffectedBlocks affectedBlocks)
-        : BlockRange(blockRange)
-        , OriginalBlobId(originalBlobId)
-        , DataBlobId(dataBlobId)
-        , DataBlobSkipMask(dataBlobSkipMask)
-        , ZeroBlobId(zeroBlobId)
-        , ZeroBlobSkipMask(zeroBlobSkipMask)
-        , BlobsSkippedByCompaction(blobsSkippedByCompaction)
-        , BlocksSkippedByCompaction(blocksSkippedByCompaction)
-        , BlockChecksums(std::move(blockChecksums))
-        , ChannelDataKind(channelDataKind)
-        , BlobContent(std::move(blobContent))
-        , ZeroBlocks(std::move(zeroBlocks))
-        , AffectedBlobs(std::move(affectedBlobs))
-        , AffectedBlocks(std::move(affectedBlocks))
-    {}
-};
-
 class TCompactionActor final
     : public TActorBootstrapped<TCompactionActor>
 {
 public:
-    struct TRequest
-    {
-        TPartialBlobId BlobId;
-        TActorId Proxy;
-        ui16 BlobOffset;
-        ui32 BlockIndex;
-        size_t IndexInBlobContent;
-        ui32 GroupId;
-        ui32 RangeCompactionIndex;
-
-        TRequest(const TPartialBlobId& blobId,
-                 const TActorId& proxy,
-                 ui16 blobOffset,
-                 ui32 blockIndex,
-                 size_t indexInBlobContent,
-                 ui32 groupId,
-                 ui32 rangeCompactionIndex)
-            : BlobId(blobId)
-            , Proxy(proxy)
-            , BlobOffset(blobOffset)
-            , BlockIndex(blockIndex)
-            , IndexInBlobContent(indexInBlobContent)
-            , GroupId(groupId)
-            , RangeCompactionIndex(rangeCompactionIndex)
-        {}
-    };
+    using TRequest = TCompactionRequest;
 
     struct TBatchRequest
     {
@@ -1975,6 +1898,15 @@ void CompleteRangeCompaction(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TPartitionActor::HandleCompactionTx(
+    const TEvPartitionPrivate::TEvCompactionTxRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    // TODO:_ ???
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TPartitionActor::PrepareCompaction(
     const TActorContext& ctx,
     TTransactionContext& tx,
@@ -2042,9 +1974,6 @@ void TPartitionActor::CompleteCompaction(
     const bool blobPatchingEnabled =
         Config->GetBlobPatchingEnabled() || blobPatchingEnabledForCloud;
 
-    TVector<TRangeCompactionInfo> rangeCompactionInfos;
-    TVector<TCompactionActor::TRequest> requests;
-
     const auto mergedBlobThreshold =
         PartitionConfig.GetStorageMediaKind() ==
                 NCloud::NProto::STORAGE_MEDIA_SSD
@@ -2058,19 +1987,23 @@ void TPartitionActor::CompleteCompaction(
             *Info(),
             *State,
             rangeCompaction,
-            requests,
-            rangeCompactionInfos,
+            PendingCompactionRequests,
+            PendingRangeCompactionInfos,
             Config->GetMaxDiffPercentageForBlobPatching());
 
-        if (rangeCompactionInfos.back().OriginalBlobId) {
+        if (PendingRangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
                 "%s Selected patching candidate: %s, data blob: %s",
                 LogTitle.GetWithTime().c_str(),
-                ToString(rangeCompactionInfos.back().OriginalBlobId).c_str(),
-                ToString(rangeCompactionInfos.back().DataBlobId).c_str());
+                ToString(PendingRangeCompactionInfos.back().OriginalBlobId).c_str(),
+                ToString(PendingRangeCompactionInfos.back().DataBlobId).c_str());
         }
+    }
+
+    if (--AwaitedCompactionTxResponses) {
+        return;
     }
 
     const auto compactionType =
@@ -2092,15 +2025,19 @@ void TPartitionActor::CompleteCompaction(
         GetBlobStorageAsyncRequestTimeout(),
         compactionType,
         args.CommitId,
-        std::move(rangeCompactionInfos),
-        std::move(requests),
+        std::move(PendingRangeCompactionInfos),
+        std::move(PendingCompactionRequests),
         LogTitle.GetChild(GetCycleCount()));
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Partition registered TCompactionActor with id [%lu]",
+        "%s Partition registered TCompactionActor with id [%lu]; commit id %lu",
         LogTitle.GetWithTime().c_str(),
-        actor.ToString().c_str());
+        actor.ToString().c_str(),
+        args.CommitId);
+
+    PendingRangeCompactionInfos.clear();
+    PendingCompactionRequests.clear();
 
     Actors.Insert(actor);
 }
