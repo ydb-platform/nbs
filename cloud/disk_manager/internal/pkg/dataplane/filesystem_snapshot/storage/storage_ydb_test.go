@@ -734,7 +734,7 @@ func TestNodesScheduling(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 0)
 
-	f.storage.ScheduleChildNodesForListing(
+	err = f.storage.ScheduleChildNodesForListing(
 		f.ctx,
 		otherSnapshot,
 		99,                                      // nodeID
@@ -742,6 +742,7 @@ func TestNodesScheduling(t *testing.T) {
 		1,                                       // depth
 		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
 	)
+	require.NoError(t, err)
 	entries, err = f.storage.SelectNodesToList(
 		f.ctx,
 		otherSnapshot,
