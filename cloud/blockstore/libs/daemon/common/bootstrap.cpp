@@ -948,7 +948,6 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
     START_COMMON_COMPONENT(FileIOServiceProvider);
-    START_COMMON_COMPONENT(LocalNVMeService);
     START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
@@ -964,6 +963,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
+    START_COMMON_COMPONENT(LocalNVMeService);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -1016,6 +1016,7 @@ void TBootstrapBase::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
+    STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
@@ -1032,8 +1033,6 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(EndpointManager);
 
     STOP_KIKIMR_COMPONENT(ActorSystem);
-
-    STOP_COMMON_COMPONENT(LocalNVMeService);
 
     // stop FileIOServiceProvider after ActorSystem to ensure that there are no
     // in-flight I/O requests from TDiskAgentActor
