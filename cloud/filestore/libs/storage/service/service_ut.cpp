@@ -4660,10 +4660,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             env.GetRuntime().DispatchEvents(options);
         }
 
-        // Creation of one more file should fail.
-        service.AssertCreateNodeFailed(
-            headers,
-            TCreateNodeArgs::File(RootNodeId, "too_many_files"));
+            service.SendCreateNodeRequest(
+                headers,
+                TCreateNodeArgs::File(RootNodeId, "too_many_files"));
+            const ui32 status =
+                STATUS_FROM_CODE(service.RecvCreateNodeResponse()->GetStatus());
+            UNIT_ASSERT_EQUAL(static_cast<ui32>(NProto::E_FS_NOSPC), status);
     }
 
     Y_UNIT_TEST(ShouldHitNodesCountLimit)

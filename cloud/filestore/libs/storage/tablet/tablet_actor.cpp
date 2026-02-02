@@ -1397,9 +1397,17 @@ bool TIndexTabletActor::HasNodesLeft() const
         return GetUsedNodesCount() < GetNodesCount();
     }
 
-    // A new way to count available nodes uses the count aggregated by all
+    // A new way to count available nodes uses the count aggregated across all
     // shards.
-    TABLET_VERIFY(Metrics.AggregateUsedNodesCount >= 0);
+
+    if (Metrics.AggregateUsedNodesCount < 0) {
+        ReportAggregateUsedNodesCountIsNegative(
+            TStringBuilder() << "FileSystem: " << GetFileSystemId()
+                             << ". TMetrics::AggregateUsedNodesCount should "
+                                "always be positive.");
+        return false;
+    }
+
     // It makes sense for shardless filesystems, as it eliminates 15s delay
     // in AggregateUsedNodesCount calculation.
     const ui64 usedNodes = Max<ui64>(
