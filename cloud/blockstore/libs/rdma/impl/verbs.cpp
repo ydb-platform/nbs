@@ -68,15 +68,14 @@ struct TVerbs
 
     TMemoryRegionPtr RegisterMemoryRegion(
         ibv_pd* pd,
-        TMemoryRegionHolder addr,
+        void* addr,
         size_t length,
         int flags) override
     {
-        auto* mr = ibv_reg_mr(pd, addr.Get(), length, flags);
+        auto* mr = ibv_reg_mr(pd, addr, length, flags);
         if (!mr) {
             RDMA_THROW_ERROR("ibv_reg_mr");
         }
-        addr.Release();
         return WrapPtr(mr);
     }
 

@@ -57,34 +57,7 @@ struct ICompletionHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMemoryRegionHolder final
-{
-public:
-    explicit TMemoryRegionHolder(size_t size)
-        : data{malloc(size), free}
-    {}
-
-    void* Release()
-    {
-        return data.release();
-    }
-
-    [[nodiscard]] void* Get() const
-    {
-        return data.get();
-    }
-
-    explicit operator void*() const {
-        return data.get();
-    }
-
-    explicit operator bool() const {
-        return data != nullptr;
-    }
-
-private:
-    std::unique_ptr<void, void(*)(void*)> data;
-};
+using TMemoryRegionHolder = std::unique_ptr<void, void(*)(void*)>;
 
 struct IVerbs
 {
@@ -97,7 +70,7 @@ struct IVerbs
         ibv_context* context) = 0;
     virtual TMemoryRegionPtr RegisterMemoryRegion(
         ibv_pd* pd,
-        TMemoryRegionHolder addr,
+        void* addr,
         size_t length,
         int flags) = 0;
 

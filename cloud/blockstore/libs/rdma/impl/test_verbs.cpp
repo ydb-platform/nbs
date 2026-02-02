@@ -132,14 +132,14 @@ struct TTestVerbs
 
     TMemoryRegionPtr RegisterMemoryRegion(
         ibv_pd* pd,
-        TMemoryRegionHolder addr,
+        void* addr,
         size_t length,
         int flags) override
     {
         Y_UNUSED(flags);
 
         return {
-            static_cast<ibv_mr*>(new TMemoryRegion(pd, addr.Get(), length)),
+            static_cast<ibv_mr*>(new TMemoryRegion(pd, addr, length)),
             TMemoryRegion::Destroy,
         };
     }
