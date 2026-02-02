@@ -311,12 +311,12 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
                 "id tag";
             *response.MutableError() = MakeError(E_NOT_FOUND, msg);
         } else {
-            response.SetCellId(Cell.CellId);
-            owner->Reply(std::move(response));
             STORAGE_DEBUG(
                 TStringBuilder() << "DescribeVolume: got success for disk "
                                  << Request.GetDiskId().Quote() << " from "
                                  << HostInfo.Fqdn);
+            response.SetCellId(Cell.CellId);
+            owner->Reply(std::move(response));
             return;
         }
     }
