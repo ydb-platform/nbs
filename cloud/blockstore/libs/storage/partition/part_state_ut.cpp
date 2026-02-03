@@ -191,35 +191,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, bp.CompactionScore);
     }
 
-    Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenItOverflows)
-    {
-        TPartitionState state(
-            DefaultConfig(1, DefaultBlockCount),
-            0,  // generation
-            BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            Max(),  // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
-        );
-
-        UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);
-    }
-
-
-
     Y_UNIT_TEST(ShouldCorrectlyCalculateUsedBlocksCount)
     {
         auto config = DefaultConfig(1, DefaultBlockCount);

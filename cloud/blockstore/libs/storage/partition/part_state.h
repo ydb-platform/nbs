@@ -289,11 +289,12 @@ struct TBackpressureFeaturesConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionState: public TPartitionChannelsState
+class TPartitionState
+    : public TPartitionChannelsState
+    , public TCommitIdsState
 {
 private:
     NProto::TPartitionMeta Meta;
-    const ui32 Generation;
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
@@ -393,28 +394,6 @@ public:
 public:
     TBackpressureReport CalculateCurrentBackpressure() const;
 
-    //
-    // Commits
-    //
-
-private:
-    TCommitIdsState CommitIdsState;
-
-public:
-    TCommitQueue& GetCommitQueue()
-    {
-        return CommitIdsState.GetCommitQueue();
-    }
-
-    ui64 GetLastCommitId() const
-    {
-        return CommitIdsState.GetLastCommitId();
-    }
-
-    ui64 GenerateCommitId()
-    {
-        return CommitIdsState.GenerateCommitId();
-    }
 
     //
     // Flush
@@ -516,7 +495,7 @@ private:
         auto getBlockContent)
     {
         TVector<ui64> checkpoints;
-        CommitIdsState.AccessCheckpoints().GetCommitIds(checkpoints);
+        GetCheckpoints().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -571,7 +550,7 @@ private:
         auto getBlockContent)
     {
         TVector<ui64> checkpoints;
-        CommitIdsState.AccessCheckpoints().GetCommitIds(checkpoints);
+        GetCheckpoints().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -1043,11 +1022,6 @@ public:
     TDuration GetCleanupDelay() const
     {
         return CleanupDelay;
-    }
-
-    TCheckpointStore& AccessCheckpoints()
-    {
-        return CommitIdsState.AccessCheckpoints();
     }
 
     TCheckpointsInFlight& GetCheckpointsInFlight()

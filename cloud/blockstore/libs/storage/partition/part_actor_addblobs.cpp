@@ -587,7 +587,7 @@ private:
         }
 
         TVector<ui64> checkpoints;
-        State.AccessCheckpoints().GetCommitIds(checkpoints);
+        State.GetCheckpoints().GetCommitIds(checkpoints);
         // XXX affected blocks are only supplied via the requests sent by
         // compaction and compaction takes care of building correct affected
         // block lists itself: blocks not overwritten by compaction should not

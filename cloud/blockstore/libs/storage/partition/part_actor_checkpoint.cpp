@@ -131,7 +131,8 @@ void TPartitionActor::ExecuteCreateCheckpoint(
     if (added) {
         db.WriteCheckpoint(checkpoint, args.WithoutData);
     } else {
-        auto existingIdempotenceId = State->AccessCheckpoints().GetIdempotenceId(checkpoint.CheckpointId);
+        auto existingIdempotenceId =
+            State->GetCheckpoints().GetIdempotenceId(checkpoint.CheckpointId);
         if (existingIdempotenceId != checkpoint.IdempotenceId) {
             args.Error = MakeError(S_ALREADY, TStringBuilder()
                 << "checkpoint already exists: " << checkpoint.CheckpointId.Quote());
