@@ -3,6 +3,10 @@ name: Build and test
 on:
   workflow_call:
     inputs:
+      component:
+        type: string
+        default: ""
+        description: "component name"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -157,6 +161,7 @@ jobs:
       uses: ./.github/actions/build
       if: inputs.run_build
       with:
+        component: ${{ inputs.component }}
         build_target: ${{ inputs.build_target }}
         build_preset: ${{ inputs.build_preset }}
         cache_update: ${{ inputs.cache_update_build }}
@@ -172,6 +177,7 @@ jobs:
       uses: ./.github/actions/test
       if: inputs.run_tests
       with:
+        component: ${{ inputs.component }}
         test_target: ${{ inputs.test_target }}
         build_preset: ${{ inputs.build_preset }}
         test_size: ${{ inputs.test_size }}
