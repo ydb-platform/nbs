@@ -395,13 +395,13 @@ func (m *ParallelFilesystemModel) createChildren(
 		parent   uint64
 		children []Node
 	}
-	eg, _ := errgroup.WithContext(m.ctx)
+	eg, ctx := errgroup.WithContext(m.ctx)
 	eg.SetLimit(100)
 	for _, child := range children {
 		child := child
 		eg.Go(func() error {
 			id, err := m.client.CreateNode(
-				m.ctx,
+				ctx,
 				m.session,
 				nfs.Node{
 					ParentID:   parentID,
