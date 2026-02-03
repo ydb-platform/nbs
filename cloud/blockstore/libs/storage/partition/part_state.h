@@ -412,11 +412,6 @@ private:
         {
             return PartitionState.GetLastCommitId();
         }
-
-        [[nodiscard]] const NProto::TPartitionStats& GetStats() const override
-        {
-            return PartitionState.GetStats();
-        }
     };
 
     TPartitionFreshBlocksStateContextProvider ContextProvider;

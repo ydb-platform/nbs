@@ -150,7 +150,8 @@ ui64 TPartitionState::CalculateCheckpointBytes() const
     }
 
     const auto& lastStats = lastCheckpoint->Stats;
-    ui64 blocksCount = GetUnflushedFreshBlocksCount();
+    ui64 blocksCount = GetUnflushedFreshBlocksCountFromChannel() +
+                       GetStats().GetFreshBlocksCount();
     blocksCount += lastStats.GetMixedBlocksCount();
     blocksCount += lastStats.GetMergedBlocksCount();
     return blocksCount * GetBlockSize();
@@ -689,7 +690,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                     TABLED() { out << GetLastCommitId(); }
                 }
 
-                TPartitionFreshBlocksState::DumpHtml(out);
+                TPartitionFreshBlocksState::DumpHtml(
+                    out,
+                    GetStats().GetFreshBlocksCount());
 
                 TABLER() {
                     TABLED() { out << "Compaction"; }
@@ -723,7 +726,9 @@ TJsonValue TPartitionState::AsJson() const
     {
         TJsonValue state;
         state["LastCommitId"] = GetLastCommitId();
-        TPartitionFreshBlocksState::AsJson(state);
+        TPartitionFreshBlocksState::AsJson(
+            state,
+            GetStats().GetFreshBlocksCount());
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);
         state["CollectGarbage"] = ToJson(CollectGarbageState);

@@ -23,8 +23,6 @@ public:
 
     [[nodiscard]] virtual ui64 GetLastCommitId() const = 0;
 
-    [[nodiscard]] virtual const NProto::TPartitionStats& GetStats() const = 0;
-
     virtual ~IPartitionFreshBlocksStateContextProvider() = default;
 };
 
@@ -224,19 +222,18 @@ public:
 
     void DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 
-    ui32 GetUnflushedFreshBlocksCount() const
-    {
-        return ContextProvider->GetStats().GetFreshBlocksCount() +
-               UnflushedFreshBlocksFromChannelCount;
-    }
-
     ui32 IncrementUnflushedFreshBlocksFromChannelCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromChannelCount(size_t value);
 
-    void DumpHtml(IOutputStream& out) const;
-    void AsJson(NJson::TJsonValue& state) const;
+    void DumpHtml(IOutputStream& out, ui64 freshBlocksInDb) const;
+    void AsJson(NJson::TJsonValue& state, ui64 freshBlocksInDb) const;
 
 protected:
+    ui32 GetUnflushedFreshBlocksCountFromChannel() const
+    {
+        return UnflushedFreshBlocksFromChannelCount;
+    }
+
     void SetContextProvider(
         IPartitionFreshBlocksStateContextProvider* contextProvider)
     {

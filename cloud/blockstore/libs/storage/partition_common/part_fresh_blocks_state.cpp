@@ -259,7 +259,9 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionFreshBlocksState::DumpHtml(IOutputStream& out) const
+void TPartitionFreshBlocksState::DumpHtml(
+    IOutputStream& out,
+    ui64 freshBlocksInDb) const
 {
     Y_ABORT_UNLESS(ContextProvider);
 
@@ -269,9 +271,10 @@ void TPartitionFreshBlocksState::DumpHtml(IOutputStream& out) const
                 out << "FreshBlocks";
             }
             TABLED () {
-                out << "Total: " << GetUnflushedFreshBlocksCount()
-                    << ", FromDb: "
-                    << ContextProvider->GetStats().GetFreshBlocksCount()
+                out << "Total: "
+                    << GetUnflushedFreshBlocksCountFromChannel() +
+                           freshBlocksInDb
+                    << ", FromDb: " << freshBlocksInDb
                     << ", FromChannel: " << UnflushedFreshBlocksFromChannelCount
                     << ", InFlight: " << GetFreshBlocksInFlight()
                     << ", Queued: " << GetFreshBlocksQueued()
@@ -289,13 +292,15 @@ void TPartitionFreshBlocksState::DumpHtml(IOutputStream& out) const
     }
 }
 
-void TPartitionFreshBlocksState::AsJson(NJson::TJsonValue& state) const
+void TPartitionFreshBlocksState::AsJson(
+    NJson::TJsonValue& state,
+    ui64 freshBlocksInDb) const
 {
     Y_ABORT_UNLESS(ContextProvider);
 
-    state["FreshBlocksTotal"] = GetUnflushedFreshBlocksCount();
-    state["FreshBlocksFromDb"] =
-        ContextProvider->GetStats().GetFreshBlocksCount();
+    state["FreshBlocksTotal"] =
+        GetUnflushedFreshBlocksCountFromChannel() + freshBlocksInDb;
+    state["FreshBlocksFromDb"] = freshBlocksInDb;
     state["FreshBlocksFromChannel"] = UnflushedFreshBlocksFromChannelCount;
     state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
     state["FreshBlocksQueued"] = GetFreshBlocksQueued();
