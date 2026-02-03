@@ -986,17 +986,15 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        const type configValue = BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(           \
+        if (!Impl->Control##name.IsDefault()) {                                \
+            const ui64 rawControlValue = Impl->Control##name;                  \
+            return ConvertValue<type>(rawControlValue);                        \
+        }                                                                      \
+        return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
             Impl->StorageServiceConfig,                                        \
             name,                                                              \
             type,                                                              \
             Default##name);                                                    \
-        const ui64 rawControlValue = Impl->Control##name;                      \
-        const type controlValue = ConvertValue<type>(rawControlValue);         \
-        if (controlValue != configValue) {                                     \
-            return controlValue;                                               \
-        }                                                                      \
-        return configValue;                                                    \
     }                                                                          \
     // BLOCKSTORE_CONFIG_GETTER
 
