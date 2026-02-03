@@ -369,8 +369,7 @@ void TStatsServiceActor::HandlePartitionBootExternalCompleted(
 
 void TStatsServiceActor::UpdateVolumePartCounters(
     TEvStatsService::TVolumePartCounters partCounters,
-    const TActorContext& ctx,
-    ui32 senderNodeId)
+    const TActorContext& ctx)
 {
     auto* volume = State.GetVolume(partCounters.DiskId);
 
@@ -393,7 +392,7 @@ void TStatsServiceActor::UpdateVolumePartCounters(
 
     State.GetCounters(volume->VolumeInfo).UpdatePartCounters(*partCounters.DiskCounters);
 
-    if (senderNodeId == SelfId().NodeId()) {
+    if (volume->VolumeActorId.NodeId() == SelfId().NodeId()) {
         State.GetLocalVolumesCounters().UpdateCounters(*partCounters.DiskCounters);
     } else {
         State.GetNonlocalVolumesCounters().UpdateCounters(*partCounters.DiskCounters);
@@ -406,7 +405,7 @@ void TStatsServiceActor::HandleVolumePartCounters(
 {
     auto* msg = ev->Get();
 
-    UpdateVolumePartCounters(std::move(*msg), ctx, ev->Sender.NodeId());
+    UpdateVolumePartCounters(std::move(*msg), ctx);
 }
 
 void TStatsServiceActor::UpdateVolumeCounters(
@@ -479,7 +478,7 @@ void TStatsServiceActor::HandleServiceStatisticsCombined(
             ctx,
             TBlockStoreComponents::STATS_SERVICE,
             "Failed to update volumes statistics. Error: %s",
-            FormatError(msg->Error).Quote().data());
+            FormatError(msg->Error).Quote().c_str());
     }
 
     for (auto& volumeStatistics: msg->Counters) {
@@ -492,8 +491,7 @@ void TStatsServiceActor::HandleServiceStatisticsCombined(
         for (auto& partCounters: volumeStatistics.PartsCounters) {
             UpdateVolumePartCounters(
                 std::move(partCounters),
-                ctx,
-                volumeStatistics.VolumeNodeId);
+                ctx);
         }
     }
 
