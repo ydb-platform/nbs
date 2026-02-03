@@ -935,6 +935,7 @@ private:
 
     bool HasBlocksLeft(ui64 blocksRequired) const;
     bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
+    bool HasNodesLeft() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

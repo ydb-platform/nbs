@@ -1403,6 +1403,34 @@ bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TIndexTabletActor::HasNodesLeft() const
+{
+    if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
+        return GetUsedNodesCount() < GetNodesCount();
+    }
+
+    // A new way to count available nodes uses the count aggregated across all
+    // shards.
+
+    if (Metrics.AggregateUsedNodesCount < 0) {
+        ReportCounterIsNegative(
+            TStringBuilder() << "FileSystem: " << GetFileSystemId()
+                             << ". TMetrics::AggregateUsedNodesCount should "
+                                "always be positive.");
+        return false;
+    }
+
+    // It makes sense for shardless filesystems, as it eliminates 15s delay
+    // in AggregateUsedNodesCount calculation.
+    const ui64 usedNodes = Max<ui64>(
+        static_cast<ui64>(Metrics.AggregateUsedNodesCount.load()),
+        GetUsedNodesCount());
+
+    return usedNodes < GetNodesCount();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
     ui32 nonNetworkMetricsBalancingFactor)
 {
