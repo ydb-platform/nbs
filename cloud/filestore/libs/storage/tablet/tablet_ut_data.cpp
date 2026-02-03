@@ -7860,12 +7860,43 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto handle = CreateHandle(tablet, id);
 
         //
-        // Double UpdateStats call - after this CPU usage rate should be
-        // calculated.
+        // Initializing initial ts and CPUUsageMicros values.
         //
 
         tablet.SendRequest(tablet.CreateUpdateCounters());
+
+        //
+        // Making sure that IndexTabletActor uses some CPU.
+        //
+
+        for (ui32 i = 0; i < 10; ++i) {
+            tablet.GetNodeAttr(id);
+        }
+
+        //
+        // Triggering CPUUsageRate calculation.
+        //
+
         tablet.SendRequest(tablet.CreateUpdateCounters());
+
+        auto registry = env.GetRegistry();
+
+        i64 cpuUsageMicros = 0;
+
+        {
+            const auto pred = [&] (i64 val) {
+                cpuUsageMicros = val;
+                return true;
+            };
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCountersWithPredicate({
+                {{{"sensor", "CPUUsageMicros"}, {"filesystem", "test"}}, pred},
+            });
+        }
+
+        UNIT_ASSERT_GT(cpuUsageMicros, 0);
 
         {
             //
@@ -7919,21 +7950,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT(backendInfo->GetIsOverloaded());
         }
 
-        auto registry = env.GetRegistry();
-        TTestRegistryVisitor visitor;
-        // clang-format off
-        registry->Visit(TInstant::Zero(), visitor);
-        visitor.ValidateExpectedCounters({
-            {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
-        });
-
-        const auto pred = [] (i64 val) {
-            return val > 0;
-        };
-        visitor.ValidateExpectedCountersWithPredicate({
-            {{{"sensor", "CPUUsageMicros"}, {"filesystem", "test"}}, pred},
-        });
-        // clang-format on
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+            });
+        }
 
         tablet.DestroyHandle(handle);
     }
