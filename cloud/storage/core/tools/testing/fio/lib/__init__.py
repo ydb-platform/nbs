@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 KB = 1024
 MB = 1024 * 1024
+IO_LOG = "io.log"
 
 
 def _print_size(size):
@@ -197,7 +198,7 @@ class TestCase:
             cmd += ["--io_size", str(self.io_size)]
 
         if self.write_iolog:
-            cmd += ["--write_iolog", self.write_iolog]
+            cmd += ["--write_iolog", IO_LOG]
 
         return cmd
 
@@ -325,7 +326,7 @@ def _execute_command(cmd, fail_on_errors):
     finally:
         for filepath in glob.glob(fio_artifacts):
             shutil.copy(filepath, common.output_path())
-        shutil.copy("./io.log", common.output_path())
+        shutil.copy(f"./{IO_LOG}", common.output_path())
 
     results = json.loads(ex.stdout)
 
