@@ -948,14 +948,14 @@ void TVolumeActor::SendStatsToServiceStatisticsCollectorActor(
         return;
     }
 
-    TEvStatsService::TGetServiceStatisticsResponse response(SelfId().NodeId());
+    auto response = std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(SelfId.NodeId());
 
     if (VolumeSelfCounters) {
-        response.VolumeCounters.emplace(GetVolumeSelfCounters(ctx));
+        response->VolumeCounters.emplace(GetVolumeSelfCounters(ctx));
     }
 
     if (auto partStats = GetPartCounters(State->GetConfig().GetDiskId())) {
-        response.PartsCounters.push_back(std::move(*partStats));
+        response->PartsCounters.push_back(std::move(*partStats));
     }
 
     for (const auto& [checkpointId, checkpointInfo]:
@@ -965,15 +965,14 @@ void TVolumeActor::SendStatsToServiceStatisticsCollectorActor(
             continue;
         }
         if (auto partStats = GetPartCounters(checkpointInfo.ShadowDiskId)) {
-            response.PartsCounters.push_back(std::move(*partStats));
+            response->PartsCounters.push_back(std::move(*partStats));
         }
     }
 
     NCloud::Reply(
         ctx,
         *StatisticRequestInfo,
-        std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(
-            std::move(response)));
+        std::move(response));
 
     StatisticRequestInfo.Reset();
 }
