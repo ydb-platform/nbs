@@ -94,17 +94,17 @@ func (t *FilesystemTraverser) Traverse(
 		logging.String("FILESYSTEM_ID", t.filesystemID),
 		logging.String("FILESYSTEM_CHECKPOINT_ID", t.filesystemCheckpointID),
 	)
+	defer close(t.processedNodeIDs)
+
 	if !t.rootNodeAlreadyScheduled {
 		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
 		if err != nil {
 			return err
 		}
 
-		if t.stateSaver != nil {
-			err = t.stateSaver(ctx)
-			if err != nil {
-				return err
-			}
+		err = t.stateSaver(ctx)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -126,7 +126,7 @@ func (t *FilesystemTraverser) Traverse(
 func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 	defer close(t.scheduledNodes)
 
-	processedNodeIDs := make(map[uint64]struct{})
+	processingNodeIDs := make(map[uint64]struct{})
 	pendingNodes := make([]*storage.NodeQueueEntry, 0)
 
 	for {
@@ -136,10 +136,10 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			case nodeID := <-t.processedNodeIDs:
-				delete(processedNodeIDs, nodeID)
+				delete(processingNodeIDs, nodeID)
 			case t.scheduledNodes <- node:
 				pendingNodes = pendingNodes[:len(pendingNodes)-1]
-				processedNodeIDs[node.NodeID] = struct{}{}
+				processingNodeIDs[node.NodeID] = struct{}{}
 			}
 			continue
 		}
@@ -147,7 +147,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 		entries, err := t.storage.SelectNodesToList(
 			ctx,
 			t.filesystemSnapshotID,
-			processedNodeIDs,
+			processingNodeIDs,
 			t.selectNodesToListLimit,
 		)
 		if err != nil {
@@ -155,7 +155,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 		}
 
 		if len(entries) == 0 {
-			if len(processedNodeIDs) == 0 {
+			if len(processingNodeIDs) == 0 {
 				logging.Info(ctx, "Traversal complete for %s", t.filesystemSnapshotID)
 				return nil
 			}
@@ -163,7 +163,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			case nodeID := <-t.processedNodeIDs:
-				delete(processedNodeIDs, nodeID)
+				delete(processingNodeIDs, nodeID)
 			}
 			continue
 		}
@@ -183,7 +183,12 @@ func (t *FilesystemTraverser) directoryLister(
 	onListedNodes OnListedNodesFunc,
 ) error {
 
-	session, err := t.client.CreateSession(ctx, t.filesystemID, t.filesystemCheckpointID, true)
+	session, err := t.client.CreateSession(
+		ctx,
+		t.filesystemID,
+		t.filesystemCheckpointID,
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -232,7 +237,7 @@ func (t *FilesystemTraverser) listNode(
 
 	cookie := node.Cookie
 	for {
-		nodes, nextCookie, err := t.client.ListNodes(
+		children, nextCookie, err := t.client.ListNodes(
 			ctx,
 			session,
 			node.NodeID,
@@ -242,15 +247,15 @@ func (t *FilesystemTraverser) listNode(
 			return err
 		}
 
-		if len(nodes) > 0 {
-			err = onListedNodes(ctx, nodes, session, t.client)
+		if len(children) > 0 {
+			err = onListedNodes(ctx, children, session, t.client)
 			if err != nil {
 				return err
 			}
 		}
 
 		var childDirs []nfs.Node
-		for _, n := range nodes {
+		for _, n := range children {
 			// In case of filesystem scrubbing, ListNodes may return InvalidNodeID
 			// for nodes present in index tablet and absent in shard.
 			// See: https://github.com/ydb-platform/nbs/issues/5094
@@ -275,7 +280,7 @@ func (t *FilesystemTraverser) listNode(
 			return err
 		}
 
-		if nextCookie == "" {
+		if nextCookie == "" { // Listing of this node is finished
 			return nil
 		}
 

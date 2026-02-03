@@ -151,13 +151,13 @@ func (s *StorageMock) SelectNodesToList(
 func (s *StorageMock) ScheduleChildNodesForListing(
 	ctx context.Context,
 	snapshotID string,
-	nodeID uint64,
+	parentNodeID uint64,
 	nextCookie string,
 	depth uint64,
 	children []nfs.Node,
 ) error {
 
-	args := s.Called(ctx, snapshotID, nodeID, nextCookie, depth, children)
+	args := s.Called(ctx, snapshotID, parentNodeID, nextCookie, depth, children)
 	return args.Error(0)
 }
 

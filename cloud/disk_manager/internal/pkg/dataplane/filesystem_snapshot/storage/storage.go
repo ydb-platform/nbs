@@ -118,7 +118,7 @@ type Storage interface {
 	ScheduleChildNodesForListing(
 		ctx context.Context,
 		snapshotID string,
-		nodeID uint64,
+		parentNodeID uint64,
 		nextCookie string,
 		depth uint64,
 		children []nfs.Node,

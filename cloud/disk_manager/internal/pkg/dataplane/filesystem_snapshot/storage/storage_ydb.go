@@ -919,6 +919,7 @@ func (s *storageYDB) selectNodesToList(
 	}
 
 	// Exclude InvalidNodeID to avoid handling empty excludeNodeIDs slice case.
+	// List can't be empty in YDB query.
 	excludeNodeIDs = append(
 		excludeNodeIDs,
 		persistence.Uint64Value(
@@ -973,7 +974,7 @@ func (s *storageYDB) scheduleChildNodesForListing(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
-	nodeID uint64,
+	parentNodeID uint64,
 	nextCookie string,
 	depth uint64,
 	children []nfs.Node,
@@ -999,7 +1000,7 @@ func (s *storageYDB) scheduleChildNodesForListing(
 			where filesystem_snapshot_id = $snapshot_id and node_id = $node_id
 		`, s.tablesPath),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-			persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
+			persistence.ValueParam("$node_id", persistence.Uint64Value(parentNodeID)),
 		)
 	} else {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -1014,7 +1015,7 @@ func (s *storageYDB) scheduleChildNodesForListing(
 			values ($snapshot_id, $node_id, $cookie, $depth)
 		`, s.tablesPath),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-			persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
+			persistence.ValueParam("$node_id", persistence.Uint64Value(parentNodeID)),
 			persistence.ValueParam("$cookie", persistence.StringValue([]byte(nextCookie))),
 			persistence.ValueParam("$depth", persistence.Uint64Value(depth)),
 		)
@@ -1099,7 +1100,7 @@ func (s *storageYDB) SelectNodesToList(
 func (s *storageYDB) ScheduleChildNodesForListing(
 	ctx context.Context,
 	snapshotID string,
-	nodeID uint64,
+	parentNodeID uint64,
 	nextCookie string,
 	depth uint64,
 	children []nfs.Node,
@@ -1114,7 +1115,7 @@ func (s *storageYDB) ScheduleChildNodesForListing(
 				ctx,
 				session,
 				snapshotID,
-				nodeID,
+				parentNodeID,
 				nextCookie,
 				depth,
 				children,
