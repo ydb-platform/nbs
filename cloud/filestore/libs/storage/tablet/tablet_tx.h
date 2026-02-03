@@ -1309,6 +1309,7 @@ struct TTxIndexTablet
         TString Next;
 
         ui32 BytesToPrecharge = 0;
+        ui32 PrepareAttempts = 1;
 
         TListNodes(
                 TRequestInfoPtr requestInfo,
@@ -1339,6 +1340,7 @@ struct TTxIndexTablet
 
         void OnRestart() override
         {
+            ++PrepareAttempts;
             BytesToPrecharge = ClampVal(
                 2 * BytesToPrecharge,
                 MaxBytes,

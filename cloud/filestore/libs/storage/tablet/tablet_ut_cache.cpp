@@ -130,11 +130,17 @@ TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
     return stats;
 }
 
-ui64 GetListNodesRequestedBytesPrecharge(
+struct TListNodesTxStats
+{
+    ui64 BytesPrecharge;
+    ui64 PrepareAttempts;
+};
+
+TListNodesTxStats GetListNodesTxStats(
     TTestEnv& env,
     TIndexTabletClient& tablet)
 {
-    ui64 bytesPrecharge = 0;
+    TListNodesTxStats stats;
     TTestRegistryVisitor visitor;
 
     tablet.SendRequest(tablet.CreateUpdateCounters());
@@ -144,13 +150,20 @@ ui64 GetListNodesRequestedBytesPrecharge(
     visitor.ValidateExpectedCountersWithPredicate({
         {{{"filesystem", "test"},
           {"sensor", "ListNodes.RequestedBytesPrecharge"}},
-         [&bytesPrecharge](i64 value)
+         [&stats](i64 value)
          {
-             bytesPrecharge = value;
+             stats.BytesPrecharge = value;
              return true;
          }},
+        {{{"filesystem", "test"},
+          {"sensor", "ListNodes.PrepareAttempts"}},
+         [&stats](i64 value)
+         {
+            stats.PrepareAttempts = value;
+            return true;
+         }},
     });
-    return bytesPrecharge;
+    return stats;
 }
 
 }   // namespace
@@ -1554,9 +1567,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // Cache miss
         tablet.ListNodes(RootNodeId);
 
+        auto listNodesTxStats = GetListNodesTxStats(env, tablet);
+
         UNIT_ASSERT_VALUES_EQUAL(
             567,
-            GetListNodesRequestedBytesPrecharge(env, tablet));
+            listNodesTxStats.BytesPrecharge);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            listNodesTxStats.PrepareAttempts);
     }
 }
 
