@@ -386,12 +386,12 @@ private:
     TFuture<TCompletedRequest> DoRead()
     {
         TGuard<TMutex> guard(StateLock);
-        if (HandleInfos.empty()) {
+        if (HandleInfos.size() < std::max(Spec.GetMinFileCount(), 1ul)) {
             return DoCreateHandle();
         }
 
         auto handleInfo = GetHandleInfo();
-        if (handleInfo.Size < ReadBytes) {
+        if (handleInfo.Size < std::max(ReadBytes, Spec.GetMinFileSize())) {
             return DoWrite(handleInfo);
         }
 
@@ -489,7 +489,9 @@ private:
 
         const auto started = TInstant::Now();
         ui64 byteOffset = handleInfo.Size;
-        if (RandomNumber<double>() < AppendProbability) {
+        if (handleInfo.Size < Spec.GetMinFileSize() ||
+            RandomNumber<double>() < AppendProbability)
+        {
             handleInfo.Size += WriteBytes;
         } else {
             handleInfo.Size = Max(handleInfo.Size, WriteBytes);
