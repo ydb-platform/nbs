@@ -95,6 +95,7 @@ func (t *FilesystemTraverser) Traverse(
 		logging.String("FILESYSTEM_CHECKPOINT_ID", t.filesystemCheckpointID),
 	)
 	defer close(t.processedNodeIDs)
+
 	if !t.rootNodeAlreadyScheduled {
 		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
 		if err != nil {
