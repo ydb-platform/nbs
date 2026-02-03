@@ -63,17 +63,16 @@ func (t *scrubFilesystemTask) Run(
 	defer client.Close()
 
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()
-	if !rootNodeAlreadyScheduled {
-		t.state.RootNodeScheduled = true
-	}
-
 	traverser := filesystem_traversal.NewFilesystemTraverser(
 		fmt.Sprintf("scrubbing_%s", execCtx.GetTaskID()),
 		filesystem.GetFilesystemId(),
 		t.request.GetFilesystemCheckpointId(),
 		client,
 		t.storage,
-		execCtx.SaveState,
+		func(ctx context.Context) error {
+			t.state.RootNodeScheduled = true
+			return execCtx.SaveState(ctx)
+		},
 		int(t.config.GetTraversalWorkersCount()),
 		t.config.GetSelectNodesToListLimit(),
 		rootNodeAlreadyScheduled,
