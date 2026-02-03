@@ -13647,6 +13647,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         checkFreshBlocksCount(0);
     }
 
+    Y_UNIT_TEST(Aboba)
+    {
+        auto config = DefaultConfig();
+
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(2, 2);
+
+        partition.WriteBlocks(3, 3);
+
+        partition.CreateCheckpoint("checkpoint");
+
+        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 1488);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

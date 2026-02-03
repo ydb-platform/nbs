@@ -1416,4 +1416,7 @@ message TStorageServiceConfig
     // If true, disk registry doesn't replace devices of mirrored disks in one
     // row per reallocation.
     optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
+
+    // Enable to cleanup blobs after checkpoint created.
+    optional bool EnableCleanupBlobsAfterCheckpoint = 480;
 }

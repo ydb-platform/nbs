@@ -763,6 +763,8 @@ public:
     [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
 
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
+
+    [[nodiscard]] bool GetEnableCleanupBlobsAfterCheckpoint() const;
 };
 
 ui64 GetAllocationUnit(
