@@ -6,6 +6,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
@@ -54,7 +55,9 @@ func (s *service) DeleteFilesystemSnapshot(
 		ctx,
 		"filesystem_snapshot.DeleteFilesystemSnapshot",
 		"",
-		&empty.Empty{},
+		&protos.DeleteFilesystemSnapshotRequest{
+			FilesystemSnapshotId: req.FilesystemSnapshotId,
+		},
 	)
 }
 
