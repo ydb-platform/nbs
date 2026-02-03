@@ -30,7 +30,8 @@ bool BlobUnderCheckpoint(
         if (mixedBlocks.CommitIdsSize() == 0) {
             // every block shares the same commitId
             ui64 commitId = blobId.CommitId();
-            return !commitId || commitId <= maxCheckpointCommitId;
+            Y_ABORT_UNLESS(commitId);
+            return commitId <= maxCheckpointCommitId;
         }
 
         // each block has its own commitId
@@ -38,7 +39,10 @@ bool BlobUnderCheckpoint(
         const bool hasCheckpointItem = AnyOf(
             mixedBlocks.GetCommitIds(),
             [&](ui64 commitId)
-            { return commitId && commitId <= maxCheckpointCommitId; });
+            {
+                Y_ABORT_UNLESS(commitId);
+                return commitId <= maxCheckpointCommitId;
+            });
 
         return hasCheckpointItem;
     }
@@ -284,7 +288,7 @@ bool TPartitionActor::PrepareCleanup(
         return true;
     }
 
-    ui64 maxCommitId = *Max(checkpoints.begin(), checkpoints.end());
+    ui64 maxCommitId = std::ranges::max(checkpoints);
 
     auto [cleanupQueueFiltered, blobsMetaFiltered] =
         FindGarbageItems(args.CleanupQueue, args.BlobsMeta, maxCommitId);
