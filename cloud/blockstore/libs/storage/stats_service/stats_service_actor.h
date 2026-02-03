@@ -130,8 +130,7 @@ private:
 
     void UpdateVolumePartCounters(
         TEvStatsService::TVolumePartCounters partCounters,
-        const NActors::TActorContext& ctx,
-        ui32 senderNodeId);
+        const NActors::TActorContext& ctx);
 
     void UpdateVolumeCounters(
         TEvStatsService::TVolumeSelfCounters volumeCounters,
