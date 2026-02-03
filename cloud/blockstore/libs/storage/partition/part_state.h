@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -397,26 +398,22 @@ public:
     //
 
 private:
-    TCommitQueue CommitQueue;
-    ui32 LastCommitId = 0;
+    TCommitIdsState CommitIdsState;
 
 public:
     TCommitQueue& GetCommitQueue()
     {
-        return CommitQueue;
+        return CommitIdsState.GetCommitQueue();
     }
 
     ui64 GetLastCommitId() const
     {
-        return MakeCommitId(Generation, LastCommitId);
+        return CommitIdsState.GetLastCommitId();
     }
 
     ui64 GenerateCommitId()
     {
-        if (LastCommitId == Max<ui32>()) {
-            return InvalidCommitId;
-        }
-        return MakeCommitId(Generation, ++LastCommitId);
+        return CommitIdsState.GenerateCommitId();
     }
 
     //
@@ -969,7 +966,6 @@ public:
 
 private:
     TOperationState CleanupState;
-    TCheckpointStore Checkpoints;
     TCheckpointsInFlight CheckpointsInFlight;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
@@ -1051,7 +1047,7 @@ public:
 
     TCheckpointStore& GetCheckpoints()
     {
-        return Checkpoints;
+        return CommitIdsState.GetCheckpoints();
     }
 
     TCheckpointsInFlight& GetCheckpointsInFlight()
