@@ -25,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -288,11 +289,12 @@ struct TBackpressureFeaturesConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionState: public TPartitionChannelsState
+class TPartitionState
+    : public TPartitionChannelsState
+    , public TCommitIdsState
 {
 private:
     NProto::TPartitionMeta Meta;
-    const ui32 Generation;
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
@@ -392,32 +394,6 @@ public:
 public:
     TBackpressureReport CalculateCurrentBackpressure() const;
 
-    //
-    // Commits
-    //
-
-private:
-    TCommitQueue CommitQueue;
-    ui32 LastCommitId = 0;
-
-public:
-    TCommitQueue& GetCommitQueue()
-    {
-        return CommitQueue;
-    }
-
-    ui64 GetLastCommitId() const
-    {
-        return MakeCommitId(Generation, LastCommitId);
-    }
-
-    ui64 GenerateCommitId()
-    {
-        if (LastCommitId == Max<ui32>()) {
-            return InvalidCommitId;
-        }
-        return MakeCommitId(Generation, ++LastCommitId);
-    }
 
     //
     // Flush
@@ -519,7 +495,7 @@ private:
         auto getBlockContent)
     {
         TVector<ui64> checkpoints;
-        Checkpoints.GetCommitIds(checkpoints);
+        GetCheckpoints().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -574,7 +550,7 @@ private:
         auto getBlockContent)
     {
         TVector<ui64> checkpoints;
-        Checkpoints.GetCommitIds(checkpoints);
+        GetCheckpoints().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -969,7 +945,6 @@ public:
 
 private:
     TOperationState CleanupState;
-    TCheckpointStore Checkpoints;
     TCheckpointsInFlight CheckpointsInFlight;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
@@ -1047,11 +1022,6 @@ public:
     TDuration GetCleanupDelay() const
     {
         return CleanupDelay;
-    }
-
-    TCheckpointStore& GetCheckpoints()
-    {
-        return Checkpoints;
     }
 
     TCheckpointsInFlight& GetCheckpointsInFlight()

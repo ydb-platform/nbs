@@ -92,13 +92,12 @@ TPartitionState::TPartitionState(
           reassignMixedChannelsPercentageThreshold,
           reassignSystemChannelsImmediately,
           channelCount)
+    , TCommitIdsState(generation, lastCommitId)
     , Meta(std::move(meta))
-    , Generation(generation)
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
     , Config(*Meta.MutableConfig())
-    , LastCommitId(lastCommitId)
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
     , CompactionScoreHistory(compactionScoreHistorySize)
@@ -140,7 +139,7 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
             ? BPFeature(compactionFeature, GetLegacyCompactionScore())
             : 0,
         GetBackpressureDiskSpaceScore(),
-        Checkpoints.IsEmpty()
+        GetCheckpoints().IsEmpty()
             ? BPFeature(cleanupFeature, CleanupQueue.GetQueueBytes())
             : 0,
     };
@@ -154,14 +153,15 @@ ui64 TPartitionState::GetCleanupCommitId() const
     commitId = Min(commitId, CleanupQueue.GetMinCommitId() - 1);
 
     // should not cleanup after any checkpoint
-    commitId = Min(commitId, Checkpoints.GetMinCommitId() - 1);
+    commitId =
+        Min(commitId, GetCheckpoints().GetMinCommitId() - 1);
 
     return commitId;
 }
 
 ui64 TPartitionState::CalculateCheckpointBytes() const
 {
-    const auto* lastCheckpoint = Checkpoints.GetLast();
+    const auto* lastCheckpoint = GetCheckpoints().GetLast();
     if (!lastCheckpoint) {
         return 0;
     }
@@ -207,7 +207,7 @@ void TPartitionState::InitUnconfirmedBlobs(
 
     for (const auto& [commitId, blobs]: UnconfirmedBlobs) {
         UnconfirmedBlobCount += blobs.size();
-        CommitQueue.AcquireBarrier(commitId);
+        GetCommitQueue().AcquireBarrier(commitId);
         GarbageQueue.AcquireBarrier(commitId);
     }
 }
@@ -264,7 +264,7 @@ void TPartitionState::ConfirmedBlobsAdded(
     ConfirmedBlobCount -= blobCount;
 
     GarbageQueue.ReleaseBarrier(commitId);
-    CommitQueue.ReleaseBarrier(commitId);
+    GetCommitQueue().ReleaseBarrier(commitId);
 }
 
 void TPartitionState::BlobsConfirmed(
@@ -327,7 +327,7 @@ void TPartitionState::ConfirmBlobs(
         UnconfirmedBlobs.erase(it);
 
         GarbageQueue.ReleaseBarrier(commitId);
-        CommitQueue.ReleaseBarrier(commitId);
+        GetCommitQueue().ReleaseBarrier(commitId);
     }
 
     ConfirmedBlobs = std::move(UnconfirmedBlobs);
@@ -906,7 +906,7 @@ TJsonValue TPartitionState::AsJson() const
 
         json["State"] = std::move(state);
     }
-    json["Checkpoints"] = Checkpoints.AsJson();
+    json["Checkpoints"] = GetCheckpoints().AsJson();
 
     {
         TJsonValue stats;
