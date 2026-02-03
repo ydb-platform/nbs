@@ -175,7 +175,7 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
         std::move(partCounters),
         diffSysCpuConsumption,
         userCpuConsumption,
-        !State->AccessCheckpoints().IsEmpty(),
+        !State->GetCheckpoints().IsEmpty(),
         std::move(offsetLoadMetrics),
         std::move(metrics));
 

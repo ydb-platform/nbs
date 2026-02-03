@@ -246,7 +246,8 @@ void TPartitionActor::CompleteLoadState(
     }
 
     State->AccessCheckpoints().Add(args.Checkpoints);
-    State->AccessCheckpoints().SetCheckpointMappings(args.CheckpointId2CommitId);
+    State->AccessCheckpoints().SetCheckpointMappings(
+        args.CheckpointId2CommitId);
     State->GetCleanupQueue().Add(args.CleanupQueue);
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddNewBlobs(args.NewBlobs));
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddGarbageBlobs(args.GarbageBlobs));

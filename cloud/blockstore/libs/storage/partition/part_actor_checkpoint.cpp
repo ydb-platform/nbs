@@ -125,9 +125,10 @@ void TPartitionActor::ExecuteCreateCheckpoint(
     auto checkpoint = args.Checkpoint;  // copy to update
     checkpoint.Stats.CopyFrom(State->GetStats());
 
-    bool added = (args.WithoutData)
-                ? State->AccessCheckpoints().AddCheckpointMapping(checkpoint)
-                : State->AccessCheckpoints().Add(checkpoint);
+    bool added =
+        (args.WithoutData)
+            ? State->AccessCheckpoints().AddCheckpointMapping(checkpoint)
+            : State->AccessCheckpoints().Add(checkpoint);
     if (added) {
         db.WriteCheckpoint(checkpoint, args.WithoutData);
     } else {
@@ -266,7 +267,8 @@ void TPartitionActor::ExecuteDeleteCheckpoint(
 
     bool deleted = State->AccessCheckpoints().Delete(args.CheckpointId);
     if (!args.DeleteOnlyData) {
-        deleted |= State->AccessCheckpoints().DeleteCheckpointMapping(args.CheckpointId);
+        deleted |= State->AccessCheckpoints().DeleteCheckpointMapping(
+            args.CheckpointId);
     }
 
     if (deleted) {
