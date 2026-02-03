@@ -133,7 +133,8 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "SetAttr");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     auto flags = args.Request.GetFlags();

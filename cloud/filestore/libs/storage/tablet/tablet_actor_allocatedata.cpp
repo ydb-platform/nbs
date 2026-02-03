@@ -180,6 +180,8 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
 {
     FILESTORE_VALIDATE_TX_ERROR(AllocateData, args);
 
+    Y_UNUSED(ctx);
+
     const ui64 size = args.Offset + args.Length;
     const ui64 minBorder = Min(size, args.Node->Attrs.GetSize());
     const bool needExtend = args.Node->Attrs.GetSize() < size &&
@@ -198,7 +200,8 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
         // Here we should zero range in current file
         args.CommitId = GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return ScheduleRebootTabletOnCommitIdOverflow(ctx, "AllocateData");
+            args.OnCommitIdOverflow();
+            return;
         }
         auto e = ZeroRange(
             db,
@@ -221,7 +224,8 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
     if (!shouldTruncateExistentRange) {
         args.CommitId = GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
-            return ScheduleRebootTabletOnCommitIdOverflow(ctx, "AllocateData");
+            args.OnCommitIdOverflow();
+            return;
         }
     }
 
