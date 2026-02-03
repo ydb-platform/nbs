@@ -6,6 +6,7 @@ SRCS(
     actor_read_blob_ut.cpp
     actor_describe_base_disk_blocks_ut.cpp
     actor_loadfreshblobs_ut.cpp
+    commit_ids_state_ut.cpp
     drain_actor_companion_ut.cpp
     long_running_operation_companion_ut.cpp
     part_channels_state_ut.cpp
