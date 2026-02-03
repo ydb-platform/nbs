@@ -21,6 +21,7 @@ class NfsLauncher:
         nfs_binary_path: str,
         ydb_binary_path: str,
         dynamic_storage_pools: list[str],
+        allow_filestore_force_destroy: bool = False,
     ):
         server_config = TServerAppConfig()
         server_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
@@ -31,6 +32,7 @@ class NfsLauncher:
             "cloud/filestore/tests/certs/server.key"
         )
         storage_config = TStorageConfig()
+        storage_config.AllowFileStoreForceDestroy = allow_filestore_force_destroy
         self.__nfs_configurator = FilestoreServerConfigGenerator(
             binary_path=nfs_binary_path,
             app_config=server_config,
