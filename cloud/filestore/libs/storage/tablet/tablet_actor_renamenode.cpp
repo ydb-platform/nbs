@@ -43,6 +43,83 @@ NProto::TError ValidateRequest(const NProto::TRenameNodeRequest& request)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError TIndexTabletActor::HandleCrossShardRenameNodeImpl(
+    TRequestInfoPtr& requestInfo,
+    NProto::TRenameNodeRequest& record,
+    NProto::TProfileLogRequestInfo profileLogRequest,
+    const TActorContext& ctx)
+{
+    //
+    // We have separate logic for cross-shard move ops, see the following link
+    // for more details:
+    // https://github.com/ydb-platform/nbs/issues/2674#issuecomment-2578785398
+    //
+
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (shardIds.empty()) {
+        //
+        // No shards => this RenameNode op is local.
+        //
+
+        return MakeError(S_FALSE);
+    }
+
+    const auto shardNo = GetFileSystem().GetShardNo();
+    const auto parentShardNo = ExtractShardNo(record.GetNodeId());
+    if (parentShardNo != shardNo) {
+        //
+        // Each RenameNode op must be coordinated by the shard that's in charge
+        // of the source node ref.
+        //
+
+        auto message = ReportRenameNodeRequestSentToWrongShard(
+            TStringBuilder() << "RenameNode: "
+                << record.ShortDebugString() << " received by shard "
+                << shardNo << ", expected: " << parentShardNo);
+        return MakeError(E_ARGUMENT, std::move(message));
+    }
+
+    const auto newParentShardNo = ExtractShardNo(record.GetNewParentId());
+    if (newParentShardNo == GetFileSystem().GetShardNo()) {
+        return MakeError(S_FALSE);
+    }
+
+    //
+    // At this point we know that src and dst node refs are managed by different
+    // shards.
+    //
+
+    if (newParentShardNo > static_cast<ui32>(shardIds.size())) {
+        auto message = ReportInvalidShardNo(
+            TStringBuilder() << "RenameNode: "
+                << record.ShortDebugString() << " newParentShardNo"
+                << ": " << newParentShardNo << ", shard count: "
+                << shardIds.size());
+        return MakeError(E_ARGUMENT, std::move(message));
+    }
+
+    if (newParentShardNo == 0 && record.GetNewParentId() != RootNodeId) {
+        auto message = ReportInvalidShardNo(
+            TStringBuilder() << "RenameNode: "
+                << record.ShortDebugString() << " newParentShardNo"
+                << ": " << newParentShardNo << ", NewParentId: "
+                << record.GetNewParentId());
+        return MakeError(E_ARGUMENT, std::move(message));
+    }
+
+    ExecuteTx<TPrepareRenameNodeInSource>(
+        ctx,
+        std::move(requestInfo),
+        std::move(record),
+        std::move(profileLogRequest),
+        newParentShardNo
+            ? shardIds[newParentShardNo - 1]
+            : GetMainFileSystemId(),
+        false /* isExplicitRequest */);
+
+    return MakeError(S_OK);
+}
+
 void TIndexTabletActor::HandleRenameNode(
     const TEvService::TEvRenameNodeRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -54,22 +131,43 @@ void TIndexTabletActor::HandleRenameNode(
     }
 
     auto* msg = ev->Get();
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::RenameNode,
+        msg->Record,
+        ctx.Now());
+
+    auto onReply = [&] (const NProto::TError& error) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
+    };
+
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
         auto response = std::make_unique<TEvService::TEvRenameNodeResponse>();
         if (GetDupCacheEntry(e, response->Record)) {
-            return NCloud::Reply(ctx, *ev, std::move(response));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(MakeError(S_ALREADY));
+            return;
         }
 
         session->DropDupEntry(requestId);
     }
 
     if (!TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()})) {
+        auto error = MakeError(E_REJECTED, TStringBuilder() << "node ref "
+            << msg->Record.GetNodeId() << " " << msg->Record.GetName()
+            << " is locked for RenameNode");
         auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
-            MakeError(E_REJECTED, TStringBuilder() << "node ref "
-                << msg->Record.GetNodeId() << " " << msg->Record.GetName()
-                << " is locked for RenameNode"));
+            error);
         NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
         return;
     }
 
@@ -81,71 +179,28 @@ void TIndexTabletActor::HandleRenameNode(
 
     AddInFlightRequest<TEvService::TRenameNodeMethod>(*requestInfo);
 
-    // we have separate logic for cross-shard move ops, see the following link
-    // for more details:
-    // https://github.com/ydb-platform/nbs/issues/2674#issuecomment-2578785398
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    if (!shardIds.empty()) {
-        const auto shardNo = GetFileSystem().GetShardNo();
-        const auto parentShardNo = ExtractShardNo(msg->Record.GetNodeId());
-        if (parentShardNo != shardNo) {
-            auto message = ReportRenameNodeRequestSentToWrongShard(
-                TStringBuilder() << "RenameNode: "
-                    << msg->Record.ShortDebugString() << " received by shard "
-                    << shardNo << ", expected: " << parentShardNo);
-            auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
-                MakeError(E_ARGUMENT, std::move(message)));
-            NCloud::Reply(ctx, *requestInfo, std::move(response));
-
-            UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
-            return;
-        }
-
-        const auto newParentShardNo =
-            ExtractShardNo(msg->Record.GetNewParentId());
-        if (newParentShardNo != GetFileSystem().GetShardNo()) {
-            if (newParentShardNo > static_cast<ui32>(shardIds.size())) {
-                UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
-                auto message = ReportInvalidShardNo(
-                    TStringBuilder() << "RenameNode: "
-                        << msg->Record.ShortDebugString() << " newParentShardNo"
-                        << ": " << newParentShardNo << ", shard count: "
-                        << shardIds.size());
-                auto response =
-                    std::make_unique<TEvService::TEvRenameNodeResponse>(
-                        MakeError(E_ARGUMENT, std::move(message)));
-                NCloud::Reply(ctx, *requestInfo, std::move(response));
-            } else if (newParentShardNo == 0
-                    && msg->Record.GetNewParentId() != RootNodeId)
-            {
-                UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
-                auto message = ReportInvalidShardNo(
-                    TStringBuilder() << "RenameNode: "
-                        << msg->Record.ShortDebugString() << " newParentShardNo"
-                        << ": " << newParentShardNo << ", NewParentId: "
-                        << msg->Record.GetNewParentId());
-                auto response =
-                    std::make_unique<TEvService::TEvRenameNodeResponse>(
-                        MakeError(E_ARGUMENT, std::move(message)));
-                NCloud::Reply(ctx, *requestInfo, std::move(response));
-            } else {
-                ExecuteTx<TPrepareRenameNodeInSource>(
-                    ctx,
-                    std::move(requestInfo),
-                    std::move(msg->Record),
-                    newParentShardNo
-                        ? shardIds[newParentShardNo - 1]
-                        : GetMainFileSystemId(),
-                    false /* isExplicitRequest */);
-            }
-            return;
-        }
+    auto error = HandleCrossShardRenameNodeImpl(
+        requestInfo,
+        msg->Record,
+        profileLogRequest,
+        ctx);
+    if (HasError(error)) {
+        RemoveInFlightRequest(*requestInfo);
+        UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
+        auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+            error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
+        return;
     }
 
-    ExecuteTx<TRenameNode>(
-        ctx,
-        std::move(requestInfo),
-        std::move(msg->Record));
+    if (error.GetCode() == S_FALSE) {
+        ExecuteTx<TRenameNode>(
+            ctx,
+            std::move(requestInfo),
+            std::move(msg->Record),
+            std::move(profileLogRequest));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -533,6 +588,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 ctx,
                 args.RequestInfo,
                 std::move(*op.MutableUnlinkNodeInShardRequest()),
+                std::move(args.ProfileLogRequest),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
                 std::move(args.Response),
@@ -567,13 +623,21 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
 
-    auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
     CompleteResponse<TEvService::TRenameNodeMethod>(
         response->Record,
         args.RequestInfo->CallContext,
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

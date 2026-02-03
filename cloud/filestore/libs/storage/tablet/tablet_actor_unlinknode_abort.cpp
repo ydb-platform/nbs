@@ -35,6 +35,7 @@ public:
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         NProto::TError originalError,
         TString shardId,
         ui64 nodeId,
@@ -65,6 +66,7 @@ TAbortUnlinkDirectoryInShardActor::TAbortUnlinkDirectoryInShardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         NProto::TError originalError,
         TString shardId,
         ui64 nodeId,
@@ -76,6 +78,7 @@ TAbortUnlinkDirectoryInShardActor::TAbortUnlinkDirectoryInShardActor(
     , Result(
         std::move(requestInfo),
         std::move(request),
+        std::move(profileLogRequest),
         std::move(originalError),
         opLogEntryId)
 {}
@@ -170,6 +173,13 @@ void TIndexTabletActor::HandleAbortUnlinkDirectoryNodeInShard(
 {
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreSystemRequest::AbortUnlinkDirectoryNodeInShard,
+        msg->Record,
+        ctx.Now());
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -182,7 +192,8 @@ void TIndexTabletActor::HandleAbortUnlinkDirectoryNodeInShard(
     ExecuteTx<TAbortUnlinkDirectoryNode>(
         ctx,
         std::move(requestInfo),
-        std::move(msg->Record));
+        std::move(msg->Record),
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -317,6 +328,13 @@ void TIndexTabletActor::CompleteTx_AbortUnlinkDirectoryNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -325,6 +343,7 @@ void TIndexTabletActor::RegisterAbortUnlinkDirectoryInShardActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     NProtoPrivate::TRenameNodeInDestinationRequest request,
+    NProto::TProfileLogRequestInfo profileLogRequest,
     NProto::TError originalError,
     TString shardId,
     ui64 nodeId,
@@ -335,6 +354,7 @@ void TIndexTabletActor::RegisterAbortUnlinkDirectoryInShardActor(
         std::move(requestInfo),
         ctx.SelfID,
         std::move(request),
+        std::move(profileLogRequest),
         std::move(originalError),
         std::move(shardId),
         nodeId,

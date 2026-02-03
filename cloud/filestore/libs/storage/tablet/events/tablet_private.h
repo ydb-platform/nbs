@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/components.h>
@@ -681,6 +682,7 @@ struct TEvIndexTabletPrivate
         const ui64 RequestId;
         const ui64 OpLogEntryId;
         TUnlinkNodeInShardResult Result;
+        NProto::TProfileLogRequestInfo ProfileLogRequest;
         bool ShouldUnlockUponCompletion = false;
         NProto::TUnlinkNodeRequest OriginalRequest;
 
@@ -690,6 +692,7 @@ struct TEvIndexTabletPrivate
                 ui64 requestId,
                 ui64 opLogEntryId,
                 TUnlinkNodeInShardResult result,
+                NProto::TProfileLogRequestInfo profileLogRequest,
                 bool shouldUnlockUponCompletion,
                 NProto::TUnlinkNodeRequest originalRequest)
             : RequestInfo(std::move(requestInfo))
@@ -697,6 +700,7 @@ struct TEvIndexTabletPrivate
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
             , Result(std::move(result))
+            , ProfileLogRequest(std::move(profileLogRequest))
             , ShouldUnlockUponCompletion(shouldUnlockUponCompletion)
             , OriginalRequest(std::move(originalRequest))
         {
@@ -711,6 +715,7 @@ struct TEvIndexTabletPrivate
     {
         TRequestInfoPtr RequestInfo;
         NProtoPrivate::TRenameNodeInDestinationRequest Request;
+        NProto::TProfileLogRequestInfo ProfileLogRequest;
         NProto::TError OriginalError;
         NProto::TError Error;
         const ui64 OpLogEntryId;
@@ -718,10 +723,12 @@ struct TEvIndexTabletPrivate
         TUnlinkDirectoryNodeAbortedInShard(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TRenameNodeInDestinationRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest,
                 NProto::TError originalError,
                 ui64 opLogEntryId)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
+            , ProfileLogRequest(std::move(profileLogRequest))
             , OriginalError(std::move(originalError))
             , OpLogEntryId(opLogEntryId)
         {
@@ -736,6 +743,7 @@ struct TEvIndexTabletPrivate
     {
         TRequestInfoPtr RequestInfo;
         NProtoPrivate::TRenameNodeInDestinationRequest Request;
+        NProto::TProfileLogRequestInfo ProfileLogRequest;
         NProto::TNodeAttr SourceNodeAttr;
         NProto::TNodeAttr DestinationNodeAttr;
         ui64 OpLogEntryId = 0;
@@ -743,9 +751,11 @@ struct TEvIndexTabletPrivate
 
         TDoRenameNodeInDestination(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TRenameNodeInDestinationRequest request)
+                NProtoPrivate::TRenameNodeInDestinationRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
+            , ProfileLogRequest(std::move(profileLogRequest))
         {
         }
     };
@@ -761,6 +771,7 @@ struct TEvIndexTabletPrivate
         const ui64 RequestId;
         const ui64 OpLogEntryId;
         NProto::TRenameNodeRequest Request;
+        NProto::TProfileLogRequestInfo ProfileLogRequest;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
 
         TNodeRenamedInDestination(
@@ -769,12 +780,14 @@ struct TEvIndexTabletPrivate
                 ui64 requestId,
                 ui64 opLogEntryId,
                 NProto::TRenameNodeRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest,
                 NProtoPrivate::TRenameNodeInDestinationResponse response)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
             , Request(std::move(request))
+            , ProfileLogRequest(std::move(profileLogRequest))
             , Response(std::move(response))
         {
         }
