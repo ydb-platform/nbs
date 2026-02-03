@@ -15,6 +15,71 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool BlobUnderCheckpoint(
+    const TPartialBlobId& blobId,
+    const NProto::TBlobMeta& blobMeta,
+    ui64 maxCheckpointCommitId)
+{
+    if (blobMeta.HasMixedBlocks()) {
+        const auto& mixedBlocks = blobMeta.GetMixedBlocks();
+
+        if (mixedBlocks.CommitIdsSize() == 0) {
+            // every block shares the same commitId
+            ui64 commitId = blobId.CommitId();
+            Y_ABORT_UNLESS(commitId);
+            return commitId <= maxCheckpointCommitId;
+        }
+
+        // each block has its own commitId
+        Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
+        const bool hasCheckpointItem = AnyOf(
+            mixedBlocks.GetCommitIds(),
+            [&](ui64 commitId)
+            {
+                Y_ABORT_UNLESS(commitId);
+                return commitId <= maxCheckpointCommitId;
+            });
+
+        return hasCheckpointItem;
+    }
+
+    if (blobMeta.HasMergedBlocks()) {
+        return blobId.CommitId() <= maxCheckpointCommitId;
+    }
+
+    return false;
+}
+
+std::pair<TVector<TCleanupQueueItem>, TVector<NProto::TBlobMeta>>
+FindGarbageItems(
+    const TVector<TCleanupQueueItem>& items,
+    const TVector<NProto::TBlobMeta>& blobsMeta,
+    ui64 maxCheckpointCommitId)
+{
+    TVector<TCleanupQueueItem> garbage;
+    TVector<NProto::TBlobMeta> garbageBlobsMeta;
+
+    for (size_t i = 0; i < items.size(); ++i) {
+        const auto& item = items[i];
+        const auto& blobMeta = blobsMeta[i];
+
+        if (BlobUnderCheckpoint(item.BlobId, blobMeta, maxCheckpointCommitId)) {
+            continue;
+        }
+
+        garbage.push_back(item);
+        garbageBlobsMeta.push_back(blobMeta);
+    }
+
+    return std::make_pair(std::move(garbage), std::move(garbageBlobsMeta));
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
@@ -43,7 +108,8 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         });
     }
 
-    ui64 commitId = State->GetCleanupCommitId();
+    ui64 commitId = State->GetCleanupCommitId(
+        Config->GetEnableCleanupBlobsAfterCheckpoint());
 
     ui32 pendingBlobs = State->GetBlobCountToCleanup(
         commitId,
@@ -151,7 +217,8 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    ui64 commitId = State->GetCleanupCommitId();
+    ui64 commitId = State->GetCleanupCommitId(
+        Config->GetEnableCleanupBlobsAfterCheckpoint());
 
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
         commitId,
@@ -199,7 +266,8 @@ bool TPartitionActor::PrepareCleanup(
     for (const auto& item: args.CleanupQueue) {
         TMaybe<NProto::TBlobMeta> blobMeta;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
-            Y_ABORT_UNLESS(blobMeta.Defined(),
+            Y_ABORT_UNLESS(
+                blobMeta.Defined(),
                 "Could not read meta data for blob: %s",
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
 
@@ -209,7 +277,26 @@ bool TPartitionActor::PrepareCleanup(
         }
     }
 
-    return ready;
+    if (!ready) {
+        return false;
+    }
+
+    TVector<ui64> checkpoints;
+    State->GetCheckpoints().GetCommitIds(checkpoints);
+
+    if (!checkpoints || !Config->GetEnableCleanupBlobsAfterCheckpoint()) {
+        return true;
+    }
+
+    ui64 maxCommitId = std::ranges::max(checkpoints);
+
+    auto [cleanupQueueFiltered, blobsMetaFiltered] =
+        FindGarbageItems(args.CleanupQueue, args.BlobsMeta, maxCommitId);
+
+    args.CleanupQueue = std::move(cleanupQueueFiltered);
+    args.BlobsMeta = std::move(blobsMetaFiltered);
+
+    return true;
 }
 
 void TPartitionActor::ExecuteCleanup(

@@ -146,15 +146,18 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
     };
 }
 
-ui64 TPartitionState::GetCleanupCommitId() const
+ui64 TPartitionState::GetCleanupCommitId(
+    bool enableCleanupAfterCheckpoint) const
 {
     ui64 commitId = GetLastCommitId();
 
     // should not cleanup after any barrier
     commitId = Min(commitId, CleanupQueue.GetMinCommitId() - 1);
 
-    // should not cleanup after any checkpoint
-    commitId = Min(commitId, Checkpoints.GetMinCommitId() - 1);
+    if (!enableCleanupAfterCheckpoint) {
+        // should not cleanup after any checkpoint
+        commitId = Min(commitId, Checkpoints.GetMinCommitId() - 1);
+    }
 
     return commitId;
 }

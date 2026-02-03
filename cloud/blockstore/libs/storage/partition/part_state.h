@@ -1059,7 +1059,7 @@ public:
         return CheckpointsInFlight;
     }
 
-    ui64 GetCleanupCommitId() const;
+    ui64 GetCleanupCommitId(bool enableCleanupAfterCheckpoint) const;
 
     ui64 CalculateCheckpointBytes() const;
 
