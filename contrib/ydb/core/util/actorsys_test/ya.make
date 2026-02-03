@@ -9,7 +9,7 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/apps/version
+    # contrib/ydb/apps/version
     # library/cpp/testing/unittest
     contrib/ydb/core/blobstorage/backpressure
     contrib/ydb/core/blobstorage/groupinfo
