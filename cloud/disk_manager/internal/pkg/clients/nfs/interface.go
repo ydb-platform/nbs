@@ -44,7 +44,7 @@ type Client interface {
 		params CreateFilesystemParams,
 	) error
 
-	Delete(ctx context.Context, filesystemID string) error
+	Delete(ctx context.Context, filesystemID string, force bool) error
 
 	Resize(ctx context.Context, filesystemID string, size uint64) error
 
