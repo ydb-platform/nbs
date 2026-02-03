@@ -616,8 +616,12 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
                 maxCommitId
             });
 
-            // FIXME
-            bytes += refs.back().Name.size();
+            // TODO(#5148): allow caller to specify size calculation mode
+            const auto& ref = refs.back();
+            bytes += (sizeof(ui64) * 4)  // NodeId, ChildNodeId, MinCommitId, MaxCommitId
+                   + ref.Name.size()
+                   + ref.ShardId.size()
+                   + ref.ShardNodeName.size();
         } else {
             ++skipped;
         }

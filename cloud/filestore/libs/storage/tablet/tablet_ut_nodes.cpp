@@ -685,6 +685,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
             UNIT_ASSERT(response->Record.GetCookie().empty());
         }
+
+        // Test that byte size calculation accounts for full TNodeRef size:
+        // sizeof(ui64) * 4 + Name.size() + ShardId.size() + ShardNodeName.size()
+        // For "test1" (5 chars), size = 32 + 5 = 37 bytes
+        // For "test2" (5 chars), size = 32 + 5 = 37 bytes
+        // maxBytes = 74 should fit exactly 2 entries
+        {
+            auto response = tablet.ListNodes(RootNodeId, 74, TString{});
+
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(2, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("test1", names[0]);
+            UNIT_ASSERT_VALUES_EQUAL("test2", names[1]);
+
+            UNIT_ASSERT_VALUES_EQUAL("test3", response->Record.GetCookie());
+        }
+
+        // maxBytes = 37 should fit only 1 entry
+        {
+            auto response = tablet.ListNodes(RootNodeId, 37, TString{});
+
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(1, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("test1", names[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL("test2", response->Record.GetCookie());
+        }
     }
 
     Y_UNIT_TEST(ShouldStoreNodeAttrs)
