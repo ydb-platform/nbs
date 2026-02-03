@@ -148,7 +148,7 @@ void TIndexTabletActor::HandleDeleteOpLogEntry(
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction<TEvIndexTabletPrivate::TDeleteOpLogEntryMethod>(
+    AddInFlightRequest<TEvIndexTabletPrivate::TDeleteOpLogEntryMethod>(
         *requestInfo);
 
     ExecuteTx<TDeleteOpLogEntry>(
@@ -192,7 +192,7 @@ void TIndexTabletActor::CompleteTx_DeleteOpLogEntry(
         args.EntryId);
 
     if (args.RequestInfo) {
-        RemoveTransaction(*args.RequestInfo);
+        RemoveInFlightRequest(*args.RequestInfo);
         using TResponse = TEvIndexTabletPrivate::TEvDeleteOpLogEntryResponse;
         auto response = std::make_unique<TResponse>();
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
@@ -212,7 +212,8 @@ void TIndexTabletActor::HandleGetOpLogEntry(
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction<TEvIndexTabletPrivate::TGetOpLogEntryMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTabletPrivate::TGetOpLogEntryMethod>(
+        *requestInfo);
 
     ExecuteTx<TGetOpLogEntry>(
         ctx,
@@ -247,7 +248,7 @@ void TIndexTabletActor::CompleteTx_GetOpLogEntry(
     const TActorContext& ctx,
     TTxIndexTablet::TGetOpLogEntry& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s GetOpLogEntry completed (%lu): %s",
@@ -276,7 +277,8 @@ void TIndexTabletActor::HandleWriteOpLogEntry(
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction<TEvIndexTabletPrivate::TWriteOpLogEntryMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTabletPrivate::TWriteOpLogEntryMethod>(
+        *requestInfo);
 
     ExecuteTx<TWriteOpLogEntry>(
         ctx,
@@ -320,7 +322,7 @@ void TIndexTabletActor::CompleteTx_WriteOpLogEntry(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteOpLogEntry& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (HasError(args.Error)) {
         LOG_ERROR(ctx, TFileStoreComponents::TABLET,

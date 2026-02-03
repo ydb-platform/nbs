@@ -327,7 +327,7 @@ void TIndexTabletActor::HandleUnlinkNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TUnlinkNodeMethod>(*requestInfo);
 
     ExecuteTx<TUnlinkNode>(
         ctx,
@@ -593,7 +593,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         NotifySessionEvent(ctx, sessionEvent);
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics.UnlinkNode.Update(
@@ -742,7 +742,7 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         UnlockNodeRef({args.ParentNodeId, args.Name});
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     if (args.IsExplicitRequest) {
@@ -778,7 +778,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
     auto& res = msg->Result;
 
     if (msg->RequestInfo) {
-        RemoveTransaction(*msg->RequestInfo);
+        RemoveInFlightRequest(*msg->RequestInfo);
         CommitDupCacheEntry(msg->SessionId, msg->RequestId);
 
         if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&res)) {
@@ -852,7 +852,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
         const auto& originalRequest = msg->OriginalRequest;
         auto response = std::get<NProto::TUnlinkNodeResponse>(res);
 
-        AddTransaction<TEvService::TUnlinkNodeMethod>(*msg->RequestInfo);
+        AddInFlightRequest<TEvService::TUnlinkNodeMethod>(*msg->RequestInfo);
         ExecuteTx<TCompleteUnlinkNode>(
             ctx,
             msg->RequestInfo,
@@ -906,7 +906,7 @@ void TIndexTabletActor::HandleCompleteUnlinkNode(
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction<TEvIndexTabletPrivate::TCompleteUnlinkNodeMethod>(
+    AddInFlightRequest<TEvIndexTabletPrivate::TCompleteUnlinkNodeMethod>(
         *requestInfo);
 
     ExecuteTx<TCompleteUnlinkNode>(

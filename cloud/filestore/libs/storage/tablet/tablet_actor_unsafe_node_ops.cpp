@@ -23,7 +23,7 @@ void TIndexTabletActor::HandleUnsafeDeleteNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeDeleteNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeDeleteNodeMethod>(*requestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNode: %s",
@@ -78,7 +78,7 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeDeleteNode& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNode: %s, status: %s",
@@ -107,7 +107,7 @@ void TIndexTabletActor::HandleUnsafeUpdateNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeUpdateNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeUpdateNodeMethod>(*requestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNode: %s",
@@ -182,7 +182,7 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeUpdateNode& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     TString oldNode;
     if (args.Node) {
@@ -215,7 +215,7 @@ void TIndexTabletActor::HandleUnsafeGetNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeGetNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeGetNodeMethod>(*requestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeGetNode: %s",
@@ -258,7 +258,7 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeGetNode& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeGetNodeResponse>();
@@ -294,7 +294,8 @@ void TIndexTabletActor::HandleUnsafeCreateNodeRef(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeCreateNodeRefMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeCreateNodeRefMethod>(
+        *requestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNodeRef: %s",
@@ -363,7 +364,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNodeRef(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeCreateNodeRef& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNodeRef: %s, status: %s",
@@ -392,7 +393,8 @@ void TIndexTabletActor::HandleUnsafeDeleteNodeRef(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeDeleteNodeRefMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeDeleteNodeRefMethod>(
+        *requestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNodeRef: %s",
@@ -464,7 +466,7 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNodeRef(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeDeleteNodeRef& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNodeRef: %s, status: %s",
@@ -493,7 +495,8 @@ void TIndexTabletActor::HandleUnsafeUpdateNodeRef(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeUpdateNodeRefMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeUpdateNodeRefMethod>(
+        *requestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNodeRef: %s",
@@ -574,7 +577,7 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNodeRef(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeUpdateNodeRef& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNodeRef: %s",
@@ -601,7 +604,7 @@ void TIndexTabletActor::HandleUnsafeGetNodeRef(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeGetNodeRefMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeGetNodeRefMethod>(*requestInfo);
 
     LOG_WARN(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeGetNodeRef: %s",
@@ -645,7 +648,7 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNodeRef(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeGetNodeRef& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeGetNodeRefResponse>();
@@ -681,7 +684,7 @@ void TIndexTabletActor::HandleUnsafeCreateHandle(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TUnsafeCreateHandleMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TUnsafeCreateHandleMethod>(*requestInfo);
 
     LOG_WARN(
         ctx,
@@ -749,7 +752,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TUnsafeCreateHandle& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeCreateHandleResponse>(

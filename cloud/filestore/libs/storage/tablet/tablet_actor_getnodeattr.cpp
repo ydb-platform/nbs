@@ -92,7 +92,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
         }
     }
 
-    AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TGetNodeAttrMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttr>(
         ctx,
@@ -194,7 +194,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TGetNodeAttr& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
@@ -288,7 +288,7 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
         return;
     }
 
-    AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TGetNodeAttrBatchMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttrBatch>(
         ctx,
@@ -428,7 +428,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     const TActorContext& ctx,
     TTxIndexTablet::TGetNodeAttrBatch& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     using TResponse = TEvIndexTablet::TEvGetNodeAttrBatchResponse;
     auto response = std::make_unique<TResponse>(args.Error);

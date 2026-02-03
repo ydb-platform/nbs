@@ -42,7 +42,8 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(
+        *requestInfo);
 
     ExecuteTx<TDeleteCheckpoint>(
         ctx,
@@ -251,7 +252,7 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
     TTxIndexTablet::TDeleteCheckpoint& args)
 {
     // TODO(#1146) checkpoint-related tables are not yet supported
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s DeleteCheckpoint completed (%s)",

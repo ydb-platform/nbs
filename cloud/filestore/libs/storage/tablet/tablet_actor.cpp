@@ -66,7 +66,7 @@ TIndexTabletActor::TIndexTabletActor(
 
 TIndexTabletActor::~TIndexTabletActor()
 {
-    ReleaseTransactions();
+    ReleaseInFlightRequests();
 }
 
 TString TIndexTabletActor::GetStateName(ui32 state)
@@ -235,7 +235,7 @@ void TIndexTabletActor::OnTabletDead(
 {
     Y_UNUSED(ev);
 
-    TerminateTransactions(ctx);
+    RejectInFlightRequests(ctx);
 
     for (const auto& actor: WorkerActors) {
         ctx.Send(actor, new TEvents::TEvPoisonPill());
@@ -255,19 +255,19 @@ void TIndexTabletActor::OnTabletDead(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::AddTransaction(
-    TRequestInfo& transaction,
+void TIndexTabletActor::AddInFlightRequest(
+    TRequestInfo& requestInfo,
     TRequestInfo::TCancelRoutine cancelRoutine)
 {
-    transaction.CancelRoutine = cancelRoutine;
+    requestInfo.CancelRoutine = cancelRoutine;
 
-    transaction.Ref();
+    requestInfo.Ref();
 
-    TABLET_VERIFY(transaction.Empty());
-    ActiveTransactions.PushBack(&transaction);
+    TABLET_VERIFY(requestInfo.Empty());
+    ActiveRequests.PushBack(&requestInfo);
 }
 
-void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
+void TIndexTabletActor::RemoveInFlightRequest(TRequestInfo& requestInfo)
 {
     TABLET_VERIFY(!requestInfo.Empty());
     requestInfo.Unlink();
@@ -276,10 +276,10 @@ void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
     requestInfo.UnRef();
 }
 
-void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
+void TIndexTabletActor::RejectInFlightRequests(const TActorContext& ctx)
 {
-    while (ActiveTransactions) {
-        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+    while (ActiveRequests) {
+        TRequestInfo* requestInfo = ActiveRequests.PopFront();
         TABLET_VERIFY(requestInfo->RefCount() >= 1);
 
         requestInfo->CancelRequest(ctx);
@@ -287,10 +287,10 @@ void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
     }
 }
 
-void TIndexTabletActor::ReleaseTransactions()
+void TIndexTabletActor::ReleaseInFlightRequests()
 {
-    while (ActiveTransactions) {
-        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+    while (ActiveRequests) {
+        TRequestInfo* requestInfo = ActiveRequests.PopFront();
         TABLET_VERIFY(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }

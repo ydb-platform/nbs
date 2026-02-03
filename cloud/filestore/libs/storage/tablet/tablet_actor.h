@@ -455,7 +455,7 @@ private:
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
     TSet<NActors::TActorId> WorkerActors;
-    TIntrusiveList<TRequestInfo> ActiveTransactions;
+    TIntrusiveList<TRequestInfo> ActiveRequests;
 
     TInstant ReassignRequestSentTs;
 
@@ -589,12 +589,12 @@ private:
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
 
-    void AddTransaction(
-        TRequestInfo& transaction,
+    void AddInFlightRequest(
+        TRequestInfo& requestInfo,
         TRequestInfo::TCancelRoutine cancelRoutine);
 
     template <typename TMethod>
-    void AddTransaction(TRequestInfo& transaction)
+    void AddInFlightRequest(TRequestInfo& requestInfo)
     {
         auto cancelRoutine = [] (
             const NActors::TActorContext& ctx,
@@ -606,7 +606,7 @@ private:
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
 
-        AddTransaction(transaction, cancelRoutine);
+        AddInFlightRequest(requestInfo, cancelRoutine);
     }
 
     // Depending on whether the transaction is RO or RW, we will either attempt
@@ -647,9 +647,9 @@ private:
             std::forward<TArgs>(args)...);
     }
 
-    void RemoveTransaction(TRequestInfo& transaction);
-    void TerminateTransactions(const NActors::TActorContext& ctx);
-    void ReleaseTransactions();
+    void RemoveInFlightRequest(TRequestInfo& requestInfo);
+    void RejectInFlightRequests(const NActors::TActorContext& ctx);
+    void ReleaseInFlightRequests();
 
     // Updates in-memory index state with the given node updates. Is to be
     // called upon every operation that changes node-related data. As of now, it

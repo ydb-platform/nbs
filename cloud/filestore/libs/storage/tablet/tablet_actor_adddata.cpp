@@ -134,7 +134,7 @@ void TIndexTabletActor::CompleteTx_AddData(
     const TActorContext& ctx,
     TTxIndexTablet::TAddData& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto reply = [&](const TActorContext& ctx, TTxIndexTablet::TAddData& args)
     {
@@ -521,7 +521,7 @@ void TIndexTabletActor::HandleAddData(
             approximateFreeSpaceShare);
     }
 
-    AddTransaction<TEvIndexTablet::TAddDataMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TAddDataMethod>(*requestInfo);
 
     ExecuteTx<TAddData>(
         ctx,

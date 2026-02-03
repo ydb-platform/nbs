@@ -79,7 +79,7 @@ void TIndexTabletActor::HandleRenameNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TRenameNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TRenameNodeMethod>(*requestInfo);
 
     // we have separate logic for cross-shard move ops, see the following link
     // for more details:
@@ -560,7 +560,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         NotifySessionEvent(ctx, sessionEvent);
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     Metrics.RenameNode.Update(
         1,

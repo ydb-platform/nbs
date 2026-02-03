@@ -44,6 +44,8 @@ void TIndexTabletActor::HandleZeroRange(
         msg->CallContext,
         "ZeroRange");
 
+    AddInFlightRequest<TEvIndexTabletPrivate::TZeroRangeMethod>(*requestInfo);
+
     ExecuteTx<TZeroRange>(
         ctx,
         std::move(requestInfo),
@@ -93,6 +95,8 @@ void TIndexTabletActor::CompleteTx_ZeroRange(
     const TActorContext& ctx,
     TTxIndexTablet::TZeroRange& args)
 {
+    RemoveInFlightRequest(*args.RequestInfo);
+
     // log request
     FinalizeProfileLogRequestInfo(
         std::move(args.ProfileLogRequest),

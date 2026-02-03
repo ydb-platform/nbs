@@ -53,7 +53,7 @@ void TIndexTabletActor::CompleteTx_ReadNodeRefs(
     const TActorContext& ctx,
     TTxIndexTablet::TReadNodeRefs& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
@@ -89,7 +89,7 @@ void TIndexTabletActor::HandleReadNodeRefs(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TReadNodeRefsMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TReadNodeRefsMethod>(*requestInfo);
 
     ExecuteTx<TReadNodeRefs>(
         ctx,

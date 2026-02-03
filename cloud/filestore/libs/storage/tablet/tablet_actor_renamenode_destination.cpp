@@ -399,7 +399,7 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TMethod>(*requestInfo);
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TRenameNodeInDestination>(
         ctx,
@@ -760,7 +760,7 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         // TODO(#1350): support session events for external nodes
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     Metrics.RenameNodeInDestination.Update(
         1,
@@ -800,7 +800,7 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
         return;
     }
 
-    RemoveTransaction(*msg->RequestInfo);
+    RemoveInFlightRequest(*msg->RequestInfo);
 
     Metrics.RenameNodeInDestination.Update(
         1,

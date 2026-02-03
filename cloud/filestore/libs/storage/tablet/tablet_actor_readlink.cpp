@@ -39,7 +39,7 @@ void TIndexTabletActor::HandleReadLink(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TReadLinkMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TReadLinkMethod>(*requestInfo);
 
     ExecuteTx<TReadLink>(
         ctx,
@@ -98,7 +98,7 @@ void TIndexTabletActor::CompleteTx_ReadLink(
     const TActorContext& ctx,
     TTxIndexTablet::TReadLink& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvReadLinkResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
