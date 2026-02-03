@@ -153,7 +153,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         const auto maxBackpressure2 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure2.CompactionScore, 1e-5);
 
-        state.GetCheckpoints().Add({"c1", 3, "idemp", Now(), {}});
+        state.AccessCheckpoints().Add({"c1", 3, "idemp", Now(), {}});
 
         const auto maxBackpressure3 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure3.FreshIndexScore, 1e-5);
@@ -384,14 +384,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         checkpoint.CheckpointId = "c1";
         checkpoint.CommitId = 1;
         checkpoint.Stats.CopyFrom(state.GetStats());
-        state.GetCheckpoints().Add(checkpoint);
+        state.AccessCheckpoints().Add(checkpoint);
 
         state.IncrementMixedBlocksCount(2_GB / DefaultBlockSize);
 
         checkpoint.CheckpointId = "c2";
         checkpoint.CommitId = 2;
         checkpoint.Stats.CopyFrom(state.GetStats());
-        state.GetCheckpoints().Add(checkpoint);
+        state.AccessCheckpoints().Add(checkpoint);
 
         UNIT_ASSERT_VALUES_EQUAL(7_GB, state.CalculateCheckpointBytes());
     }

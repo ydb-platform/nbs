@@ -537,8 +537,8 @@ void TPartitionActor::HandleHttpInfo_Default(
                         *Info(),
                         State->GetUnflushedFreshBlocksCount(),
                         State->GetBlockSize(),
-                        State->GetCheckpoints().Get(),
-                        State->GetCheckpoints().GetMapping());
+                        State->AccessCheckpoints().Get(),
+                        State->AccessCheckpoints().GetMapping());
 
                     TAG(TH3) {
                         if (!State->IsForcedCompactionRunning()) {

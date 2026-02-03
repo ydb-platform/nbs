@@ -968,7 +968,7 @@ TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
     ui64 commitId = State->GetLastCommitId();
 
     if (checkpointId) {
-        commitId = State->GetCheckpoints().GetCommitId(checkpointId, false);
+        commitId = State->AccessCheckpoints().GetCommitId(checkpointId, false);
         if (!commitId) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);

@@ -39,7 +39,7 @@ public:
         return MakeCommitId(Generation, ++LastCommitId);
     }
 
-    auto& GetCheckpoints()
+    auto& AccessCheckpoints()
     {
         return Checkpoints;
     }

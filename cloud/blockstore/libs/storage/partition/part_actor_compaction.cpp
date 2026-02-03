@@ -1178,7 +1178,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
             return;
         }
 
-        if (!State->GetCheckpoints().IsEmpty()) {
+        if (!State->AccessCheckpoints().IsEmpty()) {
             // should not compact, see NBS-1042
             return;
         }

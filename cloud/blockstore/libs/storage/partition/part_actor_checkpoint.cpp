@@ -126,12 +126,12 @@ void TPartitionActor::ExecuteCreateCheckpoint(
     checkpoint.Stats.CopyFrom(State->GetStats());
 
     bool added = (args.WithoutData)
-                ? State->GetCheckpoints().AddCheckpointMapping(checkpoint)
-                : State->GetCheckpoints().Add(checkpoint);
+                ? State->AccessCheckpoints().AddCheckpointMapping(checkpoint)
+                : State->AccessCheckpoints().Add(checkpoint);
     if (added) {
         db.WriteCheckpoint(checkpoint, args.WithoutData);
     } else {
-        auto existingIdempotenceId = State->GetCheckpoints().GetIdempotenceId(checkpoint.CheckpointId);
+        auto existingIdempotenceId = State->AccessCheckpoints().GetIdempotenceId(checkpoint.CheckpointId);
         if (existingIdempotenceId != checkpoint.IdempotenceId) {
             args.Error = MakeError(S_ALREADY, TStringBuilder()
                 << "checkpoint already exists: " << checkpoint.CheckpointId.Quote());
@@ -263,9 +263,9 @@ void TPartitionActor::ExecuteDeleteCheckpoint(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    bool deleted = State->GetCheckpoints().Delete(args.CheckpointId);
+    bool deleted = State->AccessCheckpoints().Delete(args.CheckpointId);
     if (!args.DeleteOnlyData) {
-        deleted |= State->GetCheckpoints().DeleteCheckpointMapping(args.CheckpointId);
+        deleted |= State->AccessCheckpoints().DeleteCheckpointMapping(args.CheckpointId);
     }
 
     if (deleted) {

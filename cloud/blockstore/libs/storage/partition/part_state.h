@@ -516,7 +516,7 @@ private:
         auto getBlockContent)
     {
         TVector<ui64> checkpoints;
-        Checkpoints.GetCommitIds(checkpoints);
+        CommitIdsState.AccessCheckpoints().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -571,7 +571,7 @@ private:
         auto getBlockContent)
     {
         TVector<ui64> checkpoints;
-        Checkpoints.GetCommitIds(checkpoints);
+        CommitIdsState.AccessCheckpoints().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -1045,9 +1045,9 @@ public:
         return CleanupDelay;
     }
 
-    TCheckpointStore& GetCheckpoints()
+    TCheckpointStore& AccessCheckpoints()
     {
-        return CommitIdsState.GetCheckpoints();
+        return CommitIdsState.AccessCheckpoints();
     }
 
     TCheckpointsInFlight& GetCheckpointsInFlight()

@@ -69,7 +69,7 @@ TMaybe<ui64> TPartitionActor::VerifyDescribeBlocksCheckpoint(
         return State->GetLastCommitId();
     }
 
-    const ui64 commitId = State->GetCheckpoints().GetCommitId(checkpointId, false);
+    const ui64 commitId = State->AccessCheckpoints().GetCommitId(checkpointId, false);
     if (commitId) {
         return commitId;
     }
