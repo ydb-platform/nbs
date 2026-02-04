@@ -84,14 +84,15 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
 {
     auto* record = ev->Get();
 
+
     if (HasError(record->Error)) {
         LastError = record->Error;
-        ++FailedResponses;
     } else {
         Response.PartCounters.push_back(std::move(*record));
     }
 
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size())
         ReplyAndDie(ctx);
     }
 }
@@ -102,21 +103,9 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
 {
     Y_UNUSED(ev);
 
-    ++FailedResponses;
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size()) {
         ReplyAndDie(ctx);
-    }
-}
-
-void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
-    TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    ++FailedResponses;
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
-        SendStatToVolume(ctx);
     }
 }
 
