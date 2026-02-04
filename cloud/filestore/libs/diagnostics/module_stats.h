@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/storage/core/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -21,7 +21,7 @@ struct IModuleStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IModuleStatsRegistry: public IIncompleteRequestProcessor
+struct IModuleStatsRegistry: public IStatsHandler
 {
     virtual NMonitoring::TDynamicCountersPtr GetFileSystemModuleCounters(
         const TString& fileSystemId,
