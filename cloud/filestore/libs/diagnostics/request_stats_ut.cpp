@@ -232,15 +232,15 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                50'000,
+                0,
                 context->GetPossiblePostponeDuration().MicroSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                25,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 25,
@@ -250,7 +250,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                15,
+                65,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 65,
@@ -281,15 +281,15 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                35'000,
+                0,
                 context->GetPossiblePostponeDuration().MicroSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                25,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 25,
@@ -299,7 +299,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                30,
+                65,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 65,
@@ -332,7 +332,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 context->GetPossiblePostponeDuration().MicroSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
                 context->GetRequestStartedCycles()
@@ -369,15 +369,15 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                35'000,
+                0,
                 context->GetPossiblePostponeDuration().MicroSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                25,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 25,
@@ -387,7 +387,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                30,
+                65,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 65,
@@ -491,15 +491,15 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             statsFirst->UpdateStats(true);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                50'000,
+                0,
                 context->GetPossiblePostponeDuration().MicroSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounterFirst->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(0, predictedCounterFirst->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                25,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 25,
@@ -509,7 +509,7 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 context->GetRequestStartedCycles()
                     + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
-                15,
+                65,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
             UNIT_ASSERT_VALUES_EQUAL(
                 65,
