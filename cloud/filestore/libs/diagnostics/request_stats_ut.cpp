@@ -932,8 +932,11 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
         // emulating assigning new cloud and folder (after session is created)
         // counters should migrate to new cloud and folder subgroup
-        stats = bootstrap.Registry
-                    ->GetFileSystemStats(FS, CLIENT, newCloud, newFolder);
+        bootstrap.FsCountersProvider->UpdateCloudAndFolder(
+            FS,
+            CLIENT,
+            newCloud,
+            newFolder);
 
         {
             auto fsCounters = rootCounters->FindSubgroup("filesystem", FS);
