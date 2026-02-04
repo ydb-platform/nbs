@@ -1,7 +1,7 @@
-# Utility checkarange
+# Utility checkrange (check the specified range of blocks)
 
 ## Description
-This is a part of the blockstore-client application and is launched in the standard way for it: `blockstore-client checkrange`. The utility calculates the checksums of each requested block and checks the integrity of the data of the specified blocks for each supported disk type:
+This is a part of the blockstore-client application and is launched in the standard way for it: `blockstore-client checkrange`. The utility calculates the checksums of each requested range's block and checks the integrity of the data for the specified blocks for each supported disk type:
 - non replicated disk (data reading):
   - calculate checksums;
   - check the possibility of reading.
@@ -19,13 +19,13 @@ The utility supports the following options:
 - a request to calculate the checksum of each specified block. For example, for a range of 1024 blocks, 1024 checksums will be returned.
 
 ### Mandatory parameters
-- "disk-id" — disk identifier specification.
+- ```--disk-id``` — disk identifier specification.
 
 ### Standard launch options
-- "start-index" — starting block index. Default: 0.
-- "blocks-count" — number of blocks. Default: the number of blocks to the end of the disk, starting from start-index.
-- "blocks-per-request" — the number of blocks in 1 request. Default: 1024.
-- "output" — file to save the results. Default: stdout.
+- ```--start-index``` — starting block index. Default: 0.
+- ```--blocks-count``` — number of blocks. Default: the number of blocks to the end of the disk, starting from start-index.
+- ```--blocks-per-request``` — the number of blocks in 1 request. Default: 1024.
+- ```--output``` — file to save the results. Default: stdout.
 
 ## Basic use cases
 - data migration and checksum comparison:
