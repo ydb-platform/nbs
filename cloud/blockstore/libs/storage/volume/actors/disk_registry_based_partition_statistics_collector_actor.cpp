@@ -34,7 +34,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::Bootstrap(
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            0,
+            0,  // cookie
             &ctx.SelfID   // forwardOnNondelivery
         );
 
@@ -93,7 +93,8 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
 
     Response.Counters.push_back(std::move(*msg));
 
-    if (Response.Counters.size() + FailedResponses == StatActorIds.size()) {
+    ++ResponsesCount;
+    if (ResponsesCount == StatActorIds.size()) {
         ReplyAndDie(ctx);
     }
 }
@@ -106,9 +107,8 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
 {
     Y_UNUSED(ev);
 
-    ++FailedResponses;
-
-    if (Response.Counters.size() + FailedResponses == StatActorIds.size()) {
+    ++ResponsesCount;
+    if (ResponsesCount == StatActorIds.size()) {
         ReplyAndDie(ctx);
     }
 }

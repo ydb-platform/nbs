@@ -22,7 +22,7 @@ private:
 
     NProto::TError LastError;
 
-    size_t FailedResponses = 0;
+    size_t ResponsesCount = 0;
 
 public:
     TServiceStatisticsCollectorActor(
