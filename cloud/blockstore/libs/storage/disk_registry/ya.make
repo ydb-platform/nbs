@@ -40,6 +40,7 @@ SRCS(
     disk_registry_actor_register.cpp
     disk_registry_actor_regular.cpp
     disk_registry_actor_release.cpp
+    disk_registry_actor_replace_devices.cpp
     disk_registry_actor_replace.cpp
     disk_registry_actor_restore_state.cpp
     disk_registry_actor_resume_device.cpp

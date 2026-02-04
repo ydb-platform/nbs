@@ -31,10 +31,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration ResyncNextRangeInterval = TDuration::MilliSeconds(1);
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TMirrorPartitionResyncActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionResyncActor>
 {
@@ -43,6 +39,8 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const NProto::EResyncPolicy ResyncPolicy;
     const bool CritOnChecksumMismatch;
     const NActors::TActorId VolumeActorId;
@@ -50,7 +48,6 @@ private:
     TNonreplicatedPartitionConfigPtr PartConfig;
     TMigrations Migrations;
     TVector<TDevices> ReplicaDevices;
-    NRdma::IClientPtr RdmaClient;
     NActors::TActorId StatActorId;
 
     TMirrorPartitionResyncState State;
@@ -93,6 +90,8 @@ private:
 
     TBackoffDelayProvider BackoffProvider;
 
+    TRequestInfoPtr StatisticRequestInfo;
+
 public:
     TMirrorPartitionResyncActor(
         TStorageConfigPtr config,
@@ -104,6 +103,7 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicaDevices,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         ui64 initialResyncIndex,
@@ -131,9 +131,19 @@ private:
     void ScheduleResyncNextRange(const NActors::TActorContext& ctx);
     void ScheduleRetryResyncNextRange(const NActors::TActorContext& ctx);
     void ResyncNextRange(const NActors::TActorContext& ctx);
+    void ResyncRangeAfterError(
+        TBlockRange64 range,
+        const NActors::TActorContext& ctx);
 
     bool IsAnybodyAlive() const;
     void ReplyAndDie(const NActors::TActorContext& ctx);
+
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData partCountersData);
+
+    TPartNonreplCountersData ExtractPartCounters();
 
 private:
     STFUNC(StateWork);
@@ -179,8 +189,14 @@ private:
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReadResyncFastPathResponse(
-        const TEvNonreplPartitionPrivate::TEvReadResyncFastPathResponse::TPtr& ev,
+    void HandleResyncFastPathReadResponse(
+        const TEvNonreplPartitionPrivate::TEvResyncFastPathReadResponse::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleResyncFastPathChecksumCompareResponse(
+        const TEvNonreplPartitionPrivate::
+            TEvResyncFastPathChecksumCompareResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
@@ -223,8 +239,24 @@ private:
         const TFastPathRecord& record,
         const NActors::TActorContext& ctx);
 
+    template <typename TMethod>
+    void SendReadBlocksResponseImpl(
+        const NProto::TError& error,
+        NActors::IEventHandle& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleGetDeviceForRange(
         const TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);

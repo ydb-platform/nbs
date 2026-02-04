@@ -3,7 +3,7 @@
 #include "incomplete_requests.h"
 #include "server_stats.h"
 
-#include <cloud/storage/core/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
 namespace NCloud::NBlockStore {
 
@@ -12,7 +12,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TIncompleteRequestProcessor
-    : public IIncompleteRequestProcessor
+    : public NCloud::IStatsHandler
 {
     const IServerStatsPtr Stats;
     const TVector<IIncompleteRequestProviderPtr> IncompleteProviders;
@@ -41,7 +41,7 @@ struct TIncompleteRequestProcessor
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TIncompleteRequestProcessorStub
-    : public IIncompleteRequestProcessor
+    : public NCloud::IStatsHandler
 {
     void UpdateStats(bool updateIntervalFinished) override
     {
@@ -53,7 +53,7 @@ struct TIncompleteRequestProcessorStub
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessor(
+NCloud::IStatsHandlerPtr CreateIncompleteRequestProcessor(
     IServerStatsPtr stats,
     TVector<IIncompleteRequestProviderPtr> incompleteProviders)
 {
@@ -63,7 +63,7 @@ IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessor(
     );
 }
 
-IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessorStub()
+NCloud::IStatsHandlerPtr CreateIncompleteRequestProcessorStub()
 {
     return std::make_shared<TIncompleteRequestProcessorStub>();
 }

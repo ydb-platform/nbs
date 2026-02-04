@@ -1,10 +1,36 @@
 #include "part_nonrepl_migration_common_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/volume/actors/disk_registry_based_partition_statistics_collector_actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionMigrationCommonActor::UpdateCounters(
+    const TActorContext& ctx,
+    const TActorId& sender,
+    TPartNonreplCountersData partCountersData)
+{
+    if (sender == SrcActorId) {
+        SrcCounters = std::move(partCountersData.DiskCounters);
+    } else if (sender == DstActorId) {
+        DstCounters = std::move(partCountersData.DiskCounters);
+    } else {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "Partition %s for disk %s counters not found",
+            ToString(sender).c_str(),
+            DiskId.Quote().c_str());
+
+        Y_DEBUG_ABORT_UNLESS(0);
+    }
+    NetworkBytes += partCountersData.NetworkBytes;
+    CpuUsage += partCountersData.CpuUsage;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -13,32 +39,14 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    if (ev->Sender == SrcActorId) {
-        SrcCounters = std::move(msg->DiskCounters);
-    } else if (ev->Sender == DstActorId) {
-        DstCounters = std::move(msg->DiskCounters);
-    } else {
-        LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-            "Partition %s for disk %s counters not found",
-            ToString(ev->Sender).c_str(),
-            DiskId.Quote().c_str());
-
-        Y_DEBUG_ABORT_UNLESS(0);
-    }
-    NetworkBytes += msg->NetworkBytes;
-    CpuUsage += msg->CpuUsage;
+    UpdateCounters(ctx, ev->Sender, std::move(msg->CountersData));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationCommonActor::SendStats(
-    const TActorContext& ctx)
+TPartNonreplCountersData
+TNonreplicatedPartitionMigrationCommonActor::ExtractPartCounters()
 {
-    if (!StatActorId) {
-        return;
-    }
-
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());
@@ -54,12 +62,12 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
     if (SrcCounters && DstActorId && DstCounters) {
         // for some counters default AggregateWith logic is suboptimal for
         // mirrored partitions
-        stats->Simple.BytesCount.Value = Max(
-            SrcCounters->Simple.BytesCount.Value,
-            DstCounters->Simple.BytesCount.Value);
-        stats->Simple.IORequestsInFlight.Value = Max(
-            SrcCounters->Simple.IORequestsInFlight.Value,
-            DstCounters->Simple.IORequestsInFlight.Value);
+        stats->Simple.BytesCount.Value =
+            Max(SrcCounters->Simple.BytesCount.Value,
+                DstCounters->Simple.BytesCount.Value);
+        stats->Simple.IORequestsInFlight.Value =
+            Max(SrcCounters->Simple.IORequestsInFlight.Value,
+                DstCounters->Simple.IORequestsInFlight.Value);
     }
 
     stats->AggregateWith(*MigrationCounters);
@@ -67,18 +75,128 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
         EPublishingPolicy::DiskRegistryBased,
         DiagnosticsConfig->GetHistogramCounterOptions());
 
+    return {
+        .DiskCounters = std::move(stats),
+        .NetworkBytes = std::exchange(NetworkBytes, {}),
+        .CpuUsage = std::exchange(CpuUsage, {})
+    };
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::SendStats(
+    const TActorContext& ctx)
+{
+    if (!StatActorId) {
+        return;
+    }
+
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
-            std::move(stats),
             DiskId,
-            NetworkBytes,
-            CpuUsage);
-
-    NetworkBytes = 0;
-    CpuUsage = {};
+            ExtractPartCounters());
 
     NCloud::Send(ctx, StatActorId, std::move(request));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionMigrationCommonActor::
+    HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const TActorContext& ctx)
+{
+    if (StatisticRequestInfo) {
+        NCloud::Reply(
+            ctx,
+            *StatisticRequestInfo,
+            std::make_unique<TEvNonreplPartitionPrivate::
+                                 TEvGetDiskRegistryBasedPartCountersResponse>(
+                MakeError(E_REJECTED, "Migration actor got new request"),
+                SelfId(),
+                DiskId,
+                TPartNonreplCountersData{}));
+        StatisticRequestInfo.Reset();
+    }
+
+    TVector<TActorId> statActorIds;
+
+    if (SrcActorId) {
+        statActorIds.push_back(SrcActorId);
+    }
+
+    if (DstActorId) {
+        statActorIds.push_back(DstActorId);
+    }
+
+    if (statActorIds.empty()) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvNonreplPartitionPrivate::
+                                 TEvGetDiskRegistryBasedPartCountersResponse>(
+                MakeError(
+                    E_INVALID_STATE,
+                    "Nonreplicated migration actor hasn't src and dst "
+                    "actors"),
+                SelfId(),
+                DiskId,
+                ExtractPartCounters()));
+
+        return;
+    }
+
+    StatisticRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
+    NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
+        ctx,
+        SelfId(),
+        std::move(statActorIds));
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::
+    HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
+        const TActorContext& ctx)
+{
+    if (!StatisticRequestInfo) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_NONREPL,
+            "[%s] Failed to send migration actor statistics due to empty "
+            "StatisticRequestInfo.",
+            DiskId.Quote().c_str());
+        return;
+    }
+
+    auto* msg = ev->Get();
+
+    if(HasError(msg->Error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION_NONREPL,
+            "[%s] Failed to send migration actor statistics due to error: %s",
+            DiskId.Quote().c_str(),
+            FormatError(msg->Error).c_str());
+    }
+
+    for (auto& counters: msg->Counters) {
+        UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
+    }
+
+    NCloud::Reply(
+        ctx,
+        *StatisticRequestInfo,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            msg->Error,
+            SelfId(),
+            DiskId,
+            ExtractPartCounters()));
+
+    StatisticRequestInfo.Reset();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

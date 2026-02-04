@@ -168,6 +168,7 @@ func (f *factory) NewClient(
 	return &client{
 		nfs:     nfs,
 		metrics: f.metrics,
+		zoneID:  zoneID,
 	}, nil
 }
 

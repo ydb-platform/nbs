@@ -47,6 +47,7 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
     SET(IpTypeOfService);
     SET(SourceInterface);
+    SET(VerbsQP);
 }
 
 #undef SET
@@ -73,6 +74,7 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(AlignedDataEnabled, true);
                 ENTRY(IpTypeOfService, IpTypeOfService);
                 ENTRY(SourceInterface, SourceInterface);
+                ENTRY(VerbsQP, VerbsQP);
             }
         }
     }

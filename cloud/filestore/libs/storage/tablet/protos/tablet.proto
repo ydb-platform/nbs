@@ -107,6 +107,8 @@ message TNode
     string SymLink = 10;
 
     uint64 DevId = 11;
+
+    bool IsPreparedForUnlink = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -226,5 +228,6 @@ message TOpLogEntry
         TUnlinkNodeRequest UnlinkNodeRequest = 102 [deprecated = true];
         NProtoPrivate.TRenameNodeInDestinationRequest RenameNodeInDestinationRequest = 103;
         NProtoPrivate.TUnlinkNodeInShardRequest UnlinkNodeInShardRequest = 104;
+        NProtoPrivate.TAbortUnlinkDirectoryNodeInShardRequest AbortUnlinkDirectoryNodeInShardRequest = 105;
     }
 }

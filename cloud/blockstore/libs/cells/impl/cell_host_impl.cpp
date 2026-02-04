@@ -181,8 +181,7 @@ bool TCellHost::SetupRdmaIfNeeded()
     RdmaState = EState::ACTIVATING;
     RdmaFuture = Args.EndpointsSetup->SetupHostRdmaEndpoint(
         Args,
-        Config,
-        GrpcHostEndpoint);
+        Config);
     return true;
 }
 

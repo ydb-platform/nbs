@@ -24,11 +24,12 @@ def start(argv):
     start_endpoint_request.Endpoint.ClientId = "client"
     start_endpoint_request.Endpoint.SocketPath = socket_path
     start_endpoint_request.Endpoint.Persistent = True
+
     # base64 trailing symbol for encoded endpoint ids is ','
     endpoint_id = base64.b64encode(socket_path.encode()).decode().replace("=", ",")
-    endpoint = endpoint_storage_dir / endpoint_id
-    logger.error("MYAGKOV: test endpoint path: %s", endpoint)
-    endpoint.write_bytes(start_endpoint_request.SerializeToString())
+    endpoint_path = endpoint_storage_dir / endpoint_id
+    logger.error("Test endpoint path: %s", endpoint_path)
+    endpoint_path.write_bytes(start_endpoint_request.SerializeToString())
 
 
 def stop(argv):

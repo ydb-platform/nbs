@@ -278,6 +278,16 @@ public:
         return FileSystem.GetFileSystemId();
     }
 
+    TString GetCloudId() const
+    {
+        return FileSystem.GetCloudId();
+    }
+
+    TString GetFolderId() const
+    {
+        return FileSystem.GetFolderId();
+    }
+
     TString GetMainFileSystemId() const
     {
         return FileSystem.GetMainFileSystemId();
@@ -450,6 +460,12 @@ private:
     //
 
 public:
+    void CreateNodeWithId(
+        TIndexTabletDatabase& db,
+        ui64 nodeId,
+        ui64 commitId,
+        const NProto::TNode& attrs);
+
     ui64 CreateNode(
         TIndexTabletDatabase& db,
         ui64 commitId,
@@ -645,7 +661,7 @@ public:
         const TString& shardNodeName);
 
     bool TryLockNodeRef(TNodeRefKey key);
-    void UnlockNodeRef(TNodeRefKey key);
+    void UnlockNodeRef(const TNodeRefKey& key);
 
     //
     // Sessions
@@ -731,6 +747,14 @@ public:
     TSessionHandle* CreateHandle(
         TIndexTabletDatabase& db,
         TSession* session,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 flags);
+
+    TSessionHandle* UnsafeCreateHandle(
+        TIndexTabletDatabase& db,
+        TSession* session,
+        ui64 handleId,
         ui64 nodeId,
         ui64 commitId,
         ui32 flags);

@@ -49,6 +49,107 @@ TOptionsYdbPtr CreateOptions()
     return options;
 }
 
+/**
+ * *LoadKikimrFeaturesFromCms implementation
+ */
+void ShouldLoadKikimrFeatureFromCms(
+    const std::string& featureName,
+    bool cmsEmpty,
+    bool valueEmpty,
+    bool shouldLoad)
+{
+    auto ci = TConfigInitializerYdb(CreateOptions());
+    ci.InitKikimrConfig();
+
+    NKikimrConfig::TAppConfig appCfg;
+    auto* cmsFeatureFlags = appCfg.MutableFeatureFlags();
+    auto* featureFlags = ci.KikimrConfig->MutableFeatureFlags();
+
+    const auto* reflection = featureFlags->GetReflection();
+    const auto* descriptor = featureFlags->GetDescriptor();
+    const auto* field = descriptor->FindFieldByName(featureName.c_str());
+
+    UNIT_ASSERT(field);
+    UNIT_ASSERT(field->type() == google::protobuf::FieldDescriptor::TYPE_BOOL);
+
+    if (valueEmpty) {
+        reflection->ClearField(featureFlags, field);
+    } else {
+        // Use default value
+        reflection->SetBool(
+            featureFlags,
+            field,
+            reflection->GetBool(*featureFlags, field));
+    }
+    UNIT_ASSERT(reflection->HasField(*featureFlags, field) == !valueEmpty);
+
+    auto oldValue = reflection->GetBool(*featureFlags, field);
+
+    if (cmsEmpty) {
+        reflection->ClearField(cmsFeatureFlags, field);
+    } else {
+        reflection->SetBool(cmsFeatureFlags, field, !oldValue);
+    }
+
+    ci.ApplyCustomCMSConfigs(appCfg);
+
+    TStringStream testInfo;
+    testInfo << "featureName: " << featureName << ", cmsEmpty = " << cmsEmpty
+             << ", valueEmpty = " << valueEmpty << ", should = " << shouldLoad;
+    auto&& comment = testInfo.Str();
+
+    if (shouldLoad) {
+        if (cmsEmpty) {
+            if (valueEmpty) {
+                UNIT_ASSERT_C(
+                    !reflection->HasField(*featureFlags, field),
+                    comment);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    reflection->GetBool(*featureFlags, field),
+                    oldValue,
+                    comment);
+            }
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                reflection->GetBool(*featureFlags, field),
+                reflection->GetBool(*cmsFeatureFlags, field),
+                comment);
+        }
+    } else {
+        if (valueEmpty) {
+            UNIT_ASSERT_C(!reflection->HasField(*featureFlags, field), comment);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                reflection->GetBool(*featureFlags, field),
+                oldValue,
+                comment);
+        }
+    }
+}
+
+void ShouldLoadKikimrFeaturesFromCms(
+    const std::vector<std::string>& featureNames,
+    bool shouldLoad)
+{
+    for (auto&& featureName: featureNames) {
+        // CmsEmpty -> Empty = Empty
+        // CmsEmpty -> Value = Value
+        // CmsValue -> Empty = shouldLoad ? CmsValue : Empty
+        // CmsValue -> Value = shouldLoad ? CmsValue : Value
+
+        for (bool cmsEmpty: {true, false}) {
+            for (bool valueEmpty: {true, false}) {
+                ShouldLoadKikimrFeatureFromCms(
+                    featureName,
+                    cmsEmpty,
+                    valueEmpty,
+                    shouldLoad);
+            }
+        }
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -346,6 +447,23 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldLoadAllowedKikimrFeaturesFromCms)
+    {
+        std::vector<std::string> featureNames = {
+            "EnableNodeBrokerDeltaProtocol"};
+
+        ShouldLoadKikimrFeaturesFromCms(featureNames, true);
+    }
+
+    Y_UNIT_TEST(ShouldNotLoadUnallowedKikimrFeaturesFromCms)
+    {
+        std::vector<std::string> featureNames = {
+            "EnableSchemeBoard",
+            "EnableGracefulShutdown"};
+
+        ShouldLoadKikimrFeaturesFromCms(featureNames, false);
+    }
+
     Y_UNIT_TEST(ShouldAdaptNodeRegistrationParams)
     {
         TTempDir dir;
@@ -426,7 +544,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL("123", proto.GetNodeType());
     }
 
-    Y_UNIT_TEST(ShouldAdaptNodeRegistrationParamsWhebLoadingFromCms)
+    Y_UNIT_TEST(ShouldAdaptNodeRegistrationParamsWhenLoadingFromCms)
     {
         auto ci = TConfigInitializerYdb(CreateOptions());
         ci.InitStorageConfig();

@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -27,7 +29,7 @@ void TDiskRegistryActor::HandleCreatePlacementGroup(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received CreatePlacementGroup request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TCreatePlacementGroup>(
@@ -105,7 +107,7 @@ void TDiskRegistryActor::HandleDestroyPlacementGroup(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received DestroyPlacementGroup request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TDestroyPlacementGroup>(
@@ -191,7 +193,7 @@ void TDiskRegistryActor::HandleAlterPlacementGroupMembership(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received AlterPlacementGroupMembership request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TAlterPlacementGroupMembership>(
@@ -304,7 +306,7 @@ void TDiskRegistryActor::HandleListPlacementGroups(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received ListPlacementGroups request: %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str());
+        SafeDebugPrint(msg->Record).c_str());
 
     auto response = std::make_unique<TEvService::TEvListPlacementGroupsResponse>();
     for (const auto& x: State->GetPlacementGroups()) {
@@ -334,7 +336,7 @@ void TDiskRegistryActor::HandleDescribePlacementGroup(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received DescribePlacementGroup request: %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str());
+        SafeDebugPrint(msg->Record).c_str());
 
     auto response = std::make_unique<TEvService::TEvDescribePlacementGroupResponse>();
     if (const auto* g = State->FindPlacementGroup(msg->Record.GetGroupId())) {

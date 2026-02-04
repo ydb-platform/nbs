@@ -397,7 +397,7 @@ int main(int argc, char** argv)
     auto state = GenerateAll(opts.Seed);
     NProto::TDiskRegistryStateBackup backupState = state->BackupState();
     NProto::TBackupDiskRegistryStateResponse backup;
-    backup.MutableBackup()->Swap(&backupState);
+    backup.MutableMemoryBackup()->Swap(&backupState);
 
     TProtoStringType str;
     google::protobuf::util::MessageToJsonString(backup, &str);

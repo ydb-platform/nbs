@@ -63,6 +63,7 @@ namespace {
     xxx(OpentelemetryTraceConfig,           ::NCloud::NProto::TOpentelemetryTraceConfig, {}             )\
                                                                                                          \
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
+    xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \

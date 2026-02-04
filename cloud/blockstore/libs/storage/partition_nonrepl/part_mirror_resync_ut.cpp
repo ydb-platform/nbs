@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
@@ -40,6 +41,8 @@ using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
 namespace {
 
+constexpr TDuration ResyncNextRangeInterval = TDuration::MilliSeconds(1);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TResyncController
@@ -63,10 +66,14 @@ struct TResyncController
     {
         runtime.SetReschedulingDelay(ResyncNextRangeInterval);
 
-        runtime.SetObserverFunc([this] (auto& event) {
+        runtime.SetObserverFunc([this] (TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
-                    if (ResyncedRanges.size() >= StopAfterResyncedRangeCount) {
+                    const auto* msg = event->Get<
+                        TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
+                    if (ResyncedRanges.size() >= StopAfterResyncedRangeCount &&
+                        msg->Record.GetHeaders().GetIsBackgroundRequest())
+                    {
                         return TTestActorRuntime::EEventAction::RESCHEDULE;
                     }
 
@@ -181,31 +188,34 @@ struct TTestEnv
         return devices;
     }
 
-    explicit TTestEnv(TTestActorRuntime& runtime, THashSet<TString> freshDeviceIds = {})
+    explicit TTestEnv(
+        TTestActorRuntime& runtime,
+        NProto::TStorageServiceConfig storageConfigPatch = {},
+        THashSet<TString> freshDeviceIds = {})
         : TTestEnv(
-            runtime,
-            DefaultBlockSize,
-            DefaultDevices(runtime.GetNodeId(0), DefaultBlockSize),
-            TVector<TDevices>{
-                DefaultReplica(runtime.GetNodeId(0), DefaultBlockSize, 1),
-                DefaultReplica(runtime.GetNodeId(0), DefaultBlockSize, 2),
-            },
-            std::move(freshDeviceIds)
-        )
+              runtime,
+              DefaultBlockSize,
+              DefaultDevices(runtime.GetNodeId(0), DefaultBlockSize),
+              TVector<TDevices>{
+                  DefaultReplica(runtime.GetNodeId(0), DefaultBlockSize, 1),
+                  DefaultReplica(runtime.GetNodeId(0), DefaultBlockSize, 2),
+              },
+              std::move(freshDeviceIds),
+              std::move(storageConfigPatch))
     {
     }
 
     TTestEnv(TTestActorRuntime& runtime, ui32 blockSize)
         : TTestEnv(
-            runtime,
-            blockSize,
-            DefaultDevices(runtime.GetNodeId(0), blockSize),
-            TVector<TDevices>{
-                DefaultReplica(runtime.GetNodeId(0), blockSize, 1),
-                DefaultReplica(runtime.GetNodeId(0), blockSize, 2),
-            },
-            {}
-        )
+              runtime,
+              blockSize,
+              DefaultDevices(runtime.GetNodeId(0), blockSize),
+              TVector<TDevices>{
+                  DefaultReplica(runtime.GetNodeId(0), blockSize, 1),
+                  DefaultReplica(runtime.GetNodeId(0), blockSize, 2),
+              },
+              {},
+              NProto::TStorageServiceConfig())
     {
     }
 
@@ -215,6 +225,7 @@ struct TTestEnv
             TDevices devices,
             TVector<TDevices> replicas,
             THashSet<TString> freshDeviceIds,
+            NProto::TStorageServiceConfig storageConfigPatch,
             bool enableVolumeRequestId = false)
         : Runtime(runtime)
         , BlockSize(blockSize)
@@ -244,6 +255,7 @@ struct TTestEnv
         storageConfig.SetRejectLateRequestsAtDiskAgentEnabled(
             enableVolumeRequestId);
 
+        storageConfig.MergeFrom(storageConfigPatch);
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
@@ -301,6 +313,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr, // rdmaClient
+            std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             TActorId(), // statActorId
             // resync actor id should be set since mirror actor should be aware
@@ -374,6 +387,7 @@ struct TTestEnv
             TMigrations(),
             Replicas,
             nullptr,   // rdmaClient
+            std::make_shared<TPartitionBudgetManager>(Config),
             VolumeActorId,
             VolumeActorId,
             initialResyncIndex,
@@ -474,7 +488,7 @@ struct TTestEnv
 
     void CatchEvents(THashSet<ui32> eventTypes)
     {
-        PrevObs = Runtime.SetObserverFunc([=] (auto& event) {
+        PrevObs = Runtime.SetObserverFunc([=] (TAutoPtr<IEventHandle>& event) {
             if (eventTypes.contains(event->GetTypeRewrite())) {
                 Caught.push_back(IEventHandlePtr(event.Release()));
                 return TTestActorRuntime::EEventAction::DROP;
@@ -494,7 +508,7 @@ struct TTestEnv
         NActors::TTestActorRuntime::TEventObserver eventModifier)
     {
         PrevObs = Runtime.SetObserverFunc(
-            [=](auto& event)
+            [=](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() == eventType) {
                     if (TTestActorRuntime::EEventAction::DROP ==
@@ -517,6 +531,16 @@ struct TTestEnv
             Runtime.Send(ev.release());
         }
         Caught.clear();
+    }
+
+    void TestNoEvent(ui32 eventType)
+    {
+        Runtime.DispatchEvents({}, TInstant::Zero());
+        auto evList = Runtime.CaptureEvents();
+        for (auto& ev: evList) {
+            UNIT_ASSERT(ev->GetTypeRewrite() != eventType);
+        }
+        Runtime.PushEventsFront(evList);
     }
 };
 
@@ -1157,7 +1181,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         runtime.SetReschedulingDelay(ResyncNextRangeInterval);
 
-        runtime.SetObserverFunc([&state, &writeDelay, &rangeCount] (auto& event) {
+        runtime.SetObserverFunc([&state, &writeDelay, &rangeCount] (TAutoPtr<IEventHandle>& event) {
             switch (state) {
                 case INIT: {
                     if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvRangeResynced) {
@@ -1307,15 +1331,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         }
     }
 
-#define TEST_NO_EVENT(runtime, evType) {                                       \
-    runtime.DispatchEvents({}, TInstant::Zero());                              \
-    auto evList = runtime.CaptureEvents();                                     \
-    for (auto& ev: evList) {                                                   \
-        UNIT_ASSERT(ev->GetTypeRewrite() != evType);                           \
-    }                                                                          \
-    runtime.PushEventsFront(evList);                                           \
-} // TEST_NO_EVENT
-
     Y_UNIT_TEST(ShouldPostponeReadIfRangeNotResynced)
     {
         TTestBasicRuntime runtime;
@@ -1336,7 +1351,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         {
             client.SendReadBlocksRequest(range);
-            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+            env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
             env.ReleaseEvents();
             env.ResyncController.WaitForResyncedRangeCount(1);
@@ -1374,7 +1389,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         {
             client.SendReadBlocksRequest(range, 1);
-            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+            env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
             env.ReleaseEvents();
             env.ResyncController.WaitForResyncedRangeCount(1);
@@ -1412,7 +1427,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         {
             client.SendReadBlocksRequest(range, 0, replicaCount);
-            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+            env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
             env.ReleaseEvents();
             env.ResyncController.WaitForResyncedRangeCount(1);
@@ -1454,7 +1469,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         {
             client.SendReadBlocksRequest(range);
             // no response - EvChecksumBlocksResponse-s are suspended
-            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+            env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
             // changing response code for EvChecksumBlocksResponse-s to E_IO
             // affects both fast path and resync since they started in parallel
@@ -1531,7 +1546,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                     range.Size(),
                     TString(DefaultBlockSize, '\0')
                 )));
-            TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+            env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
             env.ReleaseEvents();
             env.ResyncController.WaitForResyncedRangeCount(1);
@@ -1567,11 +1582,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         // Trigger resync on read
         TPartitionClient client(runtime, env.ActorId);
         client.SendReadBlocksRequest(range);
-        TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+        env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
         // Consecutive reads should be rejected as well
         client.SendReadBlocksRequest(range);
-        TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+        env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
         // Let resync continue
         env.ResyncController.SetStopAfterResyncedRangeCount(2);
@@ -1670,7 +1685,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
         //////////////////////////////////////////////////////////////////////
         // This read should not complete until resync of the range is finished
         client.SendReadBlocksRequest(slowPathRange);
-        TEST_NO_EVENT(runtime, TEvService::EvReadBlocksResponse);
+        env.TestNoEvent(TEvService::EvReadBlocksResponse);
 
         //////////////////////////////////////////////////////////////////////
         // Let resync continue
@@ -1692,8 +1707,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
             UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), buffer);
         }
     }
-
-#undef TEST_NO_EVENT
 
     Y_UNIT_TEST(ShouldSaveResyncIndex)
     {
@@ -1717,7 +1730,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         ui32 resyncIndex = 0;
 
-        runtime.SetObserverFunc([&resyncIndex] (auto& event) {
+        runtime.SetObserverFunc([&resyncIndex] (TAutoPtr<IEventHandle>& event) {
             using TEvent = TEvVolume::TEvUpdateResyncState;
 
             if (event->GetTypeRewrite() == TEvent::EventType) {
@@ -1740,7 +1753,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
     void DoTestShouldTreatFreshDevicesProperly(bool afterResync)
     {
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, {"vasya#1", "vasya#2"});
+        TTestEnv env(
+            runtime,
+            NProto::TStorageServiceConfig(),
+            {"vasya#1", "vasya#2"});
 
         const auto range1 = TBlockRange64::WithLength(0, 2048);
         const auto range2 = TBlockRange64::WithLength(2048, 3072);
@@ -1941,6 +1957,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                     2),
             },
             {},
+            NProto::TStorageServiceConfig(),
             true);
 
         const auto range = TBlockRange64::WithLength(0, 5120);
@@ -2022,7 +2039,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
     {
         TTestBasicRuntime runtime;
 
-        TTestEnv env(runtime, {"vasya", "vasya#1", "vasya#2"});
+        TTestEnv env(runtime, {}, {"vasya", "vasya#1", "vasya#2"});
 
         const auto firstDeviceRange = TBlockRange64::WithLength(0, 100);
         const auto secondDeviceRange = TBlockRange64::WithLength(2048, 100);
@@ -2119,6 +2136,464 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         UNIT_ASSERT(isRejected);
         UNIT_ASSERT(seenRetry);
+    }
+
+    Y_UNIT_TEST(ShouldReplyAfterOneChecksumAndDataForFastPath)
+    {
+        TTestBasicRuntime runtime;
+
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetOptimizeFastPathReadsOnResync(true);
+        TTestEnv env(runtime, storageConfigPatch);
+
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto readRange = TBlockRange64::WithLength(2100, 100);
+        env.WriteMirror(diskRange, 'X');
+
+        ui32 checksumRequestsSent = 0;
+        bool fastPathReplySent = false;
+        IEventHandlePtr delayedChecksumRequest;
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(0);
+        env.StartResync();
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
+                        const auto* msg =
+                        event->Get<TEvNonreplPartitionPrivate::
+                        TEvChecksumBlocksRequest>();
+                        // Delay checksum request for replica 2 (cookie == 2)
+                        if (event->Cookie == 2 && !fastPathReplySent &&
+                            !msg->Record.GetHeaders().GetIsBackgroundRequest())
+                        {
+                            delayedChecksumRequest.reset(event.Release());
+                            return true;
+                        }
+                        checksumRequestsSent++;
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathReadResponse: {
+                        fastPathReplySent = true;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(1);
+        TPartitionClient client(runtime, env.ActorId);
+        // Send read request - this should trigger fast path
+        client.SendReadBlocksRequest(readRange);
+
+        // Verify that fast path response was sent after receiving just 1
+        // checksum (the second checksum from replica 2 is still delayed)
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return fastPathReplySent;
+            };
+            UNIT_ASSERT_C(
+                runtime.DispatchEvents(options, TDuration::MilliSeconds(100)),
+                "Fast path should reply after 1 checksum + data");
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            1,
+            checksumRequestsSent,
+            "Only 1 checksum should be sent before fast path reply");
+        UNIT_ASSERT_C(
+            delayedChecksumRequest,
+            "Second checksum should be delayed");
+
+        // Receive the read response
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        // Verify data is correct
+        for (const auto& buffer: response->Record.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'X'), buffer);
+        }
+
+        const auto fastPathActorId = delayedChecksumRequest->Sender;
+        IEventHandlePtr resyncFastPathChecksumCompareResponse;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksResponse: {
+                        auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                                   TEvChecksumBlocksResponse>();
+                        if (event->Cookie == 2 &&
+                            event->GetRecipientRewrite() == fastPathActorId)
+                        {
+                            *msg->Record.MutableError() =
+                                MakeError(E_FAIL, "checksum test error");
+                        }
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathChecksumCompareResponse: {
+                        resyncFastPathChecksumCompareResponse.reset(
+                            event.Release());
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        // Release the delayed checksum request. The response will be filled
+        // with an error. That should trigger the
+        // TEvResyncFastPathChecksumCompareResponse with the error inside.
+        runtime.Send(delayedChecksumRequest.release());
+
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]() -> bool
+            {
+                return !!resyncFastPathChecksumCompareResponse;
+            };
+            UNIT_ASSERT_C(
+                runtime.DispatchEvents(options, TDuration::MilliSeconds(100)),
+                "Fast path resync response should be sent");
+            const auto* event =
+                resyncFastPathChecksumCompareResponse
+                    ->Get<TEvNonreplPartitionPrivate::
+                              TEvResyncFastPathChecksumCompareResponse>();
+            UNIT_ASSERT(HasError(event->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, event->GetError().GetCode());
+        }
+
+        bool slowPathResyncSeen = false;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
+                        const auto* msg =
+                            event->Get<TEvNonreplPartitionPrivate::
+                                           TEvChecksumBlocksRequest>();
+                        if (msg->Record.GetHeaders().GetIsBackgroundRequest() &&
+                            msg->Record.GetStartIndex() == 2048 &&
+                            msg->Record.GetBlocksCount() == 1024)
+                        {
+                            slowPathResyncSeen = true;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+        // Once the response is released, the slow resync should be triggered.
+        runtime.Send(resyncFastPathChecksumCompareResponse.release());
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT(slowPathResyncSeen);
+    }
+
+    Y_UNIT_TEST(ShouldReplyAfterAllChecksumsAndDataForFastPathWhenOptimizationDisabled)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto readRange = TBlockRange64::WithLength(2100, 100);
+        env.WriteMirror(diskRange, 'X');
+
+        ui32 checksumRequestsSent = 0;
+        bool fastPathResponseSent = false;
+        bool resyncFastPathChecksumCompareResponseSeen = false;
+        IEventHandlePtr delayedChecksumRequest;
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(0);
+        env.StartResync();
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvNonreplPartitionPrivate::EvChecksumBlocksRequest: {
+                        // Delay checksum request from replica 2.
+                        const auto* msg =
+                            event->Get<TEvNonreplPartitionPrivate::
+                                           TEvChecksumBlocksRequest>();
+                        if (!msg->Record.GetHeaders()
+                                 .GetIsBackgroundRequest()) {
+                            if (event->Cookie == 2 && !fastPathResponseSent) {
+                                delayedChecksumRequest.reset(event.Release());
+                                return true;
+                            }
+                            checksumRequestsSent++;
+                        }
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathReadResponse: {
+                        fastPathResponseSent = true;
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathChecksumCompareResponse: {
+                        resyncFastPathChecksumCompareResponseSeen = true;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(1);
+        TPartitionClient client(runtime, env.ActorId);
+        // Send read request - this should trigger fast path
+        client.SendReadBlocksRequest(readRange);
+
+        // With optimization disabled, fast path should NOT reply after just
+        // 1 checksum - it waits for all checksums
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_C(
+            !fastPathResponseSent,
+            "Fast path should NOT reply with only 1 checksum when optimization "
+            "is disabled");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            1,
+            checksumRequestsSent,
+            "Only 1 checksum should be sent (second is delayed)");
+        UNIT_ASSERT_C(
+            delayedChecksumRequest,
+            "Second checksum should be delayed");
+        env.TestNoEvent(TEvService::EvReadBlocksResponse);
+
+        // Now release the delayed checksum request - fast path should reply
+        // after receiving both checksums
+        runtime.Send(delayedChecksumRequest.release());
+
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return fastPathResponseSent;
+            };
+            UNIT_ASSERT_C(
+                runtime.DispatchEvents(options, TDuration::MilliSeconds(100)),
+                "Fast path should reply after all checksums + data");
+        }
+
+        // Receive the read response
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        // Verify data is correct
+        for (const auto& buffer: response->Record.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'X'), buffer);
+        }
+
+        // When optimization is disabled, the fast path actor dies immediately
+        // after replying and never sends EvResyncFastPathChecksumCompareResponse
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_C(
+            !resyncFastPathChecksumCompareResponseSeen,
+            "EvResyncFastPathChecksumCompareResponse should never be observed "
+            "when optimization is disabled");
+    }
+
+    Y_UNIT_TEST(ShouldFallbackToSlowPathWhenFastPathDataReadFails)
+    {
+        TTestBasicRuntime runtime;
+
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetOptimizeFastPathReadsOnResync(true);
+        TTestEnv env(runtime, storageConfigPatch);
+
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto readRange = TBlockRange64::WithLength(2100, 100);
+        env.WriteMirror(diskRange, 'X');
+
+        bool fastPathReplySent = false;
+        NProto::TError fastPathError;
+        bool errorInjected = false;
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(0);
+        env.StartResync();
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        // Inject error into the data read response
+                        if (!errorInjected) {
+                            auto* msg = event->Get<
+                                TEvService::TEvReadBlocksLocalResponse>();
+                            *msg->Record.MutableError() =
+                                MakeError(E_IO, "test read error");
+                            errorInjected = true;
+                        }
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathReadResponse: {
+                        fastPathReplySent = true;
+                        auto* msg =
+                            event->Get<TEvNonreplPartitionPrivate::
+                                           TEvResyncFastPathReadResponse>();
+                        fastPathError = msg->GetError();
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathChecksumCompareResponse: {
+                        UNIT_ASSERT_C(
+                            false,
+                            "EvResyncFastPathChecksumCompareResponse should "
+                            "never be observed");
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(1);
+        TPartitionClient client(runtime, env.ActorId);
+        // Send read request - this should trigger fast path
+        client.SendReadBlocksRequest(readRange);
+
+        // Wait for fast path to reply with error
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return fastPathReplySent;
+            };
+            UNIT_ASSERT_C(
+                runtime.DispatchEvents(options, TDuration::MilliSeconds(100)),
+                "Fast path should reply with error");
+        }
+
+        // Verify fast path replied with the exact error we injected
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_IO,
+            fastPathError.GetCode(),
+            "Fast path should reply with E_IO error");
+
+        // The read response should not be available yet - slow path is pending
+        env.TestNoEvent(TEvService::EvReadBlocksResponse);
+
+        // Wait for slow path resync to complete
+        env.ResyncController.SetStopAfterResyncedRangeCount(3);
+        env.ResyncController.WaitForResyncedRangeCount(3);
+
+        // After successful slow resync, the reply should be sent
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        // Verify data is correct
+        for (const auto& buffer: response->Record.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'X'), buffer);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReplyAfterAllChecksumsAndDataForFastPath)
+    {
+        TTestBasicRuntime runtime;
+
+        NProto::TStorageServiceConfig storageConfigPatch;
+        storageConfigPatch.SetOptimizeFastPathReadsOnResync(true);
+        TTestEnv env(runtime, storageConfigPatch);
+
+        const auto diskRange = TBlockRange64::WithLength(0, 5120);
+        const auto readRange = TBlockRange64::WithLength(2100, 100);
+        env.WriteMirror(diskRange, 'X');
+
+        bool fastPathReplySent = false;
+        bool shouldDelayDataResponse = true;
+        IEventHandlePtr delayedDataResponse;
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(0);
+        env.StartResync();
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        // Delay data response until both checksums are received
+                        if (shouldDelayDataResponse) {
+                            delayedDataResponse.reset(event.Release());
+                            shouldDelayDataResponse = false;
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathReadResponse: {
+                        fastPathReplySent = true;
+                        break;
+                    }
+                    case TEvNonreplPartitionPrivate::
+                        EvResyncFastPathChecksumCompareResponse: {
+                        const auto* msg = event->Get<
+                            TEvNonreplPartitionPrivate::
+                                TEvResyncFastPathChecksumCompareResponse>();
+                        UNIT_ASSERT_VALUES_EQUAL_C(
+                            readRange,
+                            msg->BlockRange,
+                            "Block range should be the same as the read range");
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            S_OK,
+                            msg->GetError().GetCode());
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(1);
+        TPartitionClient client(runtime, env.ActorId);
+        // Send read request - this should trigger fast path
+        client.SendReadBlocksRequest(readRange);
+
+        // Wait for both checksums to be received (data response is delayed)
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_C(delayedDataResponse, "Data response should be delayed");
+        UNIT_ASSERT_C(!fastPathReplySent, "Fast path should not reply yet");
+        env.TestNoEvent(TEvService::EvReadBlocksResponse);
+
+        env.ResyncController.SetStopAfterResyncedRangeCount(2);
+        // Now release the data response - this should trigger the reply
+        runtime.Send(delayedDataResponse.release());
+
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return fastPathReplySent;
+            };
+            UNIT_ASSERT_C(
+                runtime.DispatchEvents(options, TDuration::MilliSeconds(100)),
+                "Fast path should reply after data + all checksums");
+        }
+
+        // Receive the read response
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        // Verify data is correct
+        for (const auto& buffer: response->Record.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'X'), buffer);
+        }
     }
 }
 

@@ -8,8 +8,11 @@ SRCS(
     actor_describe_base_disk_blocks.cpp
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
+    commit_ids_state.cpp
     drain_actor_companion.cpp
     long_running_operation_companion.cpp
+    part_channels_state.cpp
+    part_fresh_blocks_state.cpp
 )
 
 PEERDIR(

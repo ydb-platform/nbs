@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
@@ -7,6 +8,7 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/stream/format.h>
 #include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -69,6 +71,8 @@ void TDiskAgentActor::HandleHttpInfo(
         TAG(TH3) { out << "Devices"; }
         RenderDevices(out);
 
+        RenderNVMeDevices(out);
+
         TAG(TH3) { out << "Config"; }
         AgentConfig->DumpHtml(out);
 
@@ -82,6 +86,55 @@ void TDiskAgentActor::HandleHttpInfo(
         ctx,
         *ev,
         std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
+}
+
+void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
+{
+    if (!State) {
+        return;
+    }
+
+    auto future = LocalNVMeService->ListNVMeDevices();
+
+    auto [devices, error] = future.Wait(TDuration::Seconds(1))
+                                ? future.GetValue()
+                                : TErrorResponse(E_TIMEOUT, "Timeout");
+
+    HTML(out) {
+        TAG(TH3) { out << "NVMe devices"; }
+        if (HasError(error)) {
+            DIV() { out << "Can't list NVMe devices: " << FormatError(error); }
+            return;
+        }
+
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "S/N"; }
+                    TABLEH() { out << "Model"; }
+                    TABLEH() { out << "PCI"; }
+                    TABLEH() { out << "IOMMU group"; }
+                }
+
+                for (const auto& d: devices) {
+                    TABLER() {
+                        TABLED() { out << d.GetSerialNumber(); }
+                        TABLED() { out << d.GetModel(); }
+                        TABLED () {
+                            out << "(" << Hex(d.GetVendorId(), HF_ADDX)
+                                << " " << Hex(d.GetDeviceId(), HF_ADDX)
+                                << ") " << d.GetPCIAddress();
+                        }
+                        TABLED () {
+                            if (d.HasIOMMUGroup()) {
+                                out << d.GetIOMMUGroup();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void TDiskAgentActor::RenderDevices(IOutputStream& out) const

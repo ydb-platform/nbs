@@ -44,7 +44,7 @@ void TIndexTabletActor::HandleDestroyHandle(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TDestroyHandleMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TDestroyHandleMethod>(*requestInfo);
 
     ExecuteTx<TDestroyHandle>(
         ctx,
@@ -96,8 +96,7 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
 
     auto commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
-        args.CommitIdOverflowDetected = true;
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -126,7 +125,7 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroyHandle& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (!HasError(args.Error)) {
         Metrics.DestroyHandle.Update(
@@ -143,10 +142,6 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "DestroyHandle");
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

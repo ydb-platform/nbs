@@ -38,7 +38,11 @@ void TIndexTabletActor::HandleSetNodeXAttr(
     const TEvService::TEvSetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TSetNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
+    const bool accepted = AcceptRequest<TEvService::TSetNodeXAttrMethod>(
+        ev,
+        ctx,
+        ValidateRequest);
+    if (!accepted) {
         return;
     }
 
@@ -49,7 +53,7 @@ void TIndexTabletActor::HandleSetNodeXAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TSetNodeXAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TSetNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TSetNodeXAttr>(
         ctx,
@@ -109,11 +113,14 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
 {
     FILESTORE_VALIDATE_TX_ERROR(SetNodeXAttr, args);
 
+    Y_UNUSED(ctx);
+
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "SetXAttr");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     if (args.Attr) {
@@ -138,7 +145,7 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeXAttr& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (SUCCEEDED(args.Error.GetCode())) {
         NProto::TSessionEvent sessionEvent;

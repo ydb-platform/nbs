@@ -9410,6 +9410,112 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(clients.size(), 0);
     }
 
+    Y_UNIT_TEST(ShouldShareDirectWriteBandwidthQuotaBetweenMirroredPartitions)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMultiAgentWriteEnabled(true);
+        config.SetDirectWriteBandwidthQuota(8_KB);
+
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->ReplicaCount = 2;
+        TVector<NProto::TDeviceConfig> devices;
+        devices.push_back(MakeDevice("uuid0", "dev0", "transport0"));
+        devices.push_back(MakeDevice("uuid1", "dev1", "transport1"));
+        devices.push_back(MakeDevice("uuid2", "dev2", "transport2"));
+        devices.push_back(MakeDevice("uuid3", "dev3", "transport3"));
+        devices.push_back(MakeDevice("uuid4", "dev4", "transport4"));
+        devices.push_back(MakeDevice("uuid5", "dev5", "transport5"));
+        diskRegistryState->Devices = std::move(devices);
+
+        auto runtime = PrepareTestActorRuntime(config, diskRegistryState);
+
+        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume1.AddClient(clientInfo1);
+
+        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        auto clientInfo2 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume2.AddClient(clientInfo2);
+
+        ui32 writeRequests = 0;
+        ui32 multiAgentWriteRequests = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient == MakeStorageStatsServiceId() &&
+                    event->GetTypeRewrite() ==
+                        TEvStatsService::EvVolumePartCounters)
+                {
+                    auto* msg =
+                        event->Get<TEvStatsService::TEvVolumePartCounters>();
+
+                    const auto& counters = msg->DiskCounters->RequestCounters;
+                    multiAgentWriteRequests +=
+                        counters.WriteBlocksMultiAgent.Count;
+                    writeRequests += counters.WriteBlocks.Count;
+
+                    // Every volume should do both multi-agent and ordinary
+                    // writes.
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        counters.WriteBlocksMultiAgent.Count,
+                        counters.WriteBlocks.Count / 3);
+                }
+
+                return false;
+            });
+
+        for (int i = 0; i < 2; ++i) {
+            volume1.WriteBlocks(
+                TBlockRange64::MakeOneBlock(i),
+                clientInfo1.GetClientId(),
+                i);
+            volume2.WriteBlocks(
+                TBlockRange64::MakeOneBlock(i),
+                clientInfo2.GetClientId(),
+                i);
+        }
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(6, writeRequests);
+        UNIT_ASSERT_VALUES_EQUAL(2, multiAgentWriteRequests);
+    }
+
     Y_UNIT_TEST(ShouldAggregateMetricsFromTabletsAndSendThemToHive)
     {
         NProto::TStorageServiceConfig storageServiceConfig;

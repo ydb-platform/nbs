@@ -1,6 +1,8 @@
 #include "disk_registry_actor.h"
+
 #include "disk_registry_database.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
@@ -31,7 +33,7 @@ void TDiskRegistryActor::HandleChangeAgentState(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received ChangeAgentState request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateAgentState>(
@@ -64,7 +66,7 @@ void TDiskRegistryActor::HandleDisableAgent(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received DisableAgent request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     const auto* agent = State->FindAgent(msg->Record.GetAgentId());

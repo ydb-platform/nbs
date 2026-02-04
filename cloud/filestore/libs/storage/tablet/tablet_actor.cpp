@@ -66,7 +66,7 @@ TIndexTabletActor::TIndexTabletActor(
 
 TIndexTabletActor::~TIndexTabletActor()
 {
-    ReleaseTransactions();
+    ReleaseInFlightRequests();
 }
 
 TString TIndexTabletActor::GetStateName(ui32 state)
@@ -235,7 +235,7 @@ void TIndexTabletActor::OnTabletDead(
 {
     Y_UNUSED(ev);
 
-    TerminateTransactions(ctx);
+    RejectInFlightRequests(ctx);
 
     for (const auto& actor: WorkerActors) {
         ctx.Send(actor, new TEvents::TEvPoisonPill());
@@ -255,19 +255,19 @@ void TIndexTabletActor::OnTabletDead(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::AddTransaction(
-    TRequestInfo& transaction,
+void TIndexTabletActor::AddInFlightRequest(
+    TRequestInfo& requestInfo,
     TRequestInfo::TCancelRoutine cancelRoutine)
 {
-    transaction.CancelRoutine = cancelRoutine;
+    requestInfo.CancelRoutine = cancelRoutine;
 
-    transaction.Ref();
+    requestInfo.Ref();
 
-    TABLET_VERIFY(transaction.Empty());
-    ActiveTransactions.PushBack(&transaction);
+    TABLET_VERIFY(requestInfo.Empty());
+    ActiveRequests.PushBack(&requestInfo);
 }
 
-void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
+void TIndexTabletActor::RemoveInFlightRequest(TRequestInfo& requestInfo)
 {
     TABLET_VERIFY(!requestInfo.Empty());
     requestInfo.Unlink();
@@ -276,10 +276,10 @@ void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
     requestInfo.UnRef();
 }
 
-void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
+void TIndexTabletActor::RejectInFlightRequests(const TActorContext& ctx)
 {
-    while (ActiveTransactions) {
-        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+    while (ActiveRequests) {
+        TRequestInfo* requestInfo = ActiveRequests.PopFront();
         TABLET_VERIFY(requestInfo->RefCount() >= 1);
 
         requestInfo->CancelRequest(ctx);
@@ -287,10 +287,10 @@ void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
     }
 }
 
-void TIndexTabletActor::ReleaseTransactions()
+void TIndexTabletActor::ReleaseInFlightRequests()
 {
-    while (ActiveTransactions) {
-        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+    while (ActiveRequests) {
+        TRequestInfo* requestInfo = ActiveRequests.PopFront();
         TABLET_VERIFY(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }
@@ -1053,6 +1053,12 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard,
+            HandleUnlinkDirectoryNodeAbortedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
@@ -1114,6 +1120,12 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard,
+            HandleUnlinkDirectoryNodeAbortedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
@@ -1207,6 +1219,12 @@ STFUNC(TIndexTabletActor::StateZombie)
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
         HFunc(
+            TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard,
+            HandleUnlinkDirectoryNodeAbortedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
+        HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
@@ -1263,6 +1281,12 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
             HandleNodeUnlinkedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard,
+            HandleUnlinkDirectoryNodeAbortedInShard);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
+            HandleDoRenameNodeInDestination);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
@@ -1375,6 +1399,34 @@ bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
         static_cast<ui64>(Max<i64>(
             0,
             GetBlocksDifference(prevSize, newSize, GetBlockSize()))));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::HasNodesLeft() const
+{
+    if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
+        return GetUsedNodesCount() < GetNodesCount();
+    }
+
+    // A new way to count available nodes uses the count aggregated across all
+    // shards.
+
+    if (Metrics.AggregateUsedNodesCount < 0) {
+        ReportCounterIsNegative(
+            TStringBuilder() << "FileSystem: " << GetFileSystemId()
+                             << ". TMetrics::AggregateUsedNodesCount should "
+                                "always be positive.");
+        return false;
+    }
+
+    // It makes sense for shardless filesystems, as it eliminates 15s delay
+    // in AggregateUsedNodesCount calculation.
+    const ui64 usedNodes = Max<ui64>(
+        static_cast<ui64>(Metrics.AggregateUsedNodesCount.load()),
+        GetUsedNodesCount());
+
+    return usedNodes < GetNodesCount();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

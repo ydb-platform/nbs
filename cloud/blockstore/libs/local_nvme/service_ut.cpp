@@ -1,0 +1,44 @@
+#include "service.h"
+
+#include <cloud/storage/core/libs/common/error.h>
+
+#include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/threading/future/future.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TLocalNVMeServiceStubTest)
+{
+    Y_UNIT_TEST(ShouldStub)
+    {
+        auto service = CreateLocalNVMeServiceStub();
+        service->Start();
+
+        {
+            auto future = service->ListNVMeDevices();
+            auto [list, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, list.size());
+        }
+
+        {
+            auto future = service->AcquireNVMeDevice("foo");
+            const auto& error = future.GetValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
+        }
+
+        {
+            auto future = service->ReleaseNVMeDevice("foo");
+            const auto& error = future.GetValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
+        }
+
+        service->Stop();
+    }
+}
+
+}   // namespace NCloud::NBlockStore::NStorage

@@ -35,7 +35,6 @@ struct TCellHostInfo
 struct TCellInfo
 {
     const TString CellId;
-    const bool StrictCellIdCheckInDescribe = false;
     TVector<TCellHostInfo> Hosts;
 
     // TODO: align to avoid false sharing
@@ -43,10 +42,8 @@ struct TCellInfo
 
     TCellInfo(
             TString cellId,
-            bool strictCellIdCheckInDescribe,
             ui32 clientCount)
         : CellId(std::move(cellId))
-        , StrictCellIdCheckInDescribe(strictCellIdCheckInDescribe)
         , DescribeResults(clientCount)
     {
         Hosts.reserve(clientCount);
@@ -301,38 +298,26 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         // so we should ignore response for disk with this tag.
         if (volume.GetTags().contains(SourceDiskIdTagName)) {
             STORAGE_DEBUG(
-                TStringBuilder()
-                << "DescribeVolume: got response for disk "
-                << Request.GetDiskId().Quote() << " with source disk id "
-                << volume.GetTags().at(SourceDiskIdTagName).Quote() << " from "
-                << HostInfo.Fqdn
-                << " but it will be ignored since volume has source disk id "
-                   "tag");
+                TStringBuilder() << "DescribeVolume: got response for disk "
+                                 << Request.GetDiskId().Quote() << " with source disk id "
+                                 << volume.GetTags().at(SourceDiskIdTagName).Quote()
+                                 << " from "
+                                 << HostInfo.Fqdn
+                                 << " but it will be ignored since volume has source disk id "
+                                 "tag");
 
             const auto* msg =
                 "DescribeVolume response ignored since volume has source disk "
                 "id tag";
             *response.MutableError() = MakeError(E_NOT_FOUND, msg);
         } else {
-            if (!Cell.StrictCellIdCheckInDescribe ||
-                Cell.CellId == response.GetCellId())
-            {
-                response.SetCellId(Cell.CellId);
-                owner->Reply(std::move(response));
-                STORAGE_DEBUG(
-                    TStringBuilder() << "DescribeVolume: got success for disk "
-                                     << Request.GetDiskId().Quote() << " from "
-                                     << HostInfo.Fqdn);
-                return;
-            }
-
-            const auto* msg = "DescribeVolume response cell id mismatch";
-
-            ReportWrongCellIdInDescribeVolume(
-                msg,
-                {{"expected", Cell.CellId}, {"actual", response.GetCellId()}});
-
-            *response.MutableError() = MakeError(E_REJECTED, msg);
+            STORAGE_DEBUG(
+                TStringBuilder() << "DescribeVolume: got success for disk "
+                                 << Request.GetDiskId().Quote() << " from "
+                                 << HostInfo.Fqdn);
+            response.SetCellId(Cell.CellId);
+            owner->Reply(std::move(response));
+            return;
         }
     }
 
@@ -381,7 +366,6 @@ TDescribeVolumeFuture DescribeVolume(
 
         TCellInfo cell(
             cellId,
-            cellIt->second->GetStrictCellIdCheckInDescribeVolume(),
             clients.size());
         for (const auto& client: clients) {
             cell.Hosts.emplace_back(client.GetLogTag(), client.GetService());
@@ -389,7 +373,7 @@ TDescribeVolumeFuture DescribeVolume(
         cells.emplace_back(std::move(cell));
     }
 
-    TCellInfo localCell("", false, 1);
+    TCellInfo localCell("", 1);
     localCell.Hosts.emplace_back("local", service);
     cells.emplace_back(std::move(localCell));
 

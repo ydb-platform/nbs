@@ -568,6 +568,8 @@ public:
     TDuration GetResyncAfterClientInactivityInterval() const;
     NProto::EResyncPolicy GetAutoResyncPolicy() const;
     NProto::EResyncPolicy GetForceResyncPolicy() const;
+    TDuration GetResyncNextRangeInterval() const;
+    bool GetOptimizeFastPathReadsOnResync() const;
     ui32 GetMirrorReadReplicaCount() const;
 
     TString GetManuallyPreemptedVolumesFile() const;
@@ -736,6 +738,8 @@ public:
     [[nodiscard]] TDuration GetCollectGarbageTimeoutSSD() const;
     [[nodiscard]] TDuration GetCollectGarbageTimeoutHDD() const;
 
+    [[nodiscard]] bool GetLimitMirrorDisksDeviceReplacementsPerRowEnabled() const;
+
     [[nodiscard]] bool GetEnableDataIntegrityValidationForYdbBasedDisks() const;
 
     [[nodiscard]] ui64 GetHiveLocalServiceCpuResourceLimit() const;
@@ -753,6 +757,12 @@ public:
     [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
+
+    [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
+
+    [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
+
+    [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
 };
 
 ui64 GetAllocationUnit(

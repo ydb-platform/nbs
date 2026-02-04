@@ -8,7 +8,7 @@ SRCS(
     executor_counters.cpp
     histogram_types.cpp
     histogram.cpp
-    incomplete_request_processor.cpp
+    stats_handler.cpp
     logging.cpp
     max_calculator.cpp
     monitoring.cpp
@@ -23,6 +23,7 @@ SRCS(
     trace_reader.cpp
     trace_serializer.cpp
     weighted_percentile.cpp
+    wilson_trace_compatibility.cpp
 )
 
 PEERDIR(

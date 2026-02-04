@@ -5,13 +5,15 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type createFilesystemSnapshotTask struct {
-	scheduler tasks.Scheduler
+	scheduler    tasks.Scheduler
+	cellSelector cells.CellSelector
 }
 
 func (t *createFilesystemSnapshotTask) Save() ([]byte, error) {

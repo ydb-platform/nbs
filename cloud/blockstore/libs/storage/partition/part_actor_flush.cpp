@@ -213,6 +213,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
                 "TEvPartitionPrivate::TEvWriteBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
+        request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
@@ -794,7 +795,7 @@ void TPartitionActor::ExecuteFlushToDevNull(
 
     for (const auto& block: args.FreshBlocks) {
         if (block.IsStoredInDb) {
-            State->DeleteFreshBlock(db, block.BlockIndex, block.CommitId);
+            State->DeleteFreshBlockFromDb(db, block.BlockIndex, block.CommitId);
         } else {
             State->DeleteFreshBlock(block.BlockIndex, block.CommitId);
         }

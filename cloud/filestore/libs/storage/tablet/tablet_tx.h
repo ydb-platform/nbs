@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "tablet_database.h"
-#include "tablet_private.h"
 #include "tablet_state_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
@@ -12,6 +11,7 @@
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/public.h>
+#include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -77,6 +77,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeGetNode,                      __VA_ARGS__)                       \
+    xxx(UnsafeGetNodeRef,                   __VA_ARGS__)                       \
                                                                                \
     xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
     xxx(LoadNodes,                          __VA_ARGS__)                       \
@@ -104,6 +105,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
+    xxx(PrepareUnlinkDirectoryNode,         __VA_ARGS__)                       \
+    xxx(AbortUnlinkDirectoryNode,           __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
@@ -143,16 +146,50 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
+    xxx(GetOpLogEntry,                      __VA_ARGS__)                       \
+    xxx(WriteOpLogEntry,                    __VA_ARGS__)                       \
     xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
     xxx(UnsafeUpdateNode,                   __VA_ARGS__)                       \
+    xxx(UnsafeCreateNodeRef,                __VA_ARGS__)                       \
+    xxx(UnsafeDeleteNodeRef,                __VA_ARGS__)                       \
+    xxx(UnsafeUpdateNodeRef,                __VA_ARGS__)                       \
+    xxx(UnsafeCreateHandle,                 __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
     FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(xxx, __VA_ARGS__)                   \
     FILESTORE_TABLET_RW_TRANSACTIONS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_TRANSACTIONS
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TErrorAware
+{
+    NProto::TError Error;
+    bool CommitIdOverflow = false;
+    TString CommitIdOverflowMessage;
+
+    void OnCommitIdOverflow()
+    {
+        Error = ErrorCommitIdOverflow();
+        CommitIdOverflow = true;
+    }
+
+    void Clear()
+    {
+        Y_DEBUG_ABORT_UNLESS(!HasError(Error));
+        Y_DEBUG_ABORT_UNLESS(!CommitIdOverflow);
+
+        if (HasError(Error) || CommitIdOverflow) {
+            Error = MakeError(E_INVALID_STATE, TStringBuilder()
+                << "Attempt to clear tx context with an error"
+                << ", Error: " << FormatError(Error)
+                << ", CommitIdOverflow: " << CommitIdOverflow);
+        }
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -163,8 +200,6 @@ struct TSessionAware
     const TString SessionId;
     const ui64 RequestId;
     const ui64 SessionSeqNo;
-
-    NProto::TError Error;
 
     template<typename T>
     explicit TSessionAware(const T& request) noexcept
@@ -232,8 +267,9 @@ struct TTxIndexTabletBase
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TWriteRequest
-    : public TIntrusiveListItem<TWriteRequest>
-    , public TSessionAware
+    : TIntrusiveListItem<TWriteRequest>
+    , TErrorAware
+    , TSessionAware
 {
     const TRequestInfoPtr RequestInfo;
     const ui64 Handle;
@@ -325,7 +361,7 @@ struct TTxIndexTablet
     // LoadState
     //
 
-    struct TLoadState: TTxIndexTabletBase
+    struct TLoadState: TTxIndexTabletBase, TErrorAware
     {
         // actually unused, needed in tablet_tx.h to avoid sophisticated
         // template tricks
@@ -351,10 +387,10 @@ struct TTxIndexTablet
         TVector<TDeletionMarker> LargeDeletionMarkers;
         TVector<ui64> OrphanNodeIds;
 
-        NProto::TError Error;
-
         void Clear() override
         {
+            TErrorAware::Clear();
+
             FileSystem.Clear();
             FileSystemStats.Clear();
             TabletStorageInfo.Clear();
@@ -480,12 +516,11 @@ struct TTxIndexTablet
     // CreateSession
     //
 
-    struct TCreateSession: TTxIndexTabletBase
+    struct TCreateSession: TTxIndexTabletBase, TErrorAware
     {
         /* const */ TRequestInfoPtr RequestInfo;
         /* const */ NProtoPrivate::TCreateSessionRequest Request;
 
-        NProto::TError Error;
         TString SessionId;
 
         TCreateSession(
@@ -497,7 +532,8 @@ struct TTxIndexTablet
 
         void Clear() override
         {
-            Error.Clear();
+            TErrorAware::Clear();
+
             SessionId.clear();
         }
     };
@@ -508,6 +544,7 @@ struct TTxIndexTablet
 
     struct TResetSession
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         /* const */ TRequestInfoPtr RequestInfo;
@@ -530,7 +567,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             Nodes.clear();
         }
     };
@@ -541,6 +580,7 @@ struct TTxIndexTablet
 
     struct TDestroySession
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         /* const */ TRequestInfoPtr RequestInfo;
@@ -549,6 +589,7 @@ struct TTxIndexTablet
         /* const */ NProtoPrivate::TDestroySessionRequest Request;
 
         TNodeSet Nodes;
+        ui64 CommitId = InvalidCommitId;
 
         TDestroySession(
                 TRequestInfoPtr requestInfo,
@@ -563,7 +604,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             Nodes.clear();
         }
     };
@@ -574,13 +617,13 @@ struct TTxIndexTablet
 
     struct TCreateCheckpoint
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const TString CheckpointId;
         const ui64 NodeId;
 
-        NProto::TError Error;
         ui64 CommitId = InvalidCommitId;
 
         TCreateCheckpoint(
@@ -594,7 +637,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
         }
     };
@@ -605,6 +650,7 @@ struct TTxIndexTablet
 
     struct TDeleteCheckpoint
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -612,7 +658,6 @@ struct TTxIndexTablet
         const EDeleteCheckpointMode Mode;
         const ui64 CollectBarrier;
 
-        NProto::TError Error;
         ui64 CommitId = InvalidCommitId;
 
         TVector<ui64> NodeIds;
@@ -639,7 +684,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
 
             NodeIds.clear();
@@ -658,6 +705,7 @@ struct TTxIndexTablet
 
     struct TResolvePath
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -678,7 +726,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
         }
     };
@@ -689,6 +739,7 @@ struct TTxIndexTablet
 
     struct TCreateNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -696,7 +747,7 @@ struct TTxIndexTablet
         const ui64 ParentNodeId;
         const ui64 TargetNodeId;
         const TString Name;
-        const NProto::TNode Attrs;
+        NProto::TNode Attrs;
         const TString RequestShardId;
         TString ShardId;
         TString ShardNodeName;
@@ -731,7 +782,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNodeId = InvalidNodeId;
@@ -749,6 +802,7 @@ struct TTxIndexTablet
 
     struct TUnlinkNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -776,7 +830,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNode.Clear();
@@ -791,6 +847,7 @@ struct TTxIndexTablet
 
     struct TCompleteUnlinkNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -800,6 +857,7 @@ struct TTxIndexTablet
         const TString Name;
         ui64 OpLogEntryId;
         NProto::TUnlinkNodeResponse Response;
+        const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -812,7 +870,8 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 NProto::TUnlinkNodeRequest request,
                 ui64 opLogEntryId,
-                NProto::TUnlinkNodeResponse response)
+                NProto::TUnlinkNodeResponse response,
+                bool isExplicitRequest)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
@@ -820,11 +879,14 @@ struct TTxIndexTablet
             , Name(Request.GetName())
             , OpLogEntryId(opLogEntryId)
             , Response(std::move(response))
+            , IsExplicitRequest(isExplicitRequest)
         {}
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNode.Clear();
@@ -834,11 +896,82 @@ struct TTxIndexTablet
     };
 
     //
+    // PrepareUnlinkDirectoryNode
+    //
+
+    struct TPrepareUnlinkDirectoryNode
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardRequest Request;
+        NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TPrepareUnlinkDirectoryNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardRequest request)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            CommitId = InvalidCommitId;
+            Node.Clear();
+        }
+    };
+
+    //
+    // AbortUnlinkDirectoryNode
+    //
+
+    struct TAbortUnlinkDirectoryNode
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TSessionAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TAbortUnlinkDirectoryNodeInShardRequest Request;
+        NProtoPrivate::TAbortUnlinkDirectoryNodeInShardResponse Response;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TAbortUnlinkDirectoryNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TAbortUnlinkDirectoryNodeInShardRequest request)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            CommitId = InvalidCommitId;
+            Node.Clear();
+        }
+    };
+
+    //
     // RenameNode
     //
 
     struct TRenameNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -881,7 +1014,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNode.Clear();
@@ -906,6 +1041,7 @@ struct TTxIndexTablet
 
     struct TPrepareRenameNodeInSource
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -914,6 +1050,7 @@ struct TTxIndexTablet
         const TString Name;
         const NProto::TRenameNodeRequest Request;
         const TString NewParentShardId;
+        const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -921,30 +1058,32 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
-        NProto::TError Error;
 
         TPrepareRenameNodeInSource(
                 TRequestInfoPtr requestInfo,
                 NProto::TRenameNodeRequest request,
-                TString newParentShardId)
+                TString newParentShardId,
+                bool isExplicitRequest)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
             , Name(request.GetName())
             , Request(std::move(request))
             , NewParentShardId(std::move(newParentShardId))
+            , IsExplicitRequest(isExplicitRequest)
         {}
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             ChildNode.Clear();
             ChildRef.Clear();
 
             OpLogEntry.Clear();
-            Error.Clear();
         }
     };
 
@@ -954,6 +1093,7 @@ struct TTxIndexTablet
 
     struct TRenameNodeInDestination
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -962,6 +1102,10 @@ struct TTxIndexTablet
         const TString NewName;
         const ui32 Flags;
         const NProtoPrivate::TRenameNodeInDestinationRequest Request;
+        const NProto::TNodeAttr SourceNodeAttr;
+        const NProto::TNodeAttr DestinationNodeAttr;
+        const bool IsSecondPass;
+        const ui64 AbortUnlinkOpLogEntryId;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
@@ -973,20 +1117,44 @@ struct TTxIndexTablet
         TString ShardIdForUnlink;
         TString ShardNodeNameForUnlink;
 
+        bool SecondPassRequired = false;
+
         TRenameNodeInDestination(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TRenameNodeInDestinationRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NewParentNodeId(request.GetNewParentId())
-            , NewName(std::move(*request.MutableNewName()))
+            , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
+            , IsSecondPass(false)
+            , AbortUnlinkOpLogEntryId(0)
+        {}
+
+        TRenameNodeInDestination(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TRenameNodeInDestinationRequest request,
+                NProto::TNodeAttr sourceNodeAttr,
+                NProto::TNodeAttr destinationNodeAttr,
+                ui64 abortUnlinkOpLogEntryId)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , NewParentNodeId(request.GetNewParentId())
+            , NewName(request.GetNewName())
+            , Flags(request.GetFlags())
+            , Request(std::move(request))
+            , SourceNodeAttr(std::move(sourceNodeAttr))
+            , DestinationNodeAttr(std::move(destinationNodeAttr))
+            , IsSecondPass(true)
+            , AbortUnlinkOpLogEntryId(abortUnlinkOpLogEntryId)
         {}
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
 
             NewParentNode.Clear();
@@ -998,6 +1166,8 @@ struct TTxIndexTablet
 
             ShardIdForUnlink.clear();
             ShardNodeNameForUnlink.clear();
+
+            SecondPassRequired = false;
         }
     };
 
@@ -1007,6 +1177,7 @@ struct TTxIndexTablet
 
     struct TCommitRenameNodeInSource
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1014,6 +1185,7 @@ struct TTxIndexTablet
         const NProto::TRenameNodeRequest Request;
         const NProtoPrivate::TRenameNodeInDestinationResponse Response;
         const ui64 OpLogEntryId;
+        const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
@@ -1022,17 +1194,21 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 NProto::TRenameNodeRequest request,
                 NProtoPrivate::TRenameNodeInDestinationResponse response,
-                ui64 opLogEntryId)
+                ui64 opLogEntryId,
+                bool isExplicitRequest)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
             , Response(std::move(response))
             , OpLogEntryId(opLogEntryId)
+            , IsExplicitRequest(isExplicitRequest)
         {}
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ChildRef.Clear();
         }
@@ -1044,6 +1220,7 @@ struct TTxIndexTablet
 
     struct TAccessNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1065,7 +1242,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             Node.Clear();
         }
@@ -1077,6 +1256,7 @@ struct TTxIndexTablet
 
     struct TReadLink
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1097,7 +1277,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             Node.Clear();
         }
@@ -1109,6 +1291,7 @@ struct TTxIndexTablet
 
     struct TListNodes
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1126,6 +1309,7 @@ struct TTxIndexTablet
         TString Next;
 
         ui32 BytesToPrecharge = 0;
+        ui32 PrepareAttempts = 1;
 
         TListNodes(
                 TRequestInfoPtr requestInfo,
@@ -1144,7 +1328,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             Node.Clear();
             ChildRefs.clear();
@@ -1154,6 +1340,7 @@ struct TTxIndexTablet
 
         void OnRestart() override
         {
+            ++PrepareAttempts;
             BytesToPrecharge = ClampVal(
                 2 * BytesToPrecharge,
                 MaxBytes,
@@ -1167,6 +1354,7 @@ struct TTxIndexTablet
 
     struct TSetNodeAttr
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1188,7 +1376,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             Node.Clear();
         }
@@ -1200,6 +1390,7 @@ struct TTxIndexTablet
 
     struct TGetNodeAttr
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1227,7 +1418,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ParentNode.Clear();
             TargetNodeId = InvalidNodeId;
@@ -1243,6 +1436,7 @@ struct TTxIndexTablet
 
     struct TGetNodeAttrBatch
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1266,7 +1460,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             ParentNode.Clear();
         }
@@ -1278,6 +1474,7 @@ struct TTxIndexTablet
 
     struct TSetNodeXAttr
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1305,7 +1502,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             Version = 0;
             CommitId = InvalidCommitId;
             Node.Clear();
@@ -1319,6 +1518,7 @@ struct TTxIndexTablet
 
     struct TGetNodeXAttr
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1343,7 +1543,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             Node.Clear();
             Attr.Clear();
@@ -1356,6 +1558,7 @@ struct TTxIndexTablet
 
     struct TListNodeXAttr
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1378,7 +1581,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             Node.Clear();
             Attrs.clear();
@@ -1391,6 +1596,7 @@ struct TTxIndexTablet
 
     struct TRemoveNodeXAttr
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1415,7 +1621,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             Node.Clear();
             Attr.Clear();
@@ -1428,6 +1636,7 @@ struct TTxIndexTablet
 
     struct TSetHasXAttrs
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
     {
         const TRequestInfoPtr RequestInfo;
@@ -1445,6 +1654,8 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
+
             IsToBeChanged = false;
         }
     };
@@ -1455,6 +1666,7 @@ struct TTxIndexTablet
 
     struct TCreateHandle
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1464,7 +1676,7 @@ struct TTxIndexTablet
         const ui32 Flags;
         const ui32 Mode;
         const ui32 Uid;
-        const ui32 Gid;
+        ui32 Gid;
         const TString RequestShardId;
         NProto::TCreateHandleRequest Request;
 
@@ -1474,7 +1686,6 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
         bool IsNewShardNode = false;
-        bool CommitIdOverflowDetected = false;
         TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         TVector<ui64> UpdatedNodes;
@@ -1501,14 +1712,15 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             ReadCommitId = InvalidCommitId;
             WriteCommitId = InvalidCommitId;
             TargetNodeId = InvalidNodeId;
             ShardId.clear();
             ShardNodeName.clear();
             IsNewShardNode = false;
-            CommitIdOverflowDetected = false;
             TargetNode.Clear();
             ParentNode.Clear();
             UpdatedNodes.clear();
@@ -1525,6 +1737,7 @@ struct TTxIndexTablet
 
     struct TDestroyHandle
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1532,7 +1745,6 @@ struct TTxIndexTablet
         const NProto::TDestroyHandleRequest Request;
 
         TMaybe<IIndexTabletDatabase::TNode> Node;
-        bool CommitIdOverflowDetected = false;
 
         TDestroyHandle(
                 TRequestInfoPtr requestInfo,
@@ -1544,9 +1756,10 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             Node.Clear();
-            CommitIdOverflowDetected = false;
         }
     };
 
@@ -1556,6 +1769,7 @@ struct TTxIndexTablet
 
     struct TAcquireLock
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
     {
         const TRequestInfoPtr RequestInfo;
@@ -1571,7 +1785,7 @@ struct TTxIndexTablet
 
         void Clear() override
         {
-            // nothing to do
+            TErrorAware::Clear();
         }
     };
 
@@ -1581,6 +1795,7 @@ struct TTxIndexTablet
 
     struct TReleaseLock
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
     {
         const TRequestInfoPtr RequestInfo;
@@ -1598,6 +1813,8 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
+
             IncompatibleLockOrigin.reset();
         }
     };
@@ -1608,6 +1825,7 @@ struct TTxIndexTablet
 
     struct TTestLock
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
     {
         const TRequestInfoPtr RequestInfo;
@@ -1625,6 +1843,8 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
+
             Incompatible.reset();
         }
     };
@@ -1635,6 +1855,7 @@ struct TTxIndexTablet
 
     struct TReadData
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TProfileAware
         , TIndexStateNodeUpdates
@@ -1685,7 +1906,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             ReadAheadRange.Clear();
@@ -1709,6 +1932,7 @@ struct TTxIndexTablet
 
     struct TWriteData
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TProfileAware
         , TIndexStateNodeUpdates
@@ -1745,7 +1969,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             Node.Clear();
@@ -1767,6 +1993,7 @@ struct TTxIndexTablet
 
     struct TAddData
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TProfileAware
     {
@@ -1804,6 +2031,8 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
+
             NodeId = InvalidNodeId;
             Node.Clear();
 
@@ -1817,6 +2046,7 @@ struct TTxIndexTablet
 
     struct TWriteBatch
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -1826,8 +2056,6 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
         TMap<ui64, ui64> WriteRanges;
         TNodeSet Nodes;
-
-        NProto::TError Error;
 
         TWriteBatch(
                 TRequestInfoPtr requestInfo,
@@ -1840,11 +2068,12 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             WriteRanges.clear();
             Nodes.clear();
-            Error.Clear();
         }
     };
 
@@ -1854,6 +2083,7 @@ struct TTxIndexTablet
 
     struct TAllocateData
         : TTxIndexTabletBase
+        , TErrorAware
         , TSessionAware
         , TIndexStateNodeUpdates
     {
@@ -1880,7 +2110,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             Node.Clear();
@@ -1893,6 +2125,7 @@ struct TTxIndexTablet
 
     struct TAddBlob
         : TTxIndexTabletBase
+        , TErrorAware
         , TProfileAware
         , TIndexStateNodeUpdates
     {
@@ -1907,7 +2140,6 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         TNodeSet Nodes;
-        NProto::TError Error;
 
         TAddBlob(
                 TRequestInfoPtr requestInfo,
@@ -1931,12 +2163,12 @@ struct TTxIndexTablet
 
         void Clear() override
         {
-            TIndexStateNodeUpdates::Clear();
+            TErrorAware::Clear();
             TProfileAware::Clear();
+            TIndexStateNodeUpdates::Clear();
 
             CommitId = InvalidCommitId;
             Nodes.clear();
-            Error.Clear();
         }
     };
 
@@ -2000,6 +2232,7 @@ struct TTxIndexTablet
         void Clear() override
         {
             TProfileAware::Clear();
+
             TrimmedBytes = 0;
             TrimmedAll = false;
         }
@@ -2156,14 +2389,13 @@ struct TTxIndexTablet
 
     struct TTruncateRange
         : TTxIndexTabletBase
+        , TErrorAware
         , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 NodeId;
         const TByteRange Range;
-
-        NProto::TError Error;
 
         TTruncateRange(
                 TRequestInfoPtr requestInfo,
@@ -2177,9 +2409,9 @@ struct TTxIndexTablet
 
         void Clear() override
         {
-            TIndexStateNodeUpdates::Clear();
+            TErrorAware::Clear();
             TProfileAware::Clear();
-            Error.Clear();
+            TIndexStateNodeUpdates::Clear();
         }
     };
 
@@ -2211,13 +2443,14 @@ struct TTxIndexTablet
 
     struct TZeroRange
         : TTxIndexTabletBase
+        , TErrorAware
         , TProfileAware
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 NodeId;
         const TByteRange Range;
 
-        NProto::TError Error;
+        ui64 CommitId = InvalidCommitId;
 
         TZeroRange(
                 TRequestInfoPtr requestInfo,
@@ -2231,8 +2464,8 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TProfileAware::Clear();
-            Error.Clear();
         }
     };
 
@@ -2245,7 +2478,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const TStackVec<ui64, 16> Nodes;
 
-        ui64 CommitId = InvalidNodeId;
+        ui64 CommitId = InvalidCommitId;
         TSet<ui64> AliveNodes;
 
         TFilterAliveNodes(
@@ -2322,17 +2555,63 @@ struct TTxIndexTablet
 
     struct TDeleteOpLogEntry: TTxIndexTabletBase
     {
-        // actually unused, needed in tablet_tx.h to avoid sophisticated
-        // template tricks
         const TRequestInfoPtr RequestInfo;
         const ui64 EntryId;
 
-        explicit TDeleteOpLogEntry(ui64 entryId)
-            : EntryId(entryId)
+        explicit TDeleteOpLogEntry(
+                TRequestInfoPtr requestInfo,
+                ui64 entryId)
+            : RequestInfo(std::move(requestInfo))
+            , EntryId(entryId)
         {}
 
         void Clear() override
         {
+        }
+    };
+
+    //
+    // GetOpLogEntry
+    //
+
+    struct TGetOpLogEntry: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 EntryId;
+        TMaybe<NProto::TOpLogEntry> Entry;
+
+        explicit TGetOpLogEntry(TRequestInfoPtr requestInfo, ui64 entryId)
+            : RequestInfo(std::move(requestInfo))
+            , EntryId(entryId)
+        {}
+
+        void Clear() override
+        {
+            Entry.Clear();
+        }
+    };
+
+    //
+    // WriteOpLogEntry
+    //
+
+    struct TWriteOpLogEntry: TTxIndexTabletBase, TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProto::TOpLogEntry Entry;
+
+        explicit TWriteOpLogEntry(
+                TRequestInfoPtr requestInfo,
+                NProto::TOpLogEntry entry)
+            : RequestInfo(std::move(requestInfo))
+            , Entry(std::move(entry))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+
+            Entry.ClearEntryId();
         }
     };
 
@@ -2367,18 +2646,18 @@ struct TTxIndexTablet
     };
 
     //
-    // UnsafeNodeOps
+    // UnsafeNodeOps / UnsafeNodeRefOps
     //
 
     struct TUnsafeDeleteNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeDeleteNodeRequest Request;
 
         TMaybe<IIndexTabletDatabase::TNode> Node;
-        NProto::TError Error;
 
         TUnsafeDeleteNode(
                 TRequestInfoPtr requestInfo,
@@ -2389,14 +2668,16 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
+
             Node.Clear();
-            Error.Clear();
         }
     };
 
     struct TUnsafeUpdateNode
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -2413,6 +2694,7 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
         }
@@ -2439,6 +2721,126 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
         }
+    };
+
+    struct TUnsafeCreateNodeRef
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeCreateNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+
+        TUnsafeCreateNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeCreateNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            NodeRef.Clear();
+        }
+    };
+
+    struct TUnsafeDeleteNodeRef
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeDeleteNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+
+        TUnsafeDeleteNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeDeleteNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            NodeRef.Clear();
+        }
+    };
+
+    struct TUnsafeUpdateNodeRef
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeUpdateNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+
+        TUnsafeUpdateNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeUpdateNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            NodeRef.Clear();
+        }
+    };
+
+    struct TUnsafeGetNodeRef
+        : TTxIndexTabletBase
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeGetNodeRefRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+
+        TUnsafeGetNodeRef(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeGetNodeRefRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TIndexStateNodeUpdates::Clear();
+            NodeRef.Clear();
+        }
+    };
+
+    struct TUnsafeCreateHandle: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeCreateHandleRequest Request;
+        NProtoPrivate::TUnsafeCreateHandleResponse Response;
+
+        NProto::TError Error;
+
+        TUnsafeCreateHandle(
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TUnsafeCreateHandleRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {}
     };
 
     // The whole point of these transactions is to observe some data in NodeRefs
@@ -2554,7 +2956,6 @@ struct TTxIndexTablet
             NextCookie.clear();
         }
    };
-
 };
 
 }   // namespace NCloud::NFileStore::NStorage

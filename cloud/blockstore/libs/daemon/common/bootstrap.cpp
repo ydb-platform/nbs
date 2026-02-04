@@ -41,6 +41,7 @@
 #include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
@@ -97,10 +98,10 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
-#include <cloud/storage/core/libs/grpc/init.h>
-#include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -791,11 +792,14 @@ void TBootstrapBase::InitLocalService()
         CreateLocalStorageProvider(
             FileIOServiceProvider,
             NvmeManager,
-            {.DirectIO = false,
-             .UseSubmissionThread = false,
-             .DataIntegrityValidationPolicy =
-                 Configs->DiskAgentConfig
-                     ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
+            TLocalStorageProviderParams{
+                .DirectIO = false,
+                .UseSubmissionThread = false,
+                .ValidatedBlocksRatio =
+                    Configs->DiskAgentConfig->GetValidatedBlocksRatio(),
+                .DataIntegrityValidationPolicy =
+                    Configs->DiskAgentConfig
+                        ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
 }
 
 void TBootstrapBase::InitNullService()
@@ -959,6 +963,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
+    START_COMMON_COMPONENT(LocalNVMeService);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -1011,6 +1016,7 @@ void TBootstrapBase::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
+    STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);

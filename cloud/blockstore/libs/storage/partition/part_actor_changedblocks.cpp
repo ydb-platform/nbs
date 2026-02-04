@@ -385,7 +385,9 @@ void TPartitionActor::HandleGetChangedBlocks(
     ui64 lowCommitId = 0;
 
     if (msg->Record.GetLowCheckpointId()) {
-        lowCommitId = State->GetCheckpoints().GetCommitId(msg->Record.GetLowCheckpointId(), true);
+        lowCommitId = State->GetCheckpoints().GetCommitId(
+            msg->Record.GetLowCheckpointId(),
+            true);
         if (!lowCommitId) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
@@ -405,7 +407,9 @@ void TPartitionActor::HandleGetChangedBlocks(
     ui64 highCommitId = State->GetLastCommitId();
 
     if (msg->Record.GetHighCheckpointId()) {
-        highCommitId = State->GetCheckpoints().GetCommitId(msg->Record.GetHighCheckpointId(), true);
+        highCommitId = State->GetCheckpoints().GetCommitId(
+            msg->Record.GetHighCheckpointId(),
+            true);
         if (!highCommitId) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);

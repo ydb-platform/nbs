@@ -4,10 +4,12 @@
 
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
 #include <cloud/storage/core/config/grpc_client.pb.h>
@@ -82,6 +84,11 @@ struct TServerModuleFactories
         NIamClient::IIamTokenClientPtr iamTokenClient,
         ILoggingServicePtr logging)>
         NotifyServiceFactory;
+
+    std::function<ILocalNVMeDeviceProviderPtr(
+        ILoggingServicePtr logging,
+        const TString& uri)>
+        LocalNVMeDeviceProviderFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,6 +118,7 @@ private:
     IRootKmsClientPtr RootKmsClient;
     ITraceServiceClientPtr TraceServiceClient;
     std::function<void(TLog& log)> SpdkLogInitializer;
+    NStorage::TPartitionBudgetManagerPtr PartitionBudgetManager;
 
 public:
     TBootstrapYdb(

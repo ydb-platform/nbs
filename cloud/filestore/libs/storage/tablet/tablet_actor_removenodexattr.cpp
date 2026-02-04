@@ -32,7 +32,11 @@ void TIndexTabletActor::HandleRemoveNodeXAttr(
     const TEvService::TEvRemoveNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TRemoveNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
+    const bool accepted = AcceptRequest<TEvService::TRemoveNodeXAttrMethod>(
+        ev,
+        ctx,
+        ValidateRequest);
+    if (!accepted) {
         return;
     }
 
@@ -43,7 +47,7 @@ void TIndexTabletActor::HandleRemoveNodeXAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TRemoveNodeXAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TRemoveNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TRemoveNodeXAttr>(
         ctx,
@@ -92,6 +96,8 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
 {
     FILESTORE_VALIDATE_TX_ERROR(RemoveNodeXAttr, args);
 
+    Y_UNUSED(ctx);
+
     if (!args.Attr) {
         args.Error = ErrorAttributeDoesNotExist(args.Name);
         return;
@@ -101,7 +107,8 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "RemoveXAttr");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     RemoveNodeAttr(
@@ -116,7 +123,7 @@ void TIndexTabletActor::CompleteTx_RemoveNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TRemoveNodeXAttr& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(args.Error);
     CompleteResponse<TEvService::TRemoveNodeXAttrMethod>(

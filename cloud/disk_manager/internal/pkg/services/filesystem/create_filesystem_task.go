@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
@@ -18,11 +19,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createFilesystemTask struct {
-	storage   resources.Storage
-	factory   nfs.Factory
-	scheduler tasks.Scheduler
-	request   *protos.CreateFilesystemRequest
-	state     *protos.CreateFilesystemTaskState
+	storage      resources.Storage
+	factory      nfs.Factory
+	scheduler    tasks.Scheduler
+	cellSelector cells.CellSelector
+	request      *protos.CreateFilesystemRequest
+	state        *protos.CreateFilesystemTaskState
 }
 
 func (t *createFilesystemTask) Save() ([]byte, error) {
@@ -45,7 +47,14 @@ func (t *createFilesystemTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
+	client, err := SelectCellForFilesystem(
+		ctx,
+		execCtx,
+		t.state,
+		t.request,
+		t.cellSelector,
+		t.factory,
+	)
 	if err != nil {
 		return err
 	}
@@ -55,7 +64,7 @@ func (t *createFilesystemTask) Run(
 
 	filesystemMeta, err := t.storage.CreateFilesystem(ctx, resources.FilesystemMeta{
 		ID:          t.request.Filesystem.FilesystemId,
-		ZoneID:      t.request.Filesystem.ZoneId,
+		ZoneID:      client.ZoneID(),
 		BlocksCount: t.request.BlocksCount,
 		BlockSize:   t.request.BlockSize,
 		Kind:        fsKindToString(t.request.Kind),
@@ -139,7 +148,14 @@ func (t *createFilesystemTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
+	client, err := SelectCellForFilesystem(
+		ctx,
+		execCtx,
+		t.state,
+		t.request,
+		t.cellSelector,
+		t.factory,
+	)
 	if err != nil {
 		return err
 	}

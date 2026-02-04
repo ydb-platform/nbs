@@ -105,7 +105,6 @@ bool TIndexTabletActor::PrepareTx_AddData(
         return false;
     }
 
-    // TODO: access check
     // TODO: replace VERIFY with a check + critical event
     TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
     if (!args.Node) {
@@ -135,7 +134,7 @@ void TIndexTabletActor::CompleteTx_AddData(
     const TActorContext& ctx,
     TTxIndexTablet::TAddData& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto reply = [&](const TActorContext& ctx, TTxIndexTablet::TAddData& args)
     {
@@ -207,7 +206,11 @@ void TIndexTabletActor::CompleteTx_AddData(
     }
 
     NProto::TBackendInfo backendInfo;
-    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+    BuildBackendInfo(
+        *Config,
+        *SystemCounters,
+        Metrics.CPUUsageRate,
+        &backendInfo);
 
     auto actor = std::make_unique<TAddDataActor>(
         TraceSerializer,
@@ -518,7 +521,7 @@ void TIndexTabletActor::HandleAddData(
             approximateFreeSpaceShare);
     }
 
-    AddTransaction<TEvIndexTablet::TAddDataMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TAddDataMethod>(*requestInfo);
 
     ExecuteTx<TAddData>(
         ctx,

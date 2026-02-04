@@ -574,6 +574,19 @@ message TReplicationTarget
     uint32 Timeout = 4;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+
+message TControlPlaneRequestNumber
+{
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
+    uint32 DiskRegistryGeneration = 1;
+
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 RequestNumber = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 message TRegisterAgentRequest
@@ -1352,8 +1365,8 @@ message TBackupDiskRegistryStateRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Backup local DB instead of memory state.
-    bool BackupLocalDB = 2;
+    // Source of Disk Registry state backup.
+    EBackupDiskRegistryStateSource Source = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
@@ -1364,11 +1377,14 @@ message TBackupDiskRegistryStateResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Disk Regsitry state backup
-    TDiskRegistryStateBackup Backup = 2;
+    // Disk Regsitry state backup from memory.
+    TDiskRegistryStateBackup MemoryBackup = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
+
+    // Disk Regsitry state backup from local db.
+    TDiskRegistryStateBackup LocalDBBackup = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1858,6 +1874,9 @@ message TDetachPathsRequest
 
     // List of paths we want to detach.
     repeated string PathsToDetach = 2;
+
+    // Request number, needed to order attach detach requests.
+    TControlPlaneRequestNumber ControlPlaneRequestNumber = 3;
 }
 
 message TDetachPathsResponse
@@ -1876,6 +1895,9 @@ message TAttachPathsRequest
 
     // List of paths we want to attach.
     repeated string PathsToAttach = 2;
+
+    // Request number, needed to order attach detach requests.
+    TControlPlaneRequestNumber ControlPlaneRequestNumber = 3;
 }
 
 message TAttachPathsResponse

@@ -46,7 +46,7 @@ private:
         const TActorContext& ctx);
 
     void HandleDrainNodeResult(
-        const NKikimr::TEvHive::TEvDrainNodeResult::TPtr& ev,
+        const TEvHive::TEvDrainNodeResult::TPtr& ev,
         const TActorContext& ctx);
 
     STFUNC(StateWork);
@@ -57,7 +57,7 @@ private:
 void TDrainNodeRequestActor::Bootstrap(const TActorContext& ctx)
 {
 
-    auto ev = std::make_unique<NKikimr::TEvHive::TEvDrainNode>(Owner.NodeId());
+    auto ev = std::make_unique<TEvHive::TEvDrainNode>(Owner.NodeId());
     ev->Record.SetKeepDown(KeepDown);
     NKikimr::NTabletPipe::SendData(
         ctx,
@@ -90,7 +90,7 @@ void TDrainNodeRequestActor::HandleChangeTabletClient(
 }
 
 void TDrainNodeRequestActor::HandleDrainNodeResult(
-    const NKikimr::TEvHive::TEvDrainNodeResult::TPtr& ev,
+    const TEvHive::TEvDrainNodeResult::TPtr& ev,
     const TActorContext& ctx)
 {
     NProto::TError error;
@@ -110,7 +110,8 @@ STFUNC(TDrainNodeRequestActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvHiveProxyPrivate::TEvChangeTabletClient, HandleChangeTabletClient);
-        HFunc(NKikimr::TEvHive::TEvDrainNodeResult, HandleDrainNodeResult);
+        HFunc(TEvHive::TEvDrainNodeResult, HandleDrainNodeResult);
+        IgnoreFunc(TEvHive::TEvDrainNodeAck);
 
         default:
             HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);

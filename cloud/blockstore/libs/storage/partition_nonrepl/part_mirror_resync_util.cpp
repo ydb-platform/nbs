@@ -30,6 +30,7 @@ bool CanFixMismatch(bool isMinor, NProto::EResyncPolicy resyncPolicy)
 
 std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     TRequestInfoPtr requestInfo,
+    TString diskId,
     ui32 blockSize,
     TBlockRange64 range,
     TVector<TReplicaDescriptor> replicas,
@@ -46,6 +47,7 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     {
         return std::make_unique<TResyncRangeActor>(
             std::move(requestInfo),
+            std::move(diskId),
             blockSize,
             range,
             std::move(replicas),
@@ -58,6 +60,7 @@ std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
 
     return std::make_unique<TResyncRangeBlockByBlockActor>(
         std::move(requestInfo),
+        std::move(diskId),
         blockSize,
         range,
         std::move(replicas),

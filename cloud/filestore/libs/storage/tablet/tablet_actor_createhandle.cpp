@@ -132,7 +132,7 @@ void TIndexTabletActor::HandleCreateHandle(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TCreateHandleMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TCreateHandleMethod>(*requestInfo);
 
     ExecuteTx<TCreateHandle>(
         ctx,
@@ -183,6 +183,17 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         if (!args.ParentNode || args.ParentNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
             args.Error = ErrorIsNotDirectory(args.NodeId);
             return true;
+        }
+
+        if (args.ParentNode->Attrs.GetIsPreparedForUnlink()) {
+            args.Error = ErrorIsPreparedForUnlink(args.ParentNode->NodeId);
+            return true;
+        }
+
+        if (Config->GetGidPropagationEnabled()) {
+            if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
+                args.Gid = args.ParentNode->Attrs.GetGid();
+            }
         }
 
         // check whether child node exists
@@ -285,8 +296,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     // TODO: check if session is read only
     args.WriteCommitId = GenerateCommitId();
     if (args.WriteCommitId == InvalidCommitId) {
-        args.CommitIdOverflowDetected = true;
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -479,7 +489,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         return;
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
@@ -496,10 +506,6 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitIdOverflowDetected) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateHandle");
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

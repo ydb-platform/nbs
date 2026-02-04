@@ -22,6 +22,9 @@
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
+#include <cloud/blockstore/libs/local_nvme/config.h>
+#include <cloud/blockstore/libs/local_nvme/device_provider.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
@@ -47,6 +50,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -342,6 +346,20 @@ TServerModuleFactories::TServerModuleFactories()
     {
         return NNotify::CreateServiceStub();
     };
+
+    LocalNVMeDeviceProviderFactory =
+        [](NCloud::ILoggingServicePtr logging, const TString& uri)
+    {
+        Y_UNUSED(logging);
+
+        TStringBuf path{uri};
+
+        if (path.SkipPrefix("file://")) {
+            return CreateFileNVMeDeviceProvider(ToString(path));
+        }
+
+        return CreateLocalNVMeDeviceProviderStub();
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -415,6 +433,7 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitRootKmsConfig();
     Configs->InitComputeClientConfig();
     Configs->InitCellsConfig();
+    Configs->InitLocalNVMeConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -801,6 +820,30 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("NotifyService initialized");
 
+    PartitionBudgetManager =
+        std::make_shared<NStorage::TPartitionBudgetManager>(
+            Configs->StorageConfig);
+
+    STORAGE_INFO("PartitionBudgetManager initialized")
+
+    if (Configs->LocalNVMeConfig->GetDevicesSourceUri()) {
+        auto deviceProvider =
+            ServerModuleFactories->LocalNVMeDeviceProviderFactory(
+                logging,
+                Configs->LocalNVMeConfig->GetDevicesSourceUri());
+
+        LocalNVMeService = CreateLocalNVMeService(
+            Configs->LocalNVMeConfig,
+            logging,
+            std::move(deviceProvider),
+            NvmeManager,
+            Executor);
+    } else {
+        LocalNVMeService = CreateLocalNVMeServiceStub();
+    }
+
+    STORAGE_INFO("Local NVMe service initialized");
+
     NStorage::TServerActorSystemArgs args;
     args.ModuleFactories = ModuleFactories;
     args.NodeId = nodeId;
@@ -847,6 +890,8 @@ void TBootstrapYdb::InitKikimrService()
     args.RootKmsKeyProvider = RootKmsKeyProvider;
     args.TemporaryServer = Configs->Options->TemporaryServer;
     args.BackgroundThreadPool = BackgroundThreadPool;
+    args.PartitionBudgetManager = PartitionBudgetManager;
+    args.LocalNVMeService = LocalNVMeService;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

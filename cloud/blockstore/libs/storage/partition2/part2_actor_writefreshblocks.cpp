@@ -151,6 +151,8 @@ void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
 {
     TDeque<TRequestScope> timers;
 
+    ui64 requestId = 0;
+
     for (const auto& r: Requests) {
         LWTRACK(
             RequestReceived_PartitionWorker,
@@ -167,7 +169,13 @@ void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
                 "TEvPartitionPrivate::TEvWriteBlobRequest",
                 r.RequestInfo->CallContext->RequestId);
         }
+
+        if (r.RequestInfo->CallContext->LWOrbit.HasShuttles()) {
+            requestId = r.RequestInfo->CallContext->RequestId;
+        }
     }
+
+    CombinedContext->RequestId = requestId;
 
     Become(&TThis::StateWork);
 

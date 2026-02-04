@@ -9,3 +9,4 @@ MultiTabletForwardingEnabled: true
 GetNodeAttrBatchEnabled: true
 DirectoryCreationInShardsEnabled: true
 
+GidPropagationEnabled: true

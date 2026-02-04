@@ -595,10 +595,7 @@ TClientEndpoint::TClientEndpoint(
 TClientEndpoint::~TClientEndpoint()
 {
     // release any leftover resources if endpoint hasn't been properly stopped
-    if (CompletionQueue) {
-        DestroyQP();
-    }
-
+    DestroyQP();
     RDMA_INFO("stop endpoint");
 }
 
@@ -663,7 +660,11 @@ void TClientEndpoint::CreateQP()
         .sq_sig_all = 1,
     };
 
-    Verbs->CreateQP(Connection.get(), &qp_attrs);
+    if (Config.VerbsQP) {
+        Connection->qp = Verbs->CreateQP(Connection->pd, &qp_attrs);
+    } else {
+        Verbs->RdmaCreateQP(Connection.get(), &qp_attrs);
+    }
 
     SendBuffers.Init(
         Verbs,
@@ -725,14 +726,26 @@ void TClientEndpoint::CreateQP()
 
 void TClientEndpoint::DestroyQP() noexcept
 {
-    Verbs->DestroyQP(Connection.get());
+    if (Connection && Connection->qp) {
+        if (Config.VerbsQP) {
+            Verbs->DestroyQP(Connection->qp);
+            Connection->qp = nullptr;
+        } else {
+            Verbs->RdmaDestroyQP(Connection.get());
+        }
+    }
 
     CompletionQueue.reset();
     CompletionChannel.reset();
 
     with_lock (AllocationLock) {
-        SendBuffers.ReleaseBuffer(SendBuffer);
-        RecvBuffers.ReleaseBuffer(RecvBuffer);
+        if (SendBuffers.Initialized()) {
+            SendBuffers.ReleaseBuffer(SendBuffer);
+        }
+
+        if (RecvBuffers.Initialized()) {
+            RecvBuffers.ReleaseBuffer(RecvBuffer);
+        }
     }
 
     SendQueue.Clear();
@@ -1965,12 +1978,10 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
     RDMA_INFO(endpoint->Log, "detach endpoint and close connection");
 
     ConnectionPoller->Detach(endpoint);
-    // if this is false, we are still resolving the address/route
-    // and haven't created a QP yet
-    if (endpoint->CompletionQueue) {
+    if (endpoint->CompletionChannel) {
         endpoint->Poller->Detach(endpoint);
-        endpoint->DestroyQP();
     }
+    endpoint->DestroyQP();
     endpoint->Connection.reset();
     endpoint->StopResult.SetValue();
     endpoint->Poller->Release(endpoint);
@@ -2044,19 +2055,21 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
         rdma_addrinfo hints = {
             .ai_port_space = RDMA_PS_TCP,
         };
+        NAddr::IRemoteAddrRef src;
 
         // find the first non local address of the specified interface
         for (auto& interface: NAddr::GetNetworkInterfaces()) {
             if (interface.Name == Config->SourceInterface &&
                 GetScopeId(interface.Address->Addr()) == 0)
             {
-                auto& addr = static_cast<NAddr::TOpaqueAddr&>(*interface.Address);
+                src = interface.Address;
 
                 RDMA_INFO(endpoint->Log, "bind to " << interface.Name
-                    << " address " << NAddr::PrintHost(addr));
+                    << " address " << NAddr::PrintHost(*src));
 
-                hints.ai_src_addr = addr.MutableAddr();
-                hints.ai_src_len = addr.Len();
+                // it's a TOpaqueAddr, so it's safe to cast the const away
+                hints.ai_src_addr = const_cast<sockaddr*>(src->Addr());
+                hints.ai_src_len = src->Len();
                 break;
             }
         }

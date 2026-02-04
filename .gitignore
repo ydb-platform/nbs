@@ -7,6 +7,7 @@ cmake.*
 ./build/
 .idea/
 ./.idea/*
+.temporary
 *.cmake
 .conan
 __pycache__
@@ -102,3 +103,6 @@ test-results
 .input
 .secrets
 .vars
+
+# env files
+.env

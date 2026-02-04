@@ -48,31 +48,32 @@ BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_DISCOVERY_DECLARE_CONFIG)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTarget, typename TSource>
-TTarget ConvertValue(TSource value)
+TTarget ConvertValue(const TSource& value)
 {
-    return static_cast<TTarget>(std::move(value));
+    return TTarget(value);
 }
 
 template <>
-TDuration ConvertValue<TDuration, ui32>(ui32 value)
+TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 {
     return TDuration::MilliSeconds(value);
 }
 
 template <>
-TVector<TString> ConvertValue(google::protobuf::RepeatedPtrField<TString> value)
+TVector<TString> ConvertValue(
+    const google::protobuf::RepeatedPtrField<TString>& value)
 {
     TVector<TString> v;
-    for (const auto& x : value) {
+    for (const auto& x: value) {
         v.push_back(x);
     }
     return v;
 }
 
 template <typename T>
-bool IsEmpty(const T& t)
+bool IsEmpty(const T& value)
 {
-    return !t;
+    return !value;
 }
 
 template <>
@@ -82,9 +83,9 @@ bool IsEmpty(const google::protobuf::RepeatedPtrField<TString>& value)
 }
 
 template <typename T>
-void DumpImpl(const T& t, IOutputStream& os)
+void DumpImpl(const T& value, IOutputStream& os)
 {
-    os << t;
+    os << value;
 }
 
 template <>

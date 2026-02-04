@@ -210,6 +210,7 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
                 "TEvPartitionPrivate::TEvWriteBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
+        request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
 
         ForkedCallContexts.emplace_back(request->CallContext);
 

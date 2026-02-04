@@ -225,7 +225,7 @@ void TIndexTabletActor::HandleCreateSession(
             message.c_str());
     }
 
-    AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
 
     ExecuteTx<TCreateSession>(
         ctx,
@@ -366,7 +366,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateSession& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
 

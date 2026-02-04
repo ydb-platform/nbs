@@ -73,6 +73,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const TString DiskId;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
@@ -123,9 +124,9 @@ private:
     // The ranges are locked for migrations and filling of fresh replicas.
     TRequestBoundsTracker LockedRanges{State.GetBlockSize()};
 
-    bool MultiAgentWriteEnabled = true;
-    const size_t MultiAgentWriteRequestSizeThreshold = 0;
     size_t MultiAgentWriteRoundRobinSeed = 0;
+
+    TRequestInfoPtr StatisticRequestInfo;
 
 public:
     TMirrorPartitionActor(
@@ -138,6 +139,7 @@ public:
         TMigrations migrations,
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId,
         NActors::TActorId resyncActorId);
@@ -168,6 +170,12 @@ private:
         const NActors::TActorContext& ctx,
         const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
         NProto::TError&& error);
+    TPartNonreplCountersData ExtractPartCounters(
+        const NActors::TActorContext& ctx);
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData partCountersData);
 
 private:
     STFUNC(StateWork);
@@ -248,6 +256,15 @@ private:
 
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>

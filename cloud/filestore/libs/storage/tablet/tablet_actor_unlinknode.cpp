@@ -327,7 +327,7 @@ void TIndexTabletActor::HandleUnlinkNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TUnlinkNodeMethod>(*requestInfo);
 
     ExecuteTx<TUnlinkNode>(
         ctx,
@@ -407,9 +407,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return true;
     }
 
-    if (args.ChildNode &&
-        args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
-    {
+    if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
         TVector<IIndexTabletDatabase::TNodeRef> refs;
         // 1 entry is enough to prevent deletion
         if (!ReadNodeRefs(db, childNodeId, args.CommitId, {}, refs, 1)) {
@@ -418,17 +416,17 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
 
         if (!refs.empty()) {
             // cannot unlink non empty directory
-            args.Error = ErrorIsNotEmpty(args.ParentNodeId);
+            args.Error = ErrorIsNotEmpty(args.ChildNode->NodeId);
             return true;
         }
 
         if (!args.Request.GetUnlinkDirectory()) {
             // should explicitly unlink directory node
-            args.Error = ErrorIsDirectory(args.ParentNodeId);
+            args.Error = ErrorIsDirectory(args.ChildNode->NodeId);
             return true;
         }
     } else if (args.Request.GetUnlinkDirectory()) {
-        args.Error = ErrorIsNotDirectory(args.ParentNodeId);
+        args.Error = ErrorIsNotDirectory(args.ChildNode->NodeId);
         return true;
     }
 
@@ -446,7 +444,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "UnlinkNode");
+        return args.OnCommitIdOverflow();
     }
 
     if (args.ChildRef && args.ChildRef->IsExternal()) {
@@ -595,7 +593,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         NotifySessionEvent(ctx, sessionEvent);
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics.UnlinkNode.Update(
@@ -700,7 +698,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CompleteUnlinkNode");
+        return args.OnCommitIdOverflow();
     }
 
     UnlinkExternalNode(
@@ -744,8 +742,19 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         UnlockNodeRef({args.ParentNodeId, args.Name});
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    if (args.IsExplicitRequest) {
+        //
+        // This branch is supposed to be used only in unit tests.
+        //
+
+        using TResponse = TEvIndexTabletPrivate::TEvCompleteUnlinkNodeResponse;
+        auto response = std::make_unique<TResponse>(args.Error);
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
 
     Metrics.UnlinkNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
@@ -769,7 +778,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
     auto& res = msg->Result;
 
     if (msg->RequestInfo) {
-        RemoveTransaction(*msg->RequestInfo);
+        RemoveInFlightRequest(*msg->RequestInfo);
         CommitDupCacheEntry(msg->SessionId, msg->RequestId);
 
         if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&res)) {
@@ -843,15 +852,19 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
         const auto& originalRequest = msg->OriginalRequest;
         auto response = std::get<NProto::TUnlinkNodeResponse>(res);
 
-        AddTransaction<TEvService::TUnlinkNodeMethod>(*msg->RequestInfo);
+        AddInFlightRequest<TEvService::TUnlinkNodeMethod>(*msg->RequestInfo);
         ExecuteTx<TCompleteUnlinkNode>(
             ctx,
             msg->RequestInfo,
             originalRequest,
             msg->OpLogEntryId,
-            response);
+            response,
+            false /* isExplicitRequest */);
     } else {
-        ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+        ExecuteTx<TDeleteOpLogEntry>(
+            ctx,
+            TRequestInfoPtr() /* requestInfo */,
+            msg->OpLogEntryId);
     }
 }
 
@@ -878,6 +891,31 @@ void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleCompleteUnlinkNode(
+    const TEvIndexTabletPrivate::TEvCompleteUnlinkNodeRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddInFlightRequest<TEvIndexTabletPrivate::TCompleteUnlinkNodeMethod>(
+        *requestInfo);
+
+    ExecuteTx<TCompleteUnlinkNode>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Request),
+        msg->OpLogEntryId,
+        std::move(msg->Response),
+        true /* isExplicitRequest */);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

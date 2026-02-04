@@ -33,63 +33,12 @@ T SafeDecrement(T counter, size_t value)
     return counter - value;
 }
 
-TJsonValue ToJson(const TOperationState& op)
-{
-    TJsonValue json;
-    json["Status"] = ToString(op.Status);
-    const auto duration = TInstant::Now() - op.Timestamp;
-    json["Duration"] = duration.MicroSeconds();
-    return json;
-}
-
-void DumpOperationState(IOutputStream& out, const TOperationState& op)
-{
-    out << ToString(op.Status);
-
-    if (op.Timestamp != TInstant::Zero()) {
-        out << " for " << TInstant::Now() - op.Timestamp;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 double BPFeature(const TBackpressureFeatureConfig& c, double x)
 {
     auto nx = Normalize(x, c.InputThreshold, c.InputLimit);
     return (1 - nx) + nx * c.MaxValue;
-}
-
-double CalculateChannelSpaceScore(
-    const TChannelState& ch,
-    const TFreeSpaceConfig& fsc,
-    const EChannelPermissions permissions)
-{
-    if (!ch.Permissions.HasFlags(permissions)) {
-        return 1;
-    }
-
-    if (ch.ApproximateFreeSpaceShare != 0) {
-        return 1 - Normalize(
-            ch.ApproximateFreeSpaceShare,
-            fsc.ChannelMinFreeSpace,
-            fsc.ChannelFreeSpaceThreshold
-        );
-    }
-
-    return 0;
-}
-
-double CalculateDiskSpaceScore(
-    double systemChannelSpaceScoreSum,
-    double dataChannelSpaceScoreSum,
-    ui32 dataChannelCount,
-    double freshChannelSpaceScoreSum,
-    ui32 freshChannelCount)
-{
-    return 1 / (1 - Min(0.99, systemChannelSpaceScoreSum
-            + dataChannelSpaceScoreSum / dataChannelCount
-            + (freshChannelCount ?
-            freshChannelSpaceScoreSum / freshChannelCount : 0)));
 }
 
 }   // namespace
@@ -116,26 +65,32 @@ TPartitionState::TPartitionState(
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun)
-    : Meta(std::move(meta))
-    , Generation(generation)
+    : TPartitionChannelsState(
+          meta.GetConfig(),
+          freeSpaceConfig,
+          maxIORequestsInFlight,
+          reassignChannelsPercentageThreshold,
+          reassignFreshChannelsPercentageThreshold,
+          reassignMixedChannelsPercentageThreshold,
+          reassignSystemChannelsImmediately,
+          channelCount)
+    , TCommitIdsState(generation, lastCommitId)
+    , TPartitionTrimFreshLogState(static_cast<TCommitIdsState&>(*this))
+    , TPartitionFreshBlocksState(*this, *this, *this)
+    , Meta(std::move(meta))
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
     , Config(*Meta.MutableConfig())
-    , ChannelCount(channelCount)
-    , MaxIORequestsInFlight(maxIORequestsInFlight)
-    , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
-    , ReassignFreshChannelsPercentageThreshold(reassignFreshChannelsPercentageThreshold)
-    , ReassignMixedChannelsPercentageThreshold(reassignMixedChannelsPercentageThreshold)
-    , ReassignSystemChannelsImmediately(reassignSystemChannelsImmediately)
-    , LastCommitId(lastCommitId)
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
     , LogicalUsedBlocks(Config.GetBlocksCount())
-    , MaxBlobsPerDisk(Max(Config.GetBlocksCount() * Config.GetBlockSize()
-        / allocationUnit, 1ul) * maxBlobsPerUnit)
+    , MaxBlobsPerDisk(
+          Max(Config.GetBlocksCount() * Config.GetBlockSize() / allocationUnit,
+              1ul) *
+          maxBlobsPerUnit)
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
@@ -144,328 +99,12 @@ TPartitionState::TPartitionState(
     InitChannels();
 }
 
-void TPartitionState::InitChannels()
-{
-    for (ui32 ch = 0; ch < ChannelCount; ++ch) {
-        switch (GetChannelDataKind(ch)) {
-            case EChannelDataKind::Mixed: {
-                MixedChannels.push_back(ch);
-                ++DataChannelCount;
-                break;
-            }
-            case EChannelDataKind::Merged: {
-                MergedChannels.push_back(ch);
-                ++DataChannelCount;
-                break;
-            }
-            case EChannelDataKind::Fresh: {
-                FreshChannels.push_back(ch);
-                ++FreshChannelCount;
-                break;
-            }
-            default: {
-                break;
-            }
-        }
-    }
-
-    if (MixedChannels) {
-        HaveSeparateMixedChannels = true;
-    } else {
-        MixedChannels = MergedChannels;
-    }
-}
-
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
 {
     Y_DEBUG_ABORT_UNLESS(Config.GetBlocksCount() <= Max<ui32>());
     const auto validRange =
         TBlockRange64::WithLength(0, Config.GetBlocksCount());
     return validRange.Contains(range);
-}
-
-TVector<ui32> TPartitionState::GetChannelsByKind(
-    std::function<bool(EChannelDataKind)> predicate) const
-{
-    TVector<ui32> result(Reserve(ChannelCount));
-    for (ui32 ch = 0; ch < ChannelCount; ++ch) {
-        if (predicate(GetChannelDataKind(ch))) {
-            result.push_back(ch);
-        }
-    }
-    return result;
-}
-
-EChannelDataKind TPartitionState::GetChannelDataKind(ui32 channel) const
-{
-    // FIXME(NBS-2088): use Y_ABORT_UNLESS
-    Y_DEBUG_ABORT_UNLESS(channel < ChannelCount);
-    if (channel >= ChannelCount) {
-        return EChannelDataKind::Merged;
-    }
-
-    auto kind = Config.GetExplicitChannelProfiles(channel).GetDataKind();
-    return static_cast<EChannelDataKind>(kind);
-}
-
-TChannelState& TPartitionState::GetChannel(ui32 channel)
-{
-    if (channel >= Channels.size()) {
-        Channels.resize(channel + 1);
-    }
-    return Channels[channel];
-}
-
-const TChannelState* TPartitionState::GetChannel(ui32 channel) const
-{
-    if (channel < Channels.size()) {
-        return &Channels[channel];
-    }
-    return nullptr;
-}
-
-bool TPartitionState::UpdatePermissions(ui32 channel, EChannelPermissions permissions)
-{
-    auto& channelState = GetChannel(channel);
-    if (channelState.Permissions != permissions) {
-        channelState.Permissions = permissions;
-
-        return UpdateChannelFreeSpaceScore(channelState, channel);
-    }
-
-    return false;
-}
-
-bool TPartitionState::CheckPermissions(ui32 channel, EChannelPermissions permissions) const
-{
-    const auto* ch = GetChannel(channel);
-    return ch ? ch->Permissions.HasFlags(permissions) : true;
-}
-
-double TPartitionState::GetFreeSpaceShare(ui32 channel) const
-{
-    const auto* ch = GetChannel(channel);
-    return ch ? ch->ApproximateFreeSpaceShare : 0;
-}
-
-bool TPartitionState::UpdateChannelFreeSpaceShare(ui32 channel, double share)
-{
-    if (share) {
-        auto& channelState = GetChannel(channel);
-        const auto prevShare = channelState.ApproximateFreeSpaceShare;
-        const auto threshold = FreeSpaceConfig.ChannelFreeSpaceThreshold;
-        channelState.ApproximateFreeSpaceShare = share;
-        if (share < threshold && (!prevShare || prevShare >= threshold)) {
-            ++AlmostFullChannelCount;
-        } else if (share >= threshold && prevShare && prevShare < threshold) {
-            Y_DEBUG_ABORT_UNLESS(AlmostFullChannelCount);
-            --AlmostFullChannelCount;
-        }
-
-        return UpdateChannelFreeSpaceScore(channelState, channel);
-    }
-
-    return false;
-}
-
-bool TPartitionState::UpdateChannelFreeSpaceScore(
-    TChannelState& channelState,
-    ui32 channel)
-{
-    const auto kind = GetChannelDataKind(channel);
-
-    EChannelPermissions requiredPermissions =
-        kind == EChannelDataKind::Mixed || kind == EChannelDataKind::Merged
-        ? EChannelPermission::UserWritesAllowed
-        : EChannelPermission::SystemWritesAllowed;
-
-    double& scoreSum = [this, kind]() -> auto& {
-        switch (kind) {
-            case EChannelDataKind::Fresh:
-                return FreshChannelSpaceScoreSum;
-            case EChannelDataKind::Mixed:
-            case EChannelDataKind::Merged:
-                return DataChannelSpaceScoreSum;
-            default:
-                return SystemChannelSpaceScoreSum;
-        }
-    }();
-
-    scoreSum -= channelState.FreeSpaceScore;
-    channelState.FreeSpaceScore = CalculateChannelSpaceScore(
-        channelState,
-        FreeSpaceConfig,
-        requiredPermissions
-    );
-    scoreSum += channelState.FreeSpaceScore;
-
-    const auto diskSpaceScore = CalculateDiskSpaceScore(
-        SystemChannelSpaceScoreSum,
-        DataChannelSpaceScoreSum,
-        DataChannelCount,
-        FreshChannelSpaceScoreSum,
-        FreshChannelCount);
-
-    if (diskSpaceScore != BackpressureDiskSpaceScore) {
-        BackpressureDiskSpaceScore = diskSpaceScore;
-        return true;
-    }
-
-    return false;
-}
-
-bool TPartitionState::CheckChannelFreeSpaceShare(ui32 channel) const
-{
-    const auto& fsc = FreeSpaceConfig;
-    const auto* ch = GetChannel(channel);
-
-    if (!ch) {
-        return true;
-    }
-
-    return NCloud::CheckChannelFreeSpaceShare(
-        ch->ApproximateFreeSpaceShare,
-        fsc.ChannelMinFreeSpace,
-        fsc.ChannelFreeSpaceThreshold);
-}
-
-bool TPartitionState::IsCompactionAllowed() const
-{
-    return IsWriteAllowed(EChannelPermission::SystemWritesAllowed);
-}
-
-bool TPartitionState::IsWriteAllowed(EChannelPermissions permissions) const
-{
-    bool allSystemChannelsWritable = true;
-    bool anyDataChannelWritable = false;
-    bool anyFreshChannelWritable = FreshChannelCount == 0;
-
-    for (ui32 ch = 0; ch < ChannelCount; ++ch) {
-        switch (GetChannelDataKind(ch)) {
-            case EChannelDataKind::System:
-            case EChannelDataKind::Log:
-            case EChannelDataKind::Index: {
-                if (!CheckPermissions(ch, permissions)) {
-                    allSystemChannelsWritable = false;
-                }
-                break;
-            }
-
-            case EChannelDataKind::Mixed:
-            case EChannelDataKind::Merged: {
-                if (CheckPermissions(ch, permissions)) {
-                    anyDataChannelWritable = true;
-                }
-                break;
-            }
-
-            case EChannelDataKind::Fresh: {
-                if (CheckPermissions(ch, permissions)) {
-                    anyFreshChannelWritable = true;
-                }
-                break;
-            }
-
-            default: {
-                Y_DEBUG_ABORT_UNLESS(0);
-            }
-        }
-    }
-
-    return allSystemChannelsWritable && anyDataChannelWritable &&
-           anyFreshChannelWritable;
-}
-
-void TPartitionState::RegisterReassignRequestFromBlobStorage(ui32 channel)
-{
-    GetChannel(channel).ReassignRequestedByBlobStorage = true;
-}
-
-TVector<ui32> TPartitionState::GetChannelsToReassign() const
-{
-    const auto permissions = EChannelPermission::UserWritesAllowed |
-                             EChannelPermission::SystemWritesAllowed;
-
-    TVector<ui32> channels;
-    TVector<ui32> freshChannels;
-    TVector<ui32> mixedChannels;
-    TVector<ui32> systemChannels;
-
-    for (ui32 ch = 0; ch < ChannelCount; ++ch) {
-        const auto* channelState = GetChannel(ch);
-        if ((channelState && channelState->ReassignRequestedByBlobStorage) ||
-            !CheckPermissions(ch, permissions))
-        {
-            channels.push_back(ch);
-            switch (GetChannelDataKind(ch)) {
-                case EChannelDataKind::Log:
-                case EChannelDataKind::Index:
-                case EChannelDataKind::System: {
-                    systemChannels.push_back(ch);
-                    break;
-                }
-
-                case EChannelDataKind::Mixed: {
-                    mixedChannels.push_back(ch);
-                    break;
-                }
-
-                case EChannelDataKind::Fresh: {
-                    freshChannels.push_back(ch);
-                    break;
-                }
-
-                case EChannelDataKind::Merged: {
-                    break;
-                }
-
-                default: {
-                    Y_DEBUG_ABORT_UNLESS(0);
-                }
-            }
-        }
-    }
-
-    const auto threshold = ReassignChannelsPercentageThreshold * ChannelCount;
-    if (!IsWriteAllowed(permissions) || channels.size() * 100 >= threshold) {
-        return channels;
-    }
-
-    channels.clear();
-    if (ReassignMixedChannelsPercentageThreshold < 100 &&
-        !mixedChannels.empty())
-    {
-        const auto threshold =
-            ReassignMixedChannelsPercentageThreshold * MixedChannels.size();
-        if (mixedChannels.size() * 100 >= threshold) {
-            channels.insert(
-                channels.end(),
-                mixedChannels.begin(),
-                mixedChannels.end());
-        }
-    }
-
-    if (ReassignSystemChannelsImmediately && !systemChannels.empty()) {
-        channels.insert(
-            channels.end(),
-            systemChannels.begin(),
-            systemChannels.end());
-    }
-
-    if (ReassignFreshChannelsPercentageThreshold < 100 &&
-        !freshChannels.empty())
-    {
-        const auto threshold =
-            ReassignFreshChannelsPercentageThreshold * FreshChannels.size();
-        if (freshChannels.size() * 100 >= threshold) {
-            channels.insert(
-                channels.end(),
-                freshChannels.begin(),
-                freshChannels.end());
-        }
-    }
-
-    return channels;
 }
 
 TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
@@ -483,150 +122,11 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
         CompactionPolicy->BackpressureEnabled()
             ? BPFeature(compactionFeature, GetLegacyCompactionScore())
             : 0,
-        BackpressureDiskSpaceScore,
-        Checkpoints.IsEmpty()
+        GetBackpressureDiskSpaceScore(),
+        GetCheckpoints().IsEmpty()
             ? BPFeature(cleanupFeature, CleanupQueue.GetQueueBytes())
             : 0,
     };
-}
-
-ui32 TPartitionState::GetAlmostFullChannelCount() const
-{
-    return AlmostFullChannelCount;
-}
-
-void TPartitionState::EnqueueIORequest(
-    ui32 channel,
-    NActors::IActorPtr requestActor,
-    ui64 bsGroupOperationId,
-    ui32 group,
-    TBSGroupOperationTimeTracker::EOperationType operationType,
-    ui32 blockSize)
-{
-    auto& ch = GetChannel(channel);
-    ch.IORequests.emplace_back(
-        std::move(requestActor),
-        bsGroupOperationId,
-        group,
-        operationType,
-        blockSize);
-    ++ch.IORequestsQueued;
-}
-
-std::optional<TQueuedRequest> TPartitionState::DequeueIORequest(ui32 channel)
-{
-    auto& ch = GetChannel(channel);
-    if (ch.IORequestsQueued && ch.IORequestsInFlight < MaxIORequestsInFlight) {
-        TQueuedRequest req = std::move(ch.IORequests.front());
-        ch.IORequests.pop_front();
-        --ch.IORequestsQueued;
-        ++ch.IORequestsInFlight;
-        return req;
-    }
-
-    return std::nullopt;
-}
-
-void TPartitionState::CompleteIORequest(ui32 channel)
-{
-    auto& ch = GetChannel(channel);
-    --ch.IORequestsInFlight;
-}
-
-ui32 TPartitionState::GetIORequestsInFlight() const
-{
-    ui32 count = 0;
-    for (const auto& ch: Channels) {
-        count += ch.IORequestsInFlight;
-    }
-    return count;
-}
-
-ui32 TPartitionState::GetIORequestsQueued() const
-{
-    ui32 count = 0;
-    for (const auto& ch: Channels) {
-        count += ch.IORequestsQueued;
-    }
-    return count;
-}
-
-ui32 TPartitionState::PickNextChannel(EChannelDataKind kind, EChannelPermissions permissions)
-{
-    Y_ABORT_UNLESS(kind == EChannelDataKind::Fresh ||
-        kind == EChannelDataKind::Mixed ||
-        kind == EChannelDataKind::Merged);
-
-    const auto& channels =
-        kind == EChannelDataKind::Fresh ? FreshChannels
-        : kind == EChannelDataKind::Mixed ? MixedChannels
-        : MergedChannels;
-
-    auto& selector =
-        kind == EChannelDataKind::Fresh ? FreshChannelSelector
-        : kind == EChannelDataKind::Mixed ? MixedChannelSelector
-        : MergedChannelSelector;
-
-    ++selector;
-
-    ui32 bestChannel = Max<ui32>();
-    double bestSpaceShare = 0;
-    for (ui32 i = 0; i < channels.size(); ++i) {
-        const auto channel = channels[selector % channels.size()];
-
-        if (CheckPermissions(channel, permissions)) {
-            if (CheckChannelFreeSpaceShare(channel)) {
-                return channel;
-            }
-
-            const auto spaceShare = GetChannel(channel).ApproximateFreeSpaceShare;
-            if (spaceShare > bestSpaceShare) {
-                bestSpaceShare = spaceShare;
-                bestChannel = channel;
-            }
-        }
-
-        ++selector;
-    }
-
-    if (bestChannel != Max<ui32>()) {
-        // all channels are close to full, but bestChannel has more free space
-        // than the others
-        return bestChannel;
-    }
-
-    if (kind == EChannelDataKind::Mixed && HaveSeparateMixedChannels) {
-        // not all hope is gone at this point - we can still try to write our
-        // mixed blob to one of the channels intended for merged blobs
-        return PickNextChannel(EChannelDataKind::Merged, permissions);
-    }
-
-    return channels.front();
-}
-
-TPartialBlobId TPartitionState::GenerateBlobId(
-    EChannelDataKind kind,
-    EChannelPermissions permissions,
-    ui64 commitId,
-    ui32 blobSize,
-    ui32 blobIndex)
-{
-    ui32 channel = 0;
-    if (blobSize) {
-        channel = PickNextChannel(kind, permissions);
-        Y_ABORT_UNLESS(channel);
-    }
-
-    ui64 generation, step;
-    std::tie(generation, step) = ParseCommitId(commitId);
-
-    return TPartialBlobId(
-        generation,
-        step,
-        channel,
-        blobSize,
-        blobIndex,
-        0); // partId - should always be zero
 }
 
 ui64 TPartitionState::GetCleanupCommitId() const
@@ -637,20 +137,22 @@ ui64 TPartitionState::GetCleanupCommitId() const
     commitId = Min(commitId, CleanupQueue.GetMinCommitId() - 1);
 
     // should not cleanup after any checkpoint
-    commitId = Min(commitId, Checkpoints.GetMinCommitId() - 1);
+    commitId =
+        Min(commitId, GetCheckpoints().GetMinCommitId() - 1);
 
     return commitId;
 }
 
 ui64 TPartitionState::CalculateCheckpointBytes() const
 {
-    const auto* lastCheckpoint = Checkpoints.GetLast();
+    const auto* lastCheckpoint = GetCheckpoints().GetLast();
     if (!lastCheckpoint) {
         return 0;
     }
 
     const auto& lastStats = lastCheckpoint->Stats;
-    ui64 blocksCount = GetUnflushedFreshBlocksCount();
+    ui64 blocksCount = GetUnflushedFreshBlocksCountFromChannel() +
+                       GetStats().GetFreshBlocksCount();
     blocksCount += lastStats.GetMixedBlocksCount();
     blocksCount += lastStats.GetMergedBlocksCount();
     return blocksCount * GetBlockSize();
@@ -690,7 +192,7 @@ void TPartitionState::InitUnconfirmedBlobs(
 
     for (const auto& [commitId, blobs]: UnconfirmedBlobs) {
         UnconfirmedBlobCount += blobs.size();
-        CommitQueue.AcquireBarrier(commitId);
+        GetCommitQueue().AcquireBarrier(commitId);
         GarbageQueue.AcquireBarrier(commitId);
     }
 }
@@ -747,7 +249,7 @@ void TPartitionState::ConfirmedBlobsAdded(
     ConfirmedBlobCount -= blobCount;
 
     GarbageQueue.ReleaseBarrier(commitId);
-    CommitQueue.ReleaseBarrier(commitId);
+    GetCommitQueue().ReleaseBarrier(commitId);
 }
 
 void TPartitionState::BlobsConfirmed(
@@ -810,7 +312,7 @@ void TPartitionState::ConfirmBlobs(
         UnconfirmedBlobs.erase(it);
 
         GarbageQueue.ReleaseBarrier(commitId);
-        CommitQueue.ReleaseBarrier(commitId);
+        GetCommitQueue().ReleaseBarrier(commitId);
     }
 
     ConfirmedBlobs = std::move(UnconfirmedBlobs);
@@ -844,22 +346,8 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 void TPartitionState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
 {
-    Y_ABORT_UNLESS(freshBlobMeta.CommitId > LastTrimFreshLogToCommitId);
-    const bool inserted = UntrimmedFreshBlobs.insert(freshBlobMeta).second;
-    Y_ABORT_UNLESS(inserted);
-    UntrimmedFreshBlobByteCount += freshBlobMeta.BlobSize;
-}
-
-void TPartitionState::TrimFreshBlobs(ui64 commitId)
-{
-    auto& blobs = UntrimmedFreshBlobs;
-
-    while (blobs && blobs.begin()->CommitId <= commitId)
-    {
-        Y_ABORT_UNLESS(UntrimmedFreshBlobByteCount >= blobs.begin()->BlobSize);
-        UntrimmedFreshBlobByteCount -= blobs.begin()->BlobSize;
-        blobs.erase(blobs.begin());
-    }
+    Y_ABORT_UNLESS(freshBlobMeta.CommitId > GetLastTrimFreshLogToCommitId());
+    TPartitionFreshBlobState::AddFreshBlob(freshBlobMeta);
 }
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
@@ -878,62 +366,7 @@ ui32 TPartitionState::DecrementUnflushedFreshBlocksFromDbCount(size_t value)
     return counter;
 }
 
-ui32 TPartitionState::IncrementUnflushedFreshBlocksFromChannelCount(size_t value)
-{
-    UnflushedFreshBlocksFromChannelCount = SafeIncrement(
-        UnflushedFreshBlocksFromChannelCount,
-        value);
-
-    return UnflushedFreshBlocksFromChannelCount;
-}
-
-ui32 TPartitionState::DecrementUnflushedFreshBlocksFromChannelCount(size_t value)
-{
-    UnflushedFreshBlocksFromChannelCount = SafeDecrement(
-        UnflushedFreshBlocksFromChannelCount,
-        value);
-
-    return UnflushedFreshBlocksFromChannelCount;
-}
-
-ui32 TPartitionState::IncrementFreshBlocksInFlight(size_t value)
-{
-    FreshBlocksInFlight = SafeIncrement(FreshBlocksInFlight, value);
-    return FreshBlocksInFlight;
-}
-
-ui32 TPartitionState::DecrementFreshBlocksInFlight(size_t value)
-{
-    FreshBlocksInFlight = SafeDecrement(FreshBlocksInFlight, value);
-    return FreshBlocksInFlight;
-}
-
-void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks)
-{
-    for (const auto& freshBlock: freshBlocks) {
-        const auto& meta = freshBlock.Meta;
-
-        bool added = Blocks.AddBlock(
-            meta.BlockIndex,
-            meta.CommitId,
-            meta.IsStoredInDb,
-            freshBlock.Content);
-
-        Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
-            meta.BlockIndex,
-            meta.CommitId);
-    }
-}
-
-void TPartitionState::FindFreshBlocks(
-    IFreshBlocksIndexVisitor& visitor,
-    const TBlockRange32& readRange,
-    ui64 maxCommitId)
-{
-    Blocks.FindBlocks(visitor, readRange, maxCommitId);
-}
-
-void TPartitionState::WriteFreshBlocks(
+void TPartitionState::WriteFreshBlocksToDb(
     TPartitionDatabase& db,
     const TBlockRange32& writeRange,
     ui64 commitId,
@@ -945,26 +378,10 @@ void TPartitionState::WriteFreshBlocks(
         db,
         writeRange,
         commitId,
-        [&](ui32 index) { return sglist[index]; }
-    );
+        [&](ui32 index) { return sglist[index]; });
 }
 
-void TPartitionState::WriteFreshBlocks(
-    const TBlockRange32& writeRange,
-    ui64 commitId,
-    TSgList sglist)
-{
-    Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
-
-    WriteFreshBlocksImpl(
-        writeRange,
-        commitId,
-        [&](ui32 index) { return sglist[index]; }
-    );
-}
-
-
-void TPartitionState::ZeroFreshBlocks(
+void TPartitionState::ZeroFreshBlocksToDb(
     TPartitionDatabase& db,
     const TBlockRange32& zeroRange,
     ui64 commitId)
@@ -973,22 +390,10 @@ void TPartitionState::ZeroFreshBlocks(
         db,
         zeroRange,
         commitId,
-        [](ui32) { return TBlockDataRef(); }
-    );
+        [](ui32) { return TBlockDataRef(); });
 }
 
-void TPartitionState::ZeroFreshBlocks(
-    const TBlockRange32& zeroRange,
-    ui64 commitId)
-{
-    WriteFreshBlocksImpl(
-        zeroRange,
-        commitId,
-        [](ui32) { return TBlockDataRef(); }
-    );
-}
-
-void TPartitionState::DeleteFreshBlock(
+void TPartitionState::DeleteFreshBlockFromDb(
     TPartitionDatabase& db,
     ui32 blockIndex,
     ui64 commitId)
@@ -996,26 +401,12 @@ void TPartitionState::DeleteFreshBlock(
     bool removed = Blocks.RemoveBlock(
         blockIndex,
         commitId,
-        true);  // isStoredInDb
+        true);   // isStoredInDb
 
     Y_ABORT_UNLESS(removed);
 
     db.DeleteFreshBlock(blockIndex, commitId);
     DecrementUnflushedFreshBlocksFromDbCount(1);
-}
-
-void TPartitionState::DeleteFreshBlock(
-    ui32 blockIndex,
-    ui64 commitId)
-{
-    bool removed = Blocks.RemoveBlock(
-        blockIndex,
-        commitId,
-        false);  // isStoredInDb
-
-    Y_ABORT_UNLESS(removed);
-
-    DecrementUnflushedFreshBlocksFromChannelCount(1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1278,28 +669,6 @@ void TPartitionState::WriteUsedBlocksToDB(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionState::IncrementUnflushedFreshBlobCount(ui32 value)
-{
-    UnflushedFreshBlobCount = SafeIncrement(UnflushedFreshBlobCount, value);
-}
-
-void TPartitionState::DecrementUnflushedFreshBlobCount(ui32 value)
-{
-    UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, value);
-}
-
-void TPartitionState::IncrementUnflushedFreshBlobByteCount(ui64 value)
-{
-    UnflushedFreshBlobByteCount = SafeIncrement(UnflushedFreshBlobByteCount, value);
-}
-
-void TPartitionState::DecrementUnflushedFreshBlobByteCount(ui64 value)
-{
-    UnflushedFreshBlobByteCount = SafeDecrement(UnflushedFreshBlobByteCount, value);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void TPartitionState::RegisterDowntime(TInstant now, ui32 groupId)
 {
     GroupId2Downtimes[groupId].PushBack(now, EDowntimeStateChange::DOWN);
@@ -1333,7 +702,7 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                         out << "Total: " << GetUnflushedFreshBlocksCount()
                             << ", FromDb: " << GetStats().GetFreshBlocksCount()
                             << ", FromChannel: "
-                            << UnflushedFreshBlocksFromChannelCount
+                            << GetUnflushedFreshBlocksCountFromChannel()
                             << ", InFlight: " << GetFreshBlocksInFlight()
                             << ", Queued: " << GetFreshBlocksQueued()
                             << ", UntrimmedBytes: "
@@ -1342,9 +711,10 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER() {
                     TABLED() { out << "Flush"; }
-                    TABLED() { DumpOperationState(out, FlushState); }
-                }
-                TABLER() {
+                    TABLED () {
+                        DumpOperationState(out, GetFlushState());
+                    }
+                }                TABLER() {
                     TABLED() { out << "Compaction"; }
                     TABLED() { DumpOperationState(out, CompactionState); }
                 }
@@ -1378,18 +748,19 @@ TJsonValue TPartitionState::AsJson() const
         state["LastCommitId"] = GetLastCommitId();
         state["FreshBlocksTotal"] = GetUnflushedFreshBlocksCount();
         state["FreshBlocksFromDb"] = GetStats().GetFreshBlocksCount();
-        state["FreshBlocksFromChannel"] = UnflushedFreshBlocksFromChannelCount;
+        state["FreshBlocksFromChannel"] =
+            GetUnflushedFreshBlocksCountFromChannel();
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-        state["FlushState"] = ToJson(FlushState);
+        state["FlushState"] = ToJson(GetFlushState());
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);
         state["CollectGarbage"] = ToJson(CollectGarbageState);
 
         json["State"] = std::move(state);
     }
-    json["Checkpoints"] = Checkpoints.AsJson();
+    json["Checkpoints"] = GetCheckpoints().AsJson();
 
     {
         TJsonValue stats;

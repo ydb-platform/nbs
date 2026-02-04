@@ -52,7 +52,7 @@ IActorPtr TStorageServiceActor::CreateGetStorageStatsActionActor(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// UnsafeNodeOps
+// UnsafeNodeOps / UnsafeNodeRefOps
 
 IActorPtr TStorageServiceActor::CreateUnsafeDeleteNodeActionActor(
     TRequestInfoPtr requestInfo,
@@ -86,6 +86,66 @@ IActorPtr TStorageServiceActor::CreateUnsafeGetNodeActionActor(
         TEvIndexTablet::TEvUnsafeGetNodeRequest,
         TEvIndexTablet::TEvUnsafeGetNodeResponse>;
     return std::make_unique<TUnsafeGetNodeActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateUnsafeCreateNodeRefActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TUnsafeCreateNodeRefActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeCreateNodeRefRequest,
+        TEvIndexTablet::TEvUnsafeCreateNodeRefResponse>;
+    return std::make_unique<TUnsafeCreateNodeRefActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateUnsafeDeleteNodeRefActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TUnsafeDeleteNodeRefActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest,
+        TEvIndexTablet::TEvUnsafeDeleteNodeRefResponse>;
+    return std::make_unique<TUnsafeDeleteNodeRefActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateUnsafeUpdateNodeRefActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TUnsafeUpdateNodeRefActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeUpdateNodeRefRequest,
+        TEvIndexTablet::TEvUnsafeUpdateNodeRefResponse>;
+    return std::make_unique<TUnsafeUpdateNodeRefActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateUnsafeGetNodeRefActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TUnsafeGetNodeRefActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeGetNodeRefRequest,
+        TEvIndexTablet::TEvUnsafeGetNodeRefResponse>;
+    return std::make_unique<TUnsafeGetNodeRefActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+NActors::IActorPtr TStorageServiceActor::CreateUnsafeCreateHandleActor(
+        TRequestInfoPtr requestInfo,
+        TString input)
+{
+    using TUnsafeCreateHandleActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeCreateHandleRequest,
+        TEvIndexTablet::TEvUnsafeCreateHandleResponse>;
+    return std::make_unique<TUnsafeCreateHandleActor>(
         std::move(requestInfo),
         std::move(input));
 }

@@ -2,13 +2,17 @@
 
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <util/string/builder.h>
+
 namespace NCloud {
 
 using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError MakeKikimrError(NKikimrProto::EReplyStatus status, TString errorReason)
+NProto::TError MakeKikimrError(
+    NKikimrProto::EReplyStatus status,
+    TString errorReason)
 {
     NProto::TError error;
 
@@ -25,7 +29,9 @@ NProto::TError MakeKikimrError(NKikimrProto::EReplyStatus status, TString errorR
     return error;
 }
 
-NProto::TError MakeSchemeShardError(NKikimrScheme::EStatus status, TString errorReason)
+NProto::TError MakeSchemeShardError(
+    NKikimrScheme::EStatus status,
+    TString errorReason)
 {
     NProto::TError error;
 
@@ -39,6 +45,21 @@ NProto::TError MakeSchemeShardError(NKikimrScheme::EStatus status, TString error
         }
     }
 
+    return error;
+}
+
+NProto::TError MakeDescribeSchemeError(
+    const NKikimrScheme::TEvDescribeSchemeResult& result)
+{
+    auto error = MakeSchemeShardError(result.GetStatus(), result.GetReason());
+    if (HasError(error) && result.GetPath()) {
+        // Enrich the error message with the path to improve diagnostics
+        error.SetMessage(
+            TStringBuilder()
+                << error.GetMessage()
+                << ", path="
+                << result.GetPath().Quote());
+    }
     return error;
 }
 

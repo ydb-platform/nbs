@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import contextlib
 import boto3
 import re
 import os
@@ -9,6 +10,8 @@ from urllib.parse import unquote_plus, urlparse
 from concurrent.futures import ThreadPoolExecutor
 from jinja2 import Environment, FileSystemLoader
 from datetime import datetime, timedelta, timezone
+
+FORCE_TEXT_PLAIN_FILES = {"stdout", "stderr"}
 
 
 def set_logging_level(verbosity):
@@ -111,6 +114,34 @@ def get_ttl_for_prefix(prefix, ttl_config):
     return False
 
 
+def ensure_content_type(s3, bucket, key, filenames, content_type, apply_changes):
+    if os.path.basename(key) not in filenames:
+        return
+
+    try:
+        head = s3.head_object(Bucket=bucket, Key=key)
+        current_ct = head.get("ContentType")
+
+        if current_ct == content_type:
+            return
+
+        if apply_changes:
+            s3.copy_object(
+                Bucket=bucket,
+                Key=key,
+                CopySource={"Bucket": bucket, "Key": key},
+                ContentType=content_type,
+                MetadataDirective="REPLACE",
+            )
+            logging.info(f"Updated Content-Type to {content_type}: {key}")
+        else:
+            logging.info(
+                f"Dry-run: Would update Content-Type to {content_type}: {key} (was {current_ct})"
+            )
+    except Exception as e:
+        logging.error(f"Failed to update Content-Type for {key}: {e}")
+
+
 def generate_index_html(
     bucket, files, dirs, current_prefix, website_suffix, ttl_config, now
 ):
@@ -204,6 +235,13 @@ def process_directory(
     s3, bucket, prefix, website_suffix, ttl_config, now, apply_changes
 ):
     dirs, files = list_files(s3, bucket, prefix)
+
+    for f in files:
+        key = f["Key"]
+        ensure_content_type(
+            s3, bucket, key, FORCE_TEXT_PLAIN_FILES, "text/plain", apply_changes
+        )
+
     # Filter out the 'index.html' file if present
     files_without_index = [
         file for file in files if not file["Key"].endswith("index.html")
@@ -211,7 +249,7 @@ def process_directory(
 
     if not dirs and not files_without_index:
         # The directory is empty (or only contains 'index.html'), so delete 'index.html' if it exists
-        try:
+        with contextlib.suppress(s3.exceptions.NoSuchKey):
             if apply_changes:
                 s3.delete_object(Bucket=bucket, Key=os.path.join(prefix, "index.html"))
                 logging.info(f"Removed 'index.html' from empty directory: {prefix}")
@@ -219,9 +257,6 @@ def process_directory(
                 logging.info(
                     f"Dry-run: Would remove 'index.html' from empty directory: {prefix}"
                 )
-        except s3.exceptions.NoSuchKey:
-            # 'index.html' does not exist, no action needed
-            pass
     else:
         # The directory is not empty, generate/update 'index.html'
         html_content = generate_index_html(
@@ -350,7 +385,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--website-suffix",
-        default=os.environ.get("S3_WEBSITE_SUFFIX", "website.nemax.nebius.cloud"),
+        default=os.environ.get("S3_WEBSITE_SUFFIX", "storage.eu-north2.nebius.cloud"),
         help="Suffix for website domain",
     )
 

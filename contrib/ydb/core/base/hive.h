@@ -82,6 +82,12 @@ namespace NKikimr {
             EvReassignOnDecommitGroupReply,
             EvUpdateTabletsObjectReply,
             EvUpdateDomainReply,
+            EvResponseTabletDistribution,
+            EvResponseScaleRecommendation,
+            EvConfigureScaleRecommenderReply,
+            EvDrainNodeAck,
+            EvResponseDrainInfo,
+            EvSetDownReply,
 
             EvEnd
         };
@@ -868,6 +874,11 @@ namespace NKikimr {
         struct TEvUpdateDomain : TEventPB<TEvUpdateDomain, NKikimrHive::TEvUpdateDomain, EvUpdateDomain> {};
 
         struct TEvUpdateDomainReply : TEventPB<TEvUpdateDomainReply, NKikimrHive::TEvUpdateDomainReply, EvUpdateDomainReply> {};
+
+        struct TEvDrainNodeAck: TEventLocal<TEvDrainNodeAck, EvDrainNodeAck>
+        {
+            TEvDrainNodeAck() = default;
+        };
     };
 
     IActor* CreateDefaultHive(const TActorId &tablet, TTabletStorageInfo *info);

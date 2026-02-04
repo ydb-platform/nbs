@@ -6,6 +6,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet/model
 )
 

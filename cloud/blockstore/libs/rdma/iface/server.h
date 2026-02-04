@@ -31,6 +31,7 @@ struct TServerConfig
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
     ui8 IpTypeOfService = 0;
     TString SourceInterface;
+    bool VerbsQP = false;
 
     TServerConfig() = default;
 

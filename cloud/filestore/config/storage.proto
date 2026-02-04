@@ -721,4 +721,13 @@ message TStorageConfig
     // testing purposes
     optional bool FakeDescribeDataEnabled = 479;
     optional uint32 FakeDescribeDataLatencyUs = 480;
+
+    // If enabled, if the S_ISGID is set on the directory, its gid will be
+    // propagated to newly created files (including directories, symlinks, etc.)
+    // inside that directory.
+    optional bool GidPropagationEnabled = 481;
+
+    // If tablet actor CPU usage goes over this threshold, tablets will start
+    // setting the IsOverloaded flag in their responses.
+    optional uint32 TabletActorCpuUsageOverloadThreshold = 482;
 }

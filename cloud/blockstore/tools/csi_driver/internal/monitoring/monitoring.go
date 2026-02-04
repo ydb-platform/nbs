@@ -97,6 +97,9 @@ func (m *Monitoring) ReportRequestReceived(method string) {
 	})
 	subregistry.Counter("Count").Inc()
 	subregistry.IntGauge("InflightCount").Add(1)
+	subregistry.Counter("Errors")
+	subregistry.Counter("RetriableErrors")
+	subregistry.Counter("CriticalRetriableErrors")
 }
 
 func (m *Monitoring) ReportRequestCompleted(

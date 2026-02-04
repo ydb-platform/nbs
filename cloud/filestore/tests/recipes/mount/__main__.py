@@ -9,6 +9,7 @@ from library.python.testing.recipe import declare_recipe, set_env
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from cloud.filestore.tests.python.lib.common import shutdown
 
+logger = logging.getLogger(__name__)
 
 PID_FILE_NAME = "local_mount_nfs_share_recipe.pid"
 MOUNT_PATH_FILE_NAME = "local_mount_nfs_share_recipe.mount_path"
@@ -61,14 +62,14 @@ def start(argv):
 
 
 def stop(argv):
-    # TODO(#2831): remove this debug information
-    logging.info(os.system("ps aux"))
-    logging.info(os.system("mount"))
+    logger.info(os.system("ps aux"))
+    logger.info(os.system("mount"))
+
     with open(MOUNT_PATH_FILE_NAME) as f:
         paths = f.read().split(",")
         for path in paths:
-            logging.info("Mount path: %s", path)
-            logging.info(os.system(f"ls -la {path}"))
+            logger.info("Mount path: %s", path)
+            logger.info(os.system(f"ls -la {path}"))
 
     with open(PID_FILE_NAME) as f:
         pids = [int(x) for x in f.read().split(",")]

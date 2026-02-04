@@ -8,6 +8,7 @@
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -38,6 +39,8 @@ namespace NCloud::NBlockStore::NStorage {
 class TDiskAgentActor final
     : public NActors::TActorBootstrapped<TDiskAgentActor>
 {
+    using TControlPlaneRequestNumber =
+        TEvDiskAgentPrivate::TControlPlaneRequestNumber;
     struct TPostponedRequest
     {
         ui64 VolumeRequestId = 0;
@@ -61,6 +64,7 @@ private:
     const IStorageProviderPtr StorageProvider;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const ILocalNVMeServicePtr LocalNVMeService;
 
     ILoggingServicePtr Logging;
     NRdma::IServerPtr RdmaServer;
@@ -97,7 +101,8 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    TRequestInfoPtr PendingAttachDetachPathsRequest;
+    TRequestInfoPtr PendingControlPlaneRequest;
+    TControlPlaneRequestNumber ControlPlaneRequestNumber;
 
     ITaskQueuePtr BackgroundThreadPool;
 
@@ -114,7 +119,8 @@ public:
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
-        ITaskQueuePtr backgroundThreadPool);
+        ITaskQueuePtr backgroundThreadPool,
+        ILocalNVMeServicePtr localNVMeService);
 
     ~TDiskAgentActor() override;
 
@@ -156,6 +162,7 @@ private:
         const TRequestPtr& ev);
 
     void RenderDevices(IOutputStream& out) const;
+    void RenderNVMeDevices(IOutputStream& out) const;
 
     bool CanStartSecureErase(const TString& uuid);
 
@@ -177,6 +184,17 @@ private:
         TVector<TString> devicesToDisableIO);
 
     TDuration GetMaxRequestTimeout() const;
+
+    NProto::TError CheckAttachDetachPathsAvailable() const;
+
+    NProto::TError UpdateControlPlaneRequestNumber(
+        TControlPlaneRequestNumber controlPlaneRequestNumber);
+
+    // Separates valid paths into attached and detached categories, filtering
+    // out unknown paths.
+    // Returns: [attached paths, detached paths]
+    auto SplitPaths(google::protobuf::RepeatedPtrField<TString> paths) const
+        -> std::pair<TVector<TString>, TVector<TString>>;
 
 private:
     STFUNC(StateInit);

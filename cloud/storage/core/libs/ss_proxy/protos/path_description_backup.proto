@@ -5,6 +5,31 @@ import "contrib/ydb/core/protos/flat_scheme_op.proto";
 package NCloud.NStorage.NSSProxy.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
+/*
+Backups can be saved in three formats:
+  - text proto
+  - binary proto,
+  - chunked binary proto
+
+The chunked binary proto format is needed to work around the 2GiB limit of
+proto file.
+
+Chunked binary proto format is a sequence of TPathDescriptionBackupChunk messages,
+preceded by 4 bytes of their length. At the beginning of the file is an 8 byte
+header containing the "CHKPROTO" signature.
+
+
+       Chunked binary proto file
+ --------------------------------------------------------
+  MAGIC (CHKPROTO)                       |   8 byte
+  Version (1)                            |   1 byte
+  ui32 size (little endian)              |   4 byte
+  serialized TPathDescriptionBackup      |   size bytes
+  ui32 size (little endian)              |   4 byte
+  serialized TPathDescriptionBackup      |   size bytes
+  ...
+ ----------------------------------------
+*/
 
 message TPathDescriptionBackup
 {

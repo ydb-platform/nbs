@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
@@ -67,10 +68,13 @@ struct TServerActorSystemArgs
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     IRootKmsKeyProviderPtr RootKmsKeyProvider;
+    TPartitionBudgetManagerPtr PartitionBudgetManager;
 
     TVector<NCloud::NStorage::IUserMetricsSupplierPtr> UserCounterProviders;
 
     ITaskQueuePtr BackgroundThreadPool;
+
+    ILocalNVMeServicePtr LocalNVMeService;
 
     bool IsDiskRegistrySpareNode = false;
     bool TemporaryServer = false;

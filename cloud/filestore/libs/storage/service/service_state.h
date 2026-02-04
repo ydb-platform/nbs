@@ -12,6 +12,7 @@
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -49,15 +50,13 @@ struct TChecksumCalcInfo
 struct TInFlightRequest
     : public TRequestInfo
 {
-public:
-    NProto::TProfileLogRequestInfo ProfileLogRequest;
-
 private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const TChecksumCalcInfo ChecksumCalcInfo;
     const IRequestStatsPtr RequestStats;
     const IProfileLogPtr ProfileLog;
 
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
     std::atomic_bool Completed = false;
 
 public:
@@ -128,7 +127,26 @@ public:
 
     void Start(TInstant currentTs);
     void Complete(TInstant currentTs, const NCloud::NProto::TError& error);
+    bool HasLogData() const;
     bool IsCompleted() const;
+
+    const auto& GetProfileLogRequest() const
+    {
+        STORAGE_VERIFY_DEBUG(
+            !IsCompleted(),
+            CallContext->FileSystemId,
+            TWellKnownEntityTypes::FILESYSTEM);
+        return ProfileLogRequest;
+    }
+
+    auto& AccessProfileLogRequest()
+    {
+        STORAGE_VERIFY_DEBUG(
+            !IsCompleted(),
+            CallContext->FileSystemId,
+            TWellKnownEntityTypes::FILESYSTEM);
+        return ProfileLogRequest;
+    }
 
     const TChecksumCalcInfo& GetChecksumCalcInfo() const
     {
@@ -151,24 +169,18 @@ private:
     IProfileLogPtr ProfileLog;
     THashMap<ui64, TInFlightRequest> Requests;
     mutable TAdaptiveLock Lock;
+    std::atomic_uint64_t CompletedRequestCountWithLogData;
+    std::atomic_uint64_t CompletedRequestCountWithError;
+    std::atomic_uint64_t CompletedRequestCountWithoutErrorOrLogData;
+
+    static constexpr auto StatsMemOrder = std::memory_order_relaxed;
 
 public:
     explicit TInFlightRequestStorage(IProfileLogPtr profileLog);
 
 public:
-    TInFlightRequest* Register(
-        NActors::TActorId sender,
-        ui64 cookie,
-        TCallContextPtr callContext,
-        NProto::EStorageMediaKind mediaKind,
-        TChecksumCalcInfo checksumCalcInfo,
-        IRequestStatsPtr requestStats,
-        TInstant start,
-        ui64 key);
-
-    TInFlightRequest* Find(ui64 key);
-
-    class TLockedRequest {
+    class TLockedRequest
+    {
     private:
         TAdaptiveLock* Lock;
         TInFlightRequest* Request;
@@ -215,11 +227,47 @@ public:
         }
     };
 
+    struct TStats
+    {
+        ui64 CompletedRequestCountWithLogData = 0;
+        ui64 CompletedRequestCountWithError = 0;
+        ui64 CompletedRequestCountWithoutErrorOrLogData = 0;
+    };
+
+public:
+    TInFlightRequest* Register(
+        NActors::TActorId sender,
+        ui64 cookie,
+        TCallContextPtr callContext,
+        NProto::EStorageMediaKind mediaKind,
+        TChecksumCalcInfo checksumCalcInfo,
+        IRequestStatsPtr requestStats,
+        TInstant start,
+        ui64 key);
+
+    TInFlightRequest* Find(ui64 key);
+
     TLockedRequest FindAndLock(ui64 key);
 
-    void Erase(ui64 key);
+    void CompleteAndErase(
+        TInstant currentTs,
+        const NCloud::NProto::TError& error,
+        TInFlightRequest& request,
+        ui64 key);
 
     [[nodiscard]] TVector<ui64> GetKeys() const;
+
+    TStats GetStats() const
+    {
+        return {
+            .CompletedRequestCountWithLogData =
+                CompletedRequestCountWithLogData.load(StatsMemOrder),
+            .CompletedRequestCountWithError =
+                CompletedRequestCountWithError.load(StatsMemOrder),
+            .CompletedRequestCountWithoutErrorOrLogData =
+                CompletedRequestCountWithoutErrorOrLogData.load(StatsMemOrder),
+        };
+    }
 };
 
 using TInFlightRequestStoragePtr = TIntrusivePtr<TInFlightRequestStorage>;
@@ -242,17 +290,17 @@ enum class ESessionCreateDestroyState
 class TShardState: public TAtomicRefCount<TShardState>
 {
 private:
-    TAtomic IsOverloaded = false;
+    std::atomic_bool IsOverloaded = false;
 
 public:
     void SetIsOverloaded(bool isOverloaded)
     {
-        AtomicSet(IsOverloaded, static_cast<TAtomicBase>(isOverloaded));
+        IsOverloaded.store(isOverloaded, std::memory_order_relaxed);
     }
 
     bool GetIsOverloaded() const
     {
-        return static_cast<bool>(AtomicGet(IsOverloaded));
+        return IsOverloaded.load(std::memory_order_relaxed);
     }
 };
 

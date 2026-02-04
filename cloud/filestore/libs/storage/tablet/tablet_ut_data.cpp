@@ -7718,7 +7718,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
         storageConfig.SetCpuLackOverloadThreshold(50);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env({} /* config */, std::move(storageConfig));
         env.CreateSubDomain("nfs");
 
         auto systemCounters = env.GetSystemCounters();
@@ -7830,10 +7830,141 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
+        // setting a tiny value to make sure that we're always "overloaded"
+        storageConfig.SetTabletActorCpuUsageOverloadThreshold(1);
+
+        TTestEnv env(
+            {} /* config */,
+            std::move(storageConfig),
+            {} /* cachesConfig */,
+            CreateProfileLogStub(),
+            {} /* diagConfig */,
+            true /* useRealThreads */);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        //
+        // Initializing initial ts and CPUUsageMicros values.
+        //
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+
+        //
+        // Making sure that IndexTabletActor uses some CPU.
+        //
+
+        for (ui32 i = 0; i < 10; ++i) {
+            tablet.GetNodeAttr(id);
+        }
+
+        //
+        // Triggering CPUUsageRate calculation.
+        //
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+
+        auto registry = env.GetRegistry();
+
+        i64 cpuUsageMicros = 0;
+
+        {
+            const auto pred = [&] (i64 val) {
+                cpuUsageMicros = val;
+                return true;
+            };
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCountersWithPredicate({
+                {{{"sensor", "CPUUsageMicros"}, {"filesystem", "test"}}, pred},
+            });
+        }
+
+        UNIT_ASSERT_GT(cpuUsageMicros, 0);
+
+        {
+            //
+            // Small write - uses CompleteResponse<> code path.
+            //
+
+            auto response =
+                tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Fresh read - uses CompleteResponse<> code path.
+            //
+
+            auto response = tablet.ReadData(handle, 0, tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(*buffer, tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Large write - uses separate actor code path.
+            //
+
+            auto response =
+                tablet.WriteData(handle, 0, 3 * tabletConfig.BlockSize, 'a');
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            //
+            // Blob read - uses separate actor code path.
+            //
+
+            auto response =
+                tablet.ReadData(handle, 0, 3 * tabletConfig.BlockSize);
+            const auto* buffer = &response->Record.GetBuffer();
+            UNIT_ASSERT(
+                CompareBuffer(*buffer, 3 * tabletConfig.BlockSize, 'a'));
+            const auto* backendInfo =
+                &response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT(backendInfo->GetIsOverloaded());
+        }
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+            });
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastWrittenData)
     {
-        const auto block = tabletConfig.BlockSize;
-        const auto maxTabletStep = 5;
+        const ui64 block = tabletConfig.BlockSize;
+        const ui32 maxTabletStep = 5;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
@@ -7855,7 +7986,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tabletConfig);
         tablet.InitSession("client", "session");
 
-        const auto id =
+        const ui64 id =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
 
@@ -7875,10 +8006,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             auto responseWrite = tablet.RecvWriteDataResponse();
             reconnectAndRecreateHandleIfNeeded();
 
-            if (FAILED(responseWrite->GetStatus())) {
-                UNIT_ASSERT_VALUES_EQUAL(
+            if (HasError(responseWrite->GetError())) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
                     E_REJECTED,
-                    responseWrite->GetError().GetCode());
+                    responseWrite->GetError().GetCode(),
+                    FormatError(responseWrite->GetError()));
                 continue;
             }
 
@@ -7889,6 +8021,153 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.DestroyHandle(handle);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
+    }
+
+    TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastAllocatedSize)
+    {
+        const ui64 block = tabletConfig.BlockSize;
+        const ui32 maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        ui64 len = 0;
+        for (ui32 i = 0; i < 10; ++i) {
+            len += block;
+            tablet.SendAllocateDataRequest(handle, 0, len, 0);
+            auto responseAllocate = tablet.RecvAllocateDataResponse();
+            reconnectIfNeeded();
+
+            if (HasError(responseAllocate->GetError())) {
+                len -= block;
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    responseAllocate->GetError().GetCode(),
+                    FormatError(responseAllocate->GetError()));
+                continue;
+            }
+
+            auto responseGetAttr = tablet.GetNodeAttr(id);
+            UNIT_ASSERT_VALUES_EQUAL(
+                len,
+                responseGetAttr->Record.GetNode().GetSize());
+        }
+
+        tablet.RebootTablet();
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.RecoverSession();
+
+        tablet.DestroyHandle(handle);
+
+        UNIT_ASSERT_GT(len, 0);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 2,
+            "Expected at least 2 different generations due to tablet reboot, "
+            "got "
+                << rebootTracker.GetGenerationCount());
+    }
+
+    TABLET_TEST(ShouldHandleCommitIdOverflowAndPreserveLastSetSize)
+    {
+        const ui64 block = tabletConfig.BlockSize;
+        const ui32 maxTabletStep = 5;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        ui64 len = 0;
+        for (ui32 i = 0; i < 10; ++i) {
+            len += block;
+            TSetNodeAttrArgs args(id);
+            args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+            args.SetSize(len);
+            tablet.SendSetNodeAttrRequest(args);
+            auto responseSetAttr = tablet.RecvSetNodeAttrResponse();
+            reconnectIfNeeded();
+
+            if (HasError(responseSetAttr->GetError())) {
+                len -= block;
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_REJECTED,
+                    responseSetAttr->GetError().GetCode(),
+                    FormatError(responseSetAttr->GetError()));
+                continue;
+            }
+
+            auto responseGetAttr = tablet.GetNodeAttr(id);
+            UNIT_ASSERT_VALUES_EQUAL(
+                len,
+                responseGetAttr->Record.GetNode().GetSize());
+        }
+
+        UNIT_ASSERT_GT(len, 0);
         UNIT_ASSERT_C(
             rebootTracker.GetGenerationCount() >= 2,
             "Expected at least 2 different generations due to tablet reboot, "

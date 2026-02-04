@@ -21,6 +21,11 @@ void TIndexTabletActor::ReplayOpLog(
     // if one of those requests gets rejected and is retried, the final order
     // may change)
     for (const auto& op: opLog) {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s OpLog replay: %s",
+            LogTag.c_str(),
+            op.ShortUtf8DebugString().Quote().c_str());
+
         if (op.HasCreateNodeRequest()) {
             RegisterCreateNodeInShardActor(
                 ctx,
@@ -89,12 +94,32 @@ void TIndexTabletActor::ReplayOpLog(
                 ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
                     << request.GetOriginalRequest().ShortUtf8DebugString());
             }
+
             RegisterRenameNodeInDestinationActor(
                 ctx,
                 nullptr, // requestInfo
                 request,
                 0, // requestId (TODO(#2674): either idempotency or use real
                    // requestId)
+                op.GetEntryId());
+        } else if (op.HasAbortUnlinkDirectoryNodeInShardRequest()) {
+            const auto& request =
+                op.GetAbortUnlinkDirectoryNodeInShardRequest();
+            const bool locked = TryLockNodeRef({
+                request.GetOriginalRequest().GetNewParentId(),
+                request.GetOriginalRequest().GetNewName()});
+            if (!locked) {
+                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
+                    << request.GetOriginalRequest().ShortUtf8DebugString());
+            }
+
+            RegisterAbortUnlinkDirectoryInShardActor(
+                ctx,
+                nullptr, // requestInfo
+                request.GetOriginalRequest(),
+                {}, // originalError, doesn't matter w/o requestInfo
+                request.GetFileSystemId(),
+                request.GetNodeId(),
                 op.GetEntryId());
         } else {
             const TString message = ReportUnknownOpLogEntry(
@@ -108,6 +133,28 @@ void TIndexTabletActor::ReplayOpLog(
                 message.c_str());
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleDeleteOpLogEntry(
+    const TEvIndexTabletPrivate::TEvDeleteOpLogEntryRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddInFlightRequest<TEvIndexTabletPrivate::TDeleteOpLogEntryMethod>(
+        *requestInfo);
+
+    ExecuteTx<TDeleteOpLogEntry>(
+        ctx,
+        std::move(requestInfo),
+        msg->OpLogEntryId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,6 +190,158 @@ void TIndexTabletActor::CompleteTx_DeleteOpLogEntry(
         "%s DeleteOpLogEntry completed (%lu)",
         LogTag.c_str(),
         args.EntryId);
+
+    if (args.RequestInfo) {
+        RemoveInFlightRequest(*args.RequestInfo);
+        using TResponse = TEvIndexTabletPrivate::TEvDeleteOpLogEntryResponse;
+        auto response = std::make_unique<TResponse>();
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleGetOpLogEntry(
+    const TEvIndexTabletPrivate::TEvGetOpLogEntryRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddInFlightRequest<TEvIndexTabletPrivate::TGetOpLogEntryMethod>(
+        *requestInfo);
+
+    ExecuteTx<TGetOpLogEntry>(
+        ctx,
+        std::move(requestInfo),
+        msg->OpLogEntryId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_GetOpLogEntry(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TGetOpLogEntry& args)
+{
+    Y_UNUSED(ctx);
+
+    TIndexTabletDatabase db(tx.DB);
+    return db.ReadOpLogEntry(args.EntryId, args.Entry);
+}
+
+void TIndexTabletActor::ExecuteTx_GetOpLogEntry(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TGetOpLogEntry& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+}
+
+void TIndexTabletActor::CompleteTx_GetOpLogEntry(
+    const TActorContext& ctx,
+    TTxIndexTablet::TGetOpLogEntry& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s GetOpLogEntry completed (%lu): %s",
+        LogTag.c_str(),
+        args.EntryId,
+        args.Entry
+            ? args.Entry->ShortUtf8DebugString().Quote().c_str()
+            : "<null>");
+
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvGetOpLogEntryResponse>();
+    response->OpLogEntry = std::move(args.Entry);
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleWriteOpLogEntry(
+    const TEvIndexTabletPrivate::TEvWriteOpLogEntryRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddInFlightRequest<TEvIndexTabletPrivate::TWriteOpLogEntryMethod>(
+        *requestInfo);
+
+    ExecuteTx<TWriteOpLogEntry>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->OpLogEntry));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_WriteOpLogEntry(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TWriteOpLogEntry& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_WriteOpLogEntry(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TWriteOpLogEntry& args)
+{
+    Y_UNUSED(ctx);
+
+    const ui64 commitId = GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        args.OnCommitIdOverflow();
+        return;
+    }
+
+    TIndexTabletDatabase db(tx.DB);
+    args.Entry.SetEntryId(commitId);
+    db.WriteOpLogEntry(args.Entry);
+}
+
+void TIndexTabletActor::CompleteTx_WriteOpLogEntry(
+    const TActorContext& ctx,
+    TTxIndexTablet::TWriteOpLogEntry& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    if (HasError(args.Error)) {
+        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+            "%s WriteOpLogEntry failed: %s, error: %s",
+            LogTag.c_str(),
+            args.Entry.ShortUtf8DebugString().Quote().c_str(),
+            FormatError(args.Error).Quote().c_str());
+    } else {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s WriteOpLogEntry completed: %s",
+            LogTag.c_str(),
+            args.Entry.ShortUtf8DebugString().Quote().c_str());
+    }
+
+    using TResponse = TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse;
+
+    auto response = std::make_unique<TResponse>(std::move(args.Error));
+    response->OpLogEntryId = args.Entry.GetEntryId();
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

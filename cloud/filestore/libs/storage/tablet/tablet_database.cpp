@@ -1963,6 +1963,26 @@ void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId) {
         .Delete();
 }
 
+bool TIndexTabletDatabase::ReadOpLogEntry(
+    ui64 entryId,
+    TMaybe<NProto::TOpLogEntry>& entry)
+{
+    using TTable = TIndexTabletSchema::OpLog;
+
+    auto it = Table<TTable>()
+        .Key(entryId)
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    if (it.IsValid()) {
+        entry = it.GetValue<TTable::Proto>();
+    }
+
+    return true;
+}
 
 bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 {

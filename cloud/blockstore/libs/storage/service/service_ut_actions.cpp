@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
@@ -475,7 +475,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
         );
 
-        NProto::TBackupDiskRegistryStateResponse request;
+        NProto::TBackupDiskRegistryStateRequest request;
+        request.SetSource(NProto::BDRSS_MEMORY);
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);
@@ -487,7 +488,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             response->Record.GetOutput(),
             &proto
         ).ok());
-        const auto& backup = proto.GetBackup();
+        const auto& backup = proto.GetMemoryBackup();
 
         UNIT_ASSERT_VALUES_EQUAL(1, backup.DisksSize());
         UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, backup.GetDisks(0).GetDiskId());
@@ -1891,6 +1892,180 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 blockCount,
                 checkRangeResponse.GetDiskChecksums().DataSize());
         }
+    }
+
+    Y_UNIT_TEST(ShouldSetVhostDiscardEnabledFlag)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+
+        auto setVhostDiscardEnabledFlagAndCheckResult = [&](bool discardEnabled)
+        {
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetVhostDiscardEnabled(discardEnabled);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setvhostdiscardenabledflag", buf);
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                discardEnabled,
+                volumeConfig.GetVhostDiscardEnabled());
+        };
+
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+        setVhostDiscardEnabledFlagAndCheckResult(true);
+        setVhostDiscardEnabledFlagAndCheckResult(true);
+        setVhostDiscardEnabledFlagAndCheckResult(false);
+    }
+
+    Y_UNIT_TEST(ShouldValidateSetVhostDiscardEnabledFlag)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+
+        {
+            // Correct ConfigVersion.
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+            request.SetVhostDiscardEnabled(false);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setvhostdiscardenabledflag", buf);
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
+        }
+
+        {
+            // Incorrect ConfigVersion.
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(3);
+            request.SetVhostDiscardEnabled(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("SetVhostDiscardEnabledFlag", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->GetStatus());
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
+        }
+
+        {
+            // DiskId should be supplied.
+            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            request.SetVhostDiscardEnabled(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("SetVhostDiscardEnabledFlag", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+
+            auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                volumeConfig.GetVhostDiscardEnabled());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldListNVMeDevices)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const auto response = service.ExecuteAction("ListNVMeDevices", TString());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        NProto::TNVMeDeviceList list;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &list)
+                .ok());
+        UNIT_ASSERT_VALUES_EQUAL(1, list.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL("NVME_0", list.GetDevices(0).GetSerialNumber());
+    }
+
+    Y_UNIT_TEST(ShouldAcquireNVMeDevice)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        {
+            service.SendExecuteActionRequest("AcquireNVMeDevice", TString());
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            service.SendExecuteActionRequest(
+                "AcquireNVMeDevice",
+                R"({"SerialNumber":"foo"})");
+            auto response = service.RecvExecuteActionResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                R"(Disk "foo" not found)",
+                response->GetErrorReason());
+        }
+
+        service.ExecuteAction("AcquireNVMeDevice", R"({"SerialNumber":"NVME_0"})");
+    }
+
+    Y_UNIT_TEST(ShouldReleaseNVMeDevice)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        {
+            service.SendExecuteActionRequest("ReleaseNVMeDevice", TString());
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
+            service.SendExecuteActionRequest(
+                "ReleaseNVMeDevice",
+                R"({"SerialNumber":"foo"})");
+            auto response = service.RecvExecuteActionResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                R"(Disk "foo" not found)",
+                response->GetErrorReason());
+        }
+
+        service.ExecuteAction("ReleaseNVMeDevice", R"({"SerialNumber":"NVME_0"})");
     }
 }
 

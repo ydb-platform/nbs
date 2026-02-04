@@ -115,6 +115,8 @@ message TStorageStats
     uint64 UsedLocksCount = 4;
     uint64 UsedBlocksCount = 5;
     uint64 TotalBlocksCount = 6;
+    // TODO(#2566) Should be dropped after migration.
+    uint64 SevenBytesHandlesCount = 7;
 
     // data stats
     uint64 FreshBlocksCount = 100;
@@ -710,7 +712,7 @@ message TWriteCompactionMapResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Direct inode manipulation.
+// Direct inode and node ref manipulation.
 
 message TUnsafeDeleteNodeRequest
 {
@@ -747,6 +749,85 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
+}
+
+message TUnsafeCreateNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}
+
+message TUnsafeCreateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeDeleteNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+}
+
+message TUnsafeDeleteNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeUpdateNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+    uint64 ChildId = 4;
+    string ShardId = 5;
+    string ShardNodeName = 6;
+}
+
+message TUnsafeUpdateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TUnsafeGetNodeRefRequest
+{
+    string FileSystemId = 1;
+    uint64 ParentId = 2;
+    bytes Name = 3;
+}
+
+message TUnsafeGetNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+    uint64 ChildId = 2;
+    string ShardId = 3;
+    string ShardNodeName = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Unsafe handle manipulation
+
+message TUnsafeCreateHandleRequest
+{
+    string FileSystemId = 1;
+    string SessionId = 2;
+    uint64 Handle = 3;
+    uint64 NodeId = 4;
+    uint64 CommitId = 5;
+    uint32 Flags = 6;
+}
+
+message TUnsafeCreateHandleResponse
+{
+    NCloud.NProto.TError Error = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -844,7 +925,61 @@ message TRenameNodeInDestinationResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// UnlinkNodeInShard request/response
+// PrepareUnlinkDirectoryNodeInShard request/response
+
+message TPrepareUnlinkDirectoryNodeInShardRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // The node.
+    uint64 NodeId = 3;
+
+    // Original request that caused this request.
+    TRenameNodeInDestinationRequest OriginalRequest = 4;
+}
+
+message TPrepareUnlinkDirectoryNodeInShardResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AbortUnlinkDirectoryNodeInShard request/response
+
+message TAbortUnlinkDirectoryNodeInShardRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // The node.
+    uint64 NodeId = 3;
+
+    // Original request that caused this request.
+    TRenameNodeInDestinationRequest OriginalRequest = 4;
+}
+
+message TAbortUnlinkDirectoryNodeInShardResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnlinkNodeInShard request
 
 message TUnlinkNodeInShardRequest
 {

@@ -693,8 +693,18 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TFixture & fixture,
         NProto::EStorageMediaKind leaderMediaType,
         NProto::EStorageMediaKind followerMediaType,
-        ECheckpointBehaviour checkpoint)
+        ECheckpointBehaviour checkpoint,
+        bool isMultipartition = false)
     {
+        const ui32 leaderPartitionCount =
+            isMultipartition && leaderMediaType == NProto::STORAGE_MEDIA_SSD
+                ? 2
+                : 1;
+        const ui32 followerPartitionCount =
+            isMultipartition && followerMediaType == NProto::STORAGE_MEDIA_SSD
+                ? 2
+                : 1;
+
         // Intercept leader state changes
         TTestActorRuntimeBase::TEventFilter prevFilter;
         std::optional<TFollowerDiskInfo::EState> followerState;
@@ -717,6 +727,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 
         // Create leader volume
         TVolumeClient volume1(*fixture.Runtime, 0, TestVolumeTablets[0]);
+
         volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
             0,
             0,
@@ -725,8 +736,14 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             false,
             1,
             leaderMediaType,
-            fixture.VolumeBlockCount,   // block count per partition
-            "vol1"));
+            fixture.VolumeBlockCount /
+                leaderPartitionCount,   // block count per partition
+            "vol1",
+            "cloud",
+            "folder",
+            leaderPartitionCount,              // partition count
+            leaderPartitionCount > 1 ? 2 : 0   // blocks per stripe
+            ));
         volume1.WaitReady();
 
         // registering a writer
@@ -744,6 +761,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         fixture.Volumes["vol2"] = {
             .VolumeClient = &volume2,
             .VolumeClientInfo = nullptr};
+
         volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
             0,
             0,
@@ -752,8 +770,14 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             false,
             1,
             followerMediaType,
-            fixture.VolumeBlockCount,   // block count per partition
-            "vol2"));
+            fixture.VolumeBlockCount /
+                followerPartitionCount,   // block count per partition
+            "vol2",
+            "cloud",
+            "folder",
+            followerPartitionCount,              // partition count,
+            followerPartitionCount > 1 ? 2 : 0   // blocks per stripe
+            ));
         volume2.WaitReady();
 
         // Write some blocks to leader before migration starts.
@@ -881,6 +905,26 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             ECheckpointBehaviour::None);
     }
 
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_MultiPartition_NRD, TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            ECheckpointBehaviour::None,
+            true);
+    }
+
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_SSD_MultiPartition, TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD,
+            ECheckpointBehaviour::None,
+            true);
+    }
+
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_SSD, TFixture)
     {
         /* TODO(drbasic) vol1 partition can't reboot. Need to figure out
@@ -937,9 +981,19 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
     void DoShouldPrepareFollowerVolumeWithReboot(
         TFixture& fixture,
         NProto::EStorageMediaKind leaderMediaType,
-        NProto::EStorageMediaKind followerMediaType)
+        NProto::EStorageMediaKind followerMediaType,
+        bool isMultipartition = false)
     {
         using EState = TFollowerDiskInfo::EState;
+
+        const ui32 leaderPartitionCount =
+            isMultipartition && leaderMediaType == NProto::STORAGE_MEDIA_SSD
+                ? 2
+                : 1;
+        const ui32 followerPartitionCount =
+            isMultipartition && followerMediaType == NProto::STORAGE_MEDIA_SSD
+                ? 2
+                : 1;
 
         struct TRestart
         {
@@ -1005,8 +1059,14 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             false,
             1,
             leaderMediaType,
-            fixture.VolumeBlockCount,   // block count per partition
-            "vol1"));
+            fixture.VolumeBlockCount /
+                leaderPartitionCount,   // block count per partition
+            "vol1",
+            "cloud",
+            "folder",
+            leaderPartitionCount,              // partition count
+            leaderPartitionCount > 1 ? 2 : 0   // blocks per stripe
+            ));
         volume1.WaitReady();
 
         // registering a writer
@@ -1032,8 +1092,14 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             false,
             1,
             followerMediaType,
-            fixture.VolumeBlockCount,   // block count per partition
-            "vol2"));
+            fixture.VolumeBlockCount /
+                followerPartitionCount,   // block count per partition
+            "vol2",
+            "cloud",
+            "folder",
+            followerPartitionCount,              // partition count
+            followerPartitionCount > 1 ? 2 : 0   // blocks per stripe
+            ));
         volume2.WaitReady();
 
         // Write some blocks to leader before migration starts.
@@ -1148,6 +1214,24 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_MutiSSD_NRD_WithReboot, TFixture)
+    {
+        DoShouldPrepareFollowerVolumeWithReboot(
+            *this,
+            NProto::STORAGE_MEDIA_SSD,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            true);
+    }
+
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_MutiSSD_WithReboot, TFixture)
+    {
+        DoShouldPrepareFollowerVolumeWithReboot(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD,
+            true);
     }
 
     Y_UNIT_TEST_F(

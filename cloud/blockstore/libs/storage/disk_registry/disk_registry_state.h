@@ -884,6 +884,10 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
+    void ReplaceBrokenDevicesAfterRestart(
+        TInstant now,
+        TDiskRegistryDatabase& db);
+
     TVector<TString> GetPoolNames(
         std::optional<NProto::EDevicePoolKind> kind = std::nullopt) const;
 
@@ -1095,7 +1099,7 @@ private:
 
     void DeleteAllDeviceMigrations(const TDiskId& diskId);
 
-    void UpdateAndReallocateDisk(
+    ui64 UpdateAndReallocateDisk(
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk);
@@ -1386,6 +1390,13 @@ private:
         const TString& newDiskId,
         const TString& cloudId,
         std::span<ui32> nodeIds) const;
+
+    void ReplaceBrokenDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TString& masterDiskId);
+
+    [[nodiscard]] bool IsUnavailableOrBroken(const TDeviceId& deviceId) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

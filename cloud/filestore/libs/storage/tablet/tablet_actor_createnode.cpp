@@ -530,7 +530,7 @@ void TIndexTabletActor::HandleCreateNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TCreateNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TCreateNodeMethod>(*requestInfo);
 
     ExecuteTx<TCreateNode>(
         ctx,
@@ -552,12 +552,17 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     const bool isMainWithLocalNodes =
         IsMainTablet() && GetLastNodeId() > RootNodeId;
+    const bool isParentNodeLinkRequest =
+        args.Request.HasLink() && args.Request.GetLink().GetShardNodeName();
 
     if (!BehaveAsShard(args.Request.GetHeaders())
             && Config->GetShardIdSelectionInLeaderEnabled()
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || GetFileSystem().GetDirectoryCreationInShardsEnabled()
+                // hard link shard ids are selected by the tablet client (i.e.
+                // service actor)
+                && !isParentNodeLinkRequest
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
                 && !isMainWithLocalNodes))
@@ -569,10 +574,18 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     // For multishard filestore, selection of the shard node name for
-    // hard links is done by the client, not the leader. Thus, the
-    // client is able to provide the shard node name explicitly:
-    if (args.Request.HasLink() && args.Request.GetLink().GetShardNodeName()) {
+    // hard links is done by the tablet client (i.e. service actor), not the
+    // leader. Thus, the client is able to provide the shard node name
+    // explicitly.
+    if (isParentNodeLinkRequest) {
         args.ShardNodeName = args.Request.GetLink().GetShardNodeName();
+        if (args.ShardId.empty()) {
+            auto message = ReportCreateLinkRequestWithShardNodeNameAndNoShardId(
+                TStringBuilder() << "CreateNode: "
+                << args.Request.ShortDebugString());
+            args.Error = MakeError(E_ARGUMENT, std::move(message));
+            return true;
+        }
     } else if (args.ShardId) {
         args.ShardNodeName = CreateGuidAsString();
     }
@@ -596,7 +609,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     args.CommitId = GetCurrentCommitId();
 
     // validate there are enough free inodes
-    if (GetUsedNodesCount() >= GetNodesCount()) {
+    if (!HasNodesLeft()) {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }
@@ -614,6 +627,26 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     if (args.ParentNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
         args.Error = ErrorIsNotDirectory(args.ParentNodeId);
         return true;
+    }
+
+    if (args.ParentNode->Attrs.GetIsPreparedForUnlink()) {
+        args.Error = ErrorIsPreparedForUnlink(args.ParentNode->NodeId);
+        return true;
+    }
+
+    if (Config->GetGidPropagationEnabled()) {
+        if (args.ParentNode->Attrs.GetMode() & S_ISGID) {
+            // args.Attrs are the ones that will be used for the new node
+            // created in ExecuteTx_CreateNode and args.Request are the ones
+            // sent to shard (if any). Thus, we need to update both
+            args.Attrs.SetGid(args.ParentNode->Attrs.GetGid());
+            args.Request.SetGid(args.ParentNode->Attrs.GetGid());
+
+            if (args.Request.HasDirectory()) {
+                args.Attrs.SetMode(args.Attrs.GetMode() | S_ISGID);
+                args.Request.MutableDirectory()->SetMode(args.Attrs.GetMode());
+            }
+        }
     }
 
     // TODO: AccessCheck
@@ -689,6 +722,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     TTransactionContext& tx,
     TTxIndexTablet::TCreateNode& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(CreateNode, args);
 
     TSession* session = nullptr;
@@ -706,7 +741,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateNode");
+        return args.OnCommitIdOverflow();
     }
 
     if (args.TargetNodeId == InvalidNodeId) {
@@ -834,7 +869,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         return;
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvService::TEvCreateNodeResponse>(args.Error);
@@ -893,7 +928,7 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
     auto& res = msg->Result;
 
     if (msg->RequestInfo) {
-        RemoveTransaction(*msg->RequestInfo);
+        RemoveInFlightRequest(*msg->RequestInfo);
     }
 
     WorkerActors.erase(ev->Sender);
@@ -948,7 +983,10 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
             NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
         }
 
-        ExecuteTx<TDeleteOpLogEntry>(ctx, msg->OpLogEntryId);
+        ExecuteTx<TDeleteOpLogEntry>(
+            ctx,
+            TRequestInfoPtr() /* requestInfo */,
+            msg->OpLogEntryId);
     } else {
         TABLET_VERIFY_C(
             0,

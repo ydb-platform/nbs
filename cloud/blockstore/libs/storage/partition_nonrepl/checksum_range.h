@@ -16,6 +16,7 @@ namespace NCloud::NBlockStore::NStorage {
 class TChecksumRangeActorCompanion
 {
 private:
+    TString DiskId;
     TVector<TReplicaDescriptor> Replicas;
 
     TBlockRange64 Range;
@@ -26,7 +27,9 @@ private:
     NProto::TError Error;
 
 public:
-    explicit TChecksumRangeActorCompanion(TVector<TReplicaDescriptor> replicas);
+    TChecksumRangeActorCompanion(
+        TString diskId,
+        TVector<TReplicaDescriptor> replicas);
 
     TChecksumRangeActorCompanion() = default;
 

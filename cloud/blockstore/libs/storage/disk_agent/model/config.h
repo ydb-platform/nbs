@@ -80,6 +80,7 @@ public:
 
     NProto::EDiskAgentBackendType GetBackend() const;
     NProto::EDeviceEraseMethod GetDeviceEraseMethod() const;
+    ui32 GetValidatedBlocksRatio() const;
 
     bool GetAcquireRequired() const;
 

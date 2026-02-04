@@ -60,6 +60,62 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestCreateFilesystemInCells(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	filesystemID := t.Name()
+	operation, err := client.CreateFilesystem(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-c",
+				FilesystemId: filesystemID,
+			},
+			BlockSize: 4096,
+			Size:      4096000,
+			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
+			CloudId:   "cloud",
+			FolderId:  "folder-with-cells",
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	cellNfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-c-shard1")
+	require.NoError(t, err)
+	defer cellNfsClient.Close()
+
+	session, err := cellNfsClient.CreateSession(
+		ctx,
+		filesystemID,
+		"",
+		true,
+	)
+	require.NoError(t, err)
+	defer cellNfsClient.DestroySession(ctx, session)
+	zoneNfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-c")
+	require.NoError(t, err)
+	defer zoneNfsClient.Close()
+
+	_, err = zoneNfsClient.CreateSession(
+		ctx,
+		filesystemID,
+		"",
+		true,
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Path not found")
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestFilesystemServiceCreateExternalFilesystem(t *testing.T) {
 	ctx := testcommon.NewContext()
 

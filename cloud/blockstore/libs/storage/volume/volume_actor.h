@@ -33,6 +33,7 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_inflight.h>
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 
@@ -206,6 +207,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NRdma::IClientPtr RdmaClient;
+    const TPartitionBudgetManagerPtr PartitionBudgetManager;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
     TLogTitle LogTitle;
@@ -434,6 +436,28 @@ private:
         {}
     };
 
+    struct TDataForUpdatingDiskRegistryBasedPartCounters
+    {
+        const NActors::TActorId Sender;
+        const ui64 Cookie;
+        const TString DiskId;
+        TCallContextPtr CallContext;
+        TPartNonreplCountersData PartCountersData;
+
+        TDataForUpdatingDiskRegistryBasedPartCounters(
+                const NActors::TActorId& sender,
+                ui64 cookie,
+                TString diskId,
+                TCallContextPtr callContext,
+                TPartNonreplCountersData partCountersData)
+            : Sender(sender)
+            , Cookie(cookie)
+            , DiskId(std::move(diskId))
+            , CallContext(std::move(callContext))
+            , PartCountersData(std::move(partCountersData))
+        {}
+    };
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -444,6 +468,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        TPartitionBudgetManagerPtr partitionBudgetManager,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode,
         TString diskId);
@@ -632,6 +657,10 @@ private:
 
     void OnStarted(const NActors::TActorContext& ctx);
 
+    void OnPartitionStateChanged(
+        const NActors::TActorContext& ctx,
+        TPartitionInfo::EState oldState);
+
     void ProcessReadHistory(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
@@ -674,11 +703,18 @@ private:
 
     void SendStatisticRequests(const NActors::TActorContext& ctx);
 
+    void SendStatisticRequestForDiskRegistryBasedPartition(
+        const NActors::TActorContext& ctx);
+
     void CleanupHistory(
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
         ui64 cookie,
         TCallContextPtr callContext);
+
+    void UpdateDiskRegistryBasedPartCounters(
+        const NActors::TActorContext& ctx,
+        TDataForUpdatingDiskRegistryBasedPartCounters data);
 
     const TString& GetDiskId() const;
 
@@ -1074,7 +1110,6 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
-        ui32 partitionId,
         ui64 traceTs);
 
     template <typename TMethod>
@@ -1087,14 +1122,6 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorId& partActorId,
         const ui64 volumeRequestId);
-
-    template <typename TMethod>
-    bool HandleMultipartitionVolumeRequest(
-        const NActors::TActorContext& ctx,
-        const typename TMethod::TRequest::TPtr& ev,
-        ui64 volumeRequestId,
-        bool isTraced,
-        ui64 traceTs);
 
     template <typename TMethod>
     void HandleCheckpointRequest(
@@ -1302,6 +1329,11 @@ private:
         const NActors::TActorContext& ctx,
         TPoisonCallback onPartitionStopped);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCountersResponse(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolumePrivate)

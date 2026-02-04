@@ -17,6 +17,8 @@ from cloud.storage.core.tests.common import (
     process_recipe_err_files,
 )
 
+logger = logging.getLogger(__name__)
+
 PID_FILE_NAME = "local_service_nfs_server_recipe.pid"
 ERR_LOG_FILE_NAMES_FILE = "local_service_nfs_server_recipe.err_log_files"
 
@@ -73,22 +75,20 @@ def start(argv):
 
 
 def stop(argv):
-    logging.info(os.system("ss -tpna"))
-    logging.info(os.system("ps aux"))
+    logger.info(os.system("ss -tpna"))
+    logger.info(os.system("ps aux"))
 
-    if not os.path.exists(PID_FILE_NAME):
-        return
+    if os.path.exists(PID_FILE_NAME):
+        with open(PID_FILE_NAME) as f:
+            pid = int(f.read())
 
-    with open(PID_FILE_NAME) as f:
-        pid = int(f.read())
+            # Used for debugging filestore-server hangs
+            bt = subprocess.getoutput(
+                f'sudo gdb --batch -p {pid} -ex "thread apply all bt"'
+            )
+            logger.warning(f"PID {pid}: backtrace:\n{bt}")
 
-        # Used for debugging filestore-server hangs
-        bt = subprocess.getoutput(
-            f'sudo gdb --batch -p {pid} -ex "thread apply all bt"'
-        )
-        logging.warning(f"PID {pid}: backtrace:\n{bt}")
-
-        shutdown(pid)
+            shutdown(pid)
 
     errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
     if errors:

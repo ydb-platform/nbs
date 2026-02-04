@@ -30,6 +30,7 @@ SRCS(
     service_actor_actions_get_partition_info.cpp
     service_actor_actions_get_storage_config.cpp
     service_actor_actions_kill_tablet.cpp
+    service_actor_actions_local_nvme.cpp
     service_actor_actions_mark_replacement_device.cpp
     service_actor_actions_migration_disk_registry_device.cpp
     service_actor_actions_modify_tags.cpp
@@ -46,6 +47,7 @@ SRCS(
     service_actor_actions_setup_channels.cpp
     service_actor_actions_suspend_device.cpp
     service_actor_actions_suspend_disk_agent.cpp
+    service_actor_actions_switch_vhost_discard_option.cpp
     service_actor_actions_update_disk_block_size.cpp
     service_actor_actions_update_disk_replica_count.cpp
     service_actor_actions_update_disk_registry_params.cpp

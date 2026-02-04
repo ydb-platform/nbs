@@ -661,7 +661,7 @@ void TIndexTabletActor::HandleReadData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TReadDataMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TReadDataMethod>(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateBlockBuffer(alignedByteRange);
@@ -793,7 +793,7 @@ void TIndexTabletActor::HandleDescribeData(
         return;
     }
 
-    AddTransaction<TEvIndexTablet::TDescribeDataMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TDescribeDataMethod>(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateLazyBlockBuffer(alignedByteRange);
@@ -899,7 +899,6 @@ bool TIndexTabletActor::PrepareTx_ReadData(
             args.Error = ErrorInvalidTarget(args.NodeId);
             return true;
         }
-        // TODO: access check
     }
 
     TSet<ui32> ranges;
@@ -982,7 +981,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
     const TActorContext& ctx,
     TTxIndexTablet::TReadData& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     Y_DEFER {
         ReleaseMixedBlocks(args.MixedBlocksRanges);
@@ -1114,7 +1113,11 @@ void TIndexTabletActor::CompleteTx_ReadData(
     AcquireCollectBarrier(args.CommitId);
 
     NProto::TBackendInfo backendInfo;
-    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+    BuildBackendInfo(
+        *Config,
+        *SystemCounters,
+        Metrics.CPUUsageRate,
+        &backendInfo);
 
     auto actor = std::make_unique<TReadDataActor>(
         TraceSerializer,

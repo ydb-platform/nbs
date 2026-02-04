@@ -25,17 +25,20 @@ namespace {
 // The steps of the resize mode:
 // 1. Describe main filestore. Store NKikimrFileStore::TConfig of the main
 // filesystem for later use.
-// 2. Get filesystem topology. Using the topology and the config from the
+// 2. Get storage statistics to determine SevenBytesHandlesCount.
+// We need this to prohibit a user from creating more than 255 shards
+// if the filesystem has obsolete handles (with a non-zero seventh byte).
+// 3. Get filesystem topology. Using the topology and the config from the
 // previous step, calculate all parameters of the transformation performed by
 // resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
 // ShouldConfigureMainFileStore.
-// 3. Describe shards. We need this step to get config version of shards in case
+// 4. Describe shards. We need this step to get config version of shards in case
 // we need to resize them.
-// 4. Alter (actually resize) main filestore.
-// 5. Alter shards (if we resize them)
-// 6. Create shards if needed.
-// 7. Configure shards if we created some new ones.
-// 8. Configure main filestore if new shards were created.
+// 5. Alter (actually resize) main filestore.
+// 6. Alter shards (if we resize them)
+// 7. Create shards if needed.
+// 8. Configure shards if we created some new ones.
+// 9. Configure main filestore if new shards were created.
 // The end!
 
 class TAlterFileStoreActor final
@@ -48,7 +51,7 @@ private:
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
     const bool Alter;
     const bool Force;
-    const ui32 ExplicitShardCount;
+    ui32 ExplicitShardCount;
 
     NKikimrFileStore::TConfig TargetConfig;
     NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
@@ -61,6 +64,8 @@ private:
     ui32 ShardsToAlter = 0;
     ui32 ShardsToDescribe = 0;
     ui32 MaxShardCount = 0;
+    ui64 SevenBytesHandlesCount = 0;
+
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
     bool EnableDirectoryCreationInShards = false;
@@ -91,6 +96,7 @@ private:
 
     void DescribeMainFileStore(const TActorContext& ctx);
     void DescribeShards(const TActorContext& ctx);
+    void GetStorageStats(const TActorContext& ctx);
     void AlterFileStore(const TActorContext& ctx);
     void AlterShards(const TActorContext& ctx);
     void GetFileSystemTopology(const TActorContext& ctx);
@@ -107,6 +113,10 @@ private:
 
     void HandleDescribeFileStoreResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGetStorageStatsResponse(
+        const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleGetFileSystemTopologyResponse(
@@ -308,8 +318,43 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
     MainFileStoreOriginalConfig = currentConfig;
 
+    GetStorageStats(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TAlterFileStoreActor::GetStorageStats(const TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
+}
+
+void TAlterFileStoreActor::HandleGetStorageStatsResponse(
+    const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Getting file system statistics failed: %s",
+            FileSystemId.c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    SevenBytesHandlesCount = msg->Record.GetStats().GetSevenBytesHandlesCount();
+
     GetFileSystemTopology(ctx);
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TAlterFileStoreActor::PatchStorageConfig()
 {
@@ -484,6 +529,20 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
 
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ExistingShardIds.push_back(std::move(shardId));
+    }
+
+    if (SevenBytesHandlesCount > 0 &&
+        ExistingShardIds.size() <= MaxOneByteShardCount &&
+        FileStoreConfig.ShardConfigs.size() > MaxOneByteShardCount)
+    {
+        ReportTryingToUseTwoBytesShardNoWithObsoleteHandles(
+            TStringBuilder()
+            << "Filesystem: " << FileSystemId
+            << ". Cannot increase the shard count to more than 255 if there "
+               "are handles with the non-zero 7th byte.");
+
+        ExplicitShardCount = MaxOneByteShardCount;
+        FillMultiShardFileStoreConfig(ctx);
     }
 
     if (FileStoreConfig.ShardConfigs.size() < ExistingShardIds.size()) {
@@ -939,6 +998,9 @@ STFUNC(TAlterFileStoreActor::ResizeStateWork)
             TEvIndexTablet::TEvGetFileSystemTopologyResponse,
             HandleGetFileSystemTopologyResponse);
         HFunc(
+            TEvIndexTablet::TEvGetStorageStatsResponse,
+            HandleGetStorageStatsResponse);
+        HFunc(
             TEvSSProxy::TEvCreateFileStoreResponse,
             HandleCreateFileStoreResponse);
         HFunc(
@@ -973,7 +1035,7 @@ void TStorageServiceActor::HandleAlterFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
@@ -999,7 +1061,7 @@ void TStorageServiceActor::HandleResizeFileStore(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),

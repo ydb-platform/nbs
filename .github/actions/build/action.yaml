@@ -1,6 +1,9 @@
 name: Build (ya make)
 description: Build targets
 inputs:
+  component:
+    default: ""
+    description: "component name"
   build_target:
     required: false
     description: "build target"
@@ -46,9 +49,19 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
+        COMPONENT: ${{ inputs.component }}
       run: |
         export TMP_DIR=/home/github/tmp_build
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
+        COMPONENT_DIR="" 
+        if [ -n "$COMPONENT" ]; then
+          COMPONENT_DIR="${COMPONENT}/"
+        fi
+        if [ "$COMPONENT" == "all" ]; then
+          COMPONENT_DIR=""
+        fi
+        echo "COMPONENT_DIR=$COMPONENT_DIR" | tee -a $GITHUB_ENV
+
         rm -rf $TMP_DIR && mkdir $TMP_DIR && chown -R github:github $TMP_DIR $GITHUB_WORKSPACE
 
         
@@ -217,7 +230,7 @@ runs:
       shell: bash
       run: |
         echo "::group::s3-sync"
-        sudo -E -H -u github s3cmd sync --acl-private --no-progress --stats --no-check-md5 "$TMP_DIR/" "$S3_BUCKET_PATH/build_logs/"
+        sudo -E -H -u github aws s3 sync --acl public-read --no-progress "$TMP_DIR/" "$S3_BUCKET_PATH/build_logs/${COMPONENT_DIR}"
         echo "::endgroup::"
 
     - name: Create directory listing on s3
@@ -225,7 +238,7 @@ runs:
       shell: bash
       run: |
         echo "::group::generate-listing"
-        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
+        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/${COMPONENT_DIR}" --generate-indexes --apply
         echo "::endgroup::"
 
     - name: show free space

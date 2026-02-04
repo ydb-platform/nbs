@@ -29,6 +29,7 @@ private:
     TProcessingBlocks ProcessingBlocks;
     TSet<ui32> PendingResyncRangeSet;
     TSet<ui32> ActiveResyncRangeSet;
+    ui32 ReadReplicaIndex = 0;
 
 public:
     TMirrorPartitionResyncState(
@@ -66,6 +67,11 @@ public:
     const TVector<TReplicaInfo>& GetReplicaInfos() const
     {
         return ReplicaInfos;
+    }
+
+    ui32 GetReadReplicaIndexAndAdvance()
+    {
+        return ReadReplicaIndex++ % ReplicaInfos.size();
     }
 
     [[nodiscard]] bool DevicesReadyForReading(

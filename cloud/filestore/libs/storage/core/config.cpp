@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/certificate.pb.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -313,12 +314,15 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ReadBlobDisabled,                  bool,      false                   )\
     xxx(WriteBlobDisabled,                 bool,      false                   )\
                                                                                \
-    xxx(CpuLackOverloadThreshold,          ui32,      101                     )\
+    xxx(CpuLackOverloadThreshold,               ui32,      101                )\
+    xxx(TabletActorCpuUsageOverloadThreshold,   ui32,      101                )\
                                                                                \
     xxx(MaxTabletStep,                     ui32,      Max<ui32>()             )\
                                                                                \
     xxx(FakeDescribeDataEnabled,           bool,      false                   )\
     xxx(FakeDescribeDataLatencyUs,         ui32,      0                       )\
+                                                                               \
+    xxx(GidPropagationEnabled,             bool,      false                   )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -551,6 +555,41 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TStorageConfig::SetFeaturesConfig(
+    NFeatures::TFeaturesConfigPtr featuresConfig)
+{
+    FeaturesConfig = std::move(featuresConfig);
+}
+
+void TStorageConfig::SetCloudFolderEntity(
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& entityId)
+{
+    if (!FeaturesConfig) {
+        return;
+    }
+
+    const google::protobuf::Descriptor* descriptor =
+        ProtoConfig.GetDescriptor();
+    const auto* reflection = ProtoConfig.GetReflection();
+
+    for (int i = 0; i < descriptor->field_count(); ++i) {
+        const google::protobuf::FieldDescriptor* field = descriptor->field(i);
+        if (field->cpp_type() ==
+                google::protobuf::FieldDescriptor::CPPTYPE_BOOL &&
+            !field->is_repeated())
+        {
+            const auto& name = field->name();
+            if (FeaturesConfig
+                    ->IsFeatureEnabled(cloudId, folderId, entityId, name))
+            {
+                reflection->SetBool(&ProtoConfig, field, true);
+            }
+        }
+    }
+}
 
 void TStorageConfig::Merge(const NProto::TStorageConfig& storageConfig)
 {

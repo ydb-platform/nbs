@@ -76,7 +76,8 @@ TTestEnv::TTestEnv(
         NProto::TStorageConfig storageConfig,
         NKikimr::NFake::TCaches cachesConfig,
         IProfileLogPtr profileLog,
-        NProto::TDiagnosticsConfig diagConfig)
+        NProto::TDiagnosticsConfig diagConfig,
+        bool useRealThreads)
     : Config(std::move(config))
     , Logging(CreateLoggingService("console", { TLOG_DEBUG }))
     , ProfileLog(std::move(profileLog))
@@ -86,7 +87,7 @@ TTestEnv::TTestEnv(
             "NFS_TRACE",
             NLwTraceMonPage::TraceManager(false)))
     , SystemCounters(MakeIntrusive<TSystemCounters>())
-    , Runtime(Config.StaticNodes + Config.DynamicNodes, false)
+    , Runtime(Config.StaticNodes + Config.DynamicNodes, useRealThreads)
     , NextDynamicNode(Config.StaticNodes)
     , Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
 {

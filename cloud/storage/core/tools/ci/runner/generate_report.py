@@ -90,11 +90,12 @@ def build_report(report_name, logs_dir):
     return report
 
 
-def build_report_info(report, html_output_path):
+def build_report_info(report, html_output_path, junit_report_html_path):
     report_info = etree.Element("report-info")
     report_info.set("name", report.get("name"))
     report_info.set("ts", str(int(time.time())))
     report_info.set("link", "/ci" + html_output_path[len(__ROOT):])
+    report_info.set("junit-link", "/ci" + junit_report_html_path[len(__ROOT):])
     ok = 0
     err = 0
     for suite in report:
@@ -116,6 +117,11 @@ def main():
     index_xsl_filename = sys.argv[3]
     new_report_name = os.path.basename(logs_dir)
     output_path = os.path.join(__ROOT, "results", "github", new_report_name)
+    junit_report_html_path = os.path.join(
+        __ROOT,
+        "logs",
+        new_report_name,
+        "ya-make-junit-result.xml.html")
     index_path = os.path.join(__ROOT, "tests_index")
 
     xml_output_path = output_path + ".xml"
@@ -140,7 +146,10 @@ def main():
         report_infos = tree.parse(xml_index_path)
         for report_info in report_infos:
             new_report_infos[report_info.get("name")] = report_info
-    new_report_infos[new_report_name] = build_report_info(new_report, html_output_path)
+    new_report_infos[new_report_name] = build_report_info(
+        new_report,
+        html_output_path,
+        junit_report_html_path)
 
     new_report_info_list = [v for v in new_report_infos.values()]
     new_index = etree.Element("status")

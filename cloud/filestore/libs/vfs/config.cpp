@@ -21,7 +21,7 @@ namespace {
     xxx(Debug,                  bool,           false                         )\
                                                                                \
     xxx(MaxWritePages,          ui32,           256                           )\
-    xxx(MaxBackground,          ui32,           128                           )\
+    xxx(MaxBackground,          ui32,           16384                         )\
     xxx(MountSeqNumber,         ui64,           0                             )\
     xxx(VhostQueuesCount,       ui32,           0                             )\
                                                                                \

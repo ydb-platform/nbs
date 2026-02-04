@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -122,7 +123,11 @@ void TZeroBlocksActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(
+            error,
+            false   // trimFreshLogBarrierAcquired
+        );
 
     request->ExecCycles = RequestInfo->GetExecCycles();
     request->TotalCycles = RequestInfo->GetTotalCycles();
@@ -294,16 +299,11 @@ void TPartitionActor::HandleZeroBlocks(
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
     if (requestSize < writeBlobThreshold) {
         // small writes will be accumulated in FreshBlocks table
-        AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
-
-        auto tx = CreateTx<TZeroBlocks>(
+        ZeroFreshBlocks(
+            ctx,
             requestInfo,
-            commitId,
-            ConvertRangeSafe(writeRange));
-
-        // start execution
-        State->IncrementFreshBlocksInFlight(writeRange.Size());
-        ExecuteTx(ctx, std::move(tx));
+            ConvertRangeSafe(writeRange),
+            commitId);
     } else {
         // large writes could skip FreshBlocks table completely
         TVector<TAddMergedBlob> requests(
@@ -368,6 +368,10 @@ void TPartitionActor::HandleZeroBlocksCompleted(
 
     State->GetCommitQueue().ReleaseBarrier(commitId);
 
+    if (msg->TrimFreshLogBarrierAcquired && HasError(msg->GetError())) {
+        State->GetTrimFreshLogBarriers().ReleaseBarrierN(commitId, blocksCount);
+    }
+
     Actors.Erase(ev->Sender);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
@@ -404,7 +408,7 @@ void TPartitionActor::ExecuteZeroBlocks(
 
     ui64 commitId = args.CommitId;
 
-    State->ZeroFreshBlocks(db, args.WriteRange, commitId);
+    State->ZeroFreshBlocksToDb(db, args.WriteRange, commitId);
 
     // update counters
     State->DecrementFreshBlocksInFlight(args.WriteRange.Size());

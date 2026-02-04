@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
@@ -53,13 +54,16 @@ class TDiskAgentMock final
 private:
     THashMap<TString, TDeviceState> Devices;
     TDiskAgentStatePtr State;
+    ILocalNVMeServicePtr LocalNVMeService;
 
 public:
     TDiskAgentMock(
             google::protobuf::RepeatedPtrField<NProto::TDeviceConfig> devices,
-            TDiskAgentStatePtr state = {})
+            TDiskAgentStatePtr state = {},
+            ILocalNVMeServicePtr localNVMeService = {})
         : TActor(&TThis::StateWork)
         , State(std::move(state))
+        , LocalNVMeService(std::move(localNVMeService))
     {
         Devices.reserve(devices.size());
 
@@ -113,6 +117,9 @@ private:
             HFunc(TEvDiskAgent::TEvDirectCopyBlocksRequest, HandleDirectCopyBlocks);
             HFunc(TEvDiskAgent::TEvAcquireDevicesRequest, HandleAcquireDevicesRequest);
             HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevicesRequest);
+            HFunc(TEvDiskAgentPrivate::TEvListNVMeDevicesRequest, HandleListNVMeDevices);
+            HFunc(TEvDiskAgentPrivate::TEvAcquireNVMeDeviceRequest, HandleAcquireNVMeDevice);
+            HFunc(TEvDiskAgentPrivate::TEvReleaseNVMeDeviceRequest, HandleReleaseNVMeDevice);
 
             default:
                 Y_ABORT(
@@ -373,6 +380,18 @@ private:
 
         Reply(ctx, *ev, std::move(response));
     }
+
+    void HandleListNVMeDevices(
+        TEvDiskAgentPrivate::TEvListNVMeDevicesRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAcquireNVMeDevice(
+        TEvDiskAgentPrivate::TEvAcquireNVMeDeviceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReleaseNVMeDevice(
+        TEvDiskAgentPrivate::TEvReleaseNVMeDeviceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

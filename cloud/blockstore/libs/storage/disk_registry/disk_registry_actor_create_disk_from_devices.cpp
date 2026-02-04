@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -23,7 +25,7 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received CreateDiskFromDevices request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        record.ShortDebugString().c_str(),
+        SafeDebugPrint(record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     if (!NProto::EStorageMediaKind_IsValid(volume.GetStorageMediaKind())) {

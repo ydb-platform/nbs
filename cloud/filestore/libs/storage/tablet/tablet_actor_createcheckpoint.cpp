@@ -30,7 +30,7 @@ void TIndexTabletActor::HandleCreateCheckpoint(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TCreateCheckpointMethod>(*requestInfo);
 
     ExecuteTx<TCreateCheckpoint>(
         ctx,
@@ -66,7 +66,7 @@ void TIndexTabletActor::ExecuteTx_CreateCheckpoint(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -83,7 +83,7 @@ void TIndexTabletActor::CompleteTx_CreateCheckpoint(
     TTxIndexTablet::TCreateCheckpoint& args)
 {
     // TODO(#1146) checkpoint-related tables are not yet supported
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
     CompleteResponse<TEvService::TCreateCheckpointMethod>(
@@ -92,10 +92,6 @@ void TIndexTabletActor::CompleteTx_CreateCheckpoint(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    if (args.CommitId == InvalidCommitId) {
-        ScheduleRebootTabletOnCommitIdOverflow(ctx, "CreateCheckpoint");
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

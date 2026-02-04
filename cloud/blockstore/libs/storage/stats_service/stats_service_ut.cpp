@@ -1252,7 +1252,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         RegisterVolume(runtime, "disk1");
         RegisterVolume(runtime, "disk2-copy");
-        ForceYdbStatsUpdate(runtime, {"disk1", "disk2-copy"}, 3, 1);
+        ForceYdbStatsUpdate(runtime, {"disk1", "disk2-copy"}, 3, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(3, attemptCount);
     }

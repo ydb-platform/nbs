@@ -117,6 +117,40 @@ NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
     return response;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TString> CreateIovecs(size_t num, size_t size)
+{
+    TVector<TString> iovecs;
+    iovecs.reserve(num);
+    for (size_t i = 0; i < num; ++i) {
+        iovecs.emplace_back(size, '\0');
+    }
+    return iovecs;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
+{
+    size_t bufOffset = 0;
+    TString buf;
+    buf.resize(length);
+
+    for (const auto& iovec: iovecs) {
+        if (length == 0) {
+            break;
+        }
+
+        size_t len = std::min(iovec.size(), length);
+        memcpy(&buf[bufOffset], iovec.data(), len);
+        length -= len;
+        bufOffset += len;
+    }
+
+    return buf;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1061,43 +1095,43 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         profileLog->Start();
 
         service.CreateFileStore("test", 1'000);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Requests.size());
 
         service.AlterFileStore("test", "yyyy", "zzzz");
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
 
         service.ResizeFileStore("test", 100'000'000);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, profileLog->Requests.size());
 
-        service.DescribeFileStoreModel(1_GB/DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        service.DescribeFileStoreModel(1_GB / DefaultBlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(3, profileLog->Requests.size());
 
         service.ListFileStores();
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(4, profileLog->Requests.size());
 
         auto headers = service.InitSession("test", "client");
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, profileLog->Requests.size());
 
         service.PingSession(headers);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, profileLog->Requests.size());
 
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"));
-        UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(6, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::CreateNode)].size());
 
         service.ListNodes(headers, 1);
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(7, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::ListNodes)].size());
 
         service.DestroySession(headers);
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(8, profileLog->Requests.size());
 
         service.DestroyFileStore("test");
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(9, profileLog->Requests.size());
 
         profileLog->Stop();
     }
@@ -3923,6 +3957,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->FindSubgroup("component", "service")
             ->GetCounter("InFlightRequestCount", false);
 
+        auto requestCountWithLogDataCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithLogData", true);
+
+        auto requestCountWithErrorCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithError", true);
+
+        auto requestCountWithoutLogDataOrErrorCounter = counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("CompletedRequestCountWithoutLogDataOrError", true);
+
         auto hddTabletCounter = counters
             ->FindSubgroup("counters", "filestore")
             ->FindSubgroup("component", "service")
@@ -3944,6 +3993,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // smoke
         UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithLogDataCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestCountWithErrorCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithoutLogDataOrErrorCounter->GetAtomic());
 
         service.UnregisterLocalFileStore("test", 1);
 
@@ -3959,6 +4015,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // smoke
         UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithLogDataCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestCountWithErrorCounter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCountWithoutLogDataOrErrorCounter->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldUseThreeStageWriteAndTwoStageReadForHandlelessIO)
@@ -4165,32 +4228,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        std::vector<TString> data;
+        TVector<TString> writeIovecs;
+        TVector<TString> readIovecs;
 
         ui64 dataSize = 0;
         for (auto iovecSize: iovecSizes) {
             dataSize += iovecSize;
         }
-        data.reserve(dataSize);
+        writeIovecs.reserve(iovecSizes.size());
         for (size_t i = 0; i < iovecSizes.size(); ++i) {
-            data.push_back(GenerateValidateData(iovecSizes[i], i));
+            writeIovecs.push_back(GenerateValidateData(iovecSizes[i], i));
+            readIovecs.emplace_back(iovecSizes[i], '\0');
         }
-        service.WriteData(headers, fs, nodeId, handle, offset, data);
-        for (size_t i = 0; i < iovecSizes.size(); ++i) {
-            if (data[i].size() == 0) {
-                continue;
-            }
-            auto readDataResult = service.ReadData(
-                headers,
-                fs,
-                nodeId,
-                handle,
-                offset,
-                data[i].size());
-            const auto& buffer = readDataResult->Record.GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL_C(data[i], buffer, i);
-            offset += data[i].size();
-        }
+        service.WriteData(headers, fs, nodeId, handle, offset, writeIovecs);
+        auto readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            offset,
+            dataSize,
+            readIovecs);
+        UNIT_ASSERT_VALUES_EQUAL(writeIovecs, readIovecs);
     }
 
     Y_UNIT_TEST(TestAlignedZeroCopyWrite)
@@ -4328,13 +4387,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        std::vector<TString> data(64);
+        TVector<TString> data(64);
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
     Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
     {
-        // TODO(#4664): add more comprehensive tests for zero-copy read
         TTestEnv env;
         env.CreateSubDomain("nfs");
 
@@ -4363,31 +4421,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto& data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
 
-        TVector<std::array<char, 4_KB>> buffers(64);
-        TVector<std::span<char>> spans;
-        for (size_t i = 0; i < buffers.size(); ++i) {
-            spans.push_back(std::span<char>(buffers[i].data(), buffers[i].size()));
-        }
+        auto iovecs = CreateIovecs(64, 4_KB);
+        auto readDataResult =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size(), iovecs);
 
-        auto readDataResult = service.ReadData(
-            headers,
-            fs,
-            nodeId,
-            handle,
-            0,
-            data.size(),
-            spans);
-
-        TString result;
-        for (const auto& buf: spans) {
-            result.append(buf.data(), buf.size());
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetLength(), data.size());
-        UNIT_ASSERT_VALUES_EQUAL(result, data);
+        UNIT_ASSERT_VALUES_EQUAL(
+            readDataResult->Record.GetLength(),
+            data.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBufferFromIovecs(iovecs, data.size()),
+            data);
 
         // Passing less target data than requested size should fail
-        spans.pop_back();
+        iovecs.pop_back();
         service.AssertReadDataFailed(
             headers,
             fs,
@@ -4395,7 +4442,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             handle,
             0,
             data.size(),
-            spans);
+            iovecs);
     }
 
     Y_UNIT_TEST(ShouldHandleToggleServiceState)
@@ -4558,6 +4605,73 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
+    }
+
+    void DoShouldHitNodesCountLimit(bool strictFileSystemSizeEnforcementEnabled)
+    {
+        NProto::TStorageConfig config;
+
+        const ui64 blockSize = 4_KB;
+        const ui64 fsSize = 512;
+        const ui32 sizeToNodeRatio = 64_KB;
+        // Strict and non-strict filesystems enforce the allowed number of nodes
+        // differently. Strict systems use the total filesystem size, while in
+        // non-strict systems the limit is enforced per shard, based on the size
+        // of each individual shard.
+        const ui64 filesPerFs = (fsSize * blockSize) / sizeToNodeRatio;
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(
+            strictFileSystemSizeEnforcementEnabled);
+        config.SetSizeToNodesRatio(sizeToNodeRatio);
+        config.SetDefaultNodesLimit(filesPerFs / 2);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+
+        if (strictFileSystemSizeEnforcementEnabled) {
+            WaitForTabletStart(service);
+        }
+
+        THeaders headers = service.InitSession(fsId, "client");
+
+        // Create maximum allowed number of files.
+        for (ui64 i = 0; i < filesPerFs; ++i) {
+            service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(
+                    RootNodeId,
+                    TStringBuilder() << "file_" << i));
+        }
+
+        // Update statistics to have correct AggregateNodesCount
+        if (strictFileSystemSizeEnforcementEnabled) {
+            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TDispatchOptions::TFinalEventCondition(
+                    TEvIndexTabletPrivate::EvUpdateCounters, 2));
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "too_many_files"));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOSPC,
+            service.RecvCreateNodeResponse()->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldHitNodesCountLimit)
+    {
+        DoShouldHitNodesCountLimit(false);
+        DoShouldHitNodesCountLimit(true);
     }
 }
 

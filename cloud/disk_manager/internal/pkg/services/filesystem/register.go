@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/config"
@@ -19,6 +20,7 @@ func RegisterForExecution(
 	registry *tasks.Registry,
 	storage resources.Storage,
 	factory nfs.Factory,
+	cellSelector cells.CellSelector,
 ) error {
 
 	deletedFilesystemExpirationTimeout, err := time.ParseDuration(config.GetDeletedFilesystemExpirationTimeout())
@@ -35,9 +37,10 @@ func RegisterForExecution(
 
 	err = registry.RegisterForExecution("filesystem.CreateFilesystem", func() tasks.Task {
 		return &createFilesystemTask{
-			storage:   storage,
-			factory:   factory,
-			scheduler: taskScheduler,
+			storage:      storage,
+			factory:      factory,
+			scheduler:    taskScheduler,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {

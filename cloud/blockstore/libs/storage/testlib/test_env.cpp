@@ -1,9 +1,10 @@
 #include "test_env.h"
 
-#include "test_runtime.h"
-
+#include "disk_agent_mock.h"
 #include "disk_registry_proxy_mock.h"
+#include "local_nvme_mock.h"
 #include "root_kms_key_provider_mock.h"
+#include "test_runtime.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -14,6 +15,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
@@ -22,6 +24,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
+#include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/service/service.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy.h>
@@ -234,7 +237,11 @@ ui32 TTestEnv::CreateBlockStoreNode(
 
     auto subDomainPath = "/local/" + name;
 
-    auto factory = [=, this] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto partitionBudgetManager =
+        std::make_shared<TPartitionBudgetManager>(storageConfig);
+
+    auto factory = [=, this](const TActorId& owner, TTabletStorageInfo* storage)
+    {
         UNIT_ASSERT_EQUAL(storage->TabletType, TTabletTypes::BlockStoreVolume);
         auto actor = CreateVolumeTablet(
             owner,
@@ -245,6 +252,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
             CreateBlockDigestGeneratorStub(),
             TraceSerializer,
             nullptr,   // RdmaClient
+            partitionBudgetManager,
             NServer::CreateEndpointEventProxy(),
             EVolumeStartMode::ONLINE,
             {}   // diskId
@@ -341,6 +349,32 @@ ui32 TTestEnv::CreateBlockStoreNode(
         drProxyId,
         nodeIdx);
 
+    TVector<NProto::TNVMeDevice> NVMeDevices;
+    {
+        NProto::TNVMeDevice& disk = NVMeDevices.emplace_back();
+        disk.SetSerialNumber("NVME_0");
+        disk.SetPCIAddress("0000:00:1f.0");
+        disk.SetIOMMUGroup(42);
+        disk.SetVendorId(100);
+        disk.SetDeviceId(500);
+        disk.SetModel("Test NVMe disk");
+    }
+
+    auto diskAgent = std::make_unique<TDiskAgentMock>(
+        google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>(),
+        TDiskAgentStatePtr(),
+        CreateLocalNVMeServiceMock(std::move(NVMeDevices)));
+
+    auto diskAgentId = Runtime.Register(
+        diskAgent.release(),
+        nodeIdx,
+        appData->UserPoolId);
+    Runtime.EnableScheduleForActor(diskAgentId);
+    Runtime.RegisterService(
+        MakeDiskAgentServiceId(Runtime.GetNodeId(nodeIdx)),
+        diskAgentId,
+        nodeIdx);
+
     auto volumeProxy = CreateVolumeProxy(storageConfig, TraceSerializer, false);
     auto volumeProxyId = Runtime.Register(
         volumeProxy.release(),
@@ -380,6 +414,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         TraceSerializer,
         NServer::CreateEndpointEventProxy(),
         nullptr,   // rdmaClient
+        partitionBudgetManager,
         CreateVolumeStatsStub(),
         std::move(manuallyPreemptedVolumes),
         CreateRootKmsKeyProviderMock(),

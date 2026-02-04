@@ -8,6 +8,9 @@
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -171,6 +174,9 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
     FILESTORE_TABLET_STATS(FILESTORE_TABLET_MERGE_COUNTER)
 
 #undef FILESTORE_TABLET_MERGE_COUNTER
+
+    dst.SetSevenBytesHandlesCount(
+        dst.GetSevenBytesHandlesCount() + src.GetSevenBytesHandlesCount());
 
     LOG_DEBUG(
         ctx,
@@ -519,15 +525,26 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(WriteBlob);
     REGISTER_REQUEST(PatchBlob);
 
-    REGISTER_REQUEST(ReadData);
     REGISTER_REQUEST(DescribeData);
-    REGISTER_REQUEST(WriteData);
-    REGISTER_REQUEST(AddData);
     REGISTER_REQUEST(GenerateBlobIds);
+    REGISTER_REQUEST(AddData);
+    REGISTER_REQUEST(GetStorageStats);
+    REGISTER_REQUEST(GetNodeAttrBatch);
+    REGISTER_REQUEST(RenameNodeInDestination);
+    REGISTER_REQUEST(PrepareUnlinkDirectoryNodeInShard);
+    REGISTER_REQUEST(AbortUnlinkDirectoryNodeInShard);
+
+    REGISTER_REQUEST(ReadData);
+    REGISTER_REQUEST(WriteData);
+
     REGISTER_REQUEST(ListNodes);
     REGISTER_AGGREGATABLE_SUM(
         ListNodes.RequestedBytesPrecharge,
         EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        ListNodes.PrepareAttempts,
+        EMetricType::MT_DERIVATIVE);
+
     REGISTER_REQUEST(GetNodeAttr);
     REGISTER_REQUEST(CreateHandle);
     REGISTER_REQUEST(DestroyHandle);
@@ -552,6 +569,15 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_LOCAL(CurrentLoad, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(Suffer, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(OverloadedCount, EMetricType::MT_DERIVATIVE);
+
+    //
+    // Exporting this metric to be able to see what's our tablet actor's opinion
+    // about its own CPU usage. ActorSystem's ElapsedMicrosecByActivity metric
+    // should in theory give the same value but being able to verify it via
+    // an explicit counter is useful.
+    //
+
+    REGISTER_AGGREGATABLE_SUM(CPUUsageMicros, EMetricType::MT_DERIVATIVE);
 
 #undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
@@ -712,11 +738,17 @@ void TIndexTabletActor::TMetrics::Update(
     WriteBlob.UpdatePrev(now);
     PatchBlob.UpdatePrev(now);
 
-    ReadData.UpdatePrev(now);
     DescribeData.UpdatePrev(now);
-    WriteData.UpdatePrev(now);
-    AddData.UpdatePrev(now);
     GenerateBlobIds.UpdatePrev(now);
+    AddData.UpdatePrev(now);
+    GetStorageStats.UpdatePrev(now);
+    GetNodeAttrBatch.UpdatePrev(now);
+    RenameNodeInDestination.UpdatePrev(now);
+    PrepareUnlinkDirectoryNodeInShard.UpdatePrev(now);
+    AbortUnlinkDirectoryNodeInShard.UpdatePrev(now);
+
+    ReadData.UpdatePrev(now);
+    WriteData.UpdatePrev(now);
     ListNodes.UpdatePrev(now);
     GetNodeAttr.UpdatePrev(now);
     CreateHandle.UpdatePrev(now);
@@ -875,6 +907,34 @@ void TIndexTabletActor::SendMetricsToExecutor(const TActorContext& ctx)
     resourceMetrics->TryUpdate(ctx);
 }
 
+void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
+{
+    TExecutorPoolStats poolStats;
+    TVector<TExecutorThreadStats> threadStats;
+    auto& actorSystem = *ctx.ExecutorThread.ActorSystem;
+    const ui32 poolId = ctx.SelfID.PoolID();
+    actorSystem.GetPoolStats(poolId, poolStats, threadStats);
+    i64 ticks = 0;
+    for (ui64 i = 0; i < threadStats.size(); ++i) {
+        ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType()];
+    }
+
+    const i64 prevUsageMicros =
+        Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
+    const i64 curUsageMicros = ::NHPTimer::GetSeconds(ticks) * 1'000'000;
+    const TInstant ts = ctx.Now();
+    if (Metrics.PrevCPUUsageMicrosTs) {
+        const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
+        if (timeDiff) {
+            const double usageDiff = curUsageMicros - prevUsageMicros;
+            Metrics.CPUUsageRate = 100 * (usageDiff / timeDiff.MicroSeconds());
+        }
+    }
+
+    Metrics.PrevCPUUsageMicrosTs = ts;
+    Store(Metrics.CPUUsageMicros, curUsageMicros);
+}
+
 void TIndexTabletActor::HandleUpdateCounters(
     const TEvIndexTabletPrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
@@ -900,6 +960,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
         GetHandlesStats());
+    CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 
     UpdateCountersScheduled = false;
@@ -1004,6 +1065,8 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
 
     stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
+
+    stats->SetSevenBytesHandlesCount(Metrics.SevenBytesHandlesCount);
 }
 
 void TIndexTabletActor::HandleGetStorageStats(
@@ -1073,6 +1136,7 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     if (req.GetAllowCache() || shardIds.empty()) {
         Metrics.StatFileStore.Update(1, 0, TDuration::Zero());
+        Metrics.GetStorageStats.Update(1, 0, TDuration::Zero());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -1128,6 +1192,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         if (!isBackgroundRequest) {
             Metrics.StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
         }
+        Metrics.GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
         UpdateShardBalancer(CachedShardStats);

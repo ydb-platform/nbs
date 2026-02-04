@@ -914,11 +914,16 @@ private:
         TDuration totalTimeThreshold,
         EHistogramCounterOptions histogramCounterOptions) const
     {
-        auto predictor = CreatePostponeTimePredictor(
-            timer,
-            delayWindowInterval,
-            delayWindowPercentage,
-            delayMaxTime);
+        Y_UNUSED(delayWindowInterval);
+        Y_UNUSED(delayWindowPercentage);
+        Y_UNUSED(delayMaxTime);
+
+        // TODO(#5147)
+        // Filestore storage tablet does not currently track postponed time
+        // via CallContext::Postpone/Advance; only response header propagation
+        // exists (see BuildThrottlerInfo in tablet responses and
+        // HandleThrottlerInfo in service completion).
+        auto predictor = CreatePostponeTimePredictorStub();
 
         return std::make_shared<TFileSystemStats>(
             std::move(fileSystemId),

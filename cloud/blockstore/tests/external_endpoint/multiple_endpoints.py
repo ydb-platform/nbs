@@ -147,7 +147,7 @@ def setup_env(nbs, disk_agent, data_path):
     # wait for devices to be cleared
     nbs_client = NbsClient(nbs.port)
     while True:
-        bkp = nbs_client.backup_disk_registry_state()["Backup"]
+        bkp = nbs_client.backup_disk_registry_state()["LocalDBBackup"]
         if bkp.get("DirtyDevices", 0) == 0:
             break
         time.sleep(1)
@@ -225,7 +225,7 @@ def test_switch_multiple_endpoints(nbs):
             storage_media_kind=STORAGE_MEDIA_SSD_LOCAL,
             storage_pool_name="1Mb")
 
-    @retry(max_times=10, exception=requests.ConnectionError)
+    @retry(max_times=20, exception=requests.ConnectionError)
     def wait_for_vhost_servers(nbs, expected_count):
         count = 0
         for process in psutil.process_iter():

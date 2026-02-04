@@ -1,70 +1,19 @@
 package tests
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"slices"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newContext() context.Context {
-	return logging.SetLogger(
-		context.Background(),
-		logging.NewStderrLogger(logging.DebugLevel),
-	)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func getEndpoint() string {
-	return fmt.Sprintf(
-		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
-	)
-}
-
-func newFactory(t *testing.T, ctx context.Context) nfs.Factory {
-	clientTimeout := "60s"
-	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
-	return nfs.NewFactory(
-		ctx,
-		&config.ClientConfig{
-			Zones: map[string]*config.Zone{
-				"zone": {
-					Endpoints: []string{getEndpoint(), getEndpoint()},
-				},
-			},
-			RootCertsFile:        &rootCertsFile,
-			DurableClientTimeout: &clientTimeout,
-		},
-		metrics.NewEmptyRegistry(),
-	)
-}
-
-func newClient(t *testing.T, ctx context.Context) nfs.Client {
-	factory := newFactory(t, ctx)
-	client, err := factory.NewClient(ctx, "zone")
-	require.NoError(t, err)
-	return client
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestCreateFilesystem(t *testing.T) {
-	ctx := newContext()
-	client := newClient(t, ctx)
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
 
 	filesystemID := t.Name()
 
@@ -89,8 +38,8 @@ func TestCreateFilesystem(t *testing.T) {
 }
 
 func TestDeleteFilesystem(t *testing.T) {
-	ctx := newContext()
-	client := newClient(t, ctx)
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
 
 	filesystemID := t.Name()
 
@@ -116,8 +65,8 @@ func TestDeleteFilesystem(t *testing.T) {
 }
 
 func TestCreateCheckpoint(t *testing.T) {
-	ctx := newContext()
-	client := newClient(t, ctx)
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
 
 	filesystemID := t.Name()
 
@@ -149,216 +98,11 @@ func TestCreateCheckpoint(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type node struct {
-	name     string
-	children []node
-	fileType nfs_client.NodeType
-	target   string
-}
-
-func dir(name string, children ...node) node {
-	return node{
-		name:     name,
-		fileType: nfs_client.NODE_KIND_DIR,
-		children: children,
-	}
-}
-
-func file(name string) node {
-	return node{
-		name:     name,
-		fileType: nfs_client.NODE_KIND_FILE,
-	}
-}
-
-func symlink(name string, target string) node {
-	return node{
-		name:     name,
-		fileType: nfs_client.NODE_KIND_SYMLINK,
-		target:   target,
-	}
-}
-
-func root(children ...node) node {
-	return node{
-		name:     "/",
-		fileType: nfs_client.NODE_KIND_DIR,
-		children: children,
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-const rootNodeID = uint64(1)
-
-type fileSystemModel struct {
-	root          node
-	t             *testing.T
-	ctx           context.Context
-	client        nfs.Client
-	session       nfs.Session
-	defaultUid    uint32
-	defaultGid    uint32
-	directoryMode uint32
-	fileMode      uint32
-	expectedNodes []nfs.Node
-}
-
-func (f *fileSystemModel) createNodes(parentID uint64, nodeToCreate node) {
-	mode := f.fileMode
-	if nodeToCreate.fileType.IsDirectory() {
-		mode = f.directoryMode
-	}
-
-	expectedNode := nfs.Node{
-		ParentID:   parentID,
-		Name:       nodeToCreate.name,
-		Type:       nodeToCreate.fileType,
-		Mode:       mode,
-		UID:        1,
-		GID:        1,
-		LinkTarget: nodeToCreate.target,
-	}
-	id, err := f.client.CreateNode(f.ctx, f.session, expectedNode)
-	require.NoError(f.t, err)
-	f.expectedNodes = append(f.expectedNodes, expectedNode)
-	if !nodeToCreate.fileType.IsDirectory() {
-		return
-	}
-
-	// Sort nodes by name to have a deterministic order
-	slices.SortFunc(
-		nodeToCreate.children,
-		func(i, j node) int {
-			return strings.Compare(i.name, j.name)
-		},
-	)
-	for _, child := range nodeToCreate.children {
-		f.createNodes(id, child)
-	}
-}
-
-func (f *fileSystemModel) create() {
-	slices.SortFunc(
-		f.root.children,
-		func(i, j node) int {
-			return strings.Compare(i.name, j.name)
-		},
-	)
-	for _, child := range f.root.children {
-		f.createNodes(rootNodeID, child)
-	}
-}
-
-func (f *fileSystemModel) listAllNodes(parentNodeID uint64) []nfs.Node {
-	var (
-		nodes  []nfs.Node
-		cookie string
-	)
-
-	for {
-		batch, nextCookie, err := f.client.ListNodes(
-			f.ctx,
-			f.session,
-			parentNodeID,
-			cookie,
-		)
-		require.NoError(f.t, err)
-		for index := range batch {
-			if !batch[index].Type.IsSymlink() {
-				continue
-			}
-
-			target, err := f.client.ReadLink(
-				f.ctx,
-				f.session,
-				batch[index].NodeID,
-			)
-			require.NoError(f.t, err)
-			batch[index].LinkTarget = string(target)
-		}
-
-		nodes = append(nodes, batch...)
-		if len(batch) == 0 {
-			break
-		}
-
-		if nextCookie == "" {
-			break
-		}
-
-		cookie = nextCookie
-	}
-
-	return nodes
-}
-
-func (f *fileSystemModel) listNodesRecursively(parentNodeID uint64) []nfs.Node {
-	nodes := f.listAllNodes(parentNodeID)
-	// Sort nodes by name to have a deterministic order
-	slices.SortFunc(
-		nodes,
-		func(i, j nfs.Node) int {
-			return strings.Compare(i.Name, j.Name)
-		},
-	)
-	result := make([]nfs.Node, 0)
-	for _, node := range nodes {
-		result = append(result, node)
-		if !node.Type.IsDirectory() {
-			continue
-		}
-
-		children := f.listNodesRecursively(node.NodeID)
-		result = append(result, children...)
-	}
-
-	return result
-}
-
-func (f *fileSystemModel) listAllNodesRecursively() []nfs.Node {
-	return f.listNodesRecursively(rootNodeID)
-}
-
-func newFileSystemModel(
-	t *testing.T,
-	ctx context.Context,
-	client nfs.Client,
-	session nfs.Session,
-	root node,
-) *fileSystemModel {
-
-	return &fileSystemModel{
-		root:          root,
-		t:             t,
-		ctx:           ctx,
-		client:        client,
-		session:       session,
-		defaultUid:    1,
-		defaultGid:    1,
-		directoryMode: 0o755,
-		fileMode:      0o644,
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func nodeNames(nodes []nfs.Node) []string {
-	names := make([]string, len(nodes))
-	for i, node := range nodes {
-		names[i] = node.Name
-	}
-
-	return names
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestListNodesFileSystem(t *testing.T) {
-	ctx := newContext()
+	ctx := nfs_testing.NewContext()
 	// With high CPU consumption on test vm createsession can take longer than
 	// default timeout.
-	client := newClient(t, ctx)
+	client := nfs_testing.NewClient(t, ctx)
 
 	filesystemID := t.Name()
 	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
@@ -375,30 +119,30 @@ func TestListNodesFileSystem(t *testing.T) {
 	require.NoError(t, err)
 	defer client.DestroySession(ctx, session)
 
-	rootDir := root(
-		dir("etc",
-			file("passwd"),
-			file("hosts"),
+	rootDir := nfs_testing.Root(
+		nfs_testing.Dir("etc",
+			nfs_testing.File("passwd"),
+			nfs_testing.File("hosts"),
 		),
-		dir(
+		nfs_testing.Dir(
 			"var",
-			dir(
+			nfs_testing.Dir(
 				"log",
 			),
 		),
-		symlink("bin", "/usr/bin"),
-		dir("usr",
-			dir("bin", file("bash"), file("ls")),
-			dir("lib", file("libc.so")),
+		nfs_testing.Symlink("bin", "/usr/bin"),
+		nfs_testing.Dir("usr",
+			nfs_testing.Dir("bin", nfs_testing.File("bash"), nfs_testing.File("ls")),
+			nfs_testing.Dir("lib", nfs_testing.File("libc.so")),
 		),
 	)
-	model := newFileSystemModel(t, ctx, client, session, rootDir)
-	model.create()
+	model := nfs_testing.NewFileSystemModel(t, ctx, client, session, rootDir)
+	model.CreateAllNodesRecursively()
 
-	nodes := model.listAllNodesRecursively()
-	require.Equal(t, len(model.expectedNodes), len(nodes))
+	nodes := model.ListAllNodesRecursively()
+	require.Equal(t, len(model.ExpectedNodes), len(nodes))
 	for index, node := range nodes {
-		expectedNode := model.expectedNodes[index]
+		expectedNode := model.ExpectedNodes[index]
 		require.Equal(t, expectedNode.ParentID, node.ParentID)
 		require.Equal(t, expectedNode.Name, node.Name)
 		require.Equal(t, expectedNode.Type, node.Type)
@@ -425,14 +169,14 @@ func TestListNodesFileSystem(t *testing.T) {
 		"var",
 		"log",
 	}
-	require.Equal(t, expectedNames, nodeNames(nodes))
+	require.Equal(t, expectedNames, nfs_testing.NodeNames(nodes))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestListNodesFromCheckpoint(t *testing.T) {
-	ctx := newContext()
-	client := newClient(t, ctx)
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
 
 	filesystemID := t.Name()
 	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
@@ -449,9 +193,9 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 	require.NoError(t, err)
 	defer client.DestroySession(ctx, session)
 
-	rootDir := root(dir("first"), file("second"))
-	model := newFileSystemModel(t, ctx, client, session, rootDir)
-	model.create()
+	rootDir := nfs_testing.Root(nfs_testing.Dir("first"), nfs_testing.File("second"))
+	model := nfs_testing.NewFileSystemModel(t, ctx, client, session, rootDir)
+	model.CreateAllNodesRecursively()
 
 	checkpointID := "checkpoint_1"
 	nodeID := uint64(0)
@@ -469,13 +213,13 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 		checkpointID,
 	)
 
-	model.createNodes(rootNodeID, dir("after_checkpoint"))
-	nodes := model.listAllNodesRecursively()
+	model.CreateNodesRecursively(nfs.RootNodeID, nfs_testing.Dir("after_checkpoint"))
+	nodes := model.ListAllNodesRecursively()
 	require.Equal(t, []string{
 		"after_checkpoint",
 		"first",
 		"second",
-	}, nodeNames(nodes))
+	}, nfs_testing.NodeNames(nodes))
 
 	// Create a session for the checkpoint
 	checkpointSession, err := client.CreateSession(
@@ -486,12 +230,12 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 	)
 	require.NoError(t, err)
 	defer client.DestroySession(ctx, checkpointSession)
-	model.session = checkpointSession
+	model.SetSession(checkpointSession)
 
 	// Verify that only files created before the checkpoint are visible
-	nodes = model.listAllNodesRecursively()
+	nodes = model.ListAllNodesRecursively()
 	require.Equal(t, []string{
 		"first",
 		"second",
-	}, nodeNames(nodes))
+	}, nfs_testing.NodeNames(nodes))
 }

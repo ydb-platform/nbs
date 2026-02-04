@@ -67,6 +67,7 @@ TVolumeActor::TVolumeActor(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
     NRdma::IClientPtr rdmaClient,
+    TPartitionBudgetManagerPtr partitionBudgetManager,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode,
     TString diskId)
@@ -79,6 +80,7 @@ TVolumeActor::TVolumeActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , TraceSerializer(std::move(traceSerializer))
     , RdmaClient(std::move(rdmaClient))
+    , PartitionBudgetManager(std::move(partitionBudgetManager))
     , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
     , LogTitle(
@@ -680,12 +682,13 @@ void TVolumeActor::HandleUpdateCounters(
 
     // if we use pull scheme we must send request to the partitions
     // to collect statistics
-    if (Config->GetUsePullSchemeForVolumeStatistics() &&
-        State && !State->IsDiskRegistryMediaKind() &&
+    if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
         GetVolumeStatus() != EStatus::STATUS_INACTIVE)
     {
         ScheduleRegularUpdates(ctx);
-        SendStatisticRequests(ctx);
+        State->IsDiskRegistryMediaKind()
+            ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
+            : SendStatisticRequests(ctx);
         return;
     }
 
@@ -1129,6 +1132,11 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished,
             HandleDiskRegistryDeviceOperationFinished);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersResponse,
+            HandleGetDiskRegistryBasedPartCountersResponse);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1197,6 +1205,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
 
         IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersResponse);
 
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted);
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished);

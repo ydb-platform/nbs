@@ -39,7 +39,7 @@ void TIndexTabletActor::HandleAccessNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TAccessNodeMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TAccessNodeMethod>(*requestInfo);
 
     ExecuteTx<TAccessNode>(
         ctx,
@@ -104,7 +104,7 @@ void TIndexTabletActor::CompleteTx_AccessNode(
     const TActorContext& ctx,
     TTxIndexTablet::TAccessNode& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvAccessNodeResponse>(args.Error);
     CompleteResponse<TEvService::TAccessNodeMethod>(

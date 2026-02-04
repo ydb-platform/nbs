@@ -169,7 +169,7 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
-    AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 
     ExecuteTx<TWriteData>(
         ctx,
@@ -270,7 +270,6 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
     UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
 
-    // TODO: access check
     if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
         args.Error = ErrorNoSpaceLeft();
         return true;
@@ -296,7 +295,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         return;
     }
 
@@ -393,7 +392,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
 {
     InvalidateNodeCaches(args.NodeId);
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto reply = [&] (
         const TActorContext& ctx,
@@ -417,9 +416,6 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     if (FAILED(args.Error.GetCode())) {
         reply(ctx, args);
-        if (args.CommitId == InvalidCommitId) {
-            ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
-        }
         return;
     }
 
@@ -463,9 +459,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorCommitIdOverflow();
+        args.OnCommitIdOverflow();
         reply(ctx, args);
-        return ScheduleRebootTabletOnCommitIdOverflow(ctx, "WriteData");
+        return;
     }
 
     ui32 blobIndex = 0;
@@ -489,7 +485,11 @@ void TIndexTabletActor::CompleteTx_WriteData(
     AcquireCollectBarrier(args.CommitId);
 
     NProto::TBackendInfo backendInfo;
-    BuildBackendInfo(*Config, *SystemCounters, &backendInfo);
+    BuildBackendInfo(
+        *Config,
+        *SystemCounters,
+        Metrics.CPUUsageRate,
+        &backendInfo);
 
     auto actor = std::make_unique<TWriteDataActor>(
         TraceSerializer,
