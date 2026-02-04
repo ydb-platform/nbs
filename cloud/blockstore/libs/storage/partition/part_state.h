@@ -279,6 +279,9 @@ struct TBackpressureFeaturesConfig
 class TPartitionState
     : public TPartitionChannelsState
     , public TCommitIdsState
+    , public TPartitionFreshBlobState
+    , public TPartitionTrimFreshLogState
+    , public TPartitionFlushState
     , public TPartitionFreshBlocksState
 {
 private:
@@ -382,39 +385,12 @@ public:
 public:
     TBackpressureReport CalculateCurrentBackpressure() const;
 
-
     //
-    // TPartitionFreshBlocksStateContextProvider
+    // Fresh blobs
     //
 
-private:
-    class TPartitionFreshBlocksStateContextProvider
-        : public IPartitionFreshBlocksStateContextProvider
-    {
-    private:
-        TPartitionState& PartitionState;
-
-    public:
-        explicit TPartitionFreshBlocksStateContextProvider(
-            TPartitionState& partitionState)
-            : PartitionState(partitionState)
-        {}
-
-        [[nodiscard]] TVector<ui64> GetCheckpointCommitIds() const override
-        {
-            TVector<ui64> checkpoints;
-            PartitionState.GetCheckpoints().GetCommitIds(checkpoints);
-            SortUnique(checkpoints, TGreater<ui64>());
-            return checkpoints;
-        }
-
-        [[nodiscard]] ui64 GetLastCommitId() const override
-        {
-            return PartitionState.GetLastCommitId();
-        }
-    };
-
-    TPartitionFreshBlocksStateContextProvider ContextProvider;
+public:
+    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
 
     //
     // Fresh Blocks
@@ -547,6 +523,12 @@ public:
         TPartitionDatabase& db,
         ui32 blockIndex,
         ui64 commitId);
+
+    ui32 GetUnflushedFreshBlocksCount() const
+    {
+        return GetStats().GetFreshBlocksCount() +
+               GetUnflushedFreshBlocksCountFromChannel();
+    }
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);

@@ -77,11 +77,8 @@ ui32 TPartitionFlushState::DecrementFreshBlocksInFlight(size_t value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionFreshBlobState::AddFreshBlob(
-    TFreshBlobMeta freshBlobMeta,
-    ui64 lastTrimFreshLogToCommitId)
+void TPartitionFreshBlobState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
 {
-    Y_ABORT_UNLESS(freshBlobMeta.CommitId > lastTrimFreshLogToCommitId);
     const bool inserted = UntrimmedFreshBlobs.insert(freshBlobMeta).second;
     Y_ABORT_UNLESS(inserted);
     UntrimmedFreshBlobByteCount += freshBlobMeta.BlobSize;
@@ -100,11 +97,18 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TPartitionFreshBlocksState::TPartitionFreshBlocksState(
+    const TCommitIdsState& commitIdsState,
+    const TPartitionFlushState& flushState,
+    TPartitionTrimFreshLogState& trimFreshLogState)
+    : CommitIdsState(commitIdsState)
+    , FlushState(flushState)
+    , TrimFreshLogState(trimFreshLogState)
+{}
+
 ui32 TPartitionFreshBlocksState::IncrementUnflushedFreshBlocksFromChannelCount(
     size_t value)
 {
-    Y_ABORT_UNLESS(ContextProvider);
-
     UnflushedFreshBlocksFromChannelCount =
         SafeIncrement(UnflushedFreshBlocksFromChannelCount, value);
 
@@ -114,26 +118,15 @@ ui32 TPartitionFreshBlocksState::IncrementUnflushedFreshBlocksFromChannelCount(
 ui32 TPartitionFreshBlocksState::DecrementUnflushedFreshBlocksFromChannelCount(
     size_t value)
 {
-    Y_ABORT_UNLESS(ContextProvider);
-
     UnflushedFreshBlocksFromChannelCount =
         SafeDecrement(UnflushedFreshBlocksFromChannelCount, value);
 
     return UnflushedFreshBlocksFromChannelCount;
 }
 
-void TPartitionFreshBlocksState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
-{
-    TPartitionFreshBlobState::AddFreshBlob(
-        freshBlobMeta,
-        GetLastTrimFreshLogToCommitId());
-}
-
 void TPartitionFreshBlocksState::InitFreshBlocks(
     const TVector<TOwningFreshBlock>& freshBlocks)
 {
-    Y_ABORT_UNLESS(ContextProvider);
-
     for (const auto& freshBlock: freshBlocks) {
         const auto& meta = freshBlock.Meta;
 
@@ -156,8 +149,6 @@ void TPartitionFreshBlocksState::FindFreshBlocks(
     const TBlockRange32& readRange,
     ui64 maxCommitId)
 {
-    Y_ABORT_UNLESS(ContextProvider);
-
     Blocks.FindBlocks(visitor, readRange, maxCommitId);
 }
 
@@ -166,7 +157,6 @@ void TPartitionFreshBlocksState::WriteFreshBlocks(
     ui64 commitId,
     TSgList sglist)
 {
-    Y_ABORT_UNLESS(ContextProvider);
     Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
 
     WriteFreshBlocksImpl(
@@ -179,8 +169,6 @@ void TPartitionFreshBlocksState::ZeroFreshBlocks(
     const TBlockRange32& zeroRange,
     ui64 commitId)
 {
-    Y_ABORT_UNLESS(ContextProvider);
-
     WriteFreshBlocksImpl(
         zeroRange,
         commitId,
@@ -191,8 +179,6 @@ void TPartitionFreshBlocksState::DeleteFreshBlock(
     ui32 blockIndex,
     ui64 commitId)
 {
-    Y_ABORT_UNLESS(ContextProvider);
-
     bool removed = Blocks.RemoveBlock(
         blockIndex,
         commitId,
@@ -208,7 +194,9 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     ui64 commitId,
     auto getBlockContent)
 {
-    TVector<ui64> checkpoints = ContextProvider->GetCheckpointCommitIds();
+    TVector<ui64> checkpoints;
+    CommitIdsState.GetCheckpointCommitIds(checkpoints);
+    SortUnique(checkpoints);
 
     TVector<ui64> existingCommitIds;
     TVector<ui64> garbage;
@@ -226,7 +214,9 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
         for (auto garbageCommitId: garbage) {
             // This block is being flushed; we'll remove it on AddBlobs
             // and we'll release barrier on FlushCompleted
-            if (GetFlushedCommitIdsInProgress().contains(garbageCommitId)) {
+            if (FlushState.GetFlushedCommitIdsInProgress().contains(
+                    garbageCommitId))
+            {
                 continue;
             }
 
@@ -240,7 +230,8 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 
             if (removed) {
                 DecrementUnflushedFreshBlocksFromChannelCount(1);
-                GetTrimFreshLogBarriers().ReleaseBarrier(garbageCommitId);
+                TrimFreshLogState.GetTrimFreshLogBarriers().ReleaseBarrier(
+                    garbageCommitId);
             }
         }
 
@@ -255,57 +246,6 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     }
 
     IncrementUnflushedFreshBlocksFromChannelCount(writeRange.Size());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TPartitionFreshBlocksState::DumpHtml(
-    IOutputStream& out,
-    ui64 freshBlocksInDb) const
-{
-    Y_ABORT_UNLESS(ContextProvider);
-
-    HTML (out) {
-        TABLER () {
-            TABLED () {
-                out << "FreshBlocks";
-            }
-            TABLED () {
-                out << "Total: "
-                    << GetUnflushedFreshBlocksCountFromChannel() +
-                           freshBlocksInDb
-                    << ", FromDb: " << freshBlocksInDb
-                    << ", FromChannel: " << UnflushedFreshBlocksFromChannelCount
-                    << ", InFlight: " << GetFreshBlocksInFlight()
-                    << ", Queued: " << GetFreshBlocksQueued()
-                    << ", UntrimmedBytes: " << GetUntrimmedFreshBlobByteCount();
-            }
-        }
-        TABLER () {
-            TABLED () {
-                out << "Flush";
-            }
-            TABLED () {
-                DumpOperationState(out, GetFlushState());
-            }
-        }
-    }
-}
-
-void TPartitionFreshBlocksState::AsJson(
-    NJson::TJsonValue& state,
-    ui64 freshBlocksInDb) const
-{
-    Y_ABORT_UNLESS(ContextProvider);
-
-    state["FreshBlocksTotal"] =
-        GetUnflushedFreshBlocksCountFromChannel() + freshBlocksInDb;
-    state["FreshBlocksFromDb"] = freshBlocksInDb;
-    state["FreshBlocksFromChannel"] = UnflushedFreshBlocksFromChannelCount;
-    state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
-    state["FreshBlocksQueued"] = GetFreshBlocksQueued();
-    state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-    state["FlushState"] = ToJson(GetFlushState());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

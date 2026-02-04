@@ -17,7 +17,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 {
     Y_UNIT_TEST(ShouldCalculateFreshBlobByteCount)
     {
-        TPartitionFreshBlocksState state;
+        TPartitionFreshBlobState state;
 
         state.AddFreshBlob({1, 10});
         state.AddFreshBlob({3, 30});

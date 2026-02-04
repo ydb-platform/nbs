@@ -75,6 +75,11 @@ TPartitionState::TPartitionState(
           reassignSystemChannelsImmediately,
           channelCount)
     , TCommitIdsState(generation, lastCommitId)
+    , TPartitionTrimFreshLogState(static_cast<TCommitIdsState&>(*this))
+    , TPartitionFreshBlocksState(
+          static_cast<TCommitIdsState&>(*this),
+          static_cast<TPartitionFlushState&>(*this),
+          static_cast<TPartitionTrimFreshLogState&>(*this))
     , Meta(std::move(meta))
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
@@ -95,7 +100,6 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
     InitChannels();
-    TPartitionFreshBlocksState::SetContextProvider(&ContextProvider);
 }
 
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
@@ -342,6 +346,12 @@ void TPartitionState::ConfirmBlobs(
 BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 #undef BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
+
+void TPartitionState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
+{
+    Y_ABORT_UNLESS(freshBlobMeta.CommitId > GetLastTrimFreshLogToCommitId());
+    TPartitionFreshBlobState::AddFreshBlob(freshBlobMeta);
+}
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
 {
@@ -689,12 +699,25 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                     TABLED() { out << "LastCommitId"; }
                     TABLED() { out << GetLastCommitId(); }
                 }
-
-                TPartitionFreshBlocksState::DumpHtml(
-                    out,
-                    GetStats().GetFreshBlocksCount());
-
                 TABLER() {
+                    TABLED() { out << "FreshBlocks"; }
+                    TABLED() {
+                        out << "Total: " << GetUnflushedFreshBlocksCount()
+                            << ", FromDb: " << GetStats().GetFreshBlocksCount()
+                            << ", FromChannel: "
+                            << GetUnflushedFreshBlocksCountFromChannel()
+                            << ", InFlight: " << GetFreshBlocksInFlight()
+                            << ", Queued: " << GetFreshBlocksQueued()
+                            << ", UntrimmedBytes: "
+                            << GetUntrimmedFreshBlobByteCount();
+                    }
+                }
+                TABLER() {
+                    TABLED() { out << "Flush"; }
+                    TABLED () {
+                        DumpOperationState(out, GetFlushState());
+                    }
+                }                TABLER() {
                     TABLED() { out << "Compaction"; }
                     TABLED() { DumpOperationState(out, CompactionState); }
                 }
@@ -726,9 +749,14 @@ TJsonValue TPartitionState::AsJson() const
     {
         TJsonValue state;
         state["LastCommitId"] = GetLastCommitId();
-        TPartitionFreshBlocksState::AsJson(
-            state,
-            GetStats().GetFreshBlocksCount());
+        state["FreshBlocksTotal"] = GetUnflushedFreshBlocksCount();
+        state["FreshBlocksFromDb"] = GetStats().GetFreshBlocksCount();
+        state["FreshBlocksFromChannel"] =
+            GetUnflushedFreshBlocksCountFromChannel();
+        state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
+        state["FreshBlocksQueued"] = GetFreshBlocksQueued();
+        state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
+        state["FlushState"] = ToJson(GetFlushState());
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);
         state["CollectGarbage"] = ToJson(CollectGarbageState);

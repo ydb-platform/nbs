@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
@@ -15,16 +16,6 @@
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-class IPartitionFreshBlocksStateContextProvider
-{
-public:
-    [[nodiscard]] virtual TVector<ui64> GetCheckpointCommitIds() const = 0;
-
-    [[nodiscard]] virtual ui64 GetLastCommitId() const = 0;
-
-    virtual ~IPartitionFreshBlocksStateContextProvider() = default;
-};
 
 class TPartitionFlushState
 {
@@ -116,17 +107,14 @@ public:
         return UntrimmedFreshBlobByteCount;
     }
 
-    void AddFreshBlob(
-        TFreshBlobMeta freshBlobMeta,
-        ui64 lastTrimFreshLogToCommitId);
+    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
     void TrimFreshBlobs(ui64 commitId);
 };
 
 class TPartitionTrimFreshLogState
 {
 private:
-    IPartitionFreshBlocksStateContextProvider* ContextProvider;
-
+    const TCommitIdsState& CommitIdsState;
     NPartition::TBarriers TrimFreshLogBarriers;
     NPartition::TOperationState TrimFreshLogState;
     ui64 LastTrimFreshLogToCommitId = 0;
@@ -136,6 +124,10 @@ private:
         TDuration::Seconds(5)};
 
 public:
+    explicit TPartitionTrimFreshLogState(const TCommitIdsState& commitIdsState)
+        : CommitIdsState(commitIdsState)
+    {}
+
     NPartition::TBarriers& GetTrimFreshLogBarriers()
     {
         return TrimFreshLogBarriers;
@@ -146,7 +138,7 @@ public:
         return Min(
             // if there are no fresh blocks, we should trim up to current
             // commitId
-            ContextProvider->GetLastCommitId(),
+            CommitIdsState.GetLastCommitId(),
             // if there are some fresh blocks, we should trim till the lowest
             // fresh commitId minus 1
             TrimFreshLogBarriers.GetMinCommitId() - 1);
@@ -181,29 +173,24 @@ public:
     {
         LastTrimFreshLogToCommitId = commitId;
     }
-
-protected:
-    void SetContextProvider(
-        IPartitionFreshBlocksStateContextProvider* contextProvider)
-    {
-        ContextProvider = contextProvider;
-    }
 };
 
 class TPartitionFreshBlocksState
-    : public TPartitionFlushState
-    , public TPartitionFreshBlobState
-    , public TPartitionTrimFreshLogState
 {
 private:
-    IPartitionFreshBlocksStateContextProvider* ContextProvider = nullptr;
+    const TCommitIdsState& CommitIdsState;
+    const TPartitionFlushState& FlushState;
+    TPartitionTrimFreshLogState& TrimFreshLogState;
     ui32 UnflushedFreshBlocksFromChannelCount = 0;
 
 protected:
     NPartition::TBlockIndex Blocks;
 
 public:
-    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
+    TPartitionFreshBlocksState(
+        const TCommitIdsState& commitIdsState,
+        const TPartitionFlushState& flushState,
+        TPartitionTrimFreshLogState& trimFreshLogState);
 
     void InitFreshBlocks(
         const TVector<NPartition::TOwningFreshBlock>& freshBlocks);
@@ -225,20 +212,9 @@ public:
     ui32 IncrementUnflushedFreshBlocksFromChannelCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromChannelCount(size_t value);
 
-    void DumpHtml(IOutputStream& out, ui64 freshBlocksInDb) const;
-    void AsJson(NJson::TJsonValue& state, ui64 freshBlocksInDb) const;
-
-protected:
     ui32 GetUnflushedFreshBlocksCountFromChannel() const
     {
         return UnflushedFreshBlocksFromChannelCount;
-    }
-
-    void SetContextProvider(
-        IPartitionFreshBlocksStateContextProvider* contextProvider)
-    {
-        ContextProvider = contextProvider;
-        TPartitionTrimFreshLogState::SetContextProvider(contextProvider);
     }
 
 private:
