@@ -11,6 +11,10 @@
 #include <util/system/file.h>
 #include <util/system/spinlock.h>
 
+#include <cloud/filestore/public/api/protos/data.pb.h>
+
+#include <contrib/ydb/core/util/interval_set.h>
+
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -63,8 +67,13 @@ public:
         Metadata.LatestActivityTimestamp = TInstant::Now();
     }
 
+    NKikimr::TIntervalSet<ui64>& GetLockedAddressRanges() {
+        return LockedAddressRanges;
+    }
+
 private:
     TMmapRegionMetadata Metadata;
+    NKikimr::TIntervalSet<ui64> LockedAddressRanges;
 };
 
 class TServerState
@@ -85,6 +94,14 @@ public:
     TResultOrError<TMmapRegionMetadata> GetMmapRegion(ui64 mmapId);
 
     NProto::TError PingMmapRegion(ui64 mmapId);
+
+    NProto::TError LockAddressRanges(
+        ui64 mmapId,
+        const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs);
+
+    NProto::TError ReleaseAddressRanges(
+        ui64 mmapId,
+        const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs);
 
 private:
     TLightRWLock StateLock;
