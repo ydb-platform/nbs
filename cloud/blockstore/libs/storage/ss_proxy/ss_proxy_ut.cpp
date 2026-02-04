@@ -872,6 +872,55 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             DescribeVolumeAndReturnMountToken(runtime, "new-volume"));
     }
 
+    Y_UNIT_TEST(ShouldAssignVolumesWithSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        NProto::TStorageServiceConfig config;
+        config.SetUseSchemeCache(true);
+        auto config_ptr = CreateStorageConfig(config);
+        SetupTestEnv(env, config_ptr);
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvTxUserProxy::EvProposeTransactionStatus: {
+                    auto* msg = event->Get<TEvTxUserProxy::TEvProposeTransactionStatus>();
+                    auto response = std::make_unique<
+                        TEvTxUserProxy::TEvProposeTransactionStatus>();
+                    response->Record = msg->Record;
+                    if(msg->Status() == NTxProxy::TResultStatus::ExecComplete){
+                        response->Record.SetPathCreateTxId(msg->Record.GetTxId());
+                    }
+
+                    Send(
+                        runtime,
+                        event->Recipient,
+                        event->Sender,
+                        std::move(response));
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        // runtime.SetEventFilter(TEventFilter filterFunc)
+
+        CreateVolumeViaModifySchemeDeprecated(runtime, config_ptr, "old-volume");
+        CreateVolumeViaModifyScheme(runtime, config_ptr, "new-volume");
+
+        AssignVolume(runtime, "old-volume", "old-token");
+        AssignVolume(runtime, "new-volume", "new-token");
+
+        Cerr << DescribeVolumeAndReturnPath(runtime, "new-volume") << Endl;
+        UNIT_ASSERT_VALUES_EQUAL(
+            "old-token",
+            DescribeVolumeAndReturnMountToken(runtime, "old-volume"));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "new-token",
+            DescribeVolumeAndReturnMountToken(runtime, "new-volume"));
+    }
+
     Y_UNIT_TEST(ShouldAssignToOldVolumeInCaseOfNameCollision)
     {
         TTestEnv env;
