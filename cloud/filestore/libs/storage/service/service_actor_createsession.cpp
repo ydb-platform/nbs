@@ -945,6 +945,8 @@ void TStorageServiceActor::HandleSessionCreated(
             }
         }
 
+        // in case of vhost restart we don't know session id
+        // so inevitably will create new actor
         if (!session) {
             LOG_INFO(ctx, TFileStoreComponents::SERVICE,
                 "%s session created (%s), state(%lu)",
