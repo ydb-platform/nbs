@@ -20,6 +20,7 @@ SRCS(
     stripe.cpp
     tracing.cpp
     volume_params.cpp
+    volume_shaping_throttler.cpp
     volume_throttling_policy.cpp
 )
 
