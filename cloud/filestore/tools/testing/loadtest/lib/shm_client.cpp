@@ -160,6 +160,7 @@ private:
         auto req = std::make_shared<NProto::TMmapRequest>();
         req->SetFilePath(FilePath);
         req->SetSize(ShmSize);
+        req->SetPageSize(SlotSize);
 
         auto response = ShmControl->Mmap(std::move(ctx), std::move(req)).GetValueSync();
         if (HasError(response)) {
