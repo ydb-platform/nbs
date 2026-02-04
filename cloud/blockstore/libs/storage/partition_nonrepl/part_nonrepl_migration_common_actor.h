@@ -104,7 +104,7 @@ public:
 class TNonreplicatedPartitionMigrationCommonActor
     : public NActors::TActorBootstrapped<
           TNonreplicatedPartitionMigrationCommonActor>
-    , IPoisonPillHelperOwner
+    , ISuicideActor
 {
 public:
     struct TInitParams
@@ -259,8 +259,8 @@ public:
     // Called from the inheritor to check if migration is allowed.
     [[nodiscard]] bool IsMigrationAllowed() const;
 
-    // IPoisonPillHelperOwner implementation
-    void Die(const NActors::TActorContext& ctx) override
+    // ISuicideActor implementation
+    void Suicide(const NActors::TActorContext& ctx) override
     {
         TBase::Die(ctx);
     }

@@ -20,7 +20,6 @@ SRCS(
     part_actor_describeblocks.cpp
     part_actor_flush.cpp
     part_actor_getusedblocks.cpp
-    part_actor_initfreshblocks.cpp
     part_actor_initschema.cpp
     part_actor_loadstate.cpp
     part_actor_metadata_rebuild_blockcount.cpp
