@@ -416,7 +416,7 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto& error = msg->GetError();
+    auto error = msg->GetError();
 
     const auto& diskId = VolumeConfig.GetDiskId();
 
@@ -432,6 +432,12 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
                 FirstCreationAttempt = false;
                 EnsureDirs(ctx);
                 return;
+            }
+
+            if (status == NKikimrScheme::StatusMultipleModifications ||
+                status == NKikimrScheme::StatusNotAvailable)
+            {
+                error.SetCode(E_REJECTED);
             }
         }
 
@@ -459,8 +465,15 @@ void TCreateVolumeActor::HandleMkDirResponse(
 {
     const auto* msg = ev->Get();
 
-    const auto& error = msg->GetError();
+    auto error = msg->GetError();
     if (FAILED(error.GetCode())) {
+        auto status = STATUS_FROM_CODE(error.GetCode());
+        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+            (status == NKikimrScheme::StatusMultipleModifications ||
+             status == NKikimrScheme::StatusNotAvailable))
+        {
+            error.SetCode(E_REJECTED);
+        }
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
             "Volume %s: mkdir parentDir %s itemName %s failed: %s",
             VolumeConfig.GetDiskId().Quote().data(),

@@ -149,9 +149,16 @@ void TUpdateActor::HandleModifySchemeResponse(
 {
     auto* msg = ev->Get();
     auto& diskId = Config.GetDiskId();
-    auto& error = msg->GetError();
+    auto error = msg->GetError();
 
     if (HasError(error)) {
+        auto status = STATUS_FROM_CODE(error.GetCode());
+        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+            (status == NKikimrScheme::StatusMultipleModifications ||
+             status == NKikimrScheme::StatusNotAvailable))
+        {
+            error.SetCode(E_REJECTED);
+        }
         LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "Failed to update " << diskId.Quote() << " volume config (ModifyScheme): " <<
             FormatError(error));

@@ -456,6 +456,13 @@ void TAlterVolumeActor::HandleAlterVolumeResponse(
     NProto::TError error = msg->GetError();
     ui32 errorCode = error.GetCode();
     if (FAILED(errorCode)) {
+        auto status = STATUS_FROM_CODE(error.GetCode());
+        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
+            (status == NKikimrScheme::StatusMultipleModifications ||
+             status == NKikimrScheme::StatusNotAvailable))
+        {
+            error.SetCode(E_REJECTED);
+        }
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "%s of volume %s failed: %s",
             GetOperationString(),
