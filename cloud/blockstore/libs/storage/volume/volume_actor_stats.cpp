@@ -948,7 +948,7 @@ void TVolumeActor::SendStatsToServiceStatisticsCollectorActor(
         return;
     }
 
-    auto response = std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(SelfId.NodeId());
+    auto response = std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(SelfId().NodeId());
 
     if (VolumeSelfCounters) {
         response->VolumeCounters.emplace(GetVolumeSelfCounters(ctx));
