@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package filesystem_snapshot;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteFilesystemSnapshotRequest {
+    string FilesystemSnapshotId = 1;
+}
+
+message DeleteFilesystemSnapshotTaskState {}
