@@ -40,4 +40,7 @@ using IModuleStatsPtr = std::shared_ptr<IModuleStats>;
 struct IModuleStatsRegistry;
 using IModuleStatsRegistryPtr = std::shared_ptr<IModuleStatsRegistry>;
 
+struct IFsCountersProvider;
+using IFsCountersProviderPtr = std::shared_ptr<IFsCountersProvider>;
+
 }   // namespace NCloud::NFileStore

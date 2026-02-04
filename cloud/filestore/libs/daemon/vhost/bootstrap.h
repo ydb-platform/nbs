@@ -26,6 +26,7 @@ struct TVhostModuleFactories
         ISchedulerPtr scheduler,
         IRequestStatsRegistryPtr requestStats,
         IModuleStatsRegistryPtr moduleStats,
+        IFsCountersProviderPtr fsCountersProvider,
         IProfileLogPtr profileLog)> LoopFactory;
 };
 

@@ -1,5 +1,7 @@
 #include "module_stats.h"
 
+#include "filesystem_counters.h"
+
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
@@ -26,15 +28,31 @@ constexpr size_t TestMaxBucketCount = 60;
 class TTestModuleStats final: public IModuleStats
 {
 private:
+    TString Name;
     TAtomic Value = 0;
     std::unique_ptr<TMaxCalculator<TestMaxBucketCount>> MaxCalc;
+    TDynamicCountersPtr Counters;
     TDynamicCounters::TCounterPtr MaxCounter;
 
 public:
-    TTestModuleStats(ITimerPtr timer, TDynamicCountersPtr counters)
-        : MaxCalc(std::make_unique<TMaxCalculator<TestMaxBucketCount>>(timer))
-        , MaxCounter(counters->GetCounter("MaxValue", false))
+    TTestModuleStats(TString name, ITimerPtr timer)
+        : Name(std::move(name))
+        , MaxCalc(
+              std::make_unique<TMaxCalculator<TestMaxBucketCount>>(
+                  std::move(timer)))
+        , Counters(MakeIntrusive<TDynamicCounters>())
+        , MaxCounter(Counters->GetCounter("MaxValue", false))
     {}
+
+    TStringBuf GetName() const override
+    {
+        return Name;
+    }
+
+    TDynamicCountersPtr GetCounters() override
+    {
+        return Counters;
+    }
 
     void Add(ui64 value)
     {
@@ -60,23 +78,18 @@ struct TBootstrap
 
     ITimerPtr Timer = CreateWallClockTimer();
     TDynamicCountersPtr Counters = MakeIntrusive<TDynamicCounters>();
+    IFsCountersProviderPtr FsCountersProvider =
+        CreateFsCountersProvider(Component, Counters);
     IModuleStatsRegistryPtr Registry =
-        CreateModuleStatsRegistry(Component, Counters);
+        CreateModuleStatsRegistry(FsCountersProvider);
 
     std::shared_ptr<TTestModuleStats> CreateAndRegisterStats(
         const TString& moduleName,
         const TString& fsId,
         const TString& clientId)
     {
-        auto moduleCounters = Registry->GetFileSystemModuleCounters(
-            fsId,
-            clientId,
-            CloudId,
-            FolderId,
-            moduleName);
-
-        auto stats = std::make_shared<TTestModuleStats>(Timer, moduleCounters);
-        Registry->Register(fsId, clientId, stats);
+        auto stats = std::make_shared<TTestModuleStats>(moduleName, Timer);
+        Registry->Register(fsId, clientId, CloudId, FolderId, stats);
         return stats;
     }
 
@@ -91,12 +104,13 @@ struct TBootstrap
         const TString& fsId,
         const TString& clientId) const
     {
-        return Registry->GetFileSystemModuleCounters(
-            fsId,
-            clientId,
-            CloudId,
-            FolderId,
-            moduleName);
+        return Counters->GetSubgroup("component", Component + "_fs")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("filesystem", fsId)
+            ->GetSubgroup("client", clientId)
+            ->GetSubgroup("cloud", CloudId)
+            ->GetSubgroup("folder", FolderId)
+            ->GetSubgroup("module", moduleName);
     }
 
     TDynamicCountersPtr GetModuleCounters(const TString& moduleName) const
@@ -115,8 +129,9 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
     {
         TBootstrap b;
 
-        auto moduleCounters = b.GetModuleCounters("TestModule");
-        UNIT_ASSERT(moduleCounters);
+        // Register stats to create the counter hierarchy
+        auto stats = b.CreateAndRegisterStats("TestModule");
+        UNIT_ASSERT(stats->GetCounters());
 
         auto fsCounters =
             b.Counters->FindSubgroup("component", b.Component + "_fs");
@@ -211,6 +226,7 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
         fsCounters = fsCounters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(fsCounters->FindSubgroup("filesystem", b.FileSystemId));
 
+        // Registry->Unregister calls FsCountersRegistry->Unregister internally
         b.Registry->Unregister(b.FileSystemId, b.ClientId);
 
         auto fsSubgroup =

@@ -58,6 +58,7 @@ public:
 class TDirectoryHandlesStats final: public IModuleStats
 {
 private:
+    NMonitoring::TDynamicCountersPtr Counters;
     TMaxMetric<DirectoryHandlesMaxBucketCount> CacheSize;
     TMaxMetric<DirectoryHandlesMaxBucketCount> ChunkCount;
 
@@ -65,9 +66,10 @@ private:
     void ChangeChunkCount(i64 delta);
 
 public:
-    TDirectoryHandlesStats(
-        ITimerPtr timer,
-        NMonitoring::TDynamicCountersPtr counters);
+    explicit TDirectoryHandlesStats(ITimerPtr timer);
+
+    TStringBuf GetName() const override;
+    NMonitoring::TDynamicCountersPtr GetCounters() override;
 
     void IncreaseCacheSize(size_t value);
     void DecreaseCacheSize(size_t value);

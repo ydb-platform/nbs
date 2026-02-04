@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/filesystem_counters.h>
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
@@ -109,6 +110,7 @@ struct TBootstrap
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
     const NMonitoring::TDynamicCountersPtr Counters;
+    const IFsCountersProviderPtr FsCountersProvider;
     const IRequestStatsRegistryPtr StatsRegistry;
     const IModuleStatsRegistryPtr ModuleStatsRegistry;
 
@@ -134,15 +136,17 @@ struct TBootstrap
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
         , Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
+        , FsCountersProvider{CreateFsCountersProvider(
+            TString{MetricsComponent},
+            Counters)}
         , StatsRegistry{CreateRequestStatsRegistry(
             TString{MetricsComponent},
             std::make_shared<TDiagnosticsConfig>(),
             Counters,
             Timer,
-            CreateUserCounterSupplierStub())}
-        , ModuleStatsRegistry{CreateModuleStatsRegistry(
-              TString{MetricsComponent},
-              Counters)}
+            CreateUserCounterSupplierStub(),
+            FsCountersProvider)}
+        , ModuleStatsRegistry{CreateModuleStatsRegistry(FsCountersProvider)}
     {
         signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
 
@@ -217,6 +221,7 @@ struct TBootstrap
             Logging,
             StatsRegistry,
             ModuleStatsRegistry,
+            FsCountersProvider,
             Scheduler,
             Timer,
             CreateProfileLogStub(),

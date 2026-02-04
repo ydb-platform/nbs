@@ -1,6 +1,7 @@
 #include "test_env.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/filesystem_counters.h>
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
@@ -111,12 +112,16 @@ TTestEnv::TTestEnv(
 
     InitSchemeShard();
 
+    auto fsCountersProvider = CreateFsCountersProvider(
+        "service",
+        Counters);
     StatsRegistry = CreateRequestStatsRegistry(
         "service",
         DiagConfig,
         Counters,
         CreateWallClockTimer(),
-        NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());
+        NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub(),
+        fsCountersProvider);
 
     Registry = NMetrics::CreateMetricsRegistry(
         {NMetrics::CreateLabel("counters", "filestore")},

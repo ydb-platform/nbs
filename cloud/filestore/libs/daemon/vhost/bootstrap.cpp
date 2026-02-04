@@ -277,9 +277,7 @@ void TBootstrapVhost::InitComponents()
 
     NVhost::InitLog(Logging);
 
-    ModuleStatsRegistry = CreateModuleStatsRegistry(
-        TString{VhostMetricsComponent},
-        FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()));
+    ModuleStatsRegistry = CreateModuleStatsRegistry(FsCountersProvider);
 
     ModuleStatsUpdater = CreateStatsUpdater(
         Timer,
@@ -416,6 +414,7 @@ void TBootstrapVhost::InitEndpoints()
             Scheduler,
             StatsRegistry,
             ModuleStatsRegistry,
+            FsCountersProvider,
             ProfileLog),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),

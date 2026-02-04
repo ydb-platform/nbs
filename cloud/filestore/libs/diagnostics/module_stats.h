@@ -6,6 +6,7 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore {
@@ -16,6 +17,9 @@ struct IModuleStats
 {
     virtual ~IModuleStats() = default;
 
+    virtual TStringBuf GetName() const = 0;
+    virtual NMonitoring::TDynamicCountersPtr GetCounters() = 0;
+
     virtual void UpdateStats() = 0;
 };
 
@@ -23,16 +27,13 @@ struct IModuleStats
 
 struct IModuleStatsRegistry: public IStatsHandler
 {
-    virtual NMonitoring::TDynamicCountersPtr GetFileSystemModuleCounters(
+    // Registers stats for (fsId, clientId) under stats->GetName().
+    // Attaches stats->GetCounters() to the counter hierarchy.
+    virtual void Register(
         const TString& fileSystemId,
         const TString& clientId,
         const TString& cloudId,
         const TString& folderId,
-        const TString& moduleName) = 0;
-
-    virtual void Register(
-        const TString& fileSystemId,
-        const TString& clientId,
         IModuleStatsPtr stats) = 0;
 
     virtual void Unregister(
@@ -43,8 +44,7 @@ struct IModuleStatsRegistry: public IStatsHandler
 ////////////////////////////////////////////////////////////////////////////////
 
 IModuleStatsRegistryPtr CreateModuleStatsRegistry(
-    TString component,
-    NMonitoring::TDynamicCountersPtr rootCounters);
+    IFsCountersProviderPtr fsCountersProvider);
 
 IModuleStatsRegistryPtr CreateModuleStatsRegistryStub();
 

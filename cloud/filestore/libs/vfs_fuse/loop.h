@@ -18,6 +18,7 @@ NVFS::IFileSystemLoopPtr CreateFuseLoop(
     ILoggingServicePtr logging,
     IRequestStatsRegistryPtr requestStats,
     IModuleStatsRegistryPtr moduleStats,
+    IFsCountersProviderPtr fsCountersProvider,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
     IProfileLogPtr profileLog,
@@ -29,6 +30,7 @@ NVFS::IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     ISchedulerPtr scheduler,
     IRequestStatsRegistryPtr requestStats,
     IModuleStatsRegistryPtr moduleStats,
+    IFsCountersProviderPtr fsCountersProvider,
     IProfileLogPtr profileLog);
 
 }   // namespace NCloud::NFileStore::NFuse

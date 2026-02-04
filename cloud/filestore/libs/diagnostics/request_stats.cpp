@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "critical_events.h"
+#include "filesystem_counters.h"
 
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
@@ -679,10 +680,14 @@ private:
     struct TFileSystemStatsHolder
         : private TAtomicRefCount<TFileSystemStatsHolder>
     {
+        TDynamicCountersPtr Counters;
         std::shared_ptr<TFileSystemStats> Stats;
 
-        explicit TFileSystemStatsHolder(std::shared_ptr<TFileSystemStats> stats)
-            : Stats(std::move(stats))
+        TFileSystemStatsHolder(
+                TDynamicCountersPtr counters,
+                std::shared_ptr<TFileSystemStats> stats)
+            : Counters(std::move(counters))
+            , Stats(std::move(stats))
         {}
 
         std::shared_ptr<TFileSystemStats> Acquire()
@@ -705,7 +710,7 @@ private:
 
     std::shared_ptr<TRequestStats> RequestStats;
 
-    TDynamicCountersPtr FsCounters;
+    IFsCountersProviderPtr FsCountersProvider;
     TRWMutex Lock;
     THashMap<std::pair<TString, TString>, TFileSystemStatsHolder> StatsMap;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
@@ -716,10 +721,12 @@ public:
             TDiagnosticsConfigPtr diagnosticsConfig,
             NMonitoring::TDynamicCountersPtr rootCounters,
             ITimerPtr timer,
-            std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters)
+            std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
+            IFsCountersProviderPtr fsCountersProvider)
         : DiagnosticsConfig(std::move(diagnosticsConfig))
         , RootCounters(std::move(rootCounters))
         , Timer(std::move(timer))
+        , FsCountersProvider(std::move(fsCountersProvider))
         , UserCounters(std::move(userCounters))
     {
         auto totalCounters = RootCounters
@@ -731,10 +738,6 @@ public:
             DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
             DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
             DiagnosticsConfig->GetHistogramCounterOptions());
-
-        FsCounters = RootCounters
-            ->GetSubgroup("component", component + "_fs")
-            ->GetSubgroup("host", "cluster");
     }
 
     IRequestStatsPtr GetFileSystemStats(
@@ -750,18 +753,18 @@ public:
         auto it = StatsMap.find(key);
         if (it == StatsMap.end())
         {
-            auto counters = FsCounters
-                ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId)
-                ->GetSubgroup("cloud", cloudId)
-                ->GetSubgroup("folder", folderId);
+            auto counters = FsCountersProvider->Register(
+                fileSystemId,
+                clientId,
+                cloudId,
+                folderId);
 
             auto stats = CreateRequestStats(
                 fileSystemId,
                 clientId,
                 cloudId,
                 folderId,
-                std::move(counters),
+                counters,
                 Timer,
                 DiagnosticsConfig->GetPostponeTimePredictorInterval(),
                 DiagnosticsConfig->GetPostponeTimePredictorPercentage(),
@@ -769,15 +772,10 @@ public:
                 DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
                 DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
                 DiagnosticsConfig->GetHistogramCounterOptions());
-            it = StatsMap.emplace(key, stats).first;
+            it = StatsMap.emplace(
+                key,
+                TFileSystemStatsHolder{std::move(counters), stats}).first;
             stats->Subscribe(RequestStats->GetTotalCounters());
-        } else {
-            UpdateCloudAndFolderIfNecessary(
-                *it->second.Stats,
-                fileSystemId,
-                clientId,
-                cloudId,
-                folderId);
         }
 
         return it->second.Acquire();
@@ -812,12 +810,6 @@ public:
             it->second.Stats->SetUserMetadata(
                 {.CloudId = cloudId, .FolderId = folderId});
 
-            auto counters = FsCounters
-                ->GetSubgroup("filesystem", fileSystemId)
-                ->GetSubgroup("client", clientId)
-                ->GetSubgroup("cloud", cloudId)
-                ->GetSubgroup("folder", folderId);
-
             NUserCounter::RegisterFilestore(
                 *UserCounters,
                 cloudId,
@@ -825,7 +817,7 @@ public:
                 fileSystemId,
                 clientId,
                 DiagnosticsConfig->GetHistogramCounterOptions(),
-                counters);
+                it->second.Counters);
         }
     }
 
@@ -856,8 +848,7 @@ public:
                 clientId);
             it->second.Stats->Reset();
             StatsMap.erase(it);
-            FsCounters->GetSubgroup("filesystem", fileSystemId)
-                ->RemoveSubgroup("client", clientId);
+            FsCountersProvider->Unregister(fileSystemId, clientId);
         }
     }
 
@@ -874,29 +865,6 @@ public:
         }
 
         RequestStats->UpdateStats(updatePercentiles);
-    }
-
-    void UpdateCloudAndFolder(
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& cloudId,
-        const TString& folderId) override
-    {
-        std::pair<TString, TString> key = std::make_pair(fileSystemId, clientId);
-
-        TWriteGuard guard(Lock);
-
-        auto it = StatsMap.find(key);
-        if (it == StatsMap.end()) {
-            return;
-        }
-
-        UpdateCloudAndFolderIfNecessary(
-            *it->second.Stats,
-            fileSystemId,
-            clientId,
-            cloudId,
-            folderId);
     }
 
 private:
@@ -931,46 +899,6 @@ private:
             executionTimeThreshold,
             totalTimeThreshold,
             histogramCounterOptions);
-    }
-
-    void UpdateCloudAndFolderIfNecessary(
-        const TFileSystemStats& stats,
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& newCloudId,
-        const TString& newFolderId)
-    {
-        const auto& currentCloudId = stats.GetCloudId();
-        const auto& currentFolderId = stats.GetFolderId();
-
-        if ((!newCloudId || newCloudId == currentCloudId) &&
-            (!newFolderId || newFolderId == currentFolderId))
-        {
-            return;
-        }
-
-        auto fsCounters = FsCounters
-            ->GetSubgroup("filesystem", fileSystemId)
-            ->GetSubgroup("client", clientId)
-            ->GetSubgroup("cloud", currentCloudId)
-            ->GetSubgroup("folder", currentFolderId);
-
-        FsCounters->RemoveSubgroupChain({
-            {"filesystem", fileSystemId},
-            {"client", clientId}
-        });
-
-        // GetSubgroup is used to create all neccessary subgroups
-        FsCounters->GetSubgroup("filesystem", fileSystemId)
-            ->GetSubgroup("client", clientId)
-            ->GetSubgroup("cloud", newCloudId)
-            ->GetSubgroup("folder", newFolderId);
-
-        FsCounters
-            ->GetSubgroup("filesystem", fileSystemId)
-            ->GetSubgroup("client", clientId)
-            ->GetSubgroup("cloud", newCloudId)
-            ->ReplaceSubgroup("folder", newFolderId, fsCounters);
     }
 };
 
@@ -1040,18 +968,6 @@ public:
     {
         Y_UNUSED(updatePercentiles);
     }
-
-    void UpdateCloudAndFolder(
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& cloudId,
-        const TString& folderId) override
-    {
-        Y_UNUSED(fileSystemId);
-        Y_UNUSED(clientId);
-        Y_UNUSED(cloudId);
-        Y_UNUSED(folderId);
-    }
 };
 
 }   // namespace
@@ -1063,14 +979,16 @@ IRequestStatsRegistryPtr CreateRequestStatsRegistry(
     TDiagnosticsConfigPtr diagnosticsConfig,
     NMonitoring::TDynamicCountersPtr rootCounters,
     ITimerPtr timer,
-    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters)
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
+    IFsCountersProviderPtr fsCountersProvider)
 {
     return std::make_shared<TRequestStatsRegistry>(
         std::move(component),
         std::move(diagnosticsConfig),
         std::move(rootCounters),
         std::move(timer),
-        std::move(userCounters));
+        std::move(userCounters),
+        std::move(fsCountersProvider));
 }
 
 IRequestStatsRegistryPtr CreateRequestStatsRegistryStub()

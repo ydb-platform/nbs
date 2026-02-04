@@ -4,12 +4,21 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesStats::TDirectoryHandlesStats(
-        ITimerPtr timer,
-        NMonitoring::TDynamicCountersPtr counters)
-    : CacheSize(timer, counters, "MaxCacheSize")
-    , ChunkCount(timer, counters, "MaxChunkCount")
+TDirectoryHandlesStats::TDirectoryHandlesStats(ITimerPtr timer)
+    : Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
+    , CacheSize(timer, Counters, "MaxCacheSize")
+    , ChunkCount(std::move(timer), Counters, "MaxChunkCount")
 {}
+
+TStringBuf TDirectoryHandlesStats::GetName() const
+{
+    return "DirectoryHandles";
+}
+
+NMonitoring::TDynamicCountersPtr TDirectoryHandlesStats::GetCounters()
+{
+    return Counters;
+}
 
 void TDirectoryHandlesStats::ChangeCacheSize(i64 delta)
 {
@@ -57,16 +66,8 @@ TDirectoryHandlesStatsPtr CreateDirectoryHandlesStats(
     const TString& cloudId,
     const TString& folderId)
 {
-    auto moduleCounters = registry->GetFileSystemModuleCounters(
-        fileSystemId,
-        clientId,
-        cloudId,
-        folderId,
-        "DirectoryHandles");
-    auto stats = std::make_shared<TDirectoryHandlesStats>(
-        std::move(timer),
-        std::move(moduleCounters));
-    registry->Register(fileSystemId, clientId, stats);
+    auto stats = std::make_shared<TDirectoryHandlesStats>(std::move(timer));
+    registry->Register(fileSystemId, clientId, cloudId, folderId, stats);
     return stats;
 }
 

@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
+#include <cloud/filestore/libs/diagnostics/filesystem_counters.h>
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
@@ -117,6 +118,7 @@ TStarter::TStarter()
         Logging,
         CreateRequestStatsRegistryStub(),
         CreateModuleStatsRegistryStub(),
+        CreateFsCountersProviderStub(),
         Scheduler,
         Timer,
         CreateProfileLogStub(),
