@@ -49,9 +49,10 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
+        const ui32 pageSize = 1024;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
 
-        auto result = state.CreateMmapRegion(relativePath, fileSize);
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
 
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
@@ -106,23 +107,24 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     {
         TTestEnv env;
         TServerState state(env.GetBasePath(), TDuration::Max());
+        const ui32 pageSize = 1024;
 
         TString relativePath = env.CreateTestFile("test_file.dat", 4096);
 
         // zero size
-        auto result = state.CreateMmapRegion(relativePath, 0);
+        auto result = state.CreateMmapRegion(relativePath, 0, pageSize);
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
 
         // size greater than file size
-        result = state.CreateMmapRegion(relativePath, 8192);
+        result = state.CreateMmapRegion(relativePath, 8192, pageSize);
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_IO, result.GetError().GetCode());
 
         // absolute path instead of relative
         TString absolutePath =
             TFsPath(env.GetBasePath()).Child("test_file.dat").GetPath();
-        result = state.CreateMmapRegion(absolutePath, 4096);
+        result = state.CreateMmapRegion(absolutePath, 4096, pageSize);
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
     }
@@ -131,6 +133,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     {
         TTestEnv env;
         TServerState state(env.GetBasePath(), TDuration::Max());
+        const ui32 pageSize = 1024;
 
         const size_t fileSize = 4096;
         TString relativePath = env.CreateTestFile(JoinFsPaths(
@@ -139,7 +142,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
             "to",
             "test_file.dat"), fileSize);
 
-        auto result = state.CreateMmapRegion(relativePath, fileSize);
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
 
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
@@ -153,9 +156,28 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     {
         TTestEnv env;
         TServerState state(env.GetBasePath(), TDuration::Max());
+        const ui32 pageSize = 1024;
 
-        auto result = state.CreateMmapRegion("nonexistent.dat", 4096);
+        auto result = state.CreateMmapRegion("nonexistent.dat", 4096, pageSize);
 
+        UNIT_ASSERT(HasError(result));
+    }
+
+    Y_UNIT_TEST(ShouldFailCreateMmapRegionWithUnalignedSizeAndPageSize)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath(), TDuration::Max());
+
+        const size_t fileSize = 4096;
+        TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize, 100);
+        UNIT_ASSERT(HasError(result));
+
+        result = state.CreateMmapRegion(relativePath, fileSize, 4097);
+        UNIT_ASSERT(HasError(result));
+
+        result = state.CreateMmapRegion(relativePath, fileSize, 8196);
         UNIT_ASSERT(HasError(result));
     }
 
@@ -165,9 +187,11 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
+        const ui32 pageSize = 1024;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
 
-        auto createResult = state.CreateMmapRegion(relativePath, fileSize);
+        auto createResult =
+            state.CreateMmapRegion(relativePath, fileSize, pageSize);
         UNIT_ASSERT_C(
             !HasError(createResult),
             FormatError(createResult.GetError()));
@@ -200,8 +224,8 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         TString path1 = env.CreateTestFile("file1.dat", 4096);
         TString path2 = env.CreateTestFile("file2.dat", 8192);
 
-        auto result1 = state.CreateMmapRegion(path1, 4096);
-        auto result2 = state.CreateMmapRegion(path2, 8192);
+        auto result1 = state.CreateMmapRegion(path1, 4096, 1024);
+        auto result2 = state.CreateMmapRegion(path2, 8192, 0);
 
         UNIT_ASSERT_C(!HasError(result1), FormatError(result1.GetError()));
         UNIT_ASSERT_C(!HasError(result2), FormatError(result2.GetError()));
@@ -218,10 +242,16 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         UNIT_ASSERT_VALUES_EQUAL(result1.GetResult().Size, regions[0].Size);
         UNIT_ASSERT_VALUES_EQUAL(result1.GetResult().Id, regions[0].Id);
         UNIT_ASSERT_VALUES_EQUAL(
+            result1.GetResult().PageSize,
+            regions[0].PageSize);
+        UNIT_ASSERT_VALUES_EQUAL(
             result2.GetResult().FilePath,
             regions[1].FilePath);
         UNIT_ASSERT_VALUES_EQUAL(result2.GetResult().Size, regions[1].Size);
         UNIT_ASSERT_VALUES_EQUAL(result2.GetResult().Id, regions[1].Id);
+        UNIT_ASSERT_VALUES_EQUAL(
+            result2.GetResult().PageSize,
+            regions[1].PageSize);
     }
 
     Y_UNIT_TEST(ShouldGetMmapRegion)
@@ -230,9 +260,10 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
+        const ui32 pageSize = 1024;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
 
-        auto result = state.CreateMmapRegion(relativePath, fileSize);
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
         const auto mmapInfo = result.ExtractResult();
@@ -256,10 +287,11 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     {
         TTestEnv env;
         TServerState state(env.GetBasePath(), TDuration::Seconds(1));
+        const ui32 pageSize = 1024;
 
         TString path1 = env.CreateTestFile("file1.dat", 4096);
 
-        auto result = state.CreateMmapRegion(path1, 4096);
+        auto result = state.CreateMmapRegion(path1, 4096, pageSize);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
         UNIT_ASSERT_VALUES_EQUAL(1u, state.ListMmapRegions().size());
@@ -277,9 +309,10 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
+        const ui32 pageSize = 1024;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
 
-        auto result = state.CreateMmapRegion(relativePath, fileSize);
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
         const auto mmapInfo = result.ExtractResult();
@@ -296,6 +329,204 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         UNIT_ASSERT_GT(
             getResult.GetResult().LatestActivityTimestamp,
             oldTimestamp);
+    }
+
+    Y_UNIT_TEST(ShouldRejectLockingIntersectingIovecs)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath(), TDuration::Max());
+
+        const size_t fileSize = 100_KB;
+        const ui32 pageSize = 1_KB;
+        TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto mmapInfo = result.ExtractResult();
+        auto metadata = state.GetMmapRegion(mmapInfo.Id).GetResult();
+
+        google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+        google::protobuf::RepeatedPtrField<NProto::TIovec> adjustedIovecs;
+        for (int i = 1; i < 4; ++i) {
+            auto iovec = iovecs.Add();
+            iovec->SetBase(i * 1_KB);
+            iovec->SetLength(pageSize);
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            auto iovec = iovecs.Add();
+            iovec->SetBase((10 + i) * 1_KB);
+            iovec->SetLength(pageSize);
+        }
+
+        for (const auto& iovec: iovecs) {
+            auto adjustedIovec = adjustedIovecs.Add();
+            adjustedIovec->SetBase(
+                iovec.GetBase() + reinterpret_cast<ui64>(metadata.Address));
+            adjustedIovec->SetLength(iovec.GetLength());
+        }
+
+        {
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+            auto receivedAdjustedIovecs = result.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(
+                adjustedIovecs.size(),
+                receivedAdjustedIovecs.size());
+            for (int i = 0; i < adjustedIovecs.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    adjustedIovecs[i].GetBase(),
+                    receivedAdjustedIovecs[i].GetBase());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    adjustedIovecs[i].GetLength(),
+                    receivedAdjustedIovecs[i].GetLength());
+            }
+        }
+
+        {
+            // trying to lock the same iovecs again
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+
+        {
+            // trying to lock the iovec in the middle of the locked address range
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(3_KB);
+            iovec->SetLength(1_KB);
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+
+        {
+            // first iovec is unlocked, but second is locked
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            for (int i = 0; i < 2; ++i) {
+                auto iovec = iovecs.Add();
+                iovec->SetBase(i * 1_KB);
+                iovec->SetLength(1_KB);
+            }
+            auto result1 = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result1));
+
+            iovecs.RemoveLast();
+            auto result2 = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT_C(!HasError(result2), FormatError(result2.GetError()));
+            auto adjustedIoves = result2.ExtractResult();
+            auto ret = state.UnlockIovecs(mmapInfo.Id, adjustedIoves);
+            UNIT_ASSERT_C(!HasError(ret), FormatError(ret));
+        }
+
+        {
+            auto result = state.UnlockIovecs(mmapInfo.Id, adjustedIovecs);
+            UNIT_ASSERT_C(!HasError(result), FormatError(result));
+        }
+
+        {
+            // verify that the iovecs have been unlocked
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectLockingIovecsWithUnalignedOffset)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath(), TDuration::Max());
+
+        const size_t fileSize = 100_KB;
+        const ui32 pageSize = 4_KB;
+        TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto mmapInfo = result.ExtractResult();
+        auto metadata = state.GetMmapRegion(mmapInfo.Id).GetResult();
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(100);
+            iovec->SetLength(pageSize);
+
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectLockingIovecsWithUnalignedSize)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath(), TDuration::Max());
+
+        const size_t fileSize = 100_KB;
+        const ui32 pageSize = 4_KB;
+        TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto mmapInfo = result.ExtractResult();
+        auto metadata = state.GetMmapRegion(mmapInfo.Id).GetResult();
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(0);
+            iovec->SetLength(2 * pageSize);
+
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(0);
+            iovec->SetLength(pageSize + 1);
+
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectLockingOutOfRangeIovecs)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath(), TDuration::Max());
+
+        const size_t fileSize = 100_KB;
+        const ui32 pageSize = 4_KB;
+        TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize, pageSize);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto mmapInfo = result.ExtractResult();
+        auto metadata = state.GetMmapRegion(mmapInfo.Id).GetResult();
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(97_KB);
+            iovec->SetLength(pageSize);
+
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(96_KB);
+            iovec->SetLength(pageSize);
+
+            auto result = state.AdjustAndLockIovecs(mmapInfo.Id, iovecs);
+            UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        }
     }
 }
 
