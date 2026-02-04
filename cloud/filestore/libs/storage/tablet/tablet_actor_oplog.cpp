@@ -135,7 +135,7 @@ void TIndexTabletActor::ReplayOpLog(
             NProto::TProfileLogRequestInfo profileLogRequest;
             InitTabletProfileLogRequestInfo(
                 profileLogRequest,
-                EFileStoreRequest::RenameNode,
+                EFileStoreSystemRequest::RenameNodeInDestination,
                 request.GetOriginalRequest(),
                 ctx.Now());
 
