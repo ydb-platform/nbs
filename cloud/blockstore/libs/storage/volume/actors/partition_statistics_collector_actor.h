@@ -22,7 +22,7 @@ private:
 
     NProto::TError LastError;
 
-    ui32 FailedResponses = 0;
+    size_t ResponsesCount = 0;
 
 public:
     TPartitionStatisticsCollectorActor(

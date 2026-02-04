@@ -31,7 +31,7 @@ void TServiceStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            0,
+            0,  // cookie
             &ctx.SelfID   // forwardOnNondelivery
         );
 
@@ -83,7 +83,8 @@ void TServiceStatisticsCollectorActor::HandleGetServiceStatisticsResponse(
 
     Response.Counters.push_back(std::move(*msg));
 
-    if (Response.Counters.size() + FailedResponses == VolumeActorIds.size()) {
+    ++ResponsesCount;
+    if (ResponsesCount == VolumeActorIds.size()) {
         ReplyAndDie(ctx);
     }
 }
@@ -94,8 +95,8 @@ void TServiceStatisticsCollectorActor::HandleGetServiceStatisticsUndelivery(
 {
     Y_UNUSED(ev);
 
-    ++FailedResponses;
-    if (Response.Counters.size() + FailedResponses == VolumeActorIds.size()) {
+    ++ResponsesCount;
+    if (ResponsesCount == VolumeActorIds.size()) {
         ReplyAndDie(ctx);
     }
 }

@@ -25,7 +25,17 @@ void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
     for (const auto& partition: Partitions) {
         auto request = std::make_unique<
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest>();
-        NCloud::Send(ctx, partition, std::move(request));
+
+        auto event = std::make_unique<IEventHandle>(
+            partition,
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            0,  // cookie
+            &ctx.SelfID   // forwardOnNondelivery
+        );
+
+        ctx.Send(event.release());
     }
 
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
@@ -74,14 +84,15 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
 {
     auto* record = ev->Get();
 
+
     if (HasError(record->Error)) {
         LastError = record->Error;
-        ++FailedResponses;
     } else {
         Response.PartCounters.push_back(std::move(*record));
     }
 
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size()) {
         SendStatToVolume(ctx);
     }
 }
@@ -92,8 +103,8 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
 {
     Y_UNUSED(ev);
 
-    ++FailedResponses;
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size()) {
         SendStatToVolume(ctx);
     }
 }
