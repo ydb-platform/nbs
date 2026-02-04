@@ -12,8 +12,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TServiceStatisticsCollectorActor::TServiceStatisticsCollectorActor(
-        const TActorId& owner,
-        TVector<TActorId> volumeActorIds)
+    const TActorId& owner,
+    TVector<TActorId> volumeActorIds)
     : Owner(owner)
     , VolumeActorIds(std::move(volumeActorIds))
 {}
@@ -23,11 +23,19 @@ void TServiceStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     for (const auto& volumeActorId: VolumeActorIds) {
-        NCloud::Send(
-            ctx,
+        auto request =
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>();
+
+        auto event = std::make_unique<IEventHandle>(
             volumeActorId,
-            std::make_unique<
-                TEvStatsService::TEvGetServiceStatisticsRequest>());
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            0,
+            &ctx.SelfID   // forwardOnNondelivery
+        );
+
+        ctx.Send(event.release());
     }
 
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
@@ -75,7 +83,19 @@ void TServiceStatisticsCollectorActor::HandleGetServiceStatisticsResponse(
 
     Response.Counters.push_back(std::move(*msg));
 
-    if (Response.Counters.size() == VolumeActorIds.size()) {
+    if (Response.Counters.size() + FailedResponses == VolumeActorIds.size()) {
+        ReplyAndDie(ctx);
+    }
+}
+
+void TServiceStatisticsCollectorActor::HandleGetServiceStatisticsUndelivery(
+    TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ++FailedResponses;
+    if (Response.Counters.size() + FailedResponses == VolumeActorIds.size()) {
         ReplyAndDie(ctx);
     }
 }
@@ -86,14 +106,19 @@ STFUNC(TServiceStatisticsCollectorActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleTimeout);
+
         HFunc(
             TEvStatsService::TEvGetServiceStatisticsResponse,
-            HandleGetServiceStatisticsResponse)
+            HandleGetServiceStatisticsResponse);
+
+        HFunc(
+            TEvStatsService::TEvGetServiceStatisticsRequest,
+            HandleGetServiceStatisticsUndelivery);
 
         default:
             HandleUnexpectedEvent(
                 ev,
-                TBlockStoreComponents::VOLUME,
+                TBlockStoreComponents::STATS_SERVICE,
                 __PRETTY_FUNCTION__);
             break;
     }

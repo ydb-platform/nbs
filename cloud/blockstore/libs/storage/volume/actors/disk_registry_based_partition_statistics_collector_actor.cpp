@@ -25,11 +25,20 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::Bootstrap(
     Become(&TThis::StateWork);
 
     for (const auto& statActorId: StatActorIds) {
-        NCloud::Send(
-            ctx,
-            statActorId,
+        auto request =
             std::make_unique<TEvNonreplPartitionPrivate::
-                                 TEvGetDiskRegistryBasedPartCountersRequest>());
+                                 TEvGetDiskRegistryBasedPartCountersRequest>();
+
+        auto event = std::make_unique<IEventHandle>(
+            statActorId,
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            0,
+            &ctx.SelfID   // forwardOnNondelivery
+        );
+
+        ctx.Send(event.release());
     }
 
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
@@ -84,7 +93,22 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
 
     Response.Counters.push_back(std::move(*msg));
 
-    if (Response.Counters.size() == StatActorIds.size()) {
+    if (Response.Counters.size() + FailedResponses == StatActorIds.size()) {
+        ReplyAndDie(ctx);
+    }
+}
+
+void TDiskRegistryBasedPartitionStatisticsCollectorActor::
+    HandleGetDiskRegitryBasedPartCountersUndelivery(
+        TEvNonreplPartitionPrivate::TEvGetDiskRegistryBasedPartCountersRequest::
+            TPtr& ev,
+        const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ++FailedResponses;
+
+    if (Response.Counters.size() + FailedResponses == StatActorIds.size()) {
         ReplyAndDie(ctx);
     }
 }
@@ -98,7 +122,11 @@ STFUNC(TDiskRegistryBasedPartitionStatisticsCollectorActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersResponse,
-            HandleGetDiskRegistryBasedPartCountersResponse)
+            HandleGetDiskRegistryBasedPartCountersResponse);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegitryBasedPartCountersUndelivery);
 
         default:
             HandleUnexpectedEvent(

@@ -1349,6 +1349,10 @@ private:
         const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void RejectGetServiceStatistics(
+        const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolumePrivate)
     BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)

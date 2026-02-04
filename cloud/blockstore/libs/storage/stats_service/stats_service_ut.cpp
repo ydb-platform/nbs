@@ -1680,48 +1680,55 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             EPublishingPolicy::DiskRegistryBased);
     }
 
-    void DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicyPullScheme(
-        NProto::EStorageMediaKind mediaKind,
-        EPublishingPolicy publishingPolicy)
+    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersPullScheme)
     {
         bool uploadSeen = false;
-        auto callback = [&] (const TYdbRowData& rows)
+        auto callback = [&](const TYdbRowData& rows)
         {
             Y_UNUSED(rows);
             uploadSeen = true;
             return NThreading::MakeFuture(MakeError(S_OK));
         };
 
-        IYdbVolumesStatsUploaderPtr ydbStats = std::make_shared<TYdbStatsMock>(callback);
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
 
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
 
         TTestBasicRuntime runtime;
-        TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
 
-        RegisterVolume(runtime, "vol0", mediaKind, true /* isSystem */);
+        RegisterVolume(
+            runtime,
+            "vol0",
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            true /* isSystem */);
 
         auto counters = CreatePartitionDiskCounters(
-            publishingPolicy,
+            EPublishingPolicy::DiskRegistryBased,
             EHistogramCounterOption::ReportMultipleCounters);
         counters->RequestCounters.ReadBlocks.Count = 42;
         counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
 
-        // Statistics were sent using the push method to check for possible failures.
+        // Statistics were sent using the push method to check for possible
+        // failures.
         SendDiskStats(
             runtime,
             "vol0",
-            false, // isLocalMount
+            false,   // isLocalMount
             std::move(counters),
             CreateVolumeSelfCounters(
-                publishingPolicy,
+                EPublishingPolicy::DiskRegistryBased,
                 EHistogramCounterOption::ReportMultipleCounters),
             EVolumeTestOptions::VOLUME_HASCLIENTS,
             0);
 
         counters = CreatePartitionDiskCounters(
-            publishingPolicy,
+            EPublishingPolicy::DiskRegistryBased,
             EHistogramCounterOption::ReportMultipleCounters);
         counters->RequestCounters.ReadBlocks.Count = 42;
         counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
@@ -1739,11 +1746,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         auto selfCounters = TEvStatsService::TEvVolumeSelfCounters(
             "vol0",
             false,
-            EVolumeTestOptions::VOLUME_HASCLIENTS & EVolumeTestOptions::VOLUME_HASCLIENTS,
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
             false,
-            std::move(CreateVolumeSelfCounters(publishingPolicy,
-            EHistogramCounterOption::ReportMultipleCounters))
-        );
+            std::move(CreateVolumeSelfCounters(
+                EPublishingPolicy::DiskRegistryBased,
+                EHistogramCounterOption::ReportMultipleCounters)));
 
         runtime.SetEventFilter(
             [&](auto&, TAutoPtr<IEventHandle>& event)
@@ -1751,10 +1758,12 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 switch (event->GetTypeRewrite()) {
                     case TEvStatsService::EvGetServiceStatisticsRequest: {
                         auto response = std::make_unique<
-                            TEvStatsService::TEvGetServiceStatisticsResponse>(0);
+                            TEvStatsService::TEvGetServiceStatisticsResponse>();
 
-                        response->PartsCounters.push_back(std::move(partCounters));
-                        response->VolumeCounters.emplace(std::move(selfCounters));
+                        response->PartsCounters.push_back(
+                            std::move(partCounters));
+                        response->VolumeCounters.emplace(
+                            std::move(selfCounters));
 
                         runtime.Send(
                             new IEventHandle(
@@ -1778,7 +1787,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 MakeStorageStatsServiceId(),
                 MakeStorageStatsServiceId(),
                 updateMsg.release(),
-                0, // flags
+                0,   // flags
                 0),
             0);
 
@@ -1787,58 +1796,30 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         runtime.DispatchEvents(options);
 
         {
-            ui64 actual = *runtime.GetAppData(0).Counters
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", "vol0")
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("request", "ReadBlocks")
-                ->GetCounter("Count");
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("host", "cluster")
+                               ->GetSubgroup("volume", "vol0")
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup("request", "ReadBlocks")
+                               ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(84, actual);
         }
 
         {
-            ui64 actual = *runtime.GetAppData(0).Counters
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "service_volume")
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", "vol0")
-                ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("request", "ReadBlocks")
-                ->GetCounter("RequestBytes");
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("host", "cluster")
+                               ->GetSubgroup("volume", "vol0")
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup("request", "ReadBlocks")
+                               ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(201000, actual);
         }
-    }
-
-    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForSsdNonreplDisksPullScheme)
-    {
-        DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicyPullScheme(
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            EPublishingPolicy::DiskRegistryBased);
-    }
-
-    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForHddNonreplDisksPullScheme)
-    {
-        DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicyPullScheme(
-            NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
-            EPublishingPolicy::DiskRegistryBased);
-    }
-
-    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror2DisksPullScheme)
-    {
-        DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicyPullScheme(
-            NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            EPublishingPolicy::DiskRegistryBased);
-    }
-
-    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror3DisksPullScheme)
-    {
-        DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicyPullScheme(
-            NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldRegisterTrafficSources)

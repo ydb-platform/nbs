@@ -215,15 +215,11 @@ struct TEvStatsService
 
     struct TGetServiceStatisticsResponse
     {
-        ui32 VolumeNodeId;
-
         std::optional<TVolumeSelfCounters> VolumeCounters;
 
         TVector<TVolumePartCounters> PartsCounters;
 
-        explicit TGetServiceStatisticsResponse(ui32 volumeNodeId)
-            : VolumeNodeId(volumeNodeId)
-        {}
+        explicit TGetServiceStatisticsResponse() = default;
     };
 
     //

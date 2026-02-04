@@ -22,6 +22,8 @@ private:
 
     NProto::TError LastError;
 
+    size_t FailedResponses = 0;
+
 public:
     TServiceStatisticsCollectorActor(
         const NActors::TActorId& owner,
@@ -41,6 +43,10 @@ private:
 
     void HandleGetServiceStatisticsResponse(
         TEvStatsService::TEvGetServiceStatisticsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetServiceStatisticsUndelivery(
+        TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

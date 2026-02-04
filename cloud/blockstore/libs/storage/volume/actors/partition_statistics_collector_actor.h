@@ -48,6 +48,10 @@ private:
     void HandleGetPartCountersResponse(
         TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleGetPartCountersUndelivery(
+        TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
