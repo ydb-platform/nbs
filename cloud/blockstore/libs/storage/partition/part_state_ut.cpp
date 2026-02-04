@@ -279,51 +279,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
     }
 
-    Y_UNIT_TEST(ShouldCalculateFreshBlobByteCount)
-    {
-        TPartitionState state(
-            DefaultConfig(1, DefaultBlockCount),
-            0,  // generation
-            BuildDefaultCompactionPolicy(5),
-            0,  // compactionScoreHistorySize
-            0,  // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),  // maxIORequestsInFlight
-            0,      // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            100,    // reassignMixedChannelsPercentageThreshold
-            false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
-            5,      // channelCount
-            0,      // mixedIndexCacheSize
-            10000,  // allocationUnit
-            100,    // maxBlobsPerUnit
-            10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
-        );
-
-        state.AddFreshBlob({1, 10});
-        state.AddFreshBlob({3, 30});
-        state.AddFreshBlob({2, 20});
-        state.AddFreshBlob({5, 50});
-        state.AddFreshBlob({4, 40});
-
-        UNIT_ASSERT_VALUES_EQUAL(150, state.GetUntrimmedFreshBlobByteCount());
-
-        state.TrimFreshBlobs(3);
-
-        UNIT_ASSERT_VALUES_EQUAL(90, state.GetUntrimmedFreshBlobByteCount());
-
-        state.AddFreshBlob({7, 70});
-
-        UNIT_ASSERT_VALUES_EQUAL(160, state.GetUntrimmedFreshBlobByteCount());
-
-        state.TrimFreshBlobs(10);
-
-        UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
-    }
-
     Y_UNIT_TEST(ShouldCorrectlyCalculateCheckpointBytes)
     {
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);

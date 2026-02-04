@@ -10,6 +10,7 @@ SRCS(
     drain_actor_companion_ut.cpp
     long_running_operation_companion_ut.cpp
     part_channels_state_ut.cpp
+    part_fresh_blocks_state_ut.cpp
 )
 
 PEERDIR(
