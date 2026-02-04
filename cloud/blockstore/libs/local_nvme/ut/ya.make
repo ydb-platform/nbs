@@ -11,6 +11,7 @@ SRCS(
 IF (OS_LINUX)
     SRCS(
         service_linux_ut.cpp
+        sysfs_helpers_ut.cpp
     )
 ENDIF(OS_LINUX)
 

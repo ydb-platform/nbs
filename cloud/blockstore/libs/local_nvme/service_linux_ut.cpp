@@ -1,7 +1,8 @@
-#include "service.h"
+#include "service_linux.h"
 
 #include "config.h"
 #include "device_provider.h"
+#include "sysfs_helpers.h"
 
 #include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
@@ -14,6 +15,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/hash.h>
 #include <util/stream/file.h>
 #include <util/system/tempfile.h>
 
@@ -44,6 +46,25 @@ struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestSysFs final: ISysFs
+{
+    THashMap<TString, TString> DeviceToDriver;
+
+    auto GetDriverForPCIDevice(const TString& pciAddr) -> TString final
+    {
+        return DeviceToDriver.Value(pciAddr, TString());
+    }
+
+    void BindPCIDeviceToDriver(
+        const TString& pciAddr,
+        const TString& driverName) final
+    {
+        DeviceToDriver[pciAddr] = driverName;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TFixture: public NUnitTest::TBaseFixture
 {
     TString StateCacheFile;
@@ -54,11 +75,14 @@ struct TFixture: public NUnitTest::TBaseFixture
     std::shared_ptr<TTestLocalNVMeDeviceProvider> DeviceProvider;
     NNvme::INvmeManagerPtr NVMeManager;
     TExecutorPtr Executor;
+    std::shared_ptr<TTestSysFs> SysFs;
 
     ILocalNVMeServicePtr Service;
 
     void SetUp(NUnitTest::TTestContext& /*testContext*/) final
     {
+        SysFs = std::make_shared<TTestSysFs>();
+
         PrepareDevices();
         PrepareConfigs();
 
@@ -95,7 +119,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             Logging,
             std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider),
             NVMeManager,
-            Executor);
+            Executor,
+            std::static_pointer_cast<ISysFs>(SysFs));
     }
 
     void PrepareDevices()
@@ -143,6 +168,10 @@ struct TFixture: public NUnitTest::TBaseFixture
         Devices.assign(
             std::make_move_iterator(list.MutableDevices()->begin()),
             std::make_move_iterator(list.MutableDevices()->end()));
+
+        for (const auto& device: Devices) {
+            SysFs->DeviceToDriver[device.GetPCIAddress()] = "nvme";
+        }
     }
 
     void PrepareConfigs()
@@ -222,7 +251,11 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
     Y_UNIT_TEST_F(ShouldAcquireAndReleaseDevice, TFixture)
     {
-        for (TString sn: {"NVME_0", "UNK"}) {
+        const auto& device = Devices[0];
+        const auto& pciAddr = device.GetPCIAddress();
+        const auto& serialNumber = device.GetSerialNumber();
+
+        for (const auto& sn: {serialNumber, TString("UNK")}) {
             {
                 auto future = Service->AcquireNVMeDevice(sn);
                 const auto& error = future.GetValueSync();
@@ -270,8 +303,10 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
         }
 
+        UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->DeviceToDriver[pciAddr]);
+
         {
-            auto future = Service->AcquireNVMeDevice("NVME_0");
+            auto future = Service->AcquireNVMeDevice(serialNumber);
             const auto& error = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -279,14 +314,18 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
         }
 
+        UNIT_ASSERT_VALUES_EQUAL("vfio-pci", SysFs->DeviceToDriver[pciAddr]);
+
         {
-            auto future = Service->ReleaseNVMeDevice("NVME_0");
+            auto future = Service->ReleaseNVMeDevice(serialNumber);
             const auto& error = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
         }
+
+        UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->DeviceToDriver[pciAddr]);
     }
 
     Y_UNIT_TEST_F(ShouldHandleListDevicesError, TFixture)

@@ -20,6 +20,7 @@ PEERDIR(
 IF (OS_LINUX)
     SRCS(
         service_linux.cpp
+        sysfs_helpers.cpp
     )
 ELSE(OS_LINUX)
     SRCS(

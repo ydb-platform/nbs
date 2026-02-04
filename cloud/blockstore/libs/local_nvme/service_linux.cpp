@@ -1,7 +1,8 @@
-#include "service.h"
+#include "service_linux.h"
 
 #include "config.h"
 #include "device_provider.h"
+#include "sysfs_helpers.h"
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -10,6 +11,7 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/threading/future/future.h>
 
+#include <util/folder/path.h>
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
 #include <util/stream/str.h>
@@ -57,6 +59,7 @@ private:
     const ILocalNVMeDeviceProviderPtr DeviceProvider;
     const NNvme::INvmeManagerPtr NvmeManager;
     const TExecutorPtr Executor;
+    const ISysFsPtr SysFs;
 
     TLog Log;
     TFuture<NProto::TError> Ready;
@@ -70,7 +73,8 @@ public:
         ILoggingServicePtr logging,
         ILocalNVMeDeviceProviderPtr deviceProvider,
         NNvme::INvmeManagerPtr nvmeManager,
-        TExecutorPtr executor);
+        TExecutorPtr executor,
+        ISysFsPtr sysFs);
 
     // IStartable
 
@@ -107,12 +111,14 @@ TLocalNVMeService::TLocalNVMeService(
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TExecutorPtr executor)
+    TExecutorPtr executor,
+    ISysFsPtr sysFs)
     : Config(std::move(config))
     , Logging(std::move(logging))
     , DeviceProvider(std::move(deviceProvider))
     , NvmeManager(std::move(nvmeManager))
     , Executor(std::move(executor))
+    , SysFs(std::move(sysFs))
 {
     Y_UNUSED(NvmeManager);
 }
@@ -321,7 +327,9 @@ auto TLocalNVMeService::Initialize() -> NProto::TError
 auto TLocalNVMeService::AcquireDevice(const TString& serialNumber)
     -> NProto::TError
 {
-    if (!Devices.contains(serialNumber)) {
+    const auto* device = Devices.FindPtr(serialNumber);
+
+    if (!device) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder()
@@ -338,7 +346,11 @@ auto TLocalNVMeService::AcquireDevice(const TString& serialNumber)
 
     UpdateStateCache();
 
-    // TODO
+    try {
+        SysFs->BindPCIDeviceToDriver(device->GetPCIAddress(), "vfio-pci");
+    } catch (...) {
+        return MakeError(E_FAIL, CurrentExceptionMessage());
+    }
 
     return {};
 }
@@ -346,18 +358,24 @@ auto TLocalNVMeService::AcquireDevice(const TString& serialNumber)
 auto TLocalNVMeService::ReleaseDevice(const TString& serialNumber)
     -> NProto::TError
 {
-    if (!Devices.contains(serialNumber)) {
+    const auto* device = Devices.FindPtr(serialNumber);
+
+    if (!device) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder()
                 << "Device " << serialNumber.Quote() << " not found");
     }
 
+    try {
+        SysFs->BindPCIDeviceToDriver(device->GetPCIAddress(), "nvme");
+    } catch (...) {
+        return MakeError(E_FAIL, CurrentExceptionMessage());
+    }
+
     AcquiredDevices.erase(serialNumber);
 
     UpdateStateCache();
-
-    // TODO
 
     return {};
 }
@@ -385,14 +403,32 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TExecutorPtr executor)
+    TExecutorPtr executor,
+    ISysFsPtr sysFs)
 {
     return std::make_shared<TLocalNVMeService>(
         std::move(config),
         std::move(logging),
         std::move(deviceProvider),
         std::move(nvmeManager),
-        std::move(executor));
+        std::move(executor),
+        std::move(sysFs));
+}
+
+ILocalNVMeServicePtr CreateLocalNVMeService(
+    TLocalNVMeConfigPtr config,
+    ILoggingServicePtr logging,
+    ILocalNVMeDeviceProviderPtr deviceProvider,
+    NNvme::INvmeManagerPtr nvmeManager,
+    TExecutorPtr executor)
+{
+    return CreateLocalNVMeService(
+        std::move(config),
+        std::move(logging),
+        std::move(deviceProvider),
+        std::move(nvmeManager),
+        std::move(executor),
+        CreateSysFs("/sys"));
 }
 
 }   // namespace NCloud::NBlockStore
