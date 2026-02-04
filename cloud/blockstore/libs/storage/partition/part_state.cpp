@@ -76,10 +76,7 @@ TPartitionState::TPartitionState(
           channelCount)
     , TCommitIdsState(generation, lastCommitId)
     , TPartitionTrimFreshLogState(static_cast<TCommitIdsState&>(*this))
-    , TPartitionFreshBlocksState(
-          static_cast<TCommitIdsState&>(*this),
-          static_cast<TPartitionFlushState&>(*this),
-          static_cast<TPartitionTrimFreshLogState&>(*this))
+    , TPartitionFreshBlocksState(*this, *this, *this)
     , Meta(std::move(meta))
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
