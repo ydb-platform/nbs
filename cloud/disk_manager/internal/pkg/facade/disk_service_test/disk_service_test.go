@@ -1218,3 +1218,48 @@ func TestDiskServiceShouldCreateSsdNonreplWithRootKmsEncryptionByFolderID(
 		nil, // encryptionDesc
 	)
 }
+
+func testDiskServiceDeleteNonExistentDisk(t *testing.T, sync bool) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name() + "_NonExistent"
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: diskID,
+		},
+		Sync: sync,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	// Should be idempotent.
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: diskID,
+		},
+		Sync: sync,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceDeleteNonExistentDisk(t *testing.T) {
+	testDiskServiceDeleteNonExistentDisk(t, false /* sync */)
+}
+
+func TestDiskServiceDeleteNonExistentDiskSync(t *testing.T) {
+	testDiskServiceDeleteNonExistentDisk(t, true /* sync */)
+}
