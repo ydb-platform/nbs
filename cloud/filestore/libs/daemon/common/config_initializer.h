@@ -41,7 +41,8 @@ public:
     void InitStorageConfig();
     void InitFeaturesConfig();
 
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) final;
+    void ApplyCustomCMSConfigs(
+        const NKikimrConfig::TAppConfig& config) override;
 
     NCloud::NStorage::TNodeRegistrationSettings GetNodeRegistrationSettings();
 
@@ -51,6 +52,10 @@ private:
     void ApplyFeaturesConfig(const TString& text);
 
     void ApplyOptionsToStorageConfig(NProto::TStorageConfig& storageConfig);
+
+    void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
+    void ApplyAllowedKikimrFeatureFlags(
+        const NKikimrConfig::TAppConfig& config);
 };
 
 }   // namespace NCloud::NFileStore::NDaemon

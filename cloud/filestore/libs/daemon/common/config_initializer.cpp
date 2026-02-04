@@ -1,10 +1,13 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -89,16 +92,8 @@ TNodeRegistrationSettings
 void TConfigInitializerCommon::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
-    for (const auto& item: config.GetNamedConfigs()) {
-        TStringBuf name = item.GetName();
-        if (!name.SkipPrefix("Cloud.Filestore.")) {
-            continue;
-        }
-
-        if (auto* handler = ConfigHandlers.FindPtr(name)) {
-            std::invoke(*handler, item.GetConfig());
-        }
-    }
+    ApplyNamedConfigs(config);
+    ApplyAllowedKikimrFeatureFlags(config);
 }
 
 void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
@@ -157,6 +152,36 @@ void TConfigInitializerCommon::ApplyOptionsToStorageConfig(
     if (Options->NodeRegistrationTimeout) {
         storageConfig.SetNodeRegistrationTimeout(
             Options->NodeRegistrationTimeout.MilliSeconds());
+    }
+}
+
+void TConfigInitializerCommon::ApplyNamedConfigs(
+    const NKikimrConfig::TAppConfig& config)
+{
+    for (const auto& item: config.GetNamedConfigs()) {
+        TStringBuf name = item.GetName();
+        if (!name.SkipPrefix("Cloud.Filestore.")) {
+            continue;
+        }
+
+        if (auto* handler = ConfigHandlers.FindPtr(name)) {
+            std::invoke(*handler, item.GetConfig());
+        }
+    }
+}
+
+void TConfigInitializerCommon::ApplyAllowedKikimrFeatureFlags(
+    const NKikimrConfig::TAppConfig& config)
+{
+    if (!config.HasFeatureFlags()) {
+        return;
+    }
+
+    const auto& kikimrFeatureFlags = config.GetFeatureFlags();
+
+    if (kikimrFeatureFlags.HasEnableNodeBrokerDeltaProtocol()) {
+        KikimrConfig->MutableFeatureFlags()->SetEnableNodeBrokerDeltaProtocol(
+            kikimrFeatureFlags.GetEnableNodeBrokerDeltaProtocol());
     }
 }
 

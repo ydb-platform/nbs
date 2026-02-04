@@ -82,6 +82,10 @@ private:
     void ApplyDiskRegistryProxyConfig(const TString& text);
 
     void ApplySpdkEnvConfig(const NProto::TSpdkEnvConfig& config);
+
+    void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
+    void ApplyAllowedKikimrFeatureFlags(
+        const NKikimrConfig::TAppConfig& config);
 };
 
 }   // namespace NCloud::NBlockStore::NServer
