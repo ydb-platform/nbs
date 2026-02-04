@@ -12,6 +12,7 @@ namespace {
 
 #define BLOCKSTORE_LOCAL_NVME_CONFIG(xxx)                                      \
     xxx(DevicesSourceUri,                TString,          ""                 )\
+    xxx(StateCacheFilePath,              TString,          ""                 )\
 // BLOCKSTORE_LOCAL_NVME_CONFIG
 
 #define BLOCKSTORE_LOCAL_NVME_DECLARE_CONFIG(name, type, value)                \

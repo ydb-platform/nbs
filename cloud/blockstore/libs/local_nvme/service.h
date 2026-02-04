@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
@@ -35,6 +35,7 @@ struct ILocalNVMeService: public IStartable
 ILocalNVMeServicePtr CreateLocalNVMeServiceStub();
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
+    TLocalNVMeConfigPtr config,
     ILoggingServicePtr logging,
     ILocalNVMeDeviceProviderPtr deviceProvider,
     NNvme::INvmeManagerPtr nvmeManager,

@@ -24,6 +24,7 @@ public:
     ~TLocalNVMeConfig();
 
     [[nodiscard]] TString GetDevicesSourceUri() const;
+    [[nodiscard]] TString GetStateCacheFilePath() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

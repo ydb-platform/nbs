@@ -166,25 +166,6 @@ message TDeviceConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TNVMeDevice
-{
-    string SerialNumber = 1;
-    string PCIAddress = 2;
-    optional uint32 IOMMUGroup = 3;
-
-    uint32 VendorId = 4;
-    uint32 DeviceId = 5;
-
-    string Model = 6;
-}
-
-message TNVMeDeviceList
-{
-    repeated TNVMeDevice Devices = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 message TSuspendedDevice
 {
     string Id = 1;

@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 
 #include <library/cpp/threading/future/fwd.h>
 
