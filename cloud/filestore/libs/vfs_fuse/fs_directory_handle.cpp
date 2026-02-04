@@ -2,7 +2,30 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+// Fixed-size serialization overhead for TDirectoryHandleChunk
+constexpr size_t BaseSerializedSize = sizeof(ui64) +   // Index
+                                      sizeof(ui64) +   // UpdateVersion
+                                      sizeof(ui32);    // Cookie length
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+size_t TDirectoryHandleChunk::GetSerializedSize() const
+{
+    size_t size = BaseSerializedSize + Cookie.size();
+    if (Key) {
+        size += sizeof(ui64) + sizeof(ui32);   // Key value and content size
+        if (DirectoryContent.Content) {
+            size += DirectoryContent.Content->Size();
+        }
+    }
+    return size;
+}
 
 void TDirectoryHandleChunk::Serialize(TBufferOutput& output) const
 {
@@ -95,6 +118,13 @@ std::optional<TDirectoryHandleChunk> TDirectoryHandleChunk::Deserialize(
     return chunk;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TDirectoryHandle::TDirectoryHandle(fuse_ino_t ino)
+    : SerializedSize(BaseSerializedSize)
+    , Index(ino)
+{}
+
 TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t size,
     size_t offset,
@@ -113,6 +143,7 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
         Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
+        SerializedSize += chunk.GetSerializedSize();
     }
 
     return chunk;
@@ -153,6 +184,7 @@ void TDirectoryHandle::ResetContent()
         Content.clear();
         Cookie.clear();
         UpdateVersion = 0;
+        SerializedSize = BaseSerializedSize;
     }
 }
 
@@ -161,6 +193,16 @@ TString TDirectoryHandle::GetCookie()
     with_lock (Lock) {
         return Cookie;
     }
+}
+
+size_t TDirectoryHandle::GetSerializedSize() const
+{
+    return SerializedSize;
+}
+
+size_t TDirectoryHandle::GetChunkCount() const
+{
+    return UpdateVersion + 1;
 }
 
 void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)

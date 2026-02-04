@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "directory_handles_stats.h"
 #include "fuse.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
@@ -474,6 +475,7 @@ IFileSystemPtr CreateFileSystem(
     TFileSystemConfigPtr config,
     IFileStorePtr session,
     IRequestStatsPtr stats,
+    TDirectoryHandlesStatsPtr directoryHandlesStats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
     TDirectoryHandlesStoragePtr directoryHandlesStorage,

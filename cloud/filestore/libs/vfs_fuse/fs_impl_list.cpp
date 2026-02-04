@@ -141,6 +141,9 @@ void TFileSystem::OpenDir(
         if (DirectoryHandlesStorage) {
             DirectoryHandlesStorage->StoreHandle(id, TDirectoryHandleChunk{.Index = ino});
         }
+
+        DirectoryHandlesStats->IncreaseCacheSize(handle->GetSerializedSize());
+        DirectoryHandlesStats->IncreaseChunkCount(handle->GetChunkCount());
     }
 
     fuse_file_info info = {};
@@ -151,6 +154,13 @@ void TFileSystem::OpenDir(
     if (res != 0) {
         // syscall was interrupted
         with_lock (DirectoryHandlesLock) {
+            auto it = DirectoryHandles.find(id);
+            if (it != DirectoryHandles.end()) {
+                DirectoryHandlesStats->DecreaseCacheSize(
+                    it->second->GetSerializedSize());
+                DirectoryHandlesStats->DecreaseChunkCount(
+                    it->second->GetChunkCount());
+            }
             DirectoryHandles.erase(id);
             if (DirectoryHandlesStorage) {
                 DirectoryHandlesStorage->RemoveHandle(id);
@@ -205,7 +215,11 @@ void TFileSystem::ReadDir(
 
     if (!offset) {
         // directory contents need to be refreshed on rewinddir()
+        DirectoryHandlesStats->DecreaseCacheSize(handle->GetSerializedSize());
+        DirectoryHandlesStats->DecreaseChunkCount(handle->GetChunkCount());
         handle->ResetContent();
+        DirectoryHandlesStats->IncreaseCacheSize(handle->GetSerializedSize());
+        DirectoryHandlesStats->IncreaseChunkCount(handle->GetChunkCount());
         if (DirectoryHandlesStorage) {
             DirectoryHandlesStorage->ResetHandle(fi->fh);
         }
@@ -330,6 +344,10 @@ void TFileSystem::ReadDir(
                     DirectoryHandlesStorage->UpdateHandle(fh, handleChunk);
                 }
 
+                DirectoryHandlesStats->IncreaseCacheSize(
+                    handleChunk.GetSerializedSize());
+                DirectoryHandlesStats->IncreaseChunkCount(1);
+
                 reply(*self, handleChunk.DirectoryContent);
             });
 }
@@ -346,6 +364,12 @@ void TFileSystem::ReleaseDir(
         auto it = DirectoryHandles.find(fi->fh);
         if (it != DirectoryHandles.end()) {
             CheckDirectoryHandle(req, ino, *it->second, Log, __func__);
+
+            DirectoryHandlesStats->DecreaseCacheSize(
+                it->second->GetSerializedSize());
+            DirectoryHandlesStats->DecreaseChunkCount(
+                it->second->GetChunkCount());
+
             DirectoryHandles.erase(it);
 
             if (DirectoryHandlesStorage) {

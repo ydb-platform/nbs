@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -63,6 +64,7 @@ namespace {
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
 constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
+constexpr TStringBuf MetricsComponent = "fs_ut";
 
 static const TString FileSystemId = "fs1";
 static const TString SessionId = CreateGuidAsString();
@@ -108,6 +110,7 @@ struct TBootstrap
     const ITimerPtr Timer;
     const NMonitoring::TDynamicCountersPtr Counters;
     const IRequestStatsRegistryPtr StatsRegistry;
+    const IModuleStatsRegistryPtr ModuleStatsRegistry;
 
     ISessionPtr Session;
     std::shared_ptr<TFileStoreTest> Service;
@@ -132,11 +135,14 @@ struct TBootstrap
         , Timer{std::move(timer)}
         , Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
         , StatsRegistry{CreateRequestStatsRegistry(
-            "fs_ut",
+            TString{MetricsComponent},
             std::make_shared<TDiagnosticsConfig>(),
             Counters,
             Timer,
             CreateUserCounterSupplierStub())}
+        , ModuleStatsRegistry{CreateModuleStatsRegistry(
+              TString{MetricsComponent},
+              Counters)}
     {
         signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
 
@@ -210,10 +216,23 @@ struct TBootstrap
             config,
             Logging,
             StatsRegistry,
+            ModuleStatsRegistry,
             Scheduler,
             Timer,
             CreateProfileLogStub(),
             Session);
+    }
+
+    NMonitoring::TDynamicCountersPtr GetDirectoryHandlesCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "DirectoryHandles");
     }
 
     ~TBootstrap()
@@ -961,6 +980,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto size5 = read.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(size5, 4096);
 
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        auto moduleCounters = bootstrap.GetDirectoryHandlesCounters();
+
+        auto maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
+        UNIT_ASSERT(maxCacheSize);
+        UNIT_ASSERT_GT(maxCacheSize->Val(), 4096);
+
+        auto maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
+        UNIT_ASSERT(maxChunkCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, maxChunkCount->Val());
+
         auto largeOffset = size1 + 3700000;   // Go beyond the first chunk
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
@@ -971,6 +1002,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto size6 = read.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(size6, 4096);
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
+        UNIT_ASSERT(maxChunkCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, maxChunkCount->Val());
 
         auto firstChunkOffset = size1 / 3;
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
@@ -1012,6 +1049,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto size9 = read.GetValue();
         UNIT_ASSERT_VALUES_EQUAL(size9, 4096);
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        UNIT_ASSERT(moduleCounters);
+
+        maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
+        UNIT_ASSERT(maxCacheSize);
+        UNIT_ASSERT_GT(maxCacheSize->Val(), largeOffset);
+
+        maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
+        UNIT_ASSERT(maxChunkCount);
+        UNIT_ASSERT_VALUES_EQUAL(5, maxChunkCount->Val());
 
         auto close2 =
             bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId2);

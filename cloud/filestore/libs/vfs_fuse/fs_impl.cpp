@@ -32,6 +32,7 @@ TFileSystem::TFileSystem(
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
+        TDirectoryHandlesStatsPtr directoryHandlesStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
         TDirectoryHandlesStoragePtr directoryHandlesStorage,
@@ -44,6 +45,7 @@ TFileSystem::TFileSystem(
     , Config(std::move(config))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
+    , DirectoryHandlesStats(std::move(directoryHandlesStats))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
@@ -62,6 +64,12 @@ TFileSystem::TFileSystem(
 
     if (DirectoryHandlesStorage) {
         DirectoryHandlesStorage->LoadHandles(DirectoryHandles);
+
+        for (const auto& [_, handle]: DirectoryHandles) {
+            DirectoryHandlesStats->IncreaseCacheSize(
+                handle->GetSerializedSize());
+            DirectoryHandlesStats->IncreaseChunkCount(handle->GetChunkCount());
+        }
     }
 }
 

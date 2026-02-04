@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/client/probes.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/endpoint/endpoint_manager.h>
@@ -58,6 +59,7 @@
 
 #include <util/generic/map.h>
 #include <util/generic/overloaded.h>
+#include <util/generic/strbuf.h>
 #include <util/stream/file.h>
 #include <util/system/fs.h>
 #include <util/system/sysstat.h>
@@ -68,6 +70,10 @@ using namespace NCloud::NFileStore::NVhost;
 using namespace NCloud::NStorage;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TStringBuf VhostMetricsComponent = "client";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -244,7 +250,7 @@ TBootstrapVhost::TBootstrapVhost(
     : TBootstrapCommon(
         std::move(kikimrFactories),
         "NFS_VHOST",
-        "client",
+        TString{VhostMetricsComponent},
         NUserStats::CreateUserCounterSupplier())
     , VhostModuleFactories(std::move(vhostFactories))
 {}
@@ -270,6 +276,16 @@ void TBootstrapVhost::InitComponents()
     }
 
     NVhost::InitLog(Logging);
+
+    ModuleStatsRegistry = CreateModuleStatsRegistry(
+        TString{VhostMetricsComponent},
+        FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()));
+
+    ModuleStatsUpdater = CreateStatsUpdater(
+        Timer,
+        BackgroundScheduler,
+        ModuleStatsRegistry);
+
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
         case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
@@ -399,6 +415,7 @@ void TBootstrapVhost::InitEndpoints()
             Timer,
             Scheduler,
             StatsRegistry,
+            ModuleStatsRegistry,
             ProfileLog),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
@@ -464,6 +481,8 @@ void TBootstrapVhost::InitLWTrace()
 
 void TBootstrapVhost::StartComponents()
 {
+    FILESTORE_LOG_START_COMPONENT(ModuleStatsUpdater);
+
     NVhost::StartServer();
 
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
@@ -488,6 +507,8 @@ void TBootstrapVhost::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
 
     NVhost::StopServer();
+
+    FILESTORE_LOG_STOP_COMPONENT(ModuleStatsUpdater);
 }
 
 void TBootstrapVhost::Drain()

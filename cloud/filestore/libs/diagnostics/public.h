@@ -34,4 +34,10 @@ using IStorageCountersPtr = std::shared_ptr<IStorageCounters>;
 class TFileSystemStatCounters;
 using TFileSystemStatCountersPtr = std::shared_ptr<TFileSystemStatCounters>;
 
+struct IModuleStats;
+using IModuleStatsPtr = std::shared_ptr<IModuleStats>;
+
+struct IModuleStatsRegistry;
+using IModuleStatsRegistryPtr = std::shared_ptr<IModuleStatsRegistry>;
+
 }   // namespace NCloud::NFileStore

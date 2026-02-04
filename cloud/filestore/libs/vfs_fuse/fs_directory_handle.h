@@ -50,6 +50,8 @@ struct TDirectoryHandleChunk
     void Serialize(TBufferOutput& output) const;
     static std::optional<TDirectoryHandleChunk> Deserialize(
         TMemoryInput& input);
+
+    size_t GetSerializedSize() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,15 +62,15 @@ private:
     TString Cookie;
     TMap<ui64, TBufferPtr> Content;
     ui64 UpdateVersion = 0;
+    ui64 SerializedSize = 0;
 
     TMutex Lock;
 
 public:
     const fuse_ino_t Index;
 
-    explicit TDirectoryHandle(fuse_ino_t ino)
-        : Index(ino)
-    {}
+public:
+    explicit TDirectoryHandle(fuse_ino_t ino);
 
     TDirectoryHandleChunk UpdateContent(
         size_t size,
@@ -80,6 +82,12 @@ public:
     ReadContent(size_t size, size_t offset, TLog& Log);
     void ResetContent();
     TString GetCookie();
+
+    // Get total size of serialized content in bytes
+    size_t GetSerializedSize() const;
+
+    // Get number of chunks (UpdateVersion + 1)
+    size_t GetChunkCount() const;
 
     // not thread safe, use only during restoration from storage
     void ConsumeChunk(TDirectoryHandleChunk& chunk);

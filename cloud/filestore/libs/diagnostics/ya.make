@@ -4,6 +4,7 @@ SRCS(
     config.cpp
     critical_events.cpp
     incomplete_requests.cpp
+    module_stats.cpp
     profile_log.cpp
     profile_log_events.cpp
     request_stats.cpp
