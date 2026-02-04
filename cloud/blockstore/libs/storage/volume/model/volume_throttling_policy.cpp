@@ -112,7 +112,7 @@ struct TVolumeThrottlingPolicy::TImpl
             const bool useDiskSpaceScore)
         : ThrottlingRule(std::move(throttlingRule))
         , OriginalConfig(std::move(config))
-        , Config(CalculateProfile(ThrottlingRule))
+        , Config(CalculateProfile())
         , PolicyVersion(policyVersion)
         , VolatileVersion(volatileVersion)
         , MaxDelay(maxDelay)
@@ -128,12 +128,11 @@ struct TVolumeThrottlingPolicy::TImpl
               initialBoostBudget)
     {}
 
-    NProto::TVolumePerformanceProfile CalculateProfile(
-        const NProto::TVolumeThrottlingRule& throttlingRule) const
+    NProto::TVolumePerformanceProfile CalculateProfile() const
     {
         NProto::TVolumePerformanceProfile result = OriginalConfig;
 
-        const auto& coefficients = throttlingRule.GetCoefficients();
+        const auto& coefficients = ThrottlingRule.GetCoefficients();
         // Volatile throttling can override ThrottlingEnabled
         if (coefficients.HasThrottlingEnabled()) {
             result.SetThrottlingEnabled(coefficients.GetThrottlingEnabled());
