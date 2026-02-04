@@ -382,12 +382,14 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         const auto name = "node";
         const auto newNodeId = 34;
         const auto newName = "new_node";
+        const auto flags = 567;
 
         NProto::TRenameNodeRequest req;
         req.SetNodeId(nodeId);
         req.SetName(name);
         req.SetNewParentId(newNodeId);
         req.SetNewName(newName);
+        req.SetFlags(flags);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitProfileLogRequestInfo(profileLogRequest, req);
@@ -401,7 +403,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(name, nodeInfo.GetNodeName());
         UNIT_ASSERT_VALUES_EQUAL(newNodeId, nodeInfo.GetNewParentNodeId());
         UNIT_ASSERT_VALUES_EQUAL(newName, nodeInfo.GetNewNodeName());
-        UNIT_ASSERT(!nodeInfo.HasFlags());
+        UNIT_ASSERT_VALUES_EQUAL(flags, nodeInfo.GetFlags());
         UNIT_ASSERT(!nodeInfo.HasMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());
         UNIT_ASSERT(!nodeInfo.HasHandle());
