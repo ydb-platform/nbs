@@ -95,7 +95,7 @@ void TDiskRegistryActor::ScheduleMakeBackup(
     }
     auto request =
         std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
-    request->Record.SetBackupLocalDB(true);
+    request->Record.SetSource(NProto::BDRSS_LOCAL_DB);
     request->Record.SetBackupFilePath(TStringBuilder()
         << backupDirPath << "/" + hostPrefix << FormatIsoLocal(ctx.Now()) << ".json");
 
@@ -373,7 +373,7 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
         const TString filePath = msg->Record.GetBackupFilePath();
         if (!filePath.empty()) {
             try {
-                if (!msg->Record.GetBackup().GetConfig().ByteSize()) {
+                if (!msg->Record.GetLocalDBBackup().GetConfig().ByteSize()) {
                     LOG_WARN(
                         ctx, TBlockStoreComponents::DISK_REGISTRY,
                         "The backup file is not created "
