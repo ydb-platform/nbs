@@ -181,7 +181,8 @@ void TDescribeBlocksActionActor::HandleDescribeBlocksResponse(
 
     // We don't need fresh blocks.
     msg->Record.ClearFreshBlockRanges();
-    msg->Record.ClearTrace();
+    msg->Record.ClearDeprecatedTrace();
+    msg->Record.MutableHeaders()->ClearTrace();
 
     TString response;
     google::protobuf::util::MessageToJsonString(msg->Record, &response);

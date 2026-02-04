@@ -63,8 +63,10 @@ struct TRequestDetails
 template <typename TResponse>
 void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 {
-    response.SetThrottlerDelay(
-        callContext->Time(EProcessingStage::Postponed).MicroSeconds());
+    const ui64 postponeTime =
+        callContext->Time(EProcessingStage::Postponed).MicroSeconds();
+    response.SetDeprecatedThrottlerDelay(postponeTime);
+    response.MutableHeaders()->MutableThrottler()->SetDelay(postponeTime);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -226,7 +228,8 @@ private:
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
                             // solution to avoid sending traces between nodes
-                            response.MutableTrace()->Clear();
+                            response.MutableDeprecatedTrace()->Clear();
+                            response.MutableHeaders()->ClearTrace();
                         }
 
                         auto guard = guardedSgList.Acquire();
@@ -305,7 +308,8 @@ private:
                     // TODO: consider variable length proto size
                     // or switch from lwtrace to open telemetry like
                     // solution to avoid sending traces between nodes
-                    response.MutableTrace()->Clear();
+                    response.MutableDeprecatedTrace()->Clear();
+                    response.MutableHeaders()->ClearTrace();
                 }
 
                 ui32 flags = 0;
@@ -360,7 +364,8 @@ private:
                     // TODO: consider variable length proto size
                     // or switch from lwtrace to open telemetry like
                     // solution to avoid sending traces between nodes
-                    response.MutableTrace()->Clear();
+                    response.MutableDeprecatedTrace()->Clear();
+                    response.MutableHeaders()->ClearTrace();
                 }
 
                 ui32 flags = 0;

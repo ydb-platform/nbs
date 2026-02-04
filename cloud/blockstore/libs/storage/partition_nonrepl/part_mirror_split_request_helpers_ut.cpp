@@ -297,7 +297,9 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
                 map.Flip();
             }
 
-            response.SetThrottlerDelay(blocksCount);
+            response.SetDeprecatedThrottlerDelay(blocksCount);
+            response.MutableHeaders()->MutableThrottler()->SetDelay(
+                blocksCount);
             throttlerDelaySum += blocksCount;
             response.SetAllZeroes(false);
             responses.emplace_back(std::move(response));
@@ -307,7 +309,10 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         UNIT_ASSERT(!HasError(mergedResponse.GetError()));
         UNIT_ASSERT_VALUES_EQUAL(
             throttlerDelaySum,
-            mergedResponse.GetThrottlerDelay());
+            mergedResponse.GetDeprecatedThrottlerDelay());
+        UNIT_ASSERT_VALUES_EQUAL(
+            throttlerDelaySum,
+            mergedResponse.GetHeaders().GetThrottler().GetDelay());
         UNIT_ASSERT(!mergedResponse.GetAllZeroes());
 
         size_t blocksReviewed = 0;

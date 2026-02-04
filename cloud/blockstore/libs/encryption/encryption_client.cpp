@@ -614,19 +614,28 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
         std::move(callContext),
         std::move(writeRequest));
 
-    return future.Apply([
-        sgList = std::move(guardedSgList)] (const auto& f) mutable
-    {
-        sgList.Close();
+    return future.Apply(
+        [sgList = std::move(guardedSgList)](const auto& f) mutable
+        {
+            sgList.Close();
 
-        const auto& response = f.GetValue();
+            const auto& response = f.GetValue();
 
-        NProto::TZeroBlocksResponse zeroResponse;
-        zeroResponse.MutableError()->CopyFrom(response.GetError());
-        zeroResponse.MutableTrace()->CopyFrom(response.GetTrace());
-        zeroResponse.SetThrottlerDelay(response.GetThrottlerDelay());
-        return zeroResponse;
-    });
+            NProto::TZeroBlocksResponse zeroResponse;
+            const auto& trace = response.GetHeaders().HasTrace()
+                                    ? response.GetHeaders().GetTrace()
+                                    : response.GetDeprecatedTrace();
+            const ui64 throttlerDelay =
+                Max(response.GetDeprecatedThrottlerDelay(),
+                    response.GetHeaders().GetThrottler().GetDelay());
+            zeroResponse.MutableError()->CopyFrom(response.GetError());
+            zeroResponse.MutableDeprecatedTrace()->CopyFrom(trace);
+            zeroResponse.MutableHeaders()->MutableTrace()->CopyFrom(trace);
+            zeroResponse.SetDeprecatedThrottlerDelay(throttlerDelay);
+            zeroResponse.MutableHeaders()->MutableThrottler()->SetDelay(
+                throttlerDelay);
+            return zeroResponse;
+        });
 }
 
 NProto::TError TEncryptionClient::Encrypt(

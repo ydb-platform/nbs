@@ -4,9 +4,11 @@
 
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
@@ -33,7 +35,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_HAS_MEMBER(GetThrottlerDelay);
+Y_HAS_MEMBER(GetDeprecatedThrottlerDelay);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -360,20 +362,30 @@ void TVolumeClientActor::HandleResponse(
 
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
-            msg->Record.GetTrace(),
+            msg->Record.GetHeaders().HasTrace()
+                ? msg->Record.GetHeaders().GetTrace()
+                : msg->Record.GetDeprecatedTrace(),
             it->second.CallContext->LWOrbit,
             it->second.SendTime,
             GetCycleCount());
-        msg->Record.ClearTrace();
+        msg->Record.ClearDeprecatedTrace();
+        msg->Record.MutableHeaders()->ClearTrace();
     }
 
     using TProtoType = decltype(TMethod::TResponse::Record);
+    static_assert(
+        RequiresThrottling<TMethod> ==
+        THasGetDeprecatedThrottlerDelay<TProtoType>::value);
 
-    if constexpr (THasGetThrottlerDelay<TProtoType>::value) {
+    if constexpr (RequiresThrottling<TMethod>) {
+        const ui64 throttlerDelay =
+            Max(msg->Record.GetDeprecatedThrottlerDelay(),
+                msg->Record.GetHeaders().GetThrottler().GetDelay());
         it->second.CallContext->AddTime(
             EProcessingStage::Postponed,
-            TDuration::MicroSeconds(msg->Record.GetThrottlerDelay()));
-        msg->Record.SetThrottlerDelay(0);
+            TDuration::MicroSeconds(throttlerDelay));
+        msg->Record.SetDeprecatedThrottlerDelay(0);
+        msg->Record.MutableHeaders()->MutableThrottler()->SetDelay(0);
         it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());
     }
 

@@ -1,6 +1,8 @@
 syntax = "proto3";
 
 import "cloud/storage/core/protos/request_source.proto";
+import "cloud/storage/core/protos/throttler.proto";
+import "cloud/storage/core/protos/trace.proto";
 import "library/cpp/lwtrace/protos/lwtrace.proto";
 
 package NCloud.NBlockStore.NProto;
@@ -101,4 +103,16 @@ message THeaders
     // When set it does not allow the execution of request on a disk that is a
     // copy with a mangled name with an additional suffix.
     bool ExactDiskIdMatch = 16;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Common response headers.
+
+message TResponseHeaders
+{
+    // Response traces.
+    NCloud.NProto.TTraceInfo Trace = 1;
+
+    // Response throttler info.
+    NCloud.NProto.TThrottlerInfo Throttler = 2;
 }

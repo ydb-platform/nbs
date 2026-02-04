@@ -6255,7 +6255,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         auto response = volume.RecvWriteBlocksResponse();
 
-        CheckForkJoin(response->Record.GetTrace().GetLWTrace().GetTrace(), true);
+        CheckForkJoin(
+            response->Record.GetDeprecatedTrace().GetLWTrace().GetTrace(),
+            true);
+        CheckForkJoin(
+            response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(),
+            true);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCollectTracesForMultipartitionVolumesIfPartitionReturnError)
@@ -6306,15 +6311,29 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT(FAILED(response->GetStatus()));
 
-        const auto& trace = response->Record.GetTrace().GetLWTrace().GetTrace().GetEvents();
-
+        const auto& deprecatedTrace = response->Record.GetDeprecatedTrace()
+                                          .GetLWTrace()
+                                          .GetTrace()
+                                          .GetEvents();
         UNIT_ASSERT_C(
-            std::find_if(
+            FindIf(
+                deprecatedTrace.begin(),
+                deprecatedTrace.end(),
+                [](const auto& e)
+                { return e.GetName() == "Join"; }) != deprecatedTrace.end(),
+            "No Join found");
+
+        const auto& trace = response->Record.GetHeaders()
+                                .GetTrace()
+                                .GetLWTrace()
+                                .GetTrace()
+                                .GetEvents();
+        UNIT_ASSERT_C(
+            FindIf(
                 trace.begin(),
                 trace.end(),
-                [] (const auto& e) {
-                    return e.GetName() == "Join";
-                }) != trace.end(),
+                [](const auto& e)
+                { return e.GetName() == "Join"; }) != trace.end(),
             "No Join found");
     }
 
@@ -6346,7 +6365,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         auto response = volume.RecvWriteBlocksResponse();
 
-        CheckForkJoin(response->Record.GetTrace().GetLWTrace().GetTrace(), true);
+        CheckForkJoin(
+            response->Record.GetDeprecatedTrace().GetLWTrace().GetTrace(),
+            true);
+        CheckForkJoin(
+            response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(),
+            true);
     }
 
     Y_UNIT_TEST(ShouldCollectTracesForSinglePartitionVolumesIfRequestWasRejectedByVolume)
@@ -6378,7 +6402,19 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_UNEQUAL(
             0,
-            response->Record.GetTrace().GetLWTrace().GetTrace().GetEvents().size());
+            response->Record.GetDeprecatedTrace()
+                .GetLWTrace()
+                .GetTrace()
+                .GetEvents()
+                .size());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            0,
+            response->Record.GetHeaders()
+                .GetTrace()
+                .GetLWTrace()
+                .GetTrace()
+                .GetEvents()
+                .size());
     }
 
     Y_UNIT_TEST(ShouldCollectTracesForSinglePartitionVolumesIfRequestWasPostponedByVolume)
@@ -6423,7 +6459,19 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
             UNIT_ASSERT_VALUES_UNEQUAL(
                 0,
-                response->Record.GetTrace().GetLWTrace().GetTrace().GetEvents().size());
+                response->Record.GetDeprecatedTrace()
+                    .GetLWTrace()
+                    .GetTrace()
+                    .GetEvents()
+                    .size());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                0,
+                response->Record.GetHeaders()
+                    .GetTrace()
+                    .GetLWTrace()
+                    .GetTrace()
+                    .GetEvents()
+                    .size());
         }
     }
 
@@ -6530,7 +6578,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT(response);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetThrottlerDelay());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetDeprecatedThrottlerDelay());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                0,
+                response->Record.GetHeaders().GetThrottler().GetDelay());
         }
 
         {
@@ -6540,7 +6591,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT(response);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetThrottlerDelay());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetDeprecatedThrottlerDelay());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                0,
+                response->Record.GetHeaders().GetThrottler().GetDelay());
         }
 
         {
@@ -6550,7 +6604,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT(response);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetThrottlerDelay());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetDeprecatedThrottlerDelay());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                0,
+                response->Record.GetHeaders().GetThrottler().GetDelay());
         }
     }
 
@@ -8957,10 +9014,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         auto duplicateResponse = volume.RecvWriteBlocksResponse();
         auto response = volume.RecvWriteBlocksResponse();
 
-        UNIT_ASSERT(
-            HasProbe(
-                duplicateResponse->Record.GetTrace().GetLWTrace().GetTrace(),
-                "DuplicatedRequestReceived_Volume"));
+        UNIT_ASSERT(HasProbe(
+            duplicateResponse->Record.GetDeprecatedTrace()
+                .GetLWTrace()
+                .GetTrace(),
+            "DuplicatedRequestReceived_Volume"));
+        UNIT_ASSERT(HasProbe(
+            duplicateResponse->Record.GetHeaders()
+                .GetTrace()
+                .GetLWTrace()
+                .GetTrace(),
+            "DuplicatedRequestReceived_Volume"));
     }
 
     Y_UNIT_TEST(ShouldDescribeFromBaseDisk)

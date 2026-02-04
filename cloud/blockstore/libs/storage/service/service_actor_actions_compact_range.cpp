@@ -163,7 +163,8 @@ void TCompactRangeActionActor::HandleCompactRangeResponse(
         HandleError(ctx, error);
         return;
     }
-    msg->Record.ClearTrace();
+    msg->Record.ClearDeprecatedTrace();
+    msg->Record.MutableHeaders()->ClearTrace();
 
     TString response;
     google::protobuf::util::MessageToJsonString(msg->Record, &response);

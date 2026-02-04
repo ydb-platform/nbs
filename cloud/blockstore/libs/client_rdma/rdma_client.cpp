@@ -70,10 +70,14 @@ void ProcessPostponeTime(
     const TCallContextPtr& callContext,
     TResponse& localResponse)
 {
+    const ui64 throttlerDelay =
+        Max(localResponse.GetDeprecatedThrottlerDelay(),
+            localResponse.GetHeaders().GetThrottler().GetDelay());
     callContext->AddTime(
         EProcessingStage::Postponed,
-        TDuration::MicroSeconds(localResponse.GetThrottlerDelay()));
-    localResponse.SetThrottlerDelay(0);
+        TDuration::MicroSeconds(throttlerDelay));
+    localResponse.SetDeprecatedThrottlerDelay(0);
+    localResponse.MutableHeaders()->MutableThrottler()->SetDelay(0);
     callContext->SetPossiblePostponeDuration(TDuration::Zero());
 }
 
@@ -167,11 +171,14 @@ public:
 
         if (CallContext->LWOrbit.HasShuttles()) {
             TraceSerializer->HandleTraceInfo(
-                responseMsg.GetTrace(),
+                responseMsg.GetHeaders().HasTrace()
+                    ? responseMsg.GetHeaders().GetTrace()
+                    : responseMsg.GetDeprecatedTrace(),
                 CallContext->LWOrbit,
                 StartTime,
                 GetCycleCount());
-            responseMsg.ClearTrace();
+            responseMsg.ClearDeprecatedTrace();
+            responseMsg.MutableHeaders()->ClearTrace();
         }
 
         ProcessPostponeTime(CallContext, localResponse);
@@ -299,11 +306,14 @@ public:
 
         if (CallContext->LWOrbit.HasShuttles()) {
             TraceSerializer->HandleTraceInfo(
-                responseMsg.GetTrace(),
+                responseMsg.GetHeaders().HasTrace()
+                    ? responseMsg.GetHeaders().GetTrace()
+                    : responseMsg.GetDeprecatedTrace(),
                 CallContext->LWOrbit,
                 StartTime,
                 GetCycleCount());
-            responseMsg.ClearTrace();
+            responseMsg.ClearDeprecatedTrace();
+            responseMsg.MutableHeaders()->ClearTrace();
         }
 
         ProcessPostponeTime(CallContext, responseMsg);
@@ -399,11 +409,14 @@ public:
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
 
         TraceSerializer->HandleTraceInfo(
-            responseMsg.GetTrace(),
+            responseMsg.GetHeaders().HasTrace()
+                ? responseMsg.GetHeaders().GetTrace()
+                : responseMsg.GetDeprecatedTrace(),
             CallContext->LWOrbit,
             StartTime,
             GetCycleCount());
-        responseMsg.ClearTrace();
+        responseMsg.MutableHeaders()->ClearTrace();
+        responseMsg.ClearDeprecatedTrace();
 
         ProcessPostponeTime(CallContext, responseMsg);
 
