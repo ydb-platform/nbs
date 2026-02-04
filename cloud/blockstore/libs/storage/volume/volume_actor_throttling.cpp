@@ -118,7 +118,7 @@ void TVolumeActor::UpdateDelayCounter(
     TVolumeThrottlingPolicy::EOpType opType,
     TDuration time)
 {
-    if (!VolumeSelfCounters || time == TDuration::Zero()) {
+    if (!VolumeSelfCounters) {
         return;
     }
     switch (opType) {

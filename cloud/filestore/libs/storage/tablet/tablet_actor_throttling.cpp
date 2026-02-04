@@ -93,9 +93,6 @@ void TIndexTabletActor::UpdateDelayCounter(
     TThrottlingPolicy::EOpType opType,
     TDuration time)
 {
-    if (time == TDuration::Zero()) {
-        return;
-    }
     switch (opType) {
         case TThrottlingPolicy::EOpType::Read: {
             Metrics.ReadDataPostponed.Record(time.MicroSeconds());
