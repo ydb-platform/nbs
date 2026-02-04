@@ -28,20 +28,6 @@ namespace {
 
 constexpr ui64 DefaultBlocksPerRequest = 1024;
 
-NProto::TError ExtractStatusValues(const NJson::TJsonValue& json)
-{
-    NJson::TJsonValue code;
-    if (json.GetValueByPath("Status.Code", code) && !code.IsUInteger()) {
-        return MakeError(E_ARGUMENT, "Status.Code parsing error");
-    }
-    NJson::TJsonValue message;
-    if (json.GetValueByPath("Status.Message", message) && !message.IsString()) {
-        return MakeError(E_ARGUMENT, "Status.Message parsing error");
-    }
-
-    return MakeError(code.GetUIntegerSafe(S_OK), message.GetString());
-}
-
 struct TRequestBuilder
 {
     ui32 StartIndex = 0;
@@ -159,7 +145,7 @@ bool TCheckRangeCommand::DoExecute()
     }
 
     std::optional range = builder.Next();
-    bool isRetry = false;
+
     while (range) {
         auto request = std::make_shared<NProto::TExecuteActionRequest>();
 
@@ -172,34 +158,25 @@ bool TCheckRangeCommand::DoExecute()
             std::move(request)));
 
         NJson::TJsonValue response;
-        if (const auto& error = result.GetError(); HasError(error)) {
-            if (error.GetCode() == E_ARGUMENT) {
-                resultManager.SetRangeResult(*range, error, response);
-                STORAGE_ERROR(
-                    "Fatal range error: %s",
-                    FormatError(error).c_str());
-                return true;
-            }
-        } else if (
-            !NJson::ReadJsonTree(result.GetOutput(), &response) ||
-            !response.Has("Status"))
-        {
-            resultManager.SetRangeResult(
-                *range,
-                MakeError(E_INVALID_STATE, "Unknown response's format"),
-                response);
-        } else {
-            const auto& status = ExtractStatusValues(response);
-            if (HasError(status) && status.GetCode() == E_REJECTED &&
-                IsMirror && !isRetry)
-            {
-                isRetry = true;
-                continue;
-            }
-            resultManager.SetRangeResult(*range, status, response);
+        auto rangeError = result.GetError();
+        if (rangeError.GetCode() == E_ARGUMENT) {
+            STORAGE_ERROR(
+                "Fatal range error: %s",
+                FormatError(rangeError).c_str());
+            return true;
         }
 
-        isRetry = false;
+        if (!NJson::ReadJsonTree(result.GetOutput(), &response)) {
+            TString errorReason = "Unknown response's format";
+            if (HasError(rangeError)) {
+                errorReason += " with original error: " + FormatError(rangeError);
+            }
+            rangeError =
+                MakeError(E_INVALID_STATE, errorReason);
+        }
+        resultManager.SetRangeResult(*range, rangeError, response);
+
+
         range = builder.Next();
     }
 

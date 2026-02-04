@@ -35,7 +35,7 @@ private:
     ui32 ResponseCount = 0;
     TVector<ui32> ReplicasSummaryChecksums;
     TVector<NProto::TChecksums> ReplicasBlockByBlockChecksums;
-    NProto::TError Status;
+    NProto::TError ResultError;
 
 public:
     TMirrorCheckRangeActor(
@@ -62,12 +62,12 @@ private:
 };
 
 TMirrorCheckRangeActor::TMirrorCheckRangeActor(
-        ui32 totalReplicaCount,
-        const NActors::TActorId& partition,
-        NProto::TCheckRangeRequest request,
-        TRequestInfoPtr requestInfo,
-        ui64 blockSize,
-        TChildLogTitle logTitle)
+    ui32 totalReplicaCount,
+    const NActors::TActorId& partition,
+    NProto::TCheckRangeRequest request,
+    TRequestInfoPtr requestInfo,
+    ui64 blockSize,
+    TChildLogTitle logTitle)
     : TCheckRangeActor(
           partition,
           std::move(request),
@@ -104,7 +104,7 @@ void TMirrorCheckRangeActor::HandleReadUndelivery(
         TBlockStoreComponents::PARTITION_WORKER,
         TStringBuilder() << LogTitle.GetWithTime() << ": " << errorMessage);
 
-    Status = MakeError(E_REJECTED, errorMessage);
+    ResultError = MakeError(E_FAIL, errorMessage);
 
     ++ResponseCount;
     if (ResponseCount == TotalReplicaCount) {
@@ -130,7 +130,11 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
         headers->SetClientId(TString(CheckRangeClientId));
         headers->SetIsBackgroundRequest(true);
 
-        NCloud::SendWithUndeliveryTracking(ctx, Partition, std::move(request), i);
+        NCloud::SendWithUndeliveryTracking(
+            ctx,
+            Partition,
+            std::move(request),
+            i);
     }
 }
 
@@ -164,11 +168,12 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
             LogTitle.GetWithTime() << " reading error has occurred: "
-                                   << FormatError(record.GetError()));
+                                   << FormatErrorJson(record.GetError()));
 
-        Status.Swap(record.MutableError());
-        Status.MutableMessage()->append(
-            TStringBuilder() << " replica index: " << replicaIndex << " ");
+        ResultError.SetCode(E_FAIL);
+        ResultError.MutableMessage()->append(
+            TStringBuilder() << record.GetError().GetMessage()
+                             << " for replica index: " << replicaIndex << "; ");
     } else {
         CalculateChecksums(replicaIndex, record.GetBlocks());
     }
@@ -182,15 +187,15 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
 void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
 {
     auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>();
-    auto& status = *response->Record.MutableStatus();
-    status = std::move(Status);
+    auto& resultError = *response->Record.MutableError();
+    resultError = std::move(ResultError);
 
     const bool mismatch =
         std::ranges::adjacent_find(
             ReplicasSummaryChecksums,
             std::not_equal_to{}) != ReplicasSummaryChecksums.end();
 
-    if (!HasError(status) && !mismatch) {
+    if (!HasError(resultError) && !mismatch) {
         response->Record.MutableDiskChecksums()->Swap(
             &ReplicasBlockByBlockChecksums[0]);
         ReplyAndDie(ctx, std::move(response));
@@ -201,10 +206,10 @@ void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
         std::make_move_iterator(ReplicasBlockByBlockChecksums.begin()),
         std::make_move_iterator(ReplicasBlockByBlockChecksums.end()));
 
-    if (!HasError(status) && mismatch) {
+    if (!HasError(resultError) && mismatch) {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
-        status = MakeError(E_IO, "Replicas checksum mismatch", flags);
+        resultError = MakeError(E_IO, "Replicas checksum mismatch", flags);
     }
 
     ReplyAndDie(ctx, std::move(response));
@@ -257,7 +262,6 @@ void TMirrorPartitionActor::HandleCheckRange(
     const NActors::TActorContext& ctx)
 {
     auto& record = ev->Get()->Record;
-
     auto error = ValidateBlocksCount(
         record.GetBlocksCount(),
         Config->GetBytesPerStripe(),

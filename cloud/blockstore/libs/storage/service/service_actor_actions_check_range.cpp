@@ -144,7 +144,7 @@ void TCheckRangeActor::HandleCheckRangeResponse(
 {
     auto& record = ev->Get()->Record;
     NProto::TCheckRangeResponse response;
-    response.MutableStatus()->CopyFrom(record.GetStatus());
+    response.MutableError()->CopyFrom(record.GetError());
     if (record.HasDiskChecksums()) {
         response.MutableDiskChecksums()->Swap(record.MutableDiskChecksums());
     } else if (record.HasInconsistentChecksums()) {

@@ -295,17 +295,17 @@ private:
         auto getExtendedInfo = [](const auto& response)
         {
             return TString(
-                TStringBuf{response.GetStatus().GetMessage()}.SplitOff('\n'));
+                TStringBuf{response.GetError().GetMessage()}.SplitOff('\n'));
         };
 
         MergeCommonFields(src, dst);
 
-        if (src.GetStatus().GetCode() > dst.GetStatus().GetCode()) {
+        if (src.GetError().GetCode() > dst.GetError().GetCode()) {
             auto extendedInfo = getExtendedInfo(dst);
-            dst.MutableStatus()->CopyFrom(src.GetStatus());
-            dst.MutableStatus()->MutableMessage()->append(extendedInfo);
+            dst.MutableError()->CopyFrom(src.GetError());
+            dst.MutableError()->MutableMessage()->append(extendedInfo);
         } else {
-            dst.MutableStatus()->MutableMessage()->append(getExtendedInfo(src));
+            dst.MutableError()->MutableMessage()->append(getExtendedInfo(src));
         }
     }
 

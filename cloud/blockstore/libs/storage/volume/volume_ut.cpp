@@ -3585,10 +3585,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 HasError(record.error()),
                 extended_msg + ". Error:" + FormatError(record.error()));
             UNIT_ASSERT_VALUES_EQUAL_C(
-                false,
-                HasError(record.status()),
-                extended_msg + ". Error:" + FormatError(record.status()));
-            UNIT_ASSERT_VALUES_EQUAL_C(
                 size,
                 record.GetDiskChecksums().DataSize(),
                 extended_msg);
@@ -3659,10 +3655,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 ", size: " + std::to_string(size);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_IO,
-                record.GetStatus().code(),
+                record.GetError().code(),
                 extended_msg);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
+                E_IO,
                 response->GetStatus(),
                 extended_msg);
         };
@@ -3690,7 +3686,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
     }
 
     static void DoTestShouldntCheckRangeWithBigBlockCount(
@@ -3745,7 +3741,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             response1->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            response1->Record.GetStatus().GetCode());
+            response1->Record.GetError().GetCode());
         const auto& record1 = response1->Record;
 
         volume.SendCheckRangeRequest("disk-id", 100, 99);
@@ -3753,7 +3749,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         bool resp2NotNull = response2 != nullptr;
         UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->Record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->Record.GetError().GetCode());
         const auto& record2 = response2->Record;
 
         const auto& checksums1 = record1.GetDiskChecksums().GetData();
@@ -3792,7 +3788,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         bool resp1NotNull = response1 != nullptr;
         UNIT_ASSERT_VALUES_EQUAL(resp1NotNull, true);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response1->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response1->Record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response1->Record.GetError().GetCode());
         const auto& record1 = response1->Record;
 
         volume.SendCheckRangeRequest("disk-id", 1024, 1024);
@@ -3800,7 +3796,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         bool resp2NotNull = response2 != nullptr;
         UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->Record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response2->Record.GetError().GetCode());
         const auto& record2 = response2->Record;
 
         const auto& checksums1 = record1.GetDiskChecksums().GetData();
@@ -3855,7 +3851,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         auto response = volume.CheckRange("disk-id", 0, blocks.size());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
         const auto& record = response->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
