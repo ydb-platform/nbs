@@ -29,15 +29,18 @@
 
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
+#include <util/generic/bitops.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include "util/system/file_lock.h"
 #include <util/system/fs.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
+#include <util/system/spinlock.h>
 #include <util/system/thread.h>
 #include <util/thread/factory.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <pthread.h>
 
@@ -103,17 +106,25 @@ class TCompletionQueue final
     , public IIncompleteRequestProvider
 {
 private:
+    // Shard of in-flight requests to reduce contention and track per shard
+    // counters.
+    struct TShard
+    {
+        TAdaptiveLock Lock;
+        THashMap<fuse_req_t, TCallContextPtr> Requests;
+        i64 Inflight = 0;
+        TAtomicCounter Completing = {0};
+    };
+
     const TString FileSystemId;
     const IRequestStatsPtr RequestStats;
     TLog Log;
     const NProto::EStorageMediaKind RequestMediaKind;
+    const ui32 ShardCount;
+    TVector<TShard> Shards;
 
     enum fuse_cancelation_code CancelCode{};
     NAtomic::TBool ShouldStop = false;
-    TAtomicCounter CompletingCount = {0};
-
-    TMutex RequestsLock;
-    THashMap<fuse_req_t, TCallContextPtr> Requests;
 
     TPromise<void> StopPromise = NewPromise<void>();
 
@@ -122,68 +133,57 @@ public:
             TString fileSystemId,
             IRequestStatsPtr stats,
             TLog& log,
-            NProto::EStorageMediaKind requestMediaKind)
+            NProto::EStorageMediaKind requestMediaKind,
+            ui32 shardCount)
         : FileSystemId(std::move(fileSystemId))
         , RequestStats(std::move(stats))
         , Log(log)
         , RequestMediaKind(requestMediaKind)
+        , ShardCount(shardCount)
+        , Shards(shardCount)
     {
+        Y_ABORT_UNLESS(IsPowerOf2(ShardCount));
     }
 
+public:
     TMaybe<enum fuse_cancelation_code> Enqueue(
         fuse_req_t req,
         TCallContextPtr context)
     {
-        TGuard g{RequestsLock};
-
         if (ShouldStop) {
             return CancelCode;
         }
 
-        Requests[req] = std::move(context);
+        auto& shard = Shards[GetShardIndex(req)];
+        TGuard g{shard.Lock};
+
+        // Re-check after acquiring the shard lock to avoid enqueueing after
+        // stop is requested while we were waiting.
+        if (ShouldStop) {
+            return CancelCode;
+        }
+
+        shard.Requests[req] = std::move(context);
+        ++shard.Inflight;
         return Nothing();
     }
 
     int Complete(fuse_req_t req, TCompletionCallback cb) noexcept override
     {
-        with_lock (RequestsLock) {
-            if (!Requests.erase(req)) {
+        auto& shard = Shards[GetShardIndex(req)];
+        with_lock (shard.Lock) {
+            if (!shard.Requests.erase(req)) {
                 return 0;
             }
-            CompletingCount.Inc();
+            --shard.Inflight;
+            shard.Completing.Inc();
         }
 
         int ret = cb(req);
-        auto completingCount = CompletingCount.Dec();
-        bool noCompleting = completingCount == 0;
+        shard.Completing.Dec();
 
         if (ShouldStop) {
-            STORAGE_INFO("[f:%s] Complete: completing left: %ld",
-                FileSystemId.c_str(),
-                completingCount);
-
-            if (noCompleting) {
-                bool noInflight = false;
-                ui32 requestsSize = 0;
-                with_lock (RequestsLock) {
-                    noInflight = Requests.empty();
-                    requestsSize = Requests.size();
-                    // double-checking needed because inflight count and completing
-                    // count should be checked together atomically
-                    completingCount = CompletingCount.Val();
-                    noCompleting = completingCount == 0;
-                }
-
-                STORAGE_INFO("[f:%s] Complete: completing left: %ld"
-                    ", requests left: %u",
-                    FileSystemId.c_str(),
-                    completingCount,
-                    requestsSize);
-
-                if (noInflight && noCompleting) {
-                    StopPromise.TrySetValue();
-                }
-            }
+            TryStop();
         }
 
         return ret;
@@ -194,25 +194,28 @@ public:
         CancelCode = code;
         ShouldStop = true;
 
-        bool canStop = false;
-        ui32 requestsSize = 0;
+        i64 requestsSize = 0;
         i64 completingCount = 0;
 
-        with_lock (RequestsLock) {
-            requestsSize = Requests.size();
-            completingCount = CompletingCount.Val();
-            canStop = Requests.empty() && completingCount == 0;
-
-            // cancel signal is needed for the ops that may be indefinitely
-            // retried by our vfs layer - e.g. AcquireLock
-            for (auto& request: Requests) {
-                request.second->CancellationCode = CancelCode;
-                request.second->Cancelled = true;
+        for (auto& shard: Shards) {
+            with_lock (shard.Lock) {
+                // cancel signal is needed for the ops that may be indefinitely
+                // retried by our vfs layer - e.g. AcquireLock
+                for (auto& request: shard.Requests) {
+                    request.second->CancellationCode = CancelCode;
+                    request.second->Cancelled = true;
+                }
+                requestsSize += shard.Requests.size();
             }
         }
 
+        for (const auto& shard: Shards) {
+            completingCount += shard.Completing.Val();
+        }
+        const bool canStop = requestsSize == 0 && completingCount == 0;
+
         STORAGE_INFO(
-            "[f:%s] StopAsync: completing left: %ld, requests left: %u, "
+            "[f:%s] StopAsync: completing left: %ld, requests left: %ld, "
             "fuse cancellation code: %u",
             FileSystemId.c_str(),
             completingCount,
@@ -221,6 +224,8 @@ public:
 
         if (canStop) {
             StopPromise.TrySetValue();
+        } else {
+            TryStop();
         }
 
         return StopPromise;
@@ -230,16 +235,58 @@ public:
     {
         auto now = GetCycleCount();
 
-        TGuard g{RequestsLock};
-        for (auto&& [_, context]: Requests) {
-            if (const auto time = context->CalcRequestTime(now); time) {
-                collector.Collect(
-                    TIncompleteRequest(
-                        RequestMediaKind,
-                        context->RequestType,
-                        time.ExecutionTime,
-                        time.TotalTime));
+        for (auto& shard: Shards) {
+            TGuard g{shard.Lock};
+            for (auto&& [_, context]: shard.Requests) {
+                if (const auto time = context->CalcRequestTime(now); time) {
+                    collector.Collect(
+                        TIncompleteRequest(
+                            RequestMediaKind,
+                            context->RequestType,
+                            time.ExecutionTime,
+                            time.TotalTime));
+                }
             }
+        }
+    }
+
+private:
+    ui32 GetShardIndex(fuse_req_t req) const
+    {
+        // Use fuse_req_unique(req) as a stable per-request id for sharding.
+        return fuse_req_unique(req) & (ShardCount - 1);
+    }
+
+    void TryStop()
+    {
+        if (!ShouldStop) {
+            return;
+        }
+
+        TVector<std::unique_ptr<TGuard<TAdaptiveLock>>> guards;
+        guards.reserve(ShardCount);
+
+        for (auto& shard: Shards) {
+            guards.emplace_back(
+                std::make_unique<TGuard<TAdaptiveLock>>(shard.Lock));
+        }
+
+        i64 inflight = 0;
+        i64 completing = 0;
+        for (const auto& shard: Shards) {
+            inflight += shard.Inflight;
+            completing += shard.Completing.Val();
+        }
+
+        STORAGE_INFO(
+            "[f:%s] TryStop: completing left: %ld"
+            ", requests left: %ld",
+            FileSystemId.c_str(),
+            completing,
+            inflight);
+
+        if (inflight == 0 && completing == 0) {
+            StopPromise.TrySetValue();
         }
     }
 };
@@ -250,6 +297,19 @@ static ui32 CalcFrontendVhostQueueCount(const TVFSConfig& vfsConfig)
 {
     // HIPRIO + number of requests queues
     return Max(2u, vfsConfig.GetVhostQueuesCount());
+}
+
+static ui32 CalcCompletionQueueShardCount(const TVFSConfig& vfsConfig)
+{
+    constexpr ui32 MinShards = 16;
+    constexpr ui32 MaxShards = 256;
+
+    const ui32 queues = CalcFrontendVhostQueueCount(vfsConfig);
+
+    // Use ~2x queues and round to power of two for cheap shard indexing,
+    // then clamp to keep shard count in a reasonable range.
+    const ui32 shards = FastClp2(queues * 2);
+    return std::clamp(shards, MinShards, MaxShards);
 }
 
 class TArgs
@@ -884,7 +944,8 @@ private:
                 Config->GetFileSystemId(),
                 RequestStats,
                 Log,
-                StorageMediaKind);
+                StorageMediaKind,
+                CalcCompletionQueueShardCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
 
             SessionId = response.GetSession().GetSessionId();
