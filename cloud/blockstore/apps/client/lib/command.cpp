@@ -674,6 +674,10 @@ void TCommand::InitClientConfig()
         clientConfig.SetClientId(CreateGuidAsString());
     }
 
+    // This retry mode is not expected in blockstore-client
+    // as it can break some scripts (including release pipelines)
+    clientConfig.SetEnableListBasedRetryRules(false);
+
     ClientConfig = std::make_shared<TClientAppConfig>(appConfig);
 }
 
