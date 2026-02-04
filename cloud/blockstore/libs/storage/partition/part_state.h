@@ -454,59 +454,6 @@ private:
         IncrementUnflushedFreshBlocksFromDbCount(writeRange.Size());
     }
 
-    void WriteFreshBlocksImpl(
-        const TBlockRange32& writeRange,
-        ui64 commitId,
-        auto getBlockContent)
-    {
-        TVector<ui64> checkpoints;
-        GetCheckpoints().GetCommitIds(checkpoints);
-        SortUnique(checkpoints, TGreater<ui64>());
-
-        TVector<ui64> existingCommitIds;
-        TVector<ui64> garbage;
-
-        for (ui32 blockIndex: xrange(writeRange)) {
-            ui32 index = blockIndex - writeRange.Start;
-            const auto& blockContent = getBlockContent(index);
-
-            Blocks.GetCommitIds(blockIndex, existingCommitIds);
-
-            NCloud::NStorage::FindGarbageVersions(checkpoints, existingCommitIds, garbage);
-            for (auto garbageCommitId: garbage) {
-                // This block is being flushed; we'll remove it on AddBlobs
-                // and we'll release barrier on FlushCompleted
-                if (FlushedCommitIdsInProgress.contains(garbageCommitId)) {
-                    continue;
-                }
-
-                // Do not remove block if it is stored in db
-                // to be able to remove it during flush, otherwise
-                // we'll leave garbage in FreshBlocksTable
-                auto removed = Blocks.RemoveBlock(
-                    blockIndex,
-                    garbageCommitId,
-                    false);  // isStoredInDb
-
-                if (removed) {
-                    DecrementUnflushedFreshBlocksFromChannelCount(1);
-                    TrimFreshLogBarriers.ReleaseBarrier(garbageCommitId);
-                }
-            }
-
-            Blocks.AddBlock(
-                blockIndex,
-                commitId,
-                false,  // isStoredInDb
-                blockContent.AsStringBuf());
-
-            existingCommitIds.clear();
-            garbage.clear();
-        }
-
-        IncrementUnflushedFreshBlocksFromChannelCount(writeRange.Size());
-    }
-
 public:
     void WriteFreshBlocksToDb(
         TPartitionDatabase& db,
