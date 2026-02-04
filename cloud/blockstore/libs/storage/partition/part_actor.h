@@ -12,9 +12,9 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
-#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
@@ -28,6 +28,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion/fresh_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -60,6 +61,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
     , public TTabletBase<TPartitionActor>
+    , public IFreshBlocksCompanionClient
     , private IRequestsInProgress
 {
     enum EState
@@ -123,6 +125,8 @@ private:
 
     std::unique_ptr<TPartitionState> State;
     std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
+
+    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -189,7 +193,7 @@ protected:
 
 private:
     void Activate(const NActors::TActorContext& ctx);
-    void Suicide(const NActors::TActorContext& ctx);
+    void Suicide(const NActors::TActorContext& ctx) override;
     void BecomeAux(const NActors::TActorContext& ctx, EState state);
     void ReportTabletState(const NActors::TActorContext& ctx);
 
@@ -215,7 +219,6 @@ private:
     void FinalizeLoadState(const NActors::TActorContext& ctx);
 
     void LoadFreshBlobs(const NActors::TActorContext& ctx);
-    void FreshBlobsLoaded(const NActors::TActorContext& ctx);
 
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
@@ -478,6 +481,10 @@ private:
         TBlockBuffer blockBuffer);
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+
+    // IFreshBlocksCompanionClient overrides
+
+    void FreshBlobsLoaded(const NActors::TActorContext& ctx) override;
 
 private:
     STFUNC(StateBoot);
