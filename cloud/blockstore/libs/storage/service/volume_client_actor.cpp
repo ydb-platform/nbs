@@ -362,7 +362,9 @@ void TVolumeClientActor::HandleResponse(
 
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
-            msg->Record.GetDeprecatedTrace(),
+            msg->Record.GetHeaders().HasTrace()
+                ? msg->Record.GetHeaders().GetTrace()
+                : msg->Record.GetDeprecatedTrace(),
             it->second.CallContext->LWOrbit,
             it->second.SendTime,
             GetCycleCount());
@@ -376,9 +378,12 @@ void TVolumeClientActor::HandleResponse(
         THasGetDeprecatedThrottlerDelay<TProtoType>::value);
 
     if constexpr (RequiresThrottling<TMethod>) {
+        const ui64 throttlerDelay =
+            Max(msg->Record.GetDeprecatedThrottlerDelay(),
+                msg->Record.GetHeaders().GetThrottler().GetDelay());
         it->second.CallContext->AddTime(
             EProcessingStage::Postponed,
-            TDuration::MicroSeconds(msg->Record.GetDeprecatedThrottlerDelay()));
+            TDuration::MicroSeconds(throttlerDelay));
         msg->Record.SetDeprecatedThrottlerDelay(0);
         msg->Record.MutableHeaders()->MutableThrottler()->SetDelay(0);
         it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());

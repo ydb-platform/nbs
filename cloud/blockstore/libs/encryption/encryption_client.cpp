@@ -622,15 +622,18 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
             const auto& response = f.GetValue();
 
             NProto::TZeroBlocksResponse zeroResponse;
+            const auto& trace = response.GetHeaders().HasTrace()
+                                    ? response.GetHeaders().GetTrace()
+                                    : response.GetDeprecatedTrace();
+            const ui64 throttlerDelay =
+                Max(response.GetDeprecatedThrottlerDelay(),
+                    response.GetHeaders().GetThrottler().GetDelay());
             zeroResponse.MutableError()->CopyFrom(response.GetError());
-            zeroResponse.MutableDeprecatedTrace()->CopyFrom(
-                response.GetDeprecatedTrace());
-            zeroResponse.MutableHeaders()->MutableTrace()->CopyFrom(
-                response.GetDeprecatedTrace());
-            zeroResponse.SetDeprecatedThrottlerDelay(
-                response.GetDeprecatedThrottlerDelay());
+            zeroResponse.MutableDeprecatedTrace()->CopyFrom(trace);
+            zeroResponse.MutableHeaders()->MutableTrace()->CopyFrom(trace);
+            zeroResponse.SetDeprecatedThrottlerDelay(throttlerDelay);
             zeroResponse.MutableHeaders()->MutableThrottler()->SetDelay(
-                response.GetDeprecatedThrottlerDelay());
+                throttlerDelay);
             return zeroResponse;
         });
 }

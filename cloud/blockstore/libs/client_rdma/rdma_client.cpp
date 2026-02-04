@@ -70,9 +70,12 @@ void ProcessPostponeTime(
     const TCallContextPtr& callContext,
     TResponse& localResponse)
 {
+    const ui64 throttlerDelay =
+        Max(localResponse.GetDeprecatedThrottlerDelay(),
+            localResponse.GetHeaders().GetThrottler().GetDelay());
     callContext->AddTime(
         EProcessingStage::Postponed,
-        TDuration::MicroSeconds(localResponse.GetDeprecatedThrottlerDelay()));
+        TDuration::MicroSeconds(throttlerDelay));
     localResponse.SetDeprecatedThrottlerDelay(0);
     localResponse.MutableHeaders()->MutableThrottler()->SetDelay(0);
     callContext->SetPossiblePostponeDuration(TDuration::Zero());
@@ -168,7 +171,9 @@ public:
 
         if (CallContext->LWOrbit.HasShuttles()) {
             TraceSerializer->HandleTraceInfo(
-                responseMsg.GetDeprecatedTrace(),
+                responseMsg.GetHeaders().HasTrace()
+                    ? responseMsg.GetHeaders().GetTrace()
+                    : responseMsg.GetDeprecatedTrace(),
                 CallContext->LWOrbit,
                 StartTime,
                 GetCycleCount());
@@ -301,7 +306,9 @@ public:
 
         if (CallContext->LWOrbit.HasShuttles()) {
             TraceSerializer->HandleTraceInfo(
-                responseMsg.GetDeprecatedTrace(),
+                responseMsg.GetHeaders().HasTrace()
+                    ? responseMsg.GetHeaders().GetTrace()
+                    : responseMsg.GetDeprecatedTrace(),
                 CallContext->LWOrbit,
                 StartTime,
                 GetCycleCount());
@@ -402,7 +409,9 @@ public:
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
 
         TraceSerializer->HandleTraceInfo(
-            responseMsg.GetDeprecatedTrace(),
+            responseMsg.GetHeaders().HasTrace()
+                ? responseMsg.GetHeaders().GetTrace()
+                : responseMsg.GetDeprecatedTrace(),
             CallContext->LWOrbit,
             StartTime,
             GetCycleCount());

@@ -63,10 +63,10 @@ struct TRequestDetails
 template <typename TResponse>
 void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 {
-    response.SetDeprecatedThrottlerDelay(
-        callContext->Time(EProcessingStage::Postponed).MicroSeconds());
-    response.MutableHeaders()->MutableThrottler()->SetDelay(
-        callContext->Time(EProcessingStage::Postponed).MicroSeconds());
+    const ui64 postponeTime =
+        callContext->Time(EProcessingStage::Postponed).MicroSeconds();
+    response.SetDeprecatedThrottlerDelay(postponeTime);
+    response.MutableHeaders()->MutableThrottler()->SetDelay(postponeTime);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
