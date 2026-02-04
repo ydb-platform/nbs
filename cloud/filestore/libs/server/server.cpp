@@ -505,7 +505,7 @@ NProto::TError TryAdjustIovecOffsets(
         iovec.SetBase(offset + reinterpret_cast<ui64>(metadata.Address));
     }
 
-    return {};
+    return state->LockAddressRanges(regionId, iovecs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -527,6 +527,8 @@ private:
     std::shared_ptr<TRequest> Request = std::make_shared<TRequest>();
     ui64 RequestId = 0;
     TFuture<TResponse> Response;
+
+    bool AddressRangeLocked = false;
 
     enum {
         WaitingForRequest = 0,
@@ -724,6 +726,8 @@ private:
                     TResponse response;
                     response.MutableError()->Swap(&error);
                     Response = MakeFuture(std::move(response));
+                } else {
+                    AddressRangeLocked = true;
                 }
             }
         }
@@ -762,7 +766,6 @@ private:
         Response.Subscribe(
             [=, this] (const auto& response) {
                 Y_UNUSED(response);
-
                 if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
                     // will be processed on executor thread
                     EnqueueCompletion(ExecCtx.CompletionQueue.get(), tag);
@@ -811,6 +814,19 @@ private:
             SendResponse,
             CallContext,
             TString(TMethod::RequestName));
+
+        if constexpr (
+            (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
+             std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
+            std::is_same_v<TAppContext, TFileStoreContext>)
+        {
+            if (AddressRangeLocked) {
+                AppCtx.State->ReleaseAddressRanges(
+                    Request->GetRegionId(),
+                    Request->GetIovecs());
+                AddressRangeLocked = false;
+            }
+        }
 
         AppCtx.Stats->ResponseSent(*CallContext);
 
