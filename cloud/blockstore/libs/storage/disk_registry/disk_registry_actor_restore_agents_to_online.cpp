@@ -1,7 +1,8 @@
 #include "disk_registry_actor.h"
 
-#include "cloud/storage/core/libs/common/format.h"
-#include "util/string/join.h"
+#include <cloud/storage/core/libs/common/format.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -9,11 +10,10 @@ using namespace NActors;
 
 using namespace NKikimr::NTabletFlatExecutor;
 
-void TDiskRegistryActor::ProcessRestoreAgentsToOnline(
-    const NActors::TActorContext& ctx)
+void TDiskRegistryActor::ProcessRestoreAgentsToOnline(const TActorContext& ctx)
 {
     const auto delay = RestoreAgentsToOnlineIterations *
-                       Config->GetBackFromUnavailableAgentsRestoreInterval();
+                       Config->GetAgentBackFromUnavailableCheckInterval();
 
     if (!delay || ctx.Now() < StartTime() + delay) {
         return;
@@ -24,7 +24,7 @@ void TDiskRegistryActor::ProcessRestoreAgentsToOnline(
         TBlockStoreComponents::DISK_REGISTRY,
         "Restoring agents with status \"back from unavailable\" and last state "
         "change more than %s ago",
-        FormatDuration(Config->GetRestoreBackFromUnavailableAgentsDelay())
+        FormatDuration(Config->GetAgentBackFromUnavailableToOnlineDelay())
             .c_str());
 
     ExecuteTx<TRestoreAgentsToOnline>(ctx);
@@ -48,33 +48,35 @@ void TDiskRegistryActor::ExecuteRestoreAgentsToOnline(
     TTxDiskRegistry::TRestoreAgentsToOnline& args)
 {
     TDiskRegistryDatabase db(tx.DB);
-    args.Error = State->RestoreAgentsFromWarning(
+    args.Error = State->RestoreBackFromUnavailableAgents(
         db,
         ctx.Now(),
-        Config->GetRestoreBackFromUnavailableAgentsDelay(),
-        Config->GetRestoreAgentCountPerTransaction(),
         args.AffectedAgents,
-        args.RemainingAgents);
+        args.AgentsRemained);
 }
 
 void TDiskRegistryActor::CompleteRestoreAgentsToOnline(
     const TActorContext& ctx,
     TTxDiskRegistry::TRestoreAgentsToOnline& args)
 {
-    if(HasError(args.Error)) {
-        LOG_ERROR(
+    if (args.AffectedAgents) {
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Failed to restore agents to online state: %s",
-            args.Error.GetMessage().c_str());
+            "Restored agents to online state: %s",
+            JoinSeq(", ", args.AffectedAgents).c_str());
     }
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "Restored agents to online state: %s",
-        JoinSeq(", ", args.AffectedAgents).c_str());
-    if (!args.RemainingAgents) {
+
+    if (!args.AgentsRemained) {
         RestoreAgentsToOnlineIterations++;
+    }
+
+    if (HasError(args.Error)) {
+        auto message = TStringBuilder()
+                       << "Failed to restore agents to online state: "
+                       << args.Error.GetMessage();
+        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY, message.c_str());
+        ReportRestoreAgentsToOnlineFailed(message);
     }
 }
 

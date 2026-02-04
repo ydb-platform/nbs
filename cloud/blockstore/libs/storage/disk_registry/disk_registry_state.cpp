@@ -5311,23 +5311,21 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
     return error;
 }
 
-NProto::TError TDiskRegistryState::RestoreAgentsFromWarning(
+NProto::TError TDiskRegistryState::RestoreBackFromUnavailableAgents(
     TDiskRegistryDatabase& db,
     TInstant timestamp,
-    TDuration restoreInterval,
-    ui32 agentRestoreLimit,
     TVector<TString>& affectedAgents,
-    bool& remainingAgents)
+    bool& agentsRemained)
 {
-    remainingAgents = false;
+    agentsRemained = false;
     for (const auto& agent: AgentList.GetAgents()) {
         if (agent.GetState() == NProto::AGENT_STATE_WARNING &&
             agent.GetStateMessage() == BackFromUnavailableStateMessage &&
             timestamp - TInstant::MicroSeconds(agent.GetStateTs()) >
-                restoreInterval)
+                StorageConfig->GetAgentBackFromUnavailableToOnlineDelay())
         {
-            if(affectedAgents.size() >= agentRestoreLimit) {
-                remainingAgents = true;
+            if(affectedAgents.size() >= StorageConfig->GetMaxAgentsRestoredPerTransaction()) {
+                agentsRemained = true;
                 break;
             }
             TVector<TDiskId> affectedDisks;
@@ -5339,6 +5337,9 @@ NProto::TError TDiskRegistryState::RestoreAgentsFromWarning(
                 "automatically restored",
                 affectedDisks);
             if (HasError(error)) {
+                error.SetMessage(
+                    TStringBuilder()
+                    << agent.GetAgentId() << " " << error.GetMessage());
                 return error;
             }
             affectedAgents.push_back(agent.GetAgentId());
