@@ -508,7 +508,7 @@ NProto::TError TryAdjustIovecOffsets(
         iovec.SetBase(offset + reinterpret_cast<ui64>(metadata.Address));
     }
 
-    return {};
+    return state->LockAddressRanges(regionId, iovecs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -738,7 +738,7 @@ private:
                 Response = TMethod::Execute(
                     *AppCtx.ServiceImpl,
                     CallContext,
-                    std::move(Request));
+                    Request);
             } catch (const TServiceError& e) {
                 STORAGE_WARN(
                     TMethod::RequestName << " #" << RequestId
@@ -765,6 +765,16 @@ private:
         Response.Subscribe(
             [=, this] (const auto& response) {
                 Y_UNUSED(response);
+
+                if constexpr (
+                    (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
+                     std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
+                    std::is_same_v<TAppContext, TFileStoreContext>)
+                {
+                    AppCtx.State->ReleaseAddressRanges(
+                        Request->GetRegionId(),
+                        Request->GetIovecs());
+                }
 
                 if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
                     // will be processed on executor thread
