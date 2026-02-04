@@ -1413,17 +1413,17 @@ message TStorageServiceConfig
     // Enables fresh channel zero requests.
     optional bool FreshChannelZeroRequestsEnabled = 478;
 
-    // If true, disk registry doesn't replace devices of mirrored disks in one
-    // row per reallocation.
+    // Delay before changing Disk Agent from "back from unavailable" to online
+    // (time that must pass since the last status change).
     optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
 
     // Change Disk Agent from "back from unavailable" to online if this time
     // has passed since the last change
-    optional uint32 RestoreBackFromUnavailableAgentsDelay = 480;
+    optional uint32 AgentBackFromUnavailableToOnlineDelay = 480;
 
-    // Period for checking the disk agent for disks with status "back from unavailable"
-    optional uint32 BackFromUnavailableAgentsRestoreInterval = 481;
+    // Interval for checking disk agents with status "back from unavailable".
+    optional uint32 AgentBackFromUnavailableCheckInterval = 481;
 
-    // Number of disks to restore to online per transaction
-    optional uint32 RestoreAgentCountPerTransaction = 482;
+    // Maximum number of disk agents to restore to online per transaction.
+    optional uint32 MaxAgentsRestoredPerTransaction = 482;
 }

@@ -764,9 +764,9 @@ public:
 
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
 
-    [[nodiscard]] TDuration GetRestoreBackFromUnavailableAgentsDelay() const;
-    [[nodiscard]] TDuration GetBackFromUnavailableAgentsRestoreInterval() const;
-    [[nodiscard]] ui32 GetRestoreAgentCountPerTransaction() const;
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableToOnlineDelay() const;
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableCheckInterval() const;
+    [[nodiscard]] ui32 GetMaxAgentsRestoredPerTransaction() const;
 };
 
 ui64 GetAllocationUnit(

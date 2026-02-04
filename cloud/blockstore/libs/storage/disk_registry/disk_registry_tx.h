@@ -1492,7 +1492,7 @@ struct TTxDiskRegistry
         {
             // nothing to do
         }
-    }
+    };
 
     //
     // RestoreDisksToOnline
@@ -1502,7 +1502,7 @@ struct TTxDiskRegistry
     {
         NProto::TError Error;
         TVector<TString> AffectedAgents;
-        bool RemainingAgents = false;
+        bool AgentsRemained = false;
 
         TRestoreAgentsToOnline() = default;
 
@@ -1510,7 +1510,7 @@ struct TTxDiskRegistry
         {
             Error.Clear();
             AffectedAgents.clear();
-            RemainingAgents = false;
+            AgentsRemained = false;
         }
     };
 };

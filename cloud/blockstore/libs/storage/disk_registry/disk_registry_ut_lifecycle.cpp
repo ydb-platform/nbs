@@ -3119,11 +3119,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         NProto::TStorageServiceConfig config;
 
-        config.SetRestoreBackFromUnavailableAgentsDelay(
+        config.SetAgentBackFromUnavailableToOnlineDelay(
             TDuration::Minutes(12).MilliSeconds());
-        config.SetBackFromUnavailableAgentsRestoreInterval(
+        config.SetAgentBackFromUnavailableCheckInterval(
             TDuration::Minutes(1).MilliSeconds());
-        config.SetRestoreAgentCountPerTransaction(2);
+        config.SetMaxAgentsRestoredPerTransaction(2);
         config.SetNonReplicatedDiskRecyclingPeriod(Max<ui32>());
         config.SetAllocationUnitNonReplicatedSSD(10);
 
@@ -3144,41 +3144,67 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             return states;
         };
 
-        auto assertAgentStatus = [&](NProto::EAgentState expectedState, TString expectedMessage) {
-            for(auto& agent: agents) {
-                auto agent_response = diskRegistry.GetAgentNodeId(agent.agentid());
-                UNIT_ASSERT_EQUAL(
-                    agent_response->Record.GetAgentState(),
-                    expectedState);
-                for (auto& state: listDiskStates()) {
-                    UNIT_ASSERT_EQUAL(state.GetStateMessage(), expectedMessage);
+        auto countSpecificAgentStatus =
+            [&](NProto::EAgentState expectedState, const TString& expectedMessage)
+        {
+            size_t count = 0;
+            for (auto& agent: agents) {
+                auto agentResponse =
+                    diskRegistry.GetAgentNodeId(agent.agentid());
+
+                if(agentResponse->Record.GetAgentState() == expectedState) {
+                    bool success = true;
+
+                    for (auto& state: listDiskStates()) {
+                        if(state.GetStateMessage() != expectedMessage) {
+                            success = false;
+                            break;
+                        }
+                    }
+                    if(success){
+                        count += 1;
+                    }
                 }
             }
+            return count;
         };
 
         RegisterAndWaitForAgents(*runtime, agents);
 
-        for(size_t i = 0; i < agents.size(); i++) {
+        for (size_t i = 0; i < agents.size(); i++) {
             auto& agent = agents[i];
             diskRegistry.ChangeAgentState(
-            agent.agentid(),
-            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+                agent.agentid(),
+                NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
 
-            agent.SetNodeId(i+1);
+            agent.SetNodeId(i + 1);
             diskRegistry.RegisterAgent(agent);
         }
 
-        assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");
+        UNIT_ASSERT_VALUES_EQUAL(3, countSpecificAgentStatus(
+            NProto::EAgentState::AGENT_STATE_WARNING,
+            "back from unavailable"));
 
         runtime->AdvanceCurrentTime(6min);
         runtime->DispatchEvents({}, 100ms);
-        assertAgentStatus(NProto::EAgentState::AGENT_STATE_WARNING, "back from unavailable");
+
+        UNIT_ASSERT_VALUES_EQUAL(3, countSpecificAgentStatus(
+            NProto::EAgentState::AGENT_STATE_WARNING,
+            "back from unavailable"));
 
         runtime->AdvanceCurrentTime(6min);
         runtime->DispatchEvents({}, 100ms);
+
+        //1 unrepaired disk agent remains due to the transaction limit.
+        UNIT_ASSERT_VALUES_EQUAL(1, countSpecificAgentStatus(
+            NProto::EAgentState::AGENT_STATE_WARNING,
+            "back from unavailable"));
+
         runtime->AdvanceCurrentTime(1min);
         runtime->DispatchEvents({}, 100ms);
-        assertAgentStatus(NProto::EAgentState::AGENT_STATE_ONLINE, "automatically restored");
+        UNIT_ASSERT_VALUES_EQUAL(3, countSpecificAgentStatus(
+            NProto::EAgentState::AGENT_STATE_ONLINE,
+            "automatically restored"));
     }
 }
 

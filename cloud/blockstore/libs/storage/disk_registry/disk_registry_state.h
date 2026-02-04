@@ -612,14 +612,12 @@ public:
         TInstant timestamp,
         TString reason,
         TVector<TDiskId>& affectedDisks);
-    
-    NProto::TError RestoreAgentsFromWarning(
+
+    NProto::TError RestoreBackFromUnavailableAgents(
         TDiskRegistryDatabase& db,
         TInstant timestamp,
-        TDuration restoreInterval,
-        ui32 agentRestoreLimit,
         TVector<TString>& affectedAgents,
-        bool& remainingAgents);
+        bool& agentsRemained);
 
     NProto::TError SwitchAgentDisksToReadOnly(
         TDiskRegistryDatabase& db,
