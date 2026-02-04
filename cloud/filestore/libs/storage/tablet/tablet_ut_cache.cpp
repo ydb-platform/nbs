@@ -132,8 +132,8 @@ TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
 
 struct TListNodesTxStats
 {
-    ui64 BytesPrecharge;
-    ui64 PrepareAttempts;
+    ui64 BytesPrecharge = 0;
+    ui64 PrepareAttempts = 0;
 };
 
 TListNodesTxStats GetListNodesTxStats(
