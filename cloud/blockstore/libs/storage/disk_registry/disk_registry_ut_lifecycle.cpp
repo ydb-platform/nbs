@@ -3144,24 +3144,24 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             return states;
         };
 
-        auto countSpecificAgentStatus =
-            [&](NProto::EAgentState expectedState, const TString& expectedMessage)
+        auto countSpecificAgentStatus = [&](NProto::EAgentState expectedState,
+                                            const TString& expectedMessage)
         {
             size_t count = 0;
             for (auto& agent: agents) {
                 auto agentResponse =
                     diskRegistry.GetAgentNodeId(agent.agentid());
 
-                if(agentResponse->Record.GetAgentState() == expectedState) {
+                if (agentResponse->Record.GetAgentState() == expectedState) {
                     bool success = true;
 
                     for (auto& state: listDiskStates()) {
-                        if(state.GetStateMessage() != expectedMessage) {
+                        if (state.GetStateMessage() != expectedMessage) {
                             success = false;
                             break;
                         }
                     }
-                    if(success){
+                    if (success) {
                         count += 1;
                     }
                 }
@@ -3181,30 +3181,38 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             diskRegistry.RegisterAgent(agent);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(3, countSpecificAgentStatus(
-            NProto::EAgentState::AGENT_STATE_WARNING,
-            "back from unavailable"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            countSpecificAgentStatus(
+                NProto::EAgentState::AGENT_STATE_WARNING,
+                "back from unavailable"));
 
         runtime->AdvanceCurrentTime(6min);
         runtime->DispatchEvents({}, 100ms);
 
-        UNIT_ASSERT_VALUES_EQUAL(3, countSpecificAgentStatus(
-            NProto::EAgentState::AGENT_STATE_WARNING,
-            "back from unavailable"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            countSpecificAgentStatus(
+                NProto::EAgentState::AGENT_STATE_WARNING,
+                "back from unavailable"));
 
         runtime->AdvanceCurrentTime(6min);
         runtime->DispatchEvents({}, 100ms);
 
-        //1 unrepaired disk agent remains due to the transaction limit.
-        UNIT_ASSERT_VALUES_EQUAL(1, countSpecificAgentStatus(
-            NProto::EAgentState::AGENT_STATE_WARNING,
-            "back from unavailable"));
+        // 1 unrepaired disk agent remains due to the transaction limit.
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            countSpecificAgentStatus(
+                NProto::EAgentState::AGENT_STATE_WARNING,
+                "back from unavailable"));
 
         runtime->AdvanceCurrentTime(1min);
         runtime->DispatchEvents({}, 100ms);
-        UNIT_ASSERT_VALUES_EQUAL(3, countSpecificAgentStatus(
-            NProto::EAgentState::AGENT_STATE_ONLINE,
-            "automatically restored"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            countSpecificAgentStatus(
+                NProto::EAgentState::AGENT_STATE_ONLINE,
+                "automatically restored"));
     }
 }
 

@@ -665,7 +665,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
     xxx(AgentBackFromUnavailableToOnlineDelay,     TDuration,   Days(30)      )\
-    xxx(AgentBackFromUnavailableCheckInterval,  TDuration,   Days(0)       )\
+    xxx(AgentBackFromUnavailableCheckInterval,     TDuration,   Days(0)       )\
     xxx(MaxAgentsRestoredPerTransaction,           ui32,        10            )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
