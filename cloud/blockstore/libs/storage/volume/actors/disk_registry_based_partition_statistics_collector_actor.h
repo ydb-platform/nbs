@@ -23,6 +23,8 @@ private:
 
     NProto::TError LastError;
 
+    size_t FailedResponses = 0;
+
 public:
     TDiskRegistryBasedPartitionStatisticsCollectorActor(
         const NActors::TActorId& owner,
@@ -43,6 +45,11 @@ private:
     void HandleGetDiskRegistryBasedPartCountersResponse(
         TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegitryBasedPartCountersUndelivery(
+        TEvNonreplPartitionPrivate::TEvGetDiskRegistryBasedPartCountersRequest::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

@@ -469,7 +469,7 @@ void TStatsServiceActor::HandleVolumeSelfCounters(
 
 void TStatsServiceActor::HandleServiceStatisticsCombined(
     const TEvStatsService::TEvServiceStatisticsCombined::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
@@ -489,9 +489,7 @@ void TStatsServiceActor::HandleServiceStatisticsCombined(
         }
 
         for (auto& partCounters: volumeStatistics.PartsCounters) {
-            UpdateVolumePartCounters(
-                std::move(partCounters),
-                ctx);
+            UpdateVolumePartCounters(std::move(partCounters), ctx);
         }
     }
 

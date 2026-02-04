@@ -12,8 +12,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionStatisticsCollectorActor::TPartitionStatisticsCollectorActor(
-        const TActorId& owner,
-        TVector<TActorId> partitions)
+    const TActorId& owner,
+    TVector<TActorId> partitions)
     : Owner(owner)
     , Partitions(std::move(partitions))
 {}
@@ -86,6 +86,18 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
     }
 }
 
+void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
+    TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ++FailedResponses;
+    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+        SendStatToVolume(ctx);
+    }
+}
+
 STFUNC(TPartitionStatisticsCollectorActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
@@ -93,7 +105,10 @@ STFUNC(TPartitionStatisticsCollectorActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersResponse,
-            HandleGetPartCountersResponse)
+            HandleGetPartCountersResponse);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersUndelivery);
 
         default:
             HandleUnexpectedEvent(

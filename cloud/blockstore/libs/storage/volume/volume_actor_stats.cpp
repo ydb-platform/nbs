@@ -948,7 +948,8 @@ void TVolumeActor::SendStatsToServiceStatisticsCollectorActor(
         return;
     }
 
-    auto response = std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(SelfId().NodeId());
+    auto response =
+        std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>();
 
     if (VolumeSelfCounters) {
         response->VolumeCounters.emplace(GetVolumeSelfCounters(ctx));
@@ -969,10 +970,7 @@ void TVolumeActor::SendStatsToServiceStatisticsCollectorActor(
         }
     }
 
-    NCloud::Reply(
-        ctx,
-        *StatisticRequestInfo,
-        std::move(response));
+    NCloud::Reply(ctx, *StatisticRequestInfo, std::move(response));
 
     StatisticRequestInfo.Reset();
 }

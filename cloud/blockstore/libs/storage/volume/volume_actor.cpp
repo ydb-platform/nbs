@@ -706,14 +706,23 @@ void TVolumeActor::HandleGetServiceStatistics(
                 MakeError(
                     E_REJECTED,
                     TStringBuilder()
-                        << "Volume " << TabletID() << " gets new request"),
-                SelfId().NodeId()));
+                        << "Volume " << TabletID() << " gets new request")));
         StatisticRequestInfo.Reset();
+    }
 
+    if (!State) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Volume " << TabletID() << " state uninitialized")));
         return;
     }
 
-    if (!State || GetVolumeStatus() == EStatus::STATUS_INACTIVE) {
+    if (GetVolumeStatus() == EStatus::STATUS_INACTIVE) {
         UpdateCounters(ctx);
         return;
     }
@@ -724,6 +733,21 @@ void TVolumeActor::HandleGetServiceStatistics(
     State->IsDiskRegistryMediaKind()
         ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
         : SendStatisticRequests(ctx);
+}
+
+void TVolumeActor::RejectGetServiceStatistics(
+    const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(
+            MakeError(
+                E_REJECTED,
+                TStringBuilder() << "Volume " << TabletID() << " not ready")));
 }
 
 void TVolumeActor::HandleServerConnected(
@@ -1248,7 +1272,9 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
         IgnoreFunc(TEvNonreplPartitionPrivate::
                        TEvGetDiskRegistryBasedPartCountersResponse);
-        IgnoreFunc(TEvStatsService::TEvGetServiceStatisticsRequest);
+        HFunc(
+            TEvStatsService::TEvGetServiceStatisticsRequest,
+            RejectGetServiceStatistics);
 
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted);
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished);
