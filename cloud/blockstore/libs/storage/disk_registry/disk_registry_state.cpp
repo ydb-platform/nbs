@@ -5324,7 +5324,9 @@ NProto::TError TDiskRegistryState::RestoreBackFromUnavailableAgents(
             timestamp - TInstant::MicroSeconds(agent.GetStateTs()) >
                 StorageConfig->GetAgentBackFromUnavailableToOnlineDelay())
         {
-            if(affectedAgents.size() >= StorageConfig->GetMaxAgentsRestoredPerTransaction()) {
+            if (affectedAgents.size() >=
+                StorageConfig->GetMaxAgentsRestoredPerTransaction())
+            {
                 agentsRemained = true;
                 break;
             }
