@@ -268,9 +268,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next,
     ui32* skippedRefs,
-    bool noAutoPrecharge)
+    NProto::EListNodesSizeCalculationMode sizeMode)
 {
-    Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
     }
@@ -295,9 +294,17 @@ bool TInMemoryIndexState::ReadNodeRefs(
                 minCommitId,
                 maxCommitId});
 
-            // FIXME: bytes should represent the size of entire entry, not just
-            // the name
-            bytes += refs.back().Name.size();
+            const auto& ref = refs.back();
+            // TODO(#5148): consider other size calculation modes
+            if (sizeMode == NProto::E_SIZE_CALCULATION_MODE_FULL_ROW) {
+                bytes += (sizeof(ui64) *
+                          4)   // NodeId, ChildNodeId, MinCommitId, MaxCommitId
+                         + ref.Name.size() + ref.ShardId.size() +
+                         ref.ShardNodeName.size();
+            } else {
+                // Legacy behavior: name size only
+                bytes += ref.Name.size();
+            }
         } else {
             ++skipped;
         }

@@ -302,6 +302,19 @@ message TAccessNodeResponse
 ////////////////////////////////////////////////////////////////////////////////
 // ListNodes request/response
 
+// Mode for calculating byte size in ListNodes when applying MaxBytes limit
+enum EListNodesSizeCalculationMode
+{
+    // Unspecified: will use config value or default to NAME_ONLY
+    E_SIZE_CALCULATION_MODE_UNSPECIFIED = 0;
+
+    // Use name size only (legacy behavior)
+    E_SIZE_CALCULATION_MODE_NAME_ONLY = 1;
+
+    // Use full TNodeRef row size
+    E_SIZE_CALCULATION_MODE_FULL_ROW = 2;
+}
+
 message TListNodesRequest
 {
     // Optional request headers.
@@ -321,6 +334,9 @@ message TListNodesRequest
 
     // Optional flag to return nodes with empty ids for nodes not found in shard.
     bool Unsafe = 6;
+
+    // Mode for calculating byte size when applying MaxBytes limit.
+    EListNodesSizeCalculationMode MaxBytesSizeMode = 7;
 }
 
 message TListNodesResponse

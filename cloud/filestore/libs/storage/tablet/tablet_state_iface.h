@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/public/api/protos/node.pb.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -136,7 +137,8 @@ public:
         ui32 maxBytes,
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
-        bool noAutoPrecharge = false) = 0;
+        NProto::EListNodesSizeCalculationMode sizeMode =
+            NProto::E_SIZE_CALCULATION_MODE_NAME_ONLY) = 0;
 
     /**
      * @brief read at most maxCount node refs starting from key

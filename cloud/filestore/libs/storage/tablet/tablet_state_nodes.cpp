@@ -512,7 +512,8 @@ bool TIndexTabletState::ReadNodeRefs(
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui32 maxBytes,
     TString* next,
-    bool noAutoPrecharge)
+    ui32* skippedRefs,
+    NProto::EListNodesSizeCalculationMode sizeMode)
 {
     bool ready = db.ReadNodeRefs(
         nodeId,
@@ -521,8 +522,8 @@ bool TIndexTabletState::ReadNodeRefs(
         refs,
         maxBytes,
         next,
-        nullptr,
-        noAutoPrecharge);
+        skippedRefs,
+        sizeMode);
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
     if (checkpointId != InvalidCommitId) {

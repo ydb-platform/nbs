@@ -325,6 +325,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GidPropagationEnabled,             bool,      false                   )\
                                                                                \
     xxx(NodeRefsNoAutoPrecharge,           bool,      false                   )\
+    xxx(ListNodesSizeCalculationMode,                                          \
+        NProto::EListNodesSizeCalculationMode,                                 \
+        NProto::E_SIZE_CALCULATION_MODE_NAME_ONLY                             )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -398,6 +401,13 @@ IOutputStream& operator <<(
     NProto::EShardBalancerPolicy policy)
 {
     return out << EShardBalancerPolicy_Name(policy);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EListNodesSizeCalculationMode mode)
+{
+    return out << EListNodesSizeCalculationMode_Name(mode);
 }
 
 template <typename T>

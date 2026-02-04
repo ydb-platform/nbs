@@ -685,11 +685,34 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
             UNIT_ASSERT(response->Record.GetCookie().empty());
         }
+    }
 
-        // Test that byte size calculation accounts for full TNodeRef size:
-        // sizeof(ui64) * 4 + Name.size() + ShardId.size() + ShardNodeName.size()
-        // For "test1" (5 chars), size = 32 + 5 = 37 bytes
-        // For "test2" (5 chars), size = 32 + 5 = 37 bytes
+    Y_UNIT_TEST(ShouldLimitListNodesWithFullRowSizeMode)
+    {
+        // Test that byte size calculation accounts for full TNodeRef size
+        // when using E_SIZE_CALCULATION_MODE_FULL_ROW config:
+        // sizeof(ui64) * 4 + Name.size() + ShardId.size() +
+        // ShardNodeName.size()
+        // * For "test1" (5 chars), size = 32 + 5 = 37 bytes
+        // * For "test2" (5 chars), size = 32 + 5 = 37 bytes
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetListNodesSizeCalculationMode(
+            NProto::E_SIZE_CALCULATION_MODE_FULL_ROW);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "test1"));
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "test2"));
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "test3"));
+
         // maxBytes = 74 should fit exactly 2 entries
         {
             auto response = tablet.ListNodes(RootNodeId, 74, TString{});

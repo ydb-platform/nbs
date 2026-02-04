@@ -586,7 +586,8 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
     TString* next,
-    ui32* skippedRefs)
+    ui32* skippedRefs,
+    NProto::EListNodesSizeCalculationMode sizeMode)
 {
 
     using TTableBase = typename TIndexTabletSchema::NodeRefs;
@@ -616,12 +617,17 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
                 maxCommitId
             });
 
-            // TODO(#5148): allow caller to specify size calculation mode
             const auto& ref = refs.back();
-            bytes += (sizeof(ui64) * 4)  // NodeId, ChildNodeId, MinCommitId, MaxCommitId
-                   + ref.Name.size()
-                   + ref.ShardId.size()
-                   + ref.ShardNodeName.size();
+            // TODO(#5148): consider other size calculation modes
+            if (sizeMode == NProto::E_SIZE_CALCULATION_MODE_FULL_ROW) {
+                bytes += (sizeof(ui64) *
+                          4)   // NodeId, ChildNodeId, MinCommitId, MaxCommitId
+                         + ref.Name.size() + ref.ShardId.size() +
+                         ref.ShardNodeName.size();
+            } else {
+                // Legacy behavior: name size only
+                bytes += ref.Name.size();
+            }
         } else {
             ++skipped;
         }
@@ -2222,7 +2228,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     ui32 maxBytes,
     TString* next,
     ui32* skippedRefs,
-    bool noAutoPrecharge)
+    bool noAutoPrecharge,
+    NProto::EListNodesSizeCalculationMode sizeMode)
 {
     ui32 skipped = 0;
     if (!skippedRefs) {
@@ -2236,7 +2243,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
         maxBytes,
         next,
         skippedRefs,
-        noAutoPrecharge);
+        noAutoPrecharge,
+        sizeMode);
     if (result) {
         // If ReadNodeRefs was successful, it is reasonable to update the cache
         // with the values that have just been read.
