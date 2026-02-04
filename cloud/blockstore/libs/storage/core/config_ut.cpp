@@ -331,7 +331,6 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         {
             NProto::TStorageServiceConfig proto;
             proto.SetNonReplicatedAgentTimeoutGrowthFactor(2.5);
-            proto.SetDiskRegistryInitialAgentRejectionThreshold(3);
             return proto;
         }();
         const auto overriddenConfig = std::make_shared<TStorageConfig>(
@@ -342,7 +341,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             2.5,
             overriddenConfig->GetNonReplicatedAgentTimeoutGrowthFactor());
         UNIT_ASSERT_VALUES_EQUAL(
-            3,
+            50,
             overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
 
         NKikimr::TControlBoard controlBoard;
@@ -352,7 +351,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             2.5,
             overriddenConfig->GetNonReplicatedAgentTimeoutGrowthFactor());
         UNIT_ASSERT_VALUES_EQUAL(
-            3,
+            50,
             overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
 
         TAtomic prevValue{};
@@ -370,6 +369,53 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             prevValue));
         UNIT_ASSERT_VALUES_EQUAL(
             456,
+            overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
+    }
+
+    Y_UNIT_TEST(ShouldOverrideNegativeValuesViaImmediateControlBoard)
+    {
+        NProto::TStorageServiceConfig overriddenProto = []
+        {
+            NProto::TStorageServiceConfig proto;
+            proto.SetNonReplicatedAgentTimeoutGrowthFactor(-2.5);
+            return proto;
+        }();
+        const auto overriddenConfig = std::make_shared<TStorageConfig>(
+            std::move(overriddenProto),
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            -2.5,
+            overriddenConfig->GetNonReplicatedAgentTimeoutGrowthFactor());
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
+
+        NKikimr::TControlBoard controlBoard;
+        overriddenConfig->Register(controlBoard);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            -2.5,
+            overriddenConfig->GetNonReplicatedAgentTimeoutGrowthFactor());
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
+
+        TAtomic prevValue{};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
+            -123,
+            prevValue));
+        UNIT_ASSERT_VALUES_EQUAL(
+            -123,
+            overriddenConfig->GetNonReplicatedAgentTimeoutGrowthFactor());
+
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_DiskRegistryInitialAgentRejectionThreshold",
+            -456,
+            prevValue));
+        UNIT_ASSERT_VALUES_EQUAL(
+            -456,
             overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
     }
 

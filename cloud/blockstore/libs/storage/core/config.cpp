@@ -724,6 +724,12 @@ TTarget ConvertValue(const TSource& value)
 }
 
 template <>
+TDuration ConvertValue<TDuration, i64>(const i64& value)
+{
+    return TDuration::MilliSeconds(value);
+}
+
+template <>
 TDuration ConvertValue<TDuration, ui64>(const ui64& value)
 {
     return TDuration::MilliSeconds(value);
@@ -887,8 +893,8 @@ struct TStorageConfig::TImpl
             name,                                                              \
             type,                                                              \
             value)),                                                           \
-        0,                                                                     \
-        Max()};                                                                \
+        Min<i64>(),                                                            \
+        Max<i64>()};                                                           \
     // BLOCKSTORE_CONFIG_CONTROL
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
@@ -919,11 +925,11 @@ struct TStorageConfig::TImpl
 
     // Overriding fields with values from ICB
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-    if (const ui64 value = Control##name;                                      \
-        ConvertValue<type>(value) != ConvertValue<type>(proto.Get##name()))    \
+    if (!Control##name.IsDefault())                                            \
     {                                                                          \
         using T = decltype(StorageServiceConfig.Get##name());                  \
-        proto.Set##name(static_cast<T>(value));                                \
+        const i64 value = Control##name;                                       \
+        proto.Set##name(ConvertValue<T>(value));                               \
     }                                                                          \
     // BLOCKSTORE_CONFIG_COPY
 
@@ -987,8 +993,8 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
         if (!Impl->Control##name.IsDefault()) {                                \
-            const ui64 rawControlValue = Impl->Control##name;                  \
-            return ConvertValue<type>(rawControlValue);                        \
+            const i64 value = Impl->Control##name;                             \
+            return ConvertValue<type>(value);                                  \
         }                                                                      \
         return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
             Impl->StorageServiceConfig,                                        \
