@@ -223,9 +223,10 @@ void CompleteRangeCompaction(
     TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
-    TVector<TCompactionRequest>& requests,
+    TVector<TCompactionBlobRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
-    ui32 maxDiffPercentageForBlobPatching)
+    ui32 maxDiffPercentageForBlobPatching,
+    ui32 rangeCompactionIndex)
 {
     const EChannelPermissions compactionPermissions =
         EChannelPermission::SystemWritesAllowed;
@@ -272,7 +273,7 @@ void CompleteRangeCompaction(
             compactionPermissions,
             commitId,
             blobSize,
-            rangeCompactionInfos.size());
+            rangeCompactionIndex);
     }
 
     if (zeroBlocksCount) {
@@ -287,7 +288,7 @@ void CompleteRangeCompaction(
             compactionPermissions,
             commitId,
             0,
-            rangeCompactionInfos.size());
+            rangeCompactionIndex);
     }
 
     // now build the blob content for all blocks to be written
@@ -309,7 +310,7 @@ void CompleteRangeCompaction(
                     blockIndex,
                     blobContent.GetBlocksCount(),
                     0,
-                    rangeCompactionInfos.size());
+                    rangeCompactionIndex);
 
                 // fresh block will be written
                 blobContent.AddBlock({
@@ -339,7 +340,7 @@ void CompleteRangeCompaction(
                     tabletStorageInfo.GroupFor(
                         mark.BlobId.Channel(),
                         mark.BlobId.Generation()),
-                    rangeCompactionInfos.size());
+                    rangeCompactionIndex);
 
                 // we will read this block later
                 blobContent.AddBlock(state.GetBlockSize(), char(0));
@@ -496,6 +497,7 @@ void TPartitionActor::HandleCompactionTx(
     auto tx = CreateTx<TCompaction>(
         requestInfo,
         msg->CommitId,
+        msg->RangeCompactionIndex,
         msg->CompactionOptions,
         std::move(msg->Ranges));
 
@@ -568,6 +570,7 @@ void TPartitionActor::CompleteCompaction(
         State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
     }
 
+    // TODO:_ rename ...ForCloud -> ...ForDisk ???
     const bool blobPatchingEnabledForCloud =
         Config->IsBlobPatchingFeatureEnabled(
             PartitionConfig.GetCloudId(),
@@ -581,6 +584,10 @@ void TPartitionActor::CompleteCompaction(
                 NCloud::NProto::STORAGE_MEDIA_SSD
             ? 0
             : Config->GetCompactionMergedBlobThresholdHDD();
+
+    TVector<TRangeCompactionInfo> rangeCompactionInfos;
+    TVector<TCompactionBlobRequest> requests;
+
     for (auto& rangeCompaction: args.RangeCompactions) {
         CompleteRangeCompaction(
             blobPatchingEnabled,
@@ -589,29 +596,37 @@ void TPartitionActor::CompleteCompaction(
             *Info(),
             *State,
             rangeCompaction,
-            PendingCompactionRequests,
-            PendingRangeCompactionInfos,
-            Config->GetMaxDiffPercentageForBlobPatching());
+            requests,
+            rangeCompactionInfos,
+            Config->GetMaxDiffPercentageForBlobPatching(),
+            args.RangeCompactionIndex + static_cast<ui32>(rangeCompactionInfos.size()));
 
-        if (PendingRangeCompactionInfos.back().OriginalBlobId) {
+        if (rangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
                 "%s Selected patching candidate: %s, data blob: %s",
                 LogTitle.GetWithTime().c_str(),
-                ToString(PendingRangeCompactionInfos.back().OriginalBlobId).c_str(),
-                ToString(PendingRangeCompactionInfos.back().DataBlobId).c_str());
+                ToString(rangeCompactionInfos.back().OriginalBlobId).c_str(),
+                ToString(rangeCompactionInfos.back().DataBlobId).c_str());
         }
-    }
-
-    if (--AwaitedCompactionTxResponses) {
-        return;
     }
 
     // TODO:_ or to it in the beginning of the Complete... function?
     TRequestScope timer(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>();
+    // auto response =
+    //     std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>();
+    // auto response =
+    //     std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>(
+    //         MakeError(S_OK));
+    // response->Record.SetRangeCompactionInfos(std::move(rangeCompactionInfos));
+    // response->Record.SetCompactionRequests(std::move(requests));
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>(
+            std::move(rangeCompactionInfos),
+            std::move(requests));
+
     // TODO:_ ExecCycles?
     // response->ExecCycles = args.RequestInfo->GetExecCycles();
 

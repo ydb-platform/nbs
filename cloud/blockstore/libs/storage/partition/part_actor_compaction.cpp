@@ -35,7 +35,7 @@ class TCompactionActor final
     : public TActorBootstrapped<TCompactionActor>
 {
 public:
-    using TRequest = TCompactionRequest;
+    using TRequest = TCompactionBlobRequest;
 
     struct TBatchRequest
     {

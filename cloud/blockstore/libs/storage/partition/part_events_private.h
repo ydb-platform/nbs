@@ -1,7 +1,7 @@
 #pragma once
 
-#include "public.h"
 #include "part_compaction.h" // TODO:_ is it ok? Should we move it to model? Or rearrange dependencies?
+#include "public.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -472,6 +472,7 @@ struct TEvPartitionPrivate
         // TODO:_ coulb be just range, not vercor of ranges?
         // TODO:_ but if so, then we lose the original approash with single transaction.
         TVector<std::pair<ui32, TBlockRange32>> Ranges;
+        ui32 RangeCompactionIndex;
 
         TCompactionTxRequest(
             ui64 commitId,
@@ -486,7 +487,16 @@ struct TEvPartitionPrivate
     struct TCompactionTxResponse
     {
         TVector<TRangeCompactionInfo> RangeCompactionInfos;
-        TVector<TCompactionRequest> CompactionRequests;
+        TVector<TCompactionBlobRequest> CompactionRequests;
+
+        TCompactionTxResponse() = default;
+
+        TCompactionTxResponse(
+            TVector<TRangeCompactionInfo> rangeCompactionInfos,
+            TVector<TCompactionBlobRequest> compactionRequests)
+            : RangeCompactionInfos(std::move(rangeCompactionInfos))
+            , CompactionRequests(std::move(compactionRequests))
+        {}
     };
 
     //

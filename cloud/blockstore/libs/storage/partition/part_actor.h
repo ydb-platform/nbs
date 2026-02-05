@@ -160,7 +160,7 @@ private:
     // Compaction infos and requests, waiting until all transactions of the
     // current batch are completed
     TVector<TRangeCompactionInfo> PendingRangeCompactionInfos;
-    TVector<TCompactionRequest> PendingCompactionRequests;
+    TVector<TCompactionBlobRequest> PendingCompactionRequests;
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
