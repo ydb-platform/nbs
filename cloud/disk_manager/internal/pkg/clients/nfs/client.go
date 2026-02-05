@@ -144,9 +144,10 @@ func (c *client) Create(
 func (c *client) Delete(
 	ctx context.Context,
 	filesystemID string,
+	force bool,
 ) error {
 
-	err := c.nfs.DestroyFileStore(ctx, filesystemID)
+	err := c.nfs.DestroyFileStore(ctx, filesystemID, force)
 	return wrapError(err)
 }
 

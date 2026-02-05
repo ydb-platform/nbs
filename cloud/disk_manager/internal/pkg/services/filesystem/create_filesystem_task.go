@@ -196,7 +196,7 @@ func (t *createFilesystemTask) Cancel(
 			return err
 		}
 	} else {
-		err = client.Delete(ctx, t.request.Filesystem.FilesystemId)
+		err = client.Delete(ctx, t.request.Filesystem.FilesystemId, false)
 		if err != nil {
 			return err
 		}

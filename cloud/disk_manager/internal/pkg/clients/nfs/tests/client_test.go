@@ -52,15 +52,15 @@ func TestDeleteFilesystem(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = client.Delete(ctx, filesystemID)
+	err = client.Delete(ctx, filesystemID, false)
 	require.NoError(t, err)
 
 	// Deleting the same filesystem twice is not an error
-	err = client.Delete(ctx, filesystemID)
+	err = client.Delete(ctx, filesystemID, false)
 	require.NoError(t, err)
 
 	// Deleting non-existent filesystem is also not an error
-	err = client.Delete(ctx, filesystemID+"_does_not_exist")
+	err = client.Delete(ctx, filesystemID+"_does_not_exist", false)
 	require.NoError(t, err)
 }
 
@@ -78,7 +78,7 @@ func TestCreateCheckpoint(t *testing.T) {
 		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
 	})
 	require.NoError(t, err)
-	defer client.Delete(ctx, filesystemID)
+	defer client.Delete(ctx, filesystemID, false)
 
 	checkpointID := "checkpoint_1"
 	nodeID := uint64(0)
@@ -113,7 +113,7 @@ func TestListNodesFileSystem(t *testing.T) {
 		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
 	})
 	require.NoError(t, err)
-	defer client.Delete(ctx, filesystemID)
+	defer client.Delete(ctx, filesystemID, false)
 
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
 	})
 	require.NoError(t, err)
-	defer client.Delete(ctx, filesystemID)
+	defer client.Delete(ctx, filesystemID, false)
 
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(t, err)

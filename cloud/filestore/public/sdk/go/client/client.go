@@ -165,9 +165,11 @@ func (client *Client) ResizeFileStore(
 func (client *Client) DestroyFileStore(
 	ctx context.Context,
 	fileSystemID string,
+	force bool,
 ) error {
 	req := &protos.TDestroyFileStoreRequest{
 		FileSystemId: fileSystemID,
+		ForceDestroy: force,
 	}
 
 	_, err := client.Impl.DestroyFileStore(ctx, req)
