@@ -3577,17 +3577,18 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 volume.RecvCheckRangeResponse(TDuration::Seconds(1));
             const auto& record = response->Record;
 
-            std::string extended_msg =
-                "startIndex: " + std::to_string(startIndex) +
-                ", size: " + std::to_string(size);
+            TString extendedMsg = TStringBuilder()
+                                  << "startIndex: " << startIndex
+                                  << ", size: " << size;
             UNIT_ASSERT_VALUES_EQUAL_C(
                 false,
                 HasError(record.error()),
-                extended_msg + ". Error:" + FormatError(record.error()));
+                TStringBuilder() << extendedMsg
+                                 << ". Error:" << FormatError(record.error()));
             UNIT_ASSERT_VALUES_EQUAL_C(
                 size,
                 record.GetDiskChecksums().DataSize(),
-                extended_msg);
+                extendedMsg);
         };
 
         checkRange(0, 1);
@@ -3650,17 +3651,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 volume.RecvCheckRangeResponse(TDuration::Seconds(1));
             const auto& record = response->Record;
 
-            std::string extended_msg =
-                "startIndex: " + std::to_string(startIndex) +
-                ", size: " + std::to_string(size);
+            TString extendedMsg = TStringBuilder()
+                                  << "startIndex: " << startIndex
+                                  << ", size: " << size;
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_IO,
                 record.GetError().code(),
-                extended_msg);
+                extendedMsg);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_IO,
                 response->GetStatus(),
-                extended_msg);
+                extendedMsg);
         };
 
         checkRange(0, 1024);

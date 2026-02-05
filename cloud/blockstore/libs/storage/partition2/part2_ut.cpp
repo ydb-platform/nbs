@@ -7443,17 +7443,16 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
             const auto& record = response->Record;
-            std::string extended_msg =
-                "startIndex: " + std::to_string(idx) +
-                ", size: " + std::to_string(size);
+            TString extendedMsg = TStringBuilder() << "startIndex: " << idx
+                                                   << ", size: " << size;
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_IO,
                 record.GetError().code(),
-                extended_msg);
+                extendedMsg);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_IO,
                 response->GetStatus(),
-                extended_msg);
+                extendedMsg);
         };
         checkRange(0, 1024);
         checkRange(1024, 512);
