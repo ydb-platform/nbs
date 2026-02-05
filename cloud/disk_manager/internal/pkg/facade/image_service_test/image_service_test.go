@@ -1311,7 +1311,8 @@ func TestImageServiceCreateImageFromDiskWithRootKmsEncryption(t *testing.T) {
 			DstImageId: imageID,
 			FolderId:   "folder",
 			Pooled:     true,
-		})
+		},
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 

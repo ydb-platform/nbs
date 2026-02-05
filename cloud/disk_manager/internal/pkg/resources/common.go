@@ -224,7 +224,7 @@ func listResources(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getEncryptionModeAndKeyHash(
+func GetEncryptionModeAndKeyHash(
 	encryptionDesc *types.EncryptionDesc,
 ) (uint32, []byte, error) {
 	var encryptionMode types.EncryptionMode

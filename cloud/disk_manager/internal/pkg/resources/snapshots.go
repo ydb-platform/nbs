@@ -398,7 +398,7 @@ func (s *storageYDB) createSnapshot(
 		status: snapshotStatusCreating,
 	}
 
-	encryptionMode, encryptionKeyHash, err := getEncryptionModeAndKeyHash(
+	encryptionMode, encryptionKeyHash, err := GetEncryptionModeAndKeyHash(
 		snapshot.Encryption,
 	)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -272,6 +273,11 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	incremental := len(t.state.BaseSnapshotId) != 0
+
+	rootKmsMode := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
+	if diskParams.EncryptionDesc.Mode ==  rootKmsMode {
+		diskParams.EncryptionDesc.Mode = types.EncryptionMode_NO_ENCRYPTION
+	}
 
 	source, err := nbs.NewDiskSource(
 		ctx,

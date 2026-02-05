@@ -420,7 +420,7 @@ func (s *storageYDB) createImage(
 		status: imageStatusCreating,
 	}
 
-	encryptionMode, encryptionKeyHash, err := getEncryptionModeAndKeyHash(
+	encryptionMode, encryptionKeyHash, err := GetEncryptionModeAndKeyHash(
 		image.Encryption,
 	)
 	if err != nil {
