@@ -61,7 +61,6 @@ func NewDiskTarget(
 	fillSeqNumber uint64,
 ) (common.Target, error) {
 
-	resetEncryptionIfNeeded(encryption)
 	client, err := factory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
 		return nil, err
