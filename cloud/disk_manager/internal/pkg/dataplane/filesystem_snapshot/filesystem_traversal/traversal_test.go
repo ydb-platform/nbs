@@ -237,15 +237,14 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
 }
 
-
 func TestTraversalCloseSessionOnError(t *testing.T) {
 	fixture := newFixture(t)
 	defer fixture.close(t)
 
 	filesystemID := t.Name()
 	fixture.prepareFilesystem(t, filesystemID)
+	// If sessions are not closed properly, filesystem deletion will fail.
 	defer fixture.cleanupFilesystem(t, filesystemID)
-
 
 	session, err := fixture.client.CreateSession(
 		fixture.ctx,
