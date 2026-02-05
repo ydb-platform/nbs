@@ -237,7 +237,7 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
 }
 
-func TestTraversalCloseSessionOnError(t *testing.T) {
+func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 	fixture := newFixture(t)
 	defer fixture.close(t)
 
