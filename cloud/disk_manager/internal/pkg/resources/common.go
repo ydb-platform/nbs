@@ -258,5 +258,5 @@ func GetEncryptionModeAndKeyHash(
 		}
 	}
 
-	return uint32(encryptionMode), []byte(encryptionKeyHash), nil
+	return uint32(encryptionMode), encryptionKeyHash, nil
 }
