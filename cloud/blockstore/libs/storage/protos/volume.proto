@@ -784,13 +784,10 @@ message TMirrorInconsistentChecksums
 
 message TCheckRangeResponse
 {
-    reserved 3;
+    reserved 2, 3;
 
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Status of ReadBlocks operation.
-    NCloud.NProto.TError Status = 2;
 
     oneof ChecksumData {
         // DiskChecksums field is set for the next cases:

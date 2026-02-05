@@ -174,7 +174,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             LogTitle.GetWithTime() << " reading error has occurred: "
                                    << FormatError(msg->Record.GetError()));
 
-        *response->Record.MutableStatus() = CreateCheckRangeError(msg->Record);
+        *response->Record.MutableError() = CreateCheckRangeError(msg->Record);
     } else {
         for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
              offset += BlockSize, ++i)

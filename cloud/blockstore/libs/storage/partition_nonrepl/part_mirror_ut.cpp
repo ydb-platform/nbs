@@ -2680,14 +2680,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
-        auto response = client.CheckRange("disk-id", 0, blocksCount);
+        client.SendCheckRangeRequest("disk-id", 0, blocksCount);
+        auto response =
+                client.RecvCheckRangeResponse();
         const auto& record = response->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetError().GetCode());
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
-        UNIT_ASSERT_VALUES_UNEQUAL(flags, record.GetStatus().flags());
+        UNIT_ASSERT_VALUES_UNEQUAL(flags, record.GetError().flags());
         UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
 
         ui32 emptyCheksumsCount{0};
@@ -2714,13 +2715,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
         client.WriteBlocks(range, 1);
         env.WriteReplica(1, range, 42);
-        auto response = client.CheckRange("disk-id", 0, blocksCount);
+        client.SendCheckRangeRequest("disk-id", 0, blocksCount);
+        auto response =
+                client.RecvCheckRangeResponse();
         const auto& record = response->Record;
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(E_IO, record.GetStatus().code());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, record.GetError().code());
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
-        UNIT_ASSERT_VALUES_EQUAL(flags, record.GetStatus().flags());
+        UNIT_ASSERT_VALUES_EQUAL(flags, record.GetError().flags());
         UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
 
         ui32 EmptyCheksumsCnt{0};
@@ -2790,11 +2792,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
-        auto response = client.CheckRange("disk-id", 0, blocksCount);
+        client.SendCheckRangeRequest("disk-id", 0, blocksCount);
+        auto response =
+                client.RecvCheckRangeResponse();
         const auto& record = response->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
 
         ui32 emptyCheksumsCount{0};
