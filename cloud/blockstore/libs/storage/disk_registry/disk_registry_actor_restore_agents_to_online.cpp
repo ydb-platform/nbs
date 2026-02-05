@@ -67,16 +67,17 @@ void TDiskRegistryActor::CompleteRestoreAgentsToOnline(
             JoinSeq(", ", args.AffectedAgents).c_str());
     }
 
-    if (!args.AgentsRemained) {
-        RestoreAgentsToOnlineIterations++;
-    }
-
     if (HasError(args.Error)) {
         auto message = TStringBuilder()
                        << "Failed to restore agents to online state: "
                        << args.Error.GetMessage();
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY, message.c_str());
         ReportRestoreAgentsToOnlineFailed(message);
+        RestoreAgentsToOnlineIterations++;
+        return;
+    }
+
+    if (!args.AgentsRemained) {
+        RestoreAgentsToOnlineIterations++;
     }
 }
 
