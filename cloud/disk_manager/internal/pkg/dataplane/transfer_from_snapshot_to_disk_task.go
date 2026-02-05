@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -65,18 +64,12 @@ func (t *transferFromSnapshotToDiskTask) Run(
 		return err
 	}
 
-	encryption := t.request.DstEncryption
-	rootKmsMode := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
-	if encryption != nil {
-		if encryption.Mode == rootKmsMode {
-			encryption.Mode = types.EncryptionMode_NO_ENCRYPTION
-		}
-	}
+	nbs.ResetEncryptionIfNeeded(t.request.DstEncryption)
 	target, err := nbs.NewDiskTarget(
 		ctx,
 		t.nbsFactory,
 		t.request.DstDisk,
-		encryption,
+		t.request.DstEncryption,
 		chunkSize,
 		false, // ignoreZeroChunks
 		0,     // fillGeneration

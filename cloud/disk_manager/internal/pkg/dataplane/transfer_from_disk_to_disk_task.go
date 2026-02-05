@@ -56,6 +56,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		return err
 	}
 
+	nbs.ResetEncryptionIfNeeded(diskParams.EncryptionDesc)
 	source, err := nbs.NewDiskSource(
 		ctx,
 		client,
