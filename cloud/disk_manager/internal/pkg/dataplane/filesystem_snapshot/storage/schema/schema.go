@@ -53,13 +53,13 @@ func Create(
 		storageFolder,
 		"node_refs",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("filesystem_backup_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("depth", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("parent_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("name", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("child_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("node_type", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithPrimaryKeyColumn("filesystem_backup_id", "depth", "parent_node_id", "name"),
+			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "depth", "parent_node_id", "name"),
 		),
 		dropUnusedColumns,
 	)
@@ -73,7 +73,7 @@ func Create(
 		storageFolder,
 		"nodes",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("filesystem_backup_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("mode", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("uid", persistence.Optional(persistence.TypeUint32)),
@@ -83,7 +83,7 @@ func Create(
 			persistence.WithColumn("ctime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("symlink_target", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("filesystem_backup_id", "node_id"),
+			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),
 		dropUnusedColumns,
 	)
@@ -97,11 +97,11 @@ func Create(
 		storageFolder,
 		"directory_listing_queue",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("filesystem_backup_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("cookie", persistence.Optional(persistence.TypeString)),
 			persistence.WithColumn("depth", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithPrimaryKeyColumn("filesystem_backup_id", "node_id", "cookie"),
+			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),
 		dropUnusedColumns,
 	)
@@ -115,11 +115,11 @@ func Create(
 		storageFolder,
 		"hardlinks",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("filesystem_backup_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("parent_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("name", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("filesystem_backup_id", "node_id", "parent_node_id", "name"),
+			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id", "parent_node_id", "name"),
 		),
 		dropUnusedColumns,
 	)

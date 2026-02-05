@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNVMeDevice
+{
+    // Serial number.
+    string SerialNumber = 1;
+
+    // PCI address.
+    string PCIAddress = 2;
+
+    // IOMMU group number.
+    optional uint32 IOMMUGroup = 3;
+
+    // PCI vendor ID.
+    uint32 VendorId = 4;
+
+    // PCI device ID
+    uint32 DeviceId = 5;
+
+    // Model of NVMe.
+    string Model = 6;
+}
+
+// List of NVMe devices.
+message TNVMeDeviceList
+{
+    repeated TNVMeDevice Devices = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Snapshot of the Local NVMe service state.
+message TLocalNVMeServiceState
+{
+    // List of known NVMe devices.
+    repeated TNVMeDevice Devices = 1;
+
+    message TAcquiredDevice
+    {
+        // Serial number of acquired device.
+        string SerialNumber = 1;
+    }
+
+    // List of acquired NVMe devices.
+    repeated TAcquiredDevice AcquiredDevices = 2;
+};

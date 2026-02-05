@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
@@ -22,6 +23,12 @@ type FilesystemSnapshotMeta struct {
 	LockTaskID  string
 	ChunkCount  uint32
 	Ready       bool
+}
+
+type NodeQueueEntry struct {
+	NodeID uint64
+	Cookie string
+	Depth  uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,4 +99,28 @@ type Storage interface {
 	ListFilesystemSnapshots(
 		ctx context.Context,
 	) (tasks_common.StringSet, error)
+
+	// Saves the root node to the directory listing queue.
+	ScheduleRootNodeForListing(
+		ctx context.Context,
+		snapshotID string,
+	) error
+
+	// Selects nodes to be listed from the directory listing queue.
+	SelectNodesToList(
+		ctx context.Context,
+		snapshotID string,
+		nodesToExclude map[uint64]struct{},
+		limit uint64,
+	) ([]NodeQueueEntry, error)
+
+	// Updates the node cookie after listing and saves child nodes to the listing queue.
+	ScheduleChildNodesForListing(
+		ctx context.Context,
+		snapshotID string,
+		parentNodeID uint64,
+		nextCookie string,
+		depth uint64,
+		children []nfs.Node,
+	) error
 }

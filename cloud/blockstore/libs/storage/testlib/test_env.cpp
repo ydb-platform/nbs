@@ -364,6 +364,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>(),
         TDiskAgentStatePtr(),
         CreateLocalNVMeServiceMock(std::move(NVMeDevices)));
+
     auto diskAgentId = Runtime.Register(
         diskAgent.release(),
         nodeIdx,

@@ -14,6 +14,7 @@ SRCS(
     caching_allocator_ut.cpp
     device_path_ut.cpp
     iovector_ut.cpp
+    safe_debug_print_ut.cpp
 )
 
 PEERDIR(

@@ -1095,43 +1095,43 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         profileLog->Start();
 
         service.CreateFileStore("test", 1'000);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Requests.size());
 
         service.AlterFileStore("test", "yyyy", "zzzz");
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
 
         service.ResizeFileStore("test", 100'000'000);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, profileLog->Requests.size());
 
-        service.DescribeFileStoreModel(1_GB/DefaultBlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        service.DescribeFileStoreModel(1_GB / DefaultBlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(3, profileLog->Requests.size());
 
         service.ListFileStores();
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(4, profileLog->Requests.size());
 
         auto headers = service.InitSession("test", "client");
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, profileLog->Requests.size());
 
         service.PingSession(headers);
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, profileLog->Requests.size());
 
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"));
-        UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(6, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::CreateNode)].size());
 
         service.ListNodes(headers, 1);
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(7, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::ListNodes)].size());
 
         service.DestroySession(headers);
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(8, profileLog->Requests.size());
 
         service.DestroyFileStore("test");
-        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(9, profileLog->Requests.size());
 
         profileLog->Stop();
     }
@@ -4605,6 +4605,73 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, unexpectedFakeDescribeDataResponse->Val());
+    }
+
+    void DoShouldHitNodesCountLimit(bool strictFileSystemSizeEnforcementEnabled)
+    {
+        NProto::TStorageConfig config;
+
+        const ui64 blockSize = 4_KB;
+        const ui64 fsSize = 512;
+        const ui32 sizeToNodeRatio = 64_KB;
+        // Strict and non-strict filesystems enforce the allowed number of nodes
+        // differently. Strict systems use the total filesystem size, while in
+        // non-strict systems the limit is enforced per shard, based on the size
+        // of each individual shard.
+        const ui64 filesPerFs = (fsSize * blockSize) / sizeToNodeRatio;
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(
+            strictFileSystemSizeEnforcementEnabled);
+        config.SetSizeToNodesRatio(sizeToNodeRatio);
+        config.SetDefaultNodesLimit(filesPerFs / 2);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+
+        if (strictFileSystemSizeEnforcementEnabled) {
+            WaitForTabletStart(service);
+        }
+
+        THeaders headers = service.InitSession(fsId, "client");
+
+        // Create maximum allowed number of files.
+        for (ui64 i = 0; i < filesPerFs; ++i) {
+            service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(
+                    RootNodeId,
+                    TStringBuilder() << "file_" << i));
+        }
+
+        // Update statistics to have correct AggregateNodesCount
+        if (strictFileSystemSizeEnforcementEnabled) {
+            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TDispatchOptions::TFinalEventCondition(
+                    TEvIndexTabletPrivate::EvUpdateCounters, 2));
+            env.GetRuntime().DispatchEvents(options);
+        }
+
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "too_many_files"));
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOSPC,
+            service.RecvCreateNodeResponse()->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldHitNodesCountLimit)
+    {
+        DoShouldHitNodesCountLimit(false);
+        DoShouldHitNodesCountLimit(true);
     }
 }
 

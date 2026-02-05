@@ -843,7 +843,7 @@ def test_get_checkpoint_status():
     assert response.CheckpointStatus == ECheckpointStatus.READY
 
     response = get_checkpoint_status(env, run, "non-exists-volume", "cp1")
-    assert response.Error.Message == "Path not found"
+    assert "Path not found" in response.Error.Message
 
     response = get_checkpoint_status(env, run, "vol1", "non-exists-checkpoint")
     assert response.Error.Code == EResult.E_NOT_FOUND.value

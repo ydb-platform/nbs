@@ -208,7 +208,7 @@ func (t *deleteDiskTask) setEstimate(
 		return err
 	}
 
-	if diskMeta == nil {
+	if diskMeta == nil || len(diskMeta.ZoneID) == 0 {
 		// Should be idempotent.
 		return nil
 	}

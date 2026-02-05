@@ -427,7 +427,7 @@ private:
                 << NodeId << " " << proto.GetStartIndex() << ":"
                 << FormatByteSize(
                        static_cast<ui64>(proto.GetBlocksCount()) *
-                       proto.GetBlocksCount()));
+                       proto.GetBlockSize()));
 
         auto request =
             std::make_unique<TEvDiskAgent::TEvZeroDeviceBlocksRequest>(

@@ -24,8 +24,8 @@ void TIndexTabletActor::HandlePrepareUnlinkDirectoryNodeInShard(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TPrepareUnlinkDirectoryNodeInShardMethod>(
-        *requestInfo);
+    using TMethod = TEvIndexTablet::TPrepareUnlinkDirectoryNodeInShardMethod;
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TPrepareUnlinkDirectoryNode>(
         ctx,
@@ -132,8 +132,15 @@ void TIndexTabletActor::CompleteTx_PrepareUnlinkDirectoryNode(
 
     InvalidateNodeCaches(args.Request.GetNodeId());
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    if (!HasError(args.Error)) {
+        Metrics.PrepareUnlinkDirectoryNodeInShard.Update(
+            1,
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
+    }
 
     using TResponse =
         TEvIndexTablet::TEvPrepareUnlinkDirectoryNodeInShardResponse;

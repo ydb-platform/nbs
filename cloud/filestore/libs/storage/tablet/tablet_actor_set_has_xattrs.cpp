@@ -57,7 +57,7 @@ void TIndexTabletActor::CompleteTx_SetHasXAttrs(
     const TActorContext& ctx,
     TTxIndexTablet::TSetHasXAttrs& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvIndexTablet::TEvSetHasXAttrsResponse>();
 
@@ -88,7 +88,7 @@ void TIndexTabletActor::HandleSetHasXAttrs(
         MakeIntrusive<TCallContext>());
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TSetHasXAttrsMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TSetHasXAttrsMethod>(*requestInfo);
 
     const auto* msg = ev->Get();
     ExecuteTx<TSetHasXAttrs>(

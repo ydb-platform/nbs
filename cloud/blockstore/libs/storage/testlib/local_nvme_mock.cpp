@@ -13,8 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLocalNVMeServiceMock final
-    : public ILocalNVMeService
+class TLocalNVMeServiceMock final: public ILocalNVMeService
 {
 private:
     const TVector<NProto::TNVMeDevice> Devices;
@@ -31,12 +30,13 @@ public:
     {}
 
     [[nodiscard]] auto ListNVMeDevices() const
-        -> TResultOrError<TVector<NProto::TNVMeDevice>> final
+        -> TFuture<TResultOrError<TVector<NProto::TNVMeDevice>>> final
     {
-        return Devices;
+        return MakeFuture<TResultOrError<TVector<NProto::TNVMeDevice>>>(
+            Devices);
     }
 
-    [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber) const
+    [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
         -> TFuture<NProto::TError> final
     {
         const auto* disk = FindIfPtr(
@@ -54,7 +54,7 @@ public:
                 << "Disk " << serialNumber.Quote() << " not found"));
     }
 
-    [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber) const
+    [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
         -> TFuture<NProto::TError> final
     {
         const auto* disk = FindIfPtr(
@@ -73,7 +73,7 @@ public:
     }
 };
 
-}   //namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

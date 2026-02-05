@@ -148,7 +148,8 @@ void TGetCompactionStatusActionActor::HandleGetCompactionStatusResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    msg->Record.ClearTrace();
+    msg->Record.ClearDeprecatedTrace();
+    msg->Record.MutableHeaders()->ClearTrace();
 
     TString response;
     google::protobuf::util::MessageToJsonString(msg->Record, &response);

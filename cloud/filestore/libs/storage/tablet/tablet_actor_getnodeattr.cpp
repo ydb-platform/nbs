@@ -92,7 +92,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
         }
     }
 
-    AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TGetNodeAttrMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttr>(
         ctx,
@@ -194,7 +194,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TGetNodeAttr& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
@@ -282,12 +282,13 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
             ctx);
 
         Metrics.GetNodeAttr.Update(cacheHits, 0, TDuration::Zero());
+        Metrics.GetNodeAttrBatch.Update(1, 0, TDuration::Zero());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }
 
-    AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TGetNodeAttrBatchMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttrBatch>(
         ctx,
@@ -427,7 +428,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     const TActorContext& ctx,
     TTxIndexTablet::TGetNodeAttrBatch& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     using TResponse = TEvIndexTablet::TEvGetNodeAttrBatchResponse;
     auto response = std::make_unique<TResponse>(args.Error);
@@ -447,6 +448,10 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
 
         Metrics.GetNodeAttr.Update(
             args.Request.NamesSize(),
+            0,
+            ctx.Now() - args.RequestInfo->StartedTs);
+        Metrics.GetNodeAttrBatch.Update(
+            1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
     }

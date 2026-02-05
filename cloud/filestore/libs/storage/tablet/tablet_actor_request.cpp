@@ -109,7 +109,11 @@ void TIndexTabletActor::CompleteResponse(
         FormatError(response.GetError()).c_str(),
         builtTraceInfo);
     BuildThrottlerInfo(*callContext, response);
-    BuildBackendInfo(*Config, *SystemCounters, response);
+    BuildBackendInfo(
+        *Config,
+        *SystemCounters,
+        Metrics.CPUUsageRate,
+        response);
     if constexpr (HasResponseHeaders<decltype(response)>()) {
         const auto& responseHeaders = response.GetHeaders();
         if (responseHeaders.GetBackendInfo().GetIsOverloaded()) {

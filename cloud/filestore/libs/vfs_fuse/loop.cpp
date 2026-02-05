@@ -9,7 +9,9 @@
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/filesystem_counters.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
+#include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -624,6 +626,8 @@ private:
     const TVFSConfigPtr Config;
     const ILoggingServicePtr Logging;
     const IRequestStatsRegistryPtr StatsRegistry;
+    const IModuleStatsRegistryPtr ModuleStatsRegistry;
+    const IFsCountersProviderPtr FsCountersProvider;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
     const IProfileLogPtr ProfileLog;
@@ -639,6 +643,7 @@ private:
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
+    TDirectoryHandlesStatsPtr DirectoryHandlesStats;
     TFileSystemConfigPtr FileSystemConfig;
 
     THolder<TFileLock> HandleOpsQueueFileLock;
@@ -655,6 +660,8 @@ public:
             TVFSConfigPtr config,
             ILoggingServicePtr logging,
             IRequestStatsRegistryPtr statsRegistry,
+            IModuleStatsRegistryPtr moduleStatsRegistry,
+            IFsCountersProviderPtr fsCountersProvider,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             IProfileLogPtr profileLog,
@@ -662,6 +669,8 @@ public:
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
+        , ModuleStatsRegistry(std::move(moduleStatsRegistry))
+        , FsCountersProvider(std::move(fsCountersProvider))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , ProfileLog(std::move(profileLog))
@@ -694,9 +703,10 @@ public:
                         p->Log,
                         *callContext,
                         response.GetError());
+                    // TODO(#5150)
                     // After the session is established, we update existing
                     // TFileStats with newly known cloudId and folderId
-                    p->StatsRegistry->UpdateCloudAndFolder(
+                    p->FsCountersProvider->UpdateCloudAndFolder(
                         p->Config->GetFileSystemId(),
                         p->Config->GetClientId(),
                         response.GetFileStore().GetCloudId(),
@@ -766,6 +776,10 @@ public:
             p->FuseLoop = nullptr;
 
             p->StatsRegistry->Unregister(
+                p->Config->GetFileSystemId(),
+                p->Config->GetClientId());
+
+            p->ModuleStatsRegistry->Unregister(
                 p->Config->GetFileSystemId(),
                 p->Config->GetClientId());
 
@@ -998,6 +1012,14 @@ private:
                 DirectoryHandlesStorageInitialized = true;
             }
 
+            DirectoryHandlesStats = CreateDirectoryHandlesStats(
+                ModuleStatsRegistry,
+                Timer,
+                Config->GetFileSystemId(),
+                Config->GetClientId(),
+                response.GetFileStore().GetCloudId(),
+                response.GetFileStore().GetFolderId());
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -1006,6 +1028,7 @@ private:
                 FileSystemConfig,
                 Session,
                 RequestStats,
+                DirectoryHandlesStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
                 std::move(directoryHandlesStorage),
@@ -1257,6 +1280,10 @@ private:
             response.GetError());
 
         StatsRegistry->Unregister(
+            Config->GetFileSystemId(),
+            Config->GetClientId());
+
+        ModuleStatsRegistry->Unregister(
             Config->GetFileSystemId(),
             Config->GetClientId());
 
@@ -1601,6 +1628,8 @@ struct TFileSystemLoopFactory
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const IRequestStatsRegistryPtr RequestStats;
+    const IModuleStatsRegistryPtr ModuleStats;
+    const IFsCountersProviderPtr FsCountersProvider;
     const IProfileLogPtr ProfileLog;
 
     TFileSystemLoopFactory(
@@ -1608,11 +1637,15 @@ struct TFileSystemLoopFactory
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             IRequestStatsRegistryPtr requestStats,
+            IModuleStatsRegistryPtr moduleStats,
+            IFsCountersProviderPtr fsCountersProvider,
             IProfileLogPtr profileLog)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , RequestStats(std::move(requestStats))
+        , ModuleStats(std::move(moduleStats))
+        , FsCountersProvider(std::move(fsCountersProvider))
         , ProfileLog(std::move(profileLog))
     {}
 
@@ -1624,6 +1657,8 @@ struct TFileSystemLoopFactory
             std::move(config),
             Logging,
             RequestStats,
+            ModuleStats,
+            FsCountersProvider,
             Scheduler,
             Timer,
             ProfileLog,
@@ -1639,6 +1674,8 @@ IFileSystemLoopPtr CreateFuseLoop(
     TVFSConfigPtr config,
     ILoggingServicePtr logging,
     IRequestStatsRegistryPtr requestStats,
+    IModuleStatsRegistryPtr moduleStats,
+    IFsCountersProviderPtr fsCountersProvider,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
     IProfileLogPtr profileLog,
@@ -1648,6 +1685,8 @@ IFileSystemLoopPtr CreateFuseLoop(
         std::move(config),
         std::move(logging),
         std::move(requestStats),
+        std::move(moduleStats),
+        std::move(fsCountersProvider),
         std::move(scheduler),
         std::move(timer),
         std::move(profileLog),
@@ -1661,6 +1700,8 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     IRequestStatsRegistryPtr requestStats,
+    IModuleStatsRegistryPtr moduleStats,
+    IFsCountersProviderPtr fsCountersProvider,
     IProfileLogPtr profileLog)
 {
     struct TInitializer {
@@ -1677,6 +1718,8 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
         std::move(timer),
         std::move(scheduler),
         std::move(requestStats),
+        std::move(moduleStats),
+        std::move(fsCountersProvider),
         std::move(profileLog));
 }
 

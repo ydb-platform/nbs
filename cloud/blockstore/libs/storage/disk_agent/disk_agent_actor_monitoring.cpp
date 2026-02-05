@@ -94,12 +94,16 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
         return;
     }
 
-    auto [disks, error] = LocalNVMeService->ListNVMeDevices();
+    auto future = LocalNVMeService->ListNVMeDevices();
+
+    auto [devices, error] = future.Wait(TDuration::Seconds(1))
+                                ? future.GetValue()
+                                : TErrorResponse(E_TIMEOUT, "Timeout");
 
     HTML(out) {
-        TAG(TH3) { out << "NVMe disks"; }
+        TAG(TH3) { out << "NVMe devices"; }
         if (HasError(error)) {
-            DIV() { out << "Can't list NVMe disks: " << FormatError(error); }
+            DIV() { out << "Can't list NVMe devices: " << FormatError(error); }
             return;
         }
 
@@ -112,7 +116,7 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                     TABLEH() { out << "IOMMU group"; }
                 }
 
-                for (const auto& d: disks) {
+                for (const auto& d: devices) {
                     TABLER() {
                         TABLED() { out << d.GetSerialNumber(); }
                         TABLED() { out << d.GetModel(); }

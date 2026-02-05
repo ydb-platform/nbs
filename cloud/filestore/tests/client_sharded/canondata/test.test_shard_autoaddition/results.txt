@@ -24,9 +24,9 @@
     }
 ]{"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
 {"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
-SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
-SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
-SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, path="/Root/nfs/_385/fs0_s2"
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, path="/Root/nfs/_FE/fs0_s3"
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, path="/Root/nfs/_5C/fs0_s4"
 {"Sessions":[{"SessionId":"session0","ClientId":"client0","IsOrphan":true}]}
 [
     {
@@ -111,4 +111,4 @@ SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
 {"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
 {"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
 {"Sessions":[{"SessionId":"session0","ClientId":"client0"}]}
-SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found
+SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, path="/Root/nfs/_5C/fs0_s4"

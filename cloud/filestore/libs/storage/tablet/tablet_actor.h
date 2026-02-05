@@ -56,28 +56,37 @@ namespace NCloud::NFileStore::NStorage {
 inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
     //
-    // Keeping it simple for now - checking only CpuWait. We might decide to add
-    // some other metrics into consideration here - e.g. network usage and
-    // tablet executor cpu usage.
+    // Keeping it simple for now - checking only CpuWait and tablet actor cpu
+    // usage. We might decide to add some other metrics into consideration here
+    // - e.g. network usage.
     //
 
     const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
-    backendInfo->SetIsOverloaded(cl >= config.GetCpuLackOverloadThreshold());
+    backendInfo->SetIsOverloaded(
+        tabletActorCpuUsageRate
+            >= config.GetTabletActorCpuUsageOverloadThreshold()
+        || cl >= config.GetCpuLackOverloadThreshold());
 }
 
 template <typename T>
 void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    ui32 tabletActorCpuUsageRate,
     T& response)
 {
     if constexpr (HasResponseHeaders<T>()) {
         auto* responseHeaders = response.MutableHeaders();
         auto* backendInfo = responseHeaders->MutableBackendInfo();
-        BuildBackendInfo(config, systemCounters, backendInfo);
+        BuildBackendInfo(
+            config,
+            systemCounters,
+            tabletActorCpuUsageRate,
+            backendInfo);
     }
 }
 
@@ -332,19 +341,27 @@ private:
         struct TListNodesMetrics: TRequestMetrics
         {
             std::atomic<i64> RequestedBytesPrecharge{0};
+            std::atomic<i64> PrepareAttempts{0};
         };
 
-        // private requests
+        // internal requests
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
 
+        // private requests
+        TRequestMetrics DescribeData;
+        TRequestMetrics GenerateBlobIds;
+        TRequestMetrics AddData;
+        TRequestMetrics GetStorageStats;
+        TRequestMetrics GetNodeAttrBatch;
+        TRequestMetrics RenameNodeInDestination;
+        TRequestMetrics PrepareUnlinkDirectoryNodeInShard;
+        TRequestMetrics AbortUnlinkDirectoryNodeInShard;
+
         // public requests
         TRequestMetrics ReadData;
-        TRequestMetrics DescribeData;
         TRequestMetrics WriteData;
-        TRequestMetrics AddData;
-        TRequestMetrics GenerateBlobIds;
         TListNodesMetrics ListNodes;
         TRequestMetrics GetNodeAttr;
         TRequestMetrics CreateHandle;
@@ -375,6 +392,10 @@ private:
         std::atomic<i64> CurrentLoad{0};
         std::atomic<i64> Suffer{0};
         std::atomic<i64> OverloadedCount{0};
+
+        TInstant PrevCPUUsageMicrosTs;
+        std::atomic<i64> CPUUsageMicros{0};
+        i64 CPUUsageRate = 0;
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -435,7 +456,7 @@ private:
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
     TSet<NActors::TActorId> WorkerActors;
-    TIntrusiveList<TRequestInfo> ActiveTransactions;
+    TIntrusiveList<TRequestInfo> ActiveRequests;
 
     TInstant ReassignRequestSentTs;
 
@@ -519,6 +540,7 @@ private:
     void UpdateDelayCounter(
         TThrottlingPolicy::EOpType opType,
         TDuration time);
+    void CalculateActorCPUUsage(const NActors::TActorContext& ctx);
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
@@ -568,12 +590,12 @@ private:
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
 
-    void AddTransaction(
-        TRequestInfo& transaction,
+    void AddInFlightRequest(
+        TRequestInfo& requestInfo,
         TRequestInfo::TCancelRoutine cancelRoutine);
 
     template <typename TMethod>
-    void AddTransaction(TRequestInfo& transaction)
+    void AddInFlightRequest(TRequestInfo& requestInfo)
     {
         auto cancelRoutine = [] (
             const NActors::TActorContext& ctx,
@@ -585,7 +607,7 @@ private:
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
 
-        AddTransaction(transaction, cancelRoutine);
+        AddInFlightRequest(requestInfo, cancelRoutine);
     }
 
     // Depending on whether the transaction is RO or RW, we will either attempt
@@ -626,9 +648,9 @@ private:
             std::forward<TArgs>(args)...);
     }
 
-    void RemoveTransaction(TRequestInfo& transaction);
-    void TerminateTransactions(const NActors::TActorContext& ctx);
-    void ReleaseTransactions();
+    void RemoveInFlightRequest(TRequestInfo& requestInfo);
+    void RejectInFlightRequests(const NActors::TActorContext& ctx);
+    void ReleaseInFlightRequests();
 
     // Updates in-memory index state with the given node updates. Is to be
     // called upon every operation that changes node-related data. As of now, it
@@ -699,6 +721,15 @@ private:
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TRenameNodeInDestinationRequest request,
         ui64 requestId,
+        ui64 opLogEntryId);
+
+    void RegisterAbortUnlinkDirectoryInShardActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TError originalError,
+        TString shardId,
+        ui64 nodeId,
         ui64 opLogEntryId);
 
     void ReplayOpLog(
@@ -836,6 +867,10 @@ private:
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInShard::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleUnlinkDirectoryNodeAbortedInShard(
+        const TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleDoRenameNodeInDestination(
         const TEvIndexTabletPrivate::TEvDoRenameNodeInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -901,6 +936,7 @@ private:
 
     bool HasBlocksLeft(ui64 blocksRequired) const;
     bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
+    bool HasNodesLeft() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

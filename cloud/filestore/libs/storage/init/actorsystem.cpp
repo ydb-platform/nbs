@@ -1,6 +1,7 @@
 #include "actorsystem.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/filesystem_counters.h>
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/diagnostics/metrics/service.h>
@@ -397,12 +398,16 @@ void TActorSystem::Init()
     Args.Metrics->SetupCounters(AppData->Counters);
 
     auto systemCounters = MakeIntrusive<TSystemCounters>();
+    auto fsCountersProvider = CreateFsCountersProvider(
+        "service",
+        FILESTORE_COUNTERS_ROOT(AppData->Counters));
     auto statsRegistry = CreateRequestStatsRegistry(
         "service",
         Args.DiagnosticsConfig,
         FILESTORE_COUNTERS_ROOT(AppData->Counters),
         CreateWallClockTimer(),
-        NUserStats::CreateUserCounterSupplierStub());
+        NUserStats::CreateUserCounterSupplierStub(),
+        fsCountersProvider);
     auto services = CreateServiceInitializersList(runConfig, servicesMask);
     services->AddServiceInitializer(
         new NStorage::TKikimrServicesInitializer(Args.AppConfig));

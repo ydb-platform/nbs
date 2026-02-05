@@ -6,15 +6,15 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IIncompleteRequestProcessor
+struct IStatsHandler
 {
-    virtual ~IIncompleteRequestProcessor() = default;
+    virtual ~IStatsHandler() = default;
 
     virtual void UpdateStats(bool updateIntervalFinished) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IIncompleteRequestProcessorPtr CreateInflightRequestCollectorStub();
+IStatsHandlerPtr CreateStatsHandlerStub();
 
 }   // namespace NCloud

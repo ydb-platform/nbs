@@ -100,6 +100,7 @@ private:
 
     THashMap<ui64, std::shared_ptr<TDirectoryHandle>> DirectoryHandles;
     TMutex DirectoryHandlesLock;
+    TDirectoryHandlesStatsPtr DirectoryHandlesStats;
 
     TXAttrCache XAttrCache;
     TMutex XAttrCacheLock;
@@ -123,6 +124,7 @@ public:
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
+        TDirectoryHandlesStatsPtr directoryHandlesStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
         TDirectoryHandlesStoragePtr directoryHandlesStorage,

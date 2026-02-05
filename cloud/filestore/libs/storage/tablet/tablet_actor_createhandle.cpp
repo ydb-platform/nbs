@@ -132,7 +132,7 @@ void TIndexTabletActor::HandleCreateHandle(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TCreateHandleMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TCreateHandleMethod>(*requestInfo);
 
     ExecuteTx<TCreateHandle>(
         ctx,
@@ -489,7 +489,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         return;
     }
 
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);

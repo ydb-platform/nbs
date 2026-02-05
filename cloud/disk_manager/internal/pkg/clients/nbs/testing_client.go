@@ -604,7 +604,7 @@ func (c *testingClient) BackupDiskRegistryState(
 		return nil, err
 	}
 
-	return &state.Backup, nil
+	return &state.MemoryBackup, nil
 }
 
 func (c *testingClient) DisableDevices(
@@ -686,7 +686,8 @@ type DiskRegistryStateBackup struct {
 }
 
 type diskRegistryState struct {
-	Backup DiskRegistryStateBackup `json:"Backup"`
+	MemoryBackup  DiskRegistryStateBackup `json:"MemoryBackup"`
+	LocalDBBackup DiskRegistryStateBackup `json:"LocalDBBackup"`
 }
 
 func (b *DiskRegistryStateBackup) GetDisk(

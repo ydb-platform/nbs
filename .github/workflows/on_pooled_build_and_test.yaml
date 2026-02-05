@@ -3,6 +3,10 @@ name: Build and test NBS on pooled runners
 on:
   workflow_dispatch:
     inputs:
+      component:
+        type: string
+        default: ""
+        description: "component name"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -57,6 +61,10 @@ on:
         description: "Number of retries for tests"
   workflow_call:
     inputs:
+      component:
+        type: string
+        default: ""
+        description: "component name"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -119,6 +127,7 @@ jobs:
     with:
       runner_kind: self-hosted
       runner_flavor: "heavy"
+      component: ${{ inputs.component }}
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}

@@ -436,6 +436,7 @@ void InitProfileLogRequestInfo(
     nodeInfo->SetNodeName(request.GetName());
     nodeInfo->SetNewParentNodeId(request.GetNewParentId());
     nodeInfo->SetNewNodeName(request.GetNewName());
+    nodeInfo->SetFlags(request.GetFlags());
 }
 
 template <>

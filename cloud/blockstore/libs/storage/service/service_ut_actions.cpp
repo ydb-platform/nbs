@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
@@ -475,7 +475,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
         );
 
-        NProto::TBackupDiskRegistryStateResponse request;
+        NProto::TBackupDiskRegistryStateRequest request;
+        request.SetSource(NProto::BDRSS_MEMORY);
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);
@@ -487,7 +488,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             response->Record.GetOutput(),
             &proto
         ).ok());
-        const auto& backup = proto.GetBackup();
+        const auto& backup = proto.GetMemoryBackup();
 
         UNIT_ASSERT_VALUES_EQUAL(1, backup.DisksSize());
         UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, backup.GetDisks(0).GetDiskId());

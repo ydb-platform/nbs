@@ -252,7 +252,9 @@ void TIndexTabletActor::HandleWriteBatch(
     }
 
     for (const auto& request: writeBatch) {
-        AddTransaction(*request.RequestInfo, request.RequestInfo->CancelRoutine);
+        AddInFlightRequest(
+            *request.RequestInfo,
+            request.RequestInfo->CancelRoutine);
     }
 
     auto batchInfo = GetBatchInfo(writeBatch);
@@ -495,7 +497,7 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
     TTxIndexTablet::TWriteBatch& args)
 {
     for (const auto& request: args.WriteBatch) {
-        RemoveTransaction(*request.RequestInfo);
+        RemoveInFlightRequest(*request.RequestInfo);
     }
 
     auto reply = [] (

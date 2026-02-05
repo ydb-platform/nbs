@@ -25,8 +25,6 @@ generate_cert() {
 
 REPO_DIR=`find_repo_dir`
 BIN_DIR=`find_bin_dir`
-
-BUILD_ROOT="$REPO_DIR/cloud/filestore/buildall"
 YDBD_BIN="contrib/ydb/apps/ydbd/ydbd"
 FILESTORE_CLIENT_BIN="cloud/filestore/apps/client/filestore-client"
 FILESTORE_SERVER_BIN="cloud/filestore/apps/server/filestore-server"
@@ -35,7 +33,7 @@ FILESTORE_VHOST_BIN="cloud/filestore/apps/vhost/filestore-vhost"
 
 # create symlinks
 for file in $YDBD_BIN $FILESTORE_CLIENT_BIN $FILESTORE_SERVER_BIN $FILESTORE_VHOST_BIN; do
-    ln -svf $BUILD_ROOT/$file $BIN_DIR/
+    ln -svf $REPO_DIR/$file $BIN_DIR/
 done
 
 for file in $BUILD_FILES; do

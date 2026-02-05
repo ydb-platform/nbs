@@ -3,6 +3,10 @@ name: Build and test (ya) on pooled runners
 on:
   workflow_call:
     inputs:
+      component:
+        type: string
+        default: ""
+        description: "component name"
       build_target:
         type: string
         default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
@@ -153,14 +157,12 @@ jobs:
         nebius compute instance get --id "${RUNNER_NAME}" --format json > instance.json
         LABEL=$(jq -r '.metadata.labels."runner-label"' instance.json)
         RUNNER_FLAVOR=$(jq -r '.metadata.labels."runner-flavor"' instance.json)
-        EXTERNAL_IPV4=$(jq -r '.status.network_interfaces[0].public_ip_address.address' instance.json | sed -e 's/\/32//g')
         LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
         VM_PRESET=$(jq -r '.spec.resources.preset' instance.json)
         {
           echo "LABEL=${LABEL}"
           echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
           echo "INSTANCE_ID=${INSTANCE_ID}"
-          echo "RUNNER_IPV4=${EXTERNAL_IPV4}"
           echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
           echo "VM_PRESET=${VM_PRESET}"
         } | tee -a "$GITHUB_OUTPUT"
@@ -197,6 +199,7 @@ jobs:
       uses: ./.github/actions/build
       if: inputs.run_build
       with:
+        component: ${{ inputs.component }}
         build_target: ${{ inputs.build_target }}
         build_preset: ${{ inputs.build_preset }}
         cache_update: ${{ inputs.cache_update_build }}
@@ -213,6 +216,7 @@ jobs:
       id: test
       if: inputs.run_tests
       with:
+        component: ${{ inputs.component }}
         test_target: ${{ inputs.test_target }}
         build_preset: ${{ inputs.build_preset }}
         test_size: ${{ inputs.test_size }}

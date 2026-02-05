@@ -166,25 +166,6 @@ message TDeviceConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TNVMeDevice
-{
-    string SerialNumber = 1;
-    string PCIAddress = 2;
-    optional uint32 IOMMUGroup = 3;
-
-    uint32 VendorId = 4;
-    uint32 DeviceId = 5;
-
-    string Model = 6;
-}
-
-message TNVMeDeviceList
-{
-    repeated TNVMeDevice Devices = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 message TSuspendedDevice
 {
     string Id = 1;
@@ -1384,8 +1365,8 @@ message TBackupDiskRegistryStateRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Backup local DB instead of memory state.
-    bool BackupLocalDB = 2;
+    // Source of Disk Registry state backup.
+    EBackupDiskRegistryStateSource Source = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
@@ -1396,11 +1377,14 @@ message TBackupDiskRegistryStateResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Disk Regsitry state backup
-    TDiskRegistryStateBackup Backup = 2;
+    // Disk Regsitry state backup from memory.
+    TDiskRegistryStateBackup MemoryBackup = 2;
 
     // File to save backup file.
     string BackupFilePath = 3;
+
+    // Disk Regsitry state backup from local db.
+    TDiskRegistryStateBackup LocalDBBackup = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

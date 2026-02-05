@@ -1,6 +1,7 @@
 #include "user_counter.h"
 
 #include "config.h"
+#include "filesystem_counters.h"
 #include "request_stats.h"
 
 #include <cloud/filestore/libs/service/context.h>
@@ -196,18 +197,23 @@ struct TEnv
     NMonitoring::TDynamicCountersPtr Counters;
     ITimerPtr Timer;
     std::shared_ptr<IUserCounterSupplier> Supplier;
+    IFsCountersProviderPtr FsCountersProvider;
     IRequestStatsRegistryPtr Registry;
 
     TEnv()
         : Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
         , Timer(CreateWallClockTimer())
         , Supplier(CreateUserCounterSupplier())
+        , FsCountersProvider(CreateFsCountersProvider(
+            METRIC_COMPONENT,
+            Counters))
         , Registry(CreateRequestStatsRegistry(
             METRIC_COMPONENT,
             std::make_shared<TDiagnosticsConfig>(),
             Counters,
             Timer,
-            Supplier))
+            Supplier,
+            FsCountersProvider))
     {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
@@ -315,13 +321,17 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         {
             NProto::TDiagnosticsConfig diagnosticsConfig;
             diagnosticsConfig.SetUseMsUnitsForTimeHistogram(true);
+            FsCountersProvider = CreateFsCountersProvider(
+                METRIC_COMPONENT,
+                Counters);
             Registry = CreateRequestStatsRegistry(
                 METRIC_COMPONENT,
                 std::make_shared<TDiagnosticsConfig>(
                     std::move(diagnosticsConfig)),
                 Counters,
                 Timer,
-                Supplier);
+                Supplier,
+                FsCountersProvider);
         }
 
         Registry->GetFileSystemStats(fsId, clientId, cloudId, folderId);

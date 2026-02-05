@@ -32,7 +32,11 @@ void TIndexTabletActor::HandleRemoveNodeXAttr(
     const TEvService::TEvRemoveNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TRemoveNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
+    const bool accepted = AcceptRequest<TEvService::TRemoveNodeXAttrMethod>(
+        ev,
+        ctx,
+        ValidateRequest);
+    if (!accepted) {
         return;
     }
 
@@ -43,7 +47,7 @@ void TIndexTabletActor::HandleRemoveNodeXAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvService::TRemoveNodeXAttrMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TRemoveNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TRemoveNodeXAttr>(
         ctx,
@@ -119,7 +123,7 @@ void TIndexTabletActor::CompleteTx_RemoveNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TRemoveNodeXAttr& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(args.Error);
     CompleteResponse<TEvService::TRemoveNodeXAttrMethod>(

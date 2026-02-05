@@ -43,8 +43,11 @@ message TCreateCheckpointResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,8 +70,11 @@ message TDeleteCheckpointResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 2;
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,8 +112,11 @@ message TGetChangedBlocksResponse
     // Bit mask where bit is set if block has changed between checkpoints.
     bytes Mask = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,6 +155,9 @@ message TGetCheckpointStatusResponse
     // Checkpoint status
     ECheckpointStatus CheckpointStatus = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }

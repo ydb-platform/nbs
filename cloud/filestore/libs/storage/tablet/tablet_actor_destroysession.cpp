@@ -71,7 +71,7 @@ void TIndexTabletActor::HandleDestroySession(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TDestroySessionMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TDestroySessionMethod>(*requestInfo);
 
     ExecuteTx<TDestroySession>(
         ctx,
@@ -182,7 +182,7 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroySession& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(args.Error);

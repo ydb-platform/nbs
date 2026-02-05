@@ -2,6 +2,7 @@
 
 #include "disk_registry_database.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -27,7 +28,7 @@ void TDiskRegistryActor::HandleAddOutdatedLaggingDevices(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received AddOutdatedLaggingDevices request: %s %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str(),
+        SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     TVector<NProto::TLaggingDevice> outdatedDevices(

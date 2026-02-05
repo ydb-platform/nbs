@@ -32,12 +32,10 @@ void TInFlightRequest::Complete(
         currentTs.MicroSeconds() - ProfileLogRequest.GetTimestampMcs());
     ProfileLogRequest.SetErrorCode(error.GetCode());
 
-    if (HasLogData()) {
-        ProfileLog->Write({
-            CallContext->FileSystemId,
-            std::move(ProfileLogRequest)});
-        ProfileLogRequest.Clear();
-    }
+    ProfileLog->Write({
+        CallContext->FileSystemId,
+        std::move(ProfileLogRequest)});
+    ProfileLogRequest.Clear();
 
     //
     // Signalling request completion - after this line this request may be

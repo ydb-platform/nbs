@@ -1,10 +1,12 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
+#include <cloud/blockstore/libs/local_nvme/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -22,6 +24,7 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 
 #include <library/cpp/json/json_reader.h>
@@ -172,6 +175,17 @@ void TConfigInitializerYdb::InitComputeClientConfig()
     }
 
     ComputeClientConfig = std::move(config);
+}
+
+void TConfigInitializerYdb::InitLocalNVMeConfig()
+{
+    NProto::TLocalNVMeConfig proto;
+
+    if (Options->LocalNVMeConfig) {
+        ParseProtoTextFromFile(Options->LocalNVMeConfig, proto);
+    }
+
+    LocalNVMeConfig = std::make_shared<TLocalNVMeConfig>(std::move(proto));
 }
 
 bool TConfigInitializerYdb::GetUseNonreplicatedRdmaActor() const
@@ -374,6 +388,14 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
     ComputeClientConfig = std::move(config);
 }
 
+void TConfigInitializerYdb::ApplyLocalNVMeConfig(const TString& text)
+{
+    NProto::TLocalNVMeConfig proto;
+    ParseProtoTextFromString(text, proto);
+
+    LocalNVMeConfig = std::make_shared<TLocalNVMeConfig>(std::move(proto));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TConfigInitializerYdb::ApplyNamedConfigs(
@@ -415,6 +437,7 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
         { "KmsClientConfig",         &TSelf::ApplyKmsClientConfig         },
         { "RootKmsConfig",           &TSelf::ApplyRootKmsConfig           },
         { "ComputeClientConfig",     &TSelf::ApplyComputeClientConfig     },
+        { "LocalNVMeConfig",         &TSelf::ApplyLocalNVMeConfig         },
     };
 
     for (const auto& handler: configHandlers) {
@@ -423,10 +446,13 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
             continue;
         }
 
-        std::invoke(
-            handler.second,
-            this,
-            config.GetNamedConfigs(it->second).GetConfig());
+        const auto& namedConfig = config.GetNamedConfigs(it->second);
+
+        STORAGE_INFO(
+            "Apply config from CMS: TAppConfig::NamedConfig "
+            << namedConfig.GetName());
+
+        std::invoke(handler.second, this, namedConfig.GetConfig());
     }
 }
 
@@ -437,11 +463,30 @@ void TConfigInitializerYdb::ApplyBlockstoreConfig(
         return;
     }
 
+    STORAGE_INFO("Apply config from CMS: TAppConfig::BlockstoreConfig");
+
     const auto& blockstoreConfig = config.GetBlockstoreConfig();
 
     auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
         blockstoreConfig.GetVolumePreemptionType());
     StorageConfig->SetVolumePreemptionType(volumePreemptionType);
+}
+
+void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
+    const NKikimrConfig::TAppConfig& config)
+{
+    if (!config.HasFeatureFlags()) {
+        return;
+    }
+
+    STORAGE_INFO("Apply config from CMS: TAppConfig::FeatureFlags (allowed)");
+
+    const auto& kikimrFeatureFlags = config.GetFeatureFlags();
+
+    if (kikimrFeatureFlags.HasEnableNodeBrokerDeltaProtocol()) {
+        KikimrConfig->MutableFeatureFlags()->SetEnableNodeBrokerDeltaProtocol(
+            kikimrFeatureFlags.GetEnableNodeBrokerDeltaProtocol());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -451,6 +496,7 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(
 {
     ApplyNamedConfigs(config);
     ApplyBlockstoreConfig(config);
+    ApplyAllowedKikimrFeatureFlags(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

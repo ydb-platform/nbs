@@ -147,6 +147,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
     xxx(GetOpLogEntry,                      __VA_ARGS__)                       \
+    xxx(WriteOpLogEntry,                    __VA_ARGS__)                       \
     xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
                                                                                \
     xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
@@ -1103,8 +1104,8 @@ struct TTxIndexTablet
         const NProtoPrivate::TRenameNodeInDestinationRequest Request;
         const NProto::TNodeAttr SourceNodeAttr;
         const NProto::TNodeAttr DestinationNodeAttr;
-        const bool IsDestinationEmptyDir;
         const bool IsSecondPass;
+        const ui64 AbortUnlinkOpLogEntryId;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
@@ -1127,8 +1128,8 @@ struct TTxIndexTablet
             , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
-            , IsDestinationEmptyDir(false)
             , IsSecondPass(false)
+            , AbortUnlinkOpLogEntryId(0)
         {}
 
         TRenameNodeInDestination(
@@ -1136,7 +1137,7 @@ struct TTxIndexTablet
                 NProtoPrivate::TRenameNodeInDestinationRequest request,
                 NProto::TNodeAttr sourceNodeAttr,
                 NProto::TNodeAttr destinationNodeAttr,
-                bool isDestinationEmptyDir)
+                ui64 abortUnlinkOpLogEntryId)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NewParentNodeId(request.GetNewParentId())
@@ -1145,8 +1146,8 @@ struct TTxIndexTablet
             , Request(std::move(request))
             , SourceNodeAttr(std::move(sourceNodeAttr))
             , DestinationNodeAttr(std::move(destinationNodeAttr))
-            , IsDestinationEmptyDir(isDestinationEmptyDir)
             , IsSecondPass(true)
+            , AbortUnlinkOpLogEntryId(abortUnlinkOpLogEntryId)
         {}
 
         void Clear() override
@@ -1308,6 +1309,7 @@ struct TTxIndexTablet
         TString Next;
 
         ui32 BytesToPrecharge = 0;
+        ui32 PrepareAttempts = 1;
 
         TListNodes(
                 TRequestInfoPtr requestInfo,
@@ -1338,6 +1340,7 @@ struct TTxIndexTablet
 
         void OnRestart() override
         {
+            ++PrepareAttempts;
             BytesToPrecharge = ClampVal(
                 2 * BytesToPrecharge,
                 MaxBytes,
@@ -2585,6 +2588,30 @@ struct TTxIndexTablet
         void Clear() override
         {
             Entry.Clear();
+        }
+    };
+
+    //
+    // WriteOpLogEntry
+    //
+
+    struct TWriteOpLogEntry: TTxIndexTabletBase, TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProto::TOpLogEntry Entry;
+
+        explicit TWriteOpLogEntry(
+                TRequestInfoPtr requestInfo,
+                NProto::TOpLogEntry entry)
+            : RequestInfo(std::move(requestInfo))
+            , Entry(std::move(entry))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+
+            Entry.ClearEntryId();
         }
     };
 

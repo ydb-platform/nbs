@@ -107,7 +107,8 @@ public:
         NProto::TStorageConfig storageConfig = {},
         NKikimr::NFake::TCaches cachesConfig = {},
         IProfileLogPtr profileLog = CreateProfileLogStub(),
-        NProto::TDiagnosticsConfig diagConfig = {});
+        NProto::TDiagnosticsConfig diagConfig = {},
+        bool useRealThreads = false);
 
     void UpdateStorageConfig(NProto::TStorageConfig storageConfig);
 

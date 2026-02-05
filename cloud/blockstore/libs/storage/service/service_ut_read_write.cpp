@@ -608,24 +608,41 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
 
         {
             auto response = service.ReadBlocks(DefaultDiskId, 0, sessionId);
-            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetThrottlerDelay());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetHeaders().GetThrottler().GetDelay());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetDeprecatedThrottlerDelay());
         }
 
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvWriteBlocksResponse: {
-                        auto* msg = event->Get<TEvService::TEvWriteBlocksResponse>();
-                        msg->Record.SetThrottlerDelay(1e6);
+                        auto* msg =
+                            event->Get<TEvService::TEvWriteBlocksResponse>();
+                        msg->Record.SetDeprecatedThrottlerDelay(1e6);
+                        msg->Record.MutableHeaders()
+                            ->MutableThrottler()
+                            ->SetDelay(1e6);
                         break;
                     }
                     case TEvService::EvReadBlocksResponse: {
-                        auto* msg = event->Get<TEvService::TEvReadBlocksResponse>();
-                        msg->Record.SetThrottlerDelay(1e6);
+                        auto* msg =
+                            event->Get<TEvService::TEvReadBlocksResponse>();
+                        msg->Record.SetDeprecatedThrottlerDelay(1e6);
+                        msg->Record.MutableHeaders()
+                            ->MutableThrottler()
+                            ->SetDelay(1e6);
                         break;
                     }
                     case TEvVolume::EvDescribeBlocksResponse: {
-                        auto* msg = event->Get<TEvVolume::TEvDescribeBlocksResponse>();
-                        msg->Record.SetThrottlerDelay(1e6);
+                        auto* msg =
+                            event->Get<TEvVolume::TEvDescribeBlocksResponse>();
+                        msg->Record.SetDeprecatedThrottlerDelay(1e6);
+                        msg->Record.MutableHeaders()
+                            ->MutableThrottler()
+                            ->SetDelay(1e6);
                         break;
                     }
                 }
@@ -642,7 +659,12 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                 callContext->GetPossiblePostponeDuration());
             service.SendRequest(MakeStorageServiceId(), std::move(request));
             auto response = service.RecvReadBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(1e6, response->Record.GetThrottlerDelay());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1e6,
+                response->Record.GetDeprecatedThrottlerDelay());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1e6,
+                response->Record.GetHeaders().GetThrottler().GetDelay());
             UNIT_ASSERT_VALUES_EQUAL(
                 1e6,
                 callContext->Time(EProcessingStage::Postponed).MicroSeconds());
@@ -664,7 +686,12 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                 callContext->GetPossiblePostponeDuration());
             service.SendRequest(MakeStorageServiceId(), std::move(request));
             auto response = service.RecvWriteBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(1e6, response->Record.GetThrottlerDelay());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1e6,
+                response->Record.GetDeprecatedThrottlerDelay());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1e6,
+                response->Record.GetHeaders().GetThrottler().GetDelay());
             UNIT_ASSERT_VALUES_EQUAL(
                 1e6,
                 callContext->Time(EProcessingStage::Postponed).MicroSeconds());

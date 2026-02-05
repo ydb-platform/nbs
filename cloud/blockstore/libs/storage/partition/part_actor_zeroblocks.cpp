@@ -408,7 +408,7 @@ void TPartitionActor::ExecuteZeroBlocks(
 
     ui64 commitId = args.CommitId;
 
-    State->ZeroFreshBlocks(db, args.WriteRange, commitId);
+    State->ZeroFreshBlocksToDb(db, args.WriteRange, commitId);
 
     // update counters
     State->DecrementFreshBlocksInFlight(args.WriteRange.Size());

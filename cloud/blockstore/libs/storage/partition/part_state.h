@@ -25,7 +25,9 @@
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -60,20 +62,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(UsedBlocksCount)                                                       \
     xxx(LogicalUsedBlocksCount)                                                \
 // BLOCKSTORE_PARTITION_PROTO_COUNTERS
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TOperationState
-{
-    EOperationStatus Status = EOperationStatus::Idle;
-    TInstant Timestamp;
-
-    void SetStatus(EOperationStatus status)
-    {
-        Status = status;
-        Timestamp = TInstant::Now();
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -288,11 +276,16 @@ struct TBackpressureFeaturesConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionState: public TPartitionChannelsState
+class TPartitionState
+    : public TPartitionChannelsState
+    , public TCommitIdsState
+    , public TPartitionFreshBlobState
+    , public TPartitionTrimFreshLogState
+    , public TPartitionFlushState
+    , public TPartitionFreshBlocksState
 {
 private:
     NProto::TPartitionMeta Meta;
-    const ui32 Generation;
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
@@ -393,124 +386,17 @@ public:
     TBackpressureReport CalculateCurrentBackpressure() const;
 
     //
-    // Commits
-    //
-
-private:
-    TCommitQueue CommitQueue;
-    ui32 LastCommitId = 0;
-
-public:
-    TCommitQueue& GetCommitQueue()
-    {
-        return CommitQueue;
-    }
-
-    ui64 GetLastCommitId() const
-    {
-        return MakeCommitId(Generation, LastCommitId);
-    }
-
-    ui64 GenerateCommitId()
-    {
-        if (LastCommitId == Max<ui32>()) {
-            return InvalidCommitId;
-        }
-        return MakeCommitId(Generation, ++LastCommitId);
-    }
-
-    //
-    // Flush
-    //
-
-private:
-    TOperationState FlushState;
-    TRequestBuffer<TWriteBufferRequestData> WriteBuffer;
-    ui32 FreshBlocksInFlight = 0;
-    ui32 UnflushedFreshBlobCount = 0;
-    ui64 UnflushedFreshBlobByteCount = 0;
-    THashSet<ui64> FlushedCommitIdsInProgress;
-
-public:
-    TOperationState& GetFlushState()
-    {
-        return FlushState;
-    }
-
-    TRequestBuffer<TWriteBufferRequestData>& GetWriteBuffer()
-    {
-        return WriteBuffer;
-    }
-
-    ui32 GetFreshBlocksQueued() const
-    {
-        return WriteBuffer.GetWeight();
-    }
-
-    ui32 GetFreshBlocksInFlight() const
-    {
-        return FreshBlocksInFlight;
-    }
-
-    ui32 GetUnflushedFreshBlobCount() const
-    {
-        return UnflushedFreshBlobCount;
-    }
-
-    ui32 GetUnflushedFreshBlobByteCount() const
-    {
-        return UnflushedFreshBlobByteCount;
-    }
-
-    void IncrementUnflushedFreshBlobCount(ui32 value);
-    void DecrementUnflushedFreshBlobCount(ui32 value);
-    void IncrementUnflushedFreshBlobByteCount(ui64 value);
-    void DecrementUnflushedFreshBlobByteCount(ui64 value);
-
-    ui32 IncrementFreshBlocksInFlight(size_t value);
-    ui32 DecrementFreshBlocksInFlight(size_t value);
-
-    THashSet<ui64>& GetFlushedCommitIdsInProgress()
-    {
-        return FlushedCommitIdsInProgress;
-    }
-
-    //
     // Fresh blobs
     //
 
 public:
-    struct TFreshBlobMeta
-    {
-        const ui64 CommitId;
-        const ui64 BlobSize;
-
-        bool operator<(const TFreshBlobMeta& other) const
-        {
-            return CommitId < other.CommitId;
-        }
-    };
-
-private:
-    ui64 UntrimmedFreshBlobByteCount = 0;
-    TSet<TFreshBlobMeta> UntrimmedFreshBlobs;
-
-public:
-    ui64 GetUntrimmedFreshBlobByteCount() const
-    {
-        return UntrimmedFreshBlobByteCount;
-    }
-
     void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
-    void TrimFreshBlobs(ui64 commitId);
 
     //
     // Fresh Blocks
     //
 
 private:
-    ui32 UnflushedFreshBlocksFromChannelCount = 0;
-    TBlockIndex Blocks;
 
     void WriteFreshBlocksImpl(
         TPartitionDatabase& db,
@@ -519,7 +405,7 @@ private:
         auto getBlockContent)
     {
         TVector<ui64> checkpoints;
-        Checkpoints.GetCommitIds(checkpoints);
+        GetCheckpoints().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -535,7 +421,7 @@ private:
             for (auto garbageCommitId: garbage) {
                 // This block is being flushed; we'll remove it on AddBlobs
                 // and we'll release barrier on FlushCompleted
-                if (FlushedCommitIdsInProgress.contains(garbageCommitId)) {
+                if (GetFlushedCommitIdsInProgress().contains(garbageCommitId)) {
                     continue;
                 }
 
@@ -568,106 +454,31 @@ private:
         IncrementUnflushedFreshBlocksFromDbCount(writeRange.Size());
     }
 
-    void WriteFreshBlocksImpl(
-        const TBlockRange32& writeRange,
-        ui64 commitId,
-        auto getBlockContent)
-    {
-        TVector<ui64> checkpoints;
-        Checkpoints.GetCommitIds(checkpoints);
-        SortUnique(checkpoints, TGreater<ui64>());
-
-        TVector<ui64> existingCommitIds;
-        TVector<ui64> garbage;
-
-        for (ui32 blockIndex: xrange(writeRange)) {
-            ui32 index = blockIndex - writeRange.Start;
-            const auto& blockContent = getBlockContent(index);
-
-            Blocks.GetCommitIds(blockIndex, existingCommitIds);
-
-            NCloud::NStorage::FindGarbageVersions(checkpoints, existingCommitIds, garbage);
-            for (auto garbageCommitId: garbage) {
-                // This block is being flushed; we'll remove it on AddBlobs
-                // and we'll release barrier on FlushCompleted
-                if (FlushedCommitIdsInProgress.contains(garbageCommitId)) {
-                    continue;
-                }
-
-                // Do not remove block if it is stored in db
-                // to be able to remove it during flush, otherwise
-                // we'll leave garbage in FreshBlocksTable
-                auto removed = Blocks.RemoveBlock(
-                    blockIndex,
-                    garbageCommitId,
-                    false);  // isStoredInDb
-
-                if (removed) {
-                    DecrementUnflushedFreshBlocksFromChannelCount(1);
-                    TrimFreshLogBarriers.ReleaseBarrier(garbageCommitId);
-                }
-            }
-
-            Blocks.AddBlock(
-                blockIndex,
-                commitId,
-                false,  // isStoredInDb
-                blockContent.AsStringBuf());
-
-            existingCommitIds.clear();
-            garbage.clear();
-        }
-
-        IncrementUnflushedFreshBlocksFromChannelCount(writeRange.Size());
-    }
-
 public:
-    void InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks);
-
-    void FindFreshBlocks(
-        IFreshBlocksIndexVisitor& visitor,
-        const TBlockRange32& readRange,
-        ui64 maxCommitId = Max());
-
-    void WriteFreshBlocks(
+    void WriteFreshBlocksToDb(
         TPartitionDatabase& db,
         const TBlockRange32& writeRange,
         ui64 commitId,
         TSgList sglist);
 
-    void WriteFreshBlocks(
-        const TBlockRange32& writeRange,
-        ui64 commitId,
-        TSgList sglist);
-
-    void ZeroFreshBlocks(
+    void ZeroFreshBlocksToDb(
         TPartitionDatabase& db,
         const TBlockRange32& zeroRange,
         ui64 commitId);
 
-    void ZeroFreshBlocks(
-        const TBlockRange32& zeroRange,
-        ui64 commitId);
-
-    void DeleteFreshBlock(
+    void DeleteFreshBlockFromDb(
         TPartitionDatabase& db,
-        ui32 blockIndex,
-        ui64 commitId);
-
-    void DeleteFreshBlock(
         ui32 blockIndex,
         ui64 commitId);
 
     ui32 GetUnflushedFreshBlocksCount() const
     {
         return GetStats().GetFreshBlocksCount() +
-               UnflushedFreshBlocksFromChannelCount;
+               GetUnflushedFreshBlocksCountFromChannel();
     }
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
-    ui32 IncrementUnflushedFreshBlocksFromChannelCount(size_t value);
-    ui32 DecrementUnflushedFreshBlocksFromChannelCount(size_t value);
 
     //
     // Mixed blocks
@@ -969,7 +780,6 @@ public:
 
 private:
     TOperationState CleanupState;
-    TCheckpointStore Checkpoints;
     TCheckpointsInFlight CheckpointsInFlight;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
@@ -1047,11 +857,6 @@ public:
     TDuration GetCleanupDelay() const
     {
         return CleanupDelay;
-    }
-
-    TCheckpointStore& GetCheckpoints()
-    {
-        return Checkpoints;
     }
 
     TCheckpointsInFlight& GetCheckpointsInFlight()
@@ -1139,60 +944,7 @@ public:
     // TrimFreshLog
     //
 
-private:
-    TBarriers TrimFreshLogBarriers;
-    TOperationState TrimFreshLogState;
-    ui64 LastTrimFreshLogToCommitId = 0;
-    TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
-        TDuration::Zero(),
-        TDuration::MilliSeconds(100),
-        TDuration::Seconds(5)};
-
 public:
-    TBarriers& GetTrimFreshLogBarriers()
-    {
-        return TrimFreshLogBarriers;
-    }
-
-    ui64 GetTrimFreshLogToCommitId() const
-    {
-        return Min(
-            // if there are no fresh blocks, we should trim up to current commitId
-            GetLastCommitId(),
-            // if there are some fresh blocks, we should trim till the lowest
-            // fresh commitId minus 1
-            TrimFreshLogBarriers.GetMinCommitId() - 1);
-    }
-
-    TOperationState& GetTrimFreshLogState()
-    {
-        return TrimFreshLogState;
-    }
-
-    TDuration GetTrimFreshLogBackoffDelay()
-    {
-        return TrimFreshLogBackoffDelayProvider.GetDelay();
-    }
-
-    void RegisterTrimFreshLogError()
-    {
-        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
-    }
-
-    void RegisterTrimFreshLogSuccess()
-    {
-        TrimFreshLogBackoffDelayProvider.Reset();
-    }
-
-    ui64 GetLastTrimFreshLogToCommitId() const
-    {
-        return LastTrimFreshLogToCommitId;
-    }
-
-    void SetLastTrimFreshLogToCommitId(ui64 commitId)
-    {
-        LastTrimFreshLogToCommitId = commitId;
-    }
 
     void UpdateTrimFreshLogToCommitIdInMeta()
     {

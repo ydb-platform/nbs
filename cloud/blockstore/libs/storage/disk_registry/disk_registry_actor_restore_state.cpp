@@ -2,6 +2,8 @@
 
 #include "actors/restore_validator_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
+
 #include <algorithm>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -455,7 +457,7 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryState(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received RestoreDiskRegistryState request %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str());
+        SafeDebugPrint(msg->Record).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

@@ -1,6 +1,6 @@
 #include "stats_updater.h"
 
-#include "incomplete_request_processor.h"
+#include "stats_handler.h"
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -22,7 +22,7 @@ struct TStatsUpdater
 protected:
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
-    const IIncompleteRequestProcessorPtr Collector;
+    const IStatsHandlerPtr StatsHandler;
 
     TAtomic ShouldStop = 0;
 
@@ -32,7 +32,7 @@ public:
     TStatsUpdater(
             ITimerPtr timer,
             ISchedulerPtr scheduler,
-            IIncompleteRequestProcessorPtr collector);
+            IStatsHandlerPtr statsHandler);
 
     void Start() override;
     void Stop() override;
@@ -47,10 +47,10 @@ private:
 TStatsUpdater::TStatsUpdater(
         ITimerPtr timer,
         ISchedulerPtr scheduler,
-        IIncompleteRequestProcessorPtr collector)
+        IStatsHandlerPtr statsHandler)
     : Timer(std::move(timer))
     , Scheduler(std::move(scheduler))
-    , Collector(std::move(collector))
+    , StatsHandler(std::move(statsHandler))
 {
 }
 
@@ -69,7 +69,7 @@ void TStatsUpdater::UpdateStats()
     bool updateIntervalFinished =
         (++UpdateStatsCounter % UpdateCountersInterval.Seconds() == 0);
 
-    Collector->UpdateStats(updateIntervalFinished);
+    StatsHandler->UpdateStats(updateIntervalFinished);
 }
 
 void TStatsUpdater::ScheduleUpdateStats()
@@ -97,12 +97,12 @@ void TStatsUpdater::ScheduleUpdateStats()
 IStatsUpdaterPtr CreateStatsUpdater(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
-    IIncompleteRequestProcessorPtr collector)
+    IStatsHandlerPtr statsHandler)
 {
     return std::make_shared<TStatsUpdater>(
         std::move(timer),
         std::move(scheduler),
-        std::move(collector)
+        std::move(statsHandler)
     );
 }
 

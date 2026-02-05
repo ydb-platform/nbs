@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/storage_with_stats.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

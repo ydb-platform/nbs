@@ -244,6 +244,18 @@ jobs:
           if_true: "github-pr-review"
           if_false: "github-check"
 
+      - name: Prepare s3
+        id: s3
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ vars.POOLED_LIGHT_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: "relwithdebinfo"
+          install: false
 
       - name: set up python environment
         uses: actions/setup-python@v5.0.0
@@ -255,14 +267,13 @@ jobs:
           pip install -r .github/scripts/requirements.txt
           pip install -r .github/scripts/requirements_dev.txt
 
-
       - name: flake8
         uses: reviewdog/action-flake8@v3.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
-          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107"
+          flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400"
 
       - name: black
         uses: reviewdog/action-black@v3.10.2
@@ -293,16 +304,33 @@ jobs:
         with:
           name: pytest-report-html
           path: pytest-report.html 
+      - name: upload test results to s3
+        if: ${{ always() }}
+        run: |
+          set -x
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-report.html "$S3_BUCKET_PATH/test_reports/pytest-report.html"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-test-results.xml "$S3_BUCKET_PATH/test_reports/pytest-test-results.xml"
+
       - name: comment on issue (${{ steps.pytest.outcome }})
         if: ${{ github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v7.0.1
+        env:
+          STEP_OUTCOME: ${{ steps.pytest.outcome }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
         with:
           script: |
+            const s3_path = process.env.S3_URL_PREFIX;
+            const outcome = process.env.STEP_OUTCOME;
+            const artifact_url = process.env.ARTIFACT_URL;
+            const html_artifact_url = process.env.HTML_ARTIFACT_URL;
+            const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
+            const comment = 'status: ' + status_emoji + ' [pytest result (artifact)](' + artifact_url + ') [pytest report (artifact)](' + html_artifact_url + ') [pytest report (s3)](' + s3_path + '/test_reports/pytest-report.html) [pytest results (s3)](' + s3_path + '/test_reports/pytest-test-results.xml)';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: 'status: ${{ steps.pytest.outcome == 'success' && ':green_circle:' || ':red_circle:' }} [pytest result](${{ steps.upload.outputs.artifact-url }}) [pytest report](${{ steps.upload-html.outputs.artifact-url }})'
+              body: comment
             })
 
 
@@ -316,12 +344,28 @@ jobs:
         with:
           submodules: false
           sparse-checkout: '.github'
+      - name: set up home
+        shell: bash
+        run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: install action-validator with asdf
-        uses: asdf-vm/actions/install@v3
+        uses: asdf-vm/actions/install@v4.0.1
         with:
           tool_versions: |
-            action-validator 0.5.4
+            action-validator 0.8.0 
+
+      - name: Prepare s3
+        id: s3
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ vars.POOLED_LIGHT_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+          folder_prefix: nebius-
+          build_preset: "relwithdebinfo"
+          install: false
 
       - name: check workflows syntax
         id: lint
@@ -334,17 +378,32 @@ jobs:
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)"
           cat $TMP_OUT >> "$GITHUB_STEP_SUMMARY"
           echo "WORKFLOW_LINT=$(cat $TMP_OUT | awk -v ORS='\\n' 1)" >> "$GITHUB_OUTPUT"
+          echo "S3_WEBSITE_PREFIX=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
+          echo "OUTPUT_FILE=$TMP_OUT" | tee -a "$GITHUB_ENV" | tee -a "$GITHUB_OUTPUT"
+          chown github:github $TMP_OUT
+          chmod 644 $TMP_OUT
+
+      - name: upload workflow lint results
+        if: ${{ always() }}
+        id: upload-workflow-lint-to-s3
+        run: |
+          set -x
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress "$OUTPUT_FILE" "$S3_BUCKET_PATH/workflow_lint/workflow-lint.txt"
 
       - name: comment on issue
         uses: actions/github-script@v7.0.1
         if:  ${{ github.event_name == 'pull_request' }}
+        env:
+          STEP_OUTCOME: ${{ steps.lint.outcome }}
         with:
           script: |
+            const outcome = process.env.STEP_OUTCOME;
+            const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '${{ steps.lint.outputs.WORKFLOW_LINT }}'
+              body: 'status: ' + status_emoji + ' [workflow lint result (s3)](' + process.env.S3_URL_PREFIX + '/workflow_lint/workflow-lint.txt)'
             })
   nbs-github-actions:
     needs: [set-env, check-running-allowed]
@@ -353,13 +412,64 @@ jobs:
     uses: ./.github/workflows/github_actions_scripts.yaml
     secrets: inherit
 
-  create-and-delete-vm:
-    needs: [set-env, check-running-allowed]
+  create-build-and-test-target-var:
+    needs:
+      - check-running-allowed
     if: needs.check-running-allowed.outputs.result == 'true'
-    name: Create and delete VM
-    uses: ./.github/workflows/create_and_delete_vm.yaml
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    outputs:
+      matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
+      matrix_include_asan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_asan }}
+      matrix_include_tsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_tsan }}
+      matrix_include_msan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_msan }}
+      matrix_include_ubsan: ${{ steps.set-build-and-test-targets.outputs.matrix_include_ubsan }}
+    steps:
+      - name: checkout PR
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha != ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+      - name: rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git config user.email "robot-nbs@nebius.com"
+          git config user.name "Robot NBS"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git rebase origin/${{ github.event.pull_request.base.ref }}
+      - name: checkout
+        uses: actions/checkout@v4
+        if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: false
+          sparse-checkout: '.github'
+      - name: Calculate pr build and test targets matrix
+        id: set-build-and-test-targets
+        uses: ./.github/actions/nebius_calculate_pr_matrix
+        with:
+          scheduling_type: ${{ vars.NEBIUS_SCHEDULING_TYPE || 'on_demand' }}
+
+  build_and_test:
+    needs: [check-running-allowed, create-build-and-test-target-var]
+    if: needs.check-running-allowed.outputs.result == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.create-build-and-test-target-var.outputs.matrix_include) }}
+    name: Build and test (${{ matrix.mode }}${{ matrix.vm_name_suffix }})
+    uses: ./.github/workflows/build_and_test_proxy.yaml
     with:
-      allow_downgrade: ${{ needs.set-env.outputs.allow_downgrade }}
-      large_tests: ${{ needs.set-env.outputs.large_tests }}
-      number_of_retries: 3
+      mode: ${{ matrix.mode }}
+      build_target: ${{ matrix.build_target }}
+      test_target: ${{ matrix.test_target }}
+      build_preset: ${{ matrix.build_preset }}
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small' }}
+      test_type: ${{ matrix.test_type }}
+      vm_name_suffix: ${{ matrix.vm_name_suffix }}
+      number_of_retries: ${{ matrix.number_of_retries }}
+      cache_update_build: false
+      cache_update_tests: false
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit

@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/common/safe_debug_print.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -139,7 +141,7 @@ void TDiskRegistryActor::HandleResumeDevice(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received ResumeDevice request: %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Record.ShortDebugString().c_str());
+        SafeDebugPrint(msg->Record).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

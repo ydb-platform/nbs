@@ -43,7 +43,7 @@ void TIndexTabletActor::CompleteTx_ChangeStorageConfig(
     const TActorContext& ctx,
     TTxIndexTablet::TChangeStorageConfig& args)
 {
-    RemoveTransaction(*args.RequestInfo);
+    RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvChangeStorageConfigResponse>();
@@ -65,7 +65,8 @@ void TIndexTabletActor::HandleChangeStorageConfig(
         MakeIntrusive<TCallContext>());
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction<TEvIndexTablet::TChangeStorageConfigMethod>(*requestInfo);
+    AddInFlightRequest<TEvIndexTablet::TChangeStorageConfigMethod>(
+        *requestInfo);
 
     const auto* msg = ev->Get();
     ExecuteTx<TChangeStorageConfig>(

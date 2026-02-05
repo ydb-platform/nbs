@@ -225,19 +225,19 @@ private:
 
     TChunk* AllocateChunk(size_t chunkSize, bool custom)
     {
-        void* addr = malloc(chunkSize);
+        std::unique_ptr<void, void(*)(void*)> addr {malloc(chunkSize), free};
         Y_ABORT_UNLESS(addr);
 
         if (ProtectionDomain) {
             auto mr = Verbs->RegisterMemoryRegion(
                 ProtectionDomain,
-                addr,
+                addr.get(),
                 chunkSize,
                 Flags);
+            Y_UNUSED(addr.release());
             return new TChunk(std::move(mr), custom);
-        } else {
-            return new TChunk(addr, chunkSize, 0, custom);
         }
+        return new TChunk(addr.release(), chunkSize, 0, custom);
     }
 
     void FreeChunk(TChunk* chunk)

@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 
 import yatest.common as common
@@ -7,9 +6,6 @@ import yatest.common as common
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient, create_endpoint
-
-
-logger = logging.getLogger(__name__)
 
 
 def env_with_index(env, index):

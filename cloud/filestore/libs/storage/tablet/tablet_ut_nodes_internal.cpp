@@ -21,7 +21,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     void OverrideDescribeFileStore(
         TTestActorRuntime& runtime,
         ui32 nodeIdx,
-        ui64 tabletId)
+        ui64 tabletId,
+        TTestActorRuntime::TEventFilter subFilter = {})
     {
         runtime.SetEventFilter([=] (auto& runtime, auto& event) {
             switch (event->GetTypeRewrite()) {
@@ -42,6 +43,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
                     return true;
                 }
+            }
+
+            if (subFilter) {
+                return subFilter(runtime, event);
             }
 
             return false;
@@ -394,8 +399,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid3));
         CreateExternalRef(tablet, dir2, name3, shardId3, uuid3);
 
-        // TODO(#2674): uncomment after implementing dir emptiness check
-        /*
         tablet.SendRenameNodeInDestinationRequest(
             RootNodeId,
             name2,
@@ -406,7 +409,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             E_FS_NOTEMPTY,
             response->GetStatus(),
             FormatError(response->GetError()));
-        */
 
         DeleteRef(tablet, dir2, name3);
 
@@ -415,7 +417,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             name2,
             shardId1,
             uuid1);
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
+        response = tablet.RecvRenameNodeInDestinationResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
@@ -424,6 +426,355 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const auto nodeRef = tablet.UnsafeGetNodeRef(RootNodeId, name2)->Record;
         UNIT_ASSERT_VALUES_EQUAL(shardId1, nodeRef.GetShardId());
         UNIT_ASSERT_VALUES_EQUAL(uuid1, nodeRef.GetShardNodeName());
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOp)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        IEventHandlePtr abortRequest;
+        bool shouldIntercept = true;
+        ui64 opLogEntryId = 0;
+        auto interceptor = [&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTablet::EvAbortUnlinkDirectoryNodeInShardRequest: {
+                    if (shouldIntercept) {
+                        abortRequest.reset(event.Release());
+                        return true;
+                    }
+                    break;
+                }
+
+                case TEvIndexTabletPrivate::EvWriteOpLogEntryResponse: {
+                    using TResponse =
+                        TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse;
+                    opLogEntryId =
+                        event->template Get<TResponse>()->OpLogEntryId;
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        OverrideDescribeFileStore(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            interceptor);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        //
+        //  Scenario:
+        //
+        //  uuid1 -> id1 (file)
+        //  name1 -> uuid1
+        //
+        //  uuid2 -> id2 (dir)
+        //  name2 -> uuid2
+        //
+        //  move name1 to name2 -> fail, abort initiated
+        //
+        //  check that no files can be created under dir
+        //  check that the dir itself can't be moved
+        //
+        //  abort completes, now files can be created
+        //
+        //  create file under dir -> success
+        //
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        const TString shardId2 = "shard2";
+        const TString name2 = "name2";
+        const TString uuid2 = CreateGuidAsString();
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        const ui64 dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
+        CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name2,
+            shardId1,
+            uuid1);
+
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(abortRequest);
+
+        //
+        // Now dir should be locked for new node-ref addition and locked for
+        // RenameNode.
+        //
+
+        const TString uuid3 = CreateGuidAsString();
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid3));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        tablet.SendRenameNodeRequest(
+            RootNodeId,
+            name2,
+            RootNodeId,
+            name2 + ".moved");
+        {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto opLogEntryResponse = tablet.GetOpLogEntry(opLogEntryId);
+            UNIT_ASSERT_C(
+                opLogEntryResponse->OpLogEntry.Defined(),
+                opLogEntryId);
+            const auto& entry = *opLogEntryResponse->OpLogEntry;
+            const auto& abortRequest =
+                entry.GetAbortUnlinkDirectoryNodeInShardRequest();
+            UNIT_ASSERT_VALUES_EQUAL(dirId, abortRequest.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(shardId2, abortRequest.GetFileSystemId());
+        }
+
+        //
+        // Releasing the intercepted event.
+        //
+
+        shouldIntercept = false;
+        env.GetRuntime().Send(abortRequest.release(), nodeIdx);
+
+        auto response = tablet.RecvRenameNodeInDestinationResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_ISDIR,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        //
+        // Abort OpLogEntry should be deleted.
+        //
+
+        {
+            auto opLogEntryResponse = tablet.GetOpLogEntry(opLogEntryId);
+            UNIT_ASSERT_C(
+                !opLogEntryResponse->OpLogEntry.Defined(),
+                opLogEntryResponse->OpLogEntry->ShortUtf8DebugString());
+        }
+
+        //
+        // Now dir should be unlocked.
+        //
+
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid3));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOpAfterReboot)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        IEventHandlePtr abortRequest;
+        bool shouldIntercept = true;
+        ui64 opLogEntryId = 0;
+        auto interceptor = [&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTablet::EvAbortUnlinkDirectoryNodeInShardRequest: {
+                    if (shouldIntercept) {
+                        abortRequest.reset(event.Release());
+                        return true;
+                    }
+                    break;
+                }
+
+                case TEvIndexTabletPrivate::EvWriteOpLogEntryResponse: {
+                    using TResponse =
+                        TEvIndexTabletPrivate::TEvWriteOpLogEntryResponse;
+                    opLogEntryId =
+                        event->template Get<TResponse>()->OpLogEntryId;
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        OverrideDescribeFileStore(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            interceptor);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        //
+        //  Scenario:
+        //
+        //  uuid1 -> id1 (file)
+        //  name1 -> uuid1
+        //
+        //  uuid2 -> id2 (dir)
+        //  name2 -> uuid2
+        //
+        //  move name1 to name2 -> fail, abort initiated
+        //
+        //  check that no files can be created under dir
+        //  check that the dir itself can't be moved
+        //
+        //  reboot tablet
+        //
+        //  abort should complete, now files can be created
+        //
+        //  create file under dir -> success
+        //
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        const TString shardId2 = "shard2";
+        const TString name2 = "name2";
+        const TString uuid2 = CreateGuidAsString();
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        const ui64 dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
+        CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name2,
+            shardId1,
+            uuid1);
+
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(abortRequest);
+
+        //
+        // Now dir should be locked for new node-ref addition and locked for
+        // RenameNode.
+        //
+
+        const TString uuid3 = CreateGuidAsString();
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid3));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        tablet.SendRenameNodeRequest(
+            RootNodeId,
+            name2,
+            RootNodeId,
+            name2 + ".moved");
+        {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto opLogEntryResponse = tablet.GetOpLogEntry(opLogEntryId);
+            UNIT_ASSERT_C(
+                opLogEntryResponse->OpLogEntry.Defined(),
+                opLogEntryId);
+            const auto& entry = *opLogEntryResponse->OpLogEntry;
+            const auto& abortRequest =
+                entry.GetAbortUnlinkDirectoryNodeInShardRequest();
+            UNIT_ASSERT_VALUES_EQUAL(dirId, abortRequest.GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(shardId2, abortRequest.GetFileSystemId());
+        }
+
+        //
+        // Rebooting - Abort request should be re-sent upon tablet start.
+        //
+
+        shouldIntercept = false;
+        tablet.RebootTablet();
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.RecoverSession();
+
+        //
+        // E_REJECTED is expected because tablet actor died.
+        //
+
+        auto response = tablet.RecvRenameNodeInDestinationResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        //
+        // Abort OpLogEntry should be deleted.
+        //
+
+        {
+            auto opLogEntryResponse = tablet.GetOpLogEntry(opLogEntryId);
+            UNIT_ASSERT_C(
+                !opLogEntryResponse->OpLogEntry.Defined(),
+                opLogEntryResponse->OpLogEntry->ShortUtf8DebugString());
+        }
+
+        //
+        // Now dir should be unlocked.
+        //
+
+        tablet.SendCreateNodeRequest(TCreateNodeArgs::File(dirId, uuid3));
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
     }
 
     TABLET_TEST_4K_ONLY(

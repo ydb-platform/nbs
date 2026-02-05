@@ -149,11 +149,14 @@ message TDescribeBlocksResponse
     repeated TFreshBlockRange FreshBlockRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 4;
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 4;
 
-    // Throttler delay.
-    uint64 ThrottlerDelay = 5;
+    // Throttler delay. Deprecated. Use Headers.Throttler.Delay instead.
+    uint64 DeprecatedThrottlerDelay = 5;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -226,6 +229,9 @@ message TGetScanDiskStatusResponse
 
     TScanDiskProgress Progress = 2;
 
-    // Request traces.
-    NCloud.NProto.TTraceInfo Trace = 3;
+    // Request traces. Deprecated. Use Headers.Trace instead.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }

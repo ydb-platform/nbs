@@ -3,6 +3,7 @@
 #include "config_initializer.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/filesystem_counters.h>
 #include <cloud/filestore/libs/diagnostics/metrics/service.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
@@ -224,12 +225,17 @@ void TBootstrapCommon::InitDiagnostics()
         Metrics->SetupCounters(Monitoring->GetCounters());
     }
 
+    FsCountersProvider = CreateFsCountersProvider(
+        MetricsComponent,
+        FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()));
+
     StatsRegistry = CreateRequestStatsRegistry(
         MetricsComponent,
         Configs->DiagnosticsConfig,
         FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()),
         Timer,
-        UserCounters);
+        UserCounters,
+        FsCountersProvider);
 
     STORAGE_INFO("Stats initialized");
 }

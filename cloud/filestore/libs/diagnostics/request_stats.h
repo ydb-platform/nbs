@@ -7,7 +7,7 @@
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/service/request.h>
 
-#include <cloud/storage/core/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
@@ -52,7 +52,7 @@ struct IRequestStats
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IRequestStatsRegistry
-    : public IIncompleteRequestProcessor
+    : public IStatsHandler
 {
     virtual IRequestStatsPtr GetRequestStats() = 0;
 
@@ -77,12 +77,6 @@ struct IRequestStatsRegistry
         const TString& fileSystemId,
         const TString& clientId) = 0;
 
-    virtual void UpdateCloudAndFolder(
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& cloudId,
-        const TString& folderId) = 0;
-
     virtual void AddIncompleteRequest(const TIncompleteRequest& req) = 0;
 };
 
@@ -93,7 +87,8 @@ IRequestStatsRegistryPtr CreateRequestStatsRegistry(
     TDiagnosticsConfigPtr diagnosticsConfig,
     NMonitoring::TDynamicCountersPtr rootCounters,
     ITimerPtr timer,
-    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters);
+    std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
+    IFsCountersProviderPtr fsCountersProvider);
 
 IRequestStatsRegistryPtr CreateRequestStatsRegistryStub();
 

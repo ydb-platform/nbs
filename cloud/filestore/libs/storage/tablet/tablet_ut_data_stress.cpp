@@ -277,6 +277,17 @@ struct TEnvironment
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
+    }
+    return data;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -615,6 +626,109 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
             // 2 new blobs + 1 garbage blob
             UNIT_ASSERT_VALUES_EQUAL(3 * blobSize, stats.GetGarbageQueueSize());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
+        }
+    }
+
+    TABLET_TEST(StressTestForWriteFlushCompactionCleanup)
+    {
+        enum EStepType : ui32
+        {
+            Flush = 0,
+            FlushBytes,
+            Compaction,
+            Cleanup,
+            Write,
+            MAX = 10,   // Keep the gap between Write and MAX to increase
+                        // probability of Write
+        };
+
+        NProto::TStorageConfig storageConfig;
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 maxOffset = 1024 * tabletConfig.BlockSize;
+        const ui64 maxNumBlocksInRequest = 8;
+        const size_t iterationsLimit = 1000;
+
+        std::uniform_int_distribution<ui32> dist(0, EStepType::MAX - 1);
+        std::uniform_int_distribution<ui64> opTypeDist(0, EStepType::MAX);
+        std::uniform_int_distribution<ui64> blockDist(
+            1,
+            maxNumBlocksInRequest + 1);
+        std::uniform_int_distribution<ui64> offsetDist(0, maxOffset + 1);
+        std::uniform_int_distribution<ui64> seedDist(0, 1000000);
+
+        const auto seedValue = time(0);
+        std::mt19937_64 engine;
+        engine.seed(seedValue);
+
+        TLog Log = env.CreateLog();
+        STORAGE_DEBUG("Seed: " << seedValue);
+
+        TString data(
+            maxOffset + maxNumBlocksInRequest * tabletConfig.BlockSize,
+            0);
+
+        ui64 currentFileSize = 0;
+
+        for (size_t i = 0; i < iterationsLimit; ++i) {
+            const ui32 type = opTypeDist(engine);
+            switch (type) {
+                case EStepType::Flush:
+                    tablet.Flush();
+                    break;
+                case EStepType::FlushBytes:
+                    tablet.FlushBytes();
+                    break;
+                case EStepType::Compaction:
+                    tablet.Compaction(GetMixedRangeIndex(id, 0));
+                    break;
+                case EStepType::Cleanup:
+                    tablet.Cleanup(GetMixedRangeIndex(id, 0));
+                    break;
+                default: {
+                    const auto& offset = offsetDist(engine);
+                    const auto& blocksCount = blockDist(engine);
+                    const auto& request = GenerateValidateData(
+                        blocksCount * tabletConfig.BlockSize,
+                        seedDist(engine));
+                    tablet.WriteData(
+                        handle,
+                        offset,
+                        request.size(),
+                        request.data(),
+                        id);
+                    memcpy(&data[offset], request.data(), request.size());
+                    currentFileSize =
+                        std::max(currentFileSize, offset + request.size());
+                    break;
+                }
+            }
+        }
+
+        for (size_t offset = 0; offset < currentFileSize;
+             offset += tabletConfig.BlockSize)
+        {
+            auto requestSize = std::min(
+                static_cast<size_t>(tabletConfig.BlockSize),
+                currentFileSize - offset);
+            auto response = tablet.ReadData(handle, offset, requestSize);
+            const auto& buffer = response->Record.GetBuffer();
+            auto dataBlock = TString(data.data() + offset, requestSize);
+            UNIT_ASSERT_EQUAL_C(dataBlock, buffer, offset);
         }
     }
 }

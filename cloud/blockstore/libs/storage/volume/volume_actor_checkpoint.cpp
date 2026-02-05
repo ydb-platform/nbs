@@ -428,10 +428,12 @@ void TCheckpointActor<TMethod>::ReplyAndDie(const TActorContext& ctx)
 
     if (TraceInfo.IsTraced) {
         TraceInfo.TraceSerializer->BuildTraceInfo(
-            *response->Record.MutableTrace(),
+            *response->Record.MutableHeaders()->MutableTrace(),
             RequestInfo->CallContext->LWOrbit,
             TraceInfo.ReceiveTime,
             GetCycleCount());
+        response->Record.MutableDeprecatedTrace()->CopyFrom(
+            response->Record.GetHeaders().GetTrace());
     }
 
     LWTRACK(

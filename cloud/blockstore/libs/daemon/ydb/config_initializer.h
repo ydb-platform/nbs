@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
 #include <cloud/blockstore/libs/notify/iface/public.h>
 #include <cloud/blockstore/libs/root_kms/iface/public.h>
@@ -63,6 +64,7 @@ struct TConfigInitializerYdb final
     NProto::TGrpcClientConfig KmsClientConfig;
     NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
+    TLocalNVMeConfigPtr LocalNVMeConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -75,7 +77,7 @@ struct TConfigInitializerYdb final
     void InitKmsClientConfig();
     void InitRootKmsConfig();
     void InitComputeClientConfig();
-    void InitTraceServiceClientConfig();
+    void InitLocalNVMeConfig();
 
     bool GetUseNonreplicatedRdmaActor() const override;
     TDuration GetInactiveClientsTimeout() const override;
@@ -100,9 +102,12 @@ private:
     void ApplyKmsClientConfig(const TString& text);
     void ApplyRootKmsConfig(const TString& text);
     void ApplyComputeClientConfig(const TString& text);
+    void ApplyLocalNVMeConfig(const TString& text);
 
     void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
     void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);
+    void ApplyAllowedKikimrFeatureFlags(
+        const NKikimrConfig::TAppConfig& config);
 };
 
 }   // namespace NCloud::NBlockStore::NServer

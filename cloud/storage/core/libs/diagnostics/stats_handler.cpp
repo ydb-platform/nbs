@@ -1,4 +1,4 @@
-#include "incomplete_request_processor.h"
+#include "stats_handler.h"
 
 #include <memory>
 
@@ -8,8 +8,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIncompleteRequestProcessorStub
-    : public IIncompleteRequestProcessor
+struct TStatsHandlerStub
+    : public IStatsHandler
 {
     void UpdateStats(bool updateIntervalFinished) override
     {
@@ -21,9 +21,9 @@ struct TIncompleteRequestProcessorStub
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IIncompleteRequestProcessorPtr CreateIncompleteRequestProcessorStub()
+IStatsHandlerPtr CreateStatsHandlerStub()
 {
-    return std::make_shared<TIncompleteRequestProcessorStub>();
+    return std::make_shared<TStatsHandlerStub>();
 }
 
 }   // namespace NCloud
