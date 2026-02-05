@@ -192,19 +192,6 @@ void TIndexTabletActor::ExecuteTx_LoadState(
         db.WriteTabletStorageInfo(newTabletStorageInfo);
     }
 
-    if (args.StorageConfig.Defined()) {
-        StorageConfigOverride = *args.StorageConfig;
-        Config = std::make_shared<TStorageConfig>(*Config);
-        Config->Merge(*args.StorageConfig.Get());
-        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-            LogTag << " Merge StorageConfig with config from tablet database");
-    }
-
-    // TODO(#4690): Remove this when the option is enabled by default
-    if (Config->GetNodeRefsNoAutoPrecharge()) {
-        tx.DB.SetNoAutoPrecharge(TIndexTabletSchema::NodeRefs::TableId, true);
-    }
-
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Completed preparing tablet state");
 }
@@ -213,7 +200,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadState& args)
 {
-
+    if (args.StorageConfig.Defined()) {
+        StorageConfigOverride = *args.StorageConfig;
+        Config = std::make_shared<TStorageConfig>(*Config);
+        Config->Merge(*args.StorageConfig.Get());
+        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+            LogTag << " Merge StorageConfig with config from tablet database");
+    }
 
     if (HasError(args.Error)) {
         LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,

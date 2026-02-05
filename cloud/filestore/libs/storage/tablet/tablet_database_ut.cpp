@@ -550,33 +550,72 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
     }
 
-    Y_UNIT_TEST(ShouldSetNoAutoPrechargeForNodeRefs)
+    Y_UNIT_TEST(ShouldUseNoAutoPrechargeArgForNodeRefs)
     {
         TTestExecutor executor;
 
-        executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
-        });
+        executor.WriteTx([&](TIndexTabletDatabase db)
+                         { db.InitSchema(false); });
 
-        executor.ReadTx([&] (TIndexTabletDatabase db) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                false,
-                db.GetDatabase().GetNoAutoPrecharge(
-                    TIndexTabletSchema::NodeRefs::TableId));
-        });
+        constexpr ui64 commitId = 1;
+        constexpr ui64 nodeId = 1;
+        constexpr ui64 childNodeId1 = 2;
+        constexpr ui64 childNodeId2 = 3;
 
-        executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.GetDatabase().SetNoAutoPrecharge(
-                TIndexTabletSchema::NodeRefs::TableId,
-                true);
-        });
+        executor.WriteTx(
+            [&](TIndexTabletDatabase db)
+            {
+                NProto::TNode attrs;
+                db.WriteNode(nodeId, commitId, attrs);
+                db.WriteNode(childNodeId1, commitId, attrs);
+                db.WriteNode(childNodeId2, commitId, attrs);
+                db.WriteNodeRef(
+                    nodeId,
+                    commitId,
+                    "child1",
+                    childNodeId1,
+                    "",
+                    "");
+                db.WriteNodeRef(
+                    nodeId,
+                    commitId,
+                    "child2",
+                    childNodeId2,
+                    "",
+                    "");
+            });
 
-        executor.ReadTx([&] (TIndexTabletDatabase db) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                db.GetDatabase().GetNoAutoPrecharge(
-                    TIndexTabletSchema::NodeRefs::TableId));
-        });
+        executor.ReadTx(
+            [&](TIndexTabletDatabase db)
+            {
+                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                UNIT_ASSERT(db.ReadNodeRefs(
+                    nodeId,
+                    commitId,
+                    "",
+                    refs,
+                    0,
+                    nullptr,
+                    nullptr,
+                    false));
+                UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
+            });
+
+        executor.ReadTx(
+            [&](TIndexTabletDatabase db)
+            {
+                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                UNIT_ASSERT(db.ReadNodeRefs(
+                    nodeId,
+                    commitId,
+                    "",
+                    refs,
+                    0,
+                    nullptr,
+                    nullptr,
+                    true));
+                UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
+            });
     }
 }
 

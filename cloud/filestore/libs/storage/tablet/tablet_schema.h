@@ -239,6 +239,11 @@ struct TIndexTabletSchema
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
+    struct NodeRefsNoPrecharge : NodeRefs
+    {
+        using Precharge = NoAutoPrecharge;
+    };
+
     struct NodeRefs_Ver: TTableSchema<10>
     {
         struct NodeId       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};

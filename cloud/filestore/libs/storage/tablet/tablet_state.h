@@ -632,7 +632,8 @@ public:
         const TString& cookie,
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr);
+        TString* next = nullptr,
+        bool noAutoPrecharge = false);
 
     bool ReadNodeRefs(
         IIndexTabletDatabase& db,
