@@ -47,7 +47,10 @@ func validate(blockCount uint64, chunkSize uint32, blockSize uint32) error {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func ResetEncryptionIfNeeded(encryptionDesc *types.EncryptionDesc) {
+func resetEncryptionIfNeeded(encryptionDesc *types.EncryptionDesc) {
+	// Disks created with the encryption at rest option, or within a folder with
+	// encryption at rest enabled, must be mounted without the encryption option.
+	// NBS processes encryption on its side.
 	rootKmsMode := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
 	if encryptionDesc != nil {
 		if encryptionDesc.Mode == rootKmsMode {

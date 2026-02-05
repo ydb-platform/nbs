@@ -225,26 +225,26 @@ func listResources(
 ////////////////////////////////////////////////////////////////////////////////
 
 func GetEncryptionModeAndKeyHash(
-    desc *types.EncryptionDesc,
+	desc *types.EncryptionDesc,
 ) (types.EncryptionMode, []byte, error) {
 
-    if desc == nil ||
-       desc.Mode == types.EncryptionMode_NO_ENCRYPTION ||
-       // Images/snapshots created from disks with root KMS encryption
-       // are not encrypted.
-       desc.Mode == types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
-        return types.EncryptionMode_NO_ENCRYPTION, nil, nil
-    }
+	if desc == nil ||
+		desc.Mode == types.EncryptionMode_NO_ENCRYPTION ||
+		// Images/snapshots created from disks with root KMS encryption
+		// are not encrypted.
+		desc.Mode == types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
+		return types.EncryptionMode_NO_ENCRYPTION, nil, nil
+	}
 
-    var keyHash []byte
-    if key, ok := desc.Key.(*types.EncryptionDesc_KeyHash); ok {
-        keyHash = key.KeyHash
-    } else if desc.Key != nil {
-        return 0, nil, errors.NewNonRetriableErrorf(
-            "unknown key %s",
-            desc.Key,
-        )
-    }
+	var keyHash []byte
+	if key, ok := desc.Key.(*types.EncryptionDesc_KeyHash); ok {
+		keyHash = key.KeyHash
+	} else if desc.Key != nil {
+		return 0, nil, errors.NewNonRetriableErrorf(
+			"unknown key %s",
+			desc.Key,
+		)
+	}
 
-    return desc.Mode, keyHash, nil
+	return desc.Mode, keyHash, nil
 }

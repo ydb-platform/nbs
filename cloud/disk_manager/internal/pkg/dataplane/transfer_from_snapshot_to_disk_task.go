@@ -64,7 +64,6 @@ func (t *transferFromSnapshotToDiskTask) Run(
 		return err
 	}
 
-	nbs.ResetEncryptionIfNeeded(t.request.DstEncryption)
 	target, err := nbs.NewDiskTarget(
 		ctx,
 		t.nbsFactory,

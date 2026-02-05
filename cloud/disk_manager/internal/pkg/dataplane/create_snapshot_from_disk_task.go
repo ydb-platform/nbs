@@ -273,7 +273,6 @@ func (t *createSnapshotFromDiskTask) run(
 
 	incremental := len(t.state.BaseSnapshotId) != 0
 
-	nbs.ResetEncryptionIfNeeded(diskParams.EncryptionDesc)
 	source, err := nbs.NewDiskSource(
 		ctx,
 		nbsClient,

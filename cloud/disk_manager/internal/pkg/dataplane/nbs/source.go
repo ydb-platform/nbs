@@ -258,6 +258,7 @@ func NewDiskSource(
 
 	var session *nbs.Session
 	var err error
+	resetEncryptionIfNeeded(encryption)
 	if len(proxyDiskID) != 0 {
 		session, err = client.MountLocalRO(ctx, proxyDiskID, encryption)
 	} else {
