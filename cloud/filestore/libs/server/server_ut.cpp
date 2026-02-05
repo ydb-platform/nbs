@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/filesystem_counters.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -304,7 +305,8 @@ public:
             std::make_shared<TDiagnosticsConfig>(),
             Counters,
             CreateWallClockTimer(),
-            NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub());
+            NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub(),
+            CreateFsCountersProviderStub());
 
         ServerConfig = CreateConfig(serverConfig);
 

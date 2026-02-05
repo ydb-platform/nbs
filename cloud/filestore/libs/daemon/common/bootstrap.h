@@ -67,6 +67,7 @@ protected:
     IMonitoringServicePtr Monitoring;
     IFileIOServicePtr FileIOService;
     NMetrics::IMetricsServicePtr Metrics;
+    IFsCountersProviderPtr FsCountersProvider;
     IRequestStatsRegistryPtr StatsRegistry;
     IStatsUpdaterPtr RequestStatsUpdater;
     ITraceSerializerPtr TraceSerializer;

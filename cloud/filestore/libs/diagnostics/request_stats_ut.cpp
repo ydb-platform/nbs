@@ -1,6 +1,7 @@
 #include "request_stats.h"
 
 #include "config.h"
+#include "filesystem_counters.h"
 
 #include <cloud/filestore/libs/service/context.h>
 
@@ -51,17 +52,22 @@ struct TBootstrap
 {
     TDynamicCountersPtr Counters;
     ITimerPtr Timer;
+    IFsCountersProviderPtr FsCountersProvider;
     IRequestStatsRegistryPtr Registry;
 
     TBootstrap()
         : Counters{MakeIntrusive<TDynamicCounters>()}
         , Timer{CreateWallClockTimer()}
+        , FsCountersProvider{CreateFsCountersProvider(
+            METRIC_COMPONENT,
+            Counters)}
         , Registry{CreateRequestStatsRegistry(
             METRIC_COMPONENT,
             std::make_shared<TDiagnosticsConfig>(),
             Counters,
             Timer,
-            CreateUserCounterSupplierStub())}
+            CreateUserCounterSupplierStub(),
+            FsCountersProvider)}
     {}
 };
 
@@ -739,8 +745,11 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());
     }
 
-    Y_UNIT_TEST(ShouldNotUnregisterFsStatsIfOnMultipleRegistrations)
+    Y_UNIT_TEST(ShouldHandleRefCountingForMultipleRegistrations)
     {
+        // Tests that FsCountersRegistry uses reference counting:
+        // - Multiple Register() calls increment ref count
+        // - Counters are only removed when ref count reaches 0
         TBootstrap bootstrap;
 
         auto fsComponentCounters = bootstrap.Counters
@@ -750,36 +759,36 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             ->FindSubgroup("host", "cluster");
         UNIT_ASSERT(fsComponentCounters);
 
-
-        auto firstStats =
+        // First registration (ref count = 1)
+        auto stats1 =
             bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
-        auto secondStats =
+        // Second registration (ref count = 2)
+        auto stats2 =
             bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
 
         {
             auto counters = fsComponentCounters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(counters);
-
             counters = counters->FindSubgroup("client", CLIENT);
             UNIT_ASSERT(counters);
         }
 
+        // First unregister (ref count = 1, counters still exist)
         bootstrap.Registry->Unregister(FS, CLIENT);
 
         {
             auto counters = fsComponentCounters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(counters);
-
             counters = counters->FindSubgroup("client", CLIENT);
             UNIT_ASSERT(counters);
         }
 
+        // Second unregister (ref count = 0, counters removed)
         bootstrap.Registry->Unregister(FS, CLIENT);
 
         {
             auto counters = fsComponentCounters->FindSubgroup("filesystem", FS);
             UNIT_ASSERT(counters);
-
             counters = counters->FindSubgroup("client", CLIENT);
             UNIT_ASSERT(!counters);
         }
@@ -923,8 +932,11 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
         // emulating assigning new cloud and folder (after session is created)
         // counters should migrate to new cloud and folder subgroup
-        stats = bootstrap.Registry
-                    ->GetFileSystemStats(FS, CLIENT, newCloud, newFolder);
+        bootstrap.FsCountersProvider->UpdateCloudAndFolder(
+            FS,
+            CLIENT,
+            newCloud,
+            newFolder);
 
         {
             auto fsCounters = rootCounters->FindSubgroup("filesystem", FS);

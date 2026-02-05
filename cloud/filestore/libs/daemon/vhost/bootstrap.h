@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/vfs/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/endpoints/iface/public.h>
 
 namespace NCloud::NFileStore::NDaemon {
@@ -24,6 +25,8 @@ struct TVhostModuleFactories
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         IRequestStatsRegistryPtr requestStats,
+        IModuleStatsRegistryPtr moduleStats,
+        IFsCountersProviderPtr fsCountersProvider,
         IProfileLogPtr profileLog)> LoopFactory;
 };
 
@@ -36,6 +39,8 @@ private:
     const TVhostModuleFactoriesPtr VhostModuleFactories;
 
     TConfigInitializerVhostPtr Configs;
+    IModuleStatsRegistryPtr ModuleStatsRegistry;
+    IStatsUpdaterPtr ModuleStatsUpdater;
     IFileStoreEndpointsPtr FileStoreEndpoints;
     IEndpointListenerPtr EndpointListener;
     IEndpointStoragePtr EndpointStorage;
