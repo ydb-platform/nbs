@@ -30,6 +30,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/writeblob_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -111,6 +112,80 @@ class TPartitionActor final
 
     friend TFreshBlocksCompanionClient;
 
+    struct TWriteBlobCompanionClient: public IWriteBlobCompanionClient
+    {
+        TPartitionActor& Owner;
+
+        explicit TWriteBlobCompanionClient(TPartitionActor& owner)
+            : Owner(owner)
+        {}
+
+        void UpdateWriteThroughput(
+            const TInstant& now,
+            const NKikimr::NMetrics::TChannel& channel,
+            const NKikimr::NMetrics::TGroupId& group,
+            ui64 value) override
+        {
+            Owner.UpdateWriteThroughput(now, channel, group, value);
+        }
+
+        void UpdateNetworkStat(const TInstant& now, ui64 value) override
+        {
+            Owner.UpdateNetworkStat(now, value);
+        }
+
+        void ScheduleYellowStateUpdate(
+            const NActors::TActorContext& ctx) override
+        {
+            Owner.ScheduleYellowStateUpdate(ctx);
+        }
+
+        void UpdateYellowState(const NActors::TActorContext& ctx) override
+        {
+            Owner.UpdateYellowState(ctx);
+        }
+
+        void ReassignChannelsIfNeeded(
+            const NActors::TActorContext& ctx) override
+        {
+            Owner.ReassignChannelsIfNeeded(ctx);
+        }
+
+        void UpdateChannelPermissions(
+            const NActors::TActorContext& ctx,
+            ui32 channel,
+            EChannelPermissions permissions) override
+        {
+            Owner.UpdateChannelPermissions(ctx, channel, permissions);
+        }
+
+        void RegisterSuccess(TInstant now, ui32 groupId) override
+        {
+            Owner.State->RegisterSuccess(now, groupId);
+        }
+
+        void RegisterDowntime(TInstant now, ui32 groupId) override
+        {
+            Owner.State->RegisterDowntime(now, groupId);
+        }
+
+        void ProcessIOQueue(
+            const NActors::TActorContext& ctx,
+            ui32 channel) override
+        {
+            Owner.ProcessIOQueue(ctx, channel);
+        }
+
+        // IMortalActor implements
+
+        void Poison(const NActors::TActorContext& ctx) override
+        {
+            Owner.Suicide(ctx);
+        }
+    };
+
+    friend TWriteBlobCompanionClient;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -169,8 +244,10 @@ private:
     ui64 BSGroupOperationId = 0;
 
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
-
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
+
+    TWriteBlobCompanionClient WriteBlobCompanionClient{*this};
+    std::unique_ptr<TWriteBlobCompanion> WriteBlobCompanion;
 
 public:
     TPartitionActor(
@@ -645,10 +722,6 @@ private:
         const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWriteBlobCompleted(
-        const TEvPartitionPrivate::TEvWriteBlobCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandlePatchBlobCompleted(
         const TEvPartitionPrivate::TEvPatchBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -707,10 +780,6 @@ private:
 
     void HandleAddConfirmedBlobsCompleted(
         const TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleLongRunningBlobOperation(
-        const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleDescribeBlocksCompleted(

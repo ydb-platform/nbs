@@ -247,6 +247,21 @@ void TPartitionActor::CompleteLoadState(
         *State,   // freshBlocksState
         LogTitle);
 
+    WriteBlobCompanion = std::make_unique<TWriteBlobCompanion>(
+        Config,
+        PartitionConfig,
+        Info(),
+        TabletID(),
+        BlobCodec,
+        VolumeActorId,
+        DiagnosticsConfig,
+        BSGroupOperationTimeTracker,
+        *PartCounters,
+        BSGroupOperationId,
+        WriteBlobCompanionClient,
+        *State,
+        LogTitle);
+
     MapBaseDiskIdToTabletId(ctx);
 
     State->InitFreshBlocks(args.FreshBlocks);

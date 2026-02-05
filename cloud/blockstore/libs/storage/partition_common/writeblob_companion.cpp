@@ -1,20 +1,23 @@
-#include "part_actor.h"
+#include "writeblob_companion.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
+#include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
+
 #include <library/cpp/blockcodecs/codecs.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
@@ -30,8 +33,8 @@ class TWriteBlobActor final
     : public TActorBootstrapped<TWriteBlobActor>
     , public TLongRunningOperationCompanion
 {
-    using TRequest = TEvPartitionPrivate::TEvWriteBlobRequest;
-    using TResponse = TEvPartitionPrivate::TEvWriteBlobResponse;
+    using TRequest = TEvPartitionCommonPrivate::TEvWriteBlobRequest;
+    using TResponse = TEvPartitionCommonPrivate::TEvWriteBlobResponse;
 
 private:
     const TActorId TabletActorId;
@@ -215,7 +218,7 @@ void TWriteBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobCompleted>(
+    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobCompleted>(
         error);
     request->BlobId = Request->BlobId;
     request->StorageStatusFlags = StorageStatusFlags;
@@ -305,7 +308,7 @@ void TWriteBlobActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>(
+    auto response = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobResponse>(
         MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
@@ -369,8 +372,37 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::HandleWriteBlob(
-    const TEvPartitionPrivate::TEvWriteBlobRequest::TPtr& ev,
+TWriteBlobCompanion::TWriteBlobCompanion(
+        TStorageConfigPtr config,
+        const NProto::TPartitionConfig& partitionConfig,
+        NKikimr::TTabletStorageInfo* tabletStorageInfo,
+        ui64 tabletID,
+        const NBlockCodecs::ICodec* blobCodec,
+        const NActors::TActorId& volumeActorId,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
+        TPartitionDiskCounters& partCounters,
+        ui64& bsGroupOperationId,
+        IWriteBlobCompanionClient& client,
+        TPartitionChannelsState& channelsState,
+        TLogTitle& logTitle)
+    : Config(std::move(config))
+    , PartitionConfig(partitionConfig)
+    , TabletStorageInfo(tabletStorageInfo)
+    , TabletID(tabletID)
+    , BlobCodec(blobCodec)
+    , VolumeActorId(volumeActorId)
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , BSGroupOperationTimeTracker(bsGroupOperationTimeTracker)
+    , PartCounters(partCounters)
+    , BSGroupOperationId(bsGroupOperationId)
+    , Client(client)
+    , ChannelsState(channelsState)
+    , LogTitle(logTitle)
+{}
+
+void TWriteBlobCompanion::HandleWriteBlob(
+    const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
@@ -392,13 +424,13 @@ void TPartitionActor::HandleWriteBlob(
             TString out;
             out.ReserveAndResize(BlobCodec->MaxCompressedLength(blobContent));
             const size_t sz = BlobCodec->Compress(blobContent, out.begin());
-            auto& counters = PartCounters->Cumulative;
+            auto& counters = PartCounters.Cumulative;
             counters.UncompressedBytesWritten.Increment(blobContent.size());
             counters.CompressedBytesWritten.Increment(sz);
         }
     }
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TWriteBlobMethod>(
+    auto requestInfo = CreateRequestInfo<TEvPartitionCommonPrivate::TWriteBlobMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -416,15 +448,15 @@ void TPartitionActor::HandleWriteBlob(
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
     ui64 bsGroupOperationId = BSGroupOperationId++;
 
-    State->EnqueueIORequest(
+    ChannelsState.EnqueueIORequest(
         channel,
         std::make_unique<TWriteBlobActor>(
-            SelfId(),
+            ctx.SelfID,
             VolumeActorId,
             requestInfo,
-            TabletID(),
+            TabletID,
             PartitionConfig.GetDiskId(),
-            std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
+            std::unique_ptr<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                 msg.Release()),
             GetDowntimeThreshold(
                 *DiagnosticsConfig,
@@ -436,13 +468,13 @@ void TPartitionActor::HandleWriteBlob(
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Write,
-        State->GetBlockSize());
+        PartitionConfig.GetBlockSize());
 
-    ProcessIOQueue(ctx, channel);
+    Client.ProcessIOQueue(ctx, channel);
 }
 
-void TPartitionActor::HandleWriteBlobCompleted(
-    const TEvPartitionPrivate::TEvWriteBlobCompleted::TPtr& ev,
+void TWriteBlobCompanion::HandleWriteBlobCompleted(
+    const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -455,26 +487,26 @@ void TPartitionActor::HandleWriteBlobCompleted(
 
     ui32 channel = msg->BlobId.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
+    Client.UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleWriteBlobCompleted: invalid blob id received");
     } else {
-        UpdateWriteThroughput(
+        Client.UpdateWriteThroughput(
             ctx.Now(),
             channel,
             groupId,
             msg->BlobId.BlobSize());
     }
 
-    PartCounters->RequestCounters.WriteBlob.AddRequest(
+    PartCounters.RequestCounters.WriteBlob.AddRequest(
         msg->RequestTime.MicroSeconds(),
         msg->BlobId.BlobSize(),
         1,
-        State->GetChannelDataKind(channel));
+        ChannelsState.GetChannelDataKind(channel));
 
-    State->CompleteIORequest(channel);
+    ChannelsState.CompleteIORequest(channel);
 
     const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     const auto yellowMoveFlag =
@@ -485,8 +517,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
     if (msg->StorageStatusFlags.Check(isValidFlag)) {
         const auto permissions = StorageStatusFlags2ChannelPermissions(
             msg->StorageStatusFlags);
-        UpdateChannelPermissions(ctx, channel, permissions);
-        State->UpdateChannelFreeSpaceShare(
+        Client.UpdateChannelPermissions(ctx, channel, permissions);
+        ChannelsState.UpdateChannelFreeSpaceShare(
             channel,
             msg->ApproximateFreeSpaceShare);
 
@@ -499,8 +531,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
                 channel,
                 groupId);
 
-            ScheduleYellowStateUpdate(ctx);
-            ReassignChannelsIfNeeded(ctx);
+            Client.ScheduleYellowStateUpdate(ctx);
+            Client.ReassignChannelsIfNeeded(ctx);
         } else if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
             LOG_WARN(
                 ctx,
@@ -510,8 +542,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
                 channel,
                 groupId);
 
-            State->RegisterReassignRequestFromBlobStorage(channel);
-            ReassignChannelsIfNeeded(ctx);
+            ChannelsState.RegisterReassignRequestFromBlobStorage(channel);
+            Client.ReassignChannelsIfNeeded(ctx);
         }
     }
 
@@ -523,8 +555,8 @@ void TPartitionActor::HandleWriteBlobCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        if (State->IncrementWriteBlobErrorCount()
-                >= Config->GetMaxWriteBlobErrorsBeforeSuicide())
+        if (++WriteBlobErrorCount >=
+            Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 TStringBuilder()
@@ -533,17 +565,17 @@ void TPartitionActor::HandleWriteBlobCompleted(
                 {{"disk", PartitionConfig.GetDiskId()},
                  {"actor", ev->Sender.ToString()},
                  {"group", groupId}});
-            Suicide(ctx);
+            Client.Die(ctx);
             return;
         }
     } else {
-        State->RegisterSuccess(ctx.Now(), groupId);
+        Client.RegisterSuccess(ctx.Now(), groupId);
     }
 
-    ProcessIOQueue(ctx, channel);
+    Client.ProcessIOQueue(ctx, channel);
 }
 
-void TPartitionActor::HandleLongRunningBlobOperation(
+void TWriteBlobCompanion::HandleLongRunningBlobOperation(
     const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
@@ -555,9 +587,9 @@ void TPartitionActor::HandleLongRunningBlobOperation(
     if (msg.Reason == TEvLongRunningOperation::EReason::LongRunningDetected &&
         msg.FirstNotify)
     {
-        State->RegisterDowntime(ctx.Now(), msg.GroupId);
+        Client.RegisterDowntime(ctx.Now(), msg.GroupId);
         Actors.MarkLongRunning(ev->Sender, msg.Operation);
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

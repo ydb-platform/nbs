@@ -759,6 +759,15 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
                : Config->GetBlobStorageAsyncRequestTimeoutHDD();
 }
 
+void TPartitionActor::HandleWriteBlob(
+    const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \

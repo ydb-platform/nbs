@@ -841,6 +841,13 @@ void TPartitionActor::HandleWakeupOnBoot(
     Suicide(ctx);
 }
 
+void TPartitionActor::HandleWriteBlob(
+    const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    WriteBlobCompanion->HandleWriteBlob(ev, ctx);
+}
+
 bool TPartitionActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -1017,8 +1024,12 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvProcessWriteQueue, HandleProcessWriteQueue);
 
         HFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted, HandleReadBlobCompleted);
-        HFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation, HandleLongRunningBlobOperation);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobCompleted, HandleWriteBlobCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLongRunningOperation,
+            WriteBlobCompanion->HandleLongRunningBlobOperation);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteBlobCompleted,
+            WriteBlobCompanion->HandleWriteBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvPatchBlobCompleted, HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
@@ -1088,7 +1099,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted);
-        IgnoreFunc(TEvPartitionPrivate::TEvWriteBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted);
