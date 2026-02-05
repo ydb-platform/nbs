@@ -398,24 +398,15 @@ func (s *storageYDB) createSnapshot(
 		status: snapshotStatusCreating,
 	}
 
-	if snapshot.Encryption != nil {
-		state.encryptionMode = uint32(snapshot.Encryption.Mode)
-
-		switch key := snapshot.Encryption.Key.(type) {
-		case *types.EncryptionDesc_KeyHash:
-			state.encryptionKeyHash = key.KeyHash
-		case nil:
-			state.encryptionKeyHash = nil
-		default:
-			return SnapshotMeta{}, errors.NewNonRetriableErrorf(
-				"unknown key %s",
-				key,
-			)
-		}
-	} else {
-		state.encryptionMode = uint32(types.EncryptionMode_NO_ENCRYPTION)
-		state.encryptionKeyHash = nil
+	encryptionMode, encryptionKeyHash, err := getEncryptionModeAndKeyHash(
+		snapshot.Encryption,
+	)
+	if err != nil {
+		return SnapshotMeta{}, err
 	}
+
+	state.encryptionMode = encryptionMode
+	state.encryptionKeyHash = encryptionKeyHash
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -219,4 +220,33 @@ func listResources(
 	}
 
 	return ids, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getEncryptionModeAndKeyHash(
+	encryptionDesc *types.EncryptionDesc,
+) (uint32, []byte, error) {
+	var encryptionMode types.EncryptionMode
+	var encryptionKeyHash []byte
+	if encryptionDesc != nil {
+		encryptionMode = encryptionDesc.Mode
+
+		switch key := encryptionDesc.Key.(type) {
+		case *types.EncryptionDesc_KeyHash:
+			encryptionKeyHash = key.KeyHash
+		case nil:
+			encryptionKeyHash = nil
+		default:
+			return 0, nil, errors.NewNonRetriableErrorf(
+				"unknown key %s",
+				key,
+			)
+		}
+	} else {
+		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
+		encryptionKeyHash = nil
+	}
+
+	return uint32(encryptionMode), []byte(encryptionKeyHash), nil
 }

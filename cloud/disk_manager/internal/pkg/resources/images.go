@@ -420,24 +420,15 @@ func (s *storageYDB) createImage(
 		status: imageStatusCreating,
 	}
 
-	if image.Encryption != nil {
-		state.encryptionMode = uint32(image.Encryption.Mode)
-
-		switch key := image.Encryption.Key.(type) {
-		case *types.EncryptionDesc_KeyHash:
-			state.encryptionKeyHash = key.KeyHash
-		case nil:
-			state.encryptionKeyHash = nil
-		default:
-			return ImageMeta{}, errors.NewNonRetriableErrorf(
-				"unknown key %s",
-				key,
-			)
-		}
-	} else {
-		state.encryptionMode = uint32(types.EncryptionMode_NO_ENCRYPTION)
-		state.encryptionKeyHash = nil
+	encryptionMode, encryptionKeyHash, err := getEncryptionModeAndKeyHash(
+		image.Encryption,
+	)
+	if err != nil {
+		return ImageMeta{}, err
 	}
+
+	state.encryptionMode = encryptionMode
+	state.encryptionKeyHash = encryptionKeyHash
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
