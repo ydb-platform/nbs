@@ -760,6 +760,8 @@ public:
 
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 
+    [[nodiscard]] double GetMinumumThrottlerMultiplier() const;
+
     [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
 
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;

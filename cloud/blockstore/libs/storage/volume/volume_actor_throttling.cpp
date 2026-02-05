@@ -177,6 +177,7 @@ template <typename TMethod>
 NProto::TError TVolumeActor::Throttle(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
+    TDuration* requestCost,
     bool throttlingDisabled)
 {
     static const auto ok = MakeError(S_OK);
@@ -212,7 +213,8 @@ NProto::TError TVolumeActor::Throttle(
         msg->CallContext,
         requestInfo,
         [&ev]() { return NActors::IEventHandlePtr(ev.Release()); },
-        TMethod::Name);
+        TMethod::Name,
+        requestCost);
 
     switch (status) {
         case ETabletThrottlerStatus::POSTPONED:
@@ -237,6 +239,7 @@ template NProto::TError TVolumeActor::Throttle<                                \
     ns::T##name##Method>(                                                      \
         const TActorContext& ctx,                                              \
         const ns::TEv##name##Request::TPtr& ev,                                \
+        TDuration* requestCost,                                                \
         bool throttlingDisabled);                                              \
 // GENERATE_IMPL
 

@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+
 #include <util/generic/guid.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -111,7 +113,14 @@ void TVolumeActor::UpdateIngestTimeStats(
         return;
     }
 
-    const auto& headers = ev->Get()->Record.GetHeaders();
+    const auto* msg = ev->Get();
+    // If the request was postponed, it has already been taken into account in
+    // the ingest time stats.
+    if (msg->CallContext->GetPostponeTs() != TInstant::Zero()) {
+        return;
+    }
+
+    const auto& headers = msg->Record.GetHeaders();
     if (headers.GetRetryNumber() > 0) {
         return;
     }
@@ -140,6 +149,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
     ui64 traceTime,
+    TInstant requestStartTime,
+    TDuration requestCost,
     bool forkTraces,
     bool isMultipartitionWriteOrZero)
 {
@@ -183,6 +194,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             std::move(originalContext),
             forkTraces ? msg->CallContext : nullptr,
             traceTime,
+            requestStartTime,
+            requestCost,
             &RejectVolumeRequest<TMethod>,
             isMultipartitionWriteOrZero));
 
@@ -225,7 +238,8 @@ void TVolumeActor::SendRequestToPartition(
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
-    ui64 traceTime)
+    ui64 traceTime,
+    TDuration requestCost)
 {
     STORAGE_VERIFY_C(
         State->IsDiskRegistryMediaKind() || State->GetPartitions(),
@@ -278,6 +292,8 @@ void TVolumeActor::SendRequestToPartition(
         volumeRequestId,
         blockRange,
         traceTime,
+        ctx.Now(),
+        requestCost,
         forkTraces,
         isMultipartitionWriteOrZero);
 
@@ -450,7 +466,26 @@ bool TVolumeActor::ReplyToOriginalRequest(
         response.release(),
         flags,
         volumeRequest.CallerCookie);
-    ctx.Send(std::move(event));
+
+    if (const TDuration minThrottleDelay =
+            volumeRequest.RequestStartTime +
+            Config->GetMinumumThrottlerMultiplier() *
+                volumeRequest.RequestCost -
+            ctx.Now();
+        minThrottleDelay > TDuration::Zero())
+    {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::METERING,
+            "Scheduling response for %s request in %s. RequestCost: %s; RequestConstMultipled: %s",
+            TMethod::Name,
+            FormatDuration(minThrottleDelay).c_str(),
+            FormatDuration(volumeRequest.RequestCost).c_str(),
+            FormatDuration(volumeRequest.RequestCost * Config->GetMinumumThrottlerMultiplier()).c_str());
+        ctx.ExecutorThread.Schedule(minThrottleDelay, event.release());
+    } else {
+        ctx.Send(std::move(event));
+    }
 
     if (volumeRequest.IsMultipartitionWriteOrZero) {
         Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
@@ -579,7 +614,7 @@ void TVolumeActor::ForwardRequest(
     }
 
     auto* msg = ev->Get();
-    auto now = GetCycleCount();
+    const ui64 now = GetCycleCount();
 
     // Fill block range.
     TBlockRange64 blockRange;
@@ -846,8 +881,10 @@ void TVolumeActor::ForwardRequest(
         return;
     }
 
+    TDuration requestCost;
     {
-        auto error = Throttle<TMethod>(ctx, ev, throttlingDisabled);
+        auto error =
+            Throttle<TMethod>(ctx, ev, &requestCost, throttlingDisabled);
         if (HasError(error)) {
             replyError(std::move(error));
             return;
@@ -995,7 +1032,13 @@ void TVolumeActor::ForwardRequest(
     // prepared by the WrapRequest<TMethod>() method, which replaces the sender
     // and receiver.
 
-    SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, blockRange, now);
+    SendRequestToPartition<TMethod>(
+        ctx,
+        ev,
+        volumeRequestId,
+        blockRange,
+        now,
+        requestCost);
 }
 
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \

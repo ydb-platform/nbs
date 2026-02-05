@@ -38,7 +38,8 @@ struct ITabletThrottler
         TCallContextBasePtr callContext,
         const TThrottlingRequestInfo& requestInfo,
         const std::function<NActors::IEventHandlePtr(void)>& eventReleaser,
-        const char* methodName) = 0;
+        const char* methodName,
+        TDuration* requestCost) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -111,8 +111,12 @@ public:
         TCallContextBasePtr callContext,
         const TThrottlingRequestInfo& requestInfo,
         const std::function<NActors::IEventHandlePtr(void)>& eventReleaser,
-        const char* methodName) override
+        const char* methodName,
+        TDuration* requestCost) override
     {
+        Y_DEBUG_ABORT_UNLESS(requestCost);
+        *requestCost = Policy.GetRequestCost(requestInfo);
+
         bool rejected = false;
         if (PostponedRequests && !PostponedQueueFlushInProgress) {
             Y_DEBUG_ABORT_UNLESS(PostponedQueueFlushScheduled);

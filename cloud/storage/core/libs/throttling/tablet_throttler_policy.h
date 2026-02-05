@@ -17,6 +17,8 @@ struct ITabletThrottlerPolicy
     virtual bool TryPostpone(
         TInstant ts,
         const TThrottlingRequestInfo& requestInfo) = 0;
+    [[nodiscard]] virtual TDuration GetRequestCost(
+        const TThrottlingRequestInfo& requestInfo) const = 0;
     virtual TMaybe<TDuration> SuggestDelay(
         TInstant ts,
         TDuration queueTime,
