@@ -37,9 +37,10 @@ func (c *ClientMock) Create(
 func (c *ClientMock) Delete(
 	ctx context.Context,
 	filesystemID string,
+	force bool,
 ) error {
 
-	args := c.Called(ctx, filesystemID)
+	args := c.Called(ctx, filesystemID, force)
 	return args.Error(0)
 }
 

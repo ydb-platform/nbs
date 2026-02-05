@@ -66,7 +66,7 @@ def parse_args(args):
     parser.add_argument("--disk-agent-count", type=int, default=1)
     parser.add_argument("--retry-broken-disk-registry-based-disk-checkpoint", action='store_true', default=False)
     parser.add_argument("--cell-selection-policy", type=str, default="FIRST_IN_CONFIG")
-
+    parser.add_argument("--allow-filestore-force-destroy", action='store_true', default=False)
     args, _ = parser.parse_known_args(args=args)
     return args
 
@@ -264,6 +264,7 @@ def start(argv):
         names_txt=ydb.names_txt,
         nfs_binary_path=nfs_binary_path,
         ydb_binary_path=ydb_binary_path,
+        allow_filestore_force_destroy=args.allow_filestore_force_destroy,
     )
     nfs.start()
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
@@ -281,6 +282,7 @@ def start(argv):
             names_txt=ydb6.names_txt,
             nfs_binary_path=nfs_binary_path,
             ydb_binary_path=ydb_binary_path,
+            allow_filestore_force_destroy=args.allow_filestore_force_destroy,
         )
         nfs2.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs2.nfs_server.stderr_file_name)
@@ -296,6 +298,7 @@ def start(argv):
             names_txt=ydb7.names_txt,
             nfs_binary_path=nfs_binary_path,
             ydb_binary_path=ydb_binary_path,
+            allow_filestore_force_destroy=args.allow_filestore_force_destroy,
         )
         nfs3.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs3.nfs_server.stderr_file_name)

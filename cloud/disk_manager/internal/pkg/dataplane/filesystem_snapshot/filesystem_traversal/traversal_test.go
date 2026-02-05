@@ -98,7 +98,7 @@ func (f *fixture) prepareFilesystem(t *testing.T, filesystemID string) {
 }
 
 func (f *fixture) cleanupFilesystem(t *testing.T, filesystemID string) {
-	err := f.client.Delete(f.ctx, filesystemID)
+	err := f.client.Delete(f.ctx, filesystemID, false)
 	require.NoError(t, err)
 }
 
