@@ -27,6 +27,10 @@ The utility supports the following options:
 - ```--blocks-per-request``` — the number of blocks in 1 request. Default: 1024.
 - ```--output``` — file to save the results. Default: stdout.
 
+### Base client options
+- there is possibility to set retry options through blockstore-client config
+  - ```--config filename```  with example content "ClientConfig {    RetryTimeout: 2000.   }"
+
 ## Basic use cases
 - data migration and checksum comparison:
   - stop writing to the disk;
