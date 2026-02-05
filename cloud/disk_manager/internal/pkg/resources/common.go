@@ -225,38 +225,26 @@ func listResources(
 ////////////////////////////////////////////////////////////////////////////////
 
 func GetEncryptionModeAndKeyHash(
-	encryptionDesc *types.EncryptionDesc,
+    desc *types.EncryptionDesc,
 ) (uint32, []byte, error) {
 
-	var encryptionMode types.EncryptionMode
-	var encryptionKeyHash []byte
-	const rootKmsMode = types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
-	if encryptionDesc == nil {
-		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
-		encryptionKeyHash = nil
-	} else if encryptionDesc.Mode == rootKmsMode {
-		// Images/snapshots created from disks with root KMS encryption
-		// are not encrypted.
-		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
-		encryptionKeyHash = nil
-	} else if encryptionDesc.Mode == types.EncryptionMode_NO_ENCRYPTION {
-		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
-		encryptionKeyHash = nil
-	} else {
-		encryptionMode = encryptionDesc.Mode
+    if desc == nil ||
+       desc.Mode == types.EncryptionMode_NO_ENCRYPTION ||
+       // Images/snapshots created from disks with root KMS encryption
+       // are not encrypted.
+       desc.Mode == types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
+        return uint32(types.EncryptionMode_NO_ENCRYPTION), nil, nil
+    }
 
-		switch key := encryptionDesc.Key.(type) {
-		case *types.EncryptionDesc_KeyHash:
-			encryptionKeyHash = key.KeyHash
-		case nil:
-			encryptionKeyHash = nil
-		default:
-			return 0, nil, errors.NewNonRetriableErrorf(
-				"unknown key %s",
-				key,
-			)
-		}
-	}
+    var keyHash []byte
+    if key, ok := desc.Key.(*types.EncryptionDesc_KeyHash); ok {
+        keyHash = key.KeyHash
+    } else if desc.Key != nil {
+        return 0, nil, errors.NewNonRetriableErrorf(
+            "unknown key %s",
+            desc.Key,
+        )
+    }
 
-	return uint32(encryptionMode), encryptionKeyHash, nil
+    return uint32(desc.Mode), keyHash, nil
 }
