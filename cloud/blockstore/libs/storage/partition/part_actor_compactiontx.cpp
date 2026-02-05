@@ -486,12 +486,10 @@ void TPartitionActor::HandleCompactionTx(
     TRequestScope timer(*requestInfo);
 
     LWTRACK(
-        BackgroundTaskStarted_Partition,
+        RequestReceived_Partition,
         requestInfo->CallContext->LWOrbit,
         "CompactionTx",
-        static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
-        requestInfo->CallContext->RequestId,
-        PartitionConfig.GetDiskId());
+        requestInfo->CallContext->RequestId);
 
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
@@ -564,8 +562,6 @@ void TPartitionActor::CompleteCompaction(
     const TActorContext& ctx,
     TTxPartition::TCompaction& args)
 {
-    TRequestScope timer(*args.RequestInfo);
-
     RemoveTransaction(*args.RequestInfo);
 
     for (auto& rangeCompaction: args.RangeCompactions) {
@@ -612,13 +608,20 @@ void TPartitionActor::CompleteCompaction(
         return;
     }
 
-    // TODO:_ reply
+    // TODO:_ or to it in the beginning of the Complete... function?
+    TRequestScope timer(*args.RequestInfo);
 
-    // TODO:_ where we use compactionType?
-    // const auto compactionType =
-    //     args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
-    //         ECompactionType::Forced:
-    //         ECompactionType::Tablet;
+    auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>();
+    // TODO:_ ExecCycles?
+    // response->ExecCycles = args.RequestInfo->GetExecCycles();
+
+    LWTRACK(
+        ResponseSent_Partition,
+        args.RequestInfo->CallContext->LWOrbit,
+        "CompactionTx",
+        args.RequestInfo->CallContext->RequestId);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     // TODO:_ where we resigister TCompactionActor?
     // auto actor = NCloud::Register<TCompactionActor>(
