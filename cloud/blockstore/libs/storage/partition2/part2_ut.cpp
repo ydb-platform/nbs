@@ -7344,7 +7344,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                         using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
                         error = msg->GetStatus();
-                        status = msg->Record.GetStatus().GetCode();
+                        status = msg->Record.GetError().GetCode();
                         break;
                     }
                 }
@@ -7399,7 +7399,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TBlockRange32::MakeClosedInterval(1001111, 1001210),
             1);
 
-        ui32 status = -1;
         ui32 error = -1;
 
         runtime->SetObserverFunc(
@@ -7409,7 +7408,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                     case TEvVolume::EvCheckRangeResponse: {
                         using TEv = TEvVolume::TEvCheckRangeResponse;
                         const auto* msg = event->Get<TEv>();
-                        status = msg->Record.GetStatus().GetCode();
                         error = msg->Record.GetError().GetCode();
 
                         break;
@@ -7437,8 +7435,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         const auto checkRange = [&](ui32 idx, ui32 size)
         {
-            status = -1;
-
             partition.SendCheckRangeRequest("id", idx, size);
             const auto response =
                 partition.RecvResponse<TEvVolume::TEvCheckRangeResponse>();
@@ -7446,8 +7442,18 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TDispatchOptions options;
             options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
 
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, status);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, error);
+            const auto& record = response->Record;
+            std::string extended_msg =
+                "startIndex: " + std::to_string(idx) +
+                ", size: " + std::to_string(size);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                record.GetError().code(),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                response->GetStatus(),
+                extended_msg);
         };
         checkRange(0, 1024);
         checkRange(1024, 512);
@@ -7473,7 +7479,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCount)
