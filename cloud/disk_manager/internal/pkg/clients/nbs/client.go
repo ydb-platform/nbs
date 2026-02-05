@@ -225,7 +225,7 @@ func fromEncryptionMode(
 	}
 }
 
-func resetEncryptionIfNeeded(desc *types.EncryptionDesc){
+func resetEncryptionIfNeeded(desc *types.EncryptionDesc) {
 	if desc == nil {
 		return
 	}
