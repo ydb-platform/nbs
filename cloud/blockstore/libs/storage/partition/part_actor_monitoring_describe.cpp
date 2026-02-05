@@ -101,7 +101,10 @@ bool TPartitionActor::PrepareDescribeRange(
 
     TDescribeRangeVisitor visitor(args);
     if (!args.BlockFilter || args.BlockFilter.find('f') != TString::npos) {
-        State->FindFreshBlocks(visitor, args.BlockRange);
+        State->FindFreshBlocks(
+            visitor,
+            args.BlockRange,
+            /*maxCommitId=*/Max<ui64>());
     }
     if (!args.BlockFilter || args.BlockFilter.find('m') != TString::npos) {
         ready &= db.FindMixedBlocks(

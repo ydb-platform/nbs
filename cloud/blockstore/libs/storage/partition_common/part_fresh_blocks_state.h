@@ -29,7 +29,7 @@ private:
     THashSet<ui64> FlushedCommitIdsInProgress;
 
 public:
-    NPartition::TOperationState& GetFlushState()
+    NPartition::TOperationState& AccessFlushState()
     {
         return FlushState;
     }
@@ -39,27 +39,33 @@ public:
         return FlushState;
     }
 
-    TRequestBuffer<TWriteBufferRequestData>& GetWriteBuffer()
+    [[nodiscard]] TRequestBuffer<TWriteBufferRequestData>& AccessWriteBuffer()
     {
         return WriteBuffer;
     }
 
-    ui32 GetFreshBlocksQueued() const
+    [[nodiscard]] const TRequestBuffer<TWriteBufferRequestData>&
+    GetWriteBuffer() const
+    {
+        return WriteBuffer;
+    }
+
+    [[nodiscard]] ui32 GetFreshBlocksQueued() const
     {
         return WriteBuffer.GetWeight();
     }
 
-    ui32 GetFreshBlocksInFlight() const
+    [[nodiscard]] ui32 GetFreshBlocksInFlight() const
     {
         return FreshBlocksInFlight;
     }
 
-    ui32 GetUnflushedFreshBlobCount() const
+    [[nodiscard]] ui32 GetUnflushedFreshBlobCount() const
     {
         return UnflushedFreshBlobCount;
     }
 
-    ui32 GetUnflushedFreshBlobByteCount() const
+    [[nodiscard]] ui32 GetUnflushedFreshBlobByteCount() const
     {
         return UnflushedFreshBlobByteCount;
     }
@@ -72,7 +78,7 @@ public:
     ui32 IncrementFreshBlocksInFlight(size_t value);
     ui32 DecrementFreshBlocksInFlight(size_t value);
 
-    THashSet<ui64>& GetFlushedCommitIdsInProgress()
+    [[nodiscard]] THashSet<ui64>& AccessFlushedCommitIdsInProgress()
     {
         return FlushedCommitIdsInProgress;
     }
@@ -102,7 +108,7 @@ private:
     TSet<TFreshBlobMeta> UntrimmedFreshBlobs;
 
 public:
-    ui64 GetUntrimmedFreshBlobByteCount() const
+    [[nodiscard]] ui64 GetUntrimmedFreshBlobByteCount() const
     {
         return UntrimmedFreshBlobByteCount;
     }
@@ -128,12 +134,17 @@ public:
         : CommitIdsState(commitIdsState)
     {}
 
-    NPartition::TBarriers& GetTrimFreshLogBarriers()
+    [[nodiscard]] NPartition::TBarriers& AccessTrimFreshLogBarriers()
     {
         return TrimFreshLogBarriers;
     }
 
-    ui64 GetTrimFreshLogToCommitId() const
+    [[nodiscard]] const NPartition::TBarriers& GetTrimFreshLogBarriers() const
+    {
+        return TrimFreshLogBarriers;
+    }
+
+    [[nodiscard]] ui64 GetTrimFreshLogToCommitId() const
     {
         return Min(
             // if there are no fresh blocks, we should trim up to current
@@ -144,12 +155,17 @@ public:
             TrimFreshLogBarriers.GetMinCommitId() - 1);
     }
 
-    NPartition::TOperationState& GetTrimFreshLogState()
+    [[nodiscard]] NPartition::TOperationState& AccessTrimFreshLogState()
     {
         return TrimFreshLogState;
     }
 
-    TDuration GetTrimFreshLogBackoffDelay()
+    [[nodiscard]] const NPartition::TOperationState& GetTrimFreshLogState() const
+    {
+        return TrimFreshLogState;
+    }
+
+    [[nodiscard]] TDuration GetTrimFreshLogBackoffDelay() const
     {
         return TrimFreshLogBackoffDelayProvider.GetDelay();
     }
@@ -164,7 +180,7 @@ public:
         TrimFreshLogBackoffDelayProvider.Reset();
     }
 
-    ui64 GetLastTrimFreshLogToCommitId() const
+    [[nodiscard]] ui64 GetLastTrimFreshLogToCommitId() const
     {
         return LastTrimFreshLogToCommitId;
     }
@@ -198,7 +214,7 @@ public:
     void FindFreshBlocks(
         NPartition::IFreshBlocksIndexVisitor& visitor,
         const TBlockRange32& readRange,
-        ui64 maxCommitId = Max());
+        ui64 maxCommitId);
 
     void WriteFreshBlocks(
         const TBlockRange32& writeRange,
@@ -212,7 +228,7 @@ public:
     ui32 IncrementUnflushedFreshBlocksFromChannelCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromChannelCount(size_t value);
 
-    ui32 GetUnflushedFreshBlocksCountFromChannel() const
+    [[nodiscard]] ui32 GetUnflushedFreshBlocksCountFromChannel() const
     {
         return UnflushedFreshBlocksFromChannelCount;
     }

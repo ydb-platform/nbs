@@ -510,7 +510,7 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    State->GetCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue().AcquireBarrier(commitId);
 
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
@@ -549,7 +549,7 @@ void TPartitionActor::WriteFreshBlocks(
             writeHandlers.push_back(r.Data.Handler);
         }
 
-        State->GetTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+        State->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -829,7 +829,7 @@ void TPartitionActor::CompleteWriteBlocks(
         ProfileLog->Write(std::move(record));
     }
 
-    State->GetCommitQueue().ReleaseBarrier(args.CommitId);
+    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= args.Requests.size());
     WriteAndZeroRequestsInProgress -= args.Requests.size();
 
@@ -859,7 +859,7 @@ void TPartitionActor::ZeroFreshBlocks(
         requests.emplace_back(requestInfo, ERequestType::ZeroBlocks);
         blockRanges.emplace_back(writeRange);
 
-        State->GetTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+        State->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,

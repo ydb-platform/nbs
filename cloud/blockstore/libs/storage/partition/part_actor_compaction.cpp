@@ -1445,7 +1445,7 @@ void TPartitionActor::HandleCompaction(
 
     State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);
 
-    State->GetCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue().AcquireBarrier(commitId);
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
@@ -1465,7 +1465,7 @@ void TPartitionActor::HandleCompaction(
         ExecuteTx(ctx, std::move(tx));
     } else {
         // delay execution until all previous commits completed
-        State->GetCommitQueue().Enqueue(std::move(tx), commitId);
+        State->AccessCommitQueue().Enqueue(std::move(tx), commitId);
     }
 }
 
@@ -1479,7 +1479,7 @@ void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 
         if (minCommitId == commitId) {
             // start execution
-            ExecuteTx(ctx, State->GetCommitQueue().Dequeue());
+            ExecuteTx(ctx, State->AccessCommitQueue().Dequeue());
         } else {
             // delay execution until all previous commits completed
             break;
@@ -1519,7 +1519,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     UpdateStats(msg->Stats);
 
-    State->GetCommitQueue().ReleaseBarrier(commitId);
+    State->AccessCommitQueue().ReleaseBarrier(commitId);
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
