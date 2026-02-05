@@ -104,7 +104,7 @@ void TMirrorCheckRangeActor::HandleReadUndelivery(
         TBlockStoreComponents::PARTITION_WORKER,
         TStringBuilder() << LogTitle.GetWithTime() << ": " << errorMessage);
 
-    ResultError = MakeError(E_FAIL, errorMessage);
+    ResultError = MakeError(E_REJECTED, errorMessage);
 
     ++ResponseCount;
     if (ResponseCount == TotalReplicaCount) {
@@ -168,9 +168,9 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
             LogTitle.GetWithTime() << " reading error has occurred: "
-                                   << FormatErrorJson(record.GetError()));
+                                   << FormatError(record.GetError()).Quote());
 
-        ResultError.SetCode(E_FAIL);
+        ResultError.SetCode(record.GetError().GetCode());
         ResultError.MutableMessage()->append(
             TStringBuilder() << record.GetError().GetMessage()
                              << " for replica index: " << replicaIndex << "; ");
@@ -227,7 +227,7 @@ void TMirrorPartitionActor::ReplyError(
     LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        LogTitle.GetWithTime() << FormatError(error));
+        LogTitle.GetWithTime() << FormatError(error).Quote());
     auto response =
         std::make_unique<TEvVolume::TEvCheckRangeResponse>(std::move(error));
     NCloud::Reply(ctx, *ev, std::move(response));

@@ -2685,7 +2685,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 client.RecvCheckRangeResponse();
         const auto& record = response->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, record.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetError().GetCode());
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
         UNIT_ASSERT_VALUES_UNEQUAL(flags, record.GetError().flags());
@@ -2797,7 +2797,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 client.RecvCheckRangeResponse();
         const auto& record = response->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, record.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, record.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
 
         ui32 emptyCheksumsCount{0};
