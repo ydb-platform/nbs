@@ -226,14 +226,14 @@ func listResources(
 
 func GetEncryptionModeAndKeyHash(
     desc *types.EncryptionDesc,
-) (uint32, []byte, error) {
+) (types.EncryptionMode, []byte, error) {
 
     if desc == nil ||
        desc.Mode == types.EncryptionMode_NO_ENCRYPTION ||
        // Images/snapshots created from disks with root KMS encryption
        // are not encrypted.
        desc.Mode == types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
-        return uint32(types.EncryptionMode_NO_ENCRYPTION), nil, nil
+        return types.EncryptionMode_NO_ENCRYPTION, nil, nil
     }
 
     var keyHash []byte
@@ -246,5 +246,5 @@ func GetEncryptionModeAndKeyHash(
         )
     }
 
-    return uint32(desc.Mode), keyHash, nil
+    return desc.Mode, keyHash, nil
 }

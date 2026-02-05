@@ -405,7 +405,7 @@ func (s *storageYDB) createSnapshot(
 		return SnapshotMeta{}, err
 	}
 
-	state.encryptionMode = encryptionMode
+	state.encryptionMode = uint32(encryptionMode)
 	state.encryptionKeyHash = encryptionKeyHash
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
