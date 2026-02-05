@@ -36,6 +36,9 @@ namespace NCloud::NFileStore{
     xxx(InvalidShardNo)                                                        \
     xxx(WriteBackCacheCreatingOrDeletingError)                                 \
     xxx(WriteBackCacheCorruptionError)                                         \
+    xxx(WriteBackCacheDataLossError)                                           \
+    xxx(WriteBackCacheFlushError)                                              \
+    xxx(WriteBackCacheStateError)                                              \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
     xxx(CalculateChecksumsBufferOverflow)                                      \
