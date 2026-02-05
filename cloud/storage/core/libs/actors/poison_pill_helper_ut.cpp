@@ -89,7 +89,7 @@ private:
 
 class TParentActor
     : public TActor<TParentActor>
-    , ISuicideActor
+    , IMortalActor
 {
 private:
     using TBase = TActor<TParentActor>;
@@ -103,7 +103,7 @@ public:
         , ChildCount(childCount)
     {}
 
-    void Suicide(const NActors::TActorContext& ctx) override
+    void Die(const NActors::TActorContext& ctx) override
     {
         TBase::Die(ctx);
     }

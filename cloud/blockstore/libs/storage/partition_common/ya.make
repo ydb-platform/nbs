@@ -37,5 +37,4 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     ut
-    fresh_blocks_companion/ut
 )

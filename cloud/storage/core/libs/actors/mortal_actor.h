@@ -4,12 +4,12 @@
 
 namespace NCloud {
 
-class ISuicideActor
+class IMortalActor
 {
 public:
-    virtual void Suicide(const NActors::TActorContext& ctx) = 0;
+    virtual void Die(const NActors::TActorContext& ctx) = 0;
 
-    virtual ~ISuicideActor() = default;
+    virtual ~IMortalActor() = default;
 };
 
 }   // namespace NCloud

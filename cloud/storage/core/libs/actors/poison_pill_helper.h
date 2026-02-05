@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "suicide_actor.h"
+#include "mortal_actor.h"
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
@@ -27,12 +27,12 @@ private:
         ui64 Cookie = 0;
     };
 
-    ISuicideActor* Owner;
+    IMortalActor* Owner;
     TSet<NActors::TActorId> OwnedActors;
     std::optional<TPoisoner> Poisoner;
 
 public:
-    explicit TPoisonPillHelper(ISuicideActor* owner);
+    explicit TPoisonPillHelper(IMortalActor* owner);
     virtual ~TPoisonPillHelper();
 
     void TakeOwnership(

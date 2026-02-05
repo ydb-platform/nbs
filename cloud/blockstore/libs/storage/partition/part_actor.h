@@ -193,7 +193,7 @@ protected:
 
 private:
     void Activate(const NActors::TActorContext& ctx);
-    void Suicide(const NActors::TActorContext& ctx) override;
+    void Suicide(const NActors::TActorContext& ctx);
     void BecomeAux(const NActors::TActorContext& ctx, EState state);
     void ReportTabletState(const NActors::TActorContext& ctx);
 
@@ -485,6 +485,13 @@ private:
     // IFreshBlocksCompanionClient overrides
 
     void FreshBlobsLoaded(const NActors::TActorContext& ctx) override;
+
+    // IMortalActor overrides
+
+    void Die(const NActors::TActorContext& ctx) override
+    {
+        Suicide(ctx);
+    }
 
 private:
     STFUNC(StateBoot);
