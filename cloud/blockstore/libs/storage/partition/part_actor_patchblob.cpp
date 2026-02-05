@@ -21,7 +21,7 @@ using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-// TODO: get rid of code duplication with part_actor_writeblob.cpp
+// TODO: get rid of code duplication with writeblob_companion.cpp.
 
 namespace {
 

@@ -115,7 +115,7 @@ private:
     STFUNC(StateWork);
 
     void HandleWriteBlobResponse(
-        const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleAddBlobsResponse(
@@ -229,7 +229,7 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
         const auto& req = Requests[i];
         auto guardedSglist = BuildBlobContent(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
             req.BlobId,
             std::move(guardedSglist),
             BlockSizeForChecksums,
@@ -241,7 +241,7 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
                 LWTRACK(
                     ForkFailed,
                     sr.RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvWriteBlobRequest",
+                    "TEvPartitionCommonPrivate::TEvWriteBlobRequest",
                     sr.RequestInfo->CallContext->RequestId);
             }
             if (sr.RequestInfo->CallContext->LWOrbit.HasShuttles()) {
@@ -277,7 +277,7 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
                 LWTRACK(
                     ForkFailed,
                     sr.RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvWriteBlobRequest",
+                    "TEvPartitionCommonPrivate::TEvWriteBlobRequest",
                     sr.RequestInfo->CallContext->RequestId);
             }
         }
@@ -395,7 +395,7 @@ void TWriteMixedBlocksActor::Reply(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TWriteMixedBlocksActor::HandleWriteBlobResponse(
-    const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -468,7 +468,7 @@ STFUNC(TWriteMixedBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:

@@ -89,7 +89,7 @@ private:
 
 class TParentActor
     : public TActor<TParentActor>
-    , IPoisonPillHelperOwner
+    , IMortalActor
 {
 private:
     using TBase = TActor<TParentActor>;
