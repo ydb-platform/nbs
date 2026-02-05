@@ -476,9 +476,41 @@ void TPartitionActor::HandleCompactionTx(
     const TEvPartitionPrivate::TEvCompactionTxRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    // TODO:_ ???
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    TRequestScope timer(*requestInfo);
+
+    LWTRACK(
+        BackgroundTaskStarted_Partition,
+        requestInfo->CallContext->LWOrbit,
+        "CompactionTx",
+        static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
+        requestInfo->CallContext->RequestId,
+        PartitionConfig.GetDiskId());
+
+    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
+
+    auto tx = CreateTx<TCompaction>(
+        requestInfo,
+        msg->CommitId,
+        msg->CompactionOptions,
+        std::move(msg->Ranges));
+
+    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+    Y_ABORT_UNLESS(minCommitId <= msg->CommitId);
+
+    if (minCommitId == msg->CommitId) {
+        // start execution
+        ExecuteTx(ctx, std::move(tx));
+    } else {
+        // delay execution until all previous commits completed
+        State->GetCommitQueue().Enqueue(std::move(tx), msg->CommitId);
+    }
 }
 
 bool TPartitionActor::PrepareCompaction(
