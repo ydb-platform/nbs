@@ -239,7 +239,7 @@ func GetEncryptionModeAndKeyHash(
 		// are not encrypted.
 		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
 		encryptionKeyHash = nil
-	} else if encryptionDesc.Mode == types.EncryptionMode_NO_ENCRYPTION{
+	} else if encryptionDesc.Mode == types.EncryptionMode_NO_ENCRYPTION {
 		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
 		encryptionKeyHash = nil
 	} else {
