@@ -323,6 +323,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FakeDescribeDataLatencyUs,         ui32,      0                       )\
                                                                                \
     xxx(GidPropagationEnabled,             bool,      false                   )\
+                                                                               \
+    xxx(NodeRefsNoAutoPrecharge,           bool,      false                   )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

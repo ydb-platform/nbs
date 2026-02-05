@@ -549,6 +549,35 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(333, nodeIds[1]);
         });
     }
+
+    Y_UNIT_TEST(ShouldSetNoAutoPrechargeForNodeRefs)
+    {
+        TTestExecutor executor;
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema(false);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                db.GetDatabase().GetNoAutoPrecharge(
+                    TIndexTabletSchema::NodeRefs::TableId));
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.GetDatabase().SetNoAutoPrecharge(
+                TIndexTabletSchema::NodeRefs::TableId,
+                true);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                db.GetDatabase().GetNoAutoPrecharge(
+                    TIndexTabletSchema::NodeRefs::TableId));
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

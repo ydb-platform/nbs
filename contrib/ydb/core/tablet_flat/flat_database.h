@@ -309,6 +309,21 @@ private:
     TVector<std::function<void()>> OnCommit_;
     TVector<std::function<void()>> OnRollback_;
     TVector<std::function<void()>> OnPersistent_;
+
+    THashSet<ui32> NoAutoPrecharge_;
+
+public:
+    void SetNoAutoPrecharge(ui32 tableId, bool noAutoPrecharge) {
+        if (noAutoPrecharge) {
+            NoAutoPrecharge_.insert(tableId);
+        } else {
+            NoAutoPrecharge_.erase(tableId);
+        }
+    }
+
+    bool GetNoAutoPrecharge(ui32 tableId) const {
+        return NoAutoPrecharge_.contains(tableId);
+    }
 };
 
 

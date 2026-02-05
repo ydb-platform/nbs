@@ -2103,6 +2103,9 @@ inline bool Schema::Precharger<Schema::AutoPrecharge>::Precharge(
         NTable::TRawVals minKey, NTable::TRawVals maxKey,
         NTable::TTagsRef columns, NTable::EDirection direction, ui64 maxRowCount, ui64 maxBytes)
 {
+    if (database.GetNoAutoPrecharge(table)) {
+        return true;
+    }
     return database.Precharge(table, minKey, maxKey, columns, 0, maxRowCount, maxBytes, direction);
 }
 
