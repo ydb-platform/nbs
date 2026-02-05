@@ -77,7 +77,8 @@ struct TRangeCompactionInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCompactionRequest
+// TODO:_ naming ???
+struct TCompactionBlobRequest
 {
     NCloud::TPartialBlobId BlobId;
     NActors::TActorId Proxy;
@@ -87,7 +88,7 @@ struct TCompactionRequest
     ui32 GroupId;
     ui32 RangeCompactionIndex;
 
-    TCompactionRequest(
+    TCompactionBlobRequest(
         const NCloud::TPartialBlobId& blobId,
         const NActors::TActorId& proxy,
         ui16 blobOffset,
