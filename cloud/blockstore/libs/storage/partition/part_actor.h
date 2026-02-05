@@ -28,7 +28,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
-#include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion/fresh_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>

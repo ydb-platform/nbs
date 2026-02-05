@@ -3,8 +3,8 @@ LIBRARY()
 GENERATE_ENUM_SERIALIZATION(events_private.h)
 
 SRCS(
-    fresh_blocks_companion/fresh_blocks_companion_initfreshblocks.cpp
-    fresh_blocks_companion/fresh_blocks_companion.cpp
+    fresh_blocks_companion_initfreshblocks.cpp
+    fresh_blocks_companion.cpp
 
     actor_checkrange.cpp
     actor_read_blob.cpp
