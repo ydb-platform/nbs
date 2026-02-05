@@ -142,8 +142,8 @@ public:
         ui32 maxBytes,
         TString* next,
         ui32* skippedRefs,
-        NProto::EListNodesSizeCalculationMode sizeMode =
-            NProto::E_SIZE_CALCULATION_MODE_NAME_ONLY) override;
+        NProto::EListNodesMaxBytesCalculationMode sizeMode =
+            NProto::LNSCM_NAME_ONLY) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,

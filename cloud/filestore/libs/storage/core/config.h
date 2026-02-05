@@ -178,7 +178,7 @@ public:
     ui32 GetMaxResponseBytes() const;
     ui32 GetMaxResponseEntries() const;
     ui32 GetMaxBytesMultiplier() const;
-    NProto::EListNodesSizeCalculationMode
+    NProto::EListNodesMaxBytesCalculationMode
     GetListNodesSizeCalculationMode() const;
 
     ui32 GetDefaultNodesLimit() const;

@@ -303,16 +303,16 @@ message TAccessNodeResponse
 // ListNodes request/response
 
 // Mode for calculating byte size in ListNodes when applying MaxBytes limit
-enum EListNodesSizeCalculationMode
+enum EListNodesMaxBytesCalculationMode
 {
     // Unspecified: will use config value or default to NAME_ONLY
-    E_SIZE_CALCULATION_MODE_UNSPECIFIED = 0;
+    LNSCM_UNSPECIFIED = 0;
 
-    // Use name size only (legacy behavior)
-    E_SIZE_CALCULATION_MODE_NAME_ONLY = 1;
+    // Use name size only
+    LNSCM_NAME_ONLY = 1;
 
     // Use full TNodeRef row size
-    E_SIZE_CALCULATION_MODE_FULL_ROW = 2;
+    LNSCM_FULL_ROW = 2;
 }
 
 message TListNodesRequest
@@ -336,7 +336,7 @@ message TListNodesRequest
     bool Unsafe = 6;
 
     // Mode for calculating byte size when applying MaxBytes limit.
-    EListNodesSizeCalculationMode MaxBytesSizeMode = 7;
+    EListNodesMaxBytesCalculationMode MaxBytesSizeMode = 7;
 }
 
 message TListNodesResponse

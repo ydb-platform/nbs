@@ -513,7 +513,7 @@ bool TIndexTabletState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next,
     ui32* skippedRefs,
-    NProto::EListNodesSizeCalculationMode sizeMode)
+    NProto::EListNodesMaxBytesCalculationMode sizeMode)
 {
     bool ready = db.ReadNodeRefs(
         nodeId,

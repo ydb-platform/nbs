@@ -268,7 +268,7 @@ bool TInMemoryIndexState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next,
     ui32* skippedRefs,
-    NProto::EListNodesSizeCalculationMode sizeMode)
+    NProto::EListNodesMaxBytesCalculationMode sizeMode)
 {
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
@@ -296,11 +296,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
 
             const auto& ref = refs.back();
             // TODO(#5148): consider other size calculation modes
-            if (sizeMode == NProto::E_SIZE_CALCULATION_MODE_FULL_ROW) {
-                bytes += (sizeof(ui64) *
-                          4)   // NodeId, ChildNodeId, MinCommitId, MaxCommitId
-                         + ref.Name.size() + ref.ShardId.size() +
-                         ref.ShardNodeName.size();
+            if (sizeMode == NProto::LNSCM_FULL_ROW) {
+                bytes += ref.CalculateByteSize();
             } else {
                 // Legacy behavior: name size only
                 bytes += ref.Name.size();

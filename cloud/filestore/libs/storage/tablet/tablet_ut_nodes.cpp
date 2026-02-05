@@ -690,15 +690,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldLimitListNodesWithFullRowSizeMode)
     {
         // Test that byte size calculation accounts for full TNodeRef size
-        // when using E_SIZE_CALCULATION_MODE_FULL_ROW config:
+        // when using LNSCM_FULL_ROW config:
         // sizeof(ui64) * 4 + Name.size() + ShardId.size() +
         // ShardNodeName.size()
         // * For "test1" (5 chars), size = 32 + 5 = 37 bytes
         // * For "test2" (5 chars), size = 32 + 5 = 37 bytes
 
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetListNodesSizeCalculationMode(
-            NProto::E_SIZE_CALCULATION_MODE_FULL_ROW);
+        storageConfig.SetListNodesSizeCalculationMode(NProto::LNSCM_FULL_ROW);
 
         TTestEnv env({}, std::move(storageConfig));
         env.CreateSubDomain("nfs");

@@ -54,6 +54,15 @@ public:
         {
             return !ShardId.empty();
         }
+
+        // Calculates byte size for the entire NodeRefs row as defined in
+        // TIndexTabletSchema::NodeRefs (see tablet_schema.h).
+        ui32 CalculateByteSize() const
+        {
+            return (sizeof(ui64) *
+                    4)   // NodeId, ChildId, MinCommitId, MaxCommitId
+                   + Name.size() + ShardId.size() + ShardNodeName.size();
+        }
     };
 
     struct TNodeAttr
@@ -137,8 +146,8 @@ public:
         ui32 maxBytes,
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
-        NProto::EListNodesSizeCalculationMode sizeMode =
-            NProto::E_SIZE_CALCULATION_MODE_NAME_ONLY) = 0;
+        NProto::EListNodesMaxBytesCalculationMode sizeMode =
+            NProto::LNSCM_NAME_ONLY) = 0;
 
     /**
      * @brief read at most maxCount node refs starting from key

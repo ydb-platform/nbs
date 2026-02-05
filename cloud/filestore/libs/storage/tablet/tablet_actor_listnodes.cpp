@@ -74,8 +74,7 @@ void TIndexTabletActor::HandleListNodes(
 
     // Set size calculation mode from config if not explicitly set in request.
     // TODO(#5148): explicitly pass the mode from client side.
-    if (msg->Record.GetMaxBytesSizeMode() ==
-        NProto::E_SIZE_CALCULATION_MODE_UNSPECIFIED)
+    if (msg->Record.GetMaxBytesSizeMode() == NProto::LNSCM_UNSPECIFIED)
     {
         msg->Record.SetMaxBytesSizeMode(
             Config->GetListNodesSizeCalculationMode());
