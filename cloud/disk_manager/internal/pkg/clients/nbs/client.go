@@ -232,6 +232,7 @@ func getEncryptionSpec(
 	if encryptionDesc == nil {
 		return nil, nil
 	}
+
 	// Disks created with the encryption at rest option, or within a folder with
 	// encryption at rest enabled, must be mounted without the encryption option.
 	// NBS processes encryption on its side.
