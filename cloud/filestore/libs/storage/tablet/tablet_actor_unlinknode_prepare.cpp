@@ -18,6 +18,13 @@ void TIndexTabletActor::HandlePrepareUnlinkDirectoryNodeInShard(
 {
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreSystemRequest::PrepareUnlinkDirectoryNodeInShard,
+        msg->Record,
+        ctx.Now());
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -30,7 +37,8 @@ void TIndexTabletActor::HandlePrepareUnlinkDirectoryNodeInShard(
     ExecuteTx<TPrepareUnlinkDirectoryNode>(
         ctx,
         std::move(requestInfo),
-        std::move(msg->Record));
+        std::move(msg->Record),
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -151,6 +159,13 @@ void TIndexTabletActor::CompleteTx_PrepareUnlinkDirectoryNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

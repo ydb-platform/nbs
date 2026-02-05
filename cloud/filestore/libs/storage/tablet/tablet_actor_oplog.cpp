@@ -54,6 +54,7 @@ void TIndexTabletActor::ReplayOpLog(
                 ctx,
                 nullptr,   // requestInfo
                 std::move(request),
+                NProto::TProfileLogRequestInfo{},
                 0,   // requestId
                 op.GetEntryId(),
                 {},     // result
@@ -77,10 +78,20 @@ void TIndexTabletActor::ReplayOpLog(
                 }
             }
 
+            NProto::TProfileLogRequestInfo profileLogRequest;
+            const auto& serializedRequest = op.GetProfileLogRequest();
+            if (serializedRequest
+                    && !profileLogRequest.ParseFromString(serializedRequest))
+            {
+                ReportBrokenProfileLogRequest(TStringBuilder() << "Replayed"
+                    << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
+            }
+
             RegisterUnlinkNodeInShardActor(
                 ctx,
                 nullptr,   // requestInfo
                 op.GetUnlinkNodeInShardRequest(),
+                std::move(profileLogRequest),
                 0,   // requestId
                 op.GetEntryId(),
                 {},   // result
@@ -95,10 +106,18 @@ void TIndexTabletActor::ReplayOpLog(
                     << request.GetOriginalRequest().ShortUtf8DebugString());
             }
 
+            NProto::TProfileLogRequestInfo profileLogRequest;
+            InitTabletProfileLogRequestInfo(
+                profileLogRequest,
+                EFileStoreRequest::RenameNode,
+                request.GetOriginalRequest(),
+                ctx.Now());
+
             RegisterRenameNodeInDestinationActor(
                 ctx,
                 nullptr, // requestInfo
                 request,
+                std::move(profileLogRequest),
                 0, // requestId (TODO(#2674): either idempotency or use real
                    // requestId)
                 op.GetEntryId());
@@ -113,10 +132,18 @@ void TIndexTabletActor::ReplayOpLog(
                     << request.GetOriginalRequest().ShortUtf8DebugString());
             }
 
+            NProto::TProfileLogRequestInfo profileLogRequest;
+            InitTabletProfileLogRequestInfo(
+                profileLogRequest,
+                EFileStoreSystemRequest::RenameNodeInDestination,
+                request.GetOriginalRequest(),
+                ctx.Now());
+
             RegisterAbortUnlinkDirectoryInShardActor(
                 ctx,
                 nullptr, // requestInfo
                 request.GetOriginalRequest(),
+                std::move(profileLogRequest),
                 {}, // originalError, doesn't matter w/o requestInfo
                 request.GetFileSystemId(),
                 request.GetNodeId(),

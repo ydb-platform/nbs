@@ -442,6 +442,48 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TRenameNodeInDestinationRequest& request)
+{
+    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
+    nodeInfo->SetParentNodeId(request.GetOriginalRequest().GetNodeId());
+    nodeInfo->SetNodeName(request.GetOriginalRequest().GetName());
+    nodeInfo->SetNewParentNodeId(request.GetNewParentId());
+    nodeInfo->SetNewNodeName(request.GetNewName());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardRequest& request)
+{
+    const auto& renameNodeInDestination = request.GetOriginalRequest();
+    const auto& renameNode = renameNodeInDestination.GetOriginalRequest();
+    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
+    nodeInfo->SetNodeId(request.GetNodeId());
+    nodeInfo->SetParentNodeId(renameNode.GetNodeId());
+    nodeInfo->SetNodeName(renameNode.GetName());
+    nodeInfo->SetNewParentNodeId(renameNode.GetNewParentId());
+    nodeInfo->SetNewNodeName(renameNode.GetNewName());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TAbortUnlinkDirectoryNodeInShardRequest& request)
+{
+    const auto& renameNodeInDestination = request.GetOriginalRequest();
+    const auto& renameNode = renameNodeInDestination.GetOriginalRequest();
+    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
+    nodeInfo->SetNodeId(request.GetNodeId());
+    nodeInfo->SetParentNodeId(renameNode.GetNodeId());
+    nodeInfo->SetNodeName(renameNode.GetName());
+    nodeInfo->SetNewParentNodeId(renameNode.GetNewParentId());
+    nodeInfo->SetNewNodeName(renameNode.GetNewName());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TAccessNodeRequest& request)
 {
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
@@ -622,6 +664,9 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(ResolvePath, NProto)
     IMPLEMENT_DEFAULT_METHOD(UnlinkNode, NProto)
     IMPLEMENT_DEFAULT_METHOD(RenameNode, NProto)
+    IMPLEMENT_DEFAULT_METHOD(RenameNodeInDestination, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(PrepareUnlinkDirectoryNodeInShard, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(AbortUnlinkDirectoryNodeInShard, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(AccessNode, NProto)
     IMPLEMENT_DEFAULT_METHOD(ReadLink, NProto)
     IMPLEMENT_DEFAULT_METHOD(RemoveNodeXAttr, NProto)

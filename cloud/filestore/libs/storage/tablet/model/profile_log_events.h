@@ -28,6 +28,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AddBlob,                            __VA_ARGS__)                       \
     xxx(TruncateRange,                      __VA_ARGS__)                       \
     xxx(ZeroRange,                          __VA_ARGS__)                       \
+    xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
+    xxx(PrepareUnlinkDirectoryNodeInShard,  __VA_ARGS__)                       \
+    xxx(AbortUnlinkDirectoryNodeInShard,    __VA_ARGS__)                       \
 // FILESTORE_SYSTEM_REQUESTS
 
 #define FILESTORE_MATERIALIZE_REQUEST(name, ...) name,
@@ -70,6 +73,17 @@ template <typename TProtoRequest>
 void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreRequest requestType,
+    const TProtoRequest &proto,
+    TInstant currentTs)
+{
+    InitTabletProfileLogRequestInfo(profileLogRequest, requestType, currentTs);
+    InitProfileLogRequestInfo(profileLogRequest, proto);
+}
+
+template <typename TProtoRequest>
+void InitTabletProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    EFileStoreSystemRequest requestType,
     const TProtoRequest &proto,
     TInstant currentTs)
 {

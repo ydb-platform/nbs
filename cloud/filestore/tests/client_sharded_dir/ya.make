@@ -8,10 +8,12 @@ TEST_SRCS(
 
 DEPENDS(
     cloud/filestore/apps/client
+    cloud/filestore/tools/analytics/profile_tool
 )
 
 PEERDIR(
     cloud/filestore/tests/python/lib
+    cloud/filestore/tools/testing/profile_log
 )
 
 SET(

@@ -1,9 +1,11 @@
 import json
 import os
+import time
 
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+import cloud.filestore.tools.testing.profile_log.common as profile
 
 BLOCK_SIZE = 4 * 1024
 SHARD_SIZE = 1024 * 1024 * 1024
@@ -171,6 +173,25 @@ def test_nonsharded_vs_sharded_fs():
 
     with open(results_path, "wb") as results_file:
         results_file.write(out)
+
+    #
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
+    # TODO(#568) - here and in other similar places - introduce and use a
+    # private api method which would force profile-log flush
+    #
+
+    time.sleep(2)
+
+    profile_tool_bin_path = common.binary_path(
+        "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool")
+
+    profile.dump_profile_log(profile_tool_bin_path,
+                             common.output_path("nfs-profile.log"),
+                             "fs1",
+                             "filestore-server profile log",
+                             results_path)
 
     ret = common.canonical_file(results_path, local=True)
     return ret

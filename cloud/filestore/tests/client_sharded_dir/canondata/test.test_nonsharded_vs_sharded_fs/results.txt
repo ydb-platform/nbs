@@ -35,3 +35,18 @@
     }
 ][22;31m-	LINK: [0m[0;39m/does/not/matter/2
 [22;32m+	LINK: [0m[0;39m/does/not/matter/3
+filestore-server profile log:
+CreateFileStore
+CreateHandle
+CreateNode
+CreateSession
+DestroyFileStore
+DestroySession
+GetNodeAttr
+ListNodes
+ReadData
+ReadLink
+RenameNode
+RenameNodeInDestination
+UnlinkNode
+WriteData

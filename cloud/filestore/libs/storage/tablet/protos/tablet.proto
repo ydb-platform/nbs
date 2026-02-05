@@ -216,9 +216,16 @@ message TOpLogEntry
 {
     uint64 EntryId = 1;
 
-    // for DupCache patch & commit
+    // For DupCache patch & commit.
     string SessionId = 2;
     uint64 RequestId = 3;
+
+    // For some requests it's impossible to restore TProfileLogRequestInfo from
+    // other fields so we need to save it explicitly.
+    //
+    // We have to save it in binary form because we can't have a PEERDIR to a
+    // LIBRARY() and diagnostics/events is a LIBRARY() - not a PROTO_LIBRARY().
+    bytes ProfileLogRequest = 4;
 
     oneof Request {
         TCreateNodeRequest CreateNodeRequest = 101;

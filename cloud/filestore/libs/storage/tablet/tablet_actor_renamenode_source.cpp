@@ -22,6 +22,7 @@ private:
     TRequestInfoPtr RequestInfo;
     const TActorId ParentId;
     const NProtoPrivate::TRenameNodeInDestinationRequest Request;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
 
@@ -31,6 +32,7 @@ public:
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId);
 
@@ -61,12 +63,14 @@ TRenameNodeInDestinationActor::TRenameNodeInDestinationActor(
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
     , Request(std::move(request))
+    , ProfileLogRequest(std::move(profileLogRequest))
     , RequestId(requestId)
     , OpLogEntryId(opLogEntryId)
 {}
@@ -174,6 +178,7 @@ void TRenameNodeInDestinationActor::ReplyAndDie(
         RequestId,
         OpLogEntryId,
         Request.GetOriginalRequest(), // TODO: move
+        std::move(ProfileLogRequest),
         std::move(response)));
 
     Die(ctx);
@@ -216,6 +221,7 @@ void TIndexTabletActor::HandlePrepareRenameNodeInSource(
         ctx,
         std::move(requestInfo),
         std::move(msg->Request),
+        NProto::TProfileLogRequestInfo{},
         std::move(msg->NewShardId),
         true /* isExplicitRequest */);
 }
@@ -390,6 +396,7 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
                 ctx,
                 args.RequestInfo,
                 std::move(shardRequest),
+                std::move(args.ProfileLogRequest),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId());
             return;
@@ -411,6 +418,13 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -423,8 +437,9 @@ void TIndexTabletActor::HandleNodeRenamedInDestination(
 
     ExecuteTx<TCommitRenameNodeInSource>(
         ctx,
-        std::move(msg->RequestInfo),
+        msg->RequestInfo,
         std::move(msg->Request),
+        std::move(msg->ProfileLogRequest),
         std::move(msg->Response),
         msg->OpLogEntryId,
         false /* isExplicitRequest */);
@@ -452,6 +467,7 @@ void TIndexTabletActor::HandleCommitRenameNodeInSource(
         ctx,
         std::move(requestInfo),
         std::move(msg->Request),
+        NProto::TProfileLogRequestInfo{},
         std::move(msg->Response),
         msg->OpLogEntryId,
         true /* isExplicitRequest */);
@@ -463,6 +479,7 @@ void TIndexTabletActor::RegisterRenameNodeInDestinationActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     NProtoPrivate::TRenameNodeInDestinationRequest request,
+    NProto::TProfileLogRequestInfo profileLogRequest,
     ui64 requestId,
     ui64 opLogEntryId)
 {
@@ -471,6 +488,7 @@ void TIndexTabletActor::RegisterRenameNodeInDestinationActor(
         std::move(requestInfo),
         ctx.SelfID,
         std::move(request),
+        std::move(profileLogRequest),
         requestId,
         opLogEntryId);
 
@@ -576,6 +594,15 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
 {
     InvalidateNodeCaches(args.Request.GetNodeId());
     CommitDupCacheEntry(args.SessionId, args.RequestId);
+
+    Y_DEFER {
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
+    };
 
     if (!args.RequestInfo) {
         return;
