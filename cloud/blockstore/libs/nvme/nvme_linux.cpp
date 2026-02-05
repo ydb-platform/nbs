@@ -2,8 +2,9 @@
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+
 #include <util/generic/yexception.h>
-#include <util/string/printf.h>
+#include <util/string/builder.h>
 #include <util/system/file.h>
 
 #include <linux/fs.h>
@@ -127,6 +128,22 @@ TResultOrError<bool> IsRotational(TFileHandle& device)
     }
 
     return val != 0;
+}
+
+ui32 GetSanitizeAction(TFileHandle& device)
+{
+    nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device);
+    if (ctrl.sanicap.bits.crypto_erase) {
+        return NVME_SANITIZE_ACT_CRYPTO_ERASE;
+    }
+
+    if (ctrl.sanicap.bits.block_erase) {
+        return NVME_SANITIZE_ACT_BLOCK_ERASE;
+    }
+
+    STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
+        << "Device doesn't support Crypto Erase or Block Erase sanitize "
+           "actions";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -275,6 +292,97 @@ public:
 
             return TResultOrError { !isRot };
         });
+    }
+
+    NProto::TError Sanitize(const TString& ctrlPath) override
+    {
+        return SafeExecute<NProto::TError>(
+            [&]
+            {
+                TFileHandle device(ctrlPath, OpenExisting | RdWr);
+                if (!device.IsOpen()) {
+                    int err = errno;
+                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
+                        << "Failed to open file " << ctrlPath.Quote();
+                }
+
+                nvme_admin_cmd cmd{
+                    .opcode = NVME_OPC_SANITIZE,
+                    .cdw10 = GetSanitizeAction(device),
+                };
+
+                if (ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd)) {
+                    int err = errno;
+                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
+                        << "Sanitize failed: " << strerror(err);
+                }
+
+                return MakeError(S_OK);
+            });
+    }
+
+    TResultOrError<TSanitizeStatus> GetSanitizeStatus(
+        const TString& ctrlPath) override
+    {
+        return SafeExecute<TResultOrError<TSanitizeStatus>>(
+            [&]() -> TResultOrError<TSanitizeStatus>
+            {
+                TFileHandle device(ctrlPath, OpenExisting | RdWr);
+                if (!device.IsOpen()) {
+                    int err = errno;
+                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
+                        << "Failed to open file " << ctrlPath.Quote();
+                }
+
+                char buffer[4]{};
+
+                const ui32 numd = (sizeof(buffer) / 4) - 1;
+
+                nvme_admin_cmd cmd{
+                    .opcode = NVME_OPC_GET_LOG_PAGE,
+                    .addr = std::bit_cast<ui64>(&buffer[0]),
+                    .data_len = sizeof(buffer),
+                    .cdw10 = 0x81   // Log Page ID: Sanitize Status
+                             | (numd << 16),
+                };
+
+                if (ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd)) {
+                    int err = errno;
+                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
+                        << "Failed to get Sanitize status: " << strerror(err);
+                }
+
+                ui16 sprog = 0;
+                ui16 sstat = 0;
+
+                std::memcpy(&sprog, &buffer[0], 2);
+                std::memcpy(&sstat, &buffer[2], 2);
+
+                NProto::TError status;
+                switch (sstat & NVME_SANITIZE_SSTAT_STATUS_MASK) {
+                    case NVME_SANITIZE_SSTAT_COMPLETED:
+                        status = MakeError(S_OK);
+                        break;
+                    case NVME_SANITIZE_SSTAT_IN_PROGRESS:
+                        status = MakeError(
+                            E_TRY_AGAIN,
+                            "Sanitize operation in progress");
+                        break;
+                    case NVME_SANITIZE_SSTAT_FAILED:
+                        status = MakeError(E_FAIL, "Sanitize operation failed");
+                        break;
+                    default:
+                        status = MakeError(
+                            E_FAIL,
+                            TStringBuilder() << "Unexpected status: " << sstat);
+                        break;
+                }
+
+                return TSanitizeStatus{
+                    .Status = status,
+                    .Progress = (sprog * 100.0) / 65535.0,
+                };
+            });
     }
 };
 

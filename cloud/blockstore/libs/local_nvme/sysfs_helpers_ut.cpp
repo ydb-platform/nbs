@@ -240,6 +240,23 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
                 ReadFile(VFIODriverPath / "bind"));
         }
     }
+
+    Y_UNIT_TEST_F(ShouldGetNVMeCtrlNameFromPCIAddr, TFixture)
+    {
+        for (size_t i = 0; i != Devices.size(); ++i) {
+            const auto& device = Devices[i];
+            const auto& pciAddr = device.GetPCIAddress();
+
+            if (i == 0) {
+                auto ctrlName = SysFs->GetNVMeCtrlNameFromPCIAddr(pciAddr);
+                UNIT_ASSERT_VALUES_EQUAL("nvme0", ctrlName);
+                continue;
+            }
+
+            auto ctrlName = SysFs->GetNVMeCtrlNameFromPCIAddr(pciAddr);
+            UNIT_ASSERT_VALUES_EQUAL("", ctrlName);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore
