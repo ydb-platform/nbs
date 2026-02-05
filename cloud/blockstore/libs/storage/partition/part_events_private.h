@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+#include "part_compaction.h" // TODO:_ is it ok? Should we move it to model? Or rearrange dependencies?
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -11,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/partition/model/affected.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
@@ -112,31 +114,6 @@ struct TWriteFreshBlocksRequest
         , WriteHandler(std::move(writeHandler))
     {}
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TAffectedBlob
-{
-    TVector<ui16> Offsets;
-    TMaybe<TBlockMask> BlockMask;
-    TVector<ui32> AffectedBlockIndices;
-
-    // Filled only if a flag is set. BlobMeta is needed only to do some extra
-    // consistency checks.
-    TMaybe<NProto::TBlobMeta> BlobMeta;
-};
-
-using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TAffectedBlock
-{
-    ui32 BlockIndex = 0;
-    ui64 CommitId = 0;
-};
-
-using TAffectedBlocks = TVector<TAffectedBlock>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -508,6 +485,8 @@ struct TEvPartitionPrivate
 
     struct TCompactionTxResponse
     {
+        TVector<TRangeCompactionInfo> RangeCompactionInfos;
+        TVector<TCompactionRequest> CompactionRequests;
     };
 
     //
