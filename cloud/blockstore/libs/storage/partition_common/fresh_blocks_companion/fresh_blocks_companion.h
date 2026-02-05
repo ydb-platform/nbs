@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 
-#include <cloud/storage/core/libs/actors/suicide_actor.h>
+#include <cloud/storage/core/libs/actors/mortal_actor.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -15,7 +15,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class IFreshBlocksCompanionClient: public ISuicideActor
+class IFreshBlocksCompanionClient: public IMortalActor
 {
 public:
     virtual void FreshBlobsLoaded(const NActors::TActorContext& ctx) = 0;

@@ -2,8 +2,8 @@ LIBRARY()
 
 SRCS(
     helpers.cpp
+    mortal_actor.cpp
     poison_pill_helper.cpp
-    suicide_actor.cpp
 )
 
 PEERDIR(

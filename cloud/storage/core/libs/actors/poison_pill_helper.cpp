@@ -8,7 +8,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPoisonPillHelper::TPoisonPillHelper(ISuicideActor* owner)
+TPoisonPillHelper::TPoisonPillHelper(IMortalActor* owner)
     : Owner(owner)
 {}
 
@@ -72,7 +72,7 @@ void TPoisonPillHelper::ReplyAndDie(const TActorContext& ctx)
         std::make_unique<TEvents::TEvPoisonTaken>(),
         0,   // flags
         Poisoner->Cookie);
-    Owner->Suicide(ctx);
+    Owner->Die(ctx);
 }
 
 }   // namespace NCloud

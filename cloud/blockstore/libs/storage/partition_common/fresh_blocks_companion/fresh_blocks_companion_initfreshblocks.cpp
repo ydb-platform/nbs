@@ -43,7 +43,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             TStringBuilder() << "LoadFreshBlobs failed, error: "
                              << FormatError(msg->GetError()),
             {{"disk", PartitionConfig.GetDiskId()}});
-        Client.Suicide(ctx);
+        Client.Die(ctx);
         return;
     }
 
@@ -69,7 +69,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
                                  << FormatError(error),
                 {{"disk", PartitionConfig.GetDiskId()},
                  {"commit_id", blob.CommitId}});
-            Client.Suicide(ctx);
+            Client.Die(ctx);
             return;
         }
 
