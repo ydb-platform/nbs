@@ -20,7 +20,7 @@ class IFreshBlocksCompanionClient: public IMortalActor
 public:
     virtual void FreshBlobsLoaded(const NActors::TActorContext& ctx) = 0;
 
-    virtual ~IFreshBlocksCompanionClient() = default;
+    ~IFreshBlocksCompanionClient() override = default;
 };
 
 class TFreshBlocksCompanion
@@ -41,7 +41,6 @@ private:
     TLogTitle LogTitle;
 
     TRunningActors Actors;
-
 
 public:
     TFreshBlocksCompanion(
