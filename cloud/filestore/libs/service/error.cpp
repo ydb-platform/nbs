@@ -101,6 +101,14 @@ NProto::TError ErrorAlreadyExists(const TString& path)
             << "path " << path.Quote() << " already exists");
 }
 
+NProto::TError ErrorAlreadyExists(ui64 nodeId)
+{
+    return MakeError(
+        E_FS_EXIST,
+        TStringBuilder()
+            << "node " << nodeId << " already exists");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorIsDirectory(ui64 nodeId)

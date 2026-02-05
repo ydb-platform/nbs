@@ -295,6 +295,33 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         id3 = Max(id1, id2) + 1;
 
         {
+            NProtoPrivate::TUnsafeCreateNodeRequest request;
+            request.SetFileSystemId(fsId);
+            auto* node = request.MutableNode();
+            node->SetId(id3);
+            node->SetSize(333);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeCreateNode", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeCreateNodeRequest request;
+            request.SetFileSystemId(fsId);
+            auto* node = request.MutableNode();
+            node->SetId(id3);
+            node->SetSize(333);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("UnsafeCreateNode", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_EXIST,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
             NProtoPrivate::TUnsafeUpdateNodeRequest request;
             request.SetFileSystemId(fsId);
             auto* node = request.MutableNode();
@@ -303,6 +330,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
             service.ExecuteAction("UnsafeUpdateNode", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeUpdateNodeRequest request;
+            request.SetFileSystemId(fsId);
+            auto* node = request.MutableNode();
+            node->SetId(id3 + 1);
+            node->SetSize(333);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("UnsafeUpdateNode", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         {
@@ -364,6 +407,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 FormatError(response->Record.GetError()));
         }
 
+        {
+            NProtoPrivate::TUnsafeDeleteNodeRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetId(id3);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("UnsafeDeleteNode", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
         service.DestroySession(headers);
     }
 
@@ -409,6 +466,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         }
 
         {
+            NProtoPrivate::TUnsafeUpdateNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name1 + ".nonexistent");
+            request.SetShardId(shardId1);
+            request.SetShardNodeName(shardNodeName1);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("UnsafeUpdateNodeRef", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
             NProtoPrivate::TUnsafeGetNodeRefRequest request;
             request.SetFileSystemId(fsId);
             request.SetParentId(parentId);
@@ -438,6 +512,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
             service.ExecuteAction("UnsafeCreateNodeRef", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name2);
+            request.SetShardId(shardId2);
+            request.SetShardNodeName(shardNodeName2);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("UnsafeCreateNodeRef", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_EXIST,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         {
@@ -504,6 +595,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 E_FS_NOENT,
                 response->Record.GetError().GetCode(),
                 FormatError(response->Record.GetError()));
+        }
+
+        {
+            NProtoPrivate::TUnsafeDeleteNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(parentId);
+            request.SetName(name1);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("UnsafeDeleteNodeRef", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         {
