@@ -229,7 +229,16 @@ func getEncryptionModeAndKeyHash(
 ) (uint32, []byte, error) {
 	var encryptionMode types.EncryptionMode
 	var encryptionKeyHash []byte
-	if encryptionDesc != nil {
+	const mode = types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
+	if encryptionDesc == nil {
+		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
+		encryptionKeyHash = nil
+	} else if encryptionDesc.Mode == mode {
+		// Images/snapshots created from disks with root KMS encryption
+		// are not encrypted.
+		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
+		encryptionKeyHash = nil
+	} else {
 		encryptionMode = encryptionDesc.Mode
 
 		switch key := encryptionDesc.Key.(type) {
@@ -243,9 +252,6 @@ func getEncryptionModeAndKeyHash(
 				key,
 			)
 		}
-	} else {
-		encryptionMode = types.EncryptionMode_NO_ENCRYPTION
-		encryptionKeyHash = nil
 	}
 
 	return uint32(encryptionMode), []byte(encryptionKeyHash), nil
