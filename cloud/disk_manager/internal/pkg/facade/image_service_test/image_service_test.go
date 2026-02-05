@@ -1267,13 +1267,27 @@ func TestImageServiceCreateImageFromDiskWithRootKmsEncryption(t *testing.T) {
 	diskID := t.Name() + "_disk"
 	rootKmsEncryption := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
 
+	deleteDisk := func(diskID string) {
+		reqCtx := testcommon.GetRequestContext(t, ctx)
+		operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+			DiskId: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID,
+			},
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, operation)
+		err = internal_client.WaitOperation(ctx, client, operation.Id)
+		require.NoError(t, err)
+	}
+
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
 		Size: int64(diskSize),
-		Kind: disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: defaultZoneID,
 			DiskId: diskID,
@@ -1286,6 +1300,7 @@ func TestImageServiceCreateImageFromDiskWithRootKmsEncryption(t *testing.T) {
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+	defer deleteDisk(diskID)
 
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
 
@@ -1344,8 +1359,39 @@ func TestImageServiceCreateImageFromDiskWithRootKmsEncryption(t *testing.T) {
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+	defer deleteDisk(diskID2)
 
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
+	require.NoError(t, err)
+
+	diskID3 := t.Name() + "_disk3"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: defaultZoneID,
+			DiskId: diskID3,
+		},
+		EncryptionDesc: &disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	defer deleteDisk(diskID3)
+
+	diskParams, err = nbsClient.Describe(ctx, diskID3)
+	require.NoError(t, err)
+	require.Equal(t, rootKmsEncryption, diskParams.EncryptionDesc.Mode)
+
+	err = nbsClient.ValidateCrc32(ctx, diskID3, diskContentInfo)
 	require.NoError(t, err)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
