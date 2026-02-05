@@ -21,10 +21,16 @@ private:
 public:
     TCommitIdsState(ui64 generation, ui64 lastCommitId);
 
-    NPartition::TCommitQueue& GetCommitQueue()
+    const NPartition::TCommitQueue& GetCommitQueue() const
     {
         return CommitQueue;
     }
+
+    [[nodiscard]] NPartition::TCommitQueue& AccessCommitQueue()
+    {
+        return CommitQueue;
+    }
+
 
     [[nodiscard]] ui64 GetLastCommitId() const
     {

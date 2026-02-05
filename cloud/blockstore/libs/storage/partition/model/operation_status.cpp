@@ -6,7 +6,7 @@ using namespace NJson;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NJson::TJsonValue ToJson(const NPartition::TOperationState& op)
+NJson::TJsonValue ToJson(const TOperationState& op)
 {
     TJsonValue json;
     json["Status"] = ToString(op.Status);
@@ -15,9 +15,7 @@ NJson::TJsonValue ToJson(const NPartition::TOperationState& op)
     return json;
 }
 
-void DumpOperationState(
-    IOutputStream& out,
-    const NPartition::TOperationState& op)
+void DumpOperationState(IOutputStream& out, const TOperationState& op)
 {
     out << ToString(op.Status);
 

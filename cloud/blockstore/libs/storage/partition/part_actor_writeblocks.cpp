@@ -295,7 +295,7 @@ void TPartitionActor::WriteBlocks(
                 "%s Enqueueing fresh blocks (range: %s)",
                 LogTitle.GetWithTime().c_str(),
                 DescribeRange(writeRange).c_str());
-            State->GetWriteBuffer().Put(std::move(requestInBuffer));
+            State->AccessWriteBuffer().Put(std::move(requestInBuffer));
         } else {
             WriteFreshBlocks(ctx, std::move(requestInBuffer));
         }
@@ -380,13 +380,13 @@ void TPartitionActor::HandleWriteBlocksCompleted(
             LogTitle.GetWithTime().c_str(),
             commitId);
 
-        State->GetCommitQueue().ReleaseBarrier(commitId);
+        State->AccessCommitQueue().ReleaseBarrier(commitId);
         if (msg->CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
         }
 
         if (msg->TrimFreshLogBarrierAcquired && HasError(msg->GetError())) {
-            State->GetTrimFreshLogBarriers().ReleaseBarrierN(
+            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
                 commitId,
                 blocksCount);
         }

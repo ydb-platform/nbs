@@ -292,7 +292,7 @@ void TPartitionActor::HandleZeroBlocks(
         commitId,
         DescribeRange(writeRange).c_str());
 
-    State->GetCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue().AcquireBarrier(commitId);
 
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
     const auto writeBlobThreshold =
@@ -366,10 +366,12 @@ void TPartitionActor::HandleZeroBlocksCompleted(
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->GetCommitQueue().ReleaseBarrier(commitId);
+    State->AccessCommitQueue().ReleaseBarrier(commitId);
 
     if (msg->TrimFreshLogBarrierAcquired && HasError(msg->GetError())) {
-        State->GetTrimFreshLogBarriers().ReleaseBarrierN(commitId, blocksCount);
+        State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
+            commitId,
+            blocksCount);
     }
 
     Actors.Erase(ev->Sender);
@@ -464,7 +466,7 @@ void TPartitionActor::CompleteZeroBlocks(
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->GetCommitQueue().ReleaseBarrier(args.CommitId);
+    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;

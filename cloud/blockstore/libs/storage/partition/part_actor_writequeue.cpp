@@ -25,12 +25,12 @@ void TPartitionActor::HandleProcessWriteQueue(
 {
     Y_UNUSED(ev);
 
-    const auto totalWeight = State->GetWriteBuffer().GetWeight();
+    const auto totalWeight = State->AccessWriteBuffer().GetWeight();
     if (!totalWeight) {
         return;
     }
 
-    auto guard = State->GetWriteBuffer().Flush();
+    auto guard = State->AccessWriteBuffer().Flush();
     auto& requests = guard.Get();
 
     // building mixed blob requests
@@ -65,7 +65,7 @@ void TPartitionActor::HandleProcessWriteQueue(
 void TPartitionActor::ClearWriteQueue(const TActorContext& ctx)
 {
     if (State) {
-        auto guard = State->GetWriteBuffer().Flush();
+        auto guard = State->AccessWriteBuffer().Flush();
         auto& requests = guard.Get();
         for (auto& request: requests) {
             request.Data.RequestInfo->CancelRequest(ctx);

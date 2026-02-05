@@ -299,7 +299,7 @@ bool TPartitionActor::PrepareMetadataRebuildUsedBlocks(
     TPartitionDatabase db(tx.DB);
 
     TMetadataRebuildBlockVisitor visitor(args);
-    State->FindFreshBlocks(visitor, args.BlockRange);
+    State->FindFreshBlocks(visitor, args.BlockRange, Max<ui64>());
     auto ready = db.FindMixedBlocks(
         visitor,
         args.BlockRange,

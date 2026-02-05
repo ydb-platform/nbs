@@ -29,10 +29,8 @@ struct TOperationState
     }
 };
 
-NJson::TJsonValue ToJson(const NPartition::TOperationState& op);
+NJson::TJsonValue ToJson(const TOperationState& op);
 
-void DumpOperationState(
-    IOutputStream& out,
-    const NPartition::TOperationState& op);
+void DumpOperationState(IOutputStream& out, const TOperationState& op);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
