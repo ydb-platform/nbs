@@ -151,6 +151,8 @@ class TVolumeActor final
         const TCallContextPtr CallContext;
         const TCallContextPtr ForkedContext;
         const ui64 ReceiveTime;
+        const TInstant RequestStartTime;
+        const TDuration RequestCost;
         TCancelRoutine* const CancelRoutine;
         const bool IsMultipartitionWriteOrZero;
 
@@ -160,6 +162,8 @@ class TVolumeActor final
                 TCallContextPtr callContext,
                 TCallContextPtr forkedContext,
                 ui64 receiveTime,
+                TInstant requestStartTime,
+                TDuration requestCost,
                 TCancelRoutine cancelRoutine,
                 bool isMultipartitionWriteOrZero)
             : Caller(caller)
@@ -167,6 +171,8 @@ class TVolumeActor final
             , CallContext(std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
+            , RequestStartTime(requestStartTime)
+            , RequestCost(requestCost)
             , CancelRoutine(cancelRoutine)
             , IsMultipartitionWriteOrZero(isMultipartitionWriteOrZero)
         {}
@@ -1101,6 +1107,8 @@ private:
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
         ui64 traceTime,
+        TInstant requestStartTime,
+        TDuration requestCost,
         bool forkTraces,
         bool isMultipartition);
 
@@ -1110,7 +1118,8 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
-        ui64 traceTs);
+        ui64 traceTs,
+        TDuration requestCost);
 
     template <typename TMethod>
     NProto::TError ProcessAndValidateReadFromCheckpoint(
@@ -1139,6 +1148,7 @@ private:
     NProto::TError Throttle(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
+        TDuration* requestCost,
         bool throttlingDisabled);
 
     template <typename TMethod>

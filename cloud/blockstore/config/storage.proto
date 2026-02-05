@@ -1417,6 +1417,5 @@ message TStorageServiceConfig
     // row per reallocation.
     optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
 
-    // Timeout for attach/detach path requests (in milliseconds).
-    optional uint32 AttachDetachPathRequestTimeout = 480;
+    optional double MinumumThrottlerMultiplier = 481;
 }
