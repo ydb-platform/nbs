@@ -104,7 +104,7 @@ No options are required.
 
 ReadBlocks requests larger than 1000 blocks are automatically split into several ones, each no larger than 1000 blocks unless ```--proto``` option is used in which case the input request is executed as is.
 
-## WriteBlocks
+### WriteBlocks
 
  * ```--disk-id``` - name of volume to write blocks onto; **mandatory**
  * ```--start-index``` - index of the first block to write; not mandatory, defaults to 0 if not set
@@ -119,6 +119,16 @@ WriteBlocks requests larger than 1000 blocks are automatically split into severa
  * ```--blocks-count``` - number of blocks to zero; **mandatory** unless ```--zero-all`` option is used in which case blocks count is considered equal to the number of blocks within the volume regardless of what value is specified, if any
  * ```--token``` - mount token assigned to the volume; not mandatory
  * ```--zero-all``` - zero all blocks within the volume, from first to last inclusive; **use with caution**; this option can only be used if ```--proto``` option is not used
+
+### CheckRange
+Full documentation can be found in doc/blockstore/diagnostics/checkrange.md
+#### Mandatory parameters
+- ```--disk-id``` — disk identifier specification.
+#### Standard launch options
+- ```--start-index``` — starting block index. Default: 0.
+- ```--blocks-count``` — number of blocks. Default: the number of blocks to the end of the disk, starting from start-index.
+- ```--blocks-per-request``` — the number of blocks in 1 request. Default: 1024.
+- ```--output``` — file to save the results. Default: stdout.
 
 ## Private API
 
