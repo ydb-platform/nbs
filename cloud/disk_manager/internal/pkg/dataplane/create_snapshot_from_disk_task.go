@@ -275,7 +275,7 @@ func (t *createSnapshotFromDiskTask) run(
 	incremental := len(t.state.BaseSnapshotId) != 0
 
 	rootKmsMode := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
-	if diskParams.EncryptionDesc != nil{
+	if diskParams.EncryptionDesc != nil {
 		if diskParams.EncryptionDesc.Mode == rootKmsMode {
 			diskParams.EncryptionDesc.Mode = types.EncryptionMode_NO_ENCRYPTION
 		}

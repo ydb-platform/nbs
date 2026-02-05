@@ -67,7 +67,7 @@ func (t *transferFromSnapshotToDiskTask) Run(
 
 	encryption := t.request.DstEncryption
 	rootKmsMode := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
-	if encryption != nil{
+	if encryption != nil {
 		if encryption.Mode == rootKmsMode {
 			encryption.Mode = types.EncryptionMode_NO_ENCRYPTION
 		}
