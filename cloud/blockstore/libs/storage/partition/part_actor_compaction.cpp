@@ -1323,6 +1323,7 @@ void TPartitionActor::HandleCompaction(
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
+    // TODO:_ what we do here?
     AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
     auto tx = CreateTx<TCompaction>(
