@@ -169,7 +169,6 @@ All tests are implemented in apps/client/lib/command_ut.cpp
 - ShouldSplitLargeCheckRangeRequestIntoSeveralRequests: execution with block_count bigger than MaxBlocksPerRequest is splitted into several internal requests;
 - ShouldUseZeroAsDefaultStartIndexInCheckRange: 0 as default start block;
 - ShouldPerformCheckRangeForEntireDiskWhenBlocksCountIsNotSpecified: check entire disk if there is no blocks-count parameter;
-- ShouldRepeatCheckRangeRequestForMirrorDisksErrors: repeat request for single E_REJECTED error.
 
 ## Load tests
 Load tests are implemented in cloud/blockstore/tests/loadtest/local-checkrange/test.py.
