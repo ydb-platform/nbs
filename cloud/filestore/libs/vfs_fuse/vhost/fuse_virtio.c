@@ -237,7 +237,7 @@ static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
     return ptr - buf;
 }
 
-static int process_request(struct fuse_session* se, struct vhd_io* io)
+static int process_request(struct fuse_session* se, struct vhd_io* io, int queue_index)
 {
     struct vhd_fs_io* fsio = vhd_get_fs_io(io);
     VHD_ASSERT(fsio->sglist.nbuffers > 0);
@@ -312,7 +312,7 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
         };
     }
 
-    fuse_session_process_buf_int(se, pbufv, &req->ch);
+    fuse_session_process_buf_int(se, pbufv, &req->ch, queue_index);
 
     if (extra_bufs) {
         vhd_free(pbufv);
@@ -529,7 +529,7 @@ int virtio_session_loop(struct fuse_session* se, int queue_index)
 
         struct vhd_request req;
         while (vhd_dequeue_request(dev->rqs[queue_index], &req)) {
-            res = process_request(se, req.io);
+            res = process_request(se, req.io, queue_index);
             if (res < 0) {
                 VHD_LOG_WARN("request processing failure %d", -res);
             }

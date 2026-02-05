@@ -1973,7 +1973,8 @@ int fuse_session_fd(struct fuse_session *se);
  * @param buf the fuse_buf containing the request
  */
 void fuse_session_process_buf(struct fuse_session *se,
-                              const struct fuse_buf *buf);
+                              const struct fuse_buf *buf,
+                              int queue_index);
 
 /**
  * Read a raw request from the kernel into the supplied buffer.

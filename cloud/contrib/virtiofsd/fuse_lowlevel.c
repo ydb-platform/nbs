@@ -123,13 +123,13 @@ void fuse_free_req(fuse_req_t req)
     int ctr;
     struct fuse_session *se = req->se;
 
-    pthread_mutex_lock(&se->lock);
+    pthread_mutex_lock(&se->lock[req->queue_index]);
     req->u.ni.func = NULL;
     req->u.ni.data = NULL;
     list_del_req(req);
     ctr = --req->ctr;
     req->ch = NULL;
-    pthread_mutex_unlock(&se->lock);
+    pthread_mutex_unlock(&se->lock[req->queue_index]);
     if (!ctr) {
         destroy_req(req);
     }
@@ -1613,27 +1613,27 @@ static int find_interrupted(struct fuse_session *se, struct fuse_req *req)
 {
     struct fuse_req *curr;
 
-    for (curr = se->list.next; curr != &se->list; curr = curr->next) {
+    for (curr = se->list[req->queue_index].next; curr != &se->list[req->queue_index]; curr = curr->next) {
         if (curr->unique == req->u.i.unique) {
             fuse_interrupt_func_t func;
             void *data;
 
             curr->ctr++;
-            pthread_mutex_unlock(&se->lock);
+            pthread_mutex_unlock(&se->lock[req->queue_index]);
 
             /* Ugh, ugly locking */
             pthread_mutex_lock(&curr->lock);
-            pthread_mutex_lock(&se->lock);
+            pthread_mutex_lock(&se->lock[req->queue_index]);
             curr->interrupted = 1;
             func = curr->u.ni.func;
             data = curr->u.ni.data;
-            pthread_mutex_unlock(&se->lock);
+            pthread_mutex_unlock(&se->lock[req->queue_index]);
             if (func) {
                 func(curr, data);
             }
             pthread_mutex_unlock(&curr->lock);
 
-            pthread_mutex_lock(&se->lock);
+            pthread_mutex_lock(&se->lock[req->queue_index]);
             curr->ctr--;
             if (!curr->ctr) {
                 destroy_req(curr);
@@ -1670,13 +1670,13 @@ static void do_interrupt(fuse_req_t req, fuse_ino_t nodeid,
 
     req->u.i.unique = arg->unique;
 
-    pthread_mutex_lock(&se->lock);
+    pthread_mutex_lock(&se->lock[req->queue_index]);
     if (find_interrupted(se, req)) {
         destroy_req(req);
     } else {
         list_add_req(req, &se->interrupts);
     }
-    pthread_mutex_unlock(&se->lock);
+    pthread_mutex_unlock(&se->lock[req->queue_index]);
 }
 
 static struct fuse_req *check_interrupt(struct fuse_session *se,
@@ -2295,10 +2295,10 @@ void fuse_req_interrupt_func(fuse_req_t req, fuse_interrupt_func_t func,
                              void *data)
 {
     pthread_mutex_lock(&req->lock);
-    pthread_mutex_lock(&req->se->lock);
+    pthread_mutex_lock(&req->se->lock[req->queue_index]);
     req->u.ni.func = func;
     req->u.ni.data = data;
-    pthread_mutex_unlock(&req->se->lock);
+    pthread_mutex_unlock(&req->se->lock[req->queue_index]);
     if (req->interrupted && func) {
         func(req, data);
     }
@@ -2309,9 +2309,9 @@ int fuse_req_interrupted(fuse_req_t req)
 {
     int interrupted;
 
-    pthread_mutex_lock(&req->se->lock);
+    pthread_mutex_lock(&req->se->lock[req->queue_index]);
     interrupted = req->interrupted;
-    pthread_mutex_unlock(&req->se->lock);
+    pthread_mutex_unlock(&req->se->lock[req->queue_index]);
 
     return interrupted;
 }
@@ -2379,10 +2379,11 @@ static const char *opname(enum fuse_opcode opcode)
 }
 
 void fuse_session_process_buf(struct fuse_session *se,
-                              const struct fuse_buf *buf)
+                              const struct fuse_buf *buf,
+                              int queue_index)
 {
     struct fuse_bufvec bufv = { .buf[0] = *buf, .count = 1 };
-    fuse_session_process_buf_int(se, &bufv, NULL);
+    fuse_session_process_buf_int(se, &bufv, NULL, queue_index);
 }
 
 /*
@@ -2396,7 +2397,8 @@ void fuse_session_process_buf(struct fuse_session *se,
  */
 void fuse_session_process_buf_int(struct fuse_session *se,
                                   struct fuse_bufvec *bufv,
-                                  struct fuse_chan *ch)
+                                  struct fuse_chan *ch,
+                                  int queue_index)
 {
     const struct fuse_buf *buf = bufv->buf;
     struct fuse_mbuf_iter iter = FUSE_MBUF_ITER_INIT(buf);
@@ -2436,6 +2438,7 @@ void fuse_session_process_buf_int(struct fuse_session *se,
     req->ctx.gid = in->gid;
     req->ctx.pid = in->pid;
     req->ch = ch;
+    req->queue_index = queue_index;
 
     /*
      * INIT and DESTROY requests are serialized, all other request types
@@ -2493,10 +2496,10 @@ void fuse_session_process_buf_int(struct fuse_session *se,
     }
     if (in->opcode != FUSE_INTERRUPT) {
         struct fuse_req *intr;
-        pthread_mutex_lock(&se->lock);
+        pthread_mutex_lock(&se->lock[req->queue_index]);
         intr = check_interrupt(se, req);
-        list_add_req(req, &se->list);
-        pthread_mutex_unlock(&se->lock);
+        list_add_req(req, &se->list[req->queue_index]);
+        pthread_mutex_unlock(&se->lock[req->queue_index]);
         if (intr) {
             fuse_reply_err(intr, EAGAIN);
         }
@@ -2569,7 +2572,7 @@ void fuse_session_destroy(struct fuse_session *se)
         }
     }
     pthread_rwlock_destroy(&se->init_rwlock);
-    pthread_mutex_destroy(&se->lock);
+    pthread_mutex_destroy(&se->lock[0]);
     free(se->cuse_data);
     if (se->fd != -1) {
         close(se->fd);
@@ -2588,7 +2591,7 @@ void fuse_session_destroy(struct fuse_session *se)
 void fuse_session_suspend(struct fuse_session *se)
 {
     pthread_rwlock_destroy(&se->init_rwlock);
-    pthread_mutex_destroy(&se->lock);
+    pthread_mutex_destroy(&se->lock[0]);
     free(se->cuse_data);
     if (se->fd != -1) {
         close(se->fd);
@@ -2670,9 +2673,13 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
 
     se->bufsize = FUSE_MAX_MAX_PAGES * getpagesize() + FUSE_BUFFER_HEADER_SIZE;
 
-    list_init_req(&se->list);
+    for (int i =0; i < 256; i++) {
+        list_init_req(&se->list[i]);
+    }
     list_init_req(&se->interrupts);
-    fuse_mutex_init(&se->lock);
+    for (int i =0; i < 256; i++) {
+        fuse_mutex_init(&se->lock[i]);
+    }
     pthread_rwlock_init(&se->init_rwlock, NULL);
 
     memcpy(&se->op, op, op_size);

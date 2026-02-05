@@ -723,12 +723,13 @@ public:
             ISessionPtr session)
         : Config(std::move(config))
         , Logging(std::move(logging))
-        , StatsRegistry(std::move(statsRegistry))
+        , StatsRegistry(std::move(CreateRequestStatsRegistryStub()))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , ProfileLog(std::move(profileLog))
         , Session(std::move(session))
     {
+        Y_UNUSED(statsRegistry);
         Log = Logging->CreateLog("NFS_FUSE");
     }
 
