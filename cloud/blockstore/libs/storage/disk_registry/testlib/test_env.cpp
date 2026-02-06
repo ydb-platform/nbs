@@ -27,7 +27,7 @@ NProto::TStorageServiceConfig CreateDefaultStorageConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
+std::unique_ptr<TDiskRegistryTestRuntime> TTestRuntimeBuilder::Build()
 {
     if (!NotifyService) {
         NotifyService = NNotify::CreateServiceStub();
@@ -49,8 +49,11 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         LogbrokerService = NLogbroker::CreateServiceStub();
     }
 
-    auto runtime = std::make_unique<NActors::TTestBasicRuntime>(
+    auto runtime = std::make_unique<TDiskRegistryTestRuntime>(
         std::max(DiskAgents.size(), 1UL));
+
+    runtime->Configs->StorageConfig = StorageConfig;
+    runtime->Configs->DiagnosticsConfig = DiagnosticsConfig;
 
     runtime->AppendToLogSettings(
         TBlockStoreComponents::START,
@@ -124,24 +127,24 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         )
     );
 
-    auto storageConfig = StorageConfig;
-    auto diagnosticsConfig = DiagnosticsConfig;
+    auto configs = runtime->Configs;
     auto logbrokerService = LogbrokerService;
     auto notifyService = NotifyService;
     auto logging = Logging;
 
     auto createFunc =
-        [=] (const NActors::TActorId& owner, NKikimr::TTabletStorageInfo* info) {
-            auto tablet = CreateDiskRegistry(
-                owner,
-                logging,
-                info,
-                storageConfig,
-                diagnosticsConfig,
-                logbrokerService,
-                notifyService);
-            return tablet.release();
-        };
+        [=](const NActors::TActorId& owner, NKikimr::TTabletStorageInfo* info)
+    {
+        auto tablet = CreateDiskRegistry(
+            owner,
+            logging,
+            info,
+            configs->StorageConfig,
+            configs->DiagnosticsConfig,
+            logbrokerService,
+            notifyService);
+        return tablet.release();
+    };
 
     auto actorId = NKikimr::CreateTestBootstrapper(
         *runtime,
@@ -176,10 +179,9 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::With(
     NProto::TStorageServiceConfig config)
 {
     StorageConfig = std::make_shared<TStorageConfig>(
-        config,
-        std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
-    );
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig()));
     return *this;
 }
 

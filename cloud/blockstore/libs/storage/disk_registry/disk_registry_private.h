@@ -784,6 +784,16 @@ struct TEvDiskRegistryPrivate
     };
 
     //
+    // DetachPathsOperationCompleted
+    //
+
+    struct TDetachPathsOperationCompleted
+    {
+        TString AgentId;
+        bool IsAttach;
+    };
+
+    //
     // Events declaration
     //
 
@@ -800,6 +810,8 @@ struct TEvDiskRegistryPrivate
         EvRestoreDiskRegistryValidationResponse,
 
         EvDiskRegistryAgentListExpiredParamsCleanup,
+
+        EvDetachPathsOperationCompleted,
 
         EvEnd
     };
@@ -823,6 +835,10 @@ struct TEvDiskRegistryPrivate
     using TEvDiskRegistryAgentListExpiredParamsCleanup = TRequestEvent<
         TDiskRegistryAgentListExpiredParamsCleanup,
         EvDiskRegistryAgentListExpiredParamsCleanup>;
+
+    using TEvDetachPathsOperationCompleted = TResponseEvent<
+        TDetachPathsOperationCompleted,
+        EvDetachPathsOperationCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

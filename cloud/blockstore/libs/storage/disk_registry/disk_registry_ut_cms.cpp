@@ -36,10 +36,10 @@ namespace {
 struct TFixture
     : public NUnitTest::TBaseFixture
 {
-    std::unique_ptr<NActors::TTestActorRuntime> Runtime;
+    std::unique_ptr<TDiskRegistryTestRuntime> Runtime;
     std::optional<TDiskRegistryClient> DiskRegistry;
 
-    void SetUpRuntime(std::unique_ptr<NActors::TTestActorRuntime> runtime)
+    void SetUpRuntime(std::unique_ptr<TDiskRegistryTestRuntime> runtime)
     {
         Runtime = std::move(runtime);
 
@@ -1474,6 +1474,115 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         DiskRegistry->SendDisableAgentRequest("agent-1");
         auto response = DiskRegistry->RecvDisableAgentResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldMarkOldDevicesAsAttached, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAttachDetachPathsEnabled(false);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {}));
+
+        RegisterAgents(*Runtime, 1);
+
+        AddHost("agent-1");
+
+        config.SetAttachDetachPathsEnabled(true);
+
+        Runtime->Configs->StorageConfig = std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig()));
+
+        DiskRegistry->RebootTablet();
+
+        RegisterAgents(*Runtime, 1);
+
+        auto response = DiskRegistry->BackupDiskRegistryState(true);
+        const auto pathAttachStates =
+            response->Record.GetBackup().GetAgents(0).GetPathAttachStates();
+        auto it = pathAttachStates.find("dev-1");
+        UNIT_ASSERT(it != pathAttachStates.end());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ui64{NProto::PATH_ATTACH_STATE_ATTACHED},
+            static_cast<ui64>(it->second));
+    }
+
+    Y_UNIT_TEST_F(ShouldDetachPaths, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAttachDetachPathsEnabled(false);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {}));
+
+        RegisterAgents(*Runtime, 1);
+
+        AddHost("agent-1");
+
+        config.SetAttachDetachPathsEnabled(true);
+
+        Runtime->Configs->StorageConfig = std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig()));
+
+        DiskRegistry->RebootTablet();
+
+        RegisterAgents(*Runtime, 1);
+
+        ui64 detachRequests = 0;
+        TVector<TString> pathsToDetach;
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvDetachPathsRequest) {
+                    detachRequests += 1;
+                    auto* baseEvent =
+                        event->Get<TEvDiskAgent::TEvDetachPathsRequest>();
+                    for (const auto& path: baseEvent->Record.GetPathsToDetach())
+                    {
+                        pathsToDetach.emplace_back(path);
+                    }
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        RemoveDevice("agent-1", "dev-2");
+        UNIT_ASSERT_VALUES_EQUAL(1, detachRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, pathsToDetach.size());
+        UNIT_ASSERT_VALUES_EQUAL("dev-2", pathsToDetach[0]);
+
+        detachRequests = 0;
+        pathsToDetach.clear();
+
+        RemoveHost("agent-1");
+        UNIT_ASSERT_VALUES_EQUAL(1, detachRequests);
+        UNIT_ASSERT_VALUES_EQUAL(2, pathsToDetach.size());
+        UNIT_ASSERT(FindPtr(pathsToDetach, "dev-1"));
+        UNIT_ASSERT(FindPtr(pathsToDetach, "dev-2"));
     }
 }
 

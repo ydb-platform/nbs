@@ -66,6 +66,21 @@ struct TByUUID
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDiskRegistryConfigs
+{
+    TStorageConfigPtr StorageConfig;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
+};
+
+struct TDiskRegistryTestRuntime: public NActors::TTestBasicRuntime
+{
+    using TTestBasicRuntime::TTestBasicRuntime;
+
+    std::shared_ptr<TDiskRegistryConfigs> Configs =
+        std::make_shared<TDiskRegistryConfigs>();
+};
+
+////////////////////////////////////////////////////////////////////////////////
 void WaitForSecureErase(
     NActors::TTestActorRuntime& runtime,
     size_t deviceCount);
@@ -167,6 +182,8 @@ private:
             HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevices);
             HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDevice);
             HFunc(TEvDiskAgent::TEvEnableAgentDeviceRequest, HandleEnableAgentDevice);
+
+            HFunc(TEvDiskAgent::TEvDetachPathsRequest, HandleDetachPaths)
 
             HFunc(TEvRegisterAgent, HandleRegisterAgent)
 
@@ -270,6 +287,15 @@ private:
             ctx,
             *ev,
             std::make_unique<TEvDiskAgent::TEvEnableAgentDeviceResponse>());
+    }
+
+    void HandleDetachPaths(
+        const TEvDiskAgent::TEvDetachPathsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto response = std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>();
+
+        NCloud::Reply(ctx, *ev, std::move(response));
     }
 };
 
@@ -471,7 +497,7 @@ struct TTestRuntimeBuilder
     NNotify::IServicePtr NotifyService;
     ILoggingServicePtr Logging = CreateLoggingService("console");
 
-    std::unique_ptr<NActors::TTestActorRuntime> Build();
+    std::unique_ptr<TDiskRegistryTestRuntime> Build();
 
     TTestRuntimeBuilder& WithAgents(std::initializer_list<NActors::IActor*> agents);
     TTestRuntimeBuilder& WithAgents(const TVector<NProto::TAgentConfig>& configs);
