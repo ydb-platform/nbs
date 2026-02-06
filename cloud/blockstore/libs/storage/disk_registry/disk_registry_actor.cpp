@@ -297,6 +297,18 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
         new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
 }
 
+void TDiskRegistryActor::ScheduleEnsureDiskRegistryStateIntegrity(
+    const NActors::TActorContext& ctx)
+{
+    if (!Config->GetEnsureDiskRegistryStateIntegrityInterval()) {
+        return;
+    }
+
+    ctx.Schedule(
+        Config->GetEnsureDiskRegistryStateIntegrityInterval(),
+        new TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandlePoisonPill(
@@ -724,6 +736,15 @@ STFUNC(TDiskRegistryActor::StateWork)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
 
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
@@ -772,6 +793,15 @@ STFUNC(TDiskRegistryActor::StateRestore)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 

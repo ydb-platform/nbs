@@ -481,6 +481,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RemoteMountOnly,                           bool,      false           )\
     xxx(MaxLocalVolumes,                           ui32,      100             )\
                                                                                \
+    xxx(EnsureDiskRegistryStateIntegrityInterval,  TDuration, Hours(12)       )\
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
     xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
     xxx(DiskRegistryCleanupConfigOnRemoveHost,     bool,      false           )\
