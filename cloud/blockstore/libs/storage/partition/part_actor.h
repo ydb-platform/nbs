@@ -61,7 +61,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
     , public TTabletBase<TPartitionActor>
-    , public IFreshBlocksCompanionClient
     , private IRequestsInProgress
 {
     enum EState
@@ -107,6 +106,27 @@ class TPartitionActor final
 
     static constexpr ui64 BootWakeupEventTag = 1;
 
+    struct TFreshBlocksCompanionClient: public IFreshBlocksCompanionClient
+    {
+        TPartitionActor& PartitionActor;
+
+        explicit TFreshBlocksCompanionClient(TPartitionActor& partitionActor)
+            : PartitionActor(partitionActor)
+        {}
+
+        void FreshBlobsLoaded(const NActors::TActorContext& ctx) override
+        {
+            PartitionActor.FreshBlobsLoaded(ctx);
+        }
+
+        void Die(const NActors::TActorContext& ctx) override
+        {
+            PartitionActor.Suicide(ctx);
+        }
+    };
+
+    friend TFreshBlocksCompanionClient;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -125,8 +145,6 @@ private:
 
     std::unique_ptr<TPartitionState> State;
     std::unique_ptr<TCompactionMapLoadState> CompactionMapLoadState;
-
-    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
 
     static const TStateInfo States[];
     EState CurrentState = STATE_BOOT;
@@ -165,6 +183,10 @@ private:
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
+
+    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
+
+    TFreshBlocksCompanionClient FreshBlocksCompanionClient{*this};
 
 public:
     TPartitionActor(
@@ -218,7 +240,7 @@ private:
     void SendGetUsedBlocksFromBaseDisk(const NActors::TActorContext& ctx);
     void FinalizeLoadState(const NActors::TActorContext& ctx);
 
-    void LoadFreshBlobs(const NActors::TActorContext& ctx);
+    void FreshBlobsLoaded(const NActors::TActorContext& ctx);
 
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
@@ -481,17 +503,6 @@ private:
         TBlockBuffer blockBuffer);
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
-
-    // IFreshBlocksCompanionClient overrides
-
-    void FreshBlobsLoaded(const NActors::TActorContext& ctx) override;
-
-    // IMortalActor overrides
-
-    void Die(const NActors::TActorContext& ctx) override
-    {
-        Suicide(ctx);
-    }
 
 private:
     STFUNC(StateBoot);
