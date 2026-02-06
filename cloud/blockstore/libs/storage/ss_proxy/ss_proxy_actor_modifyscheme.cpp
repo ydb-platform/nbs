@@ -89,15 +89,26 @@ void TModifySchemeActor::HandleStatus(
     auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus) record.GetStatus();
     switch (status) {
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:
-            LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
-                "Request %s with TxId# %lu completed immediately",
-                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).data(),
-                TxId);
+            TxId = ev->Get()->Record.GetPathCreateTxId();
+        case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::
+            ExecInProgress:
+            if (TxId == 0) {
+                ReplyAndDie(
+                    ctx,
+                    MakeError(
+                        MAKE_SCHEMESHARD_ERROR(SchemeShardStatus),
+                        (TStringBuilder()
+                         << NKikimrSchemeOp::EOperationType_Name(
+                                ModifyScheme.GetOperationType())
+                                .data()
+                         << (SchemeShardReason.empty()
+                                 ? NKikimrScheme::EStatus_Name(
+                                       SchemeShardStatus)
+                                       .data()
+                                 : SchemeShardReason))));
+                break;
+            }
 
-            ReplyAndDie(ctx);
-            break;
-
-        case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecInProgress:
             LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
                 "Request %s with TxId# %lu in progress, waiting for completion",
                 NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).data(),
