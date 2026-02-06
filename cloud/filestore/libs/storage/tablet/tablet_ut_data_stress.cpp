@@ -665,10 +665,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
 
         std::uniform_int_distribution<ui32> dist(0, EStepType::MAX - 1);
         std::uniform_int_distribution<ui64> opTypeDist(0, EStepType::MAX);
-        std::uniform_int_distribution<ui64> blockDist(
-            1,
-            maxNumBlocksInRequest + 1);
-        std::uniform_int_distribution<ui64> offsetDist(0, maxOffset + 1);
+        std::uniform_int_distribution<ui64> blockDist(1, maxNumBlocksInRequest);
+        std::uniform_int_distribution<ui64> offsetDist(0, maxOffset);
         std::uniform_int_distribution<ui64> seedDist(0, 1000000);
 
         const auto seedValue = time(0);
