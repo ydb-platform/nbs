@@ -176,6 +176,11 @@ class TPartitionActor final
             Owner.ProcessIOQueue(ctx, channel);
         }
 
+        TPartitionDiskCounters& GetPartCounters() override
+        {
+            return *Owner.PartCounters;
+        }
+
         // IMortalActor implements
 
         void Poison(const NActors::TActorContext& ctx) override

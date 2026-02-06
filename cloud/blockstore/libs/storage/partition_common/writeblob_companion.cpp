@@ -381,7 +381,6 @@ TWriteBlobCompanion::TWriteBlobCompanion(
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
-        TPartitionDiskCounters& partCounters,
         ui64& bsGroupOperationId,
         IWriteBlobCompanionClient& client,
         TPartitionChannelsState& channelsState,
@@ -394,7 +393,6 @@ TWriteBlobCompanion::TWriteBlobCompanion(
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , BSGroupOperationTimeTracker(bsGroupOperationTimeTracker)
-    , PartCounters(partCounters)
     , BSGroupOperationId(bsGroupOperationId)
     , Client(client)
     , ChannelsState(channelsState)
@@ -424,7 +422,7 @@ void TWriteBlobCompanion::HandleWriteBlob(
             TString out;
             out.ReserveAndResize(BlobCodec->MaxCompressedLength(blobContent));
             const size_t sz = BlobCodec->Compress(blobContent, out.begin());
-            auto& counters = PartCounters.Cumulative;
+            auto& counters = Client.GetPartCounters().Cumulative;
             counters.UncompressedBytesWritten.Increment(blobContent.size());
             counters.CompressedBytesWritten.Increment(sz);
         }
@@ -500,7 +498,7 @@ void TWriteBlobCompanion::HandleWriteBlobCompleted(
             msg->BlobId.BlobSize());
     }
 
-    PartCounters.RequestCounters.WriteBlob.AddRequest(
+    Client.GetPartCounters().RequestCounters.WriteBlob.AddRequest(
         msg->RequestTime.MicroSeconds(),
         msg->BlobId.BlobSize(),
         1,

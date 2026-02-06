@@ -256,7 +256,6 @@ void TPartitionActor::CompleteLoadState(
         VolumeActorId,
         DiagnosticsConfig,
         BSGroupOperationTimeTracker,
-        *PartCounters,
         BSGroupOperationId,
         WriteBlobCompanionClient,
         *State,

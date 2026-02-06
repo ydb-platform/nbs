@@ -45,7 +45,9 @@ public:
         const NActors::TActorContext& ctx,
         ui32 channel) = 0;
 
-    virtual ~IWriteBlobCompanionClient() = default;
+    virtual TPartitionDiskCounters& GetPartCounters() = 0;
+
+    ~IWriteBlobCompanionClient() override = default;
 };
 
 class TWriteBlobCompanion
@@ -60,8 +62,6 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
 
     TBSGroupOperationTimeTracker& BSGroupOperationTimeTracker;
-
-    TPartitionDiskCounters& PartCounters;
 
     ui64& BSGroupOperationId;
 
@@ -85,7 +85,6 @@ public:
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
-        TPartitionDiskCounters& partCounters,
         ui64& bsGroupOperationId,
         IWriteBlobCompanionClient& client,
         TPartitionChannelsState& channelsState,
