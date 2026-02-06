@@ -160,14 +160,6 @@ private:
     TDeque<TForcedCompactionInfo> PendingForcedCompactionRequests;
     THashMap<TString, TForcedCompactionResult> CompletedForcedCompactionRequests;
 
-    // TODO:_ move it to separate actor!
-    TRequestInfoPtr CompactionRequestInfo;
-    ui32 AwaitedCompactionTxResponses = 0;
-    // Compaction infos and requests, waiting until all transactions of the
-    // current batch are completed
-    TVector<TRangeCompactionInfo> PendingRangeCompactionInfos;
-    TVector<TCompactionBlobRequest> PendingCompactionRequests;
-
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 

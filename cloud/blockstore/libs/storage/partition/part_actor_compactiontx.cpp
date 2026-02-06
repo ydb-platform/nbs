@@ -637,9 +637,6 @@ void TPartitionActor::CompleteCompaction(
         args.RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    PendingRangeCompactionInfos.clear();
-    PendingCompactionRequests.clear();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
