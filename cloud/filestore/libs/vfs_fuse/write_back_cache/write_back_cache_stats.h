@@ -1,0 +1,96 @@
+#pragma once
+
+#include <util/datetime/base.h>
+#include <util/system/types.h>
+
+#include <memory>
+
+namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * WriteData request life cycle:
+ * [Pending] -> Unflushed -> Flushed
+ *
+ * For each NodeId it is guaranteed that there are no requests with out-of-order
+ * statuses: if two requests A and B have the same NodeId, and the request A was
+ * added to the queue later than B, then A.Status <= B.Status.
+ */
+
+enum class EWriteDataRequestStatus
+{
+    // Write request is waiting until there is enough space in the persistent
+    // buffer to store the request.
+    Pending,
+
+    // Write request has been stored in the persistent buffer and is waiting
+    // for flushing
+    Unflushed,
+
+    // Write request has been written to the session and can be removed from
+    // the persistent buffer
+    Flushed
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class EReadDataRequestCacheStatus
+{
+    // A request wasn't served from the cache
+    Miss,
+
+    // A request was partially served from the cache
+    PartialHit,
+
+    // A request was fully served from the cache
+    FullHit
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TPersistentStorageStats
+{
+    ui64 RawCapacityByteCount = 0;
+    ui64 RawUsedByteCount = 0;
+    ui64 EntryCount = 0;
+    bool IsCorrupted = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IWriteBackCacheStats
+{
+    virtual ~IWriteBackCacheStats() = default;
+
+    virtual void ResetNonDerivativeCounters() = 0;
+
+    virtual void FlushStarted() = 0;
+    virtual void FlushCompleted() = 0;
+    virtual void FlushFailed() = 0;
+
+    virtual void IncrementNodeCount() = 0;
+    virtual void DecrementNodeCount() = 0;
+
+    virtual void WriteDataRequestEnteredStatus(
+        EWriteDataRequestStatus status) = 0;
+
+    virtual void WriteDataRequestExitedStatus(
+        EWriteDataRequestStatus status,
+        TDuration duration) = 0;
+
+    virtual void WriteDataRequestUpdateMinTime(
+        EWriteDataRequestStatus status,
+        TInstant minTime) = 0;
+
+    virtual void AddReadDataStats(EReadDataRequestCacheStatus status) = 0;
+
+    virtual void UpdatePersistentStorageStats(
+        const TPersistentStorageStats& stats) = 0;
+};
+
+using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;
+
+IWriteBackCacheStatsPtr CreateDummyWriteBackCacheStats();
+
+}   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

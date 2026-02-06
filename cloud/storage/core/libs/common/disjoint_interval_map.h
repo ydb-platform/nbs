@@ -1,9 +1,9 @@
 #pragma once
 
+#include <util/generic/function_ref.h>
 #include <util/generic/map.h>
 #include <util/generic/yexception.h>
 
-#include <functional>
 
 namespace NCloud {
 
@@ -23,10 +23,10 @@ public:
     using TData = TMap<TKey, TItem>;
     using TIterator = typename TData::iterator;
     using TReverseIterator = typename TData::reverse_iterator;
-    using TVisitor = std::function<void(TIterator it)>;
+    using TVisitor = TFunctionRef<void(TIterator it)>;
     using TConstIterator = typename TData::const_iterator;
     using TConstReverseIterator = typename TData::const_reverse_iterator;
-    using TConstVisitor = std::function<void(TConstIterator it)>;
+    using TConstVisitor = TFunctionRef<void(TConstIterator it)>;
 
 private:
     TData Data;
