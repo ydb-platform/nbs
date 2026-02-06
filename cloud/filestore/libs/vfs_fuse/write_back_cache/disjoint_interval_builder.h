@@ -16,6 +16,7 @@ struct TIntervalPart
 {
     ui64 Begin = 0;
     ui64 End = 0;
+    // Index of the source interval from which this part was taken
     size_t Index = 0;
 };
 
