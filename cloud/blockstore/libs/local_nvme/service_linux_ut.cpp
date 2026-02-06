@@ -153,24 +153,33 @@ public:
 
 struct TTestSysFs final: ISysFs
 {
-    THashMap<TString, TString> DeviceToDriver;
+    THashMap<TString, TString> AddrToDriver;
     THashMap<TString, TString> DeviceToCtrl;
+    THashMap<TString, NProto::TNVMeDevice> AddrToDevice;
 
     auto GetDriverForPCIDevice(const TString& pciAddr) -> TString final
     {
-        return DeviceToDriver.Value(pciAddr, TString());
+        return AddrToDriver.Value(pciAddr, TString());
     }
 
     void BindPCIDeviceToDriver(
         const TString& pciAddr,
         const TString& driverName) final
     {
-        DeviceToDriver[pciAddr] = driverName;
+        AddrToDriver[pciAddr] = driverName;
     }
 
     auto GetNVMeCtrlNameFromPCIAddr(const TString& pciAddr) -> TString final
     {
         return DeviceToCtrl.Value(pciAddr, TString());
+    }
+
+    auto GetNVMeDeviceFromPCIAddr(const TString& pciAddr)
+        -> NProto::TNVMeDevice final
+    {
+        const auto* device = AddrToDevice.FindPtr(pciAddr);
+        Y_ENSURE(device);
+        return *device;
     }
 };
 
@@ -240,7 +249,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             R"(
             Devices {
                 SerialNumber: "NVME_0"
-                PCIAddress: "f1:00.0"
+                PCIAddress: "0000:f1:00.0"
                 IOMMUGroup: 10
                 VendorId: 0x100
                 DeviceId: 0x200
@@ -248,7 +257,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             }
             Devices {
                 SerialNumber: "NVME_1"
-                PCIAddress: "31:00.0"
+                PCIAddress: "0000:31:00.0"
                 IOMMUGroup: 20
                 VendorId: 0x300
                 DeviceId: 0x400
@@ -256,7 +265,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             }
             Devices {
                 SerialNumber: "NVME_2"
-                PCIAddress: "33:00.0"
+                PCIAddress: "0000:33:00.0"
                 IOMMUGroup: 30
                 VendorId: 0x100
                 DeviceId: 0x200
@@ -264,7 +273,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             }
             Devices {
                 SerialNumber: "NVME_3"
-                PCIAddress: "34:00.0"
+                PCIAddress: "0000:34:00.0"
                 IOMMUGroup: 40
                 VendorId: 0x100
                 DeviceId: 0x200
@@ -283,8 +292,9 @@ struct TFixture: public NUnitTest::TBaseFixture
             const auto& device = Devices[i];
             const auto& pciAddr = device.GetPCIAddress();
 
-            SysFs->DeviceToDriver[pciAddr] = "nvme";
+            SysFs->AddrToDriver[pciAddr] = "nvme";
             SysFs->DeviceToCtrl[pciAddr] = TStringBuilder() << "nvme" << i;
+            SysFs->AddrToDevice[pciAddr] = device;
         }
     }
 
@@ -325,6 +335,38 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         return proto;
     }
+
+    void SetProviderReady()
+    {
+        TVector<NProto::TNVMeDevice> devices;
+
+        devices.reserve(Devices.size());
+
+        for (const auto& src: Devices) {
+            // We only populate serial number and PCI address here;
+            // the rest of the device info is resolved by the Service via sysfs.
+
+            auto& device = devices.emplace_back();
+            device.SetSerialNumber(src.GetSerialNumber());
+
+            // chop "0000:"
+            device.SetPCIAddress(src.GetPCIAddress().substr(5));
+        }
+
+        // Add some noise
+
+        {
+            auto& device = devices.emplace_back();
+            device.SetPCIAddress("unexpected");
+        }
+
+        {
+            auto& device = devices.emplace_back();
+            device.SetSerialNumber("unexpected");
+        }
+
+        DeviceProvider->Promise.SetValue(devices);
+    }
 };
 
 }   // namespace
@@ -344,7 +386,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
         }
 
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
 
         {
             auto [devices, error] = ListNVMeDevices();
@@ -389,7 +431,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             }
         }
 
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
 
         {
             auto [_, error] = ListNVMeDevices();
@@ -417,7 +459,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->DeviceToDriver[pciAddr]);
+        UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
 
         {
             auto future = Service->AcquireNVMeDevice(serialNumber);
@@ -430,7 +472,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         const TString ctrlPath = "/dev/nvme0";
 
-        UNIT_ASSERT_VALUES_EQUAL("vfio-pci", SysFs->DeviceToDriver[pciAddr]);
+        UNIT_ASSERT_VALUES_EQUAL("vfio-pci", SysFs->AddrToDriver[pciAddr]);
 
         {
             UNIT_ASSERT_VALUES_EQUAL(
@@ -462,7 +504,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->DeviceToDriver[pciAddr]);
+        UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
     }
 
     Y_UNIT_TEST_F(ShouldHandleListDevicesError, TFixture)
@@ -519,7 +561,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 });
         }
 
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
         {
             auto [_, error] = ListNVMeDevices();
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -537,7 +579,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
     Y_UNIT_TEST_F(ShouldUpdateStateCache, TFixture)
     {
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
         {
             auto [_, error] = ListNVMeDevices();
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -711,7 +753,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         Service = CreateService();
         Service->Start();
 
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
 
         {
             auto [devices, error] = ListNVMeDevices();
@@ -742,7 +784,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         Service = CreateService();
         Service->Start();
 
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
 
         {
             auto [devices, error] = ListNVMeDevices();
@@ -762,7 +804,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
     Y_UNIT_TEST_F(ShouldHandleRequestsAsync, TFixture)
     {
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
         {
             auto [_, error] = ListNVMeDevices();
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -850,7 +892,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
     Y_UNIT_TEST_F(ShouldFailReleaseIfSanitizeFails, TFixture)
     {
-        DeviceProvider->Promise.SetValue(Devices);
+        SetProviderReady();
         {
             auto [_, error] = ListNVMeDevices();
             UNIT_ASSERT_VALUES_EQUAL_C(

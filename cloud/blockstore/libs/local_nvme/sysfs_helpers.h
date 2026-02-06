@@ -1,8 +1,9 @@
 #pragma once
-
 #include "public.h"
 
 #include "private.h"
+
+#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -27,6 +28,9 @@ struct ISysFs
 
     virtual auto GetNVMeCtrlNameFromPCIAddr(const TString& pciAddr)
         -> TString = 0;
+
+    virtual auto GetNVMeDeviceFromPCIAddr(const TString& pciAddr)
+        -> NProto::TNVMeDevice = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
