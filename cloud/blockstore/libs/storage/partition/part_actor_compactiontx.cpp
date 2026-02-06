@@ -638,34 +638,6 @@ void TPartitionActor::CompleteCompaction(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-    // TODO:_ where we resigister TCompactionActor?
-    // auto actor = NCloud::Register<TCompactionActor>(
-    //     ctx,
-    //     args.RequestInfo,
-    //     TabletID(),
-    //     PartitionConfig.GetDiskId(),
-    //     SelfId(),
-    //     State->GetBlockSize(),
-    //     State->GetMaxBlocksInBlob(),
-    //     Config->GetMaxAffectedBlocksPerCompaction(),
-    //     Config->GetComputeDigestForEveryBlockOnCompaction(),
-    //     BlockDigestGenerator,
-    //     GetBlobStorageAsyncRequestTimeout(),
-    //     compactionType,
-    //     args.CommitId,
-    //     std::move(PendingRangeCompactionInfos),
-    //     std::move(PendingCompactionRequests),
-    //     LogTitle.GetChild(GetCycleCount()));
-    // LOG_DEBUG(
-    //     ctx,
-    //     TBlockStoreComponents::PARTITION,
-    //     "%s Partition registered TCompactionActor with id [%lu]; commit id %lu",
-    //     LogTitle.GetWithTime().c_str(),
-    //     actor.ToString().c_str(),
-    //     args.CommitId);
-
-    // Actors.Insert(actor);
-
     PendingRangeCompactionInfos.clear();
     PendingCompactionRequests.clear();
 }

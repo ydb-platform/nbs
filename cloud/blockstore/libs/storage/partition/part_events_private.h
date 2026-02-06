@@ -468,17 +468,19 @@ struct TEvPartitionPrivate
     struct TCompactionTxRequest
     {
         const ui64 CommitId;
+        const ui32 RangeCompactionIndex;
         const TCompactionOptions CompactionOptions;
         // TODO:_ coulb be just range, not vercor of ranges?
         // TODO:_ but if so, then we lose the original approash with single transaction.
         TVector<std::pair<ui32, TBlockRange32>> Ranges;
-        ui32 RangeCompactionIndex;
 
         TCompactionTxRequest(
             ui64 commitId,
+            ui32 rangeCompactionIndex,
             TCompactionOptions compactionOptions,
             TVector<std::pair<ui32, TBlockRange32>> ranges)
             : CommitId(commitId)
+            , RangeCompactionIndex(rangeCompactionIndex)
             , CompactionOptions(compactionOptions)
             , Ranges(std::move(ranges))
         {}
