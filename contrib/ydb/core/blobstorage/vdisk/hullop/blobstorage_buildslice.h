@@ -79,11 +79,9 @@ namespace NKikimr {
         TLevelSlicePtr res(new TLevelSlice(settings, slice->Ctx));
 
         ui32 levelsSize = slice->SortedLevels.size();
-        if (ctask.Action == NHullComp::ActCompactSsts &&
-            ctask.CompactSsts.TargetLevel != ui32(-1) &&
-            ctask.CompactSsts.TargetLevel > levelsSize) {
-            // resize levels
-            levelsSize = ctask.CompactSsts.TargetLevel;
+        if (ctask.Action == NHullComp::ActCompactSsts) {
+            Y_ABORT_UNLESS(ctask.CompactSsts.TargetLevel != (ui32)-1);
+            levelsSize = Max(levelsSize, ctask.CompactSsts.TargetLevel); // levelsSize is size of sorted levels, excluding level 0
         }
 
         res->SortedLevels.reserve(levelsSize);

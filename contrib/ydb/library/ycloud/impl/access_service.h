@@ -1,6 +1,6 @@
 #pragma once
 #include <contrib/ydb/library/ycloud/api/access_service.h>
-#include  <contrib/ydb/library/grpc/actor_client/grpc_service_settings.h>
+#include <contrib/ydb/library/grpc/actor_client/grpc_service_settings.h>
 
 namespace NCloud {
 

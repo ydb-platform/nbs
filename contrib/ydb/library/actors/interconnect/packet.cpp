@@ -1,10 +1,19 @@
 #include "packet.h"
+#include "interconnect_counters.h"
 
 #include <contrib/ydb/library/actors/core/probes.h>
 
 #include <util/system/datetime.h>
 
 LWTRACE_USING(ACTORLIB_PROVIDER);
+
+TTcpPacketOutTask::TTcpPacketOutTask(const TSessionParams& params, NInterconnect::TOutgoingStream& outgoingStream,
+    NInterconnect::TOutgoingStream& xdcStream)
+    : Params(params)
+    , OutgoingStream(outgoingStream)
+    , XdcStream(xdcStream)
+    , HeaderBookmark(OutgoingStream.Bookmark(sizeof(TTcpPacketHeader_v2)))
+{}
 
 ui32 TEventHolder::Fill(IEventHandle& ev) {
     Serial = 0;
@@ -16,6 +25,7 @@ ui32 TEventHolder::Fill(IEventHandle& ev) {
     ForwardRecipient = ev.GetForwardOnNondeliveryRecipient();
     EventActuallySerialized = 0;
     Descr.Checksum = 0;
+    ZcTransferId = 0;
 
     if (ev.HasBuffer()) {
         Buffer = ev.ReleaseChainBuffer();
@@ -23,9 +33,15 @@ ui32 TEventHolder::Fill(IEventHandle& ev) {
     } else if (ev.HasEvent()) {
         Event.Reset(ev.ReleaseBase());
         EventSerializedSize = Event->CalculateSerializedSize();
+        Y_ABORT_UNLESS(Event->IsSerializable());
     } else {
         EventSerializedSize = 0;
     }
 
     return EventSerializedSize;
+}
+
+ui32 TEventHolder::Fill(IEventHandle& ev, TInstant now) {
+    EnqueueTime = now;
+    return Fill(ev);
 }

@@ -6,9 +6,8 @@
 #include <util/network/init.h>
 #include <util/system/defaults.h>
 
-#include "poller.h"
-
-#include "interconnect_address.h"
+#include <contrib/ydb/library/actors/interconnect/address/interconnect_address.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller.h>
 
 #include <memory>
 
@@ -16,6 +15,7 @@
 
 namespace NActors {
     class TPollerToken;
+    struct TInterconnectProxyCommon;
 }
 
 namespace NInterconnect {
@@ -44,6 +44,7 @@ namespace NInterconnect {
         int Bind(const TAddress& addr) const;
         int Shutdown(int how) const;
         int GetConnectStatus() const;
+        std::variant<TAddress, int> GetSockName() const noexcept;
     };
 
     class TStreamSocket: public TSocket {
@@ -57,6 +58,11 @@ namespace NInterconnect {
 
         virtual ssize_t WriteV(const struct iovec* iov, int iovcnt) const;
         virtual ssize_t ReadV(const struct iovec* iov, int iovcnt) const;
+
+        ssize_t SendWithFlags(const void* msg, size_t len, int flags) const;
+#if defined(__linux__)
+        ssize_t RecvErrQueue(struct msghdr* msg) const;
+#endif
 
         int Connect(const TAddress& addr) const;
         int Connect(const NAddr::IRemoteAddr* addr) const;
@@ -82,8 +88,7 @@ namespace NInterconnect {
         friend class TSecureSocket;
 
     public:
-        TSecureSocketContext(const TString& certificate, const TString& privateKey, const TString& caFilePath,
-            const TString& ciphers);
+        TSecureSocketContext(TIntrusivePtr<NActors::TInterconnectProxyCommon> common);
         ~TSecureSocketContext();
 
     public:
@@ -121,6 +126,7 @@ namespace NInterconnect {
         int GetCipherBits() const;
         TString GetProtocolName() const;
         TString GetPeerCommonName() const;
+        TString GetSignatureAlgorithm() const;
 
         bool WantRead() const;
         bool WantWrite() const;

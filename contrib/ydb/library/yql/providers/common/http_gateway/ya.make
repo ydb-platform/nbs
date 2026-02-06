@@ -1,19 +1,24 @@
 LIBRARY()
 
+ENV(TZ="UTC+23")
+
 SRCS(
-    yql_http_gateway.cpp
+    yql_aws_signature.cpp
     yql_http_default_retry_policy.cpp
+    yql_http_gateway.cpp
 )
 
 PEERDIR(
     contrib/libs/curl
-    contrib/ydb/library/actors/prof
     library/cpp/monlib/dynamic_counters
     library/cpp/retry
-    contrib/ydb/library/yql/providers/common/proto
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/utils/log
-    contrib/ydb/library/yql/utils
+    contrib/ydb/library/actors/http
+    contrib/ydb/library/actors/prof
+    contrib/ydb/library/actors/protos
+    yql/essentials/providers/common/proto
+    yql/essentials/public/issue
+    yql/essentials/utils
+    yql/essentials/utils/log
 )
 
 YQL_LAST_ABI_VERSION()

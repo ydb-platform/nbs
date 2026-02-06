@@ -21,58 +21,27 @@ public:
         : Request(request)
     {}
 
-    void Bootstrap(const TActorContext& ctx) {
-        //TODO: Do we realy realy need to make call to the ticket parser here???
-        //we have done it already in grpc_request_proxy
-        auto req = dynamic_cast<TEvWhoAmIRequest*>(Request.get());
-        Y_ABORT_UNLESS(req, "Unexpected request type for TWhoAmIRPC");
-        TMaybe<TString> authToken = req->GetYdbToken();
-        if (authToken) {
-            TMaybe<TString> database = Request->GetDatabaseName();
-            ctx.Send(MakeTicketParserID(), new TEvTicketParser::TEvAuthorizeTicket({
-                .Database = database ? database.GetRef() : TString(),
-                .Ticket = authToken.GetRef(),
-                .PeerName = Request->GetPeerName()
-            }));
-            Become(&TThis::StateWaitForTicket);
+    void Bootstrap() {
+        const TIntrusiveConstPtr<NACLib::TUserToken>& userToken = Request->GetInternalToken();
+        if (userToken) {
+            ReplyResult(*userToken);
         } else {
             ReplyError("No token provided");
-            PassAway();
         }
-    }
-
-    STFUNC(StateWaitForTicket) {
-        switch (ev->GetTypeRewrite()) {
-            hFunc(TEvTicketParser::TEvAuthorizeTicketResult, Handle);
-            hFunc(TEvents::TEvUndelivered, Handle);
-        }
+        PassAway();
     }
 
 private:
-    void Handle(TEvTicketParser::TEvAuthorizeTicketResult::TPtr& ev) {
-        const TEvTicketParser::TEvAuthorizeTicketResult& result(*ev->Get());
-        auto *response = TEvWhoAmIRequest::AllocateResult<Ydb::Discovery::WhoAmIResult>(Request);
-        if (!result.Error) {
-            if (result.Token != nullptr) {
-                response->set_user(result.Token->GetUserSID());
-                if (TEvWhoAmIRequest::GetProtoRequest(Request)->include_groups()) {
-                    for (const auto& group : result.Token->GetGroupSIDs()) {
-                        response->add_groups(group);
-                    }
-                }
-                Request->SendResult(*response, Ydb::StatusIds::SUCCESS);
-            } else {
-                ReplyError("Empty token in Staff response");
+    void ReplyResult(const NACLib::TUserToken& userToken) {
+        auto* response = TEvWhoAmIRequest::AllocateResult<Ydb::Discovery::WhoAmIResult>(Request);
+        response->set_user(userToken.GetUserSID());
+        if (TEvWhoAmIRequest::GetProtoRequest(Request)->include_groups()) {
+            for (const auto& group : userToken.GetGroupSIDs()) {
+                response->add_groups(group);
             }
-        } else {
-            ReplyError(result.Error.Message);
         }
-        PassAway();
-    }
 
-    void Handle(TEvents::TEvUndelivered::TPtr&) {
-        ReplyError("Error parsing token");
-        PassAway();
+        Request->SendResult(*response, Ydb::StatusIds::SUCCESS);
     }
 
     void ReplyError(const TString& error) {

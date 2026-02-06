@@ -1,6 +1,6 @@
 #include "schema.h"
 #include <contrib/ydb/library/accessor/validator.h>
-#include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>
+#include <yql/essentials/minikql/mkql_type_ops.h>
 #include <contrib/ydb/core/scheme_types/scheme_type_registry.h>
 
 namespace NKikimr::NSchemeShard {
@@ -15,7 +15,8 @@ void TOlapColumnSchema::ParseFromLocalDB(const NKikimrSchemeOp::TOlapColumnDescr
     Id = columnSchema.GetId();
 }
 
-bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate, IErrorCollector& errors, ui32& nextEntityId) {
+bool TOlapColumnsDescription::ApplyUpdate(
+    const TOlapColumnsUpdate& schemaUpdate, const TOlapColumnFamiliesDescription& columnFamilies, IErrorCollector& errors, ui32& nextEntityId) {
     if (Columns.empty() && schemaUpdate.GetAddColumns().empty()) {
         errors.AddError(NKikimrScheme::StatusSchemeError, "No add columns specified");
         return false;
@@ -38,9 +39,26 @@ bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate
                 return false;
             }
         }
-        TOlapColumnSchema newColumn(column, nextEntityId++);
+        std::optional<ui32> columnFamilyId;
+        if (column.GetColumnFamilyName().has_value()) {
+            TString familyName = column.GetColumnFamilyName().value();
+            const TOlapColumnFamily* columnFamily = columnFamilies.GetByName(familyName);
+
+            if (!columnFamily) {
+                errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder()
+                                                                      << "Cannot set column family `" << familyName << "` for column `"
+                                                                      << column.GetName() << "`. Family not found");
+                return false;
+            }
+            columnFamilyId = columnFamily->GetId();
+        }
+        TOlapColumnSchema newColumn(column, nextEntityId++, columnFamilyId);
         if (newColumn.GetKeyOrder()) {
             Y_ABORT_UNLESS(orderedKeyColumnIds.emplace(*newColumn.GetKeyOrder(), newColumn.GetId()).second);
+        }
+        if (!newColumn.GetSerializer().HasObject() && !columnFamilies.GetColumnFamilies().empty() &&
+            !newColumn.ApplySerializerFromColumnFamily(columnFamilies, errors)) {
+            return false;
         }
 
         Y_ABORT_UNLESS(ColumnsByName.emplace(newColumn.GetName(), newColumn.GetId()).second);
@@ -56,7 +74,7 @@ bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate
             auto itColumn = Columns.find(it->second);
             Y_ABORT_UNLESS(itColumn != Columns.end());
             TOlapColumnSchema& newColumn = itColumn->second;
-            if (!newColumn.ApplyDiff(columnDiff, errors)) {
+            if (!newColumn.ApplyDiff(columnDiff, columnFamilies, errors)) {
                 return false;
             }
         }
@@ -66,7 +84,16 @@ bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate
         auto it = orderedKeyColumnIds.begin();
         for (ui32 i = 0; i < orderedKeyColumnIds.size(); ++i, ++it) {
             KeyColumnIds.emplace_back(it->second);
-            Y_ABORT_UNLESS(i == it->first);
+            if (i != it->first) {
+                const TString missedColumnName = i < schemaUpdate.GetPrimaryKeyColumnNames().size() ? schemaUpdate.GetPrimaryKeyColumnNames()[i] : "@unknown";
+                errors.AddError(NKikimrScheme::StatusSchemeError, Sprintf("Unknown column '%s' specified in key column list", missedColumnName.data()));
+                return false;
+            }
+        }
+        if (orderedKeyColumnIds.size() < schemaUpdate.GetPrimaryKeyColumnNames().size()) {
+            const TString missedColumnName = schemaUpdate.GetPrimaryKeyColumnNames()[orderedKeyColumnIds.size()];
+            errors.AddError(NKikimrScheme::StatusSchemeError, Sprintf("Unknown column '%s' specified in key column list", missedColumnName.data()));
+            return false;
         }
         if (KeyColumnIds.empty()) {
             errors.AddError(NKikimrScheme::StatusSchemeError, "No primary key specified");
@@ -87,6 +114,21 @@ bool TOlapColumnsDescription::ApplyUpdate(const TOlapColumnsUpdate& schemaUpdate
         }
         ColumnsByName.erase(columnName);
         Columns.erase(columnInfo->GetId());
+    }
+
+    auto alterColumnFamiliesId = columnFamilies.GetAlterColumnFamiliesId();
+    if (!alterColumnFamiliesId.empty()) {
+        for (auto& [_, column] : Columns) {
+            if (!column.GetColumnFamilyId().has_value()) {
+                errors.AddError(NKikimrScheme::StatusSchemeError,
+                    TStringBuilder() << "Cannot alter family for column `" << column.GetName() << "`. Column family is not set");
+                return false;
+            }
+            ui32 id = column.GetColumnFamilyId().value();
+            if (alterColumnFamiliesId.contains(id)) {
+                column.SetSerializer(columnFamilies.GetByIdVerified(id)->GetSerializerContainer());
+            }
+        }
     }
 
     return true;
@@ -132,7 +174,7 @@ void TOlapColumnsDescription::Serialize(NKikimrSchemeOp::TColumnTableSchema& tab
     }
 }
 
-bool TOlapColumnsDescription::Validate(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const {
+bool TOlapColumnsDescription::ValidateForStore(const NKikimrSchemeOp::TColumnTableSchema& opSchema, IErrorCollector& errors) const {
     const NScheme::TTypeRegistry* typeRegistry = AppData()->TypeRegistry;
 
     ui32 lastColumnId = 0;
@@ -150,6 +192,12 @@ bool TOlapColumnsDescription::Validate(const NKikimrSchemeOp::TColumnTableSchema
         }
         if (colProto.HasId() && colProto.GetId() != col->GetId()) {
             errors.AddError("Column '" + colName + "' has id " + colProto.GetId() + " that does not match schema preset");
+            return false;
+        }
+
+        if (colProto.HasColumnFamilyId() && colProto.GetColumnFamilyId() != col->GetColumnFamilyId()) {
+            errors.AddError(TStringBuilder() << "Column '" << colName << "' has column family id " << colProto.GetColumnFamilyId()
+                                             << " that does not match schema preset");
             return false;
         }
 
@@ -172,13 +220,24 @@ bool TOlapColumnsDescription::Validate(const NKikimrSchemeOp::TColumnTableSchema
             return false;
         }
 
-        auto typeName = NMiniKQL::AdaptLegacyYqlType(colProto.GetType());
-        const NScheme::IType* type = typeRegistry->GetType(typeName);
-        if (!type || !TOlapColumnAdd::IsAllowedType(type->GetTypeId())) {
-            errors.AddError("Type '" + colProto.GetType() + "' specified for column '" + colName + "' is not supported");
-            return false;
+        NScheme::TTypeInfo typeInfo;
+        if (const auto& typeName = NMiniKQL::AdaptLegacyYqlType(colProto.GetType()); typeName.StartsWith("pg")) {
+            const auto typeDesc = NPg::TypeDescFromPgTypeName(typeName);
+            if (!(typeDesc && TOlapColumnAdd::IsAllowedPgType(NPg::PgTypeIdFromTypeDesc(typeDesc)))) {
+                errors.AddError("Type '" + colProto.GetType() + "' specified for column '" + colName + "' is not supported");
+                return false;
+            }
+            typeInfo = NScheme::TTypeInfo(typeDesc);
+        } else if (const auto decimalType = NScheme::TDecimalType::ParseTypeName(typeName)) {
+            typeInfo = NScheme::TTypeInfo(*decimalType);
+        } else {
+            const NScheme::IType* type = typeRegistry->GetType(typeName);
+            if (!type || !TOlapColumnAdd::IsAllowedType(type->GetTypeId())) {
+                errors.AddError("Type '" + colProto.GetType() + "' specified for column '" + colName + "' is not supported");
+                return false;
+            }
+            typeInfo = NScheme::TTypeInfo(type->GetTypeId());
         }
-        NScheme::TTypeInfo typeInfo(type->GetTypeId());
 
         if (typeInfo != col->GetType()) {
             errors.AddError("Type '" + TypeName(typeInfo) + "' specified for column '" + colName + "' does not match schema preset type '" + TypeName(col->GetType()) + "'");

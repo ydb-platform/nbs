@@ -13,10 +13,11 @@ PEERDIR(
     contrib/ydb/core/fq/libs/config
     contrib/ydb/core/fq/libs/events
     contrib/ydb/library/security
-    contrib/ydb/public/sdk/cpp/client/ydb_coordination
-    contrib/ydb/public/sdk/cpp/client/ydb_rate_limiter
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/coordination
+    contrib/ydb/public/sdk/cpp/src/client/rate_limiter
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 GENERATE_ENUM_SERIALIZATION(ydb.h)
@@ -24,3 +25,7 @@ GENERATE_ENUM_SERIALIZATION(ydb.h)
 YQL_LAST_ABI_VERSION()
 
 END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

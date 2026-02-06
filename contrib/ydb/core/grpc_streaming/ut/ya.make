@@ -2,8 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/grpc_streaming)
 
 FORK_SUBTESTS()
 
-TIMEOUT(300)
-
 SIZE(MEDIUM)
 
 SRCS(
@@ -11,7 +9,7 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     contrib/ydb/core/grpc_streaming/ut/grpc
     contrib/ydb/core/testlib/default
 )

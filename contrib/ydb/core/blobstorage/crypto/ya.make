@@ -23,10 +23,15 @@ ENDIF()
 PEERDIR(
     contrib/libs/t1ha
     library/cpp/sse
+    contrib/ydb/core/blobstorage/crypto/chacha_512
     contrib/ydb/library/actors/util
 )
 
 END()
+
+RECURSE(
+    chacha_512
+)
 
 RECURSE_FOR_TESTS(
     ut

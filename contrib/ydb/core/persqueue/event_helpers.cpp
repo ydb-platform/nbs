@@ -15,13 +15,14 @@ void ReplyPersQueueError(
     const TActorContext& ctx,
     ui64 tabletId,
     const TString& topicName,
-    TMaybe<ui32> partition,
+    TMaybe<TPartitionId> partition,
     NKikimr::TTabletCountersBase& counters,
     NKikimrServices::EServiceKikimr service,
     const ui64 responseCookie,
     NPersQueue::NErrorCode::EErrorCode errorCode,
     const TString& error,
-    bool logDebug
+    bool logDebug,
+    bool isInternal
 ) {
     if (errorCode == NPersQueue::NErrorCode::BAD_REQUEST) {
         counters.Cumulative()[COUNTER_PQ_BAD_REQUEST].Increment(1);
@@ -41,7 +42,7 @@ void ReplyPersQueueError(
     } else {
         LOG_WARN_S(ctx, service, logStr);
     }
-    ctx.Send(dstActor, new TEvPQ::TEvError(errorCode, error, responseCookie));
+    ctx.Send(dstActor, new TEvPQ::TEvError(errorCode, error, responseCookie, isInternal));
 }
 
 }// NPQ

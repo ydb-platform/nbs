@@ -2,14 +2,24 @@ import marshal
 import sys
 from _codecs import utf_8_decode, utf_8_encode
 from _frozen_importlib import _call_with_frames_removed, spec_from_loader, BuiltinImporter
-from _frozen_importlib_external import _os, _path_isfile, _path_isabs, path_sep, _path_join, _path_split
+from _frozen_importlib_external import (
+    _os,
+    _path_isfile,
+    _path_isabs,
+    path_sep,
+    _path_join,
+    _path_split,
+    _path_stat,
+    SourceFileLoader,
+    cache_from_source,
+)
+
 from _io import FileIO
 
 import __res as __resource
 
 _b = lambda x: x if isinstance(x, bytes) else utf_8_encode(x)[0]
 _s = lambda x: x if isinstance(x, str) else utf_8_decode(x)[0]
-env_entry_point = b'Y_PYTHON_ENTRY_POINT'
 env_source_root = b'Y_PYTHON_SOURCE_ROOT'
 cfg_source_root = b'arcadia-source-root'
 env_extended_source_search = b'Y_PYTHON_EXTENDED_SOURCE_SEARCH'
@@ -17,17 +27,35 @@ res_ya_ide_venv = b'YA_IDE_VENV'
 executable = sys.executable or 'Y_PYTHON'
 sys.modules['run_import_hook'] = __resource
 
-# This is the prefix in contrib/tools/python3/src/Lib/ya.make.
+def _probe(environ_dict, key, default_value=None):
+    """ Probe bytes and str variants for environ.
+    This is because in python3:
+    * _os (nt) on windows returns str,
+    * _os (posix) on linux return bytes
+    For more information check:
+    * https://github.com/python/cpython/blob/main/Lib/importlib/_bootstrap_external.py#L34
+    * YA-1700
+    """
+    keys = [_b(key), _s(key)]
+    for key in keys:
+        if key in environ_dict:
+            return _b(environ_dict[key])
+
+    return _b(default_value) if isinstance(default_value, str) else default_value
+
+# This is the prefix in contrib/tools/python3/Lib/ya.make.
 py_prefix = b'py/'
 py_prefix_len = len(py_prefix)
 
+EXTERNAL_PY_FILES_MODE = __resource.find(b'py/conf/ENABLE_EXTERNAL_PY_FILES') in (b'1', b'yes')
+
 YA_IDE_VENV = __resource.find(res_ya_ide_venv)
-Y_PYTHON_EXTENDED_SOURCE_SEARCH = _os.environ.get(env_extended_source_search) or YA_IDE_VENV
+Y_PYTHON_EXTENDED_SOURCE_SEARCH = _probe(_os.environ, env_extended_source_search) or YA_IDE_VENV
 
 
 def _init_venv():
     if not _path_isabs(executable):
-        raise RuntimeError('path in sys.executable is not absolute: {}'.format(executable))
+        raise RuntimeError(f'path in sys.executable is not absolute: {executable}')
 
     # Creative copy-paste from site.py
     exe_dir, _ = _path_split(executable)
@@ -50,7 +78,7 @@ def _init_venv():
         if _path_isfile(conffile)
         ]
     if not candidate_confs:
-        raise RuntimeError('{} not found'.format(conf_basename))
+        raise RuntimeError(f'{conf_basename} not found')
     virtual_conf = candidate_confs[0]
     with FileIO(virtual_conf, 'r') as f:
         for line in f:
@@ -60,18 +88,79 @@ def _init_venv():
                 value = value.strip()
                 if key == cfg_source_root:
                     return value
-    raise RuntimeError('{} key not found in {}'.format(cfg_source_root, virtual_conf))
+    raise RuntimeError(f'{cfg_source_root} key not found in {virtual_conf}')
+
+
+def file_bytes(path):
+    # 'open' is not avaiable yet.
+    with FileIO(path, 'r') as f:
+        return f.read()
+
+
+def _guess_source_root():
+    path, tail = _os.getcwd(), 'start'
+
+    while tail:
+        guidence_file = _path_join(path, '.root.path')
+        if _path_isfile(guidence_file):
+            return file_bytes(guidence_file)
+
+        if _path_isfile(_path_join(path, '.arcadia.root')):
+            return _b(path)
+
+        path, tail = _path_split(path)
 
 
 def _get_source_root():
-    env_value = _os.environ.get(env_source_root)
-    if env_value or not YA_IDE_VENV:
+    env_value = _probe(_os.environ, env_source_root)
+    if env_value:
         return env_value
 
-    return _init_venv()
+    if EXTERNAL_PY_FILES_MODE:
+        path = _guess_source_root()
+        if path:
+            return path
+
+        raise RuntimeError(
+            "Cannot find source root: binary is built in external-py-files mode, but no env.var. Y_PYTHON_SOURCE_ROOT is specified. Current working directory: " + _os.getcwd()
+        )
+
+    if YA_IDE_VENV:
+        return _init_venv()
+    return None
+
+
+def _guess_pycache_prefix():
+    env_val = _probe(_os.environ, 'PYTHONPYCACHEPREFIX')
+    if env_val:
+        return _s(env_val)
+
+    path, tail = _os.getcwd(), 'start'
+
+    while tail:
+        guidence_file = _path_join(path, '.pycache.path')
+        if _path_isfile(guidence_file):
+            return _s(file_bytes(guidence_file))
+
+        path, tail = _path_split(path)
 
 
 Y_PYTHON_SOURCE_ROOT = _get_source_root()
+
+if EXTERNAL_PY_FILES_MODE:
+    import _frozen_importlib_external
+
+    # Turn relative paths into absolute ones so that the python machinery stores the bytecode files next to the module.
+    # For more info see data flow in SourceLoader.get_data in contrib/tools/python3/Lib/importlib/_bootstrap_external.py
+    def patched_cache_from_source(filename):
+        filename = resfs_resolve(filename, check_existence=False)
+        return cache_from_source(_s(filename))
+
+    setattr(_frozen_importlib_external, 'cache_from_source', patched_cache_from_source)
+
+    pycache_prefix = _guess_pycache_prefix()
+    if pycache_prefix:
+        sys.pycache_prefix = pycache_prefix
 
 
 def _print(*xs):
@@ -88,12 +177,6 @@ def _print(*xs):
     sys.stderr.write(' '.join(parts) + '\n')
 
 
-def file_bytes(path):
-    # 'open' is not avaiable yet.
-    with FileIO(path, 'r') as f:
-        return f.read()
-
-
 def iter_keys(prefix):
     l = len(prefix)
     for idx in range(__resource.count()):
@@ -103,7 +186,7 @@ def iter_keys(prefix):
 
 
 def iter_py_modules(with_keys=False):
-    for key, path in iter_keys(b'resfs/file/' + py_prefix):
+    for key, path in iter_keys(b'resfs/src/resfs/file/' + py_prefix):
         if path.endswith(b'.py'):  # It may also end with '.pyc'.
             mod = _s(path[:-3].replace(b'/', b'.'))
             if with_keys:
@@ -123,7 +206,7 @@ def iter_prefixes(s):
         i = s.find('.', i + 1)
 
 
-def resfs_resolve(path):
+def resfs_resolve(path, check_existence=True):
     """
     Return the absolute path of a root-relative path if it exists.
     """
@@ -131,6 +214,8 @@ def resfs_resolve(path):
     if Y_PYTHON_SOURCE_ROOT:
         if not path.startswith(Y_PYTHON_SOURCE_ROOT):
             path = _b(path_sep).join((Y_PYTHON_SOURCE_ROOT, path))
+        if not check_existence:
+            return path
         if _path_isfile(path):
             return path
 
@@ -142,6 +227,13 @@ def resfs_src(key, resfs_file=False):
     if resfs_file:
         key = b'resfs/file/' + _b(key)
     return __resource.find(b'resfs/src/' + _b(key))
+
+
+def resfs_has(path):
+    """
+    Return true if the requested file is embedded in the program
+    """
+    return __resource.has(b'resfs/file/' + _b(path))
 
 
 def resfs_read(path, builtin=None):
@@ -175,12 +267,13 @@ def mod_path(mod):
     return py_prefix + _b(mod).replace(b'.', b'/') + b'.py'
 
 
-class ResourceImporter(object):
+class ResourceImporter(SourceFileLoader):
 
     """ A meta_path importer that loads code from built-in resources.
     """
 
-    def __init__(self):
+    def __init__(self, fullname, path):
+        super().__init__(fullname, path)
         self.memory = set(iter_py_modules())  # Set of importable module names.
         self.source_map = {}                  # Map from file names to module names.
         self._source_name = {}                # Map from original to altered module names.
@@ -285,14 +378,24 @@ class ResourceImporter(object):
 
     # PEP-302 extension 1 of 3: data loader.
     def get_data(self, path):
+        # XXX
+        # Python machinery operates on absolute paths and uses this method to load bytecode.
+        # That's why we don't try to resolve the path, but try to read it right away.
+        # For more info see get_code() in this file and
+        # data flow in SourceLoader.get_data in contrib/tools/python3/Lib/importlib/_bootstrap_external.py
+        if EXTERNAL_PY_FILES_MODE and path.endswith('.pyc'):
+            return file_bytes(_b(path))
+
         path = _b(path)
         abspath = resfs_resolve(path)
+
         if abspath:
             return file_bytes(abspath)
+
         path = path.replace(_b('\\'), _b('/'))
         data = resfs_read(path, builtin=True)
         if data is None:
-            raise IOError(path)  # Y_PYTHON_ENTRY_POINT=:resource_files
+            raise OSError(path)  # Y_PYTHON_ENTRY_POINT=:resource_files
         return data
 
     # PEP-302 extension 2 of 3: get __file__ without importing.
@@ -331,20 +434,42 @@ class ResourceImporter(object):
         if relpath:
             abspath = resfs_resolve(relpath)
             if abspath:
-                data = file_bytes(abspath)
-                return compile(data, _s(abspath), 'exec', dont_inherit=True)
+                if EXTERNAL_PY_FILES_MODE:
+                    if not resfs_has(path):
+                        # 1. This is the case when the requested module is registered in the metadata,
+                        # but the content itself is not embedded in the binary.
+                        # And the application itself is compiled in the external py files mode.
+                        # Thus, we have an abspath to the python file and we need to get its bytecode.
+                        # We transfer control to the standard python machinery,
+                        # which will process the bytecode generation and cache it nearby,
+                        # according to the general rules.
+                        return super().get_code(modname)
+                else:
+                    # 2. This is the case when the binary is launched in the mode of
+                    # reading python sources from the file system (Y_PYTHON_SOURCE_ROOT),
+                    # and not from the built-in storage.
+                    data = file_bytes(abspath)
+                    return compile(data, _s(abspath), 'exec', dont_inherit=True)
 
         yapyc_path = path + b'.yapyc3'
         yapyc_data = resfs_read(yapyc_path, builtin=True)
         if yapyc_data:
+            # 3. This is the basic case - we read the compiled bytecode from the built-in storage.
             return marshal.loads(yapyc_data)
         else:
             py_data = resfs_read(path, builtin=True)
             if py_data:
+                # 4. This is the case when the bytecode for the module is not embedded in the binary (PYBUILD_NO_PYC).
+                # Read the python file and compile on the fly.
                 return compile(py_data, _s(relpath), 'exec', dont_inherit=True)
             else:
-                # This covers packages with no __init__.py in resources.
+                # 5. This covers packages with no __init__.py in resources.
                 return compile('', modname, 'exec', dont_inherit=True)
+
+    def path_stats(self, path):
+        path = resfs_resolve(path, check_existence=False)
+        st = _path_stat(path)
+        return {'mtime': st.st_mtime, 'size': st.st_size}
 
     def is_package(self, fullname):
         if fullname in self.memory:
@@ -371,7 +496,7 @@ class ResourceImporter(object):
         if filename in self.source_map:
             return self.source_map[filename]
 
-        if resfs_read(filename, builtin=True) is not None:
+        if resfs_has(filename):
             return b'resfs/file/' + _b(filename)
 
         return b''
@@ -392,6 +517,19 @@ class ResourceImporter(object):
         import os
         path = os.path.dirname(self.get_filename(fullname))
         return _ResfsResourceReader(self, path)
+
+    @staticmethod
+    def find_distributions(*args, **kwargs):
+        """
+        Find distributions.
+
+        Return an iterable of all Distribution instances capable of
+        loading the metadata for packages matching ``context.name``
+        (or all names if ``None`` indicated) along the paths in the list
+        of directories ``context.path``.
+        """
+        from sitecustomize import MetadataArcadiaFinder
+        return MetadataArcadiaFinder.find_distributions(*args, **kwargs)
 
 
 class _ResfsResourceReader:
@@ -513,8 +651,7 @@ class ArcadiaSourceFinder:
                     m = rx.match(mod)
                     if m:
                         found.append((prefix + m.group(1), self.is_package(mod)))
-            for cm in found:
-                yield cm
+            yield from found
 
             # Yield from file system
             for path in paths:
@@ -598,7 +735,7 @@ def excepthook(*args, **kws):
     return traceback.print_exception(*args, **kws)
 
 
-importer = ResourceImporter()
+importer = ResourceImporter(fullname='<resfs>', path='<resfs>')
 
 
 def executable_path_hook(path):

@@ -1,30 +1,32 @@
 #pragma once
 
+#include <future>
 #include <library/cpp/monlib/service/monservice.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/monlib/service/pages/index_mon_page.h>
 #include <library/cpp/monlib/service/pages/resources/css_mon_page.h>
 #include <library/cpp/monlib/service/pages/resources/fonts_mon_page.h>
 #include <library/cpp/monlib/service/pages/resources/js_mon_page.h>
 #include <library/cpp/monlib/service/pages/tablesorter/css_mon_page.h>
 #include <library/cpp/monlib/service/pages/tablesorter/js_mon_page.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/mon.h>
+#include <contrib/ydb/library/actors/http/http.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <ydb-cpp-sdk/client/types/status/status.h>
+
+#include "mon.h"
 
 namespace NActors {
 
-IEventHandle* GetAuthorizeTicketHandle(const NActors::TActorId& owner, const TString& ticket);
-IEventHandle* SelectAuthorizationScheme(const NActors::TActorId& owner, NMonitoring::IMonHttpRequest& request);
-IEventHandle* GetAuthorizeTicketResult(const NActors::TActorId& owner);
-
-class TActorSystem;
-struct TActorId;
+void MakeJsonErrorReply(NJson::TJsonValue& jsonResponse, TString& message, const NYdb::TStatus& status);
+void MakeJsonErrorReply(NJson::TJsonValue& jsonResponse, TString& message, const NYql::TIssues& issues, NYdb::EStatus status);
 
 class TMon {
 public:
-    using TRequestAuthorizer = std::function<IEventHandle*(const NActors::TActorId& owner, NMonitoring::IMonHttpRequest& request)>;
+    using TRequestAuthorizer = std::function<IEventHandle*(const TActorId& owner, NHttp::THttpIncomingRequest* request)>;
 
-    static NActors::IEventHandle* DefaultAuthorizer(const NActors::TActorId& owner, NMonitoring::IMonHttpRequest& request);
+    static IEventHandle* DefaultAuthorizer(const TActorId& owner, NHttp::THttpIncomingRequest* request);
 
     struct TConfig {
         ui16 Port = 0;
@@ -35,15 +37,23 @@ public:
         TRequestAuthorizer Authorizer = DefaultAuthorizer;
         TVector<TString> AllowedSIDs;
         TString RedirectMainPageTo;
-        TString Certificate;
+        TString Certificate; // certificate/private key data in PEM format
+        TString CertificateFile; // certificate file path in PEM format (OpenSSL feature: may optionally contain both certificate chain and private key in the same PEM file if PrivateKeyFile is not set)
+        TString PrivateKeyFile; // private key file path for the certificate in PEM format
+        ui32 MaxRequestsPerSecond = 0;
+        TDuration InactivityTimeout = TDuration::Minutes(2);
+        TString AllowOrigin;
     };
 
-    virtual ~TMon() = default;
-    virtual void Start(TActorSystem* actorSystem = {}) = 0;
-    virtual void Stop() = 0;
-    virtual void Register(NMonitoring::IMonPage* page) = 0;
+    TMon(TConfig config);
+    virtual ~TMon();
 
-    virtual NMonitoring::TIndexMonPage* RegisterIndexPage(const TString& path, const TString& title) = 0;
+    std::future<void> Start(TActorSystem* actorSystem); // signals when monitoring is ready
+    void Stop();
+
+    void Register(NMonitoring::IMonPage* page);
+    NMonitoring::TIndexMonPage* RegisterIndexPage(const TString& path, const TString& title);
+    void RegisterLwtrace();
 
     struct TRegisterActorPageFields {
         TString Title;
@@ -55,14 +65,56 @@ public:
         bool UseAuth = true;
         TVector<TString> AllowedSIDs;
         bool SortPages = true;
+        TString MonServiceName = "utils";
     };
 
-    virtual NMonitoring::IMonPage* RegisterActorPage(TRegisterActorPageFields fields) = 0;
+    NMonitoring::IMonPage* RegisterActorPage(TRegisterActorPageFields fields);
     NMonitoring::IMonPage* RegisterActorPage(NMonitoring::TIndexMonPage* index, const TString& relPath,
         const TString& title, bool preTag, TActorSystem* actorSystem, const TActorId& actorId, bool useAuth = true, bool sortPages = true);
-    virtual NMonitoring::IMonPage* RegisterCountersPage(const TString& path, const TString& title, TIntrusivePtr<::NMonitoring::TDynamicCounters> counters) = 0;
-    virtual NMonitoring::IMonPage* FindPage(const TString& relPath) = 0;
-    virtual void RegisterHandler(const TString& path, const TActorId& handler) = 0;
+    NMonitoring::IMonPage* RegisterCountersPage(const TString& path, const TString& title, TIntrusivePtr<::NMonitoring::TDynamicCounters> counters);
+    NMonitoring::IMonPage* FindPage(const TString& relPath);
+
+    struct TRegisterHandlerFields {
+        TString Path;
+        TActorId Handler;
+        bool UseAuth = true;
+        TVector<TString> AllowedSIDs;
+    };
+
+    void RegisterActorHandler(const TRegisterHandlerFields& fields);
+
+    void RegisterHandler(const TString& path, const TActorId& handler) {
+        RegisterActorHandler({
+            .Path = path,
+            .Handler = handler
+        });
+    }
+
+    const TConfig& GetConfig() const {
+        return Config;
+    }
+
+protected:
+    TConfig Config;
+    TIntrusivePtr<NMonitoring::TIndexMonPage> IndexMonPage;
+    TActorSystem* ActorSystem = {};
+    TActorId HttpProxyActorId;
+    TActorId HttpMonServiceActorId;
+    TActorId HttpAuthMonServiceActorId;
+    TActorId NodeProxyServiceActorId;
+
+    struct TActorMonPageInfo {
+        NMonitoring::TMonPagePtr Page;
+        std::optional<TRegisterHandlerFields> Handler;
+        TString Path;
+    };
+
+    TMutex Mutex;
+    std::vector<TActorMonPageInfo> ActorMonPages;
+    THashMap<TString, TActorId> ActorServices;
+    std::shared_ptr<NMonitoring::IMetricFactory> Metrics;
+
+    void RegisterActorMonPage(const TActorMonPageInfo& pageInfo);
 };
 
 } // NActors

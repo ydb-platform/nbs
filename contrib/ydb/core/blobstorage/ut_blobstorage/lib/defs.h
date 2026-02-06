@@ -2,6 +2,8 @@
 
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/blob_depot/blob_depot.h>
+#include <contrib/ydb/core/cms/console/configs_dispatcher.h>
+#include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/mock/dsproxy_mock.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/mock/model.h>
 #include <contrib/ydb/core/blobstorage/pdisk/mock/pdisk_mock.h>
@@ -22,10 +24,11 @@
 #include <contrib/ydb/core/tx/tx_allocator/txallocator.h>
 #include <contrib/ydb/core/tx/mediator/mediator.h>
 #include <contrib/ydb/core/tx/scheme_board/cache.h>
-#include <contrib/ydb/core/util/testactorsys.h>
+#include <contrib/ydb/core/util/actorsys_test/testactorsys.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <util/system/rusage.h>
 #include <util/random/fast.h>
+#include <util/stream/null.h>
 
 using namespace NActors;
 using namespace NKikimr;

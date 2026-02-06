@@ -1,83 +1,23 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/protos/interconnect.pb.h>
+#include <contrib/ydb/library/actors/interconnect/rdma/rdma.h>
 #include <util/generic/deque.h>
 #include <util/network/address.h>
 
+#include "events/events.h"
 #include "interconnect_stream.h"
 #include "types.h"
 
 namespace NActors {
-    enum class ENetwork : ui32 {
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // local messages
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-        Start = EventSpaceBegin(TEvents::ES_INTERCONNECT_TCP),
-
-        SocketReadyRead = Start,
-        SocketReadyWrite,
-        SocketError,
-        Connect,
-        Disconnect,
-        IncomingConnection,
-        HandshakeAsk,
-        HandshakeAck,
-        HandshakeNak,
-        HandshakeDone,
-        HandshakeFail,
-        Kick,
-        Flush,
-        NodeInfo,
-        BunchOfEventsToDestroy,
-        HandshakeRequest,
-        HandshakeReplyOK,
-        HandshakeReplyError,
-        ResolveAddress,
-        AddressInfo,
-        ResolveError,
-        HTTPStreamStatus,
-        HTTPSendContent,
-        ConnectProtocolWakeup,
-        HTTPProtocolRetry,
-        EvPollerRegister,
-        EvPollerRegisterResult,
-        EvPollerReady,
-        EvUpdateFromInputSession,
-        EvConfirmUpdate,
-        EvSessionBufferSizeRequest,
-        EvSessionBufferSizeResponse,
-        EvProcessPingRequest,
-        EvGetSecureSocket,
-        EvSecureSocket,
-        HandshakeBrokerTake,
-        HandshakeBrokerFree,
-        HandshakeBrokerPermit,
-
-        // external data channel messages
-        EvSubscribeForConnection,
-        EvReportConnection,
-
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // nonlocal messages; their indices must be preserved in order to work properly while doing rolling update
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-        // interconnect load test message
-        EvLoadMessage = Start + 256,
-    };
-
     struct TEvSocketReadyRead: public TEventLocal<TEvSocketReadyRead, ui32(ENetwork::SocketReadyRead)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvSocketReadyRead, "Network: TEvSocketReadyRead")
     };
 
     struct TEvSocketReadyWrite: public TEventLocal<TEvSocketReadyWrite, ui32(ENetwork::SocketReadyWrite)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvSocketReadyWrite, "Network: TEvSocketReadyWrite")
     };
 
     struct TEvSocketError: public TEventLocal<TEvSocketError, ui32(ENetwork::SocketError)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvSocketError, ::strerror(Error))
         TString GetReason() const {
             return ::strerror(Error);
         }
@@ -92,11 +32,9 @@ namespace NActors {
     };
 
     struct TEvSocketConnect: public TEventLocal<TEvSocketConnect, ui32(ENetwork::Connect)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvSocketConnect, "Network: TEvSocketConnect")
     };
 
     struct TEvSocketDisconnect: public TEventLocal<TEvSocketDisconnect, ui32(ENetwork::Disconnect)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvSocketDisconnect, "Network: TEvSocketDisconnect")
         TDisconnectReason Reason;
 
         TEvSocketDisconnect(TDisconnectReason reason)
@@ -106,19 +44,15 @@ namespace NActors {
     };
 
     struct TEvHandshakeBrokerTake: TEventLocal<TEvHandshakeBrokerTake, ui32(ENetwork::HandshakeBrokerTake)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeBrokerTake, "Network: TEvHandshakeBrokerTake")
     };
 
     struct TEvHandshakeBrokerFree: TEventLocal<TEvHandshakeBrokerFree, ui32(ENetwork::HandshakeBrokerFree)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeBrokerFree, "Network: TEvHandshakeBrokerFree")
     };
 
     struct TEvHandshakeBrokerPermit: TEventLocal<TEvHandshakeBrokerPermit, ui32(ENetwork::HandshakeBrokerPermit)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeBrokerPermit, "Network: TEvHandshakeBrokerPermit")
     };
 
     struct TEvHandshakeAsk: public TEventLocal<TEvHandshakeAsk, ui32(ENetwork::HandshakeAsk)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeAsk, "Network: TEvHandshakeAsk")
         TEvHandshakeAsk(const TActorId& self,
                         const TActorId& peer,
                         ui64 counter)
@@ -133,8 +67,6 @@ namespace NActors {
     };
 
     struct TEvHandshakeAck: public TEventLocal<TEvHandshakeAck, ui32(ENetwork::HandshakeAck)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeAck, "Network: TEvHandshakeAck")
-
         TEvHandshakeAck(const TActorId& self, ui64 nextPacket, TSessionParams params)
             : Self(self)
             , NextPacket(nextPacket)
@@ -147,14 +79,11 @@ namespace NActors {
     };
 
     struct TEvHandshakeNak : TEventLocal<TEvHandshakeNak, ui32(ENetwork::HandshakeNak)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvSocketReadyRead, "Network: TEvHandshakeNak")
     };
 
     struct TEvHandshakeRequest
        : public TEventLocal<TEvHandshakeRequest,
                              ui32(ENetwork::HandshakeRequest)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeRequest,
-                                  "Network: TEvHandshakeRequest")
 
         NActorsInterconnect::THandshakeRequest Record;
     };
@@ -162,8 +91,6 @@ namespace NActors {
     struct TEvHandshakeReplyOK
        : public TEventLocal<TEvHandshakeReplyOK,
                              ui32(ENetwork::HandshakeReplyOK)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeReplyOK,
-                                  "Network: TEvHandshakeReplyOK")
 
         NActorsInterconnect::THandshakeReply Record;
     };
@@ -171,8 +98,6 @@ namespace NActors {
     struct TEvHandshakeReplyError
        : public TEventLocal<TEvHandshakeReplyError,
                              ui32(ENetwork::HandshakeReplyError)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeReplyError,
-                                  "Network: TEvHandshakeReplyError")
 
         TEvHandshakeReplyError(TString error) {
             Record.SetErrorExplaination(error);
@@ -182,7 +107,6 @@ namespace NActors {
     };
 
     struct TEvIncomingConnection: public TEventLocal<TEvIncomingConnection, ui32(ENetwork::IncomingConnection)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvIncomingConnection, "Network: TEvIncomingConnection")
         TIntrusivePtr<NInterconnect::TStreamSocket> Socket;
         NInterconnect::TAddress Address;
 
@@ -192,9 +116,44 @@ namespace NActors {
         {}
     };
 
-    struct TEvHandshakeDone: public TEventLocal<TEvHandshakeDone, ui32(ENetwork::HandshakeDone)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeDone, "Network: TEvHandshakeDone")
+    class TRdmaHandshakeResult {
+    public:
+        struct TOk {
+            NInterconnect::NRdma::TQueuePair::TPtr RdmaQp;
+            NInterconnect::NRdma::ICq::TPtr RdmaCq;
+        };
 
+        struct TDisabled {
+            bool RunDelayedHandshake;
+        };
+
+        TRdmaHandshakeResult(NInterconnect::NRdma::TQueuePair::TPtr qp,
+            NInterconnect::NRdma::ICq::TPtr cq)
+        {
+            Result.emplace<TOk>(qp, cq);
+        }
+
+        explicit TRdmaHandshakeResult(TDisabled disabled) {
+            Result.emplace<TDisabled>(disabled.RunDelayedHandshake);
+        }
+
+        bool IsOk() const noexcept {
+            return std::holds_alternative<TOk>(Result);
+        }
+
+        TOk* GetOk() noexcept {
+            return std::get_if<TOk>(&Result);
+        }
+
+        TDisabled* GetDisabled() noexcept {
+            return std::get_if<TDisabled>(&Result);
+        }
+    private:
+        std::variant<TOk, TDisabled> Result;
+    };
+
+    struct TEvHandshakeDone: public TEventLocal<TEvHandshakeDone, ui32(ENetwork::HandshakeDone)> {
+        using TRdmaResult = TRdmaHandshakeResult;
         TEvHandshakeDone(
                 TIntrusivePtr<NInterconnect::TStreamSocket> socket,
                 const TActorId& peer,
@@ -202,7 +161,8 @@ namespace NActors {
                 ui64 nextPacket,
                 TAutoPtr<TProgramInfo>&& programInfo,
                 TSessionParams params,
-                TIntrusivePtr<NInterconnect::TStreamSocket> xdcSocket)
+                TIntrusivePtr<NInterconnect::TStreamSocket> xdcSocket,
+                TRdmaHandshakeResult rdmaHandshakeResult)
             : Socket(std::move(socket))
             , Peer(peer)
             , Self(self)
@@ -210,6 +170,7 @@ namespace NActors {
             , ProgramInfo(std::move(programInfo))
             , Params(std::move(params))
             , XdcSocket(std::move(xdcSocket))
+            , RdmaHanshakeResult(rdmaHandshakeResult)
         {
         }
 
@@ -220,11 +181,10 @@ namespace NActors {
         TAutoPtr<TProgramInfo> ProgramInfo;
         const TSessionParams Params;
         TIntrusivePtr<NInterconnect::TStreamSocket> XdcSocket;
+        TRdmaHandshakeResult RdmaHanshakeResult;
     };
 
     struct TEvHandshakeFail: public TEventLocal<TEvHandshakeFail, ui32(ENetwork::HandshakeFail)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHandshakeFail, "Network: TEvHandshakeFail")
-
         enum EnumHandshakeFail {
             HANDSHAKE_FAIL_TRANSIENT,
             HANDSHAKE_FAIL_PERMANENT,
@@ -242,25 +202,19 @@ namespace NActors {
     };
 
     struct TEvKick: public TEventLocal<TEvKick, ui32(ENetwork::Kick)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvKick, "Network: TEvKick")
     };
 
     struct TEvFlush: public TEventLocal<TEvFlush, ui32(ENetwork::Flush)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvFlush, "Network: TEvFlush")
     };
 
     struct TEvLocalNodeInfo
        : public TEventLocal<TEvLocalNodeInfo, ui32(ENetwork::NodeInfo)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvLocalNodeInfo, "Network: TEvLocalNodeInfo")
 
         ui32 NodeId;
         std::vector<NInterconnect::TAddress> Addresses;
     };
 
     struct TEvBunchOfEventsToDestroy : TEventLocal<TEvBunchOfEventsToDestroy, ui32(ENetwork::BunchOfEventsToDestroy)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvBunchOfEventsToDestroy,
-                                  "Network: TEvBunchOfEventsToDestroy")
-
         TEvBunchOfEventsToDestroy(TDeque<TAutoPtr<IEventBase>> events)
             : Events(std::move(events))
         {
@@ -271,7 +225,6 @@ namespace NActors {
 
     struct TEvResolveAddress
        : public TEventLocal<TEvResolveAddress, ui32(ENetwork::ResolveAddress)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvResolveAddress, "Network: TEvResolveAddress")
 
         TString Address;
         ui16 Port;
@@ -279,14 +232,12 @@ namespace NActors {
 
     struct TEvAddressInfo
        : public TEventLocal<TEvAddressInfo, ui32(ENetwork::AddressInfo)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvAddressInfo, "Network: TEvAddressInfo")
 
         NAddr::IRemoteAddrPtr Address;
     };
 
     struct TEvResolveError
        : public TEventLocal<TEvResolveError, ui32(ENetwork::ResolveError)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvResolveError, "Network: TEvResolveError")
 
         TString Explain;
         TString Host;
@@ -294,8 +245,6 @@ namespace NActors {
 
     struct TEvHTTPStreamStatus
        : public TEventLocal<TEvHTTPStreamStatus, ui32(ENetwork::HTTPStreamStatus)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHTTPStreamStatus,
-                                  "Network: TEvHTTPStreamStatus")
         enum EStatus {
             READY,
             COMPLETE,
@@ -309,7 +258,6 @@ namespace NActors {
 
     struct TEvHTTPSendContent
        : public TEventLocal<TEvHTTPSendContent, ui32(ENetwork::HTTPSendContent)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHTTPSendContent, "Network: TEvHTTPSendContent")
 
         const char* Data;
         size_t Len;
@@ -319,14 +267,11 @@ namespace NActors {
     struct TEvConnectWakeup
        : public TEventLocal<TEvConnectWakeup,
                              ui32(ENetwork::ConnectProtocolWakeup)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvConnectWakeup, "Protocols: TEvConnectWakeup")
     };
 
     struct TEvHTTPProtocolRetry
        : public TEventLocal<TEvHTTPProtocolRetry,
                              ui32(ENetwork::HTTPProtocolRetry)> {
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvHTTPProtocolRetry,
-                                  "Protocols: TEvHTTPProtocolRetry")
     };
 
     struct TEvLoadMessage
@@ -377,8 +322,6 @@ namespace NActors {
     {};
 
     struct TEvSessionBufferSizeRequest : TEventLocal<TEvSessionBufferSizeRequest, static_cast<ui32>(ENetwork::EvSessionBufferSizeRequest)> {
-        //DEFINE_SIMPLE_LOCAL_EVENT(TEvSessionBufferSizeRequest, "Session: TEvSessionBufferSizeRequest")
-        DEFINE_SIMPLE_LOCAL_EVENT(TEvSessionBufferSizeRequest, "Network: TEvSessionBufferSizeRequest");
     };
 
     struct TEvSessionBufferSizeResponse : TEventLocal<TEvSessionBufferSizeResponse, static_cast<ui32>(ENetwork::EvSessionBufferSizeResponse)> {

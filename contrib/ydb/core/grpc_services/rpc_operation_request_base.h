@@ -22,6 +22,9 @@ class TRpcOperationRequestActor: public TRpcRequestActor<TDerived, TEvRequest, H
 protected:
     virtual TStringBuf GetLogPrefix() const = 0;
     virtual IEventBase* MakeRequest() = 0;
+    virtual ui32 GetRequiredAccessRights() const {
+        return NACLib::GenericRead | NACLib::GenericWrite;
+    }
 
     STATEFN(StateBase) {
         switch (ev->GetTypeRewrite()) {
@@ -47,14 +50,14 @@ protected:
 
     void ResolveDatabase() {
         LOG_D("Resolve database"
-            << ": name# " << this->DatabaseName);
+            << ": name# " << this->GetDatabaseName());
 
         auto request = MakeHolder<NSchemeCache::TSchemeCacheNavigate>();
-        request->DatabaseName = this->DatabaseName;
+        request->DatabaseName = this->GetDatabaseName();
 
         auto& entry = request->ResultSet.emplace_back();
         entry.Operation = NSchemeCache::TSchemeCacheNavigate::OpPath;
-        entry.Path = NKikimr::SplitPath(this->DatabaseName);
+        entry.Path = NKikimr::SplitPath(this->GetDatabaseName());
 
         this->Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvNavigateKeySet(request.Release()));
     }
@@ -88,7 +91,7 @@ protected:
             }
         }
 
-        if (!this->CheckAccess(CanonizePath(entry.Path), entry.SecurityObject, NACLib::GenericRead | NACLib::GenericWrite)) {
+        if (!this->CheckAccess(CanonizePath(entry.Path), entry.SecurityObject, GetRequiredAccessRights())) {
             return;
         }
 

@@ -5,11 +5,11 @@
 
 #include <contrib/ydb/library/actors/helpers/selfping_actor.h>
 
-#include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/utils/backtrace/backtrace.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <yql/essentials/utils/log/log.h>
+#include <yql/essentials/utils/backtrace/backtrace.h>
+#include <yql/essentials/utils/yql_panic.h>
 
-#include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
+#include <yql/essentials/minikql/invoke_builtins/mkql_builtins.h>
 
 #include <contrib/ydb/library/actors/core/executor_pool_basic.h>
 #include <contrib/ydb/library/actors/core/scheduler_basic.h>
@@ -19,7 +19,7 @@
 #include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_proxy.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_server.h>
-#include <contrib/ydb/library/actors/interconnect/poller_actor.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_actor.h>
 #include <library/cpp/yson/node/node_io.h>
 
 #include <util/stream/file.h>

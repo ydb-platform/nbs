@@ -68,6 +68,8 @@ enum ESimpleCounters {
     COUNTER_PQ_TABLET_OPENED_PIPES = 5                               [(CounterOpts) = {Name: "OpenedPipes"}];
     COUNTER_PQ_TABLET_INFLIGHT = 6                                   [(CounterOpts) = {Name: "RequestsInflight"}];
 
+    COUNTER_PQ_TABLET_TX_COMPLETE_LAG = 7                            [(CounterOpts) = {Name: "TxCompleteLag"}];
+    COUNTER_PQ_TABLET_TX_IN_FLY = 8                                  [(CounterOpts) = {Name: "TxInFly"}];
 }
 
 enum EPercentileCounters {
@@ -139,6 +141,8 @@ enum EPercentileCounters {
     COUNTER_LATENCY_PQ_SPLIT_MESSAGE_GROUP = 19                 [(CounterOpts) = {Name: "LatencySplitMessageGroup"}];
     COUNTER_LATENCY_PQ_PUBLISH_READ = 20                        [(CounterOpts) = {Name: "LatencyPublishRead"}];
     COUNTER_LATENCY_PQ_FORGET_READ = 21                         [(CounterOpts) = {Name: "LatencyForgetRead"}];
+
+    COUNTER_LATENCY_PQ_TXCALCPREDICATE = 22                     [(CounterOpts) = {Name: "LatencyTxCalcPredicate"}];
 }
 
 

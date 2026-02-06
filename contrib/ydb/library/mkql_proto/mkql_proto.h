@@ -1,10 +1,10 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/minikql/defs.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/minikql/defs.h>
+#include <yql/essentials/minikql/mkql_node.h>
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_value.pb.h>
-#include <contrib/ydb/library/uuid/uuid.h>
+#include <yql/essentials/types/uuid/uuid.h>
 
 namespace NKikimr::NMiniKQL {
 
@@ -20,6 +20,7 @@ void ExportValueToProto(TType* type, const NUdf::TUnboxedValuePod& value, Ydb::V
 
 
 TType* ImportTypeFromProto(const NKikimrMiniKQL::TType& type, const TTypeEnvironment& env);
+bool IsValidDecimal(ui8 precision, NYql::NDecimal::TInt128 v);
 
 std::pair<TType*, NUdf::TUnboxedValue> ImportValueFromProto(const Ydb::Type& type, const Ydb::Value& value,
     const TTypeEnvironment& env, const THolderFactory& factory);

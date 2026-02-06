@@ -1,4 +1,4 @@
-OWNER(g:ymake)
+SUBSCRIBER(g:ymake)
 
 PY23_TEST()
 
@@ -15,7 +15,6 @@ IF (PY2)
         fetch_from.py
         fetch_from_archive.py
         fetch_from_mds.py
-        fetch_from_npm.py
         fetch_from_sandbox.py
         fetch_resource.py
         gen_java_codenav_entry.py
@@ -29,7 +28,6 @@ IF (PY2)
         python_yndexer.py
         run_ios_simulator.py
         run_msvc_wine.py
-        run_sonar.py
         symlink.py
         touch.py
         unpacking_jtest_runner.py
@@ -42,10 +40,8 @@ ELSEIF (PY3)
     TEST_SRCS(
         append_file.py
         autotar_gendirs.py
-        build_dll_and_java.py
         build_info_gen.py
         build_java_codenav_index.py
-        build_java_with_error_prone.py
         build_java_with_error_prone2.py
         cat.py
         cgo1_wrapper.py
@@ -80,13 +76,14 @@ ELSEIF (PY3)
         gen_join_srcs.py
         gen_py_protos.py
         gen_py_reg.py
-        gen_swiftc_output_map.py
         gen_tasklet_reg.py
         gen_test_apk_gradle_script.py
         gen_yql_python_udf.py
         generate_mf.py
         generate_pom.py
+        generate_win_vfs.py
         go_proto_wrapper.py
+        java_command_file.py
         java_pack_to_file.py
         jni_swig.py
         kt_copy.py
@@ -100,7 +97,7 @@ ELSEIF (PY3)
         make_container.py
         make_container_layer.py
         make_java_classpath_file.py
-        make_java_srclists.py
+        prepare_jar_build.py
         make_manifest_from_bf.py
         merge_coverage_data.py
         merge_files.py
@@ -115,6 +112,7 @@ ELSEIF (PY3)
         py_compile.py
         resolve_java_srcs.py
         retry.py
+        retry_cc.py
         rodata2asm.py
         rodata2cpp.py
         run_javac.py
@@ -131,7 +129,6 @@ ELSEIF (PY3)
         with_coverage.py
         with_kapt_args.py
         with_pathsep_resolve.py
-        wrap_groovyc.py
         wrapcc.py
         wrapper.py
         write_file_size.py

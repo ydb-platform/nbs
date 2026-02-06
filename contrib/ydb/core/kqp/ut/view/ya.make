@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/core/kqp)
 
-OWNER(g:kikimr)
-
 SIZE(MEDIUM)
 
 SRCS(
@@ -10,8 +8,9 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/core/kqp/ut/common
-    contrib/ydb/library/yql/sql
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/sql
+    yql/essentials/sql/v1
+    yql/essentials/utils/log
 
     contrib/ydb/core/testlib/basics/default
 )

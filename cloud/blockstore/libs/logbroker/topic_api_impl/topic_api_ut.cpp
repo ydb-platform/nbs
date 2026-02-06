@@ -1,6 +1,6 @@
 #include "topic_api.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils/test_server.h>
 
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
@@ -9,7 +9,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -106,7 +106,7 @@ struct TFixture
     {
         auto session = Client->CreateReadSession(NYdb::NTopic::TReadSessionSettings()
             .ConsumerName(TestConsumer)
-            .AppendTopics(TestTopic)
+            .AppendTopics(std::string(TestTopic))
             .Decompress(true)
             .Log(Logging->CreateLog("Read")));
 
@@ -125,7 +125,7 @@ struct TFixture
 
                         for (auto& m: ev.GetMessages()) {
                             messages.emplace_back(TMessage{
-                                m.GetData(),
+                                TString{m.GetData()},
                                 m.GetSeqNo()
                             });
                         }

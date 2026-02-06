@@ -138,6 +138,15 @@ namespace NKikimr {
             if (record.ExtremeQueriesSize() == 0)
                 return false; // we need to have one
 
+            for (const auto& query : record.GetExtremeQueries()) {
+                TLogoBlobID blobId = LogoBlobIDFromLogoBlobID(query.GetId());
+                if (!TErasureType::IsCrcModeValid(blobId.CrcMode())) {
+                    // We shouldn't be able to create TEvGet request with invalid CrcMode at all
+                    // something went wrong
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -158,7 +167,7 @@ namespace NKikimr {
         LOG_DEBUG(ctx, NKikimrServices::BS_VDISK_OTHER,
                 VDISKP(vctx->VDiskLogPrefix,
                     "TEvVDbStatResult: %s", result->ToString().data()));
-        SendVDiskResponse(ctx, ev->Sender, result.release(), ev->Cookie);
+        SendVDiskResponse(ctx, ev->Sender, result.release(), ev->Cookie, vctx, {});
     }
 
     template <class TKey, class TMemRec>

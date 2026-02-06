@@ -28,16 +28,10 @@ public:
             TTabletInfo* tablet = Self->FindTablet(tabletId, followerId);
             if (tablet != nullptr && metrics.HasResourceUsage()) {
                 tablet->UpdateResourceUsage(metrics.GetResourceUsage());
-                const NKikimrTabletBase::TMetrics& metrics(tablet->GetResourceValues());
-
-                db.Table<Schema::Metrics>().Key(tabletId, followerId).Update<Schema::Metrics::ProtoMetrics>(metrics);
-
-                db.Table<Schema::Metrics>().Key(tabletId, followerId).Update<Schema::Metrics::MaximumCPU>(tablet->GetResourceMetricsAggregates().MaximumCPU);
-                db.Table<Schema::Metrics>().Key(tabletId, followerId).Update<Schema::Metrics::MaximumMemory>(tablet->GetResourceMetricsAggregates().MaximumMemory);
-                db.Table<Schema::Metrics>().Key(tabletId, followerId).Update<Schema::Metrics::MaximumNetwork>(tablet->GetResourceMetricsAggregates().MaximumNetwork);
 
                 tablet->Statistics.SetLastAliveTimestamp(now.MilliSeconds());
                 tablet->ActualizeTabletStatistics(now);
+                Self->EnqueueUpdateMetrics(tablet);
                     
                 if (tablet->IsLeader()) {
                     db.Table<Schema::Tablet>()
@@ -54,6 +48,7 @@ public:
         }
         TNodeInfo* node = Self->FindNode(nodeId);
         if (node != nullptr) {
+            node->UpdateResourceMaximum(record.GetResourceMaximum());
             node->UpdateResourceTotalUsage(record);
             node->Statistics.SetLastAliveTimestamp(now.MilliSeconds());
             node->ActualizeNodeStatistics(now);
@@ -63,6 +58,10 @@ public:
                        << ResourceRawValuesFromMetrics(record.GetTotalResourceUsage())
                        << " accumulated to "
                        << node->ResourceTotalValues);
+            if (Self->NotEnoughResources && !node->IsOverloaded() && node->IsAllowedToRunTablet() && node->IsAbleToScheduleTablet()) {
+                Self->NotEnoughResources = false;
+                Self->ProcessWaitQueue();
+            }
             db.Table<Schema::Node>().Key(nodeId).Update<Schema::Node::Statistics>(node->Statistics);
         }
         return true;

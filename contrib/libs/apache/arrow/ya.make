@@ -16,7 +16,7 @@ LICENSE(
     Zlib
 )
 
-LICENSE_TEXTS(LICENSE.txt)
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 VERSION(5.0.0)
 

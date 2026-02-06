@@ -1,10 +1,10 @@
 #include "access_service.h"
-#include <ydb/core/base/appdata.h>
-#include <ydb/core/testlib/actors/test_runtime.h>
-#include <ydb/library/actors/core/event.h>
-#include <ydb/library/actors/core/event_local.h>
-#include <ydb/library/testlib/service_mocks/nebius_access_service_mock.h>
-#include <ydb/library/grpc/server/grpc_server.h>
+#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/testlib/actors/test_runtime.h>
+#include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/testlib/service_mocks/nebius_access_service_mock.h>
+#include <contrib/ydb/library/grpc/server/grpc_server.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -34,7 +34,7 @@ struct TTestSetup : public NUnitTest::TBaseFixture {
 
     TTestActorRuntime::TEgg MakeEgg() {
         return
-            { new TAppData(0, 0, 0, 0, { }, nullptr, nullptr, nullptr, nullptr), nullptr, nullptr };
+            { new TAppData(0, 0, 0, 0, { }, nullptr, nullptr, nullptr, nullptr), nullptr, nullptr, {} };
     }
 
     void Init() {

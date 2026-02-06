@@ -2,9 +2,9 @@
 
 #include "yql_clickhouse_provider.h"
 
-#include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_exec.h>
-#include <contrib/ydb/library/yql/providers/common/transform/yql_visit.h>
+#include <yql/essentials/core/yql_graph_transformer.h>
+#include <yql/essentials/providers/common/transform/yql_exec.h>
+#include <yql/essentials/providers/common/transform/yql_visit.h>
 
 #include <util/generic/ptr.h>
 

@@ -3,8 +3,8 @@ LIBRARY()
 PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/minikql/computation
-    contrib/ydb/library/yql/utils
+    yql/essentials/minikql/computation
+    yql/essentials/utils
 )
 
 SRCS(

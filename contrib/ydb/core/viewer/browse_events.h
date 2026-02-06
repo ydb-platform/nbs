@@ -1,13 +1,12 @@
 #pragma once
 
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/event_local.h>
-#include <contrib/ydb/core/viewer/protos/viewer.pb.h>
-
 #include <util/generic/string.h>
+#include <contrib/ydb/core/base/events.h>
+#include <contrib/ydb/core/viewer/protos/viewer.pb.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
 
-namespace NKikimr {
-namespace NViewer {
+namespace NKikimr::NViewer {
 
 namespace NViewerEvents {
     enum EEv {
@@ -76,5 +75,4 @@ namespace NViewerEvents {
     };
 }   // namespace NViewerEvents
 
-}   // namespace NViewer
-}   // namespace NKikimr
+}

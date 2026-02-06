@@ -2,13 +2,15 @@ UNITTEST_FOR(contrib/ydb/library/yql/dq/opt)
 
 SRCS(
     dq_cbo_ut.cpp
+    dq_opt_hypergraph_ut.cpp
+    dq_opt_interesting_orderings_ut.cpp
 )
 
 PEERDIR(
     contrib/ydb/library/yql/dq/opt
-    contrib/ydb/library/yql/sql/pg
-    contrib/ydb/library/yql/parser/pg_wrapper
-    contrib/ydb/library/yql/public/udf/service/stub
+    yql/essentials/sql/pg
+    yql/essentials/parser/pg_wrapper
+    yql/essentials/public/udf/service/stub
 )
 
 SIZE(SMALL)

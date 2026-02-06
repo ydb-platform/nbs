@@ -10,6 +10,7 @@ SRCS(
     fake_scheme_shard.h
     minikql_compile.h
     mock_pq_metacache.h
+    storage_helpers.cpp
     tablet_flat_dummy.cpp
     tablet_helpers.cpp
     tablet_helpers.h
@@ -25,7 +26,7 @@ PEERDIR(
     contrib/ydb/apps/version
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     contrib/ydb/library/grpc/server
     contrib/ydb/library/grpc/server/actors
     library/cpp/regex/pcre
@@ -54,6 +55,7 @@ PEERDIR(
     contrib/ydb/core/kqp
     contrib/ydb/core/kqp/federated_query
     contrib/ydb/core/kqp/finalize_script_service
+    contrib/ydb/core/kqp/proxy_service
     contrib/ydb/core/metering
     contrib/ydb/core/mind
     contrib/ydb/core/mind/address_classification
@@ -63,6 +65,7 @@ PEERDIR(
     contrib/ydb/core/persqueue
     contrib/ydb/core/protos
     contrib/ydb/core/security
+    contrib/ydb/core/security/ldap_auth_provider
     contrib/ydb/core/statistics/aggregator
     contrib/ydb/core/sys_view/processor
     contrib/ydb/core/sys_view/service
@@ -82,29 +85,37 @@ PEERDIR(
     contrib/ydb/library/mkql_proto/protos
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/library/security
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    yql/essentials/minikql/comp_nodes/llvm16
+    contrib/ydb/library/yql/providers/s3/actors_factory
+    yt/yql/providers/yt/codec/codegen
+    yt/yql/providers/yt/comp_nodes/llvm16
+    yt/yql/providers/yt/comp_nodes/dq/llvm16
+    yql/essentials/public/udf/service/exception_policy
+    contrib/ydb/public/api/protos
     contrib/ydb/public/lib/base
     contrib/ydb/public/lib/deprecated/kicli
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
-    contrib/ydb/public/sdk/cpp/client/ydb_query
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/topic/codecs
+    contrib/ydb/public/sdk/cpp/src/client/query
+    contrib/ydb/public/sdk/cpp/src/client/table
     contrib/ydb/services/auth
     contrib/ydb/services/cms
     contrib/ydb/services/datastreams
     contrib/ydb/services/discovery
     contrib/ydb/services/ext_index/service
+    contrib/ydb/services/ymq
     contrib/ydb/core/tx/conveyor/service
+    contrib/ydb/core/tx/priorities/service
+    contrib/ydb/core/tx/limiter/grouped_memory/usage
     contrib/ydb/services/fq
     contrib/ydb/services/kesus
     contrib/ydb/services/persqueue_cluster_discovery
     contrib/ydb/services/persqueue_v1
     contrib/ydb/services/rate_limiter
+    contrib/ydb/services/replication
     contrib/ydb/services/monitoring
     contrib/ydb/services/metadata/ds_table
-    contrib/ydb/services/bg_tasks/ds_table
-    contrib/ydb/services/bg_tasks
+    contrib/ydb/services/tablet
     contrib/ydb/services/ydb
 
     contrib/ydb/core/http_proxy

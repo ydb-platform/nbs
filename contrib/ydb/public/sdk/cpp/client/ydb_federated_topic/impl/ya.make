@@ -24,7 +24,7 @@ PEERDIR(
     contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/make_request
     contrib/ydb/public/sdk/cpp/client/ydb_common_client/impl
     contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/impl
+    contrib/ydb/public/sdk/cpp/client/ydb_topic/impl
     contrib/ydb/public/sdk/cpp/client/ydb_proto
 )
 

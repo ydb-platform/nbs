@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    out.cpp
     value.cpp
 )
 
@@ -11,12 +12,8 @@ PEERDIR(
     contrib/ydb/public/api/protos
     contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/value_helpers
     contrib/ydb/public/sdk/cpp/client/ydb_types/fatal_error_handlers
-    contrib/ydb/library/yql/public/decimal
-    contrib/ydb/library/uuid
+    yql/essentials/public/decimal
+    yql/essentials/types/uuid
 )
 
 END()
-
-RECURSE_FOR_TESTS(
-    ut
-)

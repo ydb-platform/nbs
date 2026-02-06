@@ -6,6 +6,8 @@
 #include <contrib/ydb/library/actors/core/mailbox.h>
 #include <contrib/ydb/core/util/simple_cache.h>
 
+#include <grpcpp/support/status.h>
+
 namespace NGrpcActorClient {
 
 template <typename TEventRequestType, typename TEventResponseType>
@@ -126,9 +128,9 @@ public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() { return NKikimrServices::TActivity::ACTOR_SERVICE_CACHE; }
 
     TGrpcServiceCache(const std::variant<NActors::TActorId, NActors::IActor*>& underlyingActor,
-                        size_t grpcCacheSize = 1024,
-                        TDuration grpcCacheSuccessLifeTime = TDuration::Minutes(1),
-                        TDuration grpcCacheErrorLifeTime = TDuration::Seconds(10))
+                      size_t grpcCacheSize = 1024,
+                      TDuration grpcCacheSuccessLifeTime = TDuration::Minutes(1),
+                      TDuration grpcCacheErrorLifeTime = TDuration::Seconds(10))
         : UnderlyingActor(underlyingActor)
     {
         Cache.MaxSize = grpcCacheSize;
@@ -150,17 +152,17 @@ public:
 
 template <typename TEventRequestType, typename TEventResponseType>
 inline NActors::IActor* CreateGrpcServiceCache(const NActors::TActorId& underlyingActor,
-                                        size_t grpcCacheSize = 1024,
-                                        TDuration grpcCacheSuccessLifeTime = TDuration::Minutes(1),
-                                        TDuration grpcCacheErrorLifeTime = TDuration::Seconds(10)) {
+                                               size_t grpcCacheSize = 1024,
+                                               TDuration grpcCacheSuccessLifeTime = TDuration::Minutes(1),
+                                               TDuration grpcCacheErrorLifeTime = TDuration::Seconds(10)) {
     return new TGrpcServiceCache<TEventRequestType, TEventResponseType>(underlyingActor, grpcCacheSize, grpcCacheSuccessLifeTime, grpcCacheErrorLifeTime);
 }
 
 template <typename TEventRequestType, typename TEventResponseType>
 inline NActors::IActor* CreateGrpcServiceCache(NActors::IActor* underlyingActor,
-                                        size_t grpcCacheSize = 1024,
-                                        TDuration grpcCacheSuccessLifeTime = TDuration::Minutes(1),
-                                        TDuration grpcCacheErrorLifeTime = TDuration::Seconds(10)) {
+                                               size_t grpcCacheSize = 1024,
+                                               TDuration grpcCacheSuccessLifeTime = TDuration::Minutes(1),
+                                               TDuration grpcCacheErrorLifeTime = TDuration::Seconds(10)) {
     return new TGrpcServiceCache<TEventRequestType, TEventResponseType>(underlyingActor, grpcCacheSize, grpcCacheSuccessLifeTime, grpcCacheErrorLifeTime);
 }
 

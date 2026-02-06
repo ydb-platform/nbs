@@ -2,11 +2,11 @@
 
 #include "yql_dq_gateway.h"
 
-#include <contrib/ydb/library/yql/providers/common/metrics/metrics_registry.h>
-#include <contrib/ydb/library/yql/core/yql_data_provider.h>
-#include <contrib/ydb/library/yql/core/yql_udf_resolver.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
-#include <contrib/ydb/library/yql/core/file_storage/file_storage.h>
+#include <yql/essentials/providers/common/metrics/metrics_registry.h>
+#include <yql/essentials/core/yql_data_provider.h>
+#include <yql/essentials/core/yql_udf_resolver.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node.h>
+#include <yql/essentials/core/file_storage/file_storage.h>
 
 namespace NYql {
 

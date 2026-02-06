@@ -14,9 +14,10 @@ TStoragePoolInfo::TStoragePoolInfo(const TString& name, THiveSharedSettings* hiv
 }
 
 TStorageGroupInfo& TStoragePoolInfo::GetStorageGroup(TStorageGroupId groupId) {
-    auto it = Groups.find(groupId);
+    decltype(Groups)::insert_ctx ctx;
+    auto it = Groups.find(groupId, ctx);
     if (it == Groups.end()) {
-        it = Groups.emplace(std::piecewise_construct, std::tuple<TStorageGroupId>(groupId), std::tuple<const TStoragePoolInfo&, TStorageGroupId>(*this, groupId)).first;
+        it = Groups.emplace_direct(ctx, std::piecewise_construct, std::tuple<TStorageGroupId>(groupId), std::tuple<const TStoragePoolInfo&, TStorageGroupId>(*this, groupId));
     }
     return it->second;
 }
@@ -103,9 +104,6 @@ size_t TStoragePoolInfo::SelectGroup<NKikimrConfig::THiveConfig::HIVE_STORAGE_SE
 const TEvControllerSelectGroupsResult::TGroupParameters* TStoragePoolInfo::FindFreeAllocationUnit(std::function<bool(const TStorageGroupInfo&)> filter,
                                                                                                   std::function<double(const TStorageGroupInfo*)> calculateUsage) {
     if (Groups.empty()) {
-        BLOG_I(
-            "TStoragePoolInfo::FindFreeAllocationUnit, Storage pool "
-            << Name << " has empty Groups");
         return nullptr;
     }
     TVector<const TStorageGroupInfo*> groupCandidates;
@@ -116,9 +114,6 @@ const TEvControllerSelectGroupsResult::TGroupParameters* TStoragePoolInfo::FindF
         }
     }
     if (groupCandidates.empty()) {
-        BLOG_I(
-            "TStoragePoolInfo::FindFreeAllocationUnit, Storage pool "
-            << Name << ". There are no groups that satisfy the filter.");
         return nullptr;
     }
     TVector<double> groupCandidateUsages;
@@ -189,7 +184,7 @@ TVector<TTabletId> TStoragePoolInfo::PullWaitingTablets() {
 }
 
 TStoragePoolInfo::TStats TStoragePoolInfo::GetStats() const {
-    TStoragePoolInfo::TStats stats;
+    TStoragePoolInfo::TStats stats = {};
     if (Groups.empty()) {
         return stats;
     }

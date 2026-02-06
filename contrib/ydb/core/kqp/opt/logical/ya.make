@@ -17,7 +17,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/core/kqp/common
-    contrib/ydb/library/yql/core/extract_predicate
+    yql/essentials/core/extract_predicate
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/opt
 )

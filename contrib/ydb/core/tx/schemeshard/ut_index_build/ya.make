@@ -2,8 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/tx/schemeshard)
 
 FORK_SUBTESTS()
 
-TIMEOUT(600)
-
 SIZE(MEDIUM)
 
 PEERDIR(
@@ -14,12 +12,15 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 YQL_LAST_ABI_VERSION()
 
 SRCS(
+    ut_schemeshard_build_index_helpers.cpp
     ut_index_build.cpp
+    ut_vector_index_build.cpp
 )
 
 END()

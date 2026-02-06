@@ -150,7 +150,7 @@ public:
     TString GetLogPrefix() const;
 
 protected:
-    NKikimrTabletBase::TMetrics ResourceValues; // current values of various metrics
+    TMetrics ResourceValues; // current values of various metrics
     TTabletMetricsAggregates ResourceMetricsAggregates;
     TResourceNormalizedValues ResourceNormalizedValues;
 
@@ -161,6 +161,11 @@ public:
     mutable TString BootState;
     TInstant PostponedStart;
     EBalancerPolicy BalancerPolicy;
+    TNodeId FailedNodeId = 0; // last time we tried to start the tablet, we failed on this node
+    TInstant BootTime;
+    TNodeFilter NodeFilter;
+    bool InWaitQueue = false;
+    bool UpdateMetricsEnqueued = false;
 
     TTabletInfo(ETabletRole role, THive& hive);
     TTabletInfo(const TTabletInfo&) = delete;
@@ -212,7 +217,7 @@ public:
 
     bool IsAliveOnLocal(const TActorId& local) const;
     bool IsStopped() const;
-    bool InitiateBoot();
+    bool InitiateBoot(TNodeId node = 0);
     bool BecomeStarting(TNodeId nodeId);
     bool BecomeRunning(TNodeId nodeId);
     bool BecomeStopped();
@@ -221,11 +226,14 @@ public:
     TActorId GetLocal() const;
     void SendStopTablet(TSideEffects& sideEffects);
     void SendStopTablet(const TActorId& local, TSideEffects& sideEffects);
-    bool InitiateStop(TSideEffects& sideEffects);
+    bool InitiateStop(TSideEffects& sideEffects, bool forMove = false);
 
     void BecomeUnknown(TNodeInfo* node);
     bool Kick();
     const TVector<i64>& GetTabletAllowedMetricIds() const;
+    static bool HasAllowedMetric(const TVector<i64>& allowedMetricIds, EResourceToBalance resource);
+    bool HasAllowedMetric(EResourceToBalance resource) const;
+    bool HasMetric(EResourceToBalance resource) const;
 
     void UpdateResourceUsage(const NKikimrTabletBase::TMetrics& metrics);
     TResourceRawValues GetResourceCurrentValues() const;
@@ -236,18 +244,19 @@ public:
     void ActualizeCounter();
 
     template <typename ResourcesType>
-    static double GetUsage(const ResourcesType& current, const ResourcesType& maximum, EResourceToBalance resource = EResourceToBalance::Dominant) {
+    static double GetUsage(const ResourcesType& current, const ResourcesType& maximum, EResourceToBalance resource = EResourceToBalance::ComputeResources) {
         auto normValues = NormalizeRawValues(current, maximum);
         return ExtractResourceUsage(normValues, resource);
     }
 
-    static double ExtractResourceUsage(const TResourceNormalizedValues& normValues, EResourceToBalance resource = EResourceToBalance::Dominant) {
+    template <typename ResourceTypes>
+    static auto ExtractResourceUsage(const ResourceTypes& values, EResourceToBalance resource = EResourceToBalance::ComputeResources) {
         switch (resource) {
-        case EResourceToBalance::CPU: return std::get<NMetrics::EResource::CPU>(normValues);
-        case EResourceToBalance::Memory: return std::get<NMetrics::EResource::Memory>(normValues);
-        case EResourceToBalance::Network: return std::get<NMetrics::EResource::Network>(normValues);
-        case EResourceToBalance::Counter: return std::get<NMetrics::EResource::Counter>(normValues);
-        case EResourceToBalance::Dominant: return max(normValues);
+        case EResourceToBalance::CPU: return std::get<NMetrics::EResource::CPU>(values);
+        case EResourceToBalance::Memory: return std::get<NMetrics::EResource::Memory>(values);
+        case EResourceToBalance::Network: return std::get<NMetrics::EResource::Network>(values);
+        case EResourceToBalance::Counter: return std::get<NMetrics::EResource::Counter>(values);
+        case EResourceToBalance::ComputeResources: return max(values);
         }
     }
 
@@ -272,7 +281,7 @@ public:
     const TNodeFilter& GetNodeFilter() const;
     bool InitiateStart(TNodeInfo* node);
 
-    const NKikimrTabletBase::TMetrics& GetResourceValues() const {
+    const TMetrics& GetResourceValues() const {
         return ResourceValues;
     }
 
@@ -289,7 +298,7 @@ public:
     }
 
     // ONLY for use in unit tests
-    NKikimrTabletBase::TMetrics& GetMutableResourceValues() {
+    TMetrics& GetMutableResourceValues() {
         return ResourceValues;
     }
 

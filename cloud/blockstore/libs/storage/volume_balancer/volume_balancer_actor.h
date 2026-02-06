@@ -24,14 +24,13 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NKikimr::NConsole;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TVolumeBalancerActor final
     : public NActors::TActorBootstrapped<TVolumeBalancerActor>
 {
-    using TEvConfigsDispatcher = NKikimr::NConsole::TEvConfigsDispatcher;
-    using TEvConsole = NKikimr::NConsole::TEvConsole;
-
 private:
     const TStorageConfigPtr StorageConfig;
     const IVolumeStatsPtr VolumeStats;

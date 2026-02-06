@@ -26,8 +26,10 @@ public:
         LOG_DEBUG(ctx, NKikimrServices::CMS, "TTxStorePermissions Execute");
 
         NIceDb::TNiceDb db(txc.DB);
-        db.Table<Schema::Param>().Key(1).Update(NIceDb::TUpdate<Schema::Param::NextPermissionID>(NextPermissionId),
-                                                NIceDb::TUpdate<Schema::Param::NextRequestID>(NextRequestId));
+        db.Table<Schema::Param>().Key(Schema::Param::Key).Update(
+            NIceDb::TUpdate<Schema::Param::NextPermissionID>(NextPermissionId),
+            NIceDb::TUpdate<Schema::Param::NextRequestID>(NextRequestId)
+        );
 
         const auto &rec = Response->Get<TEvCms::TEvPermissionResponse>()->Record;
 
@@ -39,11 +41,13 @@ public:
                 .TaskId = *MaintenanceTaskId,
                 .RequestId = Scheduled->RequestId,
                 .Owner = Scheduled->Owner,
+                .HasSingleCompositeActionGroup = !Scheduled->Request.GetPartialPermissionAllowed()
             });
 
             db.Table<Schema::MaintenanceTasks>().Key(*MaintenanceTaskId).Update(
                 NIceDb::TUpdate<Schema::MaintenanceTasks::RequestID>(Scheduled->RequestId),
-                NIceDb::TUpdate<Schema::MaintenanceTasks::Owner>(Scheduled->Owner)
+                NIceDb::TUpdate<Schema::MaintenanceTasks::Owner>(Scheduled->Owner),
+                NIceDb::TUpdate<Schema::MaintenanceTasks::HasSingleCompositeActionGroup>(!Scheduled->Request.GetPartialPermissionAllowed())
             );
         }
 
@@ -82,18 +86,21 @@ public:
 
             if (Scheduled->Request.ActionsSize() || Scheduled->Request.GetEvictVDisks()) {
                 ui64 order = Scheduled->Order;
+                i32 priority = Scheduled->Priority;
                 TString requestStr;
                 google::protobuf::TextFormat::PrintToString(Scheduled->Request, &requestStr);
 
                 auto row = db.Table<Schema::Request>().Key(id);
                 row.Update(NIceDb::TUpdate<Schema::Request::Owner>(owner),
                            NIceDb::TUpdate<Schema::Request::Order>(order),
+                           NIceDb::TUpdate<Schema::Request::Priority>(priority),
                            NIceDb::TUpdate<Schema::Request::Content>(requestStr));
 
                 Self->AuditLog(ctx, TStringBuilder() << "Store request"
                     << ": id# " << id
                     << ", owner# " << owner
                     << ", order# " << order
+                    << ", priority# " << priority
                     << ", body# " << requestStr);
 
                 if (Scheduled->Request.GetEvictVDisks()) {

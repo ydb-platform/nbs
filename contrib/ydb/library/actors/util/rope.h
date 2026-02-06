@@ -310,14 +310,6 @@ private:
             return !(*this == other);
         }
 
-    private:
-        friend class TRope;
-
-        typename TTraits::TListIterator operator ->() const {
-            CheckValid();
-            return Iter;
-        }
-
         const TRcBuf& GetChunk() const {
             CheckValid();
             return *Iter;
@@ -327,6 +319,14 @@ private:
         TRcBuf& GetChunk() {
             CheckValid();
             return *Iter;
+        }
+
+    private:
+        friend class TRope;
+
+        typename TTraits::TListIterator operator ->() const {
+            CheckValid();
+            return Iter;
         }
 
         typename TTraits::TListIterator GetChainBegin() const {
@@ -378,7 +378,7 @@ public:
         Chain.PutToEnd(std::move(data));
     }
 
-    TRope(TRope&& rope)
+    TRope(TRope&& rope) noexcept
         : Chain(std::move(rope.Chain))
         , Size(std::exchange(rope.Size, 0))
     {
@@ -438,7 +438,7 @@ public:
         return *this;
     }
 
-    TRope& operator=(TRope&& other) {
+    TRope& operator=(TRope&& other) noexcept {
         Chain = std::move(other.Chain);
         Size = std::exchange(other.Size, 0);
         InvalidateIterators();
@@ -501,8 +501,8 @@ public:
     TConstIterator begin() const { return Begin(); }
     TConstIterator end() const { return End(); }
 
-    void Erase(TIterator begin, TIterator end) {
-        Cut(begin, end, nullptr);
+    TIterator Erase(TIterator begin, TIterator end) {
+        return Cut(begin, end, nullptr);
     }
 
     TRope Extract(TIterator begin, TIterator end) {
@@ -851,16 +851,17 @@ public:
     friend bool operator> (const TRcBuf& x, const TRope& y) { return Compare(x.GetContiguousSpan(), y) >  0; }
     friend bool operator>=(const TRcBuf& x, const TRope& y) { return Compare(x.GetContiguousSpan(), y) >= 0; }
 
-
 private:
-    void Cut(TIterator begin, TIterator end, TRope *target) {
+    TIterator Cut(TIterator begin, TIterator end, TRope *target) {
         // ensure all iterators are belong to us
         Y_DEBUG_ABORT_UNLESS(this == begin.Rope && this == end.Rope);
+        begin.CheckValid();
+        end.CheckValid();
 
         // if begin and end are equal, we do nothing -- checking this case allows us to find out that begin does not
         // point to End(), for example
         if (begin == end) {
-            return;
+            return end;
         }
 
         auto addBlock = [&](const TRcBuf& from, const char *begin, const char *end) {
@@ -879,7 +880,7 @@ private:
             const char *firstChunkBegin = begin.PointsToChunkMiddle() ? begin->Begin : nullptr;
             begin->Begin = end.Ptr; // this affects both begin and end iterator pointed values
             if (firstChunkBegin) {
-                Chain.InsertBefore(begin.Iter, TRcBuf::Piece, firstChunkBegin, begin.Ptr, chunkToSplit);
+                end.Iter = ++Chain.InsertBefore(begin.Iter, TRcBuf::Piece, firstChunkBegin, begin.Ptr, chunkToSplit);
             }
         } else {
             // check the first iterator -- if it starts not from the begin of the block, we have to adjust end of the
@@ -914,6 +915,7 @@ private:
         }
 
         InvalidateIterators();
+        return {this, end.Iter, end.Ptr};
     }
 };
 

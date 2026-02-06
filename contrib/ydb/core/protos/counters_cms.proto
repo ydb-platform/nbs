@@ -16,6 +16,8 @@ enum ESimpleCounters {
 
 enum ECumulativeCounters {
     COUNTER_CUMULATIVE_IGNORE = 0;
+
+    COUNTER_PARTIAL_PERMISSIONS_OPTIMIZED = 1 [(CounterOpts) = {Name: "PartialPermissionsOptimized"}];
 }
 
 enum EPercentileCounters {
@@ -62,4 +64,5 @@ enum ETxTypes {
     TXTYPE_STORE_WALLE_TASK = 13                          [(TxTypeOpts) = {Name: "TxStoreWalleTask"}];
     TXTYPE_UPDATE_CONFIG = 14                             [(TxTypeOpts) = {Name: "TxUpdateConfig"}];
     TXTYPE_UPDATE_DOWNTIMES = 15                          [(TxTypeOpts) = {Name: "TxUpdateDowntimes"}];
+    TXTYPE_STORE_FIRST_BOOT_TIMESTAMP = 16                [(TxTypeOpts) = {Name: "TxStoreFirstBootTimestamp"}];
 }

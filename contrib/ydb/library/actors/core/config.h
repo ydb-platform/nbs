@@ -2,6 +2,7 @@
 
 #include "defs.h"
 #include <contrib/ydb/library/actors/util/cpumask.h>
+#include <contrib/ydb/library/actors/util/datetime.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <util/datetime/base.h>
 #include <util/generic/ptr.h>
@@ -9,12 +10,6 @@
 #include <util/generic/vector.h>
 
 namespace NActors {
-
-    enum class EASProfile {
-        Default,
-        LowCpuConsumption,
-        LowLatency,
-    };
 
     struct TBasicExecutorPoolConfig {
         static constexpr TDuration DEFAULT_TIME_PER_MAILBOX = TDuration::MilliSeconds(10);
@@ -36,6 +31,13 @@ namespace NActors {
         i16 SoftProcessingDurationTs = 0;
         EASProfile ActorSystemProfile = EASProfile::Default;
         bool HasSharedThread = false;
+        bool UseRingQueue = false;
+        ui16 MinLocalQueueSize = 0;
+        ui16 MaxLocalQueueSize = 0;
+
+        // tiny-ydb configs
+        std::vector<i16> AdjacentPools;
+        i16 ForcedForeignSlotCount = 0;
     };
 
     struct TSharedExecutorPoolConfig {
@@ -44,7 +46,7 @@ namespace NActors {
         TCpuMask Affinity; // Executor thread affinity
         TDuration TimePerMailbox = TBasicExecutorPoolConfig::DEFAULT_TIME_PER_MAILBOX;
         ui32 EventsPerMailbox = TBasicExecutorPoolConfig::DEFAULT_EVENTS_PER_MAILBOX;
-        i16 SoftProcessingDurationTs = 0;
+        i16 SoftProcessingDurationTs = Us2Ts(10'000);
     };
 
     struct TIOExecutorPoolConfig {
@@ -52,6 +54,7 @@ namespace NActors {
         TString PoolName;
         ui32 Threads = 1;
         TCpuMask Affinity; // Executor thread affinity
+        bool UseRingQueue = false;
     };
 
     struct TSelfPingInfo {
@@ -60,11 +63,17 @@ namespace NActors {
         ui32 MaxAvgPingUs;
     };
 
+    struct TExecutorPoolJailConfig {
+        ui32 MaxThreadsInJailCore = 0;
+        TCpuMask JailAffinity;
+    };
+
     struct TCpuManagerConfig {
         TVector<TBasicExecutorPoolConfig> Basic;
         TVector<TIOExecutorPoolConfig> IO;
         TVector<TSelfPingInfo> PingInfoByPool;
         TSharedExecutorPoolConfig Shared;
+        std::optional<TExecutorPoolJailConfig> Jail;
 
         ui32 GetExecutorsCount() const {
             return Basic.size() + IO.size();

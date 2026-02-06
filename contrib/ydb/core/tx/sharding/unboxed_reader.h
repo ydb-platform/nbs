@@ -1,9 +1,9 @@
 #pragma once
 #include "hash.h"
-#include <contrib/ydb/library/yql/public/udf/udf_value.h>
+#include <yql/essentials/public/udf/udf_value.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/core/scheme_types/scheme_type_info.h>
-#include <contrib/ydb/core/formats/arrow/hash/xx_hash.h>
+#include <contrib/ydb/library/formats/arrow/hash/xx_hash.h>
 #include <util/generic/map.h>
 
 namespace NKikimr::NMiniKQL {

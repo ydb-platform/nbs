@@ -40,7 +40,6 @@ bool TDatabase::TChangeCounter::operator<(const TChangeCounter& rhs) const {
 
 TDatabase::TDatabase(TDatabaseImpl *databaseImpl) noexcept
     : DatabaseImpl(databaseImpl ? databaseImpl : new TDatabaseImpl(0, new TScheme, nullptr))
-    , NoMoreReadsFlag(true)
 {
 
 }
@@ -57,9 +56,9 @@ TIntrusiveConstPtr<TRowScheme> TDatabase::GetRowScheme(ui32 table) const noexcep
     return Require(table)->GetScheme();
 }
 
-TAutoPtr<TTableIt> TDatabase::Iterate(ui32 table, TRawVals key, TTagsRef tags, ELookup mode) const noexcept
+TAutoPtr<TTableIter> TDatabase::Iterate(ui32 table, TRawVals key, TTagsRef tags, ELookup mode) const noexcept
 {
-    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to read after reads prohibited, table %u", table);
+    CheckReadAllowed(table);
 
     const auto seekBy = [](TRawVals key, ELookup mode) {
         if (!key && mode != ELookup::ExactMatch) {
@@ -84,19 +83,15 @@ TAutoPtr<TTableIt> TDatabase::Iterate(ui32 table, TRawVals key, TTagsRef tags, E
         Y_ABORT("Don't know how to convert ELookup to ESeek mode");
     };
 
-    IteratedTables.insert(table);
-
     return Require(table)->Iterate(key, tags, Env, seekBy(key, mode), TRowVersion::Max());
 }
 
-TAutoPtr<TTableIt> TDatabase::IterateExact(ui32 table, TRawVals key, TTagsRef tags,
+TAutoPtr<TTableIter> TDatabase::IterateExact(ui32 table, TRawVals key, TTagsRef tags,
         TRowVersion snapshot,
         const ITransactionMapPtr& visible,
         const ITransactionObserverPtr& observer) const noexcept
 {
-    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to read after reads prohibited, table %u", table);
-
-    IteratedTables.insert(table);
+    CheckReadAllowed(table);
 
     auto iter = Require(table)->Iterate(key, tags, Env, ESeek::Exact, snapshot, visible, observer);
 
@@ -143,17 +138,15 @@ namespace {
     }
 }
 
-TAutoPtr<TTableIt> TDatabase::IterateRange(ui32 table, const TKeyRange& range, TTagsRef tags,
+TAutoPtr<TTableIter> TDatabase::IterateRange(ui32 table, const TKeyRange& range, TTagsRef tags,
         TRowVersion snapshot,
         const ITransactionMapPtr& visible,
         const ITransactionObserverPtr& observer) const noexcept
 {
-    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to read after reads prohibited, table %u", table);
+    CheckReadAllowed(table);
 
     Y_DEBUG_ABORT_UNLESS(!IsAmbiguousRange(range, Require(table)->GetScheme()->Keys->Size()),
         "%s", IsAmbiguousRangeReason(range, Require(table)->GetScheme()->Keys->Size()));
-
-    IteratedTables.insert(table);
 
     ESeek seek = !range.MinKey || range.MinInclusive ? ESeek::Lower : ESeek::Upper;
 
@@ -172,17 +165,15 @@ TAutoPtr<TTableIt> TDatabase::IterateRange(ui32 table, const TKeyRange& range, T
     return iter;
 }
 
-TAutoPtr<TTableReverseIt> TDatabase::IterateRangeReverse(ui32 table, const TKeyRange& range, TTagsRef tags,
+TAutoPtr<TTableReverseIter> TDatabase::IterateRangeReverse(ui32 table, const TKeyRange& range, TTagsRef tags,
         TRowVersion snapshot,
         const ITransactionMapPtr& visible,
         const ITransactionObserverPtr& observer) const noexcept
 {
-    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to read after reads prohibited, table %u", table);
+    CheckReadAllowed(table);
 
     Y_DEBUG_ABORT_UNLESS(!IsAmbiguousRange(range, Require(table)->GetScheme()->Keys->Size()),
         "%s", IsAmbiguousRangeReason(range, Require(table)->GetScheme()->Keys->Size()));
-
-    IteratedTables.insert(table);
 
     ESeek seek = !range.MaxKey || range.MaxInclusive ? ESeek::Lower : ESeek::Upper;
 
@@ -202,7 +193,7 @@ TAutoPtr<TTableReverseIt> TDatabase::IterateRangeReverse(ui32 table, const TKeyR
 }
 
 template<>
-TAutoPtr<TTableIt> TDatabase::IterateRangeGeneric<TTableIt>(ui32 table, const TKeyRange& range, TTagsRef tags,
+TAutoPtr<TTableIter> TDatabase::IterateRangeGeneric<TTableIter>(ui32 table, const TKeyRange& range, TTagsRef tags,
         TRowVersion snapshot,
         const ITransactionMapPtr& visible,
         const ITransactionObserverPtr& observer) const noexcept
@@ -211,7 +202,7 @@ TAutoPtr<TTableIt> TDatabase::IterateRangeGeneric<TTableIt>(ui32 table, const TK
 }
 
 template<>
-TAutoPtr<TTableReverseIt> TDatabase::IterateRangeGeneric<TTableReverseIt>(ui32 table, const TKeyRange& range, TTagsRef tags,
+TAutoPtr<TTableReverseIter> TDatabase::IterateRangeGeneric<TTableReverseIter>(ui32 table, const TKeyRange& range, TTagsRef tags,
         TRowVersion snapshot,
         const ITransactionMapPtr& visible,
         const ITransactionObserverPtr& observer) const noexcept
@@ -234,7 +225,7 @@ EReady TDatabase::Select(ui32 table, TRawVals key, TTagsRef tags, TRowState &row
         const ITransactionObserverPtr& observer) const noexcept
 {
     TempIterators.clear();
-    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to read after reads prohibited, table %u", table);
+    CheckReadAllowed(table);
 
     auto prevSieved = stats.Sieved;
     auto prevWeeded = stats.Weeded;
@@ -276,7 +267,8 @@ void TDatabase::CalculateReadSize(TSizeEnv& env, ui32 table, TRawVals minKey, TR
                                   TTagsRef tags, ui64 flg, ui64 items, ui64 bytes,
                                   EDirection direction, TRowVersion snapshot)
 {
-    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to do precharge after reads prohibited, table %u", table);
+    CheckReadAllowed(table);
+
     TSelectStats stats;
     Require(table)->Precharge(minKey, maxKey, tags, &env, flg, items, bytes, direction, snapshot, stats);
 }
@@ -285,7 +277,8 @@ bool TDatabase::Precharge(ui32 table, TRawVals minKey, TRawVals maxKey,
                     TTagsRef tags, ui64 flg, ui64 items, ui64 bytes,
                     EDirection direction, TRowVersion snapshot)
 {
-    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to do precharge after reads prohibited, table %u", table);
+    CheckPrechargeAllowed(table, minKey, maxKey);
+
     TSelectStats stats;
     auto ready = Require(table)->Precharge(minKey, maxKey, tags, Env, flg, items, bytes, direction, snapshot, stats);
     Change->Stats.ChargeSieved += stats.Sieved;
@@ -331,7 +324,7 @@ void TDatabase::Update(ui32 table, ERowOp rop, TRawVals key, TArrayRef<const TUp
             if (auto got = annex->Place(table, op.Tag, raw)) {
                 ModifiedRefs[index] = got.Ref;
                 const auto payload = NUtil::NBin::ToRef(ModifiedRefs[index]);
-                op.Value = TRawTypeValue(payload, NScheme::TTypeInfo(op.Value.Type()));
+                op.Value = TRawTypeValue(payload, op.Value.Type());
                 op.Op = ELargeObj::Extern;
             }
         }
@@ -436,16 +429,22 @@ void TDatabase::NoMoreReadsForTx() {
     NoMoreReadsFlag = true;
 }
 
+void TDatabase::NoMoreUnprechargedReadsForTx() {
+    NoMoreUnprechargedReadsFlag = true;
+}
+
 void TDatabase::Begin(TTxStamp stamp, IPages& env)
 {
     Y_ABORT_UNLESS(!Redo, "Transaction already in progress");
     Y_ABORT_UNLESS(!Env);
-    Annex = new TAnnex(*DatabaseImpl->Scheme);
+    Annex = new TAnnex(*DatabaseImpl->Scheme, DatabaseImpl->Stats.NormalizedFreeSpaceShareByChannel);
     Redo = new NRedo::TWriter;
     DatabaseImpl->BeginTransaction();
     Change = MakeHolder<TChange>(stamp, DatabaseImpl->Serial());
     Env = &env;
     NoMoreReadsFlag = false;
+    NoMoreUnprechargedReadsFlag = false;
+    PrechargedTables.clear();
 }
 
 void TDatabase::RollbackChanges()
@@ -502,7 +501,8 @@ ui64 TDatabase::GetTableMemOpsCount(ui32 tableId) const {
 }
 
 ui64 TDatabase::GetTableIndexSize(ui32 tableId) const {
-    return Require(tableId)->Stat().Parts.IndexBytes;
+    const auto& partStats = Require(tableId)->Stat().Parts;
+    return partStats.FlatIndexBytes + partStats.BTreeIndexBytes;
 }
 
 ui64 TDatabase::GetTableSearchHeight(ui32 tableId) const {
@@ -518,6 +518,18 @@ const TDbStats& TDatabase::Counters() const noexcept
     return DatabaseImpl->Stats;
 }
 
+TDbRuntimeStats TDatabase::RuntimeCounters() const noexcept
+{
+    return DatabaseImpl->GetRuntimeStats();
+}
+
+void TDatabase::UpdateApproximateFreeSharesByChannel(const THashMap<ui32, float>& approximateFreeSpaceShareByChannel)
+{
+    for (auto& [channel, value] : approximateFreeSpaceShareByChannel) {
+        DatabaseImpl->Stats.NormalizedFreeSpaceShareByChannel[channel] = NUtil::NormalizeFreeSpaceShare(value);
+    }
+}
+
 void TDatabase::SetTableObserver(ui32 table, TIntrusivePtr<ITableObserver> ptr) noexcept
 {
     Require(table)->SetTableObserver(std::move(ptr));
@@ -526,15 +538,11 @@ void TDatabase::SetTableObserver(ui32 table, TIntrusivePtr<ITableObserver> ptr) 
 TDatabase::TChangeCounter TDatabase::Head(ui32 table) const noexcept
 {
     if (table == Max<ui32>()) {
-        return { DatabaseImpl->Serial(), TEpoch::Max() };
+        return { DatabaseImpl->StableSerial(), TEpoch::Max() };
     } else {
         auto &wrap = DatabaseImpl->Get(table, true);
 
-        // We return numbers as they have been at the start of transaction,
-        // but possibly after schema changes or memtable flushes.
-        auto serial = wrap.DataModified && !wrap.EpochSnapshot ? wrap.SerialBackup : wrap.Serial;
-        auto head = wrap.EpochSnapshot ? *wrap.EpochSnapshot : wrap->Head();
-        return { serial, head };
+        return { wrap.StableSerial(), wrap.StableHead() };
     }
 }
 
@@ -560,9 +568,14 @@ TEpoch TDatabase::TxSnapTable(ui32 table)
     return DatabaseImpl->FlushTable(table);
 }
 
-TAutoPtr<TSubset> TDatabase::Subset(ui32 table, TArrayRef<const TLogoBlobID> bundle, TEpoch before) const
+TAutoPtr<TSubset> TDatabase::CompactionSubset(ui32 table, TEpoch before, TArrayRef<const TLogoBlobID> bundle) const
 {
-    return Require(table)->Subset(bundle, before);
+    return Require(table)->CompactionSubset(before, bundle);
+}
+
+TAutoPtr<TSubset> TDatabase::PartSwitchSubset(ui32 table, TEpoch before, TArrayRef<const TLogoBlobID> bundle, TArrayRef<const TLogoBlobID> txStatus) const
+{
+    return Require(table)->PartSwitchSubset(before, bundle, txStatus);
 }
 
 TAutoPtr<TSubset> TDatabase::Subset(ui32 table, TEpoch before, TRawVals from, TRawVals to) const
@@ -605,14 +618,13 @@ void TDatabase::ReplaceSlices(ui32 table, TBundleSlicesMap slices)
     return DatabaseImpl->ReplaceSlices(table, std::move(slices));
 }
 
-void TDatabase::Replace(ui32 table, TArrayRef<const TPartView> partViews, const TSubset &subset)
+void TDatabase::Replace(
+    ui32 table,
+    const TSubset& subset,
+    TArrayRef<const TPartView> newParts,
+    TArrayRef<const TIntrusiveConstPtr<TTxStatusPart>> newTxStatus)
 {
-    return DatabaseImpl->Replace(table, partViews, subset);
-}
-
-void TDatabase::ReplaceTxStatus(ui32 table, TArrayRef<const TIntrusiveConstPtr<TTxStatusPart>> txStatus, const TSubset &subset)
-{
-    return DatabaseImpl->ReplaceTxStatus(table, txStatus, subset);
+    return DatabaseImpl->Replace(table, subset, newParts, newTxStatus);
 }
 
 void TDatabase::Merge(ui32 table, TPartView partView)
@@ -628,6 +640,11 @@ void TDatabase::Merge(ui32 table, TIntrusiveConstPtr<TColdPart> part)
 void TDatabase::Merge(ui32 table, TIntrusiveConstPtr<TTxStatusPart> txStatus)
 {
     return DatabaseImpl->Merge(table, std::move(txStatus));
+}
+
+void TDatabase::MergeDone(ui32 table)
+{
+    return DatabaseImpl->MergeDone(table);
 }
 
 TAlter& TDatabase::Alter()
@@ -698,18 +715,6 @@ TDatabase::TProd TDatabase::Commit(TTxStamp stamp, bool commit, TCookieAllocator
     OnPersistent_.clear();
 
     TempIterators.clear();
-
-    if (IteratedTables) {
-        for (ui32 table : IteratedTables) {
-            if (auto& wrap = DatabaseImpl->Get(table, false)) {
-                if (auto* cache = wrap->GetErasedKeysCache()) {
-                    cache->CollectGarbage();
-                }
-            }
-        }
-
-        IteratedTables.clear();
-    }
 
     if (commit && HasChanges()) {
         Y_ABORT_UNLESS(stamp >= Change->Stamp);
@@ -794,6 +799,8 @@ TDatabase::TProd TDatabase::Commit(TTxStamp stamp, bool commit, TCookieAllocator
         DatabaseImpl->RollbackTransaction();
     }
 
+    DatabaseImpl->RunGC();
+
     Redo = nullptr;
     Annex = nullptr;
     Alter_ = nullptr;
@@ -810,6 +817,30 @@ TTable* TDatabase::Require(ui32 table) const noexcept
 TTable* TDatabase::RequireForUpdate(ui32 table) const noexcept
 {
     return DatabaseImpl->GetForUpdate(table).Self.Get();
+}
+
+void TDatabase::CheckReadAllowed(ui32 table) const noexcept
+{
+    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to read after reads prohibited, table %u", table);
+    if (NoMoreUnprechargedReadsFlag) [[unlikely]] {
+        Y_DEBUG_ABORT_UNLESS(
+            std::find(PrechargedTables.begin(), PrechargedTables.end(), table) != PrechargedTables.end(),
+            "Trying to read a previously unprecharged table %u", table);
+    }
+}
+
+void TDatabase::CheckPrechargeAllowed(ui32 table, TRawVals minKey, TRawVals maxKey) const noexcept
+{
+    Y_ABORT_UNLESS(!NoMoreReadsFlag, "Trying to precharge after reads prohibited, table %u", table);
+    if (NoMoreUnprechargedReadsFlag) [[unlikely]] {
+        Y_DEBUG_ABORT_UNLESS(
+            std::find(PrechargedTables.begin(), PrechargedTables.end(), table) != PrechargedTables.end(),
+            "Trying to precharge a previously unprecharged table %u", table);
+    } else if (!minKey && !maxKey) {
+        // Note: tables are usually fully precharged only in init transcations
+        // This vector is small or empty most of the time and not worth using a hash table
+        PrechargedTables.push_back(table);
+    }
 }
 
 TGarbage TDatabase::RollUp(TTxStamp stamp, TArrayRef<const char> delta, TArrayRef<const char> redo,

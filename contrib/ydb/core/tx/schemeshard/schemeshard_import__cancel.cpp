@@ -1,6 +1,7 @@
 #include "schemeshard_xxport__tx_base.h"
 #include "schemeshard_import_flow_proposals.h"
 #include "schemeshard_import.h"
+#include "schemeshard_audit_log.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
@@ -53,6 +54,7 @@ struct TSchemeShard::TImport::TTxCancel: public TSchemeShard::TXxport::TTxBase {
         case TImportInfo::EState::Cancelled:
             return respond(Ydb::StatusIds::SUCCESS);
 
+        case TImportInfo::EState::DownloadExportMetadata:
         case TImportInfo::EState::Waiting:
         case TImportInfo::EState::Cancellation:
             importInfo->Issue = "Cancelled manually";
@@ -65,7 +67,7 @@ struct TSchemeShard::TImport::TTxCancel: public TSchemeShard::TXxport::TTxBase {
                 case TImportInfo::EState::Transferring:
                     if (item.WaitTxId != InvalidTxId) {
                         importInfo->State = TImportInfo::EState::Cancellation;
-                        Send(Self->SelfId(), CancelRestorePropose(importInfo, item.WaitTxId), 0, importInfo->Id);
+                        Send(Self->SelfId(), CancelRestorePropose(*importInfo, item.WaitTxId), 0, importInfo->Id);
                     } else if (item.SubState == TImportInfo::TItem::ESubState::Proposed) {
                         importInfo->State = TImportInfo::EState::Cancellation;
                     }
@@ -74,7 +76,7 @@ struct TSchemeShard::TImport::TTxCancel: public TSchemeShard::TXxport::TTxBase {
                 case TImportInfo::EState::BuildIndexes:
                     if (item.WaitTxId != InvalidTxId) {
                         importInfo->State = TImportInfo::EState::Cancellation;
-                        Send(Self->SelfId(), CancelIndexBuildPropose(Self, importInfo, item.WaitTxId), 0, importInfo->Id);
+                        Send(Self->SelfId(), CancelIndexBuildPropose(Self, *importInfo, item.WaitTxId), 0, importInfo->Id);
                     } else if (item.SubState == TImportInfo::TItem::ESubState::Proposed) {
                         importInfo->State = TImportInfo::EState::Cancellation;
                     }
@@ -85,8 +87,18 @@ struct TSchemeShard::TImport::TTxCancel: public TSchemeShard::TXxport::TTxBase {
                 }
             }
 
-            Self->PersistImportState(db, importInfo);
+            if (importInfo->State == TImportInfo::EState::Cancelled) {
+                importInfo->EndTime = TAppData::TimeProvider->Now();
+            }
+
+            Self->PersistImportState(db, *importInfo);
+            Self->EraseEncryptionKey(db, *importInfo);
             SendNotificationsIfFinished(importInfo);
+
+            if (importInfo->IsFinished()) {
+                AuditLogImportEnd(*importInfo.Get(), Self);
+            }
+
             return respond(Ydb::StatusIds::SUCCESS);
 
         default:
@@ -100,18 +112,23 @@ struct TSchemeShard::TImport::TTxCancel: public TSchemeShard::TXxport::TTxBase {
 }; // TTxCancel
 
 struct TSchemeShard::TImport::TTxCancelAck: public TSchemeShard::TXxport::TTxBase {
-    TEvSchemeShard::TEvCancelTxResult::TPtr CancelTxResult = nullptr;
-    TEvIndexBuilder::TEvCancelResponse::TPtr CancelIndexBuildResult = nullptr;
+    const ui64 ImportId;
+    const TTxId TxId;
 
-    explicit TTxCancelAck(TSelf *self, TEvSchemeShard::TEvCancelTxResult::TPtr& ev)
+    explicit TTxCancelAck(TSelf* self, ui64 importId, TTxId txId)
         : TXxport::TTxBase(self)
-        , CancelTxResult(ev)
+        , ImportId(importId)
+        , TxId(txId)
     {
     }
 
-    explicit TTxCancelAck(TSelf *self, TEvIndexBuilder::TEvCancelResponse::TPtr& ev)
-        : TXxport::TTxBase(self)
-        , CancelIndexBuildResult(ev)
+    explicit TTxCancelAck(TSelf* self, TEvSchemeShard::TEvCancelTxResult::TPtr& ev)
+        : TTxCancelAck(self, ev->Cookie, TTxId(ev->Get()->Record.GetTargetTxId()))
+    {
+    }
+
+    explicit TTxCancelAck(TSelf* self, TEvIndexBuilder::TEvCancelResponse::TPtr& ev)
+        : TTxCancelAck(self, ev->Cookie, TTxId(ev->Get()->Record.GetTxId()))
     {
     }
 
@@ -120,23 +137,11 @@ struct TSchemeShard::TImport::TTxCancelAck: public TSchemeShard::TXxport::TTxBas
     }
 
     bool DoExecute(TTransactionContext& txc, const TActorContext&) override {
-        TTxId txId;
-        ui64 id;
-        if (CancelTxResult) {
-            txId = TTxId(CancelTxResult->Get()->Record.GetTargetTxId());
-            id = CancelTxResult->Cookie;
-        } else if (CancelIndexBuildResult) {
-            txId = TTxId(CancelIndexBuildResult->Get()->Record.GetTxId());
-            id = CancelIndexBuildResult->Cookie;
-        } else {
-            Y_ABORT("unreachable");
-        }
-
-        if (!Self->Imports.contains(id)) {
+        if (!Self->Imports.contains(ImportId)) {
             return true;
         }
 
-        TImportInfo::TPtr importInfo = Self->Imports.at(id);
+        TImportInfo::TPtr importInfo = Self->Imports.at(ImportId);
         NIceDb::TNiceDb db(txc.DB);
 
         if (importInfo->State != TImportInfo::EState::Cancellation) {
@@ -159,7 +164,7 @@ struct TSchemeShard::TImport::TTxCancelAck: public TSchemeShard::TXxport::TTxBas
                 ++cancellableItems;
             }
 
-            if (item.WaitTxId == txId) {
+            if (item.WaitTxId == TxId) {
                 found = true;
 
                 item.State = TImportInfo::EState::Cancelled;
@@ -175,17 +180,24 @@ struct TSchemeShard::TImport::TTxCancelAck: public TSchemeShard::TXxport::TTxBas
             return true;
         }
 
-        Self->TxIdToImport.erase(txId);
-        Self->PersistImportItemState(db, importInfo, itemIdx);
+        Self->TxIdToImport.erase(TxId);
+        Self->PersistImportItemState(db, *importInfo, itemIdx);
 
         if (cancelledItems != cancellableItems) {
             return true;
         }
 
         importInfo->State = TImportInfo::EState::Cancelled;
-        Self->PersistImportState(db, importInfo);
+        importInfo->EndTime = TAppData::TimeProvider->Now();
+        Self->PersistImportState(db, *importInfo);
+        Self->EraseEncryptionKey(db, *importInfo);
 
         SendNotificationsIfFinished(importInfo);
+
+        if (importInfo->IsFinished()) {
+            AuditLogImportEnd(*importInfo.Get(), Self);
+        }
+
         return true;
     }
 

@@ -1,13 +1,18 @@
 #include "config_parser.h"
-#include "dummy.h"
 
 #include <contrib/ydb/library/actors/core/log_settings.h>
 #include <contrib/ydb/public/lib/base/msgbus.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
+#include <contrib/ydb/core/protos/alloc.pb.h>
+#include <contrib/ydb/core/protos/bootstrap.pb.h>
+#include <contrib/ydb/core/protos/compile_service_config.pb.h>
+
+#include <contrib/ydb/core/config/init/dummy.h>
 
 #include <util/stream/file.h>
 #include <util/stream/format.h>
 #include <util/system/hostname.h>
+#include <util/folder/path.h>
 #include <util/string/printf.h>
 
 #include <library/cpp/string_utils/parse_size/parse_size.h>
@@ -31,6 +36,7 @@ TRunCommandConfigParser::TRunOpts::TRunOpts()
     , MonitoringPort(0)
     , MonitoringAddress()
     , MonitoringThreads(10)
+    , MonitoringMaxRequestsPerSecond(0)
     , RestartsCountFile("")
     , StartTracingBusProxy(true)
     , CompileInflightLimit(100000)
@@ -62,6 +68,7 @@ void TRunCommandConfigParser::SetupLastGetOptForConfigFiles(NLastGetopt::TOpts& 
     opts.AddLongOption("grpc-file", "gRPC config file").OptionalArgument("PATH");
     opts.AddLongOption("grpc-port", "enable gRPC server on port").RequiredArgument("PORT");
     opts.AddLongOption("grpcs-port", "enable gRPC SSL server on port").RequiredArgument("PORT");
+    opts.AddLongOption("kafka-port", "enable kafka proxy server on port").OptionalArgument("PORT");
     opts.AddLongOption("grpc-public-host", "set public gRPC host for discovery").RequiredArgument("HOST");
     opts.AddLongOption("grpc-public-port", "set public gRPC port for discovery").RequiredArgument("PORT");
     opts.AddLongOption("grpcs-public-port", "set public gRPC SSL port for discovery").RequiredArgument("PORT");
@@ -83,9 +90,6 @@ void TRunCommandConfigParser::SetupLastGetOptForConfigFiles(NLastGetopt::TOpts& 
 void TRunCommandConfigParser::ParseConfigFiles(const NLastGetopt::TOptsParseResult& res) {
     if (res.Has("sys-file")) {
         Y_ABORT_UNLESS(ParsePBFromFile(res.Get("sys-file"), Config.AppConfig.MutableActorSystemConfig()));
-    } else {
-        auto sysConfig = DummyActorSystemConfig();
-        Config.AppConfig.MutableActorSystemConfig()->CopyFrom(*sysConfig);
     }
 
     if (res.Has("naming-file")) {
@@ -158,6 +162,11 @@ void TRunCommandConfigParser::ParseConfigFiles(const NLastGetopt::TOptsParseResu
         auto& conf = *Config.AppConfig.MutableGRpcConfig();
         conf.SetStartGRpcProxy(true);
         conf.SetSslPort(FromString<ui16>(res.Get("grpcs-port")));
+    }
+
+    if (res.Has("kafka-port")) {
+        auto& conf = *Config.AppConfig.MutableKafkaProxyConfig();
+        conf.SetListeningPort(FromString<ui16>(res.Get("kafka-port")));
     }
 
     if (res.Has("grpc-public-host")) {
@@ -257,7 +266,8 @@ void TRunCommandConfigParser::ParseRunOpts(int argc, char **argv) {
     opts.AddLongOption("proxy", "Bind to proxy(-ies)").RequiredArgument("ADDR").AppendTo(&RunOpts.ProxyBindToProxy);
     opts.AddLongOption("mon-port", "Monitoring port").OptionalArgument("NUM").StoreResult(&RunOpts.MonitoringPort);
     opts.AddLongOption("mon-address", "Monitoring address").OptionalArgument("ADDR").StoreResult(&RunOpts.MonitoringAddress);
-    opts.AddLongOption("mon-cert", "Monitoring certificate (https)").OptionalArgument("PATH").StoreResult(&RunOpts.MonitoringCertificateFile);
+    opts.AddLongOption("mon-cert", "Path to monitoring certificate file (https)").OptionalArgument("PATH").StoreResult(&RunOpts.MonitoringCertificateFile);
+    opts.AddLongOption("mon-key", "Path to monitoring private key file (https)").OptionalArgument("PATH").StoreResult(&RunOpts.MonitoringPrivateKeyFile);
     opts.AddLongOption("mon-threads", "Monitoring http server threads").RequiredArgument("NUM").StoreResult(&RunOpts.MonitoringThreads);
 
     SetupLastGetOptForConfigFiles(opts);
@@ -296,6 +306,20 @@ void TRunCommandConfigParser::ParseRunOpts(int argc, char **argv) {
 }
 
 void TRunCommandConfigParser::ApplyParsedOptions() {
+    auto ensureFileExists = [](const TString& path, TStringBuf optName) {
+        if (path.empty()) {
+            return;
+        }
+        TFsPath fspath(path);
+        TFileStat filestat;
+        if (!fspath.Stat(filestat) || !filestat.IsFile()) {
+            ythrow yexception() << "File passed to --" << optName << " does not exist: " << path;
+        }
+    };
+
+    ensureFileExists(RunOpts.MonitoringCertificateFile, "mon-cert");
+    ensureFileExists(RunOpts.MonitoringPrivateKeyFile, "mon-key");
+
     // apply global options
     Config.AppConfig.MutableInterconnectConfig()->SetStartTcp(GlobalOpts.StartTcp);
     auto logConfig = Config.AppConfig.MutableLogConfig();
@@ -361,7 +385,10 @@ void TRunCommandConfigParser::ApplyParsedOptions() {
     Config.AppConfig.MutableMonitoringConfig()->SetMonitoringPort(RunOpts.MonitoringPort);
     Config.AppConfig.MutableMonitoringConfig()->SetMonitoringAddress(RunOpts.MonitoringAddress);
     Config.AppConfig.MutableMonitoringConfig()->SetMonitoringThreads(RunOpts.MonitoringThreads);
-    Config.AppConfig.MutableMonitoringConfig()->SetMonitoringCertificate(TUnbufferedFileInput(RunOpts.MonitoringCertificateFile).ReadAll());
+    Config.AppConfig.MutableMonitoringConfig()->SetMaxRequestsPerSecond(RunOpts.MonitoringMaxRequestsPerSecond);
+    Config.AppConfig.MutableMonitoringConfig()->SetInactivityTimeout(ToString(RunOpts.MonitoringInactivityTimeout.Seconds()));
+    Config.AppConfig.MutableMonitoringConfig()->SetMonitoringCertificateFile(RunOpts.MonitoringCertificateFile);
+    Config.AppConfig.MutableMonitoringConfig()->SetMonitoringPrivateKeyFile(RunOpts.MonitoringPrivateKeyFile);
     Config.AppConfig.MutableRestartsCountConfig()->SetRestartsCountFile(RunOpts.RestartsCountFile);
 }
 

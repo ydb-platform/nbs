@@ -1,6 +1,8 @@
 #include "helpers.h"
 
 #include <contrib/ydb/core/util/pb.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/subdomains.pb.h>
 
 #include <util/string/join.h>
 
@@ -107,7 +109,7 @@ ui64 GetPathVersion(const NKikimrSchemeBoard::TEvNotify& record) {
 }
 
 NSchemeBoard::TDomainId GetDomainId(const NKikimrSchemeBoard::TEvNotify& record) {
-    return PathIdFromPathId(record.GetPathSubdomainPathId());
+    return TPathId::FromProto(record.GetPathSubdomainPathId());
 }
 
 TSet<ui64> GetAbandonedSchemeShardIds(const NKikimrSchemeBoard::TEvNotify& record) {

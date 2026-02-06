@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
 #include "sock_impl.h"
@@ -14,6 +15,7 @@ struct TListenerSettings {
     TString PrivateKeyFile;
     TString SslCertificatePem;
     TString Address = "::";
+    bool TcpNotDelay = false;
 };
 
 enum EErrorAction {
@@ -21,7 +23,7 @@ enum EErrorAction {
     Abort
 };
 
-using TConnectionCreator = std::function<NActors::IActor* (const TActorId& listenerActorId,
+using TConnectionCreator = std::function<NActors::IActor* (const NActors::TActorId& listenerActorId,
                                                            TIntrusivePtr<TSocketDescriptor> socket,
                                                            TNetworkConfig::TSocketAddressType address)>;
 

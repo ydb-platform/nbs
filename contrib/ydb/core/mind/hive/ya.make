@@ -5,6 +5,7 @@ SRCS(
     balancer.h
     boot_queue.cpp
     boot_queue.h
+    data_center_info.h
     domain_info.cpp
     domain_info.h
     drain.cpp
@@ -25,6 +26,7 @@ SRCS(
     leader_tablet_info.h
     metrics.h
     monitoring.cpp
+    monitoring.h
     node_info.cpp
     node_info.h
     object_distribution.h
@@ -43,17 +45,21 @@ SRCS(
     tablet_move_info.cpp
     tx__adopt_tablet.cpp
     tx__block_storage_result.cpp
+    tx__configure_scale_recommender.cpp
     tx__configure_subdomain.cpp
     tx__create_tablet.cpp
     tx__cut_tablet_history.cpp
+    tx__delete_node.cpp
     tx__delete_tablet.cpp
     tx__delete_tablet_result.cpp
     tx__disconnect_node.cpp
+    tx__generate_data_ut.cpp
     tx__init_scheme.cpp
     tx__kill_node.cpp
     tx__load_everything.cpp
     tx__lock_tablet.cpp
     tx__process_boot_queue.cpp
+    tx__process_metrics.cpp
     tx__process_pending_operations.cpp
     tx__reassign_groups.cpp
     tx__reassign_groups_on_decommit.cpp
@@ -74,6 +80,7 @@ SRCS(
     tx__sync_tablets.cpp
     tx__tablet_owners_reply.cpp
     tx__unlock_tablet.cpp
+    tx__update_dc_followers.cpp
     tx__update_domain.cpp
     tx__update_tablet_groups.cpp
     tx__update_tablet_metrics.cpp
@@ -82,6 +89,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/library/aclib
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     library/cpp/containers/ring_buffer

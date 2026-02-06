@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
 
-#include <contrib/ydb/library/persqueue/topic_parser_public/topic_parser.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/persqueue/topic_parser_public/topic_parser.h>
 
 
 namespace NKikimr::NMsgBusProxy::NPqMetaCacheV2 {
@@ -17,8 +17,10 @@ namespace NKikimr::NMsgBusProxy::NPqMetaCacheV2 {
 
 namespace NPersQueue {
 
-TString GetFullTopicPath(const NActors::TActorContext& ctx, const TMaybe<TString>& database, const TString& topicPath);
+TString GetFullTopicPath(const TMaybe<TString>& database, const TString& topicPath);
+TString ConvertNewConsumerName(const TString& consumer, const NKikimrPQ::TPQConfig& pqConfig);
 TString ConvertNewConsumerName(const TString& consumer, const NActors::TActorContext& ctx);
+TString ConvertOldConsumerName(const TString& consumer, const NKikimrPQ::TPQConfig& pqConfig);
 TString ConvertOldConsumerName(const TString& consumer, const NActors::TActorContext& ctx);
 TString MakeConsumerPath(const TString& consumer);
 

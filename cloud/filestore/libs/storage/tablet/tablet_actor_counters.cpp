@@ -916,7 +916,7 @@ void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
     actorSystem.GetPoolStats(poolId, poolStats, threadStats);
     i64 ticks = 0;
     for (ui64 i = 0; i < threadStats.size(); ++i) {
-        ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType()];
+        ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType().GetIndex()];
     }
 
     const i64 prevUsageMicros =

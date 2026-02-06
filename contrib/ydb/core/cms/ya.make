@@ -21,6 +21,7 @@ SRCS(
     cms_tx_remove_permissions.cpp
     cms_tx_remove_request.cpp
     cms_tx_remove_task.cpp
+    cms_tx_store_first_boot_timestamp.cpp
     cms_tx_store_permissions.cpp
     cms_tx_store_walle_task.cpp
     cms_tx_update_config.cpp
@@ -30,6 +31,7 @@ SRCS(
     downtime.cpp
     erasure_checkers.h
     erasure_checkers.cpp
+    error_info.h
     http.cpp
     http.h
     info_collector.cpp
@@ -82,6 +84,7 @@ RESOURCE(
     ui/datashard_rs.js cms/ui/datashard_rs.js
     ui/datashard_slow_ops.js cms/ui/datashard_slow_ops.js
     ui/enums.js cms/ui/enums.js
+    ui/ext/myers-diff/myers_diff.js cms/ui/ext/myers-diff/myers_diff.js
     ui/ext/bootstrap.min.css cms/ui/ext/bootstrap.min.css
     ui/ext/fuzzycomplete.min.css cms/ui/ext/fuzzycomplete.min.css
     ui/ext/fuzzycomplete.min.js cms/ui/ext/fuzzycomplete.min.js
@@ -237,4 +240,5 @@ RECURSE(
 RECURSE_FOR_TESTS(
     ut
     ut_sentinel
+    ut_sentinel_unstable
 )

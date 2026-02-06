@@ -1,7 +1,6 @@
 #include "schemeshard_impl.h"
 #include "schemeshard_path_describer.h"
 
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/tx/scheme_board/populator.h>
 
@@ -57,12 +56,9 @@ struct TSchemeShard::TTxInitPopulator : public TTransactionBase<TSchemeShard> {
 
     void Complete(const TActorContext& ctx) override {
         const ui64 tabletId = Self->TabletID();
-        const auto &domains = *AppData()->DomainsInfo;
-        const ui32 domainId = domains.GetDomainUidByTabletId(tabletId);
-        const ui32 boardSSId = domains.GetDomain(domainId).DefaultSchemeBoardGroup;
 
         IActor* populator = CreateSchemeBoardPopulator(
-            tabletId, Self->Generation(), boardSSId,
+            tabletId, Self->Generation(),
             std::move(Descriptions), Self->NextLocalPathId
         );
 

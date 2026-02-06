@@ -55,6 +55,7 @@ using TResourceRawValues = std::tuple<i64, i64, i64, i64>; // CPU, Memory, Netwo
 using TResourceNormalizedValues = std::tuple<double, double, double, double>;
 using TOwnerIdxType = NScheme::TPairUi64Ui64;
 using TSubActorId = ui64; // = LocalId part of TActorId
+using TDataCenterPriority = std::unordered_map<TDataCenterId, i32>;
 
 static constexpr std::size_t MAX_TABLET_CHANNELS = 256;
 
@@ -98,7 +99,7 @@ constexpr std::size_t EBalancerTypeSize = static_cast<std::size_t>(EBalancerType
 TString EBalancerTypeName(EBalancerType value);
 
 enum class EResourceToBalance {
-    Dominant,
+    ComputeResources,
     Counter,
     CPU,
     Memory,
@@ -145,12 +146,12 @@ struct TCompleteNotifications {
         return Notifications.size();
     }
 
-    void Send(const TActorContext& ctx) {
+    void Send(const TActorContext&) {
         for (auto& [notification, duration] : Notifications) {
             if (duration) {
-                ctx.ExecutorThread.Schedule(duration, notification.Release());
+                TActivationContext::Schedule(duration, std::move(notification));
             } else {
-                ctx.ExecutorThread.Send(notification.Release());
+                TActivationContext::Send(std::move(notification));
             }
         }
         Notifications.clear();
@@ -202,6 +203,10 @@ TResourceNormalizedValues NormalizeRawValues(const TResourceRawValues& values, c
 NMetrics::EResource GetDominantResourceType(const TResourceRawValues& values, const TResourceRawValues& maximum);
 NMetrics::EResource GetDominantResourceType(const TResourceNormalizedValues& normValues);
 
+// We calculate resource standard deviation to eliminate pointless tablet moves
+// Because counter is by default normalized by 1 000 000, a single tablet move
+// might have a very small effect on overall deviation. We must not let numerical
+// error be larger than the effect, so we use a more stable algorithm for computing the sum:
 // https://en.wikipedia.org/wiki/Kahan_summation_algorithm
 template<std::ranges::range TRange>
 std::ranges::range_value_t<TRange> StableSum(const TRange& values) {
@@ -233,6 +238,10 @@ inline std::tuple<ResourceTypes...> GetStDev(const TVector<std::tuple<ResourceTy
     auto st_dev = sqrt(div);
     return tuple_cast<ResourceTypes...>::cast(st_dev);
 }
+
+extern const std::unordered_map<TTabletTypes::EType, TString> TABLET_TYPE_SHORT_NAMES;
+
+extern const std::unordered_map<TString, TTabletTypes::EType> TABLET_TYPE_BY_SHORT_NAME;
 
 class THive;
 
@@ -278,7 +287,7 @@ struct THiveSharedSettings {
 
 struct TDrainSettings {
     bool Persist = true;
-    bool KeepDown = false;
+    NKikimrHive::EDrainDownPolicy DownPolicy = NKikimrHive::EDrainDownPolicy::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART;
     ui32 DrainInFlight = 0;
 };
 
@@ -288,7 +297,7 @@ struct TBalancerSettings {
     bool RecheckOnFinish = false;
     ui64 MaxInFlight = 1;
     const std::vector<TNodeId> FilterNodeIds = {};
-    EResourceToBalance ResourceToBalance = EResourceToBalance::Dominant;
+    EResourceToBalance ResourceToBalance = EResourceToBalance::ComputeResources;
     std::optional<TFullObjectId> FilterObjectId;
 };
 
@@ -313,13 +322,77 @@ struct TNodeFilter {
     TVector<TNodeId> AllowedNodes;
     TVector<TDataCenterId> AllowedDataCenters;
     TSubDomainKey ObjectDomain;
+    TTabletTypes::EType TabletType = TTabletTypes::TypeInvalid;
 
-    const THive& Hive;
+    const THive* Hive;
 
     explicit TNodeFilter(const THive& hive);
 
     TArrayRef<const TSubDomainKey> GetEffectiveAllowedDomains() const;
+
+    bool IsAllowedDataCenter(TDataCenterId dc) const;
 };
+
+struct TFollowerUpdates {
+    enum class EAction {
+        Create,
+        Update,
+        Delete,
+    };
+
+    struct TUpdate {
+        EAction Action;
+        TFullTabletId TabletId;
+        TFollowerGroupId GroupId;
+        TDataCenterId DataCenter;
+    };
+
+    std::deque<TUpdate> Updates;
+
+    bool Empty() const {
+        return Updates.empty();
+    }
+
+    void Create(TFullTabletId leaderTablet, TFollowerGroupId group, TDataCenterId dc) {
+        Updates.emplace_back(EAction::Create, leaderTablet, group, dc);
+    }
+
+    void Update(TFullTabletId tablet, TDataCenterId dc) {
+        Updates.emplace_back(EAction::Update, tablet, 0, dc);
+    }
+
+    void Delete(TFullTabletId tablet, TFollowerGroupId group, TDataCenterId dc) {
+        Updates.emplace_back(EAction::Delete, tablet, group, dc);
+    }
+
+    TUpdate Pop() {
+        TUpdate update = Updates.front();
+        Updates.pop_front();
+        return update;
+    }
+};
+
+// same as NKikimrTabletBase::TMetrics, except not a protobuf - for lighter operations
+struct TMetrics {
+    ui64 CPU = 0;
+    ui64 Memory = 0;
+    ui64 Network = 0;
+    ui64 Counter = 0;
+    ui64 Storage = 0;
+    TVector<NKikimrTabletBase::TThroughputRecord> GroupReadThroughput;
+    TVector<NKikimrTabletBase::TThroughputRecord> GroupWriteThroughput;
+    ui64 ReadThroughput = 0;
+    ui64 WriteThroughput = 0;
+    TVector<NKikimrTabletBase::TIopsRecord> GroupReadIops;
+    TVector<NKikimrTabletBase::TIopsRecord> GroupWriteIops;
+    ui64 ReadIops = 0;
+    ui64 WriteIops = 0;
+
+    TMetrics& operator+=(const TMetrics& other);
+
+    void ToProto(NKikimrTabletBase::TMetrics* proto) const;
+};
+
 
 } // NHive
 } // NKikimr
@@ -332,7 +405,7 @@ inline void Out<NKikimr::NHive::TCompleteNotifications>(IOutputStream& o, const 
             if (it != n.Notifications.begin()) {
                 o << ',';
             }
-            o << Hex(it->first->Type) << " " << it->first.Get()->Recipient;
+            o << Hex(it->first->Type) << " " << it->first.Get()->Recipient << " " << it->first->ToString();
         }
     }
 }

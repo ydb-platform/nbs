@@ -1,0 +1,52 @@
+{
+    "meta": {
+        "type": "query",
+        "version": "0.2"
+    },
+    "tables": [
+        {
+            "name": "/local/base_write_insert_revert_sql_plan/Input",
+            "reads": [
+                {
+                    "lookup_by": [
+                        "key",
+                        "subkey"
+                    ],
+                    "type": "Lookup"
+                }
+            ],
+            "writes": [
+                {
+                    "columns": [
+                        "key",
+                        "subkey",
+                        "value"
+                    ],
+                    "type": "MultiUpsert"
+                }
+            ]
+        },
+        {
+            "name": "/local/base_write_insert_revert_sql_plan/Input1",
+            "reads": [
+                {
+                    "lookup_by": [
+                        "Group",
+                        "Name"
+                    ],
+                    "type": "Lookup"
+                }
+            ],
+            "writes": [
+                {
+                    "columns": [
+                        "Comment",
+                        "Group",
+                        "Name"
+                    ],
+                    "type": "MultiUpsert"
+                }
+            ]
+        }
+    ]
+}

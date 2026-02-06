@@ -64,6 +64,14 @@ void TMemoryChanges::GrabIndex(TSchemeShard* ss, const TPathId& pathId) {
     Grab<TTableIndexInfo>(pathId, ss->Indexes, Indexes);
 }
 
+void TMemoryChanges::GrabNewSequence(TSchemeShard* ss, const TPathId& pathId) {
+    GrabNew(pathId, ss->Sequences, Sequences);
+}
+
+void TMemoryChanges::GrabSequence(TSchemeShard* ss, const TPathId& pathId) {
+    Grab<TSequenceInfo>(pathId, ss->Sequences, Sequences);
+}
+
 void TMemoryChanges::GrabNewCdcStream(TSchemeShard* ss, const TPathId& pathId) {
     GrabNew(pathId, ss->CdcStreams, CdcStreams);
 }
@@ -104,6 +112,14 @@ void TMemoryChanges::GrabView(TSchemeShard* ss, const TPathId& pathId) {
     Grab<TViewInfo>(pathId, ss->Views, Views);
 }
 
+void TMemoryChanges::GrabResourcePool(TSchemeShard* ss, const TPathId& pathId) {
+    Grab<TResourcePoolInfo>(pathId, ss->ResourcePools, ResourcePools);
+}
+
+void TMemoryChanges::GrabBackupCollection(TSchemeShard* ss, const TPathId& pathId) {
+    Grab<TBackupCollectionInfo>(pathId, ss->BackupCollections, BackupCollections);
+}
+
 void TMemoryChanges::UnDo(TSchemeShard* ss) {
     // be aware of the order of grab & undo ops
     // stack is the best way to manage it right
@@ -126,6 +142,16 @@ void TMemoryChanges::UnDo(TSchemeShard* ss) {
             ss->Indexes.erase(id);
         }
         Indexes.pop();
+    }
+
+    while (Sequences) {
+        const auto& [id, elem] = Sequences.top();
+        if (elem) {
+            ss->Sequences[id] = elem;
+        } else {
+            ss->Sequences.erase(id);
+        }
+        Sequences.pop();
     }
 
     while (CdcStreams) {
@@ -179,15 +205,19 @@ void TMemoryChanges::UnDo(TSchemeShard* ss) {
             ss->ShardInfos[id] = *elem;
         } else {
             ss->ShardInfos.erase(id);
-            ss->ShardRemoved(id);
+            ss->OnShardRemoved(id);
         }
         Shards.pop();
     }
 
     // Restore ss->SubDomains entries to saved copies of TSubDomainInfo objects.
     // No copy, simple pointer replacement.
-    for (const auto& [id, elem] : SubDomains) {
-        ss->SubDomains[id] = elem;
+    for (const auto& [id, savedState] : SubDomains) {
+        auto& subdomain = ss->SubDomains[id];
+        subdomain = savedState;
+        if (ss->GetCurrentSubDomainPathId() == id) {
+            subdomain->UpdateCounters(ss);
+        }
     }
     SubDomains.clear();
 
@@ -229,6 +259,16 @@ void TMemoryChanges::UnDo(TSchemeShard* ss) {
             ss->Views.erase(id);
         }
         Views.pop();
+    }
+
+    while (ResourcePools) {
+        const auto& [id, elem] = ResourcePools.top();
+        if (elem) {
+            ss->ResourcePools[id] = elem;
+        } else {
+            ss->ResourcePools.erase(id);
+        }
+        ResourcePools.pop();
     }
 }
 

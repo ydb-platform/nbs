@@ -7,7 +7,8 @@ SRCS(
 PEERDIR(
     contrib/libs/protobuf
     contrib/ydb/library/grpc/client
-    contrib/ydb/library/yql/public/issue
+    contrib/ydb/public/api/protos
+    yql/essentials/public/issue
 )
 
 END()

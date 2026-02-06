@@ -19,6 +19,12 @@ namespace NKikimr {
     namespace NGRpcService {
         class TInFlightLimiterRegistry;
     }
+    namespace NSharedCache {
+        class TSharedCachePages;
+    }
+    namespace NJaegerTracing {
+        class TSamplingThrottlingConfigurator;
+    }
 }
 
 namespace NKikimrCms {
@@ -32,6 +38,7 @@ namespace NKikimrSharedCache {
 namespace NKikimrProto {
     class TKeyConfig;
     class TAuthConfig;
+    class TDataIntegrityTrailsConfig;
 
     namespace NFolderService {
         class TFolderServiceConfig;
@@ -47,6 +54,7 @@ namespace NKikimrConfig {
     class TStreamingConfig;
     class TMeteringConfig;
     class TSqsConfig;
+    class TKafkaProxyConfig;
     class TAuthConfig;
 
     class THiveConfig;
@@ -61,6 +69,17 @@ namespace NKikimrConfig {
     class TAwsCompatibilityConfig;
     class TS3ProxyResolverConfig;
     class TBackgroundCleaningConfig;
+    class TDataErasureConfig;
+    class TGraphConfig;
+    class TMetadataCacheConfig;
+    class TMemoryControllerConfig;
+    class TFeatureFlags;
+    class THealthCheckConfig;
+    class TWorkloadManagerConfig;
+}
+
+namespace NKikimrReplication {
+    class TReplicationDefaults;
 }
 
 namespace NKikimrNetClassifier {
@@ -85,6 +104,7 @@ namespace NKikimr {
     class TResourceProfiles;
     class TControlBoard;
     class TFeatureFlags;
+    class TMetricsConfig;
 }
 
 namespace NKikimr {
@@ -97,7 +117,7 @@ namespace NMonitoring {
     class TBusNgMonPage;
 }
 
-namespace NYdb {
+namespace NYdb::inline V3 {
     class TDriver;
 }
 
@@ -132,11 +152,30 @@ namespace NPQ {
     class IPersQueueMirrorReaderFactory;
 }
 
+namespace NSchemeShard {
+    class IOperationFactory;
+}
+
+namespace NReplication::NService {
+    class ITransferWriterFactory;
+}
+
 class TFormatFactory;
+
+namespace NYamlConfig {
+    class IConfigSwissKnife;
+}
+
+namespace NAudit {
+    class TAuditConfig;
+}
 
 struct TAppData {
     static const ui32 MagicTag = 0x2991AAF8;
     const ui32 Magic;
+
+    struct TImpl;
+    std::unique_ptr<TImpl> Impl;
 
     const ui32 SystemPoolId;
     const ui32 UserPoolId;
@@ -149,6 +188,8 @@ struct TAppData {
     const NDataShard::IExportFactory *DataShardExportFactory = nullptr;
     const TFormatFactory* FormatFactory = nullptr;
     const NSQS::IEventsWriterFactory* SqsEventsWriterFactory = nullptr;
+    const NSchemeShard::IOperationFactory *SchemeOperationFactory = nullptr;
+    const NYamlConfig::IConfigSwissKnife *ConfigSwissKnife = nullptr;
 
     NSQS::IAuthFactory* SqsAuthFactory = nullptr;
 
@@ -158,6 +199,7 @@ struct TAppData {
 
     const NMsgBusProxy::IPersQueueGetReadSessionsInfoWorkerFactory* PersQueueGetReadSessionsInfoWorkerFactory = nullptr;
     const NPQ::IPersQueueMirrorReaderFactory* PersQueueMirrorReaderFactory = nullptr;
+    std::shared_ptr<NReplication::NService::ITransferWriterFactory> TransferWriterFactory = nullptr;
     NYdb::TDriver* YdbDriver = nullptr;
     const NPDisk::IIoContextFactory* IoContextFactory = nullptr;
 
@@ -178,38 +220,16 @@ struct TAppData {
     ::NMonitoring::TDynamicCounterPtr Counters;
     TIntrusivePtr<NKikimr::TControlBoard> Icb;
     TIntrusivePtr<NGRpcService::TInFlightLimiterRegistry> InFlightLimiterRegistry;
+    TIntrusivePtr<NSharedCache::TSharedCachePages> SharedCachePages;
 
     TIntrusivePtr<NInterconnect::TPollerThreads> PollerThreads;
 
     THolder<NKikimrCms::TCmsConfig> DefaultCmsConfig;
 
-    std::unique_ptr<NKikimrStream::TStreamingConfig> StreamingConfigPtr;
-    std::unique_ptr<NKikimrPQ::TPQConfig> PQConfigPtr;
-    std::unique_ptr<NKikimrPQ::TPQClusterDiscoveryConfig> PQClusterDiscoveryConfigPtr;
-    std::unique_ptr<NKikimrNetClassifier::TNetClassifierConfig> NetClassifierConfigPtr;
-    std::unique_ptr<NKikimrNetClassifier::TNetClassifierDistributableConfig> NetClassifierDistributableConfigPtr;
-    std::unique_ptr<NKikimrConfig::TSqsConfig> SqsConfigPtr;
-    std::unique_ptr<NKikimrProto::TAuthConfig> AuthConfigPtr;
-    std::unique_ptr<NKikimrProto::TKeyConfig> KeyConfigPtr;
-    std::unique_ptr<NKikimrProto::TKeyConfig> PDiskKeyConfigPtr;
-    std::unique_ptr<TFeatureFlags> FeatureFlagsPtr;
-    std::unique_ptr<NKikimrConfig::THiveConfig> HiveConfigPtr;
-    std::unique_ptr<NKikimrConfig::TDataShardConfig> DataShardConfigPtr;
-    std::unique_ptr<NKikimrConfig::TColumnShardConfig> ColumnShardConfigPtr;
-    std::unique_ptr<NKikimrConfig::TSchemeShardConfig> SchemeShardConfigPtr;
-    std::unique_ptr<NKikimrConfig::TMeteringConfig> MeteringConfigPtr;
-    std::unique_ptr<NKikimrConfig::TAuditConfig> AuditConfigPtr;
-    std::unique_ptr<NKikimrConfig::TCompactionConfig> CompactionConfigPtr;
-    std::unique_ptr<NKikimrConfig::TDomainsConfig> DomainsConfigPtr;
-    std::unique_ptr<NKikimrConfig::TBootstrap> BootstrapConfigPtr;
-    std::unique_ptr<NKikimrConfig::TAwsCompatibilityConfig> AwsCompatibilityConfigPtr;
-    std::unique_ptr<NKikimrConfig::TS3ProxyResolverConfig> S3ProxyResolverConfigPtr;
-    std::unique_ptr<NKikimrSharedCache::TSharedCacheConfig> SharedCacheConfigPtr;
-    std::unique_ptr<NKikimrConfig::TBackgroundCleaningConfig> BackgroundCleaningConfigPtr;
-
     NKikimrStream::TStreamingConfig& StreamingConfig;
     NKikimrPQ::TPQConfig& PQConfig;
     NKikimrPQ::TPQClusterDiscoveryConfig& PQClusterDiscoveryConfig;
+    NKikimrConfig::TKafkaProxyConfig& KafkaProxyConfig;
     NKikimrNetClassifier::TNetClassifierConfig& NetClassifierConfig;
     NKikimrNetClassifier::TNetClassifierDistributableConfig& NetClassifierDistributableConfig;
     NKikimrConfig::TSqsConfig& SqsConfig;
@@ -222,23 +242,38 @@ struct TAppData {
     NKikimrConfig::TColumnShardConfig& ColumnShardConfig;
     NKikimrConfig::TSchemeShardConfig& SchemeShardConfig;
     NKikimrConfig::TMeteringConfig& MeteringConfig;
-    NKikimrConfig::TAuditConfig& AuditConfig;
+    NKikimr::NAudit::TAuditConfig& AuditConfig;
     NKikimrConfig::TCompactionConfig& CompactionConfig;
     NKikimrConfig::TDomainsConfig& DomainsConfig;
     NKikimrConfig::TBootstrap& BootstrapConfig;
     NKikimrConfig::TAwsCompatibilityConfig& AwsCompatibilityConfig;
     NKikimrConfig::TS3ProxyResolverConfig& S3ProxyResolverConfig;
     NKikimrConfig::TBackgroundCleaningConfig& BackgroundCleaningConfig;
+    NKikimrConfig::TGraphConfig& GraphConfig;
+    NKikimrSharedCache::TSharedCacheConfig& SharedCacheConfig;
+    NKikimrConfig::TMetadataCacheConfig& MetadataCacheConfig;
+    NKikimrConfig::TMemoryControllerConfig& MemoryControllerConfig;
+    NKikimrReplication::TReplicationDefaults& ReplicationConfig;
+    NKikimrProto::TDataIntegrityTrailsConfig& DataIntegrityTrailsConfig;
+    NKikimrConfig::TDataErasureConfig& DataErasureConfig;
+    NKikimrConfig::THealthCheckConfig& HealthCheckConfig;
+    TMetricsConfig& MetricsConfig;
+    NKikimrConfig::TWorkloadManagerConfig& WorkloadManagerConfig;
     bool EnforceUserTokenRequirement = false;
+    bool EnforceUserTokenCheckRequirement = false; // check token if it was specified
     bool AllowHugeKeyValueDeletes = true; // delete when all clients limit deletes per request
     bool EnableKqpSpilling = false;
     bool AllowShadowDataInSchemeShardForTests = false;
     bool EnableMvccSnapshotWithLegacyDomainRoot = false;
     bool UsePartitionStatsCollectorForTests = false;
     bool DisableCdcAutoSwitchingToReadyStateForTests = false;
-    TVector<TString> AdministrationAllowedSIDs; // users/groups which allowed to perform administrative tasks
+
+    TVector<TString> AdministrationAllowedSIDs; // use IsAdministrator method to check whether a user or a group is allowed to perform administrative tasks
+    TVector<TString> RegisterDynamicNodeAllowedSIDs;
+    TVector<TString> BootstrapAllowedSIDs;
     TVector<TString> DefaultUserSIDs;
     TString AllAuthenticatedUsers = "all-users@well-known";
+
     TString TenantName;
     TString NodeName;
 
@@ -248,11 +283,7 @@ struct TAppData {
     bool EnableIntrospection = true;
 
     // Used to allow column families for testing
-    bool AllowColumnFamiliesForTest = false;
     bool AllowPrivateTableDescribeForTest = false;
-
-    // Used to allow immediate ReadTable in tests
-    bool AllowReadTableImmediate = false;
 
     // Used to disable object deletion in schemeshard for cleanup tests
     bool DisableSchemeShardCleanupOnDropForTest = false;
@@ -273,6 +304,9 @@ struct TAppData {
 
     bool YamlConfigEnabled = false;
 
+    // Tracing configurator (look for tracing config in ydb/core/jaeger_tracing/actors_tracing_control)
+    TIntrusivePtr<NKikimr::NJaegerTracing::TSamplingThrottlingConfigurator> TracingConfigurator;
+
     TAppData(
             ui32 sysPoolId, ui32 userPoolId, ui32 ioPoolId, ui32 batchPoolId,
             TMap<TString, ui32> servicePools,
@@ -280,6 +314,11 @@ struct TAppData {
             const NMiniKQL::IFunctionRegistry* functionRegistry,
             const TFormatFactory* formatFactory,
             TProgramShouldContinue *kikimrShouldContinue);
+
+    ~TAppData();
+
+    void InitFeatureFlags(const NKikimrConfig::TFeatureFlags& flags);
+    void UpdateRuntimeFlags(const NKikimrConfig::TFeatureFlags& flags);
 };
 
 inline TAppData* AppData(NActors::TActorSystem* actorSystem) {
@@ -289,21 +328,26 @@ inline TAppData* AppData(NActors::TActorSystem* actorSystem) {
     return x;
 }
 
+inline bool HasAppData(NActors::TActorSystem* actorSystem) {
+    return actorSystem && AppData(actorSystem);
+}
+
 inline bool HasAppData() {
-    return !!NActors::TlsActivationContext;
+    return !!NActors::TlsActivationContext
+        && NActors::TActivationContext::ActorSystem()
+        && NActors::TActivationContext::ActorSystem()->AppData<TAppData>();
 }
 
 inline TAppData& AppDataVerified() {
     Y_ABORT_UNLESS(HasAppData());
-    auto& actorSystem = NActors::TlsActivationContext->ExecutorThread.ActorSystem;
-    Y_ABORT_UNLESS(actorSystem);
+    NActors::TActorSystem* actorSystem = NActors::TActivationContext::ActorSystem();
     TAppData* const x = actorSystem->AppData<TAppData>();
-    Y_ABORT_UNLESS(x && x->Magic == TAppData::MagicTag);
+    Y_ABORT_UNLESS(x->Magic == TAppData::MagicTag);
     return *x;
 }
 
 inline TAppData* AppData() {
-    return AppData(NActors::TlsActivationContext->ExecutorThread.ActorSystem);
+    return AppData(NActors::TActivationContext::ActorSystem());
 }
 
 inline TAppData* AppData(const NActors::TActorContext &ctx) {

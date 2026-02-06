@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 
 namespace NCloud::NBlockStore::NStorage {

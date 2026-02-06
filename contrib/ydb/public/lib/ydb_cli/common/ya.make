@@ -2,7 +2,9 @@ LIBRARY(common)
 
 SRCS(
     aws.cpp
+    cert_format_converter.cpp
     command.cpp
+    command_utils.cpp
     common.cpp
     csv_parser.cpp
     examples.cpp
@@ -13,11 +15,13 @@ SRCS(
     parameter_stream.cpp
     parameters.cpp
     pg_dump_parser.cpp
+    plan2svg.cpp
     pretty_table.cpp
     print_operation.cpp
     print_utils.cpp
     profile_manager.cpp
     progress_bar.cpp
+    progress_indication.cpp
     query_stats.cpp
     recursive_list.cpp
     recursive_remove.cpp
@@ -26,34 +30,42 @@ SRCS(
     scheme_printers.cpp
     sys.cpp
     tabbed_table.cpp
+    waiting_bar.cpp
     ydb_updater.cpp
     yt.cpp
 )
 
 PEERDIR(
     contrib/libs/aws-sdk-cpp/aws-cpp-sdk-s3
-    library/cpp/config
+    contrib/libs/openssl
     library/cpp/getopt
     library/cpp/json/writer
     library/cpp/yaml/as
     library/cpp/string_utils/csv
     contrib/ydb/public/lib/json_value
-    contrib/ydb/public/lib/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
     contrib/ydb/public/lib/yson_value
-    contrib/ydb/public/sdk/cpp/client/draft
-    contrib/ydb/public/sdk/cpp/client/ydb_result
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_types
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/query
+    contrib/ydb/public/sdk/cpp/src/client/result
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/types
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials/oauth2_token_exchange
     contrib/ydb/library/arrow_parquet
+    contrib/ydb/public/lib/ydb_cli/common/ini_config
 )
 
 GENERATE_ENUM_SERIALIZATION(formats.h)
 GENERATE_ENUM_SERIALIZATION(parameters.h)
 
 END()
+
+RECURSE(
+    ini_config
+)
 
 RECURSE_FOR_TESTS(
     ut

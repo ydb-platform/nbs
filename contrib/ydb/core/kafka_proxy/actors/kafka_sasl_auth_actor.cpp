@@ -44,29 +44,16 @@ void TKafkaSaslAuthActor::StartPlainAuth(const NActors::TActorContext& ctx) {
 
     DatabasePath = CanonizePath(ClientAuthData.Database);
 
+    RequestState = ENavigateRequestState::DESCRIBING_DATABASE;
     SendDescribeRequest(ctx);
 }
 
 void TKafkaSaslAuthActor::Handle(NKikimr::TEvTicketParser::TEvAuthorizeTicketResult::TPtr& ev, const NActors::TActorContext& ctx) {
     if (ev->Get()->Error) {
-        SendResponseAndDie(EKafkaErrors::SASL_AUTHENTICATION_FAILED, "", ev->Get()->Error.Message, ctx);
+        SendResponseAndDie(EKafkaErrors::SASL_AUTHENTICATION_FAILED, "", TString{ev->Get()->Error.Message}, ctx);
         return;
     }
     UserToken = ev->Get()->Token;
-
-    if (ClientAuthData.UserName.Empty()) {
-        bool gotPermission = false;
-        for (auto & sid : UserToken->GetGroupSIDs()) {
-            if (sid == NKikimr::NGRpcProxy::V1::KafkaPlainAuthSid) {
-                gotPermission = true;
-                break;
-            }
-        }
-        if (!gotPermission) {
-            SendResponseAndDie(EKafkaErrors::SASL_AUTHENTICATION_FAILED, "", TStringBuilder() << "no permission '" << NKikimr::NGRpcProxy::V1::KafkaPlainAuthPermission << "'", ctx);
-            return;
-        }
-    }
 
     SendResponseAndDie(EKafkaErrors::NONE_ERROR, "", "", ctx);
 }
@@ -104,7 +91,7 @@ void TKafkaSaslAuthActor::SendResponseAndDie(EKafkaErrors errorCode, const TStri
 
         auto evResponse = std::make_shared<TEvKafka::TEvResponse>(CorrelationId, responseToClient, errorCode);
         auto authResult = new TEvKafka::TEvAuthResult(EAuthSteps::SUCCESS, evResponse, UserToken, DatabasePath, DatabaseId, FolderId, CloudId, ServiceAccountId, Coordinator,
-                                                                ResourcePath, IsServerless, errorMessage);
+                                                                ResourcePath, IsServerless, errorMessage, ResourseDatabasePath);
         Send(Context->ConnectionId, authResult);
     }
 
@@ -134,12 +121,13 @@ bool TKafkaSaslAuthActor::TryParseAuthDataTo(TKafkaSaslAuthActor::TAuthData& aut
     auto password = tokens[2];
     size_t atPos = userAndDatabase.rfind('@');
     if (atPos == TString::npos) {
-        SendResponseAndDie(EKafkaErrors::SASL_AUTHENTICATION_FAILED, "Database not provided.", "", ctx);
-        return false;
+        authData.UserName = "";
+        authData.Database = userAndDatabase;
+    } else {
+        authData.UserName = userAndDatabase.substr(0, atPos);
+        authData.Database = userAndDatabase.substr(atPos + 1);
     }
 
-    authData.UserName = userAndDatabase.substr(0, atPos);
-    authData.Database = userAndDatabase.substr(atPos + 1);
     authData.Password = password;
     return true;
 }
@@ -173,11 +161,16 @@ void TKafkaSaslAuthActor::SendLoginRequest(TKafkaSaslAuthActor::TAuthData authDa
 }
 
 void TKafkaSaslAuthActor::SendApiKeyRequest() {
-    auto entries = NKikimr::NGRpcProxy::V1::GetTicketParserEntries(DatabaseId, FolderId, true);
-
+    auto entries = NKikimr::NGRpcProxy::V1::GetTicketParserEntries(DatabaseId, FolderId);
+    TString ticket;
+    if (Context->Config.GetAuthViaApiKey()) {
+        ticket = "ApiKey " + ClientAuthData.Password;
+    } else {
+        ticket = ClientAuthData.Password;
+    }
     Send(NKikimr::MakeTicketParserID(), new NKikimr::TEvTicketParser::TEvAuthorizeTicket({
         .Database = DatabasePath,
-        .Ticket = "ApiKey " + ClientAuthData.Password,
+        .Ticket = ticket,
         .PeerName = TStringBuilder() << Address,
         .Entries = entries
     }));
@@ -190,17 +183,42 @@ void TKafkaSaslAuthActor::SendDescribeRequest(const TActorContext& ctx) {
     entry.Operation = NKikimr::NSchemeCache::TSchemeCacheNavigate::OpPath;
     entry.SyncVersion = false;
     schemeCacheRequest->ResultSet.emplace_back(entry);
+    schemeCacheRequest->DatabaseName = CanonizePath(DatabasePath);
+    ctx.Send(NKikimr::MakeSchemeCacheID(), MakeHolder<NKikimr::TEvTxProxySchemeCache::TEvNavigateKeySet>(schemeCacheRequest.release()));
+}
+
+void TKafkaSaslAuthActor::GetPathByPathId(const TPathId& pathId, const TActorContext& ctx) {
+    auto schemeCacheRequest = std::make_unique<NKikimr::NSchemeCache::TSchemeCacheNavigate>();
+    NKikimr::NSchemeCache::TSchemeCacheNavigate::TEntry entry;
+    entry.TableId.PathId = pathId;
+    entry.RequestType = NKikimr::NSchemeCache::TSchemeCacheNavigate::TEntry::ERequestType::ByTableId;
+    entry.Operation = NKikimr::NSchemeCache::TSchemeCacheNavigate::OpPath;
+    entry.SyncVersion = false;
+    entry.RedirectRequired = false;
+    schemeCacheRequest->ResultSet.emplace_back(entry);
     ctx.Send(NKikimr::MakeSchemeCacheID(), MakeHolder<NKikimr::TEvTxProxySchemeCache::TEvNavigateKeySet>(schemeCacheRequest.release()));
 }
 
 void TKafkaSaslAuthActor::Handle(NKikimr::TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev, const TActorContext& ctx) {
     const NKikimr::NSchemeCache::TSchemeCacheNavigate* navigate = ev->Get()->Request.Get();
     if (navigate->ErrorCount) {
-        SendResponseAndDie(EKafkaErrors::SASL_AUTHENTICATION_FAILED, "", TStringBuilder() << "Database with path '" << DatabasePath << "' doesn't exists", ctx);
+        switch(navigate->ResultSet.front().Status) {
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathNotTable:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathNotPath:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::TableCreationNotComplete:
+                return SendResponseAndDie(EKafkaErrors::SASL_AUTHENTICATION_FAILED, "", TStringBuilder() << "Database with path '" << DatabasePath << "' doesn't exists", ctx);
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::AccessDenied:
+                return SendResponseAndDie(EKafkaErrors::SASL_AUTHENTICATION_FAILED, "", TStringBuilder() << "Database with path '" << DatabasePath << "' access denied", ctx);
+            default:
+                return SendResponseAndDie(EKafkaErrors::BROKER_NOT_AVAILABLE, "", TStringBuilder() << "Internal error with navigate status " << navigate->ResultSet.front().Status, ctx);
+        }
         return;
     }
-    Y_ABORT_UNLESS(navigate->ResultSet.size() == 1);
-    IsServerless = navigate->ResultSet.front().DomainInfo->IsServerless();
+    if (RequestState == ENavigateRequestState::DESCRIBING_DATABASE) {
+        Y_ABORT_UNLESS(navigate->ResultSet.size() == 1);
+        IsServerless = navigate->ResultSet.front().DomainInfo->IsServerless();
 
     for (const auto& attr : navigate->ResultSet.front().Attributes) {
         if (attr.first == "folder_id") FolderId = attr.second;
@@ -212,12 +230,18 @@ void TKafkaSaslAuthActor::Handle(NKikimr::TEvTxProxySchemeCache::TEvNavigateKeyS
         else if (attr.first == "kafka_api") KafkaApiFlag = attr.second;
     }
 
-    if (ClientAuthData.UserName.Empty()) {
-        // ApiKey IAM authentification
-        SendApiKeyRequest();
-    } else {
-        // Login/Password authentification
-        SendLoginRequest(ClientAuthData, ctx);
+        RequestState = ENavigateRequestState::RESOLVING_DOMAIN_KEY;
+        GetPathByPathId(navigate->ResultSet.front().DomainInfo->GetResourcesDomainKey(), ctx);
+
+    } else if (RequestState == ENavigateRequestState::RESOLVING_DOMAIN_KEY) {
+        ResourseDatabasePath = NKikimr::JoinPath(navigate->ResultSet.front().Path);
+        if (ClientAuthData.UserName.empty()) {
+            // ApiKey IAM authentification
+            SendApiKeyRequest();
+        } else {
+            // Login/Password authentification
+            SendLoginRequest(ClientAuthData, ctx);
+        }
     }
 }
 

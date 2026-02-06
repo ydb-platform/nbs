@@ -3,10 +3,10 @@ LIBRARY()
 PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/ydb_issue
-    contrib/ydb/library/yql/utils/failure_injector
-    contrib/ydb/library/yql/providers/common/config
-    contrib/ydb/library/yql/providers/common/gateway
-    contrib/ydb/library/yql/providers/common/metrics
+    yql/essentials/utils/failure_injector
+    yql/essentials/providers/common/config
+    yql/essentials/providers/common/gateway
+    yql/essentials/providers/common/metrics
     contrib/ydb/library/yql/providers/dq/api/grpc
     contrib/ydb/library/yql/providers/dq/api/protos
     contrib/ydb/library/yql/providers/dq/runtime

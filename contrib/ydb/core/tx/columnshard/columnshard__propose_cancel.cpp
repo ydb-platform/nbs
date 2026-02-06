@@ -5,7 +5,7 @@ namespace NKikimr::NColumnShard {
 
 class TColumnShard::TTxProposeCancel : public TTransactionBase<TColumnShard> {
 public:
-    TTxProposeCancel(TColumnShard* self, TEvColumnShard::TEvCancelTransactionProposal::TPtr& ev)
+    TTxProposeCancel(TColumnShard* self, TEvDataShard::TEvCancelTransactionProposal::TPtr& ev)
         : TTransactionBase(self)
         , Ev(ev)
     { }
@@ -19,19 +19,22 @@ public:
 
         const auto* msg = Ev->Get();
         const ui64 txId = msg->Record.GetTxId();
-        Self->ProgressTxController->CancelTx(txId, txc);
+        Self->ProgressTxController->ExecuteOnCancel(txId, txc);
         return true;
     }
 
-    void Complete(const TActorContext&) override {
+    void Complete(const TActorContext& ctx) override {
         LOG_S_DEBUG("TTxProposeCancel.Complete");
+        const auto* msg = Ev->Get();
+        const ui64 txId = msg->Record.GetTxId();
+        Self->ProgressTxController->CompleteOnCancel(txId, ctx);
     }
 
 private:
-    const TEvColumnShard::TEvCancelTransactionProposal::TPtr Ev;
+    const TEvDataShard::TEvCancelTransactionProposal::TPtr Ev;
 };
 
-void TColumnShard::Handle(TEvColumnShard::TEvCancelTransactionProposal::TPtr& ev, const TActorContext& ctx) {
+void TColumnShard::Handle(TEvDataShard::TEvCancelTransactionProposal::TPtr& ev, const TActorContext& ctx) {
     Execute(new TTxProposeCancel(this, ev), ctx);
 }
 

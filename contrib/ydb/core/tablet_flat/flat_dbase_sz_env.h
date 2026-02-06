@@ -35,10 +35,10 @@ namespace NTable {
             auto *partStore = CheckedCast<const NTable::TPartStore*>(part);
 
             auto info = partStore->PageCollections.at(groupId.Index).Get();
-            auto type = EPage(info->PageCollection->Page(pageId).Type);
+            auto type = info->GetPageType(pageId);
             
             switch (type) {
-                case EPage::Index:
+                case EPage::FlatIndex:
                 case EPage::BTreeIndex:
                     // need index pages to continue counting
                     // do not count index
@@ -55,11 +55,11 @@ namespace NTable {
         }
 
     private:
-        void AddPageSize(TInfo *info, TPageId page) noexcept
+        void AddPageSize(TInfo *info, TPageId pageId) noexcept
         {
-            if (Touched[info].insert(page).second) {
+            if (Touched[info].insert(pageId).second) {
                 Pages++;
-                Bytes += info->PageCollection->Page(page).Size;
+                Bytes += info->GetPageSize(pageId);
             }
         }
 

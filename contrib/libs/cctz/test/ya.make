@@ -1,8 +1,10 @@
 GTEST()
 
+VERSION(Service-proxy-version)
+
 LICENSE(Apache-2.0)
 
-LICENSE_TEXTS(../LICENSE.txt)
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 PEERDIR(
     contrib/libs/cctz

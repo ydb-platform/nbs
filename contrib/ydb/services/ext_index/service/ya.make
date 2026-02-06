@@ -12,7 +12,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/services/ext_index/metadata
     contrib/ydb/services/ext_index/common
-    contrib/ydb/library/yql/minikql/jsonpath
+    yql/essentials/minikql/jsonpath
     contrib/ydb/public/api/protos
 )
 

@@ -2,7 +2,7 @@ PY3_LIBRARY()
 
 PROVIDES(numpy)
 
-VERSION(1.26.2)
+VERSION(1.26.4)
 
 LICENSE(BSD-3-Clause)
 
@@ -42,7 +42,6 @@ NO_CHECK_IMPORTS(
 CFLAGS(
     -DHAVE_CBLAS
     -DHAVE_NPY_CONFIG_H=1
-    -DNO_ATLAS_INFO=1
     -D_FILE_OFFSET_BITS=64
     -D_LARGEFILE64_SOURCE=1
     -D_LARGEFILE_SOURCE=1
@@ -441,6 +440,7 @@ PY_SRCS(
     numpy/f2py/_backends/_distutils.py
     numpy/f2py/_backends/_meson.py
     numpy/f2py/_isocbind.py
+    numpy/f2py/_src_pyf.py
     numpy/f2py/auxfuncs.py
     numpy/f2py/capi_maps.py
     numpy/f2py/cb_rules.py
