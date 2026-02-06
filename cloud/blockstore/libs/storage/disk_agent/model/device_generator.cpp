@@ -31,11 +31,11 @@ NProto::TError TDeviceGenerator::operator () (
         file.SetBlockSize(blockSize);
         file.SetPoolName(poolConfig.GetPoolName());
         switch (poolConfig.GetHashScheme()) {
-            case NProto::TStorageDiscoveryConfig_EHashScheme_HS_LEGACY:
+            case NProto::TStorageDiscoveryConfig::HS_LEGACY:
                 file.SetDeviceId(
                     CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix()));
                 break;
-            case NProto::TStorageDiscoveryConfig_EHashScheme_HS_FULL_PATH:
+            case NProto::TStorageDiscoveryConfig::HS_FULL_PATH:
                 file.SetDeviceId(
                     CreateDeviceId(path, poolConfig.GetHashSuffix()));
                 break;
@@ -66,13 +66,13 @@ NProto::TError TDeviceGenerator::operator () (
         file.SetFileSize(layout.GetDeviceSize());
 
         switch (poolConfig.GetHashScheme()) {
-            case NProto::TStorageDiscoveryConfig_EHashScheme_HS_LEGACY:
+            case NProto::TStorageDiscoveryConfig::HS_LEGACY:
                 file.SetDeviceId(CreateDeviceId(
                     deviceNumber,
                     poolConfig.GetHashSuffix(),
                     subDeviceIndex));
                 break;
-            case NProto::TStorageDiscoveryConfig_EHashScheme_HS_FULL_PATH:
+            case NProto::TStorageDiscoveryConfig::HS_FULL_PATH:
                 file.SetDeviceId(CreateDeviceId(
                     path,
                     poolConfig.GetHashSuffix(),

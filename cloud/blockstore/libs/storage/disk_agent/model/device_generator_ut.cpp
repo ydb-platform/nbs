@@ -254,7 +254,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
     Y_UNIT_TEST_F(ShouldGenerateDevicesWithFullPathHS, TFixture)
     {
         NProto::TStorageDiscoveryConfig::TPoolConfig def;
-        def.SetHashScheme(NProto::TStorageDiscoveryConfig_EHashScheme_HS_FULL_PATH);
+        def.SetHashScheme(NProto::TStorageDiscoveryConfig::HS_FULL_PATH);
 
         {
             auto& layout = *def.MutableLayout();
@@ -266,7 +266,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         NProto::TStorageDiscoveryConfig::TPoolConfig rot;
         rot.SetPoolName("rot");
         rot.SetHashSuffix("-rot");
-        rot.SetHashScheme(NProto::TStorageDiscoveryConfig_EHashScheme_HS_FULL_PATH);
+        rot.SetHashScheme(NProto::TStorageDiscoveryConfig::HS_FULL_PATH);
 
         {
             auto& layout = *rot.MutableLayout();
@@ -279,7 +279,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         local.SetPoolName("local");
         local.SetHashSuffix("-local");
         local.SetBlockSize(512);
-        local.SetHashScheme(NProto::TStorageDiscoveryConfig_EHashScheme_HS_FULL_PATH);
+        local.SetHashScheme(NProto::TStorageDiscoveryConfig::HS_FULL_PATH);
 
         TDeviceGenerator gen { Log, AgentId };
 
@@ -394,7 +394,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
     Y_UNIT_TEST_F(ShouldGenerateStableUUIDsWithFullPathHS, TFixture)
     {
         NProto::TStorageDiscoveryConfig::TPoolConfig def;
-        def.SetHashScheme(NProto::TStorageDiscoveryConfig_EHashScheme_HS_FULL_PATH);
+        def.SetHashScheme(NProto::TStorageDiscoveryConfig::HS_FULL_PATH);
 
         TString expectedId;
 
@@ -429,7 +429,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
 
         NProto::TStorageDiscoveryConfig::TPoolConfig compound;
 
-        compound.SetHashScheme(NProto::TStorageDiscoveryConfig_EHashScheme_HS_FULL_PATH);
+        compound.SetHashScheme(NProto::TStorageDiscoveryConfig::HS_FULL_PATH);
 
         auto& layout = *compound.MutableLayout();
         layout.SetHeaderSize(headerSize);
