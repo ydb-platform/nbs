@@ -11,10 +11,14 @@ jobs:
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
     - name: Checkout PR
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: false
         sparse-checkout: '.github'
+        clean: true
+    - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+      run: git config core.sparseCheckout false
+      continue-on-error: true
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:

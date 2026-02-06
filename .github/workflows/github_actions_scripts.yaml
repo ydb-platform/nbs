@@ -58,27 +58,33 @@ jobs:
         REGION: ${{ vars.POOLED_LIGHT_REGION }}
 
     - name: Checkout PR
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       if: github.event.pull_request.head.sha != ''
       with:
         submodules: false
         sparse-checkout: '.github'
+        clean: true
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
     - name: Rebase PR
       if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
       run: |
+        [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
         git config user.email "robot-nbs@nebius.com"
         git config user.name "Robot NBS"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: false
         sparse-checkout: '.github'
+        clean: true
+    - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+      run: git config core.sparseCheckout false
+      continue-on-error: true
     - name: Prepare env
       shell: bash
       run: |

@@ -28,9 +28,13 @@ jobs:
     needs: orchestrator
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: Set up gh cli
         uses: ./.github/actions/gh_cli
       - name: Run gh cli to start this workflow with the same arguments

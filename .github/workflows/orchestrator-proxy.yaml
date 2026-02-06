@@ -54,9 +54,13 @@ jobs:
     runs-on: ${{ inputs.provision_mode == 'initial' && fromJson('["ubuntu-latest"]') || fromJson('["self-hosted", "runner_light"]') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: Set up gh cli
         uses: ./.github/actions/gh_cli
       - name: Sleep to wait for orchestrator.yaml to finish
