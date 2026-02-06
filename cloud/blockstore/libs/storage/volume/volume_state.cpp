@@ -133,6 +133,12 @@ TVolumeState::TVolumeState(
     , ClientInfosByClientId(std::move(infos))
     , ThrottlerConfig(std::move(throttlerConfig))
     , ThrottlingPolicy(Config->GetPerformanceProfile(), ThrottlerConfig)
+    , ShapingThrottler(TShapingThrottlerConfig(
+        ThrottlingPolicy.CalculateBurstTime(),
+        StorageConfig->GetShapingThrottlerBoostRate(),
+        StorageConfig->GetShapingThrottlerStandardBudgetMultiplier(),
+        StorageConfig->GetShapingThrottlerBoostBudgetMultiplier(),
+        StorageConfig->GetShapingThrottlerBoostRefillBudgetMultiplier()))
     , MountHistory(std::move(mountHistory))
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
@@ -297,6 +303,12 @@ void TVolumeState::ResetThrottlingPolicy(
             ThrottlerConfig.DefaultPostponedRequestWeight,
             ThrottlingPolicy.GetCurrentBoostBudget(),
             ThrottlerConfig.UseDiskSpaceScore));
+    ShapingThrottler.Reset(TShapingThrottlerConfig(
+        ThrottlingPolicy.CalculateBurstTime(),
+        StorageConfig->GetShapingThrottlerBoostRate(),
+        StorageConfig->GetShapingThrottlerStandardBudgetMultiplier(),
+        StorageConfig->GetShapingThrottlerBoostBudgetMultiplier(),
+        StorageConfig->GetShapingThrottlerBoostRefillBudgetMultiplier()));
 }
 
 void TVolumeState::ResetThrottlingPolicy(
@@ -304,6 +316,12 @@ void TVolumeState::ResetThrottlingPolicy(
     ui32 throttlingRuleVersion)
 {
     ThrottlingPolicy.Reset(throttlingRule, throttlingRuleVersion);
+    ShapingThrottler.Reset(TShapingThrottlerConfig(
+        ThrottlingPolicy.CalculateBurstTime(),
+        StorageConfig->GetShapingThrottlerBoostRate(),
+        StorageConfig->GetShapingThrottlerStandardBudgetMultiplier(),
+        StorageConfig->GetShapingThrottlerBoostBudgetMultiplier(),
+        StorageConfig->GetShapingThrottlerBoostRefillBudgetMultiplier()));
 }
 
 bool TVolumeState::ShouldTrackUsedBlocks() const

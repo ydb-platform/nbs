@@ -108,26 +108,29 @@ public:
         const TBackpressureReport& report,
         ui32 partitionIdx);
 
-    double GetWriteCostMultiplier() const;
-    TDuration GetCurrentBoostBudget() const;
-    ui64 CalculatePostponedWeight() const;
-    double CalculateCurrentSpentBudgetShare(TInstant ts) const;
+    [[nodiscard]] double GetWriteCostMultiplier() const;
+    [[nodiscard]] TDuration GetCurrentBoostBudget() const;
+    [[nodiscard]] ui64 CalculatePostponedWeight() const;
+    [[nodiscard]] TDuration CalculateBurstTime() const;
+    [[nodiscard]] double CalculateCurrentSpentBudgetShare(TInstant ts) const;
     [[nodiscard]] TSplittedUsedQuota TakeSplittedUsedQuota();
-    const TBackpressureReport& GetCurrentBackpressure() const;
-    const NProto::TVolumePerformanceProfile& GetConfig() const;
+    [[nodiscard]] const TBackpressureReport& GetCurrentBackpressure() const;
+    [[nodiscard]] const NProto::TVolumePerformanceProfile& GetConfig() const;
 
-    ui32 GetVersion() const
+    [[nodiscard]] ui32 GetVersion() const
     {
         return PolicyVersion;
     }
 
-    ui32 GetVolatileThrottlingVersion() const;
-    const NProto::TVolumeThrottlingRule& GetVolatileThrottlingRule() const;
-    NProto::TVolumePerformanceProfile GetCurrentPerformanceProfile() const;
+    [[nodiscard]] ui32 GetVolatileThrottlingVersion() const;
+    [[nodiscard]] const NProto::TVolumeThrottlingRule&
+    GetVolatileThrottlingRule() const;
+    [[nodiscard]] NProto::TVolumePerformanceProfile
+    GetCurrentPerformanceProfile() const;
 
     // the following funcs were made public to display the results on monpages
-    ui64 C1(EOpType opType) const;
-    ui64 C2(EOpType opType) const;
+    [[nodiscard]] ui64 C1(EOpType opType) const;
+    [[nodiscard]] ui64 C2(EOpType opType) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

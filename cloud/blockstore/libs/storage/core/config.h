@@ -760,7 +760,11 @@ public:
 
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 
-    [[nodiscard]] double GetMinumumThrottlerMultiplier() const;
+    [[nodiscard]] ui32 GetShapingThrottlerStandardBudgetMultiplier() const;
+    [[nodiscard]] ui32 GetShapingThrottlerBoostBudgetMultiplier() const;
+    [[nodiscard]] ui32 GetShapingThrottlerBoostRefillBudgetMultiplier() const;
+    [[nodiscard]] ui32 GetShapingThrottlerBoostRate() const;
+    [[nodiscard]] double GetRequestCostMultiplier() const;
 
     [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
 

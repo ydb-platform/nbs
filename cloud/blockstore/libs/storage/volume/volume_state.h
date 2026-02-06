@@ -14,7 +14,6 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
-#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
@@ -22,7 +21,9 @@
 #include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
+#include <cloud/blockstore/libs/storage/volume/model/volume_shaping_throttler.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -235,6 +236,7 @@ private:
 
     TThrottlerConfig ThrottlerConfig;
     TVolumeThrottlingPolicy ThrottlingPolicy;
+    TVolumeShapingThrottler ShapingThrottler;
 
     TCachedVolumeMountHistory MountHistory;
 
@@ -685,6 +687,16 @@ public:
     const TVolumeThrottlingPolicy& GetThrottlingPolicy() const
     {
         return ThrottlingPolicy;
+    }
+
+    TVolumeShapingThrottler& AccessShapingThrottler()
+    {
+        return ShapingThrottler;
+    }
+
+    const TVolumeShapingThrottler& GetShapingThrottler() const
+    {
+        return ShapingThrottler;
     }
 
     //
