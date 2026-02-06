@@ -27,7 +27,6 @@ void TIndexTabletActor::ExecuteTx_InitSchema(
     TTxIndexTablet::TInitSchema& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(args);
 
     TIndexTabletDatabase db(tx.DB);
 

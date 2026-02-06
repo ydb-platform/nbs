@@ -141,7 +141,8 @@ public:
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next,
-        ui32* skippedRefs) override;
+        ui32* skippedRefs,
+        bool noAutoPrecharge) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,

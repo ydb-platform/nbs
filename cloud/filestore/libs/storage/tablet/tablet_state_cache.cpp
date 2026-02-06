@@ -267,8 +267,10 @@ bool TInMemoryIndexState::ReadNodeRefs(
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
     TString* next,
-    ui32* skippedRefs)
+    ui32* skippedRefs,
+    bool noAutoPrecharge)
 {
+    Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
     }

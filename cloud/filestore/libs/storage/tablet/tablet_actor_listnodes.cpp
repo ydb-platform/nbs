@@ -151,7 +151,8 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
         args.Cookie,
         args.ChildRefs,
         args.MaxBytes,
-        &args.Next))
+        &args.Next,
+        Config->GetNodeRefsNoAutoPrecharge()))
     {
         ready = false;
     }
