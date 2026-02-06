@@ -720,7 +720,7 @@ async def main() -> None:
 
     create.add_argument(
         "--github-runner-version",
-        default="2.320.0",
+        default="2.331.0",
         help="GitHub Runner version",
     )
 
