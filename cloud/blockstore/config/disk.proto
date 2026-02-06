@@ -146,14 +146,14 @@ message TStorageDiscoveryConfig
         // Used to calculate the device ids.
         optional string HashSuffix = 5;
 
-        // Device id hash scheme.
-        optional EHashScheme HashScheme = 8;
-
         // The maximum number of devices.
         optional uint32 MaxDeviceCount = 6;
 
         // Block size.
         optional uint32 BlockSize = 7;
+
+        // Device id hash scheme.
+        optional EHashScheme HashScheme = 8;
     }
 
     message TPathConfig
