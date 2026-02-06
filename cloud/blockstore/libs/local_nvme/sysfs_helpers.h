@@ -24,6 +24,9 @@ struct ISysFs
     virtual void BindPCIDeviceToDriver(
         const TString& pciAddr,
         const TString& driverName) = 0;
+
+    virtual auto GetNVMeCtrlNameFromPCIAddr(const TString& pciAddr)
+        -> TString = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -147,6 +147,21 @@ struct TTestNvmeManager: NNvme::INvmeManager
 
         return true;
     }
+
+    NProto::TError Sanitize(const TString& ctrlPath) override
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
+    }
+
+    TResultOrError<NNvme::TSanitizeStatus> GetSanitizeStatus(
+        const TString& ctrlPath) override
+    {
+        Y_UNUSED(ctrlPath);
+
+        return NNvme::TSanitizeStatus{};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

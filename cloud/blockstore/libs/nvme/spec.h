@@ -807,4 +807,19 @@ struct nvme_format {
     uint32_t reserved : 20;
 };
 
+enum nvme_sanitize_action
+{
+    NVME_SANITIZE_ACT_BLOCK_ERASE = 0x2,
+    NVME_SANITIZE_ACT_CRYPTO_ERASE = 0x4,
+};
+
+enum nvme_sanitize_status
+{
+    NVME_SANITIZE_SSTAT_STATUS_MASK = 0x07,
+    NVME_SANITIZE_SSTAT_NEVER = 0x00,
+    NVME_SANITIZE_SSTAT_COMPLETED = 0x01,
+    NVME_SANITIZE_SSTAT_IN_PROGRESS = 0x02,
+    NVME_SANITIZE_SSTAT_FAILED = 0x03,
+};
+
 }   // namespace NCloud::NBlockStore::NNvme

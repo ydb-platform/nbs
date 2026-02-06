@@ -10,6 +10,12 @@ namespace NCloud::NBlockStore::NNvme {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSanitizeStatus
+{
+    NProto::TError Status;
+    double Progress = 0;
+};
+
 struct INvmeManager
 {
     virtual ~INvmeManager() = default;
@@ -22,6 +28,11 @@ struct INvmeManager
         const TString& path,
         ui64 offsetBytes,
         ui64 sizeBytes) = 0;
+
+    virtual NProto::TError Sanitize(const TString& ctrlPath) = 0;
+
+    virtual TResultOrError<TSanitizeStatus> GetSanitizeStatus(
+        const TString& ctrlPath) = 0;
 
     virtual TResultOrError<bool> IsSsd(const TString& path) = 0;
 

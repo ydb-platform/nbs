@@ -63,6 +63,22 @@ public:
             WriteFile(basePath / "drivers" / driverName / "bind", pciAddr);
         }
     }
+
+    auto GetNVMeCtrlNameFromPCIAddr(const TString& pciAddr) -> TString final
+    {
+        const TFsPath path = SysFsRoot / "bus/pci/devices" / pciAddr / "nvme";
+
+        if (path.Exists()) {
+            TVector<TString> children;
+            path.ListNames(children);
+
+            if (children) {
+                return children[0];
+            }
+        }
+
+        return {};
+    }
 };
 
 }   // namespace
