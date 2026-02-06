@@ -26,6 +26,7 @@ struct TActiveInterval
 class TBuilder
 {
 private:
+    // This field is used as a result of the algorithm
     TVector<TIntervalPart> Parts;
     TVector<TActiveInterval> Heap;
 
