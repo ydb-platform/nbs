@@ -1119,6 +1119,12 @@ public:
         return std::make_unique<TEvService::TEvListDiskStatesRequest>();
     }
 
+    auto CreateEnsureDiskRegistryStateIntegrityRequest()
+    {
+        return std::make_unique<
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

@@ -328,6 +328,9 @@ private:
 
     void ReplaceBrokenDevicesAfterRestart(const NActors::TActorContext& ctx);
 
+    void ScheduleEnsureDiskRegistryStateIntegrity(
+        const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -518,6 +521,10 @@ private:
 
     void HandleSwitchAgentDisksToReadOnlyReshedule(
         const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleEnsureDiskRegistryStateIntegrityResponse(
+        const TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)

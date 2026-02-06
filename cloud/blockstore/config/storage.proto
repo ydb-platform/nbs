@@ -1416,4 +1416,8 @@ message TStorageServiceConfig
     // If true, disk registry doesn't replace devices of mirrored disks in one
     // row per reallocation.
     optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
+
+    // Periodically checks disk registry state consistency with local db.
+    // If equals zero check is disabled.
+    optional uint32 EnsureDiskRegistryStateIntegrityInterval = 480;
 }
