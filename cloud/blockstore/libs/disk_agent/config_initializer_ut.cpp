@@ -8,15 +8,17 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
-#include <library/cpp/monlib/dynamic_counters/counters.h>
-#include <library/cpp/testing/unittest/registar.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/folder/tempdir.h>
@@ -41,6 +43,107 @@ TOptionsPtr CreateOptions()
 {
     auto options = std::make_shared<TOptions>();
     return options;
+}
+
+/**
+ * *LoadKikimrFeaturesFromCms implementation
+ */
+void ShouldLoadKikimrFeatureFromCms(
+    const std::string& featureName,
+    bool cmsEmpty,
+    bool valueEmpty,
+    bool shouldLoad)
+{
+    auto ci = TConfigInitializer(CreateOptions());
+    ci.InitKikimrConfig();
+
+    NKikimrConfig::TAppConfig appCfg;
+    auto* cmsFeatureFlags = appCfg.MutableFeatureFlags();
+    auto* featureFlags = ci.KikimrConfig->MutableFeatureFlags();
+
+    const auto* reflection = featureFlags->GetReflection();
+    const auto* descriptor = featureFlags->GetDescriptor();
+    const auto* field = descriptor->FindFieldByName(featureName.c_str());
+
+    UNIT_ASSERT(field);
+    UNIT_ASSERT(field->type() == google::protobuf::FieldDescriptor::TYPE_BOOL);
+
+    if (valueEmpty) {
+        reflection->ClearField(featureFlags, field);
+    } else {
+        // Use default value
+        reflection->SetBool(
+            featureFlags,
+            field,
+            reflection->GetBool(*featureFlags, field));
+    }
+    UNIT_ASSERT(reflection->HasField(*featureFlags, field) == !valueEmpty);
+
+    auto oldValue = reflection->GetBool(*featureFlags, field);
+
+    if (cmsEmpty) {
+        reflection->ClearField(cmsFeatureFlags, field);
+    } else {
+        reflection->SetBool(cmsFeatureFlags, field, !oldValue);
+    }
+
+    ci.ApplyCustomCMSConfigs(appCfg);
+
+    TStringStream testInfo;
+    testInfo << "featureName: " << featureName << ", cmsEmpty = " << cmsEmpty
+             << ", valueEmpty = " << valueEmpty << ", should = " << shouldLoad;
+    auto&& comment = testInfo.Str();
+
+    if (shouldLoad) {
+        if (cmsEmpty) {
+            if (valueEmpty) {
+                UNIT_ASSERT_C(
+                    !reflection->HasField(*featureFlags, field),
+                    comment);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    reflection->GetBool(*featureFlags, field),
+                    oldValue,
+                    comment);
+            }
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                reflection->GetBool(*featureFlags, field),
+                reflection->GetBool(*cmsFeatureFlags, field),
+                comment);
+        }
+    } else {
+        if (valueEmpty) {
+            UNIT_ASSERT_C(!reflection->HasField(*featureFlags, field), comment);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                reflection->GetBool(*featureFlags, field),
+                oldValue,
+                comment);
+        }
+    }
+}
+
+void ShouldLoadKikimrFeaturesFromCms(
+    const std::vector<std::string>& featureNames,
+    bool shouldLoad)
+{
+    for (auto&& featureName: featureNames) {
+        // CmsEmpty -> Empty = Empty
+        // CmsEmpty -> Value = Value
+        // CmsValue -> Empty = shouldLoad ? CmsValue : Empty
+        // CmsValue -> Value = shouldLoad ? CmsValue : Value
+
+        for (bool cmsEmpty: {true, false}) {
+            for (bool valueEmpty: {true, false}) {
+                ShouldLoadKikimrFeatureFromCms(
+                    featureName,
+                    cmsEmpty,
+                    valueEmpty,
+                    shouldLoad);
+            }
+        }
+    }
 }
 
 }   // namespace
@@ -116,6 +219,23 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             "yc.disk-manager.folder",
             ""));
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
+    }
+
+    Y_UNIT_TEST(ShouldLoadAllowedKikimrFeaturesFromCms)
+    {
+        std::vector<std::string> featureNames = {
+            "EnableNodeBrokerDeltaProtocol"};
+
+        ShouldLoadKikimrFeaturesFromCms(featureNames, true);
+    }
+
+    Y_UNIT_TEST(ShouldNotLoadUnallowedKikimrFeaturesFromCms)
+    {
+        std::vector<std::string> featureNames = {
+            "EnableSchemeBoard",
+            "EnableGracefulShutdown"};
+
+        ShouldLoadKikimrFeaturesFromCms(featureNames, false);
     }
 
     Y_UNIT_TEST(ShouldAdaptNodeRegistrationParams)
