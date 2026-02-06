@@ -578,7 +578,8 @@ bool TIndexTabletDatabase::ReadNodeRef(
     return true;
 }
 
-bool TIndexTabletDatabase::ReadNodeRefs(
+template <typename TTable>
+bool TIndexTabletDatabase::ReadNodeRefsBase(
     ui64 nodeId,
     ui64 commitId,
     const TString& cookie,
@@ -587,8 +588,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     TString* next,
     ui32* skippedRefs)
 {
-    using TTable = TIndexTabletSchema::NodeRefs;
 
+    using TTableBase = typename TIndexTabletSchema::NodeRefs;
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, cookie)
         .LessOrEqual(nodeId)
@@ -601,16 +602,16 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     ui32 bytes = 0;
     ui32 skipped = 0;
     while (it.IsValid()) {
-        ui64 minCommitId = it.GetValue<TTable::CommitId>();
+        ui64 minCommitId = it.template GetValue<typename TTable::CommitId>();
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
             refs.emplace_back(TNodeRef {
                 nodeId,
-                it.GetValue<TTable::Name>(),
-                it.GetValue<TTable::ChildId>(),
-                it.GetValue<TTable::ShardId>(),
-                it.GetValue<TTable::ShardNodeName>(),
+                it.template GetValue<TTableBase::Name>(),
+                it.template GetValue<TTableBase::ChildId>(),
+                it.template GetValue<TTableBase::ShardId>(),
+                it.template GetValue<TTableBase::ShardNodeName>(),
                 minCommitId,
                 maxCommitId
             });
@@ -631,7 +632,7 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     if (next && it.IsValid()) {
-        *next = it.GetValue<TTable::Name>();
+        *next = it.template GetValue<typename TTable::Name>();
     }
 
     if (skippedRefs) {
@@ -639,6 +640,42 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     return true;
+}
+
+// Explicit template instantiation
+template bool TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefs>(
+    ui64, ui64, const TString&, TVector<TNodeRef>&, ui32, TString*, ui32*);
+template bool TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefsNoPrecharge>(
+    ui64, ui64, const TString&, TVector<TNodeRef>&, ui32, TString*, ui32*);
+
+bool TIndexTabletDatabase::ReadNodeRefs(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& cookie,
+    TVector<TNodeRef>& refs,
+    ui32 maxBytes,
+    TString* next,
+    ui32* skippedRefs,
+    bool noAutoPrecharge)
+{
+    if (noAutoPrecharge) {
+        return ReadNodeRefsBase<TIndexTabletSchema::NodeRefsNoPrecharge>(
+            nodeId,
+            commitId,
+            cookie,
+            refs,
+            maxBytes,
+            next,
+            skippedRefs);
+    }
+    return ReadNodeRefsBase<TIndexTabletSchema::NodeRefs>(
+        nodeId,
+        commitId,
+        cookie,
+        refs,
+        maxBytes,
+        next,
+        skippedRefs);
 }
 
 bool TIndexTabletDatabase::ReadNodeRefs(
@@ -2180,7 +2217,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
     TString* next,
-    ui32* skippedRefs)
+    ui32* skippedRefs,
+    bool noAutoPrecharge)
 {
     ui32 skipped = 0;
     if (!skippedRefs) {
@@ -2193,7 +2231,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
         refs,
         maxBytes,
         next,
-        skippedRefs);
+        skippedRefs,
+        noAutoPrecharge);
     if (result) {
         // If ReadNodeRefs was successful, it is reasonable to update the cache
         // with the values that have just been read.

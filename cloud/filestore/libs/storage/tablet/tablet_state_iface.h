@@ -135,7 +135,8 @@ public:
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr,
-        ui32* skippedRefs = nullptr) = 0;
+        ui32* skippedRefs = nullptr,
+        bool noAutoPrecharge = false) = 0;
 
     /**
      * @brief read at most maxCount node refs starting from key

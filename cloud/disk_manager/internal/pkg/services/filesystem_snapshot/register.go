@@ -73,7 +73,7 @@ func RegisterForExecution(
 
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
-		"snapfilesystem_snapshotshots.ClearDeletedFilesystemSnapshots",
+		"filesystem_snapshot.ClearDeletedFilesystemSnapshots",
 		tasks.TaskSchedule{
 			ScheduleInterval: clearDeletedTaskScheduleInterval,
 			MaxTasksInflight: 1,

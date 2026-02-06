@@ -285,7 +285,8 @@ namespace {
             refs,
             Max<ui32>(),
             &next,
-            nullptr));
+            nullptr,
+            false));
         UNIT_ASSERT(refs.empty());
         UNIT_ASSERT(next.empty());
 
@@ -353,7 +354,8 @@ namespace {
             refs,
             Max<ui32>(),
             &nextName,
-            nullptr));
+            nullptr,
+            false));
         UNIT_ASSERT(refs.size() == 2);
         UNIT_ASSERT(nextName.empty());
 
@@ -393,7 +395,8 @@ namespace {
             refs,
             Max<ui32>(),
             &nextName,
-            nullptr));
+            nullptr,
+            false));
 
         // write a ref with the same key but different value
         TInMemoryIndexState::TWriteNodeRefsRequest request4 = {

@@ -212,7 +212,21 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
         TString* next,
-        ui32* skippedRefs) override;
+        ui32* skippedRefs,
+        bool noAutoPrecharge) override;
+
+private:
+    template <typename TTable>
+    bool ReadNodeRefsBase(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& cookie,
+        TVector<TNodeRef>& refs,
+        ui32 maxBytes,
+        TString* next,
+        ui32* skippedRefs);
+
+public:
 
     virtual bool ReadNodeRefs(
         ui64 startNodeId,
@@ -632,8 +646,9 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr,
-        ui32* skippedRefs = nullptr) override;
+        TString* next,
+        ui32* skippedRefs,
+        bool noAutoPrecharge) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,

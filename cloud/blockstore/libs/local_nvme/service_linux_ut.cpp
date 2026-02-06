@@ -16,15 +16,19 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/string.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
+#include <util/system/event.h>
 #include <util/system/tempfile.h>
 
 #include <chrono>
 #include <latch>
 #include <thread>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NBlockStore {
 
+using namespace NNvme;
 using namespace NThreading;
 using namespace std::chrono_literals;
 
@@ -46,9 +50,111 @@ struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSanitizeInfo: TSanitizeStatus
+{
+    ui32 Count = 0;
+};
+
+class TTestNVMeManager: public INvmeManager
+{
+private:
+    std::mutex Mutex;
+    THashMap<TString, TSanitizeInfo> SanitizeInfo;
+
+    TAutoEvent SanitizeRequested;
+
+public:
+    auto Format(const TString& path, nvme_secure_erase_setting ses)
+        -> TFuture<NProto::TError> final
+    {
+        Y_UNUSED(path, ses);
+
+        return MakeFuture(MakeError(S_OK));
+    }
+
+    auto Deallocate(const TString& path, ui64 offsetBytes, ui64 sizeBytes)
+        -> TFuture<NProto::TError> final
+    {
+        Y_UNUSED(path, offsetBytes, sizeBytes);
+
+        return MakeFuture(MakeError(S_OK));
+    }
+
+    auto Sanitize(const TString& ctrlPath) -> NProto::TError final
+    {
+        std::unique_lock lock{Mutex};
+
+        auto& info = SanitizeInfo[ctrlPath];
+        if (info.Status.GetCode() == E_TRY_AGAIN) {
+            return MakeError(
+                E_TRY_AGAIN,
+                "previous sanitize operation has not been completed yet");
+        }
+
+        info.Status = MakeError(E_TRY_AGAIN);
+        info.Progress = 0;
+        info.Count += 1;
+
+        SanitizeRequested.Signal();
+
+        return {};
+    }
+
+    auto GetSanitizeStatus(const TString& ctrlPath)
+        -> TResultOrError<TSanitizeStatus> final
+    {
+        std::unique_lock lock{Mutex};
+
+        return SanitizeInfo.Value(ctrlPath, TSanitizeInfo{});
+    }
+
+    auto IsSsd(const TString& path) -> TResultOrError<bool> final
+    {
+        Y_UNUSED(path);
+
+        return true;
+    }
+
+    auto GetSerialNumber(const TString& path) -> TResultOrError<TString> final
+    {
+        Y_UNUSED(path);
+
+        return TString();
+    }
+
+public:
+    void WaitSanitizeRequested()
+    {
+        SanitizeRequested.WaitI();
+    }
+
+    void UpdateSanitizeStatus(
+        const TString& ctrlPath,
+        NProto::TError status,
+        double progress)
+    {
+        std::unique_lock lock{Mutex};
+
+        auto& info = SanitizeInfo[ctrlPath];
+
+        info.Status = status;
+        info.Progress = progress;
+    }
+
+    auto GetSanitizeInfo(const TString& ctrlPath) -> TSanitizeInfo
+    {
+        std::unique_lock lock{Mutex};
+
+        return SanitizeInfo.Value(ctrlPath, TSanitizeInfo{});
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestSysFs final: ISysFs
 {
     THashMap<TString, TString> DeviceToDriver;
+    THashMap<TString, TString> DeviceToCtrl;
 
     auto GetDriverForPCIDevice(const TString& pciAddr) -> TString final
     {
@@ -60,6 +166,11 @@ struct TTestSysFs final: ISysFs
         const TString& driverName) final
     {
         DeviceToDriver[pciAddr] = driverName;
+    }
+
+    auto GetNVMeCtrlNameFromPCIAddr(const TString& pciAddr) -> TString final
+    {
+        return DeviceToCtrl.Value(pciAddr, TString());
     }
 };
 
@@ -73,7 +184,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     TLocalNVMeConfigPtr Config;
     ILoggingServicePtr Logging;
     std::shared_ptr<TTestLocalNVMeDeviceProvider> DeviceProvider;
-    NNvme::INvmeManagerPtr NVMeManager;
+    std::shared_ptr<TTestNVMeManager> NVMeManager;
     TExecutorPtr Executor;
     std::shared_ptr<TTestSysFs> SysFs;
 
@@ -91,8 +202,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         Logging->Start();
 
         DeviceProvider = std::make_shared<TTestLocalNVMeDeviceProvider>();
-
-        NVMeManager = NNvme::CreateNvmeManagerStub();
+        NVMeManager = std::make_shared<TTestNVMeManager>();
 
         Executor = TExecutor::Create("TestExecutor");
         Executor->Start();
@@ -118,7 +228,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             Config,
             Logging,
             std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider),
-            NVMeManager,
+            std::static_pointer_cast<INvmeManager>(NVMeManager),
             Executor,
             std::static_pointer_cast<ISysFs>(SysFs));
     }
@@ -169,8 +279,12 @@ struct TFixture: public NUnitTest::TBaseFixture
             std::make_move_iterator(list.MutableDevices()->begin()),
             std::make_move_iterator(list.MutableDevices()->end()));
 
-        for (const auto& device: Devices) {
-            SysFs->DeviceToDriver[device.GetPCIAddress()] = "nvme";
+        for (size_t i = 0; i != Devices.size(); ++i) {
+            const auto& device = Devices[i];
+            const auto& pciAddr = device.GetPCIAddress();
+
+            SysFs->DeviceToDriver[pciAddr] = "nvme";
+            SysFs->DeviceToCtrl[pciAddr] = TStringBuilder() << "nvme" << i;
         }
     }
 
@@ -314,10 +428,33 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 FormatError(error));
         }
 
+        const TString ctrlPath = "/dev/nvme0";
+
         UNIT_ASSERT_VALUES_EQUAL("vfio-pci", SysFs->DeviceToDriver[pciAddr]);
 
         {
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                NVMeManager->GetSanitizeInfo(ctrlPath).Count);
+
             auto future = Service->ReleaseNVMeDevice(serialNumber);
+
+            NVMeManager->WaitSanitizeRequested();
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                NVMeManager->GetSanitizeInfo(ctrlPath).Count);
+
+            UNIT_ASSERT(!future.HasValue());
+
+            NVMeManager->UpdateSanitizeStatus(
+                ctrlPath,
+                MakeError(E_TRY_AGAIN),
+                50.0);
+
+            UNIT_ASSERT(!future.Wait(100ms));
+
+            NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
+
             const auto& error = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -464,7 +601,12 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         {
+            const TString ctrlPath = "/dev/nvme0";
             auto future = Service->ReleaseNVMeDevice("NVME_0");
+
+            NVMeManager->WaitSanitizeRequested();
+            NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
+
             const auto& error = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -617,6 +759,118 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             }
         }
     }
+
+    Y_UNIT_TEST_F(ShouldHandleRequestsAsync, TFixture)
+    {
+        DeviceProvider->Promise.SetValue(Devices);
+        {
+            auto [_, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const TString ctrlPath1 = "/dev/nvme0";
+        const TString ctrlPath2 = "/dev/nvme1";
+
+        auto future1 = Service->ReleaseNVMeDevice(Devices[0].GetSerialNumber());
+        NVMeManager->WaitSanitizeRequested();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            NVMeManager->GetSanitizeInfo(ctrlPath1).Count);
+        UNIT_ASSERT(!future1.HasValue());
+
+        auto future2 = Service->ReleaseNVMeDevice(Devices[1].GetSerialNumber());
+        NVMeManager->WaitSanitizeRequested();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            NVMeManager->GetSanitizeInfo(ctrlPath2).Count);
+        UNIT_ASSERT(!future2.HasValue());
+
+        Sleep(100ms);
+
+        NVMeManager->UpdateSanitizeStatus(
+            ctrlPath1,
+            MakeError(E_TRY_AGAIN),
+            66.0);
+
+        NVMeManager->UpdateSanitizeStatus(
+            ctrlPath2,
+            MakeError(E_TRY_AGAIN),
+            66.0);
+
+        Sleep(100ms);
+
+        NVMeManager->UpdateSanitizeStatus(
+            ctrlPath1,
+            MakeError(E_TRY_AGAIN),
+            70.0);
+
+        NVMeManager->UpdateSanitizeStatus(
+            ctrlPath2,
+            MakeError(E_TRY_AGAIN),
+            90.0);
+
+        Sleep(100ms);
+
+        NVMeManager->UpdateSanitizeStatus(
+            ctrlPath1,
+            MakeError(E_TRY_AGAIN),
+            90.0);
+
+        NVMeManager->UpdateSanitizeStatus(ctrlPath2, MakeError(S_OK), 100.0);
+
+        UNIT_ASSERT(!future1.HasValue());
+
+        {
+            const auto& error = future2.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        UNIT_ASSERT(!future1.HasValue());
+
+        Sleep(100ms);
+
+        UNIT_ASSERT(!future1.HasValue());
+
+        NVMeManager->UpdateSanitizeStatus(ctrlPath1, MakeError(S_OK), 100.0);
+
+        {
+            const auto& error = future2.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldFailReleaseIfSanitizeFails, TFixture)
+    {
+        DeviceProvider->Promise.SetValue(Devices);
+        {
+            auto [_, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const TString ctrlPath = "/dev/nvme0";
+
+        auto future = Service->ReleaseNVMeDevice(Devices[0].GetSerialNumber());
+        NVMeManager->WaitSanitizeRequested();
+        NVMeManager->UpdateSanitizeStatus(
+            ctrlPath,
+            MakeError(E_FAIL, "fail"),
+            0);
+
+        const auto& error = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_FAIL, error.GetCode(), FormatError(error));
+    }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore

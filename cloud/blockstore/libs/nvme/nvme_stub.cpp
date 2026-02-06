@@ -60,6 +60,21 @@ public:
 
         return IsDeviceSsd;
     }
+
+    NProto::TError Sanitize(const TString& ctrlPath) override
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
+    }
+
+    TResultOrError<TSanitizeStatus> GetSanitizeStatus(
+        const TString& ctrlPath) override
+    {
+        Y_UNUSED(ctrlPath);
+
+        return TSanitizeStatus{};
+    }
 };
 
 }   // namespace

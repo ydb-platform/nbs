@@ -730,4 +730,10 @@ message TStorageConfig
     // If tablet actor CPU usage goes over this threshold, tablets will start
     // setting the IsOverloaded flag in their responses.
     optional uint32 TabletActorCpuUsageOverloadThreshold = 482;
+
+    // If enabled, auto-precharge is disabled for the NodeRefs table. This is
+    // equivalent to setting NoAutoPrecharge option in the NodeRefs schema with
+    // the difference that flag allows this option to be set in runtime and
+    // not compile time.
+    optional bool NodeRefsNoAutoPrecharge = 483;
 }

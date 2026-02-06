@@ -386,6 +386,8 @@ public:
     ui32 GetFakeDescribeDataLatencyUs() const;
 
     bool GetGidPropagationEnabled() const;
+
+    bool GetNodeRefsNoAutoPrecharge() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

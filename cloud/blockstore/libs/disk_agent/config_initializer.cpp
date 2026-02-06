@@ -8,10 +8,13 @@
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
+
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -499,7 +502,15 @@ void TConfigInitializer::ApplyDiskRegistryProxyConfig(const TString& text)
         std::move(config));
 }
 
-void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config)
+void TConfigInitializer::ApplyCustomCMSConfigs(
+    const NKikimrConfig::TAppConfig& config)
+{
+    ApplyNamedConfigs(config);
+    ApplyAllowedKikimrFeatureFlags(config);
+}
+
+void TConfigInitializer::ApplyNamedConfigs(
+    const NKikimrConfig::TAppConfig& config)
 {
     THashMap<TString, ui32> configs;
 
@@ -536,10 +547,30 @@ void TConfigInitializer::ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& 
             continue;
         }
 
-        std::invoke(
-            handler.second,
-            this,
-            config.GetNamedConfigs(it->second).GetConfig());
+        const auto& namedConfig = config.GetNamedConfigs(it->second);
+
+        STORAGE_INFO(
+            "Apply config from CMS: TAppConfig::NamedConfig "
+            << namedConfig.GetName());
+
+        std::invoke(handler.second, this, namedConfig.GetConfig());
+    }
+}
+
+void TConfigInitializer::ApplyAllowedKikimrFeatureFlags(
+    const NKikimrConfig::TAppConfig& config)
+{
+    if (!config.HasFeatureFlags()) {
+        return;
+    }
+
+    STORAGE_INFO("Apply config from CMS: TAppConfig::FeatureFlags (allowed)");
+
+    const auto& kikimrFeatureFlags = config.GetFeatureFlags();
+
+    if (kikimrFeatureFlags.HasEnableNodeBrokerDeltaProtocol()) {
+        KikimrConfig->MutableFeatureFlags()->SetEnableNodeBrokerDeltaProtocol(
+            kikimrFeatureFlags.GetEnableNodeBrokerDeltaProtocol());
     }
 }
 

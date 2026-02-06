@@ -71,6 +71,21 @@ struct TTestNvmeManager final: NNvme::INvmeManager
         Y_UNUSED(path);
         return TString("serial");
     }
+
+    NProto::TError Sanitize(const TString& ctrlPath) override
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
+    }
+
+    TResultOrError<TSanitizeStatus> GetSanitizeStatus(
+        const TString& ctrlPath) override
+    {
+        Y_UNUSED(ctrlPath);
+
+        return TSanitizeStatus{};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

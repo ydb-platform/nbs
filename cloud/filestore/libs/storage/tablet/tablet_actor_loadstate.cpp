@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include "helpers.h"
+#include "tablet_schema.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 

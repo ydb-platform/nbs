@@ -55,6 +55,11 @@ message TDataLoadSpec
     bool Sequential = 7;
 
     repeated TAction Actions = 8;
+
+    // Specifies the minimum file count required before initiating data reads
+    uint64 MinFileCount = 9;
+    // Specifies the minimum file size required before initiating data reads
+    uint64 MinFileSize = 10;
 }
 
 message TReplaySpec
