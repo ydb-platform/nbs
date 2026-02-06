@@ -509,7 +509,7 @@ void TPartitionActor::HandleCompactionTx(
         ExecuteTx(ctx, std::move(tx));
     } else {
         // delay execution until all previous commits completed
-        State->GetCommitQueue().Enqueue(std::move(tx), msg->CommitId);
+        State->AccessCommitQueue().Enqueue(std::move(tx), msg->CommitId);
     }
 }
 
