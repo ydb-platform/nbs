@@ -82,6 +82,11 @@ private:
     TChildLogTitle LogTitle;
 
     const ui64 CommitId;
+    const TCompactionOptions CompactionOptions;
+
+    TVector<std::pair<ui32, TBlockRange32>> Ranges;
+    TVector<TCallContextPtr> ForkedCompactionTxCallContexts;
+    ui32 AwaitedCompactionTxCall = 0;
 
     TVector<TRangeCompactionInfo> RangeCompactionInfos;
     TVector<TRequest> Requests;
@@ -116,13 +121,15 @@ public:
         TDuration blobStorageAsyncRequestTimeout,
         ECompactionType compactionType,
         ui64 commitId,
-        TVector<TRangeCompactionInfo> rangeCompactionInfos,
-        TVector<TRequest> requests,
+        TCompactionOptions CompactionOptions,
+        TVector<std::pair<ui32, TBlockRange32>> ranges,
         TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void ProcessRequests(const TActorContext& ctx);
+
     void InitBlockDigests();
 
     void ReadBlocks(const TActorContext& ctx);
@@ -139,6 +146,10 @@ private:
 
 private:
     STFUNC(StateWork);
+
+    void HandleCompactionTxResponse(
+        const TEvPartitionPrivate::TEvCompactionTxResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     template <typename TEvent>
     void HandleWriteOrPatchBlobResponse(
@@ -181,8 +192,8 @@ TCompactionActor::TCompactionActor(
         TDuration blobStorageAsyncRequestTimeout,
         ECompactionType compactionType,
         ui64 commitId,
-        TVector<TRangeCompactionInfo> rangeCompactionInfos,
-        TVector<TRequest> requests,
+        TCompactionOptions compactionOptions,
+        TVector<std::pair<ui32, TBlockRange32>> ranges,
         TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -197,14 +208,15 @@ TCompactionActor::TCompactionActor(
     , CompactionType(compactionType)
     , LogTitle(std::move(logTitle))
     , CommitId(commitId)
-    , RangeCompactionInfos(std::move(rangeCompactionInfos))
-    , Requests(std::move(requests))
+    , CompactionOptions(compactionOptions)
+    , Ranges(std::move(ranges))
 {}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
+    // TODO:_ maybe split into two states?
     Become(&TThis::StateWork);
 
     LWTRACK(
@@ -212,6 +224,42 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->LWOrbit,
         "Compaction",
         RequestInfo->CallContext->RequestId);
+
+    // TODO:_ take desesion according to featureflag
+
+    AwaitedCompactionTxCall = Ranges.size();
+
+    for (ui32 i = 0; i < Ranges.size(); ++i) {
+        auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
+            CommitId,
+            i, // RangeCompactionIndex
+            CompactionOptions,
+            TVector<std::pair<ui32, TBlockRange32>>{std::move(Ranges[i])});
+
+        if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+            LWTRACK(
+                ForkFailed,
+                RequestInfo->CallContext->LWOrbit,
+                "TEvPartitionPrivate::TEvCompactionTxRequest",
+                RequestInfo->CallContext->RequestId);
+        }
+        request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
+
+        ForkedCompactionTxCallContexts.emplace_back(request->CallContext);
+
+        NCloud::Send(
+            ctx,
+            Tablet,
+            std::move(request));
+    }
+
+    Ranges.clear();
+}
+
+void TCompactionActor::ProcessRequests(const TActorContext& ctx)
+{
+    // TODO:_ TRequestScope timer(*RequestInfo) here?
+    // TODO:_ lwtrack here?
 
     if (Requests) {
         ReadBlocks(ctx);
@@ -787,6 +835,23 @@ void TCompactionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO:_ style: rearrange methods?
+void TCompactionActor::HandleCompactionTxResponse(
+    const TEvPartitionPrivate::TEvCompactionTxResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    // TODO:_ exec cycles?
+
+    // TODO:_ ok to hangle error like this?
+    if (HandleError(ctx, msg->GetError())) {
+        return;
+    }
+
+    ProcessRequests(ctx);
+}
+
 void TCompactionActor::HandleReadBlobResponse(
     const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -1323,25 +1388,32 @@ void TPartitionActor::HandleCompaction(
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
-    // TODO:_ what we do here?
-    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
-
-    auto tx = CreateTx<TCompaction>(
+    auto actor = NCloud::Register<TCompactionActor>(
+        ctx,
         requestInfo,
+        TabletID(),
+        PartitionConfig.GetDiskId(),
+        SelfId(),
+        State->GetBlockSize(),
+        State->GetMaxBlocksInBlob(),
+        Config->GetMaxAffectedBlocksPerCompaction(),
+        Config->GetComputeDigestForEveryBlockOnCompaction(),
+        BlockDigestGenerator,
+        GetBlobStorageAsyncRequestTimeout(),
+        compactionType,
         commitId,
         msg->CompactionOptions,
-        std::move(ranges));
+        std::move(ranges),
+        LogTitle.GetChild(GetCycleCount()));
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Partition registered TCompactionActor with id [%lu]; commit id %lu",
+        LogTitle.GetWithTime().c_str(),
+        actor.ToString().c_str(),
+        commitId);
 
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-    Y_ABORT_UNLESS(minCommitId <= commitId);
-
-    if (minCommitId == commitId) {
-        // start execution
-        ExecuteTx(ctx, std::move(tx));
-    } else {
-        // delay execution until all previous commits completed
-        State->AccessCommitQueue().Enqueue(std::move(tx), commitId);
-    }
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
