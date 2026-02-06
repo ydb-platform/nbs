@@ -285,10 +285,6 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
         "%s Activated executor",
         LogTitle.GetWithTime().c_str());
 
-    if (Config->GetUsePullSchemeForVolumeStatistics()) {
-        UpdateCountersScheduled = true;
-    }
-
     ScheduleRegularUpdates(ctx);
 
     if (!Executor()->GetStats().IsFollower) {
@@ -677,15 +673,11 @@ void TVolumeActor::HandleUpdateCounters(
 {
     UpdateCountersScheduled = false;
 
-    // if we use pull scheme we must send request to the partitions
-    // to collect statistics
+    // Under these conditions, the counters are updated at the request of the
+    // service.
     if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
         GetVolumeStatus() != EStatus::STATUS_INACTIVE)
     {
-        ScheduleRegularUpdates(ctx);
-        State->IsDiskRegistryMediaKind()
-            ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
-            : SendStatisticRequests(ctx);
         return;
     }
 
@@ -722,13 +714,13 @@ void TVolumeActor::HandleGetServiceStatistics(
         return;
     }
 
+    StatisticRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
     if (GetVolumeStatus() == EStatus::STATUS_INACTIVE) {
         UpdateCounters(ctx);
         return;
     }
-
-    StatisticRequestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
     State->IsDiskRegistryMediaKind()
         ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
@@ -739,8 +731,6 @@ void TVolumeActor::RejectGetServiceStatistics(
     const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     NCloud::Reply(
         ctx,
         *ev,
