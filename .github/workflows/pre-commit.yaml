@@ -8,6 +8,7 @@ on:
       - 'ydb/docs/**'
       - '.github/**'
       - '!.github/config/**'
+      - '!.github/workflows/pre-commit.yaml'
       - 'example/**'
       - 'doc/**'
       - '**.md'
@@ -21,9 +22,10 @@ jobs:
   pre-commit:
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
+        clean: true
     - uses: actions/setup-python@v3
     - uses: pre-commit/action@v3.0.1
       with:
