@@ -73,11 +73,20 @@ def update_cms_config(client, name, config, node_type=None):
 
 
 def create_file_device(dir, device_id, block_size, block_count_per_device):
-    tmp_file = tempfile.NamedTemporaryFile(suffix=".nonrepl", delete=False, dir=dir)
 
-    tmp_file.seek(block_count_per_device * block_size - 1)
-    tmp_file.write(b'\0')
-    tmp_file.flush()
+    tmp_file = tempfile.NamedTemporaryFile(
+        suffix=".nonrepl",
+        delete=False,
+        dir=dir)
+
+    size = block_count_per_device * block_size
+
+    if dir is None:  # this means no tmpfs
+        tmp_file.seek(size - 1)
+        tmp_file.write(b'\0')
+        tmp_file.flush()
+    else:
+        os.posix_fallocate(tmp_file.fileno(), 0, size)
 
     return Device(
         path=tmp_file.name,
