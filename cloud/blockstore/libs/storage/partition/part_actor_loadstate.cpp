@@ -235,7 +235,7 @@ void TPartitionActor::CompleteLoadState(
         StorageAccessMode,
         partitionConfig,
         Info(),
-        *this,
+        FreshBlocksCompanionClient,
         *State,
         *State,
         *State,
@@ -298,7 +298,8 @@ void TPartitionActor::CompleteLoadState(
 
 void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
 {
-    auto totalBlocksCount = State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
+    auto totalBlocksCount =
+        State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
     UpdateStorageStat(totalBlocksCount * State->GetBlockSize());
 
     FreshBlocksCompanion->LoadFreshBlobs(
