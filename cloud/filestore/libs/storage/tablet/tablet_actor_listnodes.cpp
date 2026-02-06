@@ -159,7 +159,6 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
         args.ChildRefs,
         args.MaxBytes,
         &args.Next,
-        nullptr,
         Config->GetNodeRefsNoAutoPrecharge(),
         args.Request.GetListNodesSizeMode()))
     {

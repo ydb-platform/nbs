@@ -512,7 +512,6 @@ bool TIndexTabletState::ReadNodeRefs(
     TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui32 maxBytes,
     TString* next,
-    ui32* skippedRefs,
     bool noAutoPrecharge,
     NProto::EListNodesSizeMode sizeMode)
 {
@@ -523,7 +522,7 @@ bool TIndexTabletState::ReadNodeRefs(
         refs,
         maxBytes,
         next,
-        skippedRefs,
+        nullptr, // skippedRefs
         noAutoPrecharge,
         sizeMode);
 

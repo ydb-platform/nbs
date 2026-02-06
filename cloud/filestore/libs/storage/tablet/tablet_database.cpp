@@ -622,7 +622,6 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
             if (sizeMode == NProto::LNSM_FULL_ROW) {
                 bytes += ref.CalculateByteSize();
             } else {
-                // Legacy behavior: name size only
                 bytes += ref.Name.size();
             }
         } else {

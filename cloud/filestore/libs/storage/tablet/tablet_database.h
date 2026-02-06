@@ -648,11 +648,10 @@ public:
         const TString& cookie,
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr,
-        ui32* skippedRefs = nullptr,
-        bool noAutoPrecharge = false,
-        NProto::EListNodesSizeMode sizeMode =
-            NProto::LNSM_NAME_ONLY) override;
+        TString* next,
+        ui32* skippedRefs,
+        bool noAutoPrecharge,
+        NProto::EListNodesSizeMode) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,

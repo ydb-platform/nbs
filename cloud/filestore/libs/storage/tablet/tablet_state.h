@@ -633,7 +633,6 @@ public:
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr,
-        ui32* skippedRefs = nullptr,
         bool noAutoPrecharge = false,
         NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY);
 

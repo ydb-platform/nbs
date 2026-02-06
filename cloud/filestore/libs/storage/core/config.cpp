@@ -325,9 +325,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GidPropagationEnabled,             bool,      false                   )\
                                                                                \
     xxx(NodeRefsNoAutoPrecharge,           bool,      false                   )\
-    xxx(ListNodesSizeMode,                                          \
-        NProto::EListNodesSizeMode,                             \
-        NProto::LNSM_NAME_ONLY                                               )\
+    xxx(ListNodesSizeMode,                                                     \
+        NProto::EListNodesSizeMode,                                            \
+        NProto::LNSM_NAME_ONLY                                                )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
