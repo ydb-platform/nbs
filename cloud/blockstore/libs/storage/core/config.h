@@ -492,6 +492,7 @@ public:
     bool GetRemoteMountOnly() const;
     ui32 GetMaxLocalVolumes() const;
 
+    [[nodiscard]] TDuration GetEnsureDiskRegistryStateIntegrityInterval() const;
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
     bool GetDiskRegistryAlwaysAllocatesLocalDisks() const;
     bool GetDiskRegistryCleanupConfigOnRemoveHost() const;
