@@ -10,6 +10,11 @@ namespace {
 
 constexpr ui32 TabletGeneration = 42;
 
+TActorId ExtractOwner(const std::optional<TSessionPipeInfo>& pipeInfo)
+{
+    return pipeInfo ? pipeInfo->Owner : TActorId();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,7 +63,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             UNIT_ASSERT_VALUES_EQUAL(true, subsession.has_value());
             UNIT_ASSERT_VALUES_EQUAL(1, subsession->SeqNo);
             UNIT_ASSERT_VALUES_EQUAL(false, subsession->ReadOnly);
-            UNIT_ASSERT_VALUES_EQUAL(TActorId(1, 1), subsession->Owner);
+            UNIT_ASSERT_VALUES_EQUAL(TActorId(1, 1), subsession->PipeInfo.Owner);
         }
 
         {
@@ -75,7 +80,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             UNIT_ASSERT_VALUES_EQUAL(true, subsession->ReadOnly);
             UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetMaxSeenSeqNo());
             UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenRwSeqNo());
-            UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 1), subsession->Owner);
+            UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 1), subsession->PipeInfo.Owner);
         }
     }
 
@@ -143,30 +148,30 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TSubSessions subsessions(0, 0);
         TActorId ans;
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             1,
             true,
             TActorId(0, 1),
             TActorId(0, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             2,
             false,
             TActorId(1, 1),
             TActorId(1, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             3,
             true,
             TActorId(2, 1),
             TActorId(2, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans);
 
@@ -180,21 +185,21 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             1,
             true,
             TActorId(0, 1),
             TActorId(0, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             2,
             true,
             TActorId(1, 1),
             TActorId(1, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
@@ -214,21 +219,21 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             1,
             false,
             TActorId(0, 1),
             TActorId(0, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             2,
             true,
             TActorId(1, 1),
             TActorId(1, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
@@ -243,21 +248,21 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             1,
             false,
             TActorId(0, 1),
             TActorId(0, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             2,
             true,
             TActorId(1, 1),
             TActorId(1, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
@@ -272,21 +277,21 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TActorId ans;
         ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             1,
             true,
             TActorId(0, 1),
             TActorId(0, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 
-        ans = subsessions.UpdateSubSession(
+        ans = ExtractOwner(subsessions.UpdateSubSession(
             2,
             false,
             TActorId(1, 1),
             TActorId(1, 1),
-            TabletGeneration);
+            TabletGeneration));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
 

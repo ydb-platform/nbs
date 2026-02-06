@@ -240,13 +240,27 @@ NActors::TActorId TIndexTabletState::RecoverSession(
     const TActorId& owner,
     const TActorId& pipeServer)
 {
-    auto oldOwner =
+    auto oldPipe =
         session->UpdateSubSession(
             sessionSeqNo,
             readOnly,
             owner,
             pipeServer,
             GetGeneration());
+
+    auto oldOwner = oldPipe ? oldPipe->Owner : TActorId();
+
+    if (oldOwner) {
+        Impl->SessionByPipeServer.erase(oldPipe->PipeServer);
+
+        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s removed old pipe for session c: %s, s: %s, owner: %s, pipeServer: %s",
+            LogTag.c_str(),
+            session->GetClientId().c_str(),
+            session->GetSessionId().c_str(),
+            oldPipe->Owner.ToString().c_str(),
+            oldPipe->PipeServer.ToString().c_str());
+    }
 
     if (oldOwner != owner) {
         session->InactivityDeadline = {};
@@ -256,12 +270,16 @@ NActors::TActorId TIndexTabletState::RecoverSession(
 
         TrackSessionByPipeServer(pipeServer, session);
 
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-            "%s added new owner for session c: %s, s: %s, owner: %s",
+        LOG_INFO(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
+            "%s added new owner for session c: %s, s: %s, owner: %s, "
+            "pipeServer: %s",
             LogTag.c_str(),
             session->GetClientId().c_str(),
             session->GetSessionId().c_str(),
-            owner.ToString().c_str());
+            owner.ToString().c_str(),
+            pipeServer.ToString().c_str());
     }
 
     session->SetRecoveryTimestampUs(Now().MicroSeconds());
