@@ -170,6 +170,11 @@ class TPartitionActor final
             Owner.ProcessIOQueue(ctx, channel);
         }
 
+        TPartitionDiskCounters& GetPartCounters() override
+        {
+            return *Owner.PartCounters;
+        }
+
         // IMortalActor implements
 
         void Die(const NActors::TActorContext& ctx) override
