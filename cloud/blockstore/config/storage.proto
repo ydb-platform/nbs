@@ -1416,4 +1416,14 @@ message TStorageServiceConfig
     // If true, disk registry doesn't replace devices of mirrored disks in one
     // row per reallocation.
     optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
+
+    // Delay before changing Disk Agent from "back from unavailable" to online
+    // (time that must pass since the last status change).
+    optional uint32 AgentBackFromUnavailableToOnlineDelay = 480;
+
+    // Interval for checking disk agents with status "back from unavailable".
+    optional uint32 AgentBackFromUnavailableCheckInterval = 481;
+
+    // Maximum number of disk agents to restore to online per transaction.
+    optional uint32 MaxAgentsRestoredPerTransaction = 482;
 }

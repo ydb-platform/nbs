@@ -763,6 +763,10 @@ public:
     [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
 
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
+
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableToOnlineDelay() const;
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableCheckInterval() const;
+    [[nodiscard]] ui32 GetMaxAgentsRestoredPerTransaction() const;
 };
 
 ui64 GetAllocationUnit(
