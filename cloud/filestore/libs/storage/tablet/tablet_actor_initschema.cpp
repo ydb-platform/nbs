@@ -26,11 +26,11 @@ void TIndexTabletActor::ExecuteTx_InitSchema(
     TTransactionContext& tx,
     TTxIndexTablet::TInitSchema& args)
 {
-    Y_UNUSED(ctx);
+    Y_UNUSED(ctx, args);
 
     TIndexTabletDatabase db(tx.DB);
 
-    db.InitSchema(args.UseNoneCompactionPolicy);
+    db.InitSchema();
 }
 
 void TIndexTabletActor::CompleteTx_InitSchema(

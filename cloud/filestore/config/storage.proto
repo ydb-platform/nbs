@@ -310,19 +310,7 @@ message TStorageConfig
     optional uint32 ReadAheadMaxGapPercentage = 350;
     optional uint32 ReadAheadCacheMaxHandlesPerNode = 351;
 
-    // If set to true, tablets will use the compaction policy, described in their
-    // schemas. If set to false, tablets will use the old compaction policy, which
-    // is None, thus making the table use schema, set for this table beforehand.
-    // If no schema is set, the table will use the default schema.
-    //
-    // Thus, enabling `NewLocalDBCompactionPolicyEnabled` flag will make some
-    // tables use the new, three-generations compaction policy, for all the tablets,
-    // that have been restarted after the flag was set to true.
-    //
-    // Disabling this flag afterwards is not supposed to affect these tables, as
-    // they will return to using the None compaction policy, which does not trigger
-    // `SetCompactionPolicy` alter operation.
-    optional bool NewLocalDBCompactionPolicyEnabled = 352;
+    reserved 352;
 
     // If greater than 0, the node index cache will be used. It caches
     // GetNodeAttrRequests to avoid executing GetNodeAttr tx for hot nodes.

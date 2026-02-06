@@ -240,8 +240,6 @@ public:
 
     ui32 GetNodeIndexCacheMaxNodes() const;
 
-    bool GetNewLocalDBCompactionPolicyEnabled() const;
-
     bool GetMultiTabletForwardingEnabled() const;
     bool GetGetNodeAttrBatchEnabled() const;
 

@@ -41,8 +41,7 @@ TIndexTabletActor::TIndexTabletActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry,
-        bool useNoneCompactionPolicy)
+        NMetrics::IMetricsRegistryPtr metricsRegistry)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
     , Metrics{std::move(metricsRegistry)}
@@ -58,7 +57,6 @@ TIndexTabletActor::TIndexTabletActor(
     )
     , Config(std::move(config))
     , DiagConfig(std::move(diagConfig))
-    , UseNoneCompactionPolicy(useNoneCompactionPolicy)
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
 {
     UpdateLogTag();
@@ -140,7 +138,7 @@ void TIndexTabletActor::OnActivateExecutor(const TActorContext& ctx)
     RegisterCounters(ctx);
 
     if (!Executor()->GetStats().IsFollower) {
-        ExecuteTx<TInitSchema>(ctx, UseNoneCompactionPolicy);
+        ExecuteTx<TInitSchema>(ctx);
     }
 }
 

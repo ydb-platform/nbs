@@ -233,10 +233,6 @@ public:
                 TTabletStorageInfo* storage)
             {
                 Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
-                bool useNoneCompactionPolicy = true;
-                if (config->GetNewLocalDBCompactionPolicyEnabled()) {
-                    useNoneCompactionPolicy = false;
-                }
                 auto actor = CreateIndexTablet(
                     owner,
                     storage,
@@ -245,8 +241,7 @@ public:
                     profileLog,
                     traceSerializer,
                     systemCounters,
-                    metricsRegistry,
-                    useNoneCompactionPolicy);
+                    metricsRegistry);
                 return actor.release();
             };
 
