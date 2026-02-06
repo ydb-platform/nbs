@@ -25,7 +25,7 @@ void TIndexTabletActor::HandleUnsafeCreateNode(
 
     AddInFlightRequest<TEvIndexTablet::TUnsafeCreateNodeMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNode: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -88,7 +88,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNode(
     if (args.Node) {
         oldNode = args.Node->Attrs.Utf8DebugString();
     }
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNode: %s, old node: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -117,7 +117,7 @@ void TIndexTabletActor::HandleUnsafeDeleteNode(
 
     AddInFlightRequest<TEvIndexTablet::TUnsafeDeleteNodeMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNode: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -174,7 +174,7 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNode(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNode: %s, status: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -203,7 +203,7 @@ void TIndexTabletActor::HandleUnsafeUpdateNode(
 
     AddInFlightRequest<TEvIndexTablet::TUnsafeUpdateNodeMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNode: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -238,7 +238,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
 
     if (!args.Node) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
-            "%s UnsafeDeleteNode: %s - node not found",
+            "%s UnsafeUpdateNode: %s - node not found",
             LogTag.c_str(),
             args.Request.DebugString().Quote().c_str());
         args.Error = ErrorInvalidTarget(
@@ -276,7 +276,7 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNode(
     if (args.Node) {
         oldNode = args.Node->Attrs.Utf8DebugString();
     }
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNode: %s, old node: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -304,7 +304,7 @@ void TIndexTabletActor::HandleUnsafeGetNode(
 
     AddInFlightRequest<TEvIndexTablet::TUnsafeGetNodeMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeGetNode: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -358,7 +358,7 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNode(
             ErrorInvalidTarget(args.Request.GetId());
     }
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeGetNode: %s, result: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -384,7 +384,7 @@ void TIndexTabletActor::HandleUnsafeCreateNodeRef(
     AddInFlightRequest<TEvIndexTablet::TUnsafeCreateNodeRefMethod>(
         *requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNodeRef: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -453,7 +453,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateNodeRef(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeCreateNodeRef: %s, status: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -482,7 +482,7 @@ void TIndexTabletActor::HandleUnsafeDeleteNodeRef(
     AddInFlightRequest<TEvIndexTablet::TUnsafeDeleteNodeRefMethod>(
         *requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNodeRef: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -554,7 +554,7 @@ void TIndexTabletActor::CompleteTx_UnsafeDeleteNodeRef(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeDeleteNodeRef: %s, status: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -583,7 +583,7 @@ void TIndexTabletActor::HandleUnsafeUpdateNodeRef(
     AddInFlightRequest<TEvIndexTablet::TUnsafeUpdateNodeRefMethod>(
         *requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNodeRef: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -664,7 +664,7 @@ void TIndexTabletActor::CompleteTx_UnsafeUpdateNodeRef(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeUpdateNodeRef: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str());
@@ -691,7 +691,7 @@ void TIndexTabletActor::HandleUnsafeGetNodeRef(
 
     AddInFlightRequest<TEvIndexTablet::TUnsafeGetNodeRefMethod>(*requestInfo);
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeGetNodeRef: %s",
         LogTag.c_str(),
         msg->Record.DebugString().Quote().c_str());
@@ -748,7 +748,7 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNodeRef(
             args.Request.GetName());
     }
 
-    LOG_WARN(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s UnsafeGetNodeRef: %s, result: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
@@ -771,7 +771,7 @@ void TIndexTabletActor::HandleUnsafeCreateHandle(
 
     AddInFlightRequest<TEvIndexTablet::TUnsafeCreateHandleMethod>(*requestInfo);
 
-    LOG_WARN(
+    LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s UnsafeCreateHandle: %s",
@@ -843,7 +843,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateHandle(
         std::make_unique<TEvIndexTablet::TEvUnsafeCreateHandleResponse>(
             args.Error);
 
-    LOG_WARN(
+    LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s UnsafeCreateHandle: %s, result: %s",
