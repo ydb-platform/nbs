@@ -325,9 +325,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GidPropagationEnabled,             bool,      false                   )\
                                                                                \
     xxx(NodeRefsNoAutoPrecharge,           bool,      false                   )\
-    xxx(ListNodesSizeCalculationMode,                                          \
-        NProto::EListNodesMaxBytesCalculationMode,                             \
-        NProto::LNSCM_NAME_ONLY                                               )\
+    xxx(ListNodesSizeMode,                                          \
+        NProto::EListNodesSizeMode,                             \
+        NProto::LNSM_NAME_ONLY                                               )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -405,9 +405,9 @@ IOutputStream& operator <<(
 
 IOutputStream& operator <<(
     IOutputStream& out,
-    NProto::EListNodesMaxBytesCalculationMode mode)
+    NProto::EListNodesSizeMode mode)
 {
-    return out << EListNodesMaxBytesCalculationMode_Name(mode);
+    return out << EListNodesSizeMode_Name(mode);
 }
 
 template <typename T>

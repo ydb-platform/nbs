@@ -740,5 +740,5 @@ message TStorageConfig
 
     // Mode for calculating byte size in ListNodes when applying MaxBytes limit.
     // TODO(#5148): consider other size calculation modes
-    optional EListNodesMaxBytesCalculationMode ListNodesSizeCalculationMode = 484;
+    optional EListNodesSizeMode ListNodesSizeMode = 484;
 }

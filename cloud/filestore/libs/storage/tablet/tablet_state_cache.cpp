@@ -268,8 +268,10 @@ bool TInMemoryIndexState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next,
     ui32* skippedRefs,
-    NProto::EListNodesMaxBytesCalculationMode sizeMode)
+    bool noAutoPrecharge,
+    NProto::EListNodesSizeMode sizeMode)
 {
+    Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
         return false;
     }
@@ -296,7 +298,7 @@ bool TInMemoryIndexState::ReadNodeRefs(
 
             const auto& ref = refs.back();
             // TODO(#5148): consider other size calculation modes
-            if (sizeMode == NProto::LNSCM_FULL_ROW) {
+            if (sizeMode == NProto::LNSM_FULL_ROW) {
                 bytes += ref.CalculateByteSize();
             } else {
                 // Legacy behavior: name size only

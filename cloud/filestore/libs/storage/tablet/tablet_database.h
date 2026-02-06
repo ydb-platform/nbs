@@ -213,7 +213,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui32 maxBytes,
         TString* next,
         ui32* skippedRefs,
-        NProto::EListNodesMaxBytesCalculationMode sizeMode) override;
+        bool noAutoPrecharge,
+        NProto::EListNodesSizeMode sizeMode) override;
 
 private:
     template <typename TTable>
@@ -225,7 +226,7 @@ private:
         ui32 maxBytes,
         TString* next,
         ui32* skippedRefs,
-        NProto::EListNodesSizeCalculationMode sizeMode);
+        NProto::EListNodesSizeMode sizeMode);
 
 public:
 
@@ -649,8 +650,9 @@ public:
         ui32 maxBytes,
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
-        NProto::EListNodesMaxBytesCalculationMode sizeMode =
-            NProto::LNSCM_NAME_ONLY) override;
+        bool noAutoPrecharge = false,
+        NProto::EListNodesSizeMode sizeMode =
+            NProto::LNSM_NAME_ONLY) override;
 
     bool ReadNodeRefs(
         ui64 startNodeId,

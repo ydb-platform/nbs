@@ -59,9 +59,9 @@ public:
         // TIndexTabletSchema::NodeRefs (see tablet_schema.h).
         ui32 CalculateByteSize() const
         {
-            return (sizeof(ui64) *
-                    4)   // NodeId, ChildId, MinCommitId, MaxCommitId
-                   + Name.size() + ShardId.size() + ShardNodeName.size();
+            return sizeof(NodeId) + sizeof(ChildNodeId) + sizeof(MinCommitId) +
+                   sizeof(MaxCommitId) + Name.size() + ShardId.size() +
+                   ShardNodeName.size();
         }
     };
 
@@ -146,8 +146,8 @@ public:
         ui32 maxBytes,
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
-        NProto::EListNodesMaxBytesCalculationMode sizeMode =
-            NProto::LNSCM_NAME_ONLY) = 0;
+        bool noAutoPrecharge = false,
+        NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY) = 0;
 
     /**
      * @brief read at most maxCount node refs starting from key

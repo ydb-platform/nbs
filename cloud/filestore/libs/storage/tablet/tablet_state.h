@@ -634,8 +634,8 @@ public:
         ui32 maxBytes,
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
-        NProto::EListNodesMaxBytesCalculationMode sizeMode =
-            NProto::LNSCM_NAME_ONLY);
+        bool noAutoPrecharge = false,
+        NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY);
 
     bool ReadNodeRefs(
         IIndexTabletDatabase& db,
