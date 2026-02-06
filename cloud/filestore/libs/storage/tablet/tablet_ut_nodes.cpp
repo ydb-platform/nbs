@@ -687,6 +687,55 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+    Y_UNIT_TEST(ShouldLimitListNodesWithFullRowSizeMode)
+    {
+        // Test that byte size calculation accounts for full TNodeRef size
+        // when using LNSM_FULL_ROW config:
+        // sizeof(ui64) * 4 + Name.size() + ShardId.size() +
+        // ShardNodeName.size()
+        // * For "test1" (5 chars), size = 32 + 5 = 37 bytes
+        // * For "test2" (5 chars), size = 32 + 5 = 37 bytes
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetListNodesSizeMode(NProto::LNSM_FULL_ROW);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "test1"));
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "test2"));
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "test3"));
+
+        // maxBytes = 74 should fit exactly 2 entries
+        {
+            auto response = tablet.ListNodes(RootNodeId, 74, TString{});
+
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(2, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("test1", names[0]);
+            UNIT_ASSERT_VALUES_EQUAL("test2", names[1]);
+
+            UNIT_ASSERT_VALUES_EQUAL("test3", response->Record.GetCookie());
+        }
+
+        // maxBytes = 37 should fit only 1 entry
+        {
+            auto response = tablet.ListNodes(RootNodeId, 37, TString{});
+
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(1, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("test1", names[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL("test2", response->Record.GetCookie());
+        }
+    }
+
     Y_UNIT_TEST(ShouldStoreNodeAttrs)
     {
         TTestEnv env;

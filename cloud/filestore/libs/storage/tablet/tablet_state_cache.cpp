@@ -268,7 +268,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next,
     ui32* skippedRefs,
-    bool noAutoPrecharge)
+    bool noAutoPrecharge,
+    NProto::EListNodesSizeMode sizeMode)
 {
     Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
@@ -295,9 +296,13 @@ bool TInMemoryIndexState::ReadNodeRefs(
                 minCommitId,
                 maxCommitId});
 
-            // FIXME: bytes should represent the size of entire entry, not just
-            // the name
-            bytes += refs.back().Name.size();
+            const auto& ref = refs.back();
+            // TODO(#5148): consider other size calculation modes
+            if (sizeMode == NProto::LNSM_FULL_ROW) {
+                bytes += ref.CalculateByteSize();
+            } else {
+                bytes += ref.Name.size();
+            }
         } else {
             ++skipped;
         }

@@ -72,6 +72,13 @@ void TIndexTabletActor::HandleListNodes(
         maxBytes = Min(bytes, maxBytes);
     }
 
+    // Set size calculation mode from config if not explicitly set in request.
+    // TODO(#5148): explicitly pass the mode from client side.
+    if (msg->Record.GetListNodesSizeMode() == NProto::LNSM_UNSPECIFIED)
+    {
+        msg->Record.SetListNodesSizeMode(Config->GetListNodesSizeMode());
+    }
+
     ExecuteTx<TListNodes>(
         ctx,
         std::move(requestInfo),
@@ -152,7 +159,8 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
         args.ChildRefs,
         args.MaxBytes,
         &args.Next,
-        Config->GetNodeRefsNoAutoPrecharge()))
+        Config->GetNodeRefsNoAutoPrecharge(),
+        args.Request.GetListNodesSizeMode()))
     {
         ready = false;
     }

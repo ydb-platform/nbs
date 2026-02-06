@@ -2,6 +2,7 @@ syntax = "proto2";
 
 package NCloud.NFileStore.NProto;
 
+import "cloud/filestore/public/api/protos/node.proto";
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/config_dispatcher_settings.proto";
@@ -736,4 +737,8 @@ message TStorageConfig
     // the difference that flag allows this option to be set in runtime and
     // not compile time.
     optional bool NodeRefsNoAutoPrecharge = 483;
+
+    // Mode for calculating byte size in ListNodes when applying MaxBytes limit.
+    // TODO(#5148): consider other size calculation modes
+    optional EListNodesSizeMode ListNodesSizeMode = 484;
 }

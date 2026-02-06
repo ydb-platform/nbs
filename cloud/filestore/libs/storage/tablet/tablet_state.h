@@ -633,7 +633,8 @@ public:
         TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr,
-        bool noAutoPrecharge = false);
+        bool noAutoPrecharge = false,
+        NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY);
 
     bool ReadNodeRefs(
         IIndexTabletDatabase& db,

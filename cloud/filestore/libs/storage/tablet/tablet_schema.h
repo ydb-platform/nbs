@@ -215,6 +215,8 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    // NOTE: When adding new columns to this table, update
+    // TNodeRef::CalculateByteSize().
     struct NodeRefs: TTableSchema<9>
     {
         struct NodeId       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
