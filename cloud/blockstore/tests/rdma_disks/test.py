@@ -109,7 +109,7 @@ def _create_disk_agent_configurator(ydb, i):
         DEVICE_COUNT + (DEVICE_COUNT - 1) * DEVICE_PADDING
 
     with open(os.path.join(data_path, 'NVMENBS01'), 'wb') as f:
-        os.truncate(f.fileno(), file_size)
+        os.posix_fallocate(f.fileno(), 0, file_size)
 
     cfg = NbsConfigurator(ydb, 'disk-agent')
     cfg.generate_default_nbs_configs()

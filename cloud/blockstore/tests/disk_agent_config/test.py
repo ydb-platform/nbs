@@ -93,7 +93,10 @@ def create_device_files(data_path, agent_ids):
     for agent_id in agent_ids:
         p = _get_agent_data_path(agent_id, data_path)
         with open(os.path.join(p, 'NVMENBS01'), 'wb') as f:
-            os.truncate(f.fileno(), DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
+            os.posix_fallocate(
+                f.fileno(),
+                0,
+                DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
 
 
 def _create_disk_agent_configurator(ydb, agent_id, data_path):
