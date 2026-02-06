@@ -44,6 +44,8 @@ private:
         const TActorContext& ctx);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 TEnsureStateIntegrityActor::TEnsureStateIntegrityActor(
     TChildLogTitle logTitle,
     const TActorId& owner,
@@ -184,12 +186,11 @@ void TDiskRegistryActor::HandleEnsureDiskRegistryStateIntegrity(
         "%s Received EnsureDiskRegistryStateIntegrity request",
         LogTitle.GetWithTime().c_str());
 
-    auto actor = NCloud::Register<TEnsureStateIntegrityActor>(
+    NCloud::Register<TEnsureStateIntegrityActor>(
         ctx,
         LogTitle.GetChildWithTags(GetCycleCount(), {}),
         ctx.SelfID,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
-    Actors.insert(actor);
 }
 
 void TDiskRegistryActor::HandleEnsureDiskRegistryStateIntegrityResponse(
