@@ -13,12 +13,17 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSessionPipeInfo
+{
+    NActors::TActorId Owner;
+    NActors::TActorId PipeServer;
+};
+
 struct TSubSession
 {
     ui64 SeqNo;
     bool ReadOnly;
-    NActors::TActorId Owner;
-    NActors::TActorId PipeServer;
+    TSessionPipeInfo PipeInfo;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,13 +40,13 @@ public:
         , MaxSeenRwSeqNo(maxSeenRwSeqNo)
     {}
 
-    NActors::TActorId AddSubSession(
+    std::optional<TSessionPipeInfo> AddSubSession(
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
         const NActors::TActorId& pipeServer);
 
-    NActors::TActorId UpdateSubSession(
+    std::optional<TSessionPipeInfo> UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,

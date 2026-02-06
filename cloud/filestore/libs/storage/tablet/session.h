@@ -245,7 +245,7 @@ public:
         SetMaxRwSeqNo(SubSessions.GetMaxSeenRwSeqNo());
     }
 
-    NActors::TActorId UpdateSubSession(
+    std::optional<TSessionPipeInfo> UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,

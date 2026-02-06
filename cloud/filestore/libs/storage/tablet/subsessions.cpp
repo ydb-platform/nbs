@@ -16,7 +16,7 @@ constexpr size_t MaxSubSessions = 2;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::TActorId TSubSessions::AddSubSession(
+std::optional<TSessionPipeInfo> TSubSessions::AddSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
@@ -26,7 +26,7 @@ NActors::TActorId TSubSessions::AddSubSession(
     if (!readOnly) {
         MaxSeenRwSeqNo = std::max(MaxSeenRwSeqNo, seqNo);
     }
-    SubSessions.push_back({seqNo, readOnly, owner, pipeServer});
+    SubSessions.push_back({seqNo, readOnly, {owner, pipeServer}});
     if (SubSessions.size() > MaxSubSessions) {
         auto loSeqNo = std::min_element(
             SubSessions.begin(),
@@ -34,14 +34,14 @@ NActors::TActorId TSubSessions::AddSubSession(
             [] (const auto& a, const auto& b) {
                 return a.SeqNo < b.SeqNo;
             });
-        auto ans = loSeqNo->Owner;
+        auto ans = loSeqNo->PipeInfo;
         SubSessions.erase(loSeqNo);
         return ans;
     }
     return {};
 }
 
-NActors::TActorId TSubSessions::UpdateSubSession(
+std::optional<TSessionPipeInfo> TSubSessions::UpdateSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
@@ -58,10 +58,10 @@ NActors::TActorId TSubSessions::UpdateSubSession(
         });
     if (subsession != SubSessions.end()) {
         subsession->ReadOnly = readOnly;
-        if (subsession->Owner != owner) {
-            auto toKill = subsession->Owner;
-            subsession->Owner = owner;
-            subsession->PipeServer = pipeServer;
+        if (subsession->PipeInfo.Owner != owner) {
+            auto toKill = subsession->PipeInfo;
+            subsession->PipeInfo.Owner = owner;
+            subsession->PipeInfo.PipeServer = pipeServer;
             return toKill;
         }
         return {};
@@ -74,7 +74,7 @@ ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
     auto subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
-            return subsession.Owner == owner;
+            return subsession.PipeInfo.Owner == owner;
         });
     if (subsession == SubSessions.end()) {
         return true;
@@ -103,7 +103,7 @@ ui32 TSubSessions::DeleteSubSessionByPipeServer(const NActors::TActorId& pipeSer
     auto subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
-            return subsession.PipeServer == pipeServer;
+            return subsession.PipeInfo.PipeServer == pipeServer;
         });
     if (subsession == SubSessions.end()) {
         return true;
@@ -160,7 +160,7 @@ TVector<NActors::TActorId> TSubSessions::GetSubSessions() const
 {
     TVector<NActors::TActorId> ans;
     for (const auto& s: SubSessions) {
-        ans.push_back(s.Owner);
+        ans.push_back(s.PipeInfo.Owner);
     }
     return ans;
 }
@@ -169,7 +169,7 @@ TVector<NActors::TActorId> TSubSessions::GetSubSessionsPipeServer() const
 {
     TVector<NActors::TActorId> ans;
     for (const auto& s: SubSessions) {
-        ans.push_back(s.PipeServer);
+        ans.push_back(s.PipeInfo.PipeServer);
     }
     return ans;
 }
@@ -200,7 +200,7 @@ bool TSubSessions::IsValid() const
     return AllOf(
         SubSessions,
         [&] (const auto& subsession) {
-            return !!subsession.Owner;
+            return !!subsession.PipeInfo.Owner;
         });
 }
 
