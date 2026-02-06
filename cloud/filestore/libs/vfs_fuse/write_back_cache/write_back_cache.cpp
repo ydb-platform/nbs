@@ -1,11 +1,10 @@
 #include "write_back_cache_impl.h"
 
+#include "persistent_storage.h"
 #include "read_write_range_lock.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
-
-#include <cloud/storage/core/libs/common/file_ring_buffer.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
@@ -26,47 +25,6 @@ using namespace NThreading;
 using namespace NWriteBackCache;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO(nasonov): remove this wrapper when TFileRingBuffer supports
-// in-place allocation
-class TFileRingBuffer: public NCloud::TFileRingBuffer
-{
-    using NCloud::TFileRingBuffer::TFileRingBuffer;
-
-private:
-    ui64 Capacity = 0;
-
-public:
-    TFileRingBuffer(const TString& filePath, ui64 capacity)
-        : NCloud::TFileRingBuffer(filePath, capacity)
-        , Capacity(capacity)
-    {}
-
-    ui64 MaxAllocationSize() const
-    {
-        // Capacity - sizeof(TEntryHeader)
-        return Capacity - 8;
-    }
-
-    bool AllocateBack(size_t size, char** ptr)
-    {
-        TString tmp(size, 0);
-        if (PushBack(tmp)) {
-            *ptr = const_cast<char*>(Back().data());
-            return true;
-        } else {
-            *ptr = nullptr;
-            return false;
-        }
-    }
-
-    void CommitAllocation(char* ptr)
-    {
-        Y_UNUSED(ptr);
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -404,7 +362,7 @@ private:
     // |CachedEntriesPersistentQueue| (1:1 correspondence). The order of entries
     // may differ from the chronological order in |AllEntries|.
     TDeque<std::unique_ptr<TWriteDataEntry>> CachedEntries;
-    TFileRingBuffer CachedEntriesPersistentQueue;
+    IPersistentStoragePtr PersistentStorage;
 
     // WriteData entries and Flush states grouped by nodeId
     THashMap<ui64, std::unique_ptr<TNodeState>> NodeStates;
@@ -462,25 +420,39 @@ public:
         , LogTag(
             Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , FileSystemId(fileSystemId)
-        , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
+        auto createPersistentStorageResult =
+            CreateFileRingBufferPersistentStorage(
+                Stats,
+                {.FilePath = filePath, .DataCapacity = capacityBytes});
+
+        if (HasError(createPersistentStorageResult)) {
+            ReportWriteBackCacheCorruptionError(
+                TStringBuilder()
+                << LogTag
+                << " WriteBackCache persistent queue creation failed: "
+                << createPersistentStorageResult.GetError());
+            return;
+        }
+
+        PersistentStorage = createPersistentStorageResult.ExtractResult();
+
         // File ring buffer should be able to store any valid TWriteDataRequest.
         // Inability to store it will cause this and future requests to remain
         // in the pending queue forever (including requests with smaller size).
         // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
         Y_ABORT_UNLESS(
-            CachedEntriesPersistentQueue.MaxAllocationSize() >=
+            PersistentStorage->GetMaxSupportedAllocationByteCount() >=
             1024 * 1024 + 1016);
 
         Stats->ResetNonDerivativeCounters();
 
         TWriteDataEntryDeserializationStats deserializationStats;
 
-        CachedEntriesPersistentQueue.Visit(
-            [&](auto checksum, auto serializedRequest)
+        PersistentStorage->Visit(
+            [&](TStringBuf serializedRequest)
             {
                 auto entry = std::make_unique<TWriteDataEntry>(
-                    checksum,
                     serializedRequest,
                     deserializationStats,
                     this);
@@ -500,36 +472,34 @@ public:
 
         EmptyFlag = AllEntries.Empty();
 
+        const auto persistentStorageStats = PersistentStorage->GetStats();
+
         STORAGE_INFO(
             LogTag << " WriteBackCache has been initialized "
             << "{\"FilePath\": " << filePath.Quote()
-            << ", \"RawCapacityBytes\": "
-            << CachedEntriesPersistentQueue.GetRawCapacity()
-            << ", \"RawUsedBytesCount\": "
-            << CachedEntriesPersistentQueue.GetRawUsedBytesCount()
-            << ", \"WriteDataRequestCount\": "
-            << CachedEntriesPersistentQueue.Size() << "}");
+            << ", \"RawCapacityByteCount\": "
+            << persistentStorageStats.RawCapacityByteCount
+            << ", \"RawUsedByteCount\": "
+            << persistentStorageStats.RawUsedByteCount
+            << ", \"EntryCount\": "
+            << persistentStorageStats.EntryCount << "}");
 
         if (deserializationStats.HasFailed()) {
             // Each deserialization failure event has been already reported
             // as a critical error - just write statistics to the log
             STORAGE_ERROR(
                 LogTag << " WriteBackCache request deserialization failure "
-                << "{\"ChecksumMismatchCount\": "
-                << deserializationStats.ChecksumMismatchCount
-                << ", \"EntrySizeMismatchCount\": "
+                << "{\"EntrySizeMismatchCount\": "
                 << deserializationStats.EntrySizeMismatchCount
                 << ", \"ProtobufDeserializationErrorCount\": "
                 << deserializationStats.ProtobufDeserializationErrorCount
                 << "}");
         }
 
-        if (CachedEntriesPersistentQueue.IsCorrupted()) {
+        if (persistentStorageStats.IsCorrupted) {
             ReportWriteBackCacheCorruptionError(
                 LogTag + " WriteBackCache persistent queue is corrupted");
         }
-
-        UpdatePersistentQueueStats();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -660,12 +630,14 @@ public:
         Y_ABORT_UNLESS(offset < end);
 
         const auto serializedSize = entry->GetSerializedSize();
+        const auto maxSerializedSize =
+            PersistentStorage->GetMaxSupportedAllocationByteCount();
 
         Y_ABORT_UNLESS(
-            serializedSize <= CachedEntriesPersistentQueue.MaxAllocationSize(),
+            serializedSize <= maxSerializedSize,
             "Serialized request size %lu is expected to be <= %lu",
             serializedSize,
-            CachedEntriesPersistentQueue.MaxAllocationSize());
+            maxSerializedSize);
 
         auto unlocker =
             [ptr = weak_from_this(), nodeId, offset, end](const auto&)
@@ -1061,24 +1033,16 @@ private:
             auto& entry = PendingEntries.front();
             auto serializedSize = entry->GetSerializedSize();
 
-            char* allocationPtr = nullptr;
-            bool allocated = CachedEntriesPersistentQueue.AllocateBack(
-                serializedSize,
-                &allocationPtr);
+            const auto* allocationPtr = PersistentStorage->Alloc(
+                [&](char* ptr, size_t size) { entry->Serialize({ptr, size}); },
+                serializedSize);
 
-            if (!allocated) {
+            if (allocationPtr == nullptr) {
                 RequestFlushAllCachedData();
                 break;
             }
 
-            Y_ABORT_UNLESS(allocationPtr != nullptr);
-
-            entry->SerializeAndMoveRequestBuffer(
-                {allocationPtr, serializedSize},
-                QueuedOperations,
-                this);
-
-            CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
+            entry->MoveRequestBuffer(allocationPtr, QueuedOperations, this);
 
             auto* nodeState = GetNodeState(entry->GetNodeId());
             AddCachedEntry(nodeState, std::move(entry));
@@ -1089,8 +1053,6 @@ private:
 
             PendingEntries.pop_front();
         }
-
-        UpdatePersistentQueueStats();
     }
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
@@ -1487,15 +1449,11 @@ private:
         // Clear flushed entries from the persistent queue
         while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed()) {
             auto* entry = CachedEntries.front().get();
+            PersistentStorage->Free(entry->GetAllocationPtr());
             entry->Complete(this);
-
             CachedEntries.pop_front();
-            CachedEntriesPersistentQueue.PopFront();
-
             QueuedOperations.ShouldProcessPendingEntries = true;
         }
-
-        UpdatePersistentQueueStats();
 
         nodeState->FlushState.Executing = false;
         if (!EnqueueFlushIfNeeded(nodeState)) {
@@ -1548,17 +1506,6 @@ private:
         nodeState->CachedEntryIntervalMap.Remove(entry);
 
         return entry;
-    }
-
-    void UpdatePersistentQueueStats()
-    {
-        Stats->UpdatePersistentStorageStats(
-            {.RawCapacityByteCount =
-                 CachedEntriesPersistentQueue.GetRawCapacity(),
-             .RawUsedByteCount =
-                 CachedEntriesPersistentQueue.GetRawUsedBytesCount(),
-             .EntryCount = CachedEntriesPersistentQueue.Size(),
-             .IsCorrupted = CachedEntriesPersistentQueue.IsCorrupted()});
     }
 
     TIntrusiveList<TWriteDataEntry>& GetEntryListByStatus(
@@ -1687,7 +1634,6 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 }
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-        ui32 checksum,
         TStringBuf serializedRequest,
         TWriteDataEntryDeserializationStats& deserializationStats,
         TImpl* impl)
@@ -1696,20 +1642,6 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
           sizeof(TCachedWriteDataRequest)))
 {
     deserializationStats.EntryCount++;
-
-    Y_UNUSED(checksum);
-    // TODO(nasonov): validate checksum when TFileRingBuffer supports
-    // in-place allocation. Currently, data is written directly to the
-    // TFileRingBuffer without Crc32 calculation
-    //
-    // auto expectedChecksum =
-    //    Crc32c(serializedRequest.data(), serializedRequest.size());
-    //
-    // if (expectedChecksum != checksum) {
-    //    stats.ChecksumMismatchCount++;
-    //    SetStatus(EWriteDataRequestStatus::Corrupted, impl);
-    //    return;
-    //}
 
     if (ByteCount == 0) {
         deserializationStats.EntrySizeMismatchCount++;
@@ -1742,13 +1674,11 @@ void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
     SetStatus(EWriteDataRequestStatus::Pending, impl);
 }
 
-void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
-    std::span<char> allocation,
-    TQueuedOperations& pendingOperations,
-    TImpl* impl)
+void TWriteBackCache::TWriteDataEntry::Serialize(
+    std::span<char> allocation) const
 {
     Y_ABORT_UNLESS(PendingRequest);
-    Y_ABORT_UNLESS(CachedRequest == nullptr);
+
     Y_ABORT_UNLESS(
         allocation.size() == sizeof(TCachedWriteDataRequest) + ByteCount,
         "Invalid allocation size, expected: %lu, actual: %lu",
@@ -1778,8 +1708,18 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     Y_ABORT_UNLESS(
         writer.TargetBuffer.empty(),
         "Buffer is expected to be written completely");
+}
 
-    CachedRequest = cachedRequest;
+void TWriteBackCache::TWriteDataEntry::MoveRequestBuffer(
+    const void* allocationPtr,
+    TQueuedOperations& pendingOperations,
+    TImpl* impl)
+{
+    Y_ABORT_UNLESS(PendingRequest);
+    Y_ABORT_UNLESS(CachedRequest == nullptr);
+
+    CachedRequest =
+        reinterpret_cast<const TCachedWriteDataRequest*>(allocationPtr);
     PendingRequest.reset();
 
     SetStatus(EWriteDataRequestStatus::Cached, impl);
@@ -1801,7 +1741,6 @@ void TWriteBackCache::TWriteDataEntry::FinishFlush(
 {
     Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Flushing);
     SetStatus(EWriteDataRequestStatus::Flushed, impl);
-    CachedRequest = nullptr;
 }
 
 void TWriteBackCache::TWriteDataEntry::Complete(TImpl* impl)

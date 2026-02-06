@@ -56,6 +56,7 @@ public:
     TVector<TBrokenFileEntry> Validate();
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
+    void SetCorrupted();
     ui64 GetRawCapacity() const;
     ui64 GetRawUsedBytesCount() const;
     // Returns the maximum data size that is guaranteed to be successfully
