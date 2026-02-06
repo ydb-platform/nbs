@@ -13,29 +13,21 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
-TDuration CalculateBoostTime(const TShapingThrottlerConfig& config)
-{
-    if (config.BoostRate <= 1.) {
-        return TDuration::Zero();
-    }
-
-    return (config.BoostRate - 1.) * config.BoostTime;
-}
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeShapingThrottler::TVolumeShapingThrottler(
-    const TShapingThrottlerConfig& throttlerConfig)
-    : Config(throttlerConfig)
-    , Bucket(
-          Config.BurstTime,
-          Config.BoostRate,
-          CalculateBoostTime(Config),
-          Config.BoostRefillTime,
-          CalculateBoostTime(
-              Config))   // TODO(komarevtsev-d): don't reset initial boost time
+    const TShapingThrottlerConfig& config)
+    // TODO(komarevtsev-d): don't reset initial boost time
+    : Bucket(
+          std::make_unique<TBoostedTimeBucket>(
+              config.BurstTime * (config.StandardBudgetMultiplier / 100.),
+              config.BoostRate / 100.,
+              config.BurstTime * (config.BoostBudgetMultiplier / 100.),
+              config.BurstTime * (config.BoostRefillBudgetMultiplier / 100.),
+              config.BurstTime * (config.BoostBudgetMultiplier / 100.)))
 {}
 
 TVolumeShapingThrottler::~TVolumeShapingThrottler() = default;
@@ -44,7 +36,25 @@ TDuration TVolumeShapingThrottler::SuggestDelay(
     TInstant ts,
     TDuration requestCost)
 {
-    return Bucket.Register(ts, requestCost);
+    if (requestCost <= TDuration::Zero()) {
+        return TDuration::Zero();
+    }
+    return Bucket->Register(ts, requestCost);
+}
+
+void TVolumeShapingThrottler::Reset(const TShapingThrottlerConfig& config)
+{
+    Bucket = std::make_unique<TBoostedTimeBucket>(
+        config.BurstTime * (config.StandardBudgetMultiplier / 100.),
+        config.BoostRate / 100.,
+        config.BurstTime * (config.BoostBudgetMultiplier / 100.),
+        config.BurstTime * (config.BoostRefillBudgetMultiplier / 100.),
+        GetCurrentBoostBudget());
+}
+
+TDuration TVolumeShapingThrottler::GetCurrentBoostBudget() const
+{
+    return Bucket->GetCurrentBoostBudget();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

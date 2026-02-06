@@ -121,7 +121,7 @@ struct TVolumeThrottlingPolicy::TImpl
         , UseDiskSpaceScore(useDiskSpaceScore)
         , MaxQuotas(CalculateMaxQuotas())
         , Bucket(
-              CalcBurstTime(),
+              CalculateBurstTime(),
               CalculateBoostRate(Config),
               CalculateBoostTime(Config),
               CalculateBoostRefillTime(Config),
@@ -231,7 +231,7 @@ struct TVolumeThrottlingPolicy::TImpl
         return Config;
     }
 
-    TDuration CalcBurstTime() const
+    TDuration CalculateBurstTime() const
     {
         return SecondsToDuration(
             (Config.GetBurstPercentage() ? Config.GetBurstPercentage() : 10)
@@ -565,6 +565,10 @@ TDuration TVolumeThrottlingPolicy::GetCurrentBoostBudget() const
 ui64 TVolumeThrottlingPolicy::CalculatePostponedWeight() const
 {
     return Impl->PostponedWeight;
+}
+
+TDuration TVolumeThrottlingPolicy::CalculateBurstTime() const {
+    return Impl->CalculateBurstTime();
 }
 
 double TVolumeThrottlingPolicy::CalculateCurrentSpentBudgetShare(TInstant ts) const

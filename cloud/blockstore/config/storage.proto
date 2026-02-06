@@ -1417,5 +1417,9 @@ message TStorageServiceConfig
     // row per reallocation.
     optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
 
-    optional double MinumumThrottlerMultiplier = 480;
+    optional uint32 ShapingThrottlerStandardBudgetMultiplier = 480;
+    optional uint32 ShapingThrottlerBoostBudgetMultiplier = 481;
+    optional uint32 ShapingThrottlerBoostRefillBudgetMultiplier = 482;
+    optional uint32 ShapingThrottlerBoostRate = 483;
+    optional double RequestCostMultiplier = 484;
 }

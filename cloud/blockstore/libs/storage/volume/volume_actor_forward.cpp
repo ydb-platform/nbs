@@ -467,22 +467,31 @@ bool TVolumeActor::ReplyToOriginalRequest(
         flags,
         volumeRequest.CallerCookie);
 
-    if (const TDuration minThrottleDelay =
-            volumeRequest.RequestStartTime +
-            Config->GetMinumumThrottlerMultiplier() *
-                volumeRequest.RequestCost -
-            ctx.Now();
-        minThrottleDelay > TDuration::Zero())
-    {
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::METERING,
-            "Scheduling response for %s request in %s. RequestCost: %s; RequestConstMultipled: %s",
-            TMethod::Name,
-            FormatDuration(minThrottleDelay).c_str(),
-            FormatDuration(volumeRequest.RequestCost).c_str(),
-            FormatDuration(volumeRequest.RequestCost * Config->GetMinumumThrottlerMultiplier()).c_str());
-        ctx.ExecutorThread.Schedule(minThrottleDelay, event.release());
+
+    const TInstant now = ctx.Now();
+    const TDuration realExecTime = now - volumeRequest.RequestStartTime;
+    const i64 requestOverconsumptionUsec =
+        static_cast<i64>(volumeRequest.RequestStartTime.MicroSeconds() + (volumeRequest.RequestCost.MicroSeconds() * Config->GetRequestCostMultiplier())) - static_cast<i64>(now.MicroSeconds());
+    const TDuration requestOverconsumption = TDuration::MicroSeconds(requestOverconsumptionUsec > 0 ? requestOverconsumptionUsec : 0);
+    const TDuration shapingDelay = State->AccessShapingThrottler().SuggestDelay(
+        now,
+        requestOverconsumption);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::METERING,
+        "Response for %s request in %s; RequestCost: %s; RequestCostMultipled: %s; requestOverconsumption: %ldus; "
+        "CurrentBoostBudget: %s; SpentBudgetShare: %f; shapingDelay: %s;",
+        TMethod::Name,
+        FormatDuration(realExecTime).c_str(),
+        FormatDuration(volumeRequest.RequestCost).c_str(),
+        FormatDuration(volumeRequest.RequestCost * Config->GetRequestCostMultiplier()).c_str(),
+        requestOverconsumptionUsec,
+        FormatDuration(State->GetShapingThrottler().GetCurrentBoostBudget())
+            .c_str(),
+        State->AccessThrottlingPolicy().CalculateCurrentSpentBudgetShare(now),
+        FormatDuration(shapingDelay).c_str());
+    if (shapingDelay > TDuration::Zero()) {
+        ctx.ExecutorThread.Schedule(shapingDelay, event.release());
     } else {
         ctx.Send(std::move(event));
     }
@@ -614,7 +623,7 @@ void TVolumeActor::ForwardRequest(
     }
 
     auto* msg = ev->Get();
-    const ui64 now = GetCycleCount();
+    ui64 now = GetCycleCount();
 
     // Fill block range.
     TBlockRange64 blockRange;
