@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             UNIT_ASSERT_VALUES_EQUAL(true, subsession.has_value());
             UNIT_ASSERT_VALUES_EQUAL(1, subsession->SeqNo);
             UNIT_ASSERT_VALUES_EQUAL(false, subsession->ReadOnly);
-            UNIT_ASSERT_VALUES_EQUAL(TActorId(1, 1), subsession->Owner);
+            UNIT_ASSERT_VALUES_EQUAL(TActorId(1, 1), subsession->PipeInfo.Owner);
         }
 
         {
@@ -75,7 +75,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             UNIT_ASSERT_VALUES_EQUAL(true, subsession->ReadOnly);
             UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetMaxSeenSeqNo());
             UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenRwSeqNo());
-            UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 1), subsession->Owner);
+            UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 1), subsession->PipeInfo.Owner);
         }
     }
 
