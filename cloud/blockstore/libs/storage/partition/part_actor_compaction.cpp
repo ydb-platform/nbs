@@ -849,6 +849,25 @@ void TCompactionActor::HandleCompactionTxResponse(
         return;
     }
 
+    std::move(
+        msg->RangeCompactionInfos.begin(),
+        msg->RangeCompactionInfos.end(),
+        std::back_insert_iterator<TVector<TRangeCompactionInfo>>(RangeCompactionInfos));
+    std::move(
+        msg->CompactionRequests.begin(),
+        msg->CompactionRequests.end(),
+        std::back_insert_iterator<TVector<TRequest>>(Requests));
+
+    if (--AwaitedCompactionTxCall) {
+        return;
+    }
+
+    // TODO:_ exec cycles
+
+    for (auto context: ForkedReadCallContexts) {
+        RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
+    }
+
     ProcessRequests(ctx);
 }
 
