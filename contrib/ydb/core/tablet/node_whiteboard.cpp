@@ -1125,30 +1125,6 @@ protected:
     }
 };
 
-template<typename TMessage>
-::google::protobuf::RepeatedField<int> InitDefaultWhiteboardFields() {
-    using namespace ::google::protobuf;
-    const Descriptor& descriptor = *TMessage::GetDescriptor();
-    ::google::protobuf::RepeatedField<int> defaultFields;
-    int fieldCount = descriptor.field_count();
-    for (int index = 0; index < fieldCount; ++index) {
-        const FieldDescriptor* field = descriptor.field(index);
-        const auto& options(field->options());
-        if (options.HasExtension(NKikimrWhiteboard::DefaultField)) {
-            if (options.GetExtension(NKikimrWhiteboard::DefaultField)) {
-                defaultFields.Add(field->number());
-            }
-        }
-    }
-    return defaultFields;
-}
-
-template<typename TMessage>
-::google::protobuf::RepeatedField<int> GetDefaultWhiteboardFields() {
-    static ::google::protobuf::RepeatedField<int> defaultFields = InitDefaultWhiteboardFields<TMessage>();
-    return defaultFields;
-}
-
 IActor* CreateNodeWhiteboardService() {
     return new TNodeWhiteboardService();
 }
