@@ -1008,6 +1008,7 @@ STFUNC(TCompactionActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartitionPrivate::TEvCompactionTxResponse, HandleCompactionTxResponse);
         HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
         HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvPatchBlobResponse, HandlePatchBlobResponse);

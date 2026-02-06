@@ -459,23 +459,6 @@ struct TTxPartition
             }
         }
 
-        // TODO:_ remove it!
-        TCompaction(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                TCompactionOptions compactionOptions,
-                const TVector<std::pair<ui32, TBlockRange32>>& ranges)
-            : RequestInfo(std::move(requestInfo))
-            , CommitId(commitId)
-            , RangeCompactionIndex(713)
-            , CompactionOptions(compactionOptions)
-        {
-            RangeCompactions.reserve(ranges.size());
-            for (const auto& range: ranges) {
-                RangeCompactions.emplace_back(range.first, range.second);
-            }
-        }
-
         void Clear()
         {
             for (auto& range: RangeCompactions) {
