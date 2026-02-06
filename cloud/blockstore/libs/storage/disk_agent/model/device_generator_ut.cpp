@@ -250,6 +250,232 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             offset += padding + deviceSize;
         }
     }
+
+    Y_UNIT_TEST_F(ShouldGenerateDevicesWithFullPathHS, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPoolConfig def;
+        def.SetHashScheme(NProto::HS_FULL_PATH);
+
+        {
+            auto& layout = *def.MutableLayout();
+            layout.SetHeaderSize(1_GB);
+            layout.SetDevicePadding(32_MB);
+            layout.SetDeviceSize(93_GB);
+        }
+
+        NProto::TStorageDiscoveryConfig::TPoolConfig rot;
+        rot.SetPoolName("rot");
+        rot.SetHashSuffix("-rot");
+        rot.SetHashScheme(NProto::HS_FULL_PATH);
+
+        {
+            auto& layout = *rot.MutableLayout();
+            layout.SetHeaderSize(1_GB);
+            layout.SetDevicePadding(32_MB);
+            layout.SetDeviceSize(93_GB);
+        }
+
+        NProto::TStorageDiscoveryConfig::TPoolConfig local;
+        local.SetPoolName("local");
+        local.SetHashSuffix("-local");
+        local.SetBlockSize(512);
+        local.SetHashScheme(NProto::HS_FULL_PATH);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        {
+            gen("/dev/disk/by-partlabel/NVMENBS0110", def, 1, 63, 4_KB, 6401251344384);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(63, r.size());
+
+            for (const auto& d: r) {
+                UNIT_ASSERT_VALUES_EQUAL_C("", d.GetPoolName(), d);
+                UNIT_ASSERT_VALUES_EQUAL_C(4_KB, d.GetBlockSize(), d);
+                UNIT_ASSERT_VALUES_EQUAL_C(93_GB, d.GetFileSize(), d);
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "61ec8104ba81651301635ec872b46c79", r[0].GetDeviceId(), r[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(1073741824, r[0].GetOffset(), r[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "3df48c11d7fab0b047c60d49a9ce31f9", r[1].GetDeviceId(), r[1]);
+            UNIT_ASSERT_VALUES_EQUAL_C(100965285888, r[1].GetOffset(), r[1]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "2af35ec822c99af5e71f2fd324073efb", r[5].GetDeviceId(), r[5]);
+            UNIT_ASSERT_VALUES_EQUAL_C(500531462144, r[5].GetOffset(), r[5]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "7511923c1aac65bf2f58f35704e7f166", r[10].GetDeviceId(), r[10]);
+            UNIT_ASSERT_VALUES_EQUAL_C(999989182464, r[10].GetOffset(), r[10]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "5e7ff006cc26cfc9c7d1e15f599c1b9b", r[62].GetDeviceId(), r[62]);
+            UNIT_ASSERT_VALUES_EQUAL_C(6194349473792, r[62].GetOffset(), r[62]);
+        }
+
+        {
+            gen("/dev/disk/by-partlabel/ROTNBS0110", rot, 1, 140, 4_KB, 16000898564096);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(140, r.size());
+
+            for (const auto& d: r) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rot", d.GetPoolName(), d);
+                UNIT_ASSERT_VALUES_EQUAL_C(4_KB, d.GetBlockSize(), d);
+                UNIT_ASSERT_VALUES_EQUAL_C(93_GB, d.GetFileSize(), d);
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "11bfc4fd3eb316fc10cca2e09e932ae4", r[0].GetDeviceId(), r[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(1073741824, r[0].GetOffset(), r[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "1528521ed35c86e8b0a2d9395baad914", r[41].GetDeviceId(), r[41]);
+            UNIT_ASSERT_VALUES_EQUAL_C(4096627048448, r[41].GetOffset(), r[41]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "9ba483b3fbca02a26e4c4c9bb7b0865e", r[99].GetDeviceId(), r[99]);
+            UNIT_ASSERT_VALUES_EQUAL_C(9890336604160, r[99].GetOffset(), r[99]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "37b6fa35b9327ec540c7bea92e20e017", r[139].GetDeviceId(), r[139]);
+            UNIT_ASSERT_VALUES_EQUAL_C(13885998366720, r[139].GetOffset(), r[139]);
+        }
+
+        {
+            gen("/dev/disk/by-partlabel/ROTNBS0210", rot, 2, 140, 4_KB, 15999825870848);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(140, r.size());
+
+            for (const auto& d: r) {
+                UNIT_ASSERT_VALUES_EQUAL_C("rot", d.GetPoolName(), d);
+                UNIT_ASSERT_VALUES_EQUAL_C(4_KB, d.GetBlockSize(), d);
+                UNIT_ASSERT_VALUES_EQUAL_C(93_GB, d.GetFileSize(), d);
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "cb83c102ad955dde89f0407db6144bf2", r[0].GetDeviceId(), r[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(1073741824, r[0].GetOffset(), r[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "2b2eb302bbd950dc26261078b1c84137", r[41].GetDeviceId(), r[41]);
+            UNIT_ASSERT_VALUES_EQUAL_C(4096627048448, r[41].GetOffset(), r[41]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "97e4a714ea7b4df0d5941e413949df39", r[99].GetDeviceId(), r[99]);
+            UNIT_ASSERT_VALUES_EQUAL_C(9890336604160, r[99].GetOffset(), r[99]);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "772bfff304f8da9c9c57a1031e7c06b3", r[139].GetDeviceId(), r[139]);
+            UNIT_ASSERT_VALUES_EQUAL_C(13885998366720, r[139].GetOffset(), r[139]);
+        }
+
+        {
+            gen("/dev/disk/by-partlabel/NVMECOMPUTE0110", local, 1, 1, local.GetBlockSize(), 367_GB);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+
+            const auto& d = r[0];
+
+            UNIT_ASSERT_VALUES_EQUAL_C("local", d.GetPoolName(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(512, d.GetBlockSize(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(0, d.GetFileSize(), d);  // the file size is set only when a layout is used
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "bda325237cb48ea217fc4fbc48bdb640", d.GetDeviceId(), d);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldGenerateStableUUIDsWithFullPathHS, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPoolConfig def;
+        def.SetHashScheme(NProto::HS_FULL_PATH);
+
+        TString expectedId;
+
+        {
+            TDeviceGenerator gen { Log, AgentId };
+
+            gen("/dev/disk/by-partlabel/NVMENBS0110", def, 1, 42, 4_KB, 93_GB);
+            gen("/dev/disk/by-partlabel/NVMENBS0210", def, 2, 0, 4_KB, 93_GB);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(2, r.size());
+            expectedId = r[1].GetDeviceId();
+        }
+
+        {
+            TDeviceGenerator gen { Log, AgentId };
+
+            gen("/dev/disk/by-partlabel/NVMENBS0210", def, 2, 0, 4_KB, 93_GB);
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+            UNIT_ASSERT_VALUES_EQUAL(expectedId, r[0].GetDeviceId());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldGenerateLogicalDevicesWithFullPathHS, TFixture)
+    {
+        const ui64 headerSize = 1_GB;
+        const ui64 padding = 32_MB;
+        const ui64 deviceSize = 93_GB;
+        const ui64 deviceCount = 10;
+        const ui64 blockSize = 4_KB;
+
+        NProto::TStorageDiscoveryConfig::TPoolConfig compound;
+
+        compound.SetHashScheme(NProto::HS_FULL_PATH);
+
+        auto& layout = *compound.MutableLayout();
+        layout.SetHeaderSize(headerSize);
+        layout.SetDevicePadding(padding);
+        layout.SetDeviceSize(deviceSize);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        gen(
+            "/dev/disk/by-partlabel/NVMENBS0110",
+            compound,
+            1,      // device number
+            0,      // max device count
+            4_KB,   // block size
+            headerSize + (deviceSize + padding) * deviceCount);
+
+        auto devices = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(10, devices.size());
+        SortBy(devices, [] (const NProto::TFileDeviceArgs& d) {
+            return d.GetOffset();
+        });
+
+        const TString ids[] {
+            "61ec8104ba81651301635ec872b46c79",
+            "3df48c11d7fab0b047c60d49a9ce31f9",
+            "d3b11e4d64d9cd3ec2bc7e7cc47b2cd1",
+            "6497306f8b6925fceee0c0f99663e65a",
+            "6ed6dbfaa1774fb928d2e3ecc34fc67b",
+            "2af35ec822c99af5e71f2fd324073efb",
+            "6cc315ffff98f2f4fd614ff7711a832a",
+            "74dae64711245fc1b0209524717dfaaf",
+            "f56f46eef98bd44546bee7f0a64eeeed",
+            "f08cd547a325ade47845235e50ebdb13"
+        };
+
+        ui64 offset = headerSize;
+        for (size_t i = 0; i != devices.size(); ++i) {
+            const auto& d = devices[i];
+            UNIT_ASSERT_VALUES_EQUAL_C(offset, d.GetOffset(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(blockSize, d.GetBlockSize(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(deviceSize, d.GetFileSize(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(ids[i], d.GetDeviceId(), d);
+
+            offset += padding + deviceSize;
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

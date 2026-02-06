@@ -40,6 +40,13 @@ private:
         ui32 deviceNumber,
         const TString& suffix,
         ui32 deviceIndex) const;
+    TString CreateDeviceId(
+        const TString& path,
+        const TString& suffix) const;
+    TString CreateDeviceId(
+        const TString& path,
+        const TString& suffix,
+        ui32 deviceIndex) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
