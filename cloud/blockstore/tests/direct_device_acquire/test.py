@@ -134,7 +134,10 @@ def create_device_files(data_path, agent_ids):
         p = _get_agent_data_path(agent_id, data_path)
 
         with open(os.path.join(p, 'NVMENBS01'), 'wb') as f:
-            os.truncate(f.fileno(), DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
+            os.posix_fallocate(
+                f.fileno(),
+                0,
+                DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
 
 
 def _create_disk_agent_configurator(ydb, agent_id, data_path):
@@ -234,7 +237,10 @@ def test_should_mount_volume_with_unknown_devices(
     data_path_for_agent = _get_agent_data_path(agent_id, data_path)
 
     with open(os.path.join(data_path_for_agent, 'NVMENBS02'), 'wb') as f:
-        os.truncate(f.fileno(), DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
+        os.posix_fallocate(
+            f.fileno(),
+            0,
+            DEVICES_PER_PATH * (DEVICE_SIZE + 4096))
 
     # run an agent
     agent = start_disk_agent(configurator, name=agent_id)

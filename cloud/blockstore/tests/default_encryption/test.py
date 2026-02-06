@@ -95,8 +95,9 @@ def start_disk_agent(ydb, nbs, agent_id):
     ensure_path_exists(data_path)
 
     with open(os.path.join(data_path, 'NVMENBS01'), 'wb') as f:
-        os.truncate(
+        os.posix_fallocate(
             f.fileno(),
+            0,
             DEVICE_HEADER + DEVICE_SIZE * DEVICE_COUNT + (DEVICE_COUNT - 1) *
             DEVICE_PADDING)
 
