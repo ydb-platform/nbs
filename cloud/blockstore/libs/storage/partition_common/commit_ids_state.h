@@ -21,10 +21,16 @@ private:
 public:
     TCommitIdsState(ui64 generation, ui64 lastCommitId);
 
-    NPartition::TCommitQueue& GetCommitQueue()
+    [[nodiscard]] const NPartition::TCommitQueue& GetCommitQueue() const
     {
         return CommitQueue;
     }
+
+    [[nodiscard]] NPartition::TCommitQueue& AccessCommitQueue()
+    {
+        return CommitQueue;
+    }
+
 
     [[nodiscard]] ui64 GetLastCommitId() const
     {
@@ -39,12 +45,12 @@ public:
         return MakeCommitId(Generation, ++LastCommitId);
     }
 
-    auto& AccessCheckpoints()
+    [[nodiscard]] auto& AccessCheckpoints()
     {
         return Checkpoints;
     }
 
-    const auto& GetCheckpoints() const
+    [[nodiscard]] const auto& GetCheckpoints() const
     {
         return Checkpoints;
     }

@@ -45,7 +45,7 @@ func TestDeleteFilesystemTaskRun(t *testing.T) {
 	storage.On("FilesystemDeleted", ctx, "filesystem", mock.Anything).Return(nil)
 
 	nfsFactory.On("NewClient", ctx, "zone").Return(nfsClient, nil)
-	nfsClient.On("Delete", ctx, "filesystem").Return(nil)
+	nfsClient.On("Delete", ctx, "filesystem", false).Return(nil)
 	nfsClient.On("Close").Return(nil)
 
 	err := task.Run(ctx, execCtx)
@@ -82,7 +82,7 @@ func TestDeleteFilesystemTaskCancel(t *testing.T) {
 	storage.On("FilesystemDeleted", ctx, "filesystem", mock.Anything).Return(nil)
 
 	nfsFactory.On("NewClient", ctx, "zone").Return(nfsClient, nil)
-	nfsClient.On("Delete", ctx, "filesystem").Return(nil)
+	nfsClient.On("Delete", ctx, "filesystem", false).Return(nil)
 	nfsClient.On("Close").Return(nil)
 
 	err := task.Cancel(ctx, execCtx)

@@ -1,6 +1,8 @@
 NFS profile:
 CreateFileStore
 ReadData
+RenameNode
+UnlinkNode
 WriteData
 VHOST profile:
 AcquireLock

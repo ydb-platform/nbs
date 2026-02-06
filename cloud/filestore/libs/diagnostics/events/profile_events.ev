@@ -36,7 +36,8 @@ message TProfileLogNodeInfo {
     optional uint32 Mode = 6;
     optional uint32 Type = 10;
 
-    // from response
+    // from response (for private API requests these values can come from the
+    // requests as well)
     optional uint64 NodeId = 7;
     optional uint64 Handle = 8;
     optional uint64 Size = 9;

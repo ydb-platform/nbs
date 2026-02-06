@@ -230,7 +230,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 
             if (removed) {
                 DecrementUnflushedFreshBlocksFromChannelCount(1);
-                TrimFreshLogState.GetTrimFreshLogBarriers().ReleaseBarrier(
+                TrimFreshLogState.AccessTrimFreshLogBarriers().ReleaseBarrier(
                     garbageCommitId);
             }
         }

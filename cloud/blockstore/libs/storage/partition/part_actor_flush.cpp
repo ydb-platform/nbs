@@ -591,16 +591,17 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
     const auto freshBlobCount = State->GetUnflushedFreshBlobCount();
     const auto freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
-    const bool shouldFlush = !State->IsLoadStateFinished()
-        || freshBlockByteCount >= Config->GetFlushThreshold()
-        || freshBlobCount >= Config->GetFreshBlobCountFlushThreshold()
-        || freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
+    const bool shouldFlush =
+        !State->IsLoadStateFinished() ||
+        freshBlockByteCount >= Config->GetFlushThreshold() ||
+        freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
+        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
 
     if (!shouldFlush) {
         return;
     }
 
-    State->GetFlushState().SetStatus(EOperationStatus::Enqueued);
+    State->AccessFlushState().SetStatus(EOperationStatus::Enqueued);
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvFlushRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
@@ -650,7 +651,7 @@ void TPartitionActor::HandleFlush(
 
     ui64 blocksCount = State->GetUnflushedFreshBlocksCount();
     if (!blocksCount) {
-        State->GetFlushState().SetStatus(EOperationStatus::Idle);
+        State->AccessFlushState().SetStatus(EOperationStatus::Idle);
 
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(S_ALREADY, "nothing to flush"));
@@ -682,7 +683,7 @@ void TPartitionActor::HandleFlush(
         commitId,
         blocksCount);
 
-    State->GetFlushState().SetStatus(EOperationStatus::Started);
+    State->AccessFlushState().SetStatus(EOperationStatus::Started);
 
     TVector<TBlob> blobs;
     {
@@ -710,7 +711,8 @@ void TPartitionActor::HandleFlush(
     auto flushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(blobs);
 
     {
-        auto& flushedCommitIdsInProgress = State->GetFlushedCommitIdsInProgress();
+        auto& flushedCommitIdsInProgress =
+            State->AccessFlushedCommitIdsInProgress();
         Y_ABORT_UNLESS(flushedCommitIdsInProgress.empty());
 
         for (const auto& blob: blobs) {
@@ -752,7 +754,7 @@ void TPartitionActor::HandleFlush(
             ctx,
             CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
     } else {
-        State->GetCommitQueue().AcquireBarrier(commitId);
+        State->AccessCommitQueue().AcquireBarrier(commitId);
         State->GetGarbageQueue().AcquireBarrier(commitId);
 
         auto actor = NCloud::Register<TFlushActor>(
@@ -811,7 +813,7 @@ void TPartitionActor::CompleteFlushToDevNull(
     Y_UNUSED(ctx);
     Y_UNUSED(args);
 
-    State->GetFlushState().SetStatus(EOperationStatus::Idle);
+    State->AccessFlushState().SetStatus(EOperationStatus::Idle);
 }
 
 void TPartitionActor::HandleFlushCompleted(
@@ -832,21 +834,21 @@ void TPartitionActor::HandleFlushCompleted(
 
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
-    State->GetCommitQueue().ReleaseBarrier(commitId);
+    State->AccessCommitQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     if (!HasError(msg->Error)) {
         for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-            State->GetTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
         }
 
         State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
         State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
     }
 
-    State->GetFlushedCommitIdsInProgress().clear();
+    State->AccessFlushedCommitIdsInProgress().clear();
 
-    State->GetFlushState().SetStatus(EOperationStatus::Idle);
+    State->AccessFlushState().SetStatus(EOperationStatus::Idle);
 
     Actors.Erase(ev->Sender);
 

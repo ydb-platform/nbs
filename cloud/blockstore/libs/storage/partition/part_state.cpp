@@ -151,8 +151,7 @@ ui64 TPartitionState::CalculateCheckpointBytes() const
     }
 
     const auto& lastStats = lastCheckpoint->Stats;
-    ui64 blocksCount = GetUnflushedFreshBlocksCountFromChannel() +
-                       GetStats().GetFreshBlocksCount();
+    ui64 blocksCount = GetUnflushedFreshBlocksCount();
     blocksCount += lastStats.GetMixedBlocksCount();
     blocksCount += lastStats.GetMergedBlocksCount();
     return blocksCount * GetBlockSize();
@@ -192,7 +191,7 @@ void TPartitionState::InitUnconfirmedBlobs(
 
     for (const auto& [commitId, blobs]: UnconfirmedBlobs) {
         UnconfirmedBlobCount += blobs.size();
-        GetCommitQueue().AcquireBarrier(commitId);
+        AccessCommitQueue().AcquireBarrier(commitId);
         GarbageQueue.AcquireBarrier(commitId);
     }
 }
@@ -249,7 +248,7 @@ void TPartitionState::ConfirmedBlobsAdded(
     ConfirmedBlobCount -= blobCount;
 
     GarbageQueue.ReleaseBarrier(commitId);
-    GetCommitQueue().ReleaseBarrier(commitId);
+    AccessCommitQueue().ReleaseBarrier(commitId);
 }
 
 void TPartitionState::BlobsConfirmed(
@@ -312,7 +311,7 @@ void TPartitionState::ConfirmBlobs(
         UnconfirmedBlobs.erase(it);
 
         GarbageQueue.ReleaseBarrier(commitId);
-        GetCommitQueue().ReleaseBarrier(commitId);
+        AccessCommitQueue().ReleaseBarrier(commitId);
     }
 
     ConfirmedBlobs = std::move(UnconfirmedBlobs);

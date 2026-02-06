@@ -711,6 +711,7 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TUnlinkNodeInShardRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result,
@@ -720,6 +721,7 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId);
 
@@ -727,6 +729,7 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         NProto::TError originalError,
         TString shardId,
         ui64 nodeId,
@@ -869,6 +872,12 @@ private:
 
     void HandleUnlinkDirectoryNodeAbortedInShard(
         const TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    NProto::TError HandleCrossShardRenameNodeImpl(
+        TRequestInfoPtr& requestInfo,
+        NProto::TRenameNodeRequest& record,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         const NActors::TActorContext& ctx);
 
     void HandleDoRenameNodeInDestination(

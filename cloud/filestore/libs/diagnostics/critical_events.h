@@ -78,6 +78,7 @@ namespace NCloud::NFileStore{
     xxx(UnknownOpLogEntry)                                                     \
     xxx(InvalidShardIdx)                                                       \
     xxx(MissingOpLogEntryId)                                                   \
+    xxx(BrokenProfileLogRequest)                                               \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

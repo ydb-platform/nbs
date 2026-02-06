@@ -47,6 +47,7 @@ private:
     TRequestInfoPtr RequestInfo;
     const TActorId ParentId;
     const NProtoPrivate::TUnlinkNodeInShardRequest Request;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TUnlinkNodeInShardResult Result;
@@ -58,6 +59,7 @@ public:
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProtoPrivate::TUnlinkNodeInShardRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result,
@@ -88,6 +90,7 @@ TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProtoPrivate::TUnlinkNodeInShardRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
         TUnlinkNodeInShardResult result,
@@ -96,6 +99,7 @@ TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
     , Request(std::move(request))
+    , ProfileLogRequest(std::move(profileLogRequest))
     , RequestId(requestId)
     , OpLogEntryId(opLogEntryId)
     , Result(std::move(result))
@@ -248,6 +252,7 @@ void TUnlinkNodeInShardActor::ReplyAndDie(
             RequestId,
             OpLogEntryId,
             std::move(Result),
+            std::move(ProfileLogRequest),
             ShouldUnlockUponCompletion,
             Request.GetOriginalRequest()));
 
@@ -290,6 +295,22 @@ void TIndexTabletActor::HandleUnlinkNode(
 
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::UnlinkNode,
+        msg->Record,
+        ctx.Now());
+
+    auto onReply = [&] (const NProto::TError& error) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
+    };
+
     // DupCache isn't needed for Create/UnlinkNode requests in shards
     if (!BehaveAsShard(msg->Record.GetHeaders())) {
         auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(
@@ -305,7 +326,9 @@ void TIndexTabletActor::HandleUnlinkNode(
         if (const auto* e = session->LookupDupEntry(requestId)) {
             auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
             if (GetDupCacheEntry(e, response->Record)) {
-                return NCloud::Reply(ctx, *ev, std::move(response));
+                NCloud::Reply(ctx, *ev, std::move(response));
+                onReply(MakeError(S_ALREADY));
+                return;
             }
 
             session->DropDupEntry(requestId);
@@ -313,11 +336,13 @@ void TIndexTabletActor::HandleUnlinkNode(
     }
 
     if (!TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()})) {
+        auto error = MakeError(E_REJECTED, TStringBuilder() << "node ref "
+            << msg->Record.GetNodeId() << " " << msg->Record.GetName()
+            << " is locked for UnlinkNode");
         auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
-            MakeError(E_REJECTED, TStringBuilder() << "node ref "
-                << msg->Record.GetNodeId() << " " << msg->Record.GetName()
-                << " is locked for UnlinkNode"));
+            error);
         NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
         return;
     }
 
@@ -332,7 +357,8 @@ void TIndexTabletActor::HandleUnlinkNode(
     ExecuteTx<TUnlinkNode>(
         ctx,
         std::move(requestInfo),
-        std::move(msg->Record));
+        std::move(msg->Record),
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -444,7 +470,8 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
-        return args.OnCommitIdOverflow();
+        args.OnCommitIdOverflow();
+        return;
     }
 
     if (args.ChildRef && args.ChildRef->IsExternal()) {
@@ -480,6 +507,13 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         shardRequest->SetName(args.ChildRef->ShardNodeName);
         shardRequest->SetUnlinkDirectory(args.Request.GetUnlinkDirectory());
         shardRequest->MutableOriginalRequest()->CopyFrom(args.Request);
+        const bool serialized = args.ProfileLogRequest.SerializeToString(
+            args.OpLogEntry.MutableProfileLogRequest());
+        if (!serialized) {
+            ReportBrokenProfileLogRequest(TStringBuilder()
+                << "Written OpLogEntry: "
+                << args.OpLogEntry.ShortUtf8DebugString().Quote());
+        }
 
         db.WriteOpLogEntry(args.OpLogEntry);
     } else {
@@ -570,6 +604,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
                 ctx,
                 args.RequestInfo,
                 args.OpLogEntry.GetUnlinkNodeInShardRequest(),
+                std::move(args.ProfileLogRequest),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
                 {},
@@ -609,6 +644,13 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -766,6 +808,13 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -776,6 +825,8 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
 {
     auto* msg = ev->Get();
     auto& res = msg->Result;
+
+    NProto::TError error;
 
     if (msg->RequestInfo) {
         RemoveInFlightRequest(*msg->RequestInfo);
@@ -790,6 +841,8 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
+
+            error = response->GetError();
 
             Metrics.RenameNode.Update(
                 1,
@@ -808,6 +861,8 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
+
+            error = response->GetError();
 
             Metrics.RenameNode.Update(
                 1,
@@ -828,6 +883,8 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                     response->Record,
                     msg->RequestInfo->CallContext,
                     ctx);
+
+                error = response->GetError();
 
                 Metrics.UnlinkNode.Update(
                     1,
@@ -857,6 +914,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
             ctx,
             msg->RequestInfo,
             originalRequest,
+            std::move(msg->ProfileLogRequest),
             msg->OpLogEntryId,
             response,
             false /* isExplicitRequest */);
@@ -865,6 +923,13 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
             ctx,
             TRequestInfoPtr() /* requestInfo */,
             msg->OpLogEntryId);
+
+        FinalizeProfileLogRequestInfo(
+            std::move(msg->ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
     }
 }
 
@@ -874,6 +939,7 @@ void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     NProtoPrivate::TUnlinkNodeInShardRequest request,
+    NProto::TProfileLogRequestInfo profileLogRequest,
     ui64 requestId,
     ui64 opLogEntryId,
     TUnlinkNodeInShardResult result,
@@ -884,6 +950,7 @@ void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
         std::move(requestInfo),
         ctx.SelfID,
         std::move(request),
+        std::move(profileLogRequest),
         requestId,
         opLogEntryId,
         std::move(result),
@@ -913,6 +980,7 @@ void TIndexTabletActor::HandleCompleteUnlinkNode(
         ctx,
         std::move(requestInfo),
         std::move(msg->Request),
+        NProto::TProfileLogRequestInfo{},
         msg->OpLogEntryId,
         std::move(msg->Response),
         true /* isExplicitRequest */);
