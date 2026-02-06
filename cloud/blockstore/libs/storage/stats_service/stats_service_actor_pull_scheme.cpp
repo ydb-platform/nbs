@@ -95,6 +95,8 @@ void TServiceStatisticsCollectorActor::HandleGetServiceStatisticsUndelivery(
 {
     Y_UNUSED(ev);
 
+    LastError = MakeError(E_REJECTED, "GetServiceStatisticsRequest undelivered");
+
     ++ResponsesCount;
     if (ResponsesCount == VolumeActorIds.size()) {
         ReplyAndDie(ctx);

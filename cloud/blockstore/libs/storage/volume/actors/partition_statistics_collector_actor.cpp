@@ -103,6 +103,8 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
 {
     Y_UNUSED(ev);
 
+    LastError = MakeError(E_REJECTED, "GetPartCountersRequest undelivered");
+
     ++ResponsesCount;
     if (ResponsesCount == Partitions.size()) {
         SendStatToVolume(ctx);
