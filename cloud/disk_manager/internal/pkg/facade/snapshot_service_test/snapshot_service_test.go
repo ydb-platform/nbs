@@ -1015,3 +1015,162 @@ func TestSnapshotServiceDeleteSnapshotWhenCreationIsInFlight(t *testing.T) {
 
 	testcommon.CheckConsistency(t, ctx)
 }
+
+func TestSnapshotServiceCreateSnapshotFromDiskWithRootKmsEncryption(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskSize := uint64(1024 * 1024 * 1024)
+	diskID := t.Name() + "_disk"
+	rootKmsEncryption := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
+
+	deleteDisk := func(diskID string) {
+		reqCtx := testcommon.GetRequestContext(t, ctx)
+		operation, err := client.DeleteDisk(
+			reqCtx,
+			&disk_manager.DeleteDiskRequest{
+				DiskId: &disk_manager.DiskId{
+					ZoneId: defaultZoneID,
+					DiskId: diskID,
+				},
+			},
+		)
+		require.NoError(t, err)
+		require.NotEmpty(t, operation)
+		err = internal_client.WaitOperation(ctx, client, operation.Id)
+		require.NoError(t, err)
+	}
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: defaultZoneID,
+			DiskId: diskID,
+		},
+		EncryptionDesc: &disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	defer deleteDisk(diskID)
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
+
+	diskParams, err := nbsClient.Describe(ctx, diskID)
+	require.NoError(t, err)
+	require.Equal(t, rootKmsEncryption, diskParams.EncryptionDesc.Mode)
+
+	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
+	require.NoError(t, err)
+
+	snapshotID := t.Name() + "_snapshot"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(
+		reqCtx,
+		&disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID,
+			},
+			SnapshotId: snapshotID,
+			FolderId:   "folder",
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	snapshotResponse := disk_manager.CreateSnapshotResponse{}
+	err = internal_client.WaitResponse(
+		ctx,
+		client,
+		operation.Id,
+		&snapshotResponse,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(diskSize), snapshotResponse.Size)
+
+	diskID2 := t.Name() + "_disk2"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(
+		reqCtx,
+		&disk_manager.CreateDiskRequest{
+			Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
+				SrcSnapshotId: snapshotID,
+			},
+			Size: int64(diskSize),
+			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+			DiskId: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID2,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	defer deleteDisk(diskID2)
+
+	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
+	require.NoError(t, err)
+
+	diskID3 := t.Name() + "_disk3"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(
+		reqCtx,
+		&disk_manager.CreateDiskRequest{
+			Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
+				SrcSnapshotId: snapshotID,
+			},
+			Size: int64(diskSize),
+			Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			DiskId: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID3,
+			},
+			EncryptionDesc: &disk_manager.EncryptionDesc{
+				Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	defer deleteDisk(diskID3)
+
+	diskParams, err = nbsClient.Describe(ctx, diskID3)
+	require.NoError(t, err)
+	require.Equal(t, rootKmsEncryption, diskParams.EncryptionDesc.Mode)
+
+	err = nbsClient.ValidateCrc32(ctx, diskID3, diskContentInfo)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteSnapshot(
+		reqCtx,
+		&disk_manager.DeleteSnapshotRequest{
+			SnapshotId: snapshotID,
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}

@@ -225,6 +225,23 @@ func fromEncryptionMode(
 	}
 }
 
+func resetEncryptionIfNeeded(desc *types.EncryptionDesc) *types.EncryptionDesc {
+	if desc == nil {
+		return nil
+	}
+
+	// Disks created with the encryption at rest option, or within a folder with
+	// encryption at rest enabled, must be mounted without the encryption option.
+	// NBS processes encryption on its side
+	copy := proto.Clone(desc).(*types.EncryptionDesc)
+	rootKmsMode := types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY
+	if copy.Mode == rootKmsMode {
+		copy.Mode = types.EncryptionMode_NO_ENCRYPTION
+	}
+
+	return copy
+}
+
 func getEncryptionSpec(
 	encryptionDesc *types.EncryptionDesc,
 ) (*protos.TEncryptionSpec, error) {
@@ -1381,6 +1398,7 @@ func (c *client) MountRO(
 		return nil, err
 	}
 
+	encryption = resetEncryptionIfNeeded(encryption)
 	encryptionSpec, err := getEncryptionSpec(encryption)
 	if err != nil {
 		return nil, err
@@ -1411,6 +1429,7 @@ func (c *client) MountLocalRO(
 		return nil, err
 	}
 
+	encryption = resetEncryptionIfNeeded(encryption)
 	encryptionSpec, err := getEncryptionSpec(encryption)
 	if err != nil {
 		return nil, err
@@ -1443,6 +1462,7 @@ func (c *client) MountRW(
 		return nil, err
 	}
 
+	encryption = resetEncryptionIfNeeded(encryption)
 	encryptionSpec, err := getEncryptionSpec(encryption)
 	if err != nil {
 		return nil, err

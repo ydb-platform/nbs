@@ -11,6 +11,7 @@ import (
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -368,21 +369,15 @@ func (s *storageYDB) snapshotCreated(
 	state.storageSize = storageSize
 	state.chunkCount = chunkCount
 
-	if encryption != nil {
-		state.encryptionMode = uint32(encryption.Mode)
-
-		switch key := encryption.Key.(type) {
-		case *types.EncryptionDesc_KeyHash:
-			state.encryptionKeyHash = key.KeyHash
-		case nil:
-			state.encryptionKeyHash = nil
-		default:
-			return task_errors.NewNonRetriableErrorf("unknown key %s", key)
-		}
-	} else {
-		state.encryptionMode = uint32(types.EncryptionMode_NO_ENCRYPTION)
-		state.encryptionKeyHash = nil
+	encryptionMode, encryptionKeyHash, err := resources.GetEncryptionModeAndKeyHash(
+		encryption,
+	)
+	if err != nil {
+		return err
 	}
+
+	state.encryptionMode = uint32(encryptionMode)
+	state.encryptionKeyHash = encryptionKeyHash
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
