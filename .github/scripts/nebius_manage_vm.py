@@ -133,7 +133,7 @@ else
         aarch64) ARCH="arm64" ;;
         amd64|x86_64) ARCH="x64";;
     esac
-    export FILENAME=runner.tar.gz
+    export FILENAME=runner-v{version}.tar.gz
     # https://github.com/actions/runner/releases/download/v2.314.1/actions-runner-linux-x64-2.314.1.tar.gz
     exit_code=1
     i=0
