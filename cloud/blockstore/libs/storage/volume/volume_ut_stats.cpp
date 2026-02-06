@@ -1280,7 +1280,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.WaitReady();
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(
@@ -1330,7 +1330,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.WaitReady();
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(
@@ -1387,7 +1387,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 Y_UNUSED(runtime);
                 Y_UNUSED(delay);
                 Y_UNUSED(deadline);
-                if (ev->GetTypeRewrite() == TEvVolumePrivate::EvUpdateCounters)
+                if (ev->GetTypeRewrite() == TEvStatsService::EvGetServiceStatisticsRequest)
                 {
                     return true;
                 }
@@ -1414,7 +1414,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.WaitReady();
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
         {
             runtime->AdvanceCurrentTime(UpdateCountersInterval);
             TDispatchOptions options;
@@ -1568,7 +1568,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.AddClient(clientInfo);
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
 
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
@@ -1624,7 +1624,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volume.WaitReady();
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
@@ -1674,7 +1674,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volume.WaitReady();
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
@@ -1780,7 +1780,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volume.WaitReady();
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         TDispatchOptions options;
