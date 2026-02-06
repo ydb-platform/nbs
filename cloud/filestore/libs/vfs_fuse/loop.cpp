@@ -21,6 +21,7 @@
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vfs/protos/session.pb.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -964,7 +965,7 @@ private:
                         Session,
                         Scheduler,
                         Timer,
-                        CreateDummyWriteBackCacheStats(),
+                        NWriteBackCache::CreateDummyWriteBackCacheStats(),
                         Log,
                         Config->GetFileSystemId(),
                         Config->GetClientId(),
