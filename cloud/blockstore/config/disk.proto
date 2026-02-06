@@ -42,18 +42,6 @@ enum EChaosCritEventReportingPolicy
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Hash scheme for generating the device id.
-
-enum EHashScheme
-{
-    // Uses the device number to calculate the hash of the device id.
-    HS_LEGACY = 0;
-
-    // Uses the full path to the device to calc hash for device id.
-    HS_FULL_PATH = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 message TMemoryDeviceArgs
 {
@@ -116,6 +104,15 @@ message TNVMeTargetArgs
 
 message TStorageDiscoveryConfig
 {
+    enum EHashScheme
+    {
+        // Uses the device number to calculate the hash of the device id.
+        HS_LEGACY = 0;
+
+        // Uses the full path to the device to calc hash for device id.
+        HS_FULL_PATH = 1;
+    }
+
     message TLayout
     {
         // Reserved space at the beginning of the file.
