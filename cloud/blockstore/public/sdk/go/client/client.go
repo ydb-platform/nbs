@@ -264,7 +264,7 @@ func IsDiskNotFoundError(e error) bool {
 func NewClient(
 	grpcOpts *GrpcClientOpts,
 	durableOpts *DurableClientOpts,
-	log Log,
+	log Logger,
 ) (*Client, error) {
 
 	grpcClient, err := NewGrpcClient(grpcOpts, log)

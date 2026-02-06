@@ -37,7 +37,7 @@ type testEnv struct {
 	clients    map[string]*testClientImpl
 }
 
-func newStderrLog() Log {
+func newStderrLog() Logger {
 	return NewLog(log.New(os.Stderr, "", log.Lmicroseconds), LOG_DEBUG)
 }
 
@@ -277,9 +277,9 @@ func testDiscoveryClientLimit(t *testing.T, failExpected bool) {
 		}, nil
 	}
 
-	log := newStderrLog()
+	logger := newStderrLog()
 
-	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	err := describeVolume(context.TODO(), discovery)
 
@@ -378,8 +378,8 @@ func testDiscoveryClientSoftTimeoutSimple(
 		return env.clients[host], nil
 	}
 
-	log := newStderrLog()
-	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	logger := newStderrLog()
+	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	done := make(chan error)
 
@@ -488,8 +488,8 @@ func testDiscoveryClientDiscover(
 		opts.Limit = 2
 	}
 
-	log := newStderrLog()
-	impl := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	logger := newStderrLog()
+	impl := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	discovery := &DiscoveryClient{
 		safeClient{impl},
@@ -572,8 +572,8 @@ func TestDiscoveryClientNoRetriableError(t *testing.T) {
 	}
 
 	opts := &DiscoveryClientOpts{}
-	log := newStderrLog()
-	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	logger := newStderrLog()
+	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	err := describeVolume(context.TODO(), discovery)
 
@@ -641,8 +641,8 @@ func TestDiscoveryClientVolatileNetwork(t *testing.T) {
 	}
 
 	opts := &DiscoveryClientOpts{}
-	log := newStderrLog()
-	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	logger := newStderrLog()
+	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	shoot := func() {
 		err := describeVolume(context.TODO(), discovery)
@@ -692,8 +692,8 @@ func TestDiscoveryClientEmptyInstances(t *testing.T) {
 		}, nil
 	}
 
-	log := newStderrLog()
-	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	logger := newStderrLog()
+	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	err := describeVolume(context.TODO(), discovery)
 	if err == nil {
@@ -749,8 +749,8 @@ func TestDiscoveryClientGoodOne(t *testing.T) {
 		}, nil
 	}
 
-	log := newStderrLog()
-	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	logger := newStderrLog()
+	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	describeRequests := 10
 
@@ -828,8 +828,8 @@ func TestDiscoveryClientHardTimeout(t *testing.T) {
 		}, nil
 	}
 
-	log := newStderrLog()
-	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, log, false)
+	logger := newStderrLog()
+	discovery := newDiscoveryClient([]ClientIface{balancer}, opts, factory, logger, false)
 
 	err := describeVolume(context.TODO(), discovery)
 
@@ -1126,8 +1126,8 @@ func TestDiscoveryClientSlowBalancers(t *testing.T) {
 
 	rand.Seed(1)
 
-	log := newStderrLog()
-	discovery := newDiscoveryClient([]ClientIface{b1, b2, b3}, opts, factory, log, false)
+	logger := newStderrLog()
+	discovery := newDiscoveryClient([]ClientIface{b1, b2, b3}, opts, factory, logger, false)
 
 	err := describeVolume(context.TODO(), discovery)
 
@@ -1219,7 +1219,7 @@ func TestDiscoveryClientCachedBalancers(t *testing.T) {
 	bar := createBalancer(&barState)
 
 	opts := &DiscoveryClientOpts{}
-	log := newStderrLog()
+	logger := newStderrLog()
 
 	discovery := newDiscoveryClient(
 		[]ClientIface{
@@ -1240,7 +1240,7 @@ func TestDiscoveryClientCachedBalancers(t *testing.T) {
 				},
 			}, nil
 		},
-		log,
+		logger,
 		false,
 	)
 

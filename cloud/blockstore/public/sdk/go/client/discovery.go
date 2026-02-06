@@ -58,7 +58,7 @@ type instanceAddress = protos.TDiscoveredInstance
 type discoveryClient struct {
 	endpoints     []ClientIface
 	clientFactory CreateClientFunc
-	log           Log
+	logger        Logger
 	limit         uint32
 	hardTimeout   time.Duration
 	softTimeout   time.Duration
@@ -79,22 +79,16 @@ func (client *discoveryClient) closeImpl(
 	addr *instanceAddress,
 ) {
 
-	dbg := client.log.Logger(LOG_DEBUG)
-
-	if dbg != nil {
-		dbg.Printf(
-			ctx,
-			"calling client.Close for %v, %s:%d",
-			impl,
-			addr.Host,
-			addr.Port,
-		)
-	}
+	client.logger.Debugf(
+		"calling client.Close for %v, %s:%d",
+		impl,
+		addr.Host,
+		addr.Port,
+	)
 
 	err := impl.Close()
-	if err != nil && dbg != nil {
-		dbg.Printf(
-			ctx,
+	if err != nil {
+		client.logger.Debugf(
 			"error on client.Close: %v for %s:%d",
 			err,
 			addr.Host,
@@ -146,21 +140,21 @@ func (client *discoveryClient) shoot(
 		return nil, err
 	}
 
-	dbg := client.log.Logger(LOG_DEBUG)
-
-	if dbg != nil {
-		dbg.Printf(
-			ctx,
-			"shooting for %v, %s:%d",
-			impl,
-			addr.Host,
-			addr.Port,
-		)
-	}
+	client.logger.Debugf(
+		"shooting for %v, %s:%d",
+		impl,
+		addr.Host,
+		addr.Port,
+	)
 
 	resp, err := op(ctx, impl)
-	if err != nil && dbg != nil {
-		dbg.Printf(ctx, "%s:%d request error: %v", addr.Host, addr.Port, err)
+	if err != nil {
+		client.logger.Debugf(
+			"%s:%d request error: %v",
+			addr.Host,
+			addr.Port,
+			err,
+		)
 	}
 
 	client.closeImpl(ctx, impl, addr)
@@ -173,12 +167,11 @@ func (client *discoveryClient) createImpl(
 	addr *instanceAddress,
 ) (ClientIface, error) {
 
-	client.logDebug(ctx, "create client %s:%d", addr.Host, addr.Port)
+	client.logger.Debugf("create client %s:%d", addr.Host, addr.Port)
 
 	impl, err := client.clientFactory(addr.Host, addr.Port)
 	if err != nil {
-		client.logError(
-			ctx,
+		client.logger.Errorf(
 			"can't create client for %s:%d, error '%v'",
 			addr.Host,
 			addr.Port,
@@ -192,32 +185,6 @@ func (client *discoveryClient) createImpl(
 	}
 
 	return impl, nil
-}
-
-func (client *discoveryClient) logError(
-	ctx context.Context,
-	fmt string,
-	args ...interface{},
-) {
-
-	logger := client.log.Logger(LOG_ERROR)
-
-	if logger != nil {
-		logger.Printf(ctx, fmt, args...)
-	}
-}
-
-func (client *discoveryClient) logDebug(
-	ctx context.Context,
-	fmt string,
-	args ...interface{},
-) {
-
-	logger := client.log.Logger(LOG_DEBUG)
-
-	if logger != nil {
-		logger.Printf(ctx, fmt, args...)
-	}
 }
 
 func (client *discoveryClient) invokeDiscoverInstances(
@@ -299,12 +266,12 @@ func (client *discoveryClient) discoverInstances(
 
 	res, err := client.discoverInstancesImpl(ctx, req)
 	if err != nil {
-		client.logError(ctx, "discovery error: %v", err)
+		client.logger.Errorf("discovery error: %v", err)
 		return nil, err
 	}
 
 	instances := res.(*protos.TDiscoverInstancesResponse).Instances
-	client.logDebug(ctx, "discovered instances: %v", instances)
+	client.logger.Debugf("discovered instances: %v", instances)
 	return instances, nil
 }
 
@@ -1030,7 +997,7 @@ func createDurableClient(
 	endpoint string,
 	grpcOpts *GrpcClientOpts,
 	durableOpts *DurableClientOpts,
-	log Log,
+	log Logger,
 ) (ClientIface, error) {
 
 	newGrpcOpts := *grpcOpts
@@ -1049,7 +1016,7 @@ func newDiscoveryClient(
 	endpoints []ClientIface,
 	discoveryOpts *DiscoveryClientOpts,
 	factory CreateClientFunc,
-	log Log,
+	log Logger,
 	secure bool,
 ) ClientIface {
 
@@ -1074,7 +1041,7 @@ func newDiscoveryClient(
 	return &discoveryClient{
 		endpoints:     endpoints,
 		clientFactory: factory,
-		log:           log,
+		logger:        log,
 		limit:         limit,
 		hardTimeout:   hardTimeout,
 		softTimeout:   softTimeout,
@@ -1154,10 +1121,10 @@ func NewDiscoveryClient(
 	grpcOpts *GrpcClientOpts,
 	durableOpts *DurableClientOpts,
 	discoveryOpts *DiscoveryClientOpts,
-	log Log,
+	logger Logger,
 ) (*DiscoveryClient, error) {
 
-	_factory := func(endpoint string, log Log) (ClientIface, error) {
+	_factory := func(endpoint string, log Logger) (ClientIface, error) {
 		return createDurableClient(
 			endpoint,
 			grpcOpts,
@@ -1167,7 +1134,7 @@ func NewDiscoveryClient(
 	}
 
 	factory := func(host string, port uint32) (ClientIface, error) {
-		return _factory(fmt.Sprintf("%s:%d", host, port), log)
+		return _factory(fmt.Sprintf("%s:%d", host, port), logger)
 	}
 
 	clients := make([]ClientIface, len(endpoints))
@@ -1185,7 +1152,7 @@ func NewDiscoveryClient(
 		clients,
 		discoveryOpts,
 		factory,
-		log,
+		logger,
 		grpcOpts.Credentials != nil,
 	)
 
