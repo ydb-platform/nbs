@@ -15,9 +15,14 @@ def __init_test():
     port = os.getenv("NFS_SERVER_PORT")
     binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
     client = FilestoreCliClient(binary_path, port, cwd=common.output_path())
+    client_nocheck = FilestoreCliClient(
+        binary_path,
+        port,
+        cwd=common.output_path(),
+        check_exit_code=False)
 
     results_path = common.output_path() + "/results.txt"
-    return client, results_path
+    return client, client_nocheck, results_path
 
 
 def __process_stat(node):
@@ -81,7 +86,7 @@ def __fill_fs(client, fs_id, items):
 
 
 def test_nonsharded_vs_sharded_fs():
-    client, results_path = __init_test()
+    client, client_nocheck, results_path = __init_test()
     client.create(
         "fs0",
         "test_cloud",
@@ -134,6 +139,12 @@ def test_nonsharded_vs_sharded_fs():
         _f("/f17.txt", "010101010101010101"),
         _f("/a1/f18.txt", "xxxxxxxxxxxxxxxxxxxxxxxxxx"),
         _d("/a1/b3"),
+        _d("/a1/b4"),
+        _f("/a1/b4/f19.txt", "zzz"),
+        _d("/a1/b4/c2"),
+        _d("/a1/b5"),
+        _d("/a1/b6"),
+        _f("/a1/b6/f20.txt", "yyyyy"),
     ]
 
     __fill_fs(client, "fs0", items)
@@ -144,6 +155,10 @@ def test_nonsharded_vs_sharded_fs():
     client.mv("fs1", "/a0/b0/c0/d0/f9.txt", "/a0/b0/c0/d0/f9_moved.txt")
     client.rm("fs0", "/a1/b2/f16.txt")
     client.rm("fs1", "/a1/b2/f16.txt")
+    client.mv("fs0", "/a1/b4", "/a1/b5")
+    client.mv("fs1", "/a1/b4", "/a1/b5")
+    client_nocheck.mv("fs0", "/a1/b5", "/a1/b6")
+    client_nocheck.mv("fs1", "/a1/b5", "/a1/b6")
     # checking that cross-directory mv works
     client.mv("fs0", "/f17.txt", "/a0/f17.txt")
     client.mv("fs0", "/a0/f17.txt", "/a0/b0/f17.txt")

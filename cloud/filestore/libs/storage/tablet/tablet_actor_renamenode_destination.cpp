@@ -46,6 +46,7 @@ private:
     TString DstShardId;
     TString DstShardNodeName;
     TEvIndexTabletPrivate::TDoRenameNodeInDestination Result;
+    const bool IsLocalRename;
 
     static constexpr ui64 SourceCookie = 1;
     static constexpr ui64 DstCookie = 2;
@@ -65,7 +66,8 @@ public:
         NProtoPrivate::TRenameNodeInDestinationRequest request,
         NProto::TProfileLogRequestInfo profileLogRequest,
         TString dstShardId,
-        TString dstShardNodeName);
+        TString dstShardNodeName,
+        bool isLocalRename);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -112,7 +114,8 @@ TGetNodeInfoAndPrepareUnlinkActor::TGetNodeInfoAndPrepareUnlinkActor(
         NProtoPrivate::TRenameNodeInDestinationRequest request,
         NProto::TProfileLogRequestInfo profileLogRequest,
         TString dstShardId,
-        TString dstShardNodeName)
+        TString dstShardNodeName,
+        bool isLocalRename)
     : LogTag(std::move(logTag))
     , ParentId(parentId)
     , DstShardId(std::move(dstShardId))
@@ -121,6 +124,7 @@ TGetNodeInfoAndPrepareUnlinkActor::TGetNodeInfoAndPrepareUnlinkActor(
         std::move(requestInfo),
         std::move(request),
         std::move(profileLogRequest))
+    , IsLocalRename(isLocalRename)
 {}
 
 void TGetNodeInfoAndPrepareUnlinkActor::Bootstrap(const TActorContext& ctx)
@@ -308,11 +312,19 @@ void TGetNodeInfoAndPrepareUnlinkActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    using TResponse = TEvIndexTabletPrivate::TEvDoRenameNodeInDestination;
-    Result.Error = std::move(error);
-    ctx.Send(
-        ParentId,
-        std::make_unique<TResponse>(std::move(Result)));
+    if (IsLocalRename) {
+        using TResponse = TEvIndexTabletPrivate::TEvDoRenameNode;
+        Result.Error = std::move(error);
+        ctx.Send(
+            ParentId,
+            std::make_unique<TResponse>(std::move(Result)));
+    } else {
+        using TResponse = TEvIndexTabletPrivate::TEvDoRenameNodeInDestination;
+        Result.Error = std::move(error);
+        ctx.Send(
+            ParentId,
+            std::make_unique<TResponse>(std::move(Result)));
+    }
 
     Die(ctx);
 }
@@ -707,18 +719,14 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 {
     if (args.SecondPassRequired) {
         if (args.NewChildRef) {
-            using TActor = TGetNodeInfoAndPrepareUnlinkActor;
-            auto actor = std::make_unique<TActor>(
-                LogTag,
+            RegisterGetNodeInfoAndPrepareUnlinkActor(
+                ctx,
                 args.RequestInfo,
-                ctx.SelfID,
                 args.Request,
                 std::move(args.ProfileLogRequest),
-                args.NewChildRef->ShardId,
-                args.NewChildRef->ShardNodeName);
-
-            auto actorId = NCloud::Register(ctx, std::move(actor));
-            WorkerActors.insert(actorId);
+                std::move(args.NewChildRef->ShardId),
+                std::move(args.NewChildRef->ShardNodeName),
+                false /* isLocalRename */);
             return;
         }
 
@@ -740,7 +748,8 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
                 args.Error,
                 args.NewChildRef->ShardId,
                 args.DestinationNodeAttr.GetId(),
-                args.AbortUnlinkOpLogEntryId);
+                args.AbortUnlinkOpLogEntryId,
+                false /* isLocalRename */);
             return;
         }
 
@@ -847,23 +856,62 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
 
     RemoveInFlightRequest(*msg->RequestInfo);
 
-    Metrics.RenameNodeInDestination.Update(
-        1,
-        0,
-        ctx.Now() - msg->RequestInfo->StartedTs);
-
     if (!HasError(msg->Error)) {
         msg->Error = std::move(msg->OriginalError);
     }
 
-    using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
-    auto response = std::make_unique<TMethod::TResponse>(msg->Error);
-    CompleteResponse<TMethod>(
-        response->Record,
-        msg->RequestInfo->CallContext,
-        ctx);
+    if (msg->IsLocalRename) {
+        Metrics.RenameNode.Update(
+            1,
+            0,
+            ctx.Now() - msg->RequestInfo->StartedTs);
 
-    NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        using TMethod = TEvService::TRenameNodeMethod;
+        auto response = std::make_unique<TMethod::TResponse>(msg->Error);
+        CompleteResponse<TMethod>(
+            response->Record,
+            msg->RequestInfo->CallContext,
+            ctx);
+        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+    } else {
+        Metrics.RenameNodeInDestination.Update(
+            1,
+            0,
+            ctx.Now() - msg->RequestInfo->StartedTs);
+
+        using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
+        auto response = std::make_unique<TMethod::TResponse>(msg->Error);
+        CompleteResponse<TMethod>(
+            response->Record,
+            msg->RequestInfo->CallContext,
+            ctx);
+        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::RegisterGetNodeInfoAndPrepareUnlinkActor(
+    const NActors::TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    NProtoPrivate::TRenameNodeInDestinationRequest request,
+    NProto::TProfileLogRequestInfo profileLogRequest,
+    TString dstShardId,
+    TString dstShardNodeName,
+    bool isLocalRename)
+{
+    auto actor = std::make_unique<TGetNodeInfoAndPrepareUnlinkActor>(
+        LogTag,
+        std::move(requestInfo),
+        ctx.SelfID,
+        std::move(request),
+        std::move(profileLogRequest),
+        std::move(dstShardId),
+        std::move(dstShardNodeName),
+        isLocalRename);
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -1005,6 +1005,10 @@ struct TTxIndexTablet
         const TString NewName;
         const ui32 Flags;
         const NProto::TRenameNodeRequest Request;
+        const NProto::TNodeAttr SourceNodeAttr;
+        const NProto::TNodeAttr DestinationNodeAttr;
+        const bool IsSecondPass;
+        const ui64 AbortUnlinkOpLogEntryId;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -1021,6 +1025,7 @@ struct TTxIndexTablet
 
         TString ShardIdForUnlink;
         TString ShardNodeNameForUnlink;
+        bool SecondPassRequired = false;
 
         TRenameNode(
                 TRequestInfoPtr requestInfo,
@@ -1035,6 +1040,30 @@ struct TTxIndexTablet
             , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
+            , IsSecondPass(false)
+            , AbortUnlinkOpLogEntryId(0)
+        {}
+
+        TRenameNode(
+                TRequestInfoPtr requestInfo,
+                NProto::TRenameNodeRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                NProto::TNodeAttr sourceNodeAttr,
+                NProto::TNodeAttr destinationNodeAttr,
+                ui64 abortUnlinkOpLogEntryId)
+            : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
+            , RequestInfo(std::move(requestInfo))
+            , ParentNodeId(request.GetNodeId())
+            , Name(request.GetName())
+            , NewParentNodeId(request.GetNewParentId())
+            , NewName(request.GetNewName())
+            , Flags(request.GetFlags())
+            , Request(std::move(request))
+            , SourceNodeAttr(std::move(sourceNodeAttr))
+            , DestinationNodeAttr(std::move(destinationNodeAttr))
+            , IsSecondPass(true)
+            , AbortUnlinkOpLogEntryId(abortUnlinkOpLogEntryId)
         {}
 
         void Clear() override
@@ -1057,6 +1086,8 @@ struct TTxIndexTablet
 
             ShardIdForUnlink.clear();
             ShardNodeNameForUnlink.clear();
+
+            SecondPassRequired = false;
 
             // deliberately not calling TProfileAware::Clear()
         }

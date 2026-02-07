@@ -39,7 +39,8 @@ public:
         NProto::TError originalError,
         TString shardId,
         ui64 nodeId,
-        ui64 opLogEntryId);
+        ui64 opLogEntryId,
+        bool isLocalRename);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -70,7 +71,8 @@ TAbortUnlinkDirectoryInShardActor::TAbortUnlinkDirectoryInShardActor(
         NProto::TError originalError,
         TString shardId,
         ui64 nodeId,
-        ui64 opLogEntryId)
+        ui64 opLogEntryId,
+        bool isLocalRename)
     : LogTag(std::move(logTag))
     , ParentId(parentId)
     , ShardId(std::move(shardId))
@@ -80,7 +82,8 @@ TAbortUnlinkDirectoryInShardActor::TAbortUnlinkDirectoryInShardActor(
         std::move(request),
         std::move(profileLogRequest),
         std::move(originalError),
-        opLogEntryId)
+        opLogEntryId,
+        isLocalRename)
 {}
 
 void TAbortUnlinkDirectoryInShardActor::Bootstrap(const TActorContext& ctx)
@@ -347,7 +350,8 @@ void TIndexTabletActor::RegisterAbortUnlinkDirectoryInShardActor(
     NProto::TError originalError,
     TString shardId,
     ui64 nodeId,
-    ui64 opLogEntryId)
+    ui64 opLogEntryId,
+    bool isLocalRename)
 {
     auto actor = std::make_unique<TAbortUnlinkDirectoryInShardActor>(
         LogTag,
@@ -358,7 +362,8 @@ void TIndexTabletActor::RegisterAbortUnlinkDirectoryInShardActor(
         std::move(originalError),
         std::move(shardId),
         nodeId,
-        opLogEntryId);
+        opLogEntryId,
+        isLocalRename);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
