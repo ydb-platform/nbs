@@ -1073,27 +1073,38 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.InitSession("client", "session");
 
-        THashMap<ui64, ui64> nodeIds;
+        TVector<ui64> nodeIds;
 
-        for (int i = 0; i < 5;) {
-            tablet.SendCreateNodeRequest(
-                TCreateNodeArgs::File(RootNodeId, "test" + ToString(i)));
-            auto response = tablet.RecvCreateNodeResponse();
+        bool createNodeFailed = false;
+
+        while (nodeIds.size() < 5) {
+            const ui64 nodeId = 2 + nodeIds.size();
+            tablet.SendUnsafeCreateNodeRequest(nodeId, nodeIds.size() * 100);
+            auto response = tablet.RecvUnsafeCreateNodeResponse();
             reconnectIfNeeded();
+
             if (HasError(response->GetError())) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     E_REJECTED,
                     response->GetError().GetCode());
-            } else {
-                nodeIds[i] = response->Record.GetNode().GetId();
-                ++i;
+                createNodeFailed = true;
+                continue;
             }
+
+            auto getResponse = tablet.GetNodeAttr(nodeId);
+            UNIT_ASSERT(getResponse);
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeIds.size() * 100,
+                getResponse->Record.GetNode().GetSize());
+            nodeIds.push_back(nodeId);
         }
+
+        UNIT_ASSERT(createNodeFailed);
 
         bool updateNodeFailed = false;
 
-        for (int i = 0; i < 5;) {
-            tablet.SendUnsafeUpdateNodeRequest(nodeIds[i], i * 100);
+        for (ui64 i = 0; i < nodeIds.size();) {
+            tablet.SendUnsafeUpdateNodeRequest(nodeIds[i], i * 200);
             auto response = tablet.RecvUnsafeUpdateNodeResponse();
             reconnectIfNeeded();
 
@@ -1106,7 +1117,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 auto getResponse = tablet.GetNodeAttr(nodeIds[i]);
                 UNIT_ASSERT(getResponse);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    i * 100,
+                    i * 200,
                     getResponse->Record.GetNode().GetSize());
                 ++i;
             }
@@ -1116,7 +1127,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         bool deleteNodeFailed = false;
 
-        for (int i = 0; i < 5; ++i) {
+        for (ui64 i = 0; i < nodeIds.size(); ++i) {
             tablet.SendUnsafeDeleteNodeRequest(nodeIds[i]);
             auto deleteResponse = tablet.RecvUnsafeDeleteNodeResponse();
             reconnectIfNeeded();

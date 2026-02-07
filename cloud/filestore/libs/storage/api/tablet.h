@@ -32,6 +32,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
     xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
     xxx(WriteCompactionMap,         __VA_ARGS__)                               \
+    xxx(UnsafeCreateNode,           __VA_ARGS__)                               \
     xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
     xxx(UnsafeUpdateNode,           __VA_ARGS__)                               \
     xxx(UnsafeGetNode,              __VA_ARGS__)                               \
@@ -168,6 +169,9 @@ struct TEvIndexTablet
 
         EvAbortUnlinkDirectoryNodeInShardRequest = EvBegin + 67,
         EvAbortUnlinkDirectoryNodeInShardResponse,
+
+        EvUnsafeCreateNodeRequest = EvBegin + 69,
+        EvUnsafeCreateNodeResponse,
 
         EvEnd
     };

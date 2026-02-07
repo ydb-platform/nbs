@@ -714,6 +714,18 @@ message TWriteCompactionMapResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Direct inode and node ref manipulation.
 
+message TUnsafeCreateNodeRequest
+{
+    string FileSystemId = 1;
+    NProto.TNodeAttr Node = 2;
+}
+
+message TUnsafeCreateNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
 message TUnsafeDeleteNodeRequest
 {
     string FileSystemId = 1;

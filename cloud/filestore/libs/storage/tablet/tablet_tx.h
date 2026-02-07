@@ -150,6 +150,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(WriteOpLogEntry,                    __VA_ARGS__)                       \
     xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
                                                                                \
+    xxx(UnsafeCreateNode,                   __VA_ARGS__)                       \
     xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
     xxx(UnsafeUpdateNode,                   __VA_ARGS__)                       \
     xxx(UnsafeCreateNodeRef,                __VA_ARGS__)                       \
@@ -2692,6 +2693,31 @@ struct TTxIndexTablet
     //
     // UnsafeNodeOps / UnsafeNodeRefOps
     //
+
+    struct TUnsafeCreateNode
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeCreateNodeRequest Request;
+
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+
+        TUnsafeCreateNode(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeCreateNodeRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+            Node.Clear();
+        }
+    };
 
     struct TUnsafeDeleteNode
         : TTxIndexTabletBase

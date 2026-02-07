@@ -411,6 +411,17 @@ public:
         return request;
     }
 
+    auto CreateUnsafeCreateNodeRequest(ui64 nodeId, ui64 sz)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeCreateNodeRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetFileSystemId(TString(DefaultFileSystemId));
+        auto* node = request->Record.MutableNode();
+        node->SetId(nodeId);
+        node->SetSize(sz);
+        return request;
+    }
+
     auto CreateUnsafeUpdateNodeRequest(ui64 nodeId, ui64 newSize)
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeUpdateNodeRequest;

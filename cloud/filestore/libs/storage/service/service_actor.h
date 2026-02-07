@@ -294,6 +294,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateUnsafeCreateNodeActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateUnsafeDeleteNodeActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
