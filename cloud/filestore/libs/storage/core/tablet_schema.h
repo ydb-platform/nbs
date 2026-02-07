@@ -68,8 +68,7 @@ struct TSchemaInitializer;
 template <typename Type>
 struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
 {
-    static void
-    InitStorage(bool useNoneCompactionPolicy, NKikimr::NTable::TAlter& alter)
+    static void InitStorage(NKikimr::NTable::TAlter& alter)
     {
         alter.SetRoom(
             Type::TableId,
@@ -84,29 +83,22 @@ struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
             Type::StoragePolicy::Cache,
             Type::StoragePolicy::Codec);
 
-        // See #688. By default, all filestore tablets are created with
-        // compaction policy set to None. UseNoneCompactionPolicy flag
-        // allows to continue using None policy instead of the one set
-        // in the schema.
-        // TODO(debnatkh): remove this workaround after completion of #688.
         InitCompactionPolicy(
             alter,
             Type::TableId,
-            useNoneCompactionPolicy
-                ? ECompactionPolicy::None
-                : Type::CompactionPolicy::CompactionPolicy);
+            Type::CompactionPolicy::CompactionPolicy);
     }
 };
 
 template <typename Type, typename... Types>
 struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type, Types...>>
 {
-    static void InitStorage(bool useNoneCompactionPolicy, NKikimr::NTable::TAlter& alter)
+    static void InitStorage(NKikimr::NTable::TAlter& alter)
     {
-        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>::
-            InitStorage(useNoneCompactionPolicy, alter);
+        TSchemaInitializer<
+            NKikimr::NIceDb::Schema::SchemaTables<Type>>::InitStorage(alter);
         TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Types...>>::
-            InitStorage(useNoneCompactionPolicy, alter);
+            InitStorage(alter);
     }
 };
 

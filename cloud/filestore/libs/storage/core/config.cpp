@@ -210,8 +210,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxBackpressureErrorsBeforeSuicide, ui32,       1000                  )\
     xxx(MaxBackpressurePeriodBeforeSuicide, TDuration,  TDuration::Minutes(10))\
                                                                                \
-    xxx(NewLocalDBCompactionPolicyEnabled,              bool,      false      )\
-                                                                               \
     xxx(GenerateBlobIdsReleaseCollectBarrierTimeout,                           \
         TDuration,                                                             \
         TDuration::Seconds(10)                                                )\

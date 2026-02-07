@@ -346,11 +346,8 @@ struct TTxIndexTablet
         // actually unused, needed in tablet_tx.h to avoid sophisticated
         // template tricks
         const TRequestInfoPtr RequestInfo;
-        const bool UseNoneCompactionPolicy;
 
-        TInitSchema(bool useNoneCompactionPolicy)
-            : UseNoneCompactionPolicy(useNoneCompactionPolicy)
-        {}
+        TInitSchema() = default;
 
         void Clear() override
         {

@@ -16,7 +16,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -36,7 +36,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 commitId = 1;
@@ -90,7 +90,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 commitId = 1;
@@ -122,7 +122,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 commitId = 1;
@@ -168,7 +168,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         const TString checkpointId1 = "test1";
@@ -195,7 +195,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         const TString sessionId1 = "test1";
@@ -222,7 +222,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         const TString sessionId1 = "test1";
@@ -292,7 +292,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 nodeId = 1;
@@ -328,7 +328,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         TMaybe<NProto::TStorageConfig> serviceConfig;
@@ -359,7 +359,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         using TEntries = TVector<TCompactionRangeInfo>;
@@ -460,7 +460,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         using TEntries = TVector<TDeletionMarker>;
@@ -519,7 +519,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -555,7 +555,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         TTestExecutor executor;
 
         executor.WriteTx([&](TIndexTabletDatabase db)
-                         { db.InitSchema(false); });
+                         { db.InitSchema(); });
 
         constexpr ui64 commitId = 1;
         constexpr ui64 nodeId = 1;
