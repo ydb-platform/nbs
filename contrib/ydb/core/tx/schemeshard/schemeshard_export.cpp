@@ -3,6 +3,8 @@
 #include "schemeshard_impl.h"
 
 #include <util/generic/xrange.h>
+#include <contrib/ydb/public/api/protos/ydb_export.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_import.pb.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
@@ -82,6 +84,17 @@ void TSchemeShard::FromXxportInfo(NKikimrExport::TExport& exprt, const TExportIn
     exprt.SetId(exportInfo->Id);
     exprt.SetStatus(Ydb::StatusIds::SUCCESS);
 
+    if (exportInfo->StartTime != TInstant::Zero()) {
+        *exprt.MutableStartTime() = SecondsToProtoTimeStamp(exportInfo->StartTime.Seconds());
+    }
+    if (exportInfo->EndTime != TInstant::Zero()) {
+        *exprt.MutableEndTime() = SecondsToProtoTimeStamp(exportInfo->EndTime.Seconds());
+    }
+
+    if (exportInfo->UserSID) {
+        exprt.SetUserSID(*exportInfo->UserSID);
+    }
+
     switch (exportInfo->State) {
     case TExportInfo::EState::CreateExportDir:
     case TExportInfo::EState::CopyTables:
@@ -140,7 +153,9 @@ void TSchemeShard::PersistCreateExport(NIceDb::TNiceDb& db, const TExportInfo::T
         NIceDb::TUpdate<Schema::Exports::Settings>(exportInfo->Settings),
         NIceDb::TUpdate<Schema::Exports::DomainPathOwnerId>(exportInfo->DomainPathId.OwnerId),
         NIceDb::TUpdate<Schema::Exports::DomainPathId>(exportInfo->DomainPathId.LocalPathId),
-        NIceDb::TUpdate<Schema::Exports::Items>(exportInfo->Items.size())
+        NIceDb::TUpdate<Schema::Exports::Items>(exportInfo->Items.size()),
+        NIceDb::TUpdate<Schema::Exports::PeerName>(exportInfo->PeerName),
+        NIceDb::TUpdate<Schema::Exports::SanitizedToken>(exportInfo->SanitizedToken)
     );
 
     if (exportInfo->UserSID) {
@@ -180,7 +195,9 @@ void TSchemeShard::PersistExportState(NIceDb::TNiceDb& db, const TExportInfo::TP
     db.Table<Schema::Exports>().Key(exportInfo->Id).Update(
         NIceDb::TUpdate<Schema::Exports::State>(static_cast<ui8>(exportInfo->State)),
         NIceDb::TUpdate<Schema::Exports::WaitTxId>(exportInfo->WaitTxId),
-        NIceDb::TUpdate<Schema::Exports::Issue>(exportInfo->Issue)
+        NIceDb::TUpdate<Schema::Exports::Issue>(exportInfo->Issue),
+        NIceDb::TUpdate<Schema::Exports::StartTime>(exportInfo->StartTime.Seconds()),
+        NIceDb::TUpdate<Schema::Exports::EndTime>(exportInfo->EndTime.Seconds())
     );
 }
 

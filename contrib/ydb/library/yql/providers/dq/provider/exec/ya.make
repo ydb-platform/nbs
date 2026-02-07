@@ -9,6 +9,7 @@ PEERDIR(
     library/cpp/yson/node
     library/cpp/svnversion
     library/cpp/digest/md5
+    library/cpp/threading/future
     contrib/ydb/public/lib/yson_value
     contrib/ydb/public/sdk/cpp/client/ydb_driver
     contrib/ydb/library/yql/core

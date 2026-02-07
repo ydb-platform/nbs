@@ -7,6 +7,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/core/kqp/proxy_service
+    contrib/ydb/library/yql/providers/s3/actors_factory
 )
 
 YQL_LAST_ABI_VERSION()

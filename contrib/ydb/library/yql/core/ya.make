@@ -71,6 +71,8 @@ PEERDIR(
     contrib/ydb/library/yql/core/url_lister/interface
     contrib/ydb/library/yql/core/url_preprocessing/interface
     contrib/ydb/library/yql/minikql
+    contrib/ydb/library/yql/minikql/jsonpath
+    contrib/ydb/library/minsketch
     contrib/ydb/library/yql/protos
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/tz
@@ -89,6 +91,8 @@ GENERATE_ENUM_SERIALIZATION(yql_atom_enums.h)
 
 GENERATE_ENUM_SERIALIZATION(yql_type_annotation.h)
 
+GENERATE_ENUM_SERIALIZATION(yql_cost_function.h)
+
 YQL_LAST_ABI_VERSION()
 
 END()
@@ -105,6 +109,7 @@ RECURSE(
     file_storage
     issue
     peephole_opt
+    qplayer
     services
     spilling
     sql_types

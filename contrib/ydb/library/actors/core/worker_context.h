@@ -18,6 +18,15 @@
 
 namespace NActors {
     struct TSharedExecutorThreadCtx;
+
+    struct TCpuSensor {
+        ui64 Value = 0;
+
+        ui64 GetDiff() {
+            ui64 prev = std::exchange(Value, ThreadCPUTime());
+            return Value - prev;
+        }
+    };
     
     struct TWorkerContext {
         TWorkerId WorkerId;
@@ -36,6 +45,7 @@ namespace NActors {
         i64 HPStart = 0;
         ui32 ExecutedEvents = 0;
         TSharedExecutorThreadCtx *SharedThread = nullptr;
+        TCpuSensor CpuSensor;
         
 
         TWorkerContext(TWorkerId workerId, TCpuId cpuId)
@@ -127,7 +137,7 @@ namespace NActors {
         }
 
         i64 AddEventProcessingStats(i64 deliveredTs, i64 processedTs, ui32 activityType, ui64 scheduled) {
-            i64 elapsed = processedTs - deliveredTs;
+            i64 elapsed = Max<i64>(0, processedTs - deliveredTs);
             ui64 usecElapsed = NHPTimer::GetSeconds(elapsed) * 1000000;
             activityType = (activityType >= Stats->MaxActivityType()) ? 0 : activityType;
             Stats->EventProcessingCountHistogram.Add(usecElapsed);
@@ -149,7 +159,7 @@ namespace NActors {
 
         void UpdateThreadTime() {
             RelaxedStore(&Stats->SafeElapsedTicks, (ui64)RelaxedLoad(&Stats->ElapsedTicks));
-            RelaxedStore(&Stats->CpuUs, ThreadCPUTime());
+            RelaxedStore(&Stats->CpuUs, (ui64)RelaxedLoad(&Stats->CpuUs) + CpuSensor.GetDiff());
         }
 
         void IncreaseNotEnoughCpuExecutions() {

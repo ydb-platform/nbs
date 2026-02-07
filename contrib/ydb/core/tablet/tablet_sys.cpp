@@ -38,10 +38,6 @@ namespace {
 
 }
 
-ui64 TTablet::StateStorageGroup() const {
-    return StateStorageGroupFromTabletID(Info->TabletID);
-}
-
 ui64 TTablet::TabletID() const {
     return Info->TabletID;
 }
@@ -316,7 +312,7 @@ void TTablet::HandleStateStorageLeaderResolve(TEvStateStorage::TEvInfo::TPtr &ev
     }
 
     StateStorageInfo.KnownGeneration = msg->CurrentGeneration;
-    StateStorageInfo.Signature.Reset(msg->Signature.Release());
+    StateStorageInfo.KnownStep = msg->CurrentStep;
 
     if (msg->Status == NKikimrProto::OK && msg->CurrentLeader) {
         FollowerInfo.KnownLeaderID = msg->CurrentLeader;
@@ -1241,6 +1237,7 @@ void TTablet::CheckEntry(TGraph::TIndex::iterator it) {
                     entry->ConfirmedOnSend,
                     std::move(entry->YellowMoveChannels),
                     std::move(entry->YellowStopChannels),
+                    std::move(entry->ApproximateFreeSpaceShareByChannel),
                     std::move(entry->GroupWrittenBytes),
                     std::move(entry->GroupWrittenOps)),
                 0, entry->SourceCookie);
@@ -1560,6 +1557,7 @@ void TTablet::Handle(TEvTabletBase::TEvWriteLogResult::TPtr &ev) {
             entry->BlobStorageConfirmed = true;
             entry->YellowMoveChannels = std::move(msg->YellowMoveChannels);
             entry->YellowStopChannels = std::move(msg->YellowStopChannels);
+            entry->ApproximateFreeSpaceShareByChannel = std::move(msg->ApproximateFreeSpaceShareByChannel);
             entry->GroupWrittenBytes = std::move(msg->GroupWrittenBytes);
             entry->GroupWrittenOps = std::move(msg->GroupWrittenOps);
 
@@ -1738,7 +1736,7 @@ void TTablet::ReassignYellowChannels(TVector<ui32> &&yellowMoveChannels) {
         " Type: " << TTabletTypes::TypeToStr((TTabletTypes::EType)Info->TabletType)
         << ", YellowMoveChannels: " << yellowMoveChannelsString(), "TSYS30");
 
-    Send(MakePipePeNodeCacheID(false),
+    Send(MakePipePerNodeCacheID(false),
         new TEvPipeCache::TEvForward(
             new TEvHive::TEvReassignTabletSpace(Info->TabletID, std::move(yellowMoveChannels)),
             Info->HiveId,
@@ -1899,7 +1897,7 @@ void TTablet::BootstrapFollower() {
         IntrospectionTrace.Reset(NTracing::CreateTrace(NTracing::ITrace::TypeSysTabletBootstrap));
     }
 
-    StateStorageInfo.ProxyID = MakeStateStorageProxyID(StateStorageGroup());
+    StateStorageInfo.ProxyID = MakeStateStorageProxyID();
     Send(StateStorageInfo.ProxyID, new TEvStateStorage::TEvLookup(TabletID(), 0, TEvStateStorage::TProxyOptions(TEvStateStorage::TProxyOptions::SigAsync)));
     if (IntrospectionTrace) {
         IntrospectionTrace->Attach(MakeHolder<NTracing::TOnTabletBootstrap>(SuggestedGeneration, false, StateStorageInfo.ProxyID));
@@ -1918,7 +1916,7 @@ void TTablet::Bootstrap() {
         IntrospectionTrace.Reset(NTracing::CreateTrace(NTracing::ITrace::TypeSysTabletBootstrap));
     }
     ReportTabletStateChange(TTabletStateInfo::Created); // useless?
-    StateStorageInfo.ProxyID = MakeStateStorageProxyID(StateStorageGroup());
+    StateStorageInfo.ProxyID = MakeStateStorageProxyID();
     Send(StateStorageInfo.ProxyID, new TEvStateStorage::TEvLookup(TabletID(), 0, TEvStateStorage::TProxyOptions(TEvStateStorage::TProxyOptions::SigAsync)));
     if (IntrospectionTrace) {
         IntrospectionTrace->Attach(MakeHolder<NTracing::TOnTabletBootstrap>(SuggestedGeneration, true, StateStorageInfo.ProxyID));

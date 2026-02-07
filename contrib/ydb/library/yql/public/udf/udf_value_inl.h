@@ -283,6 +283,16 @@ inline EFetchStatus TBoxedValueAccessor::WideFetch(IBoxedValue& value, TUnboxedV
 }
 #endif
 
+#if UDF_ABI_COMPATIBILITY_VERSION_CURRENT >= UDF_ABI_COMPATIBILITY_VERSION(2, 36)
+inline bool TBoxedValueAccessor::Load2(IBoxedValue& value, const TUnboxedValue& data) {
+    if (!value.IsCompatibleTo(MakeAbiCompatibilityVersion(2, 36))) {
+        return false;
+    }
+
+    return value.Load2(data);
+}
+#endif
+
 //////////////////////////////////////////////////////////////////////////////
 // TUnboxedValue
 //////////////////////////////////////////////////////////////////////////////
@@ -378,6 +388,18 @@ inline IBoxedValuePtr TUnboxedValuePod::AsBoxed() const
 {
     UDF_VERIFY(IsBoxed(), "Value is not boxed");
     return IBoxedValuePtr(Raw.Boxed.Value);
+}
+
+inline TStringValue::TData* TUnboxedValuePod::AsRawStringValue() const
+{
+    UDF_VERIFY(IsString(), "Value is not a string");
+    return Raw.String.Value;
+}
+
+inline IBoxedValue* TUnboxedValuePod::AsRawBoxed() const
+{
+    UDF_VERIFY(IsBoxed(), "Value is not boxed");
+    return Raw.Boxed.Value;
 }
 
 inline bool TUnboxedValuePod::UniqueBoxed() const
@@ -612,6 +634,13 @@ inline bool TUnboxedValuePod::IsSortedDict() const {
 inline EFetchStatus TUnboxedValuePod::WideFetch(TUnboxedValue* result, ui32 width) const {
     UDF_VERIFY(IsBoxed(), "Value is not a wide stream");
     return TBoxedValueAccessor::WideFetch(*Raw.Boxed.Value, result, width);
+}
+#endif
+
+#if UDF_ABI_COMPATIBILITY_VERSION_CURRENT >= UDF_ABI_COMPATIBILITY_VERSION(2, 36)
+inline bool TUnboxedValuePod::Load2(const TUnboxedValue& value) {
+    UDF_VERIFY(IsBoxed(), "Value is not boxed");
+    return TBoxedValueAccessor::Load2(*Raw.Boxed.Value, value);
 }
 #endif
 

@@ -1,21 +1,16 @@
 #pragma once
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/mon.h>
-#include <contrib/ydb/core/base/domain.h>
-#include <contrib/ydb/core/base/hive.h>
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/library/services/services.pb.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-#include <contrib/ydb/core/viewer/protos/viewer.pb.h>
-#include <contrib/ydb/core/viewer/json/json.h>
 #include "browse_events.h"
 #include "viewer.h"
 #include "wb_aggregate.h"
+#include <contrib/ydb/core/base/hive.h>
+#include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
+#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
-namespace NKikimr {
-namespace NViewer {
+namespace NKikimr::NViewer {
 
 using namespace NActors;
 
@@ -99,6 +94,8 @@ public:
             return NKikimrViewer::EObjectType::ExternalDataSource;
         case NKikimrSchemeOp::EPathType::EPathTypeView:
             return NKikimrViewer::EObjectType::View;
+        case NKikimrSchemeOp::EPathType::EPathTypeResourcePool:
+            return NKikimrViewer::EObjectType::ResourcePool;
         case NKikimrSchemeOp::EPathType::EPathTypeExtSubDomain:
         case NKikimrSchemeOp::EPathType::EPathTypeTableIndex:
         case NKikimrSchemeOp::EPathType::EPathTypeInvalid:
@@ -218,8 +215,8 @@ public:
                     break;
                 }
                 bool hasTxAllocators = false;
-                for (const auto& pair: domainsInfo->Domains) {
-                    if (!pair.second->TxAllocators.empty()) {
+                if (const auto& domain = domainsInfo->Domain) {
+                    if (!domain->TxAllocators.empty()) {
                         hasTxAllocators = true;
                         break;
                     }
@@ -432,15 +429,6 @@ public:
         return PipeClients.emplace(tabletId, pipeClient).first->second;
     }
 
-    TTabletId GetBscTabletId(TTabletId tabletId, const TActorContext& ctx) {
-        TDomainsInfo* domainsInfo = AppData(ctx)->DomainsInfo.Get();
-        ui64 hiveUid = HiveUidFromTabletID(tabletId);
-        ui32 hiveDomain = domainsInfo->GetHiveDomainUid(hiveUid);
-        ui64 defaultStateStorageGroup = domainsInfo->GetDefaultStateStorageGroup(hiveDomain);
-        TTabletId bscTabletId = MakeBSControllerID(defaultStateStorageGroup);
-        return bscTabletId;
-    }
-
     void Handle(TEvTablet::TEvGetCountersResponse::TPtr &ev, const TActorContext &ctx) {
         TabletCountersResults.emplace(ev->Cookie, ev->Release());
         ++Responses;
@@ -456,7 +444,7 @@ public:
             for (const auto& historyInfo : channelInfo.GetHistory()) {
                 ui32 groupId = historyInfo.GetGroupID();
                 if (GroupInfo.emplace(groupId, nullptr).second) {
-                    TTabletId bscTabletId = GetBscTabletId(lookupResult->Record.GetTabletID(), ctx);
+                    TTabletId bscTabletId = MakeBSControllerID();
                     TActorId pipeClient = GetTabletPipe(bscTabletId, ctx);
                     NTabletPipe::SendData(ctx, pipeClient, new TEvBlobStorage::TEvRequestControllerInfo(groupId));
                     ++Requests;
@@ -652,5 +640,4 @@ public:
     virtual void ReplyAndDie(const TActorContext &ctx) = 0;
 };
 
-}
 }

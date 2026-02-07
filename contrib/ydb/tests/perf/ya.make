@@ -1,0 +1,10 @@
+RECURSE_ROOT_RELATIVE(
+    contrib/ydb/library/yql/minikql/benchmark
+    contrib/ydb/library/yql/minikql/jsonpath/benchmark
+    contrib/ydb/library/yql/minikql/perf/alloc
+    contrib/ydb/library/yql/minikql/perf/mt_param
+    contrib/ydb/library/yql/minikql/perf/packer
+    contrib/ydb/library/yql/minikql/perf/param
+    contrib/ydb/library/yql/minikql/perf/presort
+    contrib/ydb/library/yql/sql/v1/perf
+)

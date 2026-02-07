@@ -20,7 +20,9 @@ namespace {
             , Buf(rec.Len + 1)
         {
             Buf.Append(rec.Data, rec.Len);
-            *Buf.Proceed(1) = '\n';
+            if (rec.Len > 0 && rec.Data[rec.Len - 1] != '\n') {
+                *Buf.Proceed(1) = '\n';
+            }
         }
 
         operator TLogRecord() const {
@@ -371,10 +373,10 @@ namespace NActors {
                 }
 
                 DIV_CLASS("row") {
-                    DIV_CLASS("col-md-6") {
+                    DIV_CLASS("col-md-8") {
                         RenderComponentPriorities(str);
                     }
-                    DIV_CLASS("col-md-6") {
+                    DIV_CLASS("col-md-4") {
                         TAG(TH4) {
                             str << "Change priority for all components";
                         }
@@ -486,12 +488,18 @@ namespace NActors {
                 json.BeginObject()
                     .WriteKey("@timestamp")
                     .WriteString(Settings->UseLocalTimestamps ? FormatLocalTimestamp(time, buf) : time.ToString().data())
+                    .WriteKey("@log_type")
+                    .WriteString("debug")
                     .WriteKey("microseconds")
                     .WriteULongLong(time.MicroSeconds())
                     .WriteKey("host")
                     .WriteString(Settings->ShortHostName)
                     .WriteKey("cluster")
                     .WriteString(Settings->ClusterName)
+                    .WriteKey("database")
+                    .WriteString(Settings->TenantName ? Settings->TenantName : "static")
+                    .WriteKey("node_id")
+                    .WriteInt(Settings->NodeId)
                     .WriteKey("priority")
                     .WriteString(PriorityToString(priority))
                     .WriteKey("npriority")
@@ -573,9 +581,6 @@ namespace NActors {
 
         void ReopenLog() override {
         }
-
-    private:
-        const TString Indent;
     };
 
     class TLineFileLogBackend: public TFileLogBackend {

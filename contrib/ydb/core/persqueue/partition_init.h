@@ -20,7 +20,7 @@ class TPartition;
 
 
 /**
- * This class execute independent steps of parttition actor initialization. 
+ * This class execute independent steps of parttition actor initialization.
  * Each initialization step makes its own decision whether to perform it or not.
  */
 class TInitializer {
@@ -46,7 +46,7 @@ private:
 
     TVector<THolder<TInitializerStep>> Steps;
     std::vector<THolder<TInitializerStep>>::iterator CurrentStep;
-    
+
 };
 
 /**
@@ -57,12 +57,12 @@ class TInitializerStep {
 public:
     TInitializerStep(TInitializer* initializer, TString name, bool skipNewPartition);
     virtual ~TInitializerStep() = default;
-    
+
     virtual void Execute(const TActorContext& ctx) = 0;
     virtual bool Handle(STFUNC_SIG);
 
     TPartition* Partition() const;
-    ui32 PartitionId() const;
+    const TPartitionId& PartitionId() const;
     TString TopicName() const;
 
     const TString Name;
@@ -79,7 +79,7 @@ private:
 
 class TBaseKVStep: public TInitializerStep {
 public:
-    TBaseKVStep(TInitializer* initializer, TString name, bool skipNewPartition);    
+    TBaseKVStep(TInitializer* initializer, TString name, bool skipNewPartition);
 
     bool Handle(STFUNC_SIG) override;
     virtual void Handle(TEvKeyValue::TEvResponse::TPtr& ev, const TActorContext& ctx) = 0;
@@ -91,7 +91,7 @@ public:
 //
 
 class TInitConfigStep: public TBaseKVStep {
-public:    
+public:
     TInitConfigStep(TInitializer* initializer);
 
     void Execute(const TActorContext& ctx) override;
@@ -114,11 +114,14 @@ public:
 };
 
 class TInitMetaStep: public TBaseKVStep {
+    friend class TPartitionTestWrapper;
 public:
     TInitMetaStep(TInitializer* initializer);
 
     void Execute(const TActorContext& ctx) override;
     void Handle(TEvKeyValue::TEvResponse::TPtr& ev, const TActorContext& ctx) override;
+private:
+    void LoadMeta(const NKikimrClient::TResponse& kvResponse, const TMaybe<TActorContext>& mbCtx);
 };
 
 class TInitInfoRangeStep: public TBaseKVStep {
@@ -139,6 +142,10 @@ public:
 private:
     void FillBlobsMetaData(const NKikimrClient::TKeyValueResponse::TReadRangeResult& range, const TActorContext& ctx);
     void FormHeadAndProceed();
+
+    // request to delete and rename keys from the new version
+    THolder<TEvKeyValue::TEvRequest> CompatibilityRequest;
+    bool WaitForDeleteAndRename = false;
 };
 
 class TInitDataStep: public TBaseKVStep {
@@ -147,6 +154,13 @@ public:
 
     void Execute(const TActorContext& ctx) override;
     void Handle(TEvKeyValue::TEvResponse::TPtr& ev, const TActorContext& ctx) override;
+};
+
+class TInitEndWriteTimestampStep: public TInitializerStep {
+public:
+    TInitEndWriteTimestampStep(TInitializer* initializer);
+
+    void Execute(const TActorContext& ctx) override;
 };
 
 } // NKikimr::NPQ

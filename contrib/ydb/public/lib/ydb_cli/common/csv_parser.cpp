@@ -133,6 +133,18 @@ public:
         case EPrimitiveType::Interval:
             Builder.Interval(GetArithmetic<i64>(token));
             break;
+        case EPrimitiveType::Date32:
+            Builder.Date32(GetArithmetic<i32>(token));
+            break;
+        case EPrimitiveType::Datetime64:
+            Builder.Datetime64(GetArithmetic<i64>(token));
+            break;
+        case EPrimitiveType::Timestamp64:
+            Builder.Timestamp64(GetArithmetic<i64>(token));
+            break;
+        case EPrimitiveType::Interval64:
+            Builder.Interval64(GetArithmetic<i64>(token));
+            break;            
         case EPrimitiveType::TzDate:
             Builder.TzDate(token);
             break;
@@ -143,7 +155,7 @@ public:
             Builder.TzTimestamp(token);
             break;
         default:
-            TMisuseException() << "Unsupported primitive type: " << Parser.GetPrimitive();
+            throw TMisuseException() << "Unsupported primitive type: " << Parser.GetPrimitive();
         }
     }
 
@@ -154,7 +166,7 @@ public:
             break;
         }
         case TTypeParser::ETypeKind::Decimal: {
-            Builder.Decimal(TString(token));
+            Builder.Decimal(TDecimalValue(TString(token), Parser.GetDecimal().Precision, Parser.GetDecimal().Scale));
             break;
         }
         case TTypeParser::ETypeKind::Optional: {

@@ -46,6 +46,7 @@ public:
     struct TEvPrivate {
         enum EEv {
             EvUpdateEpoch = EventSpaceBegin(TEvents::ES_PRIVATE),
+            EvResolvedRegistrationRequest,
 
             EvEnd
         };
@@ -53,6 +54,22 @@ public:
         static_assert(EvEnd < EventSpaceEnd(TKikimrEvents::ES_PRIVATE), "expect EvEnd < EventSpaceEnd(TKikimrEvents::ES_PRIVATE)");
 
         struct TEvUpdateEpoch : public TEventLocal<TEvUpdateEpoch, EvUpdateEpoch> {};
+
+        struct TEvResolvedRegistrationRequest : public TEventLocal<TEvResolvedRegistrationRequest, EvResolvedRegistrationRequest> {
+            
+            TEvResolvedRegistrationRequest(
+                    TEvNodeBroker::TEvRegistrationRequest::TPtr request,
+                    NActors::TScopeId scopeId,
+                    TSubDomainKey servicedSubDomain)
+                : Request(request)
+                , ScopeId(scopeId)
+                , ServicedSubDomain(servicedSubDomain)
+            {}
+
+            TEvNodeBroker::TEvRegistrationRequest::TPtr Request;
+            NActors::TScopeId ScopeId;
+            TSubDomainKey ServicedSubDomain;
+        };
     };
 
 private:
@@ -138,9 +155,7 @@ private:
     ITransaction *CreateTxExtendLease(TEvNodeBroker::TEvExtendLeaseRequest::TPtr &ev);
     ITransaction *CreateTxInitScheme();
     ITransaction *CreateTxLoadState();
-    ITransaction *CreateTxRegisterNode(TEvNodeBroker::TEvRegistrationRequest::TPtr &ev,
-                                       const NActors::TScopeId& scopeId,
-                                       const TSubDomainKey& servicedSubDomain);
+    ITransaction *CreateTxRegisterNode(TEvPrivate::TEvResolvedRegistrationRequest::TPtr &ev);
     ITransaction *CreateTxUpdateConfig(TEvConsole::TEvConfigNotificationRequest::TPtr &ev);
     ITransaction *CreateTxUpdateConfig(TEvNodeBroker::TEvSetConfigRequest::TPtr &ev);
     ITransaction *CreateTxUpdateConfigSubscription(TEvConsole::TEvReplaceConfigSubscriptionsResponse::TPtr &ev);
@@ -192,6 +207,7 @@ private:
             HFuncTraced(TEvNodeBroker::TEvGetConfigRequest, Handle);
             HFuncTraced(TEvNodeBroker::TEvSetConfigRequest, Handle);
             HFuncTraced(TEvPrivate::TEvUpdateEpoch, Handle);
+            HFuncTraced(TEvPrivate::TEvResolvedRegistrationRequest, Handle);
             IgnoreFunc(TEvTabletPipe::TEvServerConnected);
             IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
             IgnoreFunc(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse);
@@ -207,18 +223,6 @@ private:
     }
 
     void ClearState();
-
-    ui32 NodeIdStep() const {
-        return SingleDomainAlloc ? 1 : (1 << DOMAIN_BITS);
-    }
-
-    ui32 NodeIdDomain(ui32 nodeId) const {
-        return SingleDomainAlloc ? DomainId : (nodeId & DOMAIN_MASK);
-    }
-
-    ui32 RewriteNodeId(ui32 nodeId) const {
-        return SingleDomainAlloc ? nodeId : ((nodeId & ~DOMAIN_MASK) | DomainId);
-    }
 
     // Internal state modifiers. Don't affect DB.
     void AddNode(const TNodeInfo &info);
@@ -284,6 +288,8 @@ private:
                            TTransactionContext &txc);
     void DbUpdateNodeLocation(const TNodeInfo &node,
                               TTransactionContext &txc);
+    void DbUpdateNodeAuthorizedByCertificate(const TNodeInfo &node,
+                              TTransactionContext &txc);
 
     void Handle(TEvConsole::TEvConfigNotificationRequest::TPtr &ev,
                 const TActorContext &ctx);
@@ -305,9 +311,9 @@ private:
                 const TActorContext &ctx);
     void Handle(TEvPrivate::TEvUpdateEpoch::TPtr &ev,
                 const TActorContext &ctx);
+    void Handle(TEvPrivate::TEvResolvedRegistrationRequest::TPtr &ev,
+                const TActorContext &ctx);
 
-    // ID of domain node broker is responsible for.
-    ui32 DomainId;
     // All registered dynamic nodes.
     THashMap<ui32, TNodeInfo> Nodes;
     THashMap<ui32, TNodeInfo> ExpiredNodes;
@@ -337,19 +343,15 @@ private:
     TSchedulerCookieHolder EpochTimerCookieHolder;
     TString EpochCache;
 
-    bool SingleDomain = false;
-    bool SingleDomainAlloc = false;
+    TString EpochDeltasCache;
+    TVector<ui64> EpochDeltasVersions;
+    TVector<ui64> EpochDeltasEndOffsets;
+
+    TTabletCountersBase* TabletCounters;
+    TAutoPtr<TTabletCountersBase> TabletCountersPtr;
 
 public:
-    TNodeBroker(const TActorId &tablet, TTabletStorageInfo *info)
-        : TActor(&TThis::StateInit)
-        , TTabletExecutedFlat(info, tablet, new NMiniKQL::TMiniKQLFactory)
-        , EpochDuration(TDuration::Hours(1))
-        , ConfigSubscriptionId(0)
-        , StableNodeNamePrefix("slot-")
-        , TxProcessor(new TTxProcessor(*this, "root", NKikimrServices::NODE_BROKER))
-    {
-    }
+    TNodeBroker(const TActorId &tablet, TTabletStorageInfo *info);
 
     static constexpr NKikimrServices::TActivity::EType ActorActivityType()
     {

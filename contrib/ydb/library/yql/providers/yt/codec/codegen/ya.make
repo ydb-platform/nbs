@@ -17,6 +17,7 @@ IF (NOT MKQL_DISABLE_CODEGEN)
     PEERDIR(
         contrib/ydb/library/yql/minikql/codegen/llvm14
     )
+    USE_LLVM_BC14()
     LLVM_BC(
         yt_codec_bc.cpp
         NAME
@@ -58,9 +59,15 @@ IF (NOT MKQL_DISABLE_CODEGEN)
         ReadTzDate
         ReadTzDatetime
         ReadTzTimestamp
+        ReadTzDate32
+        ReadTzDatetime64
+        ReadTzTimestamp64
         WriteTzDate
         WriteTzDatetime
         WriteTzTimestamp
+        WriteTzDate32
+        WriteTzDatetime64
+        WriteTzTimestamp64
         GetWrittenBytes
         FillZero
     )

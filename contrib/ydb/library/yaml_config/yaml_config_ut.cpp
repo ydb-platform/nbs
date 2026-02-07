@@ -1,6 +1,10 @@
 #include "yaml_config.h"
 
+#include <contrib/ydb/library/yaml_config/yaml_config_parser.h>
+
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <contrib/ydb/core/protos/key.pb.h>
 
 using namespace NKikimr;
 

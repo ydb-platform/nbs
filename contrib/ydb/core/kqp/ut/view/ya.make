@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/core/kqp)
 
-OWNER(g:kikimr)
-
 SIZE(MEDIUM)
 
 SRCS(

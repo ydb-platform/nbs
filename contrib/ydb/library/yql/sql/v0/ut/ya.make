@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/sql/v0)
 
+TAG(ya:manual)
+
 SRCS(
     sql_ut.cpp
 )

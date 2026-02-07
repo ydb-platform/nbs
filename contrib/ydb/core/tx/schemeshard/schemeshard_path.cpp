@@ -848,7 +848,39 @@ const TPath::TChecker& TPath::TChecker::IsView(EStatus status) const {
     return Fail(status, TStringBuilder() << "path is not a view"
         << " (" << BasicPathInfo(Path.Base()) << ")"
     );
+}
 
+const TPath::TChecker& TPath::TChecker::FailOnRestrictedCreateInTempZone(bool allowCreateInTemporaryDir, EStatus status) const {
+    if (Failed) {
+        return *this;
+    }
+
+    if (allowCreateInTemporaryDir) {
+        return *this;
+    }
+
+    for (const auto& element : Path.Elements) {
+        if (element->IsTemporary()) {
+            return Fail(status, TStringBuilder() << "path is temporary"
+                << " (" << BasicPathInfo(Path.Base()) << ")"
+            );
+        }
+    }
+
+    return *this;
+}
+
+const TPath::TChecker& TPath::TChecker::IsResourcePool(EStatus status) const {
+    if (Failed) {
+        return *this;
+    }
+
+    if (Path.Base()->IsResourcePool()) {
+        return *this;
+    }
+
+    return Fail(status, TStringBuilder() << "path is not a resource pool"
+        << " (" << BasicPathInfo(Path.Base()) << ")");
 }
 
 const TPath::TChecker& TPath::TChecker::PathShardsLimit(ui64 delta, EStatus status) const {
@@ -921,6 +953,23 @@ const TPath::TChecker& TPath::TChecker::NotChildren(EStatus status) const {
 
     return Fail(status, TStringBuilder() << "path has children, request doesn't accept it"
         << ", children: " << childrenCount);
+}
+
+const TPath::TChecker& TPath::TChecker::CanBackupTable(EStatus status) const {
+    if (Failed) {
+        return *this;
+    }
+
+    for (const auto& child: Path.Base()->GetChildren()) {
+        auto name = child.first;
+
+        TPath childPath = Path.Child(name);
+        if (childPath->IsTableIndex()) {
+            return Fail(status, TStringBuilder() << "path has indexes, request doesn't accept it");
+        }
+    }
+
+    return *this;
 }
 
 const TPath::TChecker& TPath::TChecker::NotDeleted(EStatus status) const {
@@ -1547,20 +1596,22 @@ bool TPath::IsInsideCdcStreamPath() const {
         return false;
     }
 
-    ++item;
-    for (; item != Elements.rend(); ++item) {
-        if (!(*item)->IsDirectory() && !(*item)->IsSubDomainRoot()) {
-            return false;
-        }
-    }
-
     return true;
 }
 
-bool TPath::IsTableIndex() const {
+bool TPath::IsTableIndex(const TMaybe<NKikimrSchemeOp::EIndexType>& type) const {
     Y_ABORT_UNLESS(IsResolved());
 
-    return Base()->IsTableIndex();
+    if (!Base()->IsTableIndex()) {
+        return false;
+    }
+
+    if (!type.Defined()) {
+        return true;
+    }
+
+    Y_ABORT_UNLESS(SS->Indexes.contains(Base()->PathId));
+    return SS->Indexes.at(Base()->PathId)->Type == *type;
 }
 
 bool TPath::IsBackupTable() const {

@@ -114,7 +114,7 @@ public:
 
         Y_ABORT_UNLESS((ui32)diskMode < DM_COUNT);
         EDeviceType deviceType = DiskModeToDeviceType(diskMode);
-        DiskModeParams.SeekSleepMicroSeconds = DevicePerformance.at(deviceType).SeekTimeNs;
+        DiskModeParams.SeekSleepMicroSeconds = (DevicePerformance.at(deviceType).SeekTimeNs + 1000) / 1000 - 1;
         DiskModeParams.FirstSectorReadRate = DevicePerformance.at(deviceType).FirstSectorReadBytesPerSec;
         DiskModeParams.LastSectorReadRate = DevicePerformance.at(deviceType).LastSectorReadBytesPerSec;
         DiskModeParams.FirstSectorWriteRate = DevicePerformance.at(deviceType).FirstSectorWriteBytesPerSec;
@@ -145,7 +145,7 @@ private:
         if (size == 0) {
             return;
         }
-        
+
         ui64 beginSector = offset / NSectorMap::SECTOR_SIZE;
         ui64 endSector = (offset + size + NSectorMap::SECTOR_SIZE - 1) / NSectorMap::SECTOR_SIZE;
         ui64 midSector = (beginSector + endSector) / 2;
@@ -216,12 +216,13 @@ public:
     }
 
     void ForceSize(ui64 size) {
-        DeviceSize = size;
-        if (DeviceSize < size) {
+        if (size < DeviceSize) {
             for (const auto& [offset, data] : Map) {
                 Y_VERIFY_S(offset + 4096 <= DeviceSize, "It is not possible to shrink TSectorMap with data");
             }
         }
+        
+        DeviceSize = size;
 
         InitSectorOperationThrottler();
     }
@@ -262,9 +263,13 @@ public:
             offset += NSectorMap::SECTOR_SIZE;
             data += NSectorMap::SECTOR_SIZE;
         }
-        
+
         if (SectorOperationThrottler.Get() != nullptr) {
             SectorOperationThrottler->ThrottleRead(dataSize, dataOffset, prevOperationIsInProgress, timer.Passed() * 1000);
+        }
+
+        if (ReadCallback) {
+            ReadCallback();
         }
     }
 
@@ -295,7 +300,7 @@ public:
                 data += NSectorMap::SECTOR_SIZE;
             }
         }
-        
+
         if (SectorOperationThrottler.Get() != nullptr) {
             SectorOperationThrottler->ThrottleRead(dataSize, dataOffset, prevOperationIsInProgress, timer.Passed() * 1000);
         }
@@ -316,6 +321,11 @@ public:
 
     ui64 DataBytes() const {
         return Map.size() * NSectorMap::SECTOR_SIZE;
+    }
+
+    void SetReadCallback(std::function<void()> callback) {
+        TGuard<TTicketLock> guard(MapLock);
+        ReadCallback = callback;
     }
 
     TString ToString() const {
@@ -350,6 +360,7 @@ private:
     THashMap<ui64, TString> Map;
     NSectorMap::EDiskMode DiskMode = NSectorMap::DM_NONE;
     THolder<NSectorMap::TSectorOperationThrottler> SectorOperationThrottler;
+    std::function<void()> ReadCallback = nullptr;
 };
 
 } // NPDisk

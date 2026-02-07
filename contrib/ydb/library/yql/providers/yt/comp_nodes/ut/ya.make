@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/yt/comp_nodes)
 
+TAG(ya:manual)
+
 FORK_SUBTESTS()
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
@@ -20,7 +22,9 @@ PEERDIR(
     library/cpp/time_provider
     contrib/ydb/library/yql/minikql/comp_nodes/llvm14
     contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/providers/yt/comp_nodes
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm14
+    contrib/ydb/library/yql/providers/yt/codec
+    contrib/ydb/library/yql/providers/yt/codec/codegen
     contrib/ydb/library/yql/sql/pg_dummy
 )
 

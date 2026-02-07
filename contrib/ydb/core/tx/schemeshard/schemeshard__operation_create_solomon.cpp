@@ -271,7 +271,8 @@ public:
                 .NotDeleted()
                 .NotUnderDeleting()
                 .IsCommonSensePath()
-                .IsLikeDirectory();
+                .IsLikeDirectory()
+                .FailOnRestrictedCreateInTempZone();
 
             if (!checks) {
                 result->SetError(checks.GetStatus(), checks.GetError());
@@ -403,12 +404,11 @@ public:
 
         context.SS->PersistTxState(db, OperationId);
 
-        context.SS->PersistPath(db, newSolomon->PathId);
 
         if (!acl.empty()) {
             newSolomon->ApplyACL(acl);
-            context.SS->PersistACL(db, newSolomon);
         }
+        context.SS->PersistPath(db, newSolomon->PathId);
 
         context.SS->PersistUpdateNextPathId(db);
         context.SS->PersistUpdateNextShardIdx(db);
@@ -416,8 +416,8 @@ public:
         IncParentDirAlterVersionWithRepublish(OperationId, dstPath, context);
 
         Y_ABORT_UNLESS(shardsToCreate == txState.Shards.size());
-        dstPath.DomainInfo()->IncPathsInside();
-        dstPath.DomainInfo()->AddInternalShards(txState);
+        dstPath.DomainInfo()->IncPathsInside(context.SS);
+        dstPath.DomainInfo()->AddInternalShards(txState, context.SS);
 
         dstPath.Base()->IncShardsInside(shardsToCreate);
         parentPath.Base()->IncAliveChildren();

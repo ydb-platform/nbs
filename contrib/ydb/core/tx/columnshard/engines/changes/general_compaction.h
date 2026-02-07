@@ -1,18 +1,27 @@
 #pragma once
 #include "compaction.h"
-#include <contrib/ydb/core/formats/arrow/reader/read_filter_merger.h>
+#include <contrib/ydb/core/formats/arrow/reader/position.h>
+#include <contrib/ydb/core/tx/columnshard/engines/portions/read_with_blobs.h>
 
 namespace NKikimr::NOlap::NCompaction {
 
 class TGeneralCompactColumnEngineChanges: public TCompactColumnEngineChanges {
 private:
     using TBase = TCompactColumnEngineChanges;
-    virtual void DoWriteIndexComplete(NColumnShard::TColumnShard& self, TWriteIndexCompleteContext& context) override;
-    std::map<NIndexedReader::TSortableBatchPosition, bool> CheckPoints;
-    void BuildAppendedPortionsByFullBatches(TConstructionContext& context) noexcept;
-    void BuildAppendedPortionsByChunks(TConstructionContext& context) noexcept;
+    virtual void DoWriteIndexOnComplete(NColumnShard::TColumnShard* self, TWriteIndexCompleteContext& context) override;
+    NArrow::NMerger::TIntervalPositions CheckPoints;
+    void BuildAppendedPortionsByChunks(TConstructionContext& context, std::vector<TReadPortionInfoWithBlobs>&& portions) noexcept;
+
+    std::shared_ptr<NArrow::TColumnFilter> BuildPortionFilter(const std::optional<NKikimr::NOlap::TGranuleShardingInfo>& shardingActual,
+        const std::shared_ptr<NArrow::TGeneralContainer>& batch, const TPortionInfo& pInfo, const THashSet<ui64>& portionsInUsage,
+        const ISnapshotSchema::TPtr& resultSchema) const;
 protected:
     virtual TConclusionStatus DoConstructBlobs(TConstructionContext& context) noexcept override;
+
+    virtual bool NeedDiskWriteLimiter() const override {
+        return true;
+    }
+
     virtual TPortionMeta::EProduced GetResultProducedClass() const override {
         return TPortionMeta::EProduced::SPLIT_COMPACTED;
     }
@@ -36,7 +45,7 @@ public:
         virtual ui64 AddPortion(const TPortionInfo& portionInfo) override {
             for (auto&& i : portionInfo.GetRecords()) {
                 SumMemory += i.BlobRange.Size;
-                SumMemory += 2 * i.GetMeta().GetRawBytesVerified();
+                SumMemory += 2 * i.GetMeta().GetRawBytes();
             }
             return SumMemory;
         }
@@ -54,7 +63,7 @@ public:
 
     static std::shared_ptr<IMemoryPredictor> BuildMemoryPredictor();
 
-    void AddCheckPoint(const NIndexedReader::TSortableBatchPosition& position, const bool include = true, const bool validationDuplications = true);
+    void AddCheckPoint(const NArrow::NMerger::TSortableBatchPosition& position, const bool include);
 
     virtual TString TypeString() const override {
         return StaticTypeName();

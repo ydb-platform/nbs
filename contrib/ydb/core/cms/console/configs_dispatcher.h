@@ -1,8 +1,8 @@
 #pragma once
 #include "defs.h"
 
-#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/config/init/init.h>
 
 #include <util/generic/vector.h>
 #include <util/generic/map.h>

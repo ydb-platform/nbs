@@ -2,7 +2,7 @@ import hashlib
 
 from typing import Sequence
 
-from utils.schema import Schema
+from contrib.ydb.library.yql.providers.generic.connector.tests.utils.schema import Schema
 from contrib.ydb.public.api.protos.ydb_value_pb2 import Type
 
 

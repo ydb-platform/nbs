@@ -154,7 +154,7 @@ const NKikimr::NKqp::TStagePredictor& TKqpPhyTxHolder::GetCalculationPredictor(c
 }
 
 TPreparedQueryHolder::TPreparedQueryHolder(NKikimrKqp::TPreparedQuery* proto,
-    const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry)
+    const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry, bool noFillTables)
     : Proto(proto)
     , Alloc(nullptr)
     , TableConstInfoById(MakeIntrusive<TTableConstInfoMap>())
@@ -162,6 +162,11 @@ TPreparedQueryHolder::TPreparedQueryHolder(NKikimrKqp::TPreparedQuery* proto,
 
     if (functionRegistry) {
         Alloc = std::make_shared<TPreparedQueryAllocHolder>(functionRegistry);
+    }
+
+    // In case of some compilation failures filling tables may produce new problems which may replace original error messages.
+    if (noFillTables) {
+        return;
     }
 
     THashSet<TString> tablesSet;
@@ -199,6 +204,13 @@ TPreparedQueryHolder::TPreparedQueryHolder(NKikimrKqp::TPreparedQuery* proto,
             for (const auto& source : stage.GetSources()) {
                 if (source.GetTypeCase() == NKqpProto::TKqpSource::kReadRangesSource) {
                     tablesSet.insert(source.GetReadRangesSource().GetTable().GetPath());
+                }
+            }
+            for (const auto& sink : stage.GetSinks()) {
+                if (sink.GetTypeCase() == NKqpProto::TKqpSink::kInternalSink && sink.GetInternalSink().GetSettings().Is<NKikimrKqp::TKqpTableSinkSettings>()) {
+                    NKikimrKqp::TKqpTableSinkSettings settings;
+                    YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
+                    tablesSet.insert(settings.GetTable().GetPath());
                 }
             }
         }
@@ -245,6 +257,18 @@ void TPreparedQueryHolder::FillTables(const google::protobuf::RepeatedPtrField< 
             if (source.HasReadRangesSource()) {
                 auto& info = GetInfo(MakeTableId(source.GetReadRangesSource().GetTable()));
                 for (auto& column : source.GetReadRangesSource().GetColumns()) {
+                    info->AddColumn(column.GetName());
+                }
+            }
+        }
+
+        for (const auto& sink : stage.GetSinks()) {
+            if (sink.GetTypeCase() == NKqpProto::TKqpSink::kInternalSink && sink.GetInternalSink().GetSettings().Is<NKikimrKqp::TKqpTableSinkSettings>()) {
+                NKikimrKqp::TKqpTableSinkSettings settings;
+                YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
+
+                auto& info = GetInfo(MakeTableId(settings.GetTable()));
+                for (auto& column : settings.GetColumns()) {
                     info->AddColumn(column.GetName());
                 }
             }

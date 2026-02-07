@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/base/tablet_types.h>
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/bootstrap.pb.h>
 
 namespace NKikimr {
 

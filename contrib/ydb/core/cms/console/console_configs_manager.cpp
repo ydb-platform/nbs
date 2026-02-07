@@ -1,6 +1,7 @@
 #include "console_configs_manager.h"
 
 #include "configs_dispatcher.h"
+#include "console_audit.h"
 #include "console_configs_provider.h"
 #include "console_impl.h"
 #include "http.h"
@@ -76,7 +77,7 @@ void TConfigsManager::Bootstrap(const TActorContext &ctx)
                                                          ctx,
                                                          false,
                                                          NKikimrServices::CMS_CONFIGS);
-    ConfigsProvider = ctx.Register(new TConfigsProvider(ctx.SelfID));
+    ConfigsProvider = ctx.Register(new TConfigsProvider(ctx.SelfID, Counters));
 
     ui32 item = (ui32)NKikimrConsole::TConfigItem::AllowEditYamlInUiItem;
     ctx.Send(MakeConfigsDispatcherID(SelfId().NodeId()),
@@ -972,6 +973,30 @@ void TConfigsManager::ScheduleLogCleanup(const TActorContext &ctx)
                     new IEventHandle(SelfId(), SelfId(), new TEvPrivate::TEvCleanupLog),
                     AppData(ctx)->SystemPoolId,
                     LogCleanupTimerCookieHolder.Get());
+}
+
+void TConfigsManager::HandleUnauthorized(TEvConsole::TEvReplaceYamlConfigRequest::TPtr &ev, const TActorContext &) {
+    NACLib::TUserToken token(ev->Get()->Record.GetUserToken());
+    AuditLogReplaceConfigTransaction(
+        /* peer = */ ev->Get()->Record.GetPeerName(),
+        /* userSID = */ token.GetUserSID(),
+        /* sanitizedToken = */ token.GetSanitizedToken(),
+        /* oldConfig = */ YamlConfig,
+        /* newConfig = */ ev->Get()->Record.GetRequest().config(),
+        /* reason = */ "Unauthorized.",
+        /* success = */ false);
+}
+
+void TConfigsManager::HandleUnauthorized(TEvConsole::TEvSetYamlConfigRequest::TPtr &ev, const TActorContext &) {
+    NACLib::TUserToken token(ev->Get()->Record.GetUserToken());
+    AuditLogReplaceConfigTransaction(
+        /* peer = */ ev->Get()->Record.GetPeerName(),
+        /* userSID = */ token.GetUserSID(),
+        /* sanitizedToken = */ token.GetSanitizedToken(),
+        /* oldConfig = */ YamlConfig,
+        /* newConfig = */ ev->Get()->Record.GetRequest().config(),
+        /* reason = */ "Unauthorized.",
+        /* success = */ false);
 }
 
 } // namespace NKikimr::NConsole

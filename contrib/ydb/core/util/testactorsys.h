@@ -15,6 +15,9 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <util/system/env.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
+#include <contrib/ydb/core/protos/shared_cache.pb.h>
 
 #include "single_thread_ic_mock.h"
 

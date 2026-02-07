@@ -20,6 +20,7 @@ extern "C" {
 #include "postgres.h"
 #include "access/session.h"
 #include "access/xact.h"
+#include "catalog/namespace.h"
 #include "mb/pg_wchar.h"
 #include "nodes/pg_list.h"
 #include "nodes/parsenodes.h"
@@ -38,6 +39,7 @@ extern "C" {
 #include "storage/proc.h"
 #include "miscadmin.h"
 #include "tcop/tcopprot.h"
+#include "tcop/utility.h"
 #include "thread_inits.h"
 #undef Abs
 #undef Min
@@ -225,6 +227,10 @@ TString PrintPGTree(const List* raw) {
     return TString(str);
 }
 
+TString GetCommandName(Node* node) {
+    return CreateCommandName(node);
+}
+
 }
 
 extern "C" void setup_pg_thread_cleanup() {
@@ -268,4 +274,7 @@ extern "C" void setup_pg_thread_cleanup() {
     InitializeSession();
     work_mem = MAX_KILOBYTES; // a way to postpone spilling for tuple stores
     assign_max_stack_depth(1024, nullptr);
+    MyDatabaseId = 3; // from catalog.pg_database
+    namespace_search_path = pstrdup("public");
+    InitializeSessionUserId(nullptr, 1);
 };

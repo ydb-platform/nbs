@@ -16,7 +16,7 @@ class TTxDirectBase : public TTransactionBase<TDataShard> {
 
 public:
     TTxDirectBase(TDataShard* ds, TEvRequest ev)
-        : TBase(ds)
+        : TBase(ds, std::move(ev->TraceId))
         , Ev(ev)
     {
     }
@@ -172,20 +172,8 @@ static void Reject(TDataShard* self, TEvRequest& ev, const TString& txDesc,
     response->Record.SetTabletID(self->TabletID());
     response->Record.SetErrorDescription(rejectDescription);
 
-    if (ev->Get()->Record.HasOverloadSubscribe() && self->HasPipeServer(ev->Recipient)) {
-        ui64 seqNo = ev->Get()->Record.GetOverloadSubscribe();
-        auto allowed = (
-            ERejectReasons::OverloadByProbability |
-            ERejectReasons::YellowChannels |
-            ERejectReasons::ChangesQueueOverflow);
-        if ((rejectReasons & allowed) != ERejectReasons::None &&
-            (rejectReasons - allowed) == ERejectReasons::None)
-        {
-            if (self->AddOverloadSubscriber(ev->Recipient, ev->Sender, seqNo, rejectReasons)) {
-                response->Record.SetOverloadSubscribed(seqNo);
-            }
-        }
-    }
+    std::optional<ui64> overloadSubscribe = ev->Get()->Record.HasOverloadSubscribe() ? ev->Get()->Record.GetOverloadSubscribe() : std::optional<ui64>{};
+    self->SetOverloadSubscribed(overloadSubscribe, ev->Recipient, ev->Sender, rejectReasons, response->Record);
 
     ctx.Send(ev->Sender, std::move(response));
 }
@@ -232,6 +220,11 @@ void TDataShard::Handle(TEvDataShard::TEvUploadRowsRequest::TPtr& ev, const TAct
         UpdateProposeQueueSize();
         return;
     }
+    if (Pipeline.HasProposeDelayers()) {
+        DelayedProposeQueue.emplace_back().Reset(ev.Release());
+        UpdateProposeQueueSize();
+        return;
+    }
     if (IsReplicated()) {
         return Reject<TEvDataShard::TEvUploadRowsResponse>(this, ev, "bulk upsert",
             ERejectReasons::WrongState, "Can't execute bulk upsert at replicated table", &ReadOnly, ctx, TDataShard::ELogThrottlerType::UploadRows_Reject);
@@ -246,6 +239,11 @@ void TDataShard::Handle(TEvDataShard::TEvUploadRowsRequest::TPtr& ev, const TAct
 void TDataShard::Handle(TEvDataShard::TEvEraseRowsRequest::TPtr& ev, const TActorContext& ctx) {
     if (MediatorStateWaiting) {
         MediatorStateWaitingMsgs.emplace_back(ev.Release());
+        UpdateProposeQueueSize();
+        return;
+    }
+    if (Pipeline.HasProposeDelayers()) {
+        DelayedProposeQueue.emplace_back().Reset(ev.Release());
         UpdateProposeQueueSize();
         return;
     }

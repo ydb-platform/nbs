@@ -1,9 +1,5 @@
 LIBRARY()
 
-OWNER(
-    g:kikimr
-)
-
 SRCS(
     actor.cpp
     events.cpp
@@ -15,6 +11,8 @@ PEERDIR(
     contrib/ydb/core/tablet_flat
     contrib/ydb/library/yql/core/expr_nodes
     contrib/ydb/library/actors/testlib/common
+    contrib/ydb/core/tx/columnshard/data_sharing/protos
+    contrib/ydb/core/tx/columnshard/blobs_action/protos
 )
 
 END()

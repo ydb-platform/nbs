@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    read_attributes_utils.cpp
     rewrite_io_utils.cpp
     yql_kikimr_datasink.cpp
     yql_kikimr_datasource.cpp
@@ -47,6 +48,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/schema/expr
     contrib/ydb/library/yql/providers/dq/expr_nodes
+    contrib/ydb/library/yql/providers/pg/expr_nodes
     contrib/ydb/library/yql/providers/result/expr_nodes
     contrib/ydb/library/yql/providers/result/provider
     contrib/ydb/library/yql/sql

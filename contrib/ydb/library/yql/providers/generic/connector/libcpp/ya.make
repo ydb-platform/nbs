@@ -10,6 +10,7 @@ PEERDIR(
     contrib/libs/apache/arrow
     contrib/libs/grpc
     contrib/ydb/core/formats/arrow/serializer
+    contrib/ydb/library/grpc/client
     contrib/ydb/library/yql/ast
     contrib/ydb/library/yql/dq/actors/protos
     contrib/ydb/library/yql/providers/common/proto
@@ -18,6 +19,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/generic/connector/api/service/protos
     contrib/ydb/library/yql/public/issue
     contrib/ydb/library/yql/utils
+    contrib/ydb/library/yql/utils/log
 )
 
 END()

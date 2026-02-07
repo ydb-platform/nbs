@@ -1,8 +1,14 @@
 #include "update.h"
+#include <contrib/ydb/core/tx/schemeshard/schemeshard_info_types.h>
 #include <contrib/ydb/library/yql/minikql/mkql_type_ops.h>
 #include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/scheme_types/scheme_type_registry.h>
 #include <contrib/ydb/core/formats/arrow/serializer/abstract.h>
+#include <contrib/ydb/core/formats/arrow/arrow_helpers.h>
+
+extern "C" {
+#include <contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include/catalog/pg_type_d.h>
+}
 
 namespace NKikimr::NSchemeShard {
 
@@ -14,6 +20,7 @@ namespace NKikimr::NSchemeShard {
         Name = columnSchema.GetName();
         NotNullFlag = columnSchema.GetNotNull();
         TypeName = columnSchema.GetType();
+        StorageId = columnSchema.GetStorageId();
         if (columnSchema.HasSerializer()) {
             NArrow::NSerialization::TSerializerContainer serializer;
             if (!serializer.DeserializeFromProto(columnSchema.GetSerializer())) {
@@ -41,21 +48,42 @@ namespace NKikimr::NSchemeShard {
             return false;
         }
 
-        auto typeName = NMiniKQL::AdaptLegacyYqlType(TypeName);
+        TString errStr;
         Y_ABORT_UNLESS(AppData()->TypeRegistry);
-        const NScheme::IType* type = AppData()->TypeRegistry->GetType(typeName);
-        if (!type) {
-            errors.AddError(TStringBuilder() << "Type '" << typeName << "' specified for column '" << Name << "' is not supported");
+        if (!GetTypeInfo(AppData()->TypeRegistry->GetType(TypeName), columnSchema.GetTypeInfo(), TypeName, Name, Type, errStr)) {
+            errors.AddError(errStr);
             return false;
         }
-        if (!NScheme::NTypeIds::IsYqlType(type->GetTypeId())) {
-            errors.AddError(TStringBuilder() << "Type '" << typeName << "' specified for column '" << Name << "' is not supported");
-            return false;;
+
+        if (Type.GetTypeId() == NScheme::NTypeIds::Pg) {
+            if (!TOlapColumnAdd::IsAllowedPgType(NPg::PgTypeIdFromTypeDesc(Type.GetPgTypeDesc()))) {
+                errors.AddError(TStringBuilder() << "Type '" << TypeName << "' specified for column '" << Name << "' is not supported");
+                return false;
+            }
+        } else {
+            if (!IsAllowedType(Type.GetTypeId())){
+                errors.AddError(TStringBuilder() << "Type '" << TypeName << "' specified for column '" << Name << "' is not supported");
+                return false;
+            }
         }
-        Type = NScheme::TTypeInfo(type->GetTypeId());
-        if (!IsAllowedType(type->GetTypeId())){
-            errors.AddError(TStringBuilder() << "Type '" << typeName << "' specified for column '" << Name << "' is not supported");
+
+
+        auto arrowTypeResult = NArrow::GetArrowType(Type);
+        const auto arrowTypeStatus = arrowTypeResult.status();
+        if (!arrowTypeStatus.ok()) {
+            errors.AddError(TStringBuilder() << "Column '" << Name << "': " << arrowTypeStatus.ToString());
             return false;
+        }
+        if (columnSchema.HasDefaultValue()) {
+            auto conclusion = DefaultValue.DeserializeFromProto(columnSchema.GetDefaultValue());
+            if (conclusion.IsFail()) {
+                errors.AddError(conclusion.GetErrorMessage());
+                return false;
+            }
+            if (!DefaultValue.IsCompatibleType(*arrowTypeResult)) {
+                errors.AddError("incompatible types for default write: def" + DefaultValue.DebugString() + ", col:" + (*arrowTypeResult)->ToString());
+                return false;
+            }
         }
         return true;
     }
@@ -63,6 +91,7 @@ namespace NKikimr::NSchemeShard {
     void TOlapColumnAdd::ParseFromLocalDB(const NKikimrSchemeOp::TOlapColumnDescription& columnSchema) {
         Name = columnSchema.GetName();
         TypeName = columnSchema.GetType();
+        StorageId = columnSchema.GetStorageId();
 
         if (columnSchema.HasTypeInfo()) {
             Type = NScheme::TypeInfoModFromProtoColumnType(
@@ -73,29 +102,48 @@ namespace NKikimr::NSchemeShard {
                 columnSchema.GetTypeId(), nullptr)
                 .TypeInfo;
         }
+        auto arrowType = NArrow::TStatusValidator::GetValid(NArrow::GetArrowType(Type));
+        if (columnSchema.HasDefaultValue()) {
+            DefaultValue.DeserializeFromProto(columnSchema.GetDefaultValue()).Validate();
+            AFL_VERIFY(DefaultValue.IsCompatibleType(arrowType));
+        }
         if (columnSchema.HasSerializer()) {
             NArrow::NSerialization::TSerializerContainer serializer;
             AFL_VERIFY(serializer.DeserializeFromProto(columnSchema.GetSerializer()));
             Serializer = serializer;
         } else if (columnSchema.HasCompression()) {
             NArrow::NSerialization::TSerializerContainer serializer;
-            AFL_VERIFY(serializer.DeserializeFromProto(columnSchema.GetCompression()));
+            serializer.DeserializeFromProto(columnSchema.GetCompression()).Validate();
             Serializer = serializer;
+        }
+        if (columnSchema.HasDataAccessorConstructor()) {
+            NArrow::NAccessor::TConstructorContainer container;
+            AFL_VERIFY(container.DeserializeFromProto(columnSchema.GetDataAccessorConstructor()));
+            AccessorConstructor = container;
         }
         if (columnSchema.HasDictionaryEncoding()) {
             auto settings = NArrow::NDictionary::TEncodingSettings::BuildFromProto(columnSchema.GetDictionaryEncoding());
             Y_ABORT_UNLESS(settings.IsSuccess());
             DictionaryEncoding = *settings;
         }
-        NotNullFlag = columnSchema.GetNotNull();
+        if (columnSchema.HasNotNull()) {
+            NotNullFlag = columnSchema.GetNotNull();
+        } else {
+            NotNullFlag = false;
+        }
     }
 
     void TOlapColumnAdd::Serialize(NKikimrSchemeOp::TOlapColumnDescription& columnSchema) const {
         columnSchema.SetName(Name);
         columnSchema.SetType(TypeName);
         columnSchema.SetNotNull(NotNullFlag);
+        columnSchema.SetStorageId(StorageId);
+        *columnSchema.MutableDefaultValue() = DefaultValue.SerializeToProto();
         if (Serializer) {
             Serializer->SerializeToProto(*columnSchema.MutableSerializer());
+        }
+        if (AccessorConstructor) {
+            *columnSchema.MutableDataAccessorConstructor() = AccessorConstructor.SerializeToProto();
         }
         if (DictionaryEncoding) {
             *columnSchema.MutableDictionaryEncoding() = DictionaryEncoding->SerializeToProto();
@@ -110,6 +158,24 @@ namespace NKikimr::NSchemeShard {
 
     bool TOlapColumnAdd::ApplyDiff(const TOlapColumnDiff& diffColumn, IErrorCollector& errors) {
         Y_ABORT_UNLESS(GetName() == diffColumn.GetName());
+        if (diffColumn.GetDefaultValue()) {
+            auto conclusion = DefaultValue.ParseFromString(*diffColumn.GetDefaultValue(), Type);
+            if (conclusion.IsFail()) {
+                errors.AddError(conclusion.GetErrorMessage());
+                return false;
+            }
+        }
+        if (!!diffColumn.GetAccessorConstructor()) {
+            auto conclusion = diffColumn.GetAccessorConstructor()->BuildConstructor();
+            if (conclusion.IsFail()) {
+                errors.AddError(conclusion.GetErrorMessage());
+                return false;
+            }
+            AccessorConstructor = conclusion.DetachResult();
+        }
+        if (diffColumn.GetStorageId()) {
+            StorageId = *diffColumn.GetStorageId();
+        }
         if (diffColumn.GetSerializer()) {
             Serializer = diffColumn.GetSerializer();
         }
@@ -139,9 +205,26 @@ namespace NKikimr::NSchemeShard {
         return true;
     }
 
-    bool TOlapColumnAdd::IsAllowedFirstPkType(ui32 typeId) {
+    bool TOlapColumnAdd::IsAllowedPgType(ui32 pgTypeId) {
+        switch (pgTypeId) {
+            case INT2OID:
+            case INT4OID:
+            case INT8OID:
+            case FLOAT4OID:
+            case FLOAT8OID:
+                return true;
+            default:
+                break;
+        }
+        return false;
+    }
+
+    bool TOlapColumnAdd::IsAllowedPkType(ui32 typeId) {
         switch (typeId) {
+            case NYql::NProto::Int8:
             case NYql::NProto::Uint8: // Byte
+            case NYql::NProto::Int16:
+            case NYql::NProto::Uint16:
             case NYql::NProto::Int32:
             case NYql::NProto::Uint32:
             case NYql::NProto::Int64:
@@ -151,21 +234,15 @@ namespace NKikimr::NSchemeShard {
             case NYql::NProto::Date:
             case NYql::NProto::Datetime:
             case NYql::NProto::Timestamp:
+            case NYql::NProto::Date32:
+            case NYql::NProto::Datetime64:
+            case NYql::NProto::Timestamp64:
+            case NYql::NProto::Interval64:
             case NYql::NProto::Decimal:
                 return true;
-            case NYql::NProto::Interval:
-            case NYql::NProto::DyNumber:
-            case NYql::NProto::Yson:
-            case NYql::NProto::Json:
-            case NYql::NProto::JsonDocument:
-            case NYql::NProto::Float:
-            case NYql::NProto::Double:
-            case NYql::NProto::Bool:
-                return false;
             default:
-                break;
+                return false;
         }
-        return false;
     }
 
     bool TOlapColumnsUpdate::Parse(const NKikimrSchemeOp::TAlterColumnTableSchema& alterRequest, IErrorCollector& errors) {
@@ -232,11 +309,11 @@ namespace NKikimr::NSchemeShard {
             if (!column.ParseFromRequest(columnSchema, errors)) {
                 return false;
             }
-            if (column.GetKeyOrder() && *column.GetKeyOrder() == 0) {
-                if (!TOlapColumnAdd::IsAllowedFirstPkType(column.GetType().GetTypeId())) {
+            if (column.IsKeyColumn()) {
+                if (!TOlapColumnAdd::IsAllowedPkType(column.GetType().GetTypeId())) {
                     errors.AddError(NKikimrScheme::StatusSchemeError, TStringBuilder()
-                        << "Type '" << column.GetType().GetTypeId() << "' specified for column '" << column.GetName()
-                        << "' is not supported in first PK position");
+                        << "Type '" << column.GetTypeName() << "' specified for column '" << column.GetName()
+                        << "' is not supported as primary key");
                     return false;
                 }
             }

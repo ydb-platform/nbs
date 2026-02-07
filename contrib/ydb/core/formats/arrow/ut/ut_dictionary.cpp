@@ -1,10 +1,10 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <contrib/ydb/core/formats/arrow/arrow_helpers.h>
 #include <contrib/ydb/core/formats/arrow/serializer/native.h>
-#include <contrib/ydb/core/formats/arrow/simple_builder/array.h>
-#include <contrib/ydb/core/formats/arrow/simple_builder/batch.h>
-#include <contrib/ydb/core/formats/arrow/simple_builder/filler.h>
 #include <contrib/ydb/core/formats/arrow/dictionary/conversion.h>
+#include <contrib/ydb/library/formats/arrow/simple_builder/array.h>
+#include <contrib/ydb/library/formats/arrow/simple_builder/batch.h>
+#include <contrib/ydb/library/formats/arrow/simple_builder/filler.h>
 
 Y_UNIT_TEST_SUITE(Dictionary) {
 

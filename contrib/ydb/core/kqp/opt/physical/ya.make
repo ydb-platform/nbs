@@ -11,6 +11,7 @@ SRCS(
     kqp_opt_phy_helpers.cpp
     kqp_opt_phy_stage_float_up.cpp
     kqp_opt_phy.cpp
+    predicate_collector.cpp
 )
 
 PEERDIR(
@@ -19,7 +20,6 @@ PEERDIR(
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/opt
     contrib/ydb/library/yql/dq/type_ann
-    contrib/ydb/library/yql/providers/common/pushdown
 )
 
 YQL_LAST_ABI_VERSION()

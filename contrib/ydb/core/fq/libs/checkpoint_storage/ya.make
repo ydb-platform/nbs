@@ -12,6 +12,7 @@ PEERDIR(
     contrib/libs/fmt
     contrib/ydb/library/actors/core
     contrib/ydb/core/fq/libs/actors/logging
+    contrib/ydb/core/fq/libs/config/protos
     contrib/ydb/core/fq/libs/control_plane_storage
     contrib/ydb/core/fq/libs/ydb
     contrib/ydb/core/fq/libs/checkpoint_storage/events
@@ -31,7 +32,6 @@ END()
 
 RECURSE(
     events
-    proto
 )
 
 RECURSE_FOR_TESTS(

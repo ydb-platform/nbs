@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/core/kqp/federated_query/kqp_federated_query_helpers.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+#include <contrib/ydb/library/yql/providers/s3/actors_factory/yql_s3_actors_factory.h>
 #include <contrib/ydb/library/yql/core/issue/yql_issue.h>
 #include <contrib/ydb/public/lib/yson_value/ydb_yson_value.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_query/client.h>
@@ -85,16 +86,20 @@ struct TKikimrSettings: public TTestFeatureFlagsHolder<TKikimrSettings> {
     IOutputStream* LogStream = nullptr;
     TMaybe<NFake::TStorage> Storage = Nothing();
     NKqp::IKqpFederatedQuerySetupFactory::TPtr FederatedQuerySetupFactory = std::make_shared<NKqp::TKqpFederatedQuerySetupFactoryNoop>();
+    NMonitoring::TDynamicCounterPtr CountersRoot = MakeIntrusive<NMonitoring::TDynamicCounters>();
+    std::shared_ptr<NYql::NDq::IS3ActorsFactory> S3ActorsFactory = NYql::NDq::CreateDefaultS3ActorsFactory();
+    NKikimrConfig::TImmediateControlsConfig Controls;
 
     TKikimrSettings()
     {
-        FeatureFlags.SetForceColumnTablesCompositeMarks(true);
         auto* tableServiceConfig = AppConfig.MutableTableServiceConfig();
         auto* infoExchangerRetrySettings = tableServiceConfig->MutableResourceManager()->MutableInfoExchangerSettings();
         auto* exchangerSettings = infoExchangerRetrySettings->MutableExchangerSettings();
         exchangerSettings->SetStartDelayMs(10);
         exchangerSettings->SetMaxDelayMs(10);
         AppConfig.MutableColumnShardConfig()->SetDisabledOnSchemeShard(false);
+        FeatureFlags.SetEnableSparsedColumns(true);
+        FeatureFlags.SetEnableParameterizedDecimal(true);
     }
 
     TKikimrSettings& SetAppConfig(const NKikimrConfig::TAppConfig& value) { AppConfig = value; return *this; }
@@ -110,6 +115,8 @@ struct TKikimrSettings: public TTestFeatureFlagsHolder<TKikimrSettings> {
     TKikimrSettings& SetStorage(const NFake::TStorage& storage) { Storage = storage; return *this; };
     TKikimrSettings& SetFederatedQuerySetupFactory(NKqp::IKqpFederatedQuerySetupFactory::TPtr value) { FederatedQuerySetupFactory = value; return *this; };
     TKikimrSettings& SetUseRealThreads(bool value) { UseRealThreads = value; return *this; };
+    TKikimrSettings& SetS3ActorsFactory(std::shared_ptr<NYql::NDq::IS3ActorsFactory> value) { S3ActorsFactory = std::move(value); return *this; };
+    TKikimrSettings& SetControls(const NKikimrConfig::TImmediateControlsConfig& value) { Controls = value; return *this; }
 };
 
 class TKikimrRunner {
@@ -138,6 +145,8 @@ public:
         if (ThreadPoolStarted_) {
             ThreadPool.Stop();
         }
+
+        UNIT_ASSERT_C(WaitHttpGatewayFinalization(CountersRoot), "Failed to finalize http gateway before destruction");
 
         Server.Reset();
         Client.Reset();
@@ -194,6 +203,7 @@ private:
     TString Endpoint;
     NYdb::TDriverConfig DriverConfig;
     THolder<NYdb::TDriver> Driver;
+    NMonitoring::TDynamicCounterPtr CountersRoot;
 };
 
 inline TKikimrRunner DefaultKikimrRunner(TVector<NKikimrKqp::TKqpSetting> kqpSettings = {},
@@ -210,6 +220,7 @@ inline TKikimrRunner DefaultKikimrRunner(TVector<NKikimrKqp::TKqpSetting> kqpSet
 struct TCollectedStreamResult {
     TString ResultSetYson;
     TMaybe<TString> PlanJson;
+    TMaybe<TString> Ast;
     TMaybe<Ydb::TableStats::QueryStats> QueryStats;
     ui64 RowsCount = 0;
     ui64 ConsumedRuFromHeader = 0;
@@ -325,8 +336,27 @@ NKikimrScheme::TEvDescribeSchemeResult DescribeTable(Tests::TServer* server, TAc
 TVector<ui64> GetTableShards(Tests::TServer* server, TActorId sender, const TString &path);
 
 TVector<ui64> GetTableShards(Tests::TServer::TPtr server, TActorId sender, const TString &path);
+TVector<ui64> GetColumnTableShards(Tests::TServer* server, TActorId sender, const TString &path);
 
 void WaitForZeroSessions(const NKqp::TKqpCounters& counters);
+
+void WaitForCompaction(Tests::TServer* server, const TString& path, bool compactBorrowed = false);
+
+bool JoinOrderAndAlgosMatch(const TString& optimized, const TString& reference);
+
+struct TGetPlanParams {
+    bool IncludeFilters = false;
+    bool IncludeOptimizerEstimation = false;
+    bool IncludeTables = true;
+};
+
+/* Gets join order with details as: join algo, join type and scan type. */
+NJson::TJsonValue GetDetailedJoinOrder(const TString& deserializedPlan, const TGetPlanParams& params = {});
+
+/* Gets tables join order without details : only tables. */
+NJson::TJsonValue GetJoinOrder(const TString& deserializedPlan);
+
+NJson::TJsonValue GetJoinOrderFromDetailedJoinOrder(const TString& deserializedDetailedJoinOrder);
 
 } // namespace NKqp
 } // namespace NKikimr

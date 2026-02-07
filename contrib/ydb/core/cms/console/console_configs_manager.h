@@ -17,6 +17,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 namespace NKikimr::NConsole {
 
 using NTabletFlatExecutor::ITransaction;
@@ -152,6 +154,8 @@ private:
     void Handle(TEvInterconnect::TEvNodesInfo::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvConsole::TEvReplaceYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
     void Handle(TEvConsole::TEvSetYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
+    void HandleUnauthorized(TEvConsole::TEvReplaceYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
+    void HandleUnauthorized(TEvConsole::TEvSetYamlConfigRequest::TPtr & ev, const TActorContext & ctx);
     void Handle(TEvConsole::TEvDropConfigRequest::TPtr & ev, const TActorContext & ctx);
     void Handle(TEvPrivate::TEvStateLoaded::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvPrivate::TEvCleanupSubscriptions::TPtr &ev, const TActorContext &ctx);
@@ -160,9 +164,16 @@ private:
 
     template <class T>
     void HandleWithRights(T &ev, const TActorContext &ctx) {
+        constexpr bool HasHandleUnauthorized = requires(T &ev) {
+            HandleUnauthorized(ev, ctx);
+        };
+
         if (CheckRights(ev->Get()->Record.GetUserToken())) {
             Handle(ev, ctx);
         } else {
+            if constexpr (HasHandleUnauthorized) {
+                HandleUnauthorized(ev, ctx);
+            }
             auto req = MakeHolder<TEvConsole::TEvUnauthorized>();
             ctx.Send(ev->Sender, req.Release());
         }
@@ -220,8 +231,9 @@ private:
     }
 
 public:
-    TConfigsManager(TConsole &self)
+    TConfigsManager(TConsole &self, ::NMonitoring::TDynamicCounterPtr counters)
         : Self(self)
+        , Counters(counters)
     {
     }
 
@@ -240,6 +252,7 @@ public:
 
 private:
     TConsole &Self;
+    ::NMonitoring::TDynamicCounterPtr Counters;
     TConfigsConfig Config;
     // All config items by id.
     TConfigIndex ConfigIndex;

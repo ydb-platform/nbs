@@ -1,6 +1,7 @@
 #include "resource_broker_impl.h"
 
 #include <contrib/ydb/core/base/localdb.h>
+#include <contrib/ydb/core/tx/columnshard/common/limits.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -1269,10 +1270,10 @@ NKikimrResourceBroker::TResourceBrokerConfig MakeDefaultConfig()
     const ui64 KqpRmQueueCPU = 4;
     const ui64 KqpRmQueueMemory = 10ULL << 30;
 
-    const ui64 CSTTLCompactionMemoryLimit = 1ULL << 30;
-    const ui64 CSInsertCompactionMemoryLimit = 1ULL << 30;
-    const ui64 CSGeneralCompactionMemoryLimit = 3ULL << 30;
-    const ui64 CSScanMemoryLimit = 3ULL << 30;
+    const ui64 CSTTLCompactionMemoryLimit = NOlap::TGlobalLimits::TTLCompactionMemoryLimit;
+    const ui64 CSInsertCompactionMemoryLimit = NOlap::TGlobalLimits::InsertCompactionMemoryLimit;
+    const ui64 CSGeneralCompactionMemoryLimit = NOlap::TGlobalLimits::GeneralCompactionMemoryLimit;
+    const ui64 CSScanMemoryLimit = NOlap::TGlobalLimits::ScanMemoryLimit;
 
     const ui64 TotalCPU = 20;
     const ui64 TotalMemory = 16ULL << 30;
@@ -1362,7 +1363,7 @@ NKikimrResourceBroker::TResourceBrokerConfig MakeDefaultConfig()
     queue = config.AddQueues();
     queue->SetName("queue_restore");
     queue->SetWeight(100);
-    queue->MutableLimit()->SetCpu(2);
+    queue->MutableLimit()->SetCpu(10);
 
     queue = config.AddQueues();
     queue->SetName(NLocalDb::KqpResourceManagerQueue);
@@ -1389,6 +1390,11 @@ NKikimrResourceBroker::TResourceBrokerConfig MakeDefaultConfig()
     queue->SetName("queue_cdc_initial_scan");
     queue->SetWeight(100);
     queue->MutableLimit()->SetCpu(4);
+
+    queue = config.AddQueues();
+    queue->SetName("queue_statistics_scan");
+    queue->SetWeight(100);
+    queue->MutableLimit()->SetCpu(1);
 
     auto task = config.AddTasks();
     task->SetName(NLocalDb::UnknownTaskName);
@@ -1513,6 +1519,11 @@ NKikimrResourceBroker::TResourceBrokerConfig MakeDefaultConfig()
     task = config.AddTasks();
     task->SetName("cdc_initial_scan");
     task->SetQueueName("queue_cdc_initial_scan");
+    task->SetDefaultDuration(TDuration::Minutes(10).GetValue());
+
+    task = config.AddTasks();
+    task->SetName("statistics_scan");
+    task->SetQueueName("queue_statistics_scan");
     task->SetDefaultDuration(TDuration::Minutes(10).GetValue());
 
     config.MutableResourceLimit()->SetCpu(TotalCPU);

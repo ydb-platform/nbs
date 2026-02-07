@@ -21,6 +21,7 @@
 #include <library/cpp/svnversion/svnversion.h>
 
 #include <contrib/ydb/library/actors/memory_log/memlog.h>
+#include <contrib/ydb/library/services/services.pb.h>
 
 // TODO: limit number of messages per second
 // TODO: make TLogComponentLevelRequest/Response network messages

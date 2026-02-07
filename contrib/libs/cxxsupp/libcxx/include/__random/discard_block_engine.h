@@ -11,10 +11,12 @@
 
 #include <__config>
 #include <__random/is_seed_sequence.h>
+#include <__type_traits/enable_if.h>
+#include <__type_traits/is_convertible.h>
 #include <__utility/move.h>
-#include <climits>
+#include <cstddef>
 #include <iosfwd>
-#include <type_traits>
+#include <limits>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
@@ -33,7 +35,9 @@ class _LIBCPP_TEMPLATE_VIS discard_block_engine
 
     static_assert(  0 <  __r, "discard_block_engine invalid parameters");
     static_assert(__r <= __p, "discard_block_engine invalid parameters");
-    static_assert(__r <= INT_MAX, "discard_block_engine invalid parameters");
+#ifndef _LIBCPP_CXX03_LANG // numeric_limits::max() is not constexpr in C++03
+    static_assert(__r <= numeric_limits<int>::max(), "discard_block_engine invalid parameters");
+#endif
 public:
     // types
     typedef typename _Engine::result_type result_type;
@@ -68,27 +72,22 @@ public:
 #endif // _LIBCPP_CXX03_LANG
     _LIBCPP_INLINE_VISIBILITY
     explicit discard_block_engine(result_type __sd) : __e_(__sd), __n_(0) {}
-    template<class _Sseq>
+    template<class _Sseq, __enable_if_t<__is_seed_sequence<_Sseq, discard_block_engine>::value &&
+                                        !is_convertible<_Sseq, _Engine>::value, int> = 0>
         _LIBCPP_INLINE_VISIBILITY
-        explicit discard_block_engine(_Sseq& __q,
-        typename enable_if<__is_seed_sequence<_Sseq, discard_block_engine>::value &&
-                           !is_convertible<_Sseq, _Engine>::value>::type* = 0)
+        explicit discard_block_engine(_Sseq& __q)
         : __e_(__q), __n_(0) {}
     _LIBCPP_INLINE_VISIBILITY
     void seed() {__e_.seed(); __n_ = 0;}
     _LIBCPP_INLINE_VISIBILITY
     void seed(result_type __sd) {__e_.seed(__sd); __n_ = 0;}
-    template<class _Sseq>
+    template<class _Sseq, __enable_if_t<__is_seed_sequence<_Sseq, discard_block_engine>::value, int> = 0>
         _LIBCPP_INLINE_VISIBILITY
-        typename enable_if
-        <
-            __is_seed_sequence<_Sseq, discard_block_engine>::value,
-            void
-        >::type
+        void
         seed(_Sseq& __q) {__e_.seed(__q); __n_ = 0;}
 
     // generating functions
-    result_type operator()();
+    _LIBCPP_HIDE_FROM_ABI result_type operator()();
     _LIBCPP_INLINE_VISIBILITY
     void discard(unsigned long long __z) {for (; __z; --__z) operator()();}
 
@@ -164,7 +163,7 @@ operator!=(const discard_block_engine<_Eng, _Pp, _Rp>& __x,
 
 template <class _CharT, class _Traits,
           class _Eng, size_t _Pp, size_t _Rp>
-basic_ostream<_CharT, _Traits>&
+_LIBCPP_HIDE_FROM_ABI basic_ostream<_CharT, _Traits>&
 operator<<(basic_ostream<_CharT, _Traits>& __os,
            const discard_block_engine<_Eng, _Pp, _Rp>& __x)
 {
@@ -178,7 +177,7 @@ operator<<(basic_ostream<_CharT, _Traits>& __os,
 
 template <class _CharT, class _Traits,
           class _Eng, size_t _Pp, size_t _Rp>
-basic_istream<_CharT, _Traits>&
+_LIBCPP_HIDE_FROM_ABI basic_istream<_CharT, _Traits>&
 operator>>(basic_istream<_CharT, _Traits>& __is,
            discard_block_engine<_Eng, _Pp, _Rp>& __x)
 {

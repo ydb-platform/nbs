@@ -2,6 +2,7 @@
 
 #include "defs.h"
 #include "blobstorage_hullcompactworker.h"
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events_quoter.h>
 #include <contrib/ydb/core/blobstorage/vdisk/hullop/blobstorage_hullload.h>
 #include <contrib/ydb/core/blobstorage/vdisk/huge/blobstorage_hullhuge.h>
 #include <library/cpp/random_provider/random_provider.h>
@@ -35,7 +36,7 @@ namespace NKikimr {
 
         THullChange() = default;
     };
-
+    
     ////////////////////////////////////////////////////////////////////////////
     // THullCompaction
     ////////////////////////////////////////////////////////////////////////////
@@ -90,6 +91,9 @@ namespace NKikimr {
         bool IsAborting = false;
         ui32 PendingResponses = 0;
 
+        //  Compaction throttler
+        TEventsQuoter::TPtr Throttler;
+
         ///////////////////////// BOOTSTRAP ////////////////////////////////////////////////
         void Bootstrap(const TActorContext &ctx) {
             Worker.Statistics.StartTime = TAppData::TimeProvider->Now();
@@ -119,10 +123,7 @@ namespace NKikimr {
             BarriersSnap.Destroy();
 
             // build handoff map (use LevelSnap by ref)
-            auto hProxyAid = Hmp->BuildMap(ctx, LevelSnap, It, ctx.SelfID);
-            if (hProxyAid) {
-                ActiveActors.Insert(hProxyAid, __FILE__, __LINE__, ctx, NKikimrServices::BLOBSTORAGE);
-            }
+            Hmp->BuildMap(LevelSnap, It);
 
             // build gc map (use LevelSnap by ref)
             Gcmp->BuildMap(ctx, brs, LevelSnap, It);
@@ -143,17 +144,31 @@ namespace NKikimr {
             // there are events, we send them to yard; worker internally controls all in flight limits and does not
             // generate more events than allowed; this function returns boolean status indicating whether compaction job
             // is finished or not
-            const bool done = Worker.MainCycle(MsgsForYard, ctx);
+            const bool done = Worker.MainCycle(MsgsForYard);
             // check if there are messages we have for yard
             for (std::unique_ptr<IEventBase>& msg : MsgsForYard) {
-                ctx.Send(PDiskCtx->PDiskId, msg.release());
+                ui64 bytes = GetMsgSize(msg);
+                TEventsQuoter::QuoteMessage(Throttler, std::make_unique<IEventHandle>(
+                            PDiskCtx->PDiskId, ctx.SelfID, msg.release()), bytes, HullCtx->VCfg->HullCompThrottlerBytesRate);
                 ++PendingResponses;
             }
+
             MsgsForYard.clear();
             // when done, continue with other state
             if (done) {
-                SwitchToWaitForHandoff(ctx);
+                Finalize(ctx);
             }
+        }
+
+        ui32 GetMsgSize(std::unique_ptr<IEventBase>& msg) {
+            if (msg->Type() == TEvBlobStorage::EvChunkWrite) {
+                auto *write = static_cast<NPDisk::TEvChunkWrite*>(msg.get());
+                return write->PartsPtr ? write->PartsPtr->ByteSize() : 0;
+            } else if (msg->Type() == TEvBlobStorage::EvChunkRead) {
+                auto *read = static_cast<NPDisk::TEvChunkRead*>(msg.get());
+                return read->Size;
+            }
+            return 0;
         }
 
         bool FinalizeIfAborting(const TActorContext& ctx) {
@@ -170,6 +185,9 @@ namespace NKikimr {
         // the same logic for every yard response: apply response and restart main cycle
         void HandleYardResponse(NPDisk::TEvChunkReadResult::TPtr& ev, const TActorContext &ctx) {
             --PendingResponses;
+            if (HullCtx->VCtx->CostTracker) {
+                HullCtx->VCtx->CostTracker->CountPDiskResponse();
+            }
             if (ev->Get()->Status != NKikimrProto::CORRUPTED) {
                 CHECK_PDISK_RESPONSE(HullCtx->VCtx, ev, ctx);
             }
@@ -202,6 +220,9 @@ namespace NKikimr {
 
         void HandleYardResponse(NPDisk::TEvChunkWriteResult::TPtr& ev, const TActorContext &ctx) {
             --PendingResponses;
+            if (HullCtx->VCtx->CostTracker) {
+                HullCtx->VCtx->CostTracker->CountPDiskResponse();
+            }
             CHECK_PDISK_RESPONSE(HullCtx->VCtx, ev, ctx);
             if (FinalizeIfAborting(ctx)) {
                 return;
@@ -233,26 +254,6 @@ namespace NKikimr {
             HFunc(TEvents::TEvPoisonPill, HandlePoison)
         )
         ///////////////////////// WORK: END /////////////////////////////////////////////////
-
-
-        ///////////////////////// WAITFORHANDOFF: BEGIN /////////////////////////////////////
-        STRICT_STFUNC(WaitForHandoffFunc,
-            HFunc(TEvHandoffSyncLogFinished, WaitForHandoffHandle)
-            HFunc(TEvents::TEvPoisonPill, HandlePoison)
-        )
-
-        void SwitchToWaitForHandoff(const TActorContext &ctx) {
-            Hmp->Finish(ctx);
-            TThis::Become(&TThis::WaitForHandoffFunc);
-        }
-
-        void WaitForHandoffHandle(TEvHandoffSyncLogFinished::TPtr &ev, const TActorContext &ctx) {
-            if (ev->Get()->FromProxy) {
-                ActiveActors.Erase(ev->Sender);
-            }
-            Finalize(ctx); // SWITCH TO FINALIZE PHASE (write/load/commit)
-        }
-        ///////////////////////// WAITFORHANDOFF: END ///////////////////////////////////////
 
 
         ///////////////////////// FINALIZE: BEGIN ///////////////////////////////////////////
@@ -331,7 +332,8 @@ namespace NKikimr {
                         ui64 lastLsn,
                         TDuration restoreDeadline,
                         std::optional<TKey> partitionKey,
-                        bool allowGarbageCollection)
+                        bool allowGarbageCollection,
+                        bool useThrottle)
             : TActorBootstrapped<TThis>()
             , HullCtx(std::move(hullCtx))
             , PDiskCtx(rtCtx->PDiskCtx)
@@ -340,15 +342,18 @@ namespace NKikimr {
             , FreshSegmentSnap(std::move(freshSegmentSnap))
             , BarriersSnap(std::move(barriersSnap))
             , LevelSnap(std::move(levelSnap))
-            , Hmp(CreateHandoffMap<TKey, TMemRec>(HullCtx, rtCtx->HandoffDelegate, rtCtx->RunHandoff,
-                    rtCtx->SkeletonId))
+            , Hmp(CreateHandoffMap<TKey, TMemRec>(HullCtx, rtCtx->RunHandoff, rtCtx->SkeletonId))
             , Gcmp(CreateGcMap<TKey, TMemRec>(HullCtx, mergeElementsApproximation, allowGarbageCollection))
             , It(it)
             , Worker(HullCtx, PDiskCtx, rtCtx->LevelIndex, it, (bool)FreshSegment, firstLsn, lastLsn, restoreDeadline,
                     partitionKey)
             , CompactionID(TAppData::RandomProvider->GenRand64())
             , SkeletonId(rtCtx->SkeletonId)
-        {}
+        {
+            if (!(bool)FreshSegment && useThrottle) {
+                Throttler = std::make_shared<TEventsQuoter>();
+            }
+        }
     };
 
 } // NKikimr

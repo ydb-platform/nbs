@@ -73,7 +73,7 @@ public:
                      const TString& session, const TPartitionId& partition, ui32 generation, ui32 step,
                      const ui64 tabletID, const TTopicCounters& counters, const bool commitsDisabled,
                      const TString& clientDC, bool rangesMode, const NPersQueue::TTopicConverterPtr& topic, bool directRead,
-                     bool useMigrationProtocol);
+                     bool useMigrationProtocol, ui32 maxTimeLagMs, ui64 readTimestampMs);
     ~TPartitionActor();
 
     void Bootstrap(const NActors::TActorContext& ctx);
@@ -125,6 +125,7 @@ private:
 
     void HandlePoison(NActors::TEvents::TEvPoisonPill::TPtr& ev, const NActors::TActorContext& ctx);
     void HandleWakeup(const NActors::TActorContext& ctx);
+    void DoWakeup(const NActors::TActorContext& ctx);
 
     void InitLockPartition(const NActors::TActorContext& ctx);
     void InitStartReading(const NActors::TActorContext& ctx);
@@ -135,6 +136,7 @@ private:
     void MakeCommit(const TActorContext& ctx);
     void SendPublishDirectRead(const ui64 directReadId, const TActorContext& ctx);
     void SendForgetDirectRead(const ui64 directReadId, const TActorContext& ctx);
+    void SendPartitionReady(const TActorContext& ctx);
 
 
 private:
@@ -150,6 +152,9 @@ private:
     const ui32 Step;
 
     const ui64 TabletID;
+
+    const ui32 MaxTimeLagMs;
+    const ui64 ReadTimestampMs;
 
     ui64 ReadOffset;
     ui64 ClientReadOffset;
@@ -209,6 +214,9 @@ private:
     std::map<ui64, NKikimrClient::TPersQueuePartitionResponse::TCmdPrepareDirectReadResult> DirectReads;
 
     bool UseMigrationProtocol;
+
+    bool FirstRead;
+    bool ReadingFinishedSent;
 };
 
 

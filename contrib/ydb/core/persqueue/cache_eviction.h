@@ -10,13 +10,13 @@ namespace NKikimr {
 namespace NPQ {
 
     struct TBlobId {
-        ui32 Partition;
+        TPartitionId Partition;
         ui64 Offset;
         ui16 PartNo;
         ui32 Count; // have to be unique for {Partition, Offset, partNo}
         ui16 InternalPartsCount; // have to be unique for {Partition, Offset, partNo}
 
-        TBlobId(ui32 partition, ui64 offset, ui16 partNo, ui32 count, ui16 internalPartsCount)
+        TBlobId(const TPartitionId& partition, ui64 offset, ui16 partNo, ui32 count, ui16 internalPartsCount)
             : Partition(partition)
             , Offset(offset)
             , PartNo(partNo)
@@ -26,11 +26,11 @@ namespace NPQ {
         }
 
         bool operator == (const TBlobId& r) const {
-            return Partition == r.Partition && Offset == r.Offset && PartNo == r.PartNo;
+            return Partition.IsEqual(r.Partition) && Offset == r.Offset && PartNo == r.PartNo;
         }
 
         ui64 Hash() const {
-            return Hash128to32((ui64(Partition) << 16) + PartNo, Offset);
+            return Hash128to32((ui64(Partition.InternalPartitionId) << 17) + (Partition.IsSupportivePartition() ? 0 : (1 << 16)) + PartNo, Offset);
         }
     };
 }}
@@ -54,11 +54,11 @@ namespace NPQ {
         ERequestType Type;
         TActorId Sender;
         ui64 CookiePQ;
-        ui32 Partition;
+        TPartitionId Partition;
         ui32 MetadataWritesCount;
         TVector<TRequestedBlob> Blobs;
 
-        TKvRequest(ERequestType type, TActorId sender, ui64 cookie, ui32 partition)
+        TKvRequest(ERequestType type, TActorId sender, ui64 cookie, const TPartitionId& partition)
         : Type(type)
         , Sender(sender)
         , CookiePQ(cookie)
@@ -110,7 +110,7 @@ namespace NPQ {
         }
 
         void Verify(const TRequestedBlob& blob) const {
-            TKey key(TKeyPrefix::TypeData, 0, blob.Offset, blob.PartNo, blob.Count, blob.InternalPartsCount, false);
+            TKey key(TKeyPrefix::TypeData, TPartitionId(0), blob.Offset, blob.PartNo, blob.Count, blob.InternalPartsCount, false);
             Y_ABORT_UNLESS(blob.Value.size() == blob.Size);
             TClientBlob::CheckBlob(key, blob.Value);
         }
@@ -123,7 +123,7 @@ namespace NPQ {
         {}
 
         virtual void SaveHeadBlob(const TBlobId& blob) = 0;
-        virtual void SaveUserOffset(TString client, ui32 partition, ui64 offset) = 0;
+        virtual void SaveUserOffset(TString client, const TPartitionId& partition, ui64 offset) = 0;
         virtual TDeque<TBlobId> BlobsToTouch() const = 0;
     };
 
@@ -143,7 +143,7 @@ namespace NPQ {
                 Head.pop_front();
         }
 
-        virtual void SaveUserOffset(TString client, ui32 partition, ui64 offset) override
+        virtual void SaveUserOffset(TString client, const TPartitionId& partition, ui64 offset) override
         {
             Y_UNUSED(client);
             Y_UNUSED(partition);
@@ -240,7 +240,7 @@ namespace NPQ {
         ui64 GetSize() const { return Cache.size(); }
         const TCounters& GetCounters() const { return Counters; }
 
-        void SetUserOffset(const TActorContext& ctx, TString client, ui32 partition, ui64 offset)
+        void SetUserOffset(const TActorContext& ctx, TString client, const TPartitionId& partition, ui64 offset)
         {
             if (L1Strategy) {
                 LOG_DEBUG_S(ctx, NKikimrServices::PERSQUEUE, "Setting reader offset. User: "
@@ -356,7 +356,7 @@ namespace NPQ {
             auto sp = it->second.GetBlob();
             Y_ABORT_UNLESS(sp.get() == value.get(),
                 "Evicting strange blob. Partition %d offset %ld partNo %d size %ld. L1 ptr %p vs L2 ptr %p",
-                blob.Partition, blob.Offset, blob.PartNo, value->DataSize(), sp.get(), value.get());
+                blob.Partition.InternalPartitionId, blob.Offset, blob.PartNo, value->DataSize(), sp.get(), value.get());
 
             RemoveBlob(it);
 

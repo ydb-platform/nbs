@@ -1,6 +1,7 @@
 #include "kicli.h"
 
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
+#include <contrib/ydb/core/protos/console_config.pb.h>
 #include <util/string/builder.h>
 
 namespace NKikimr {
@@ -92,6 +93,9 @@ public:
                                 // long polling in progress
                                 TAutoPtr<NMsgBusProxy::TBusSchemeOperationStatus> statusRequest = new NMsgBusProxy::TBusSchemeOperationStatus();
                                 statusRequest->Record.MutableFlatTxId()->CopyFrom(response.GetFlatTxId());
+                                if (SecurityToken) {
+                                    statusRequest->Record.SetSecurityToken(SecurityToken);
+                                }
                                 statusRequest->Record.MutablePollOptions()->SetTimeout(POLLING_TIMEOUT);
                                 auto status = ExecuteRequest(promise, statusRequest.Release());
                                 if (status != NBus::MESSAGE_OK) {
@@ -157,6 +161,13 @@ public:
     virtual NBus::EMessageStatus ExecuteRequest(NThreading::TPromise<TResult> promise, TAutoPtr<NBus::TBusMessage> request) = 0;
     virtual TString GetCurrentLocation() const = 0;
     virtual TCleanupCallback SwitchToLocation(const TString& location) = 0;
+
+    virtual void SetSecurityToken(const TString& securityToken) {
+        SecurityToken = securityToken;
+    }
+
+private:
+    TString SecurityToken;
 };
 
 class TKikimr::TMsgBusImpl : public TKikimr::TImpl {
@@ -241,8 +252,6 @@ public:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusPersQueue>(&NGRpcProxy::TGRpcClient::PersQueueRequest, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_SCHEME_INITROOT:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusSchemeInitRoot>(&NGRpcProxy::TGRpcClient::SchemeInitRoot, promise, request);
-        case NMsgBusProxy::MTYPE_CLIENT_BSADM:
-            return ExecuteGRpcRequest<NMsgBusProxy::TBusBSAdm>(&NGRpcProxy::TGRpcClient::BSAdm, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_BLOB_STORAGE_CONFIG_REQUEST:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusBlobStorageConfigRequest>(&NGRpcProxy::TGRpcClient::BlobStorageConfig, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_HIVE_CREATE_TABLET:
@@ -259,16 +268,6 @@ public:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusTabletKillRequest>(&NGRpcProxy::TGRpcClient::TabletKillRequest, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_TABLET_STATE_REQUEST:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusTabletStateRequest>(&NGRpcProxy::TGRpcClient::TabletStateRequest, promise, request);
-        case NMsgBusProxy::MTYPE_CLIENT_LOAD_REQUEST:
-            return ExecuteGRpcRequest<NMsgBusProxy::TBusBsTestLoadRequest>(&NGRpcProxy::TGRpcClient::BlobStorageLoadRequest, promise, request);
-        case NMsgBusProxy::MTYPE_CLIENT_GET_REQUEST:
-            return ExecuteGRpcRequest<NMsgBusProxy::TBusBsGetRequest>(&NGRpcProxy::TGRpcClient::BlobStorageGetRequest, promise, request);
-        case NMsgBusProxy::MTYPE_CLIENT_DB_SCHEMA:
-            return ExecuteGRpcRequest<NMsgBusProxy::TBusDbSchema, NMsgBusProxy::TBusDbResponse>(&NGRpcProxy::TGRpcClient::DbSchema, promise, request);
-        case NMsgBusProxy::MTYPE_CLIENT_DB_OPERATION:
-            return ExecuteGRpcRequest<NMsgBusProxy::TBusDbOperation, NMsgBusProxy::TBusDbResponse>(&NGRpcProxy::TGRpcClient::DbOperation, promise, request);
-        case NMsgBusProxy::MTYPE_CLIENT_DB_BATCH:
-            return ExecuteGRpcRequest<NMsgBusProxy::TBusDbBatch, NMsgBusProxy::TBusDbResponse>(&NGRpcProxy::TGRpcClient::DbBatch, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_NODE_REGISTRATION_REQUEST:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusNodeRegistrationRequest, NMsgBusProxy::TBusNodeRegistrationResponse>(&NGRpcProxy::TGRpcClient::RegisterNode, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_CMS_REQUEST:
@@ -281,8 +280,6 @@ public:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusInterconnectDebug>(&NGRpcProxy::TGRpcClient::InterconnectDebug, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_CONSOLE_REQUEST:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusConsoleRequest, NMsgBusProxy::TBusConsoleResponse>(&NGRpcProxy::TGRpcClient::ConsoleRequest, promise, request);
-        case NMsgBusProxy::MTYPE_CLIENT_WHOAMI:
-            return ExecuteGRpcRequest<NMsgBusProxy::TBusWhoAmI, NMsgBusProxy::TBusResponse>(&NGRpcProxy::TGRpcClient::WhoAmI, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_RESOLVE_NODE:
             return ExecuteGRpcRequest<NMsgBusProxy::TBusResolveNode, NMsgBusProxy::TBusResponse>(&NGRpcProxy::TGRpcClient::ResolveNode, promise, request);
         case NMsgBusProxy::MTYPE_CLIENT_DRAIN_NODE:
@@ -553,6 +550,7 @@ NThreading::TFuture<TResult> TKikimr::CreateTable(TSchemaObject& object, const T
 
 void TKikimr::SetSecurityToken(const TString& securityToken) {
     SecurityToken = securityToken;
+    Impl->SetSecurityToken(securityToken);
 }
 
 TPreparedQuery TKikimr::Query(const TUnbindedQuery& query) {
@@ -589,6 +587,9 @@ NThreading::TFuture<TResult> TKikimr::RegisterNode(const TString& domainPath, co
     request->Record.SetFixedNodeId(fixedNodeId);
     if (path) {
         request->Record.SetPath(*path);
+    }
+    if (SecurityToken) {
+        request->Record.SetSecurityToken(SecurityToken);
     }
     return ExecuteRequest(request.Release());
 }

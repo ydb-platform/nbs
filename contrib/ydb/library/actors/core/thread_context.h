@@ -4,7 +4,7 @@
 
 #include <atomic>
 #include <contrib/ydb/library/actors/util/datetime.h>
-#include <contrib/ydb/library/actors/util/mpmc_ring_queue.h>
+#include <contrib/ydb/library/actors/queues/mpmc_ring_queue.h>
 
 #include <util/system/tls.h>
 

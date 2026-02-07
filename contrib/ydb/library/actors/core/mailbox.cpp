@@ -180,7 +180,6 @@ namespace NActors {
             switch (x->MailboxType) {
                 case TMailboxType::Simple: {
                     TSimpleMailbox* const mailbox = TSimpleMailbox::Get(lineHint, x);
-                    mailbox->Push(recipient.LocalId());
 #if (!defined(_tsan_enabled_))
                     Y_DEBUG_ABORT_UNLESS(mailbox->Type == (ui32)x->MailboxType);
 #endif
@@ -205,7 +204,6 @@ namespace NActors {
                         return false;
 
                     TRevolvingMailbox* const mailbox = TRevolvingMailbox::Get(lineHint, x);
-                    mailbox->Push(recipient.LocalId());
 #if (!defined(_tsan_enabled_))
                     Y_DEBUG_ABORT_UNLESS(mailbox->Type == (ui32)x->MailboxType);
 #endif
@@ -218,7 +216,6 @@ namespace NActors {
                     return true;
                 case TMailboxType::HTSwap: {
                     THTSwapMailbox* const mailbox = THTSwapMailbox::Get(lineHint, x);
-                    mailbox->Push(recipient.LocalId());
 #if (!defined(_tsan_enabled_))
                     Y_DEBUG_ABORT_UNLESS(mailbox->Type == (ui32)x->MailboxType);
 #endif
@@ -234,7 +231,6 @@ namespace NActors {
                         return false;
 
                     TReadAsFilledMailbox* const mailbox = TReadAsFilledMailbox::Get(lineHint, x);
-                    mailbox->Push(recipient.LocalId());
 #if (!defined(_tsan_enabled_))
                     Y_DEBUG_ABORT_UNLESS(mailbox->Type == (ui32)x->MailboxType);
 #endif
@@ -250,7 +246,6 @@ namespace NActors {
                         return false;
 
                     TTinyReadAsFilledMailbox* const mailbox = TTinyReadAsFilledMailbox::Get(lineHint, x);
-                    mailbox->Push(recipient.LocalId());
 #if (!defined(_tsan_enabled_))
                     Y_DEBUG_ABORT_UNLESS(mailbox->Type == (ui32)x->MailboxType);
 #endif
@@ -373,9 +368,9 @@ namespace NActors {
         CleanupActors();
     }
 
-    bool TMailboxHeader::CleanupActors() {
+    bool TMailboxHeader::CleanupActors(TMailboxActorPack::EType &actorPack, TActorsInfo &ActorsInfo) {
         bool done = true;
-        switch (ActorPack) {
+        switch (actorPack) {
             case TMailboxActorPack::Simple: {
                 if (ActorsInfo.Simple.ActorId != 0) {
                     delete ActorsInfo.Simple.Actor;
@@ -399,11 +394,29 @@ namespace NActors {
                 done = false;
                 break;
             }
+            case TMailboxActorPack::Complex:
+                Y_ABORT("Unexpected ActorPack type");
         }
-        ActorPack = TMailboxActorPack::Simple;
+        actorPack = TMailboxActorPack::Simple;
         ActorsInfo.Simple.ActorId = 0;
         ActorsInfo.Simple.Actor = nullptr;
         return done;
+    }
+
+    bool TMailboxHeader::CleanupActors() {
+        if (ActorPack != TMailboxActorPack::Complex) {
+            TMailboxActorPack::EType pack = ActorPack;
+            bool done = CleanupActors(pack, ActorsInfo);
+            ActorPack = pack;
+            return done;
+        } else {
+            bool done = CleanupActors(ActorsInfo.Complex->ActorPack, ActorsInfo.Complex->ActorsInfo);
+            delete ActorsInfo.Complex;
+            ActorPack = TMailboxActorPack::Simple;
+            ActorsInfo.Simple.ActorId = 0;
+            ActorsInfo.Simple.Actor = nullptr;
+            return done;
+        }
     }
 
     std::pair<ui32, ui32> TMailboxHeader::CountMailboxEvents(ui64 localActorId, ui32 maxTraverse) {
@@ -414,24 +427,6 @@ namespace NActors {
                 return static_cast<TMailboxTable::TRevolvingMailbox*>(this)->CountRevolvingMailboxEvents(localActorId, maxTraverse);
             default:
                 return {0, 0};
-        }
-    }
-
-    TMailboxUsageImpl<true>::~TMailboxUsageImpl() {
-        while (auto *e = PendingEventQueue.Pop()) {
-            delete e;
-        }
-    }
-
-    void TMailboxUsageImpl<true>::Push(ui64 localId) {
-        PendingEventQueue.Push(new TPendingEvent{localId, GetCycleCountFast()});
-    }
-
-    void TMailboxUsageImpl<true>::ProcessEvents(TMailboxHeader *mailbox) {
-        while (std::unique_ptr<TPendingEvent> e{PendingEventQueue.Pop()}) {
-            if (IActor *actor = mailbox->FindActor(e->LocalId)) {
-                actor->OnEnqueueEvent(e->Timestamp);
-            }
         }
     }
 

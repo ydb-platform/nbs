@@ -33,11 +33,12 @@ struct TPDiskMockState::TImpl {
 
     const ui32 NodeId;
     const ui32 PDiskId;
-    const ui64 PDiskGuid;
+    ui64 PDiskGuid;
     const ui64 Size;
     const ui32 ChunkSize;
     const ui32 TotalChunks;
     const ui32 AppendBlockSize;
+    bool IsDiskReadOnly;
     std::map<ui8, TOwner> Owners;
     std::set<ui32> FreeChunks;
     ui32 NextFreeChunk = 1;
@@ -46,8 +47,9 @@ struct TPDiskMockState::TImpl {
     NPDisk::TStatusFlags StatusFlags;
     THashSet<ui32> ReadOnlyVDisks;
     TString StateErrorReason;
+    NPDisk::EDeviceType DeviceType;
 
-    TImpl(ui32 nodeId, ui32 pdiskId, ui64 pdiskGuid, ui64 size, ui32 chunkSize)
+    TImpl(ui32 nodeId, ui32 pdiskId, ui64 pdiskGuid, ui64 size, ui32 chunkSize, bool isDiskReadOnly, NPDisk::EDeviceType deviceType)
         : NodeId(nodeId)
         , PDiskId(pdiskId)
         , PDiskGuid(pdiskGuid)
@@ -55,8 +57,10 @@ struct TPDiskMockState::TImpl {
         , ChunkSize(chunkSize)
         , TotalChunks(Size / ChunkSize)
         , AppendBlockSize(4096)
+        , IsDiskReadOnly(isDiskReadOnly)
         , NextFreeChunk(1)
         , StatusFlags(NPDisk::TStatusFlags{})
+        , DeviceType(deviceType)
     {}
 
     TImpl(const TImpl&) = default;
@@ -269,19 +273,20 @@ struct TPDiskMockState::TImpl {
 
     void SetReadOnly(const TVDiskID& vDiskId, bool isReadOnly) {
         if (isReadOnly) {
-            ReadOnlyVDisks.insert(vDiskId.GroupID);
+            ReadOnlyVDisks.insert(vDiskId.GroupID.GetRawId());
         } else {
-            ReadOnlyVDisks.erase(vDiskId.GroupID);
+            ReadOnlyVDisks.erase(vDiskId.GroupID.GetRawId());
         }
     }
 
     bool IsReadOnly(const TVDiskID& vDiskId) const {
-        return ReadOnlyVDisks.contains(vDiskId.GroupID);
+        return ReadOnlyVDisks.contains(vDiskId.GroupID.GetRawId());
     }
 };
 
-TPDiskMockState::TPDiskMockState(ui32 nodeId, ui32 pdiskId, ui64 pdiskGuid, ui64 size, ui32 chunkSize)
-    : TPDiskMockState(std::make_unique<TImpl>(nodeId, pdiskId, pdiskGuid, size, chunkSize))
+TPDiskMockState::TPDiskMockState(ui32 nodeId, ui32 pdiskId, ui64 pdiskGuid, ui64 size, ui32 chunkSize, bool isDiskReadOnly,
+        NPDisk::EDeviceType deviceType)
+    : TPDiskMockState(std::make_unique<TImpl>(nodeId, pdiskId, pdiskGuid, size, chunkSize, isDiskReadOnly, deviceType))
 {}
 
 TPDiskMockState::TPDiskMockState(std::unique_ptr<TImpl>&& impl)
@@ -325,6 +330,10 @@ void TPDiskMockState::SetStatusFlags(NPDisk::TStatusFlags flags) {
 
 void TPDiskMockState::SetReadOnly(const TVDiskID& vDiskId, bool isReadOnly) {
     Impl->SetReadOnly(vDiskId, isReadOnly);
+}
+
+bool TPDiskMockState::IsDiskReadOnly() const {
+    return Impl->IsDiskReadOnly;
 }
 
 TString& TPDiskMockState::GetStateErrorReason() {
@@ -415,15 +424,16 @@ public:
 
             // fill in the response
             TVector<TChunkIdx> ownedChunks(owner->CommittedChunks.begin(), owner->CommittedChunks.end());
-            const ui64 seekTimeUs = 100;
-            const ui64 readSpeedBps = 100 * 1000 * 1000;
-            const ui64 writeSpeedBps = 100 * 1000 * 1000;
+            const auto& performanceParams = NPDisk::DevicePerformance.at(Impl.DeviceType);
+            const ui64 seekTimeUs = (performanceParams.SeekTimeNs + 1000) / 1000 - 1;
+            const ui64 readSpeedBps = performanceParams.FirstSectorReadBytesPerSec;
+            const ui64 writeSpeedBps = performanceParams.FirstSectorWriteBytesPerSec;
             const ui64 readBlockSize = 65536;
             const ui64 writeBlockSize = 65536;
             const ui64 bulkWriteBlockSize = 65536;
             res = std::make_unique<NPDisk::TEvYardInitResult>(NKikimrProto::OK, seekTimeUs, readSpeedBps, writeSpeedBps,
                 readBlockSize, writeBlockSize, bulkWriteBlockSize, Impl.ChunkSize, Impl.AppendBlockSize, ownerId,
-                owner->OwnerRound, GetStatusFlags(), std::move(ownedChunks), TString());
+                owner->OwnerRound, GetStatusFlags(), std::move(ownedChunks), NPDisk::DEVICE_TYPE_NVME, TString());
             res->StartingPoints = owner->StartingPoints;
         } else {
             res = std::make_unique<NPDisk::TEvYardInitResult>(NKikimrProto::INVALID_ROUND, "invalid owner round");
@@ -436,8 +446,17 @@ public:
     void Handle(NPDisk::TEvSlay::TPtr ev) {
         auto *msg = ev->Get();
         PDISK_MOCK_LOG(INFO, PDM17, "received TEvSlay", (Msg, msg->ToString()));
+
         auto res = std::make_unique<NPDisk::TEvSlayResult>(NKikimrProto::OK, GetStatusFlags(), msg->VDiskId,
                 msg->SlayOwnerRound, msg->PDiskId, msg->VSlotId, TString());
+
+        if (Impl.IsDiskReadOnly) {
+            res->Status = NKikimrProto::NOTREADY;
+            res->ErrorReason = "PDisk is in read-only mode";
+            Send(ev->Sender, res.release());
+            return;
+        }
+        
         bool found = false;
         for (auto& [ownerId, owner] : Impl.Owners) {
             if (!owner.VDiskId.SameExceptGeneration(msg->VDiskId)) {
@@ -833,6 +852,30 @@ public:
         Send(ev->Sender, res.release());
     }
 
+    void Handle(TEvBlobStorage::TEvAskWardenRestartPDiskResult::TPtr &ev) {
+        bool restartAllowed = ev->Get()->RestartAllowed;
+
+        if (restartAllowed) {
+            Become(&TThis::StateNormal);
+            Impl.StateErrorReason = "";
+            Impl.IsDiskReadOnly = ev->Get()->Config->ReadOnly;
+            Send(ev->Sender, new TEvBlobStorage::TEvNotifyWardenPDiskRestarted(Impl.PDiskId));
+        }
+    }
+
+    void Handle(NPDisk::TEvYardControl::TPtr &ev) {
+        auto *msg = ev->Get();
+
+        switch (msg->Action) {
+            case NPDisk::TEvYardControl::PDiskStop:
+                Impl.StateErrorReason = "Stopped by control message";
+                Become(&TThis::StateError);
+                break;
+            default:
+                break;
+        }
+    }
+
     void Handle(NPDisk::TEvConfigureScheduler::TPtr ev) {
         auto *msg = ev->Get();
         auto res = std::make_unique<NPDisk::TEvConfigureSchedulerResult>(NKikimrProto::OK, TString());
@@ -916,6 +959,13 @@ public:
         Y_UNUSED(ev);
     }
 
+    void Handle(TEvMoveDrive::TPtr& ev) {
+        State = ev->Get()->State;
+        Impl.Blocks = State->Impl->Blocks;
+        Impl.Owners = State->Impl->Owners;
+        Impl.PDiskGuid = State->Impl->PDiskGuid;
+    }
+
     void HandleMoveToErrorState() {
         Impl.StateErrorReason = "Some error reason";
         Become(&TThis::StateError);
@@ -940,7 +990,10 @@ public:
         hFunc(NPDisk::TEvSlay, Handle);
         hFunc(NPDisk::TEvHarakiri, Handle);
         hFunc(NPDisk::TEvConfigureScheduler, Handle);
+        hFunc(TEvBlobStorage::TEvAskWardenRestartPDiskResult, Handle);
+        hFunc(NPDisk::TEvYardControl, Handle);
         cFunc(TEvents::TSystem::Wakeup, ReportMetrics);
+        hFunc(TEvMoveDrive, Handle);
 
         cFunc(EvBecomeError, HandleMoveToErrorState);
     )
@@ -957,6 +1010,9 @@ public:
         hFunc(NPDisk::TEvSlay, ErrorHandle);
         hFunc(NPDisk::TEvChunkReserve, ErrorHandle);
         hFunc(NPDisk::TEvChunkForget, ErrorHandle);
+        hFunc(TEvBlobStorage::TEvAskWardenRestartPDiskResult, Handle);
+        hFunc(NPDisk::TEvYardControl, Handle);
+        hFunc(TEvMoveDrive, Handle);
 
         cFunc(TEvents::TSystem::Wakeup, ReportMetrics);
         cFunc(EvBecomeNormal, HandleMoveToNormalState);

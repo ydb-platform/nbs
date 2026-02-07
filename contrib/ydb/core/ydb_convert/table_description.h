@@ -4,6 +4,7 @@
 
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/protos/index_builder.pb.h>
 #include <contrib/ydb/core/scheme/scheme_type_info.h>
 #include <contrib/ydb/public/api/protos/ydb_table.pb.h>
 
@@ -29,7 +30,10 @@ enum class EAlterOperationKind {
 struct TPathId;
 
 
-THashSet<EAlterOperationKind> GetAlterOperationKinds(const Ydb::Table::AlterTableRequest* req); 
+THashSet<EAlterOperationKind> GetAlterOperationKinds(const Ydb::Table::AlterTableRequest* req);
+bool BuildAlterTableModifyScheme(const TString& path, const Ydb::Table::AlterTableRequest* req, NKikimrSchemeOp::TModifyScheme* modifyScheme,
+    const TTableProfiles& profiles, const TPathId& resolvedPathId,
+    Ydb::StatusIds::StatusCode& status, TString& error);
 bool BuildAlterTableModifyScheme(const Ydb::Table::AlterTableRequest* req, NKikimrSchemeOp::TModifyScheme* modifyScheme,
     const TTableProfiles& profiles, const TPathId& resolvedPathId,
     Ydb::StatusIds::StatusCode& status, TString& error);
@@ -80,7 +84,7 @@ bool FillChangefeedDescription(NKikimrSchemeOp::TCdcStreamDescription& out,
 
 // out
 void FillTableStats(Ydb::Table::DescribeTableResult& out,
-    const NKikimrSchemeOp::TPathDescription& in, bool withPartitionStatistic);
+    const NKikimrSchemeOp::TPathDescription& in, bool withPartitionStatistic, const TMap<ui64, ui64>& nodeMap);
 
 // out
 void FillStorageSettings(Ydb::Table::DescribeTableResult& out,
@@ -125,6 +129,17 @@ void FillReadReplicasSettings(Ydb::Table::CreateTableRequest& out,
 // in
 bool FillTableDescription(NKikimrSchemeOp::TModifyScheme& out,
     const Ydb::Table::CreateTableRequest& in, const TTableProfiles& profiles,
+    Ydb::StatusIds::StatusCode& status, TString& error, bool indexedTable = false);
+
+
+// out
+bool FillSequenceDescription(Ydb::Table::DescribeTableResult& out, const NKikimrSchemeOp::TTableDescription& in, Ydb::StatusIds::StatusCode& status, TString& error);
+
+bool FillSequenceDescription(Ydb::Table::CreateTableRequest& out, const NKikimrSchemeOp::TTableDescription& in, Ydb::StatusIds::StatusCode& status, TString& error);
+
+// in
+bool FillSequenceDescription(
+    NKikimrSchemeOp::TSequenceDescription& out, const Ydb::Table::SequenceDescription& in, 
     Ydb::StatusIds::StatusCode& status, TString& error);
 
 } // namespace NKikimr

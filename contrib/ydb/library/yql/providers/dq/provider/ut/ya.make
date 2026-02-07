@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/dq/provider)
 
+TAG(ya:manual)
+
 PEERDIR(
     library/cpp/testing/unittest
     contrib/ydb/library/yql/providers/dq/provider

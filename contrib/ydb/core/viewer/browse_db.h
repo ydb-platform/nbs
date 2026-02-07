@@ -1,19 +1,12 @@
 #pragma once
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/mon.h>
-#include <contrib/ydb/core/base/tablet.h>
-#include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/library/services/services.pb.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-#include <contrib/ydb/core/viewer/protos/viewer.pb.h>
-#include <contrib/ydb/core/viewer/json/json.h>
-#include "viewer.h"
 #include "browse.h"
+#include "viewer.h"
 #include "wb_aggregate.h"
+#include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/protos/table_stats.pb.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 
-namespace NKikimr {
-namespace NViewerDB {
+namespace NKikimr::NViewerDB {
 
 using namespace NViewer;
 using namespace NActors;
@@ -70,8 +63,7 @@ public:
             NTabletPipe::SendData(ctx, pipeClient, new TEvTablet::TEvGetCounters(), tabletId);
             ++Requests;
             ctx.Send(BrowseContext.Owner, new NViewerEvents::TEvBrowseRequestSent(TxProxy, tabletId, TEvTablet::EvGetCounters));
-            auto hiveUid = HiveUidFromTabletID(tabletId);
-            auto hiveTabletId = domainsInfo->GetHive(hiveUid);
+            ui64 hiveTabletId = domainsInfo->GetHive();
             pipeClient = GetTabletPipe(hiveTabletId, ctx);
             NTabletPipe::SendData(ctx, pipeClient, new TEvHive::TEvLookupChannelInfo(tabletId), tabletId);
             ++Requests;
@@ -199,5 +191,4 @@ public:
     }
 };
 
-}
 }

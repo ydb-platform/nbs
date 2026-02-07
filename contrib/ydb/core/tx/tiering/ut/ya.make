@@ -22,6 +22,7 @@ PEERDIR(
     contrib/ydb/services/metadata
     contrib/ydb/core/tx
     contrib/ydb/core/tx/columnshard
+    contrib/ydb/core/tx/columnshard/hooks/testing
     contrib/ydb/public/lib/yson_value
 )
 

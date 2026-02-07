@@ -26,12 +26,15 @@ public:
         ui32 ChunkSize = 128 * (1 << 20);
         bool SmallDisk = false;
         bool SuppressCompatibilityCheck = false;
+        TAutoPtr<TLogBackend> LogBackend = nullptr;
+        bool ReadOnly = false;
+        bool InitiallyZeroed = false; // Only for sector map. Zero first 1MiB on start.
     };
 
 private:
     std::optional<TActorId> PDiskActor;
-    THolder<TTestActorRuntime> Runtime;
     std::shared_ptr<NPDisk::IIoContextFactory> IoContext;
+    THolder<TTestActorRuntime> Runtime;
     NPDisk::TPDisk *PDisk = nullptr;
 
 public:
@@ -44,10 +47,25 @@ public:
         TString path;
         EntropyPool().Read(&TestCtx.PDiskGuid, sizeof(TestCtx.PDiskGuid));
         ui64 formatGuid = TestCtx.PDiskGuid + static_cast<ui64>(isBad);
-        if (Settings.DiskSize) {
-            FormatPDiskForTest(path, formatGuid, Settings.ChunkSize, Settings.DiskSize, false, TestCtx.SectorMap, Settings.SmallDisk);
-        } else {
-            FormatPDiskForTest(path, formatGuid, Settings.ChunkSize, false, TestCtx.SectorMap, Settings.SmallDisk);
+
+        if (Settings.InitiallyZeroed) {
+            if (Settings.DiskSize) {
+                TestCtx.SectorMap->ForceSize(Settings.DiskSize);
+            } else {
+                ui64 diskSizeHeuristic = (ui64)Settings.ChunkSize * 1000;
+                TestCtx.SectorMap->ForceSize(diskSizeHeuristic);
+            }
+
+            // Zero the first 1MB so that PDisk seems like it is a new disk.
+            TestCtx.SectorMap->ZeroInit(1_MB / NPDisk::NSectorMap::SECTOR_SIZE);
+        }
+
+        if (!Settings.InitiallyZeroed && !Settings.ReadOnly) {
+            if (Settings.DiskSize) {
+                FormatPDiskForTest(path, formatGuid, Settings.ChunkSize, Settings.DiskSize, false, TestCtx.SectorMap, Settings.SmallDisk);
+            } else {
+                FormatPDiskForTest(path, formatGuid, Settings.ChunkSize, false, TestCtx.SectorMap, Settings.SmallDisk);
+            }
         }
 
         ui64 pDiskCategory = 0;
@@ -59,6 +77,7 @@ public:
         pDiskConfig->EnableSectorEncryption = !pDiskConfig->SectorMap;
         pDiskConfig->FeatureFlags.SetEnableSmallDiskOptimization(Settings.SmallDisk);
         pDiskConfig->FeatureFlags.SetSuppressCompatibilityCheck(Settings.SuppressCompatibilityCheck);
+        pDiskConfig->ReadOnly = Settings.ReadOnly;
         return pDiskConfig;
     }
 
@@ -71,8 +90,12 @@ public:
         IoContext = std::make_shared<NPDisk::TIoContextFactoryOSS>();
         appData->IoContextFactory = IoContext.get();
 
-        Runtime->SetLogBackend(IsLowVerbose ? CreateStderrBackend() : CreateNullBackend());
-        Runtime->Initialize(TTestActorRuntime::TEgg{appData.Release(), nullptr, {}});
+        if (Settings.LogBackend) {
+            Runtime->SetLogBackend(Settings.LogBackend);
+        } else {
+            Runtime->SetLogBackend(IsLowVerbose ? CreateStderrBackend() : CreateNullBackend());
+        }
+        Runtime->Initialize(TTestActorRuntime::TEgg{appData.Release(), nullptr, {}, {}});
         Runtime->SetLogPriority(NKikimrServices::BS_PDISK, NLog::PRI_NOTICE);
         Runtime->SetLogPriority(NKikimrServices::BS_PDISK_SYSLOG, NLog::PRI_NOTICE);
         Runtime->SetLogPriority(NKikimrServices::BS_PDISK_TEST, NLog::PRI_DEBUG);
@@ -87,6 +110,10 @@ public:
             return GetPDisk()->Cfg;
         }
         return nullptr;
+    }
+
+    TTestActorRuntime* GetRuntime() {
+        return Runtime.Get();
     }
 
     void UpdateConfigRecreatePDisk(TIntrusivePtr<TPDiskConfig> cfg) {
@@ -125,8 +152,30 @@ public:
                     new NPDisk::TEvYardControl(NPDisk::TEvYardControl::GetPDiskPointer, nullptr),
                     NKikimrProto::OK);
             PDisk = reinterpret_cast<NPDisk::TPDisk*>(evControlRes->Cookie);
+
+            PDiskActor = PDisk->PDiskActor;
         }
         return PDisk;
+    }
+
+    void GracefulPDiskRestart(bool waitForRestart = true) {
+        ui32 pdiskId = GetPDisk()->PDiskId;
+
+        Send(new TEvBlobStorage::TEvAskWardenRestartPDiskResult(pdiskId, MainKey, true, nullptr));
+
+        if (waitForRestart) {
+            const auto evInitRes = Recv<TEvBlobStorage::TEvNotifyWardenPDiskRestarted>();
+            UNIT_ASSERT_VALUES_EQUAL(NKikimrProto::EReplyStatus::OK, evInitRes->Status);
+        }
+
+        if (!Settings.UsePDiskMock) {
+            TActorId wellKnownPDiskActorId = MakeBlobStoragePDiskID(PDiskActor->NodeId(), pdiskId);
+
+            PDisk = nullptr;
+
+            // We will temporarily use well know pdisk actor id, because restarted pdisk actor id is not yet known.
+            PDiskActor = wellKnownPDiskActorId;
+        }
     }
 
     template<typename T>
@@ -159,7 +208,7 @@ public:
         THolder<TRes> evRes = Recv<TRes>();
 
         if (status.has_value()) {
-            UNIT_ASSERT_C(evRes->Status == status.value(), evRes->ToString());
+            UNIT_ASSERT_VALUES_EQUAL_C(evRes->Status, status.value(), evRes->ToString());
         }
 
         UNIT_ASSERT(evRes->Status == NKikimrProto::OK || !evRes->ErrorReason.empty());
@@ -218,6 +267,7 @@ struct TVDiskMock {
         const auto evInitRes = TestCtx->TestResponse<NPDisk::TEvYardInitResult>(
                 new NPDisk::TEvYardInit(OwnerRound.fetch_add(1), VDiskID, TestCtx->TestCtx.PDiskGuid),
                 NKikimrProto::OK);
+
         PDiskParams = evInitRes->PDiskParams;
 
         TSet<TChunkIdx> commited = Chunks[EChunkState::COMMITTED];

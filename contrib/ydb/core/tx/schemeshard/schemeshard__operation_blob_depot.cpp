@@ -2,6 +2,8 @@
 #include "schemeshard__operation_common.h"
 #include "schemeshard_impl.h"
 
+#include <contrib/ydb/core/protos/blob_depot_config.pb.h>
+
 namespace NKikimr::NSchemeShard {
 
     namespace {
@@ -347,11 +349,11 @@ namespace NKikimr::NSchemeShard {
                 context.SS->ChangeTxState(db, OperationId, TTxState::CreateParts);
                 context.OnComplete.ActivateTx(OperationId);
 
-                context.SS->PersistPath(db, dstPath->PathId);
                 if (!acl.empty()) {
                     dstPath->ApplyACL(acl);
-                    context.SS->PersistACL(db, dstPath.Base());
                 }
+                context.SS->PersistPath(db, dstPath->PathId);
+
                 context.SS->BlobDepots[pathId] = blobDepot;
                 context.SS->PersistBlobDepot(db, pathId, *blobDepot);
                 context.SS->IncrementPathDbRefCount(pathId);
@@ -371,8 +373,8 @@ namespace NKikimr::NSchemeShard {
                 context.OnComplete.PublishToSchemeBoard(OperationId, parentPath->PathId);
                 context.SS->ClearDescribePathCaches(dstPath.Base());
                 context.OnComplete.PublishToSchemeBoard(OperationId, dstPath->PathId);
-                dstPath.DomainInfo()->IncPathsInside();
-                dstPath.DomainInfo()->AddInternalShards(txState);
+                dstPath.DomainInfo()->IncPathsInside(context.SS);
+                dstPath.DomainInfo()->AddInternalShards(txState, context.SS);
                 dstPath->IncShardsInside();
                 parentPath->IncAliveChildren();
 

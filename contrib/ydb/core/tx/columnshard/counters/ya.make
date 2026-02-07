@@ -1,22 +1,28 @@
 LIBRARY()
 
 SRCS(
-    indexation.cpp
-    scan.cpp
-    engine_logs.cpp
+    background_controller.cpp
+    counters_manager.cpp
     blobs_manager.cpp
+    column_tables.cpp
     columnshard.cpp
-    insert_table.cpp
     common_data.cpp
+    engine_logs.cpp
+    indexation.cpp
+    insert_table.cpp
+    req_tracer.cpp
+    scan.cpp
     splitter.cpp
 )
 
 PEERDIR(
     library/cpp/monlib/dynamic_counters
+    contrib/ydb/core/tx/columnshard/counters/aggregation
     contrib/ydb/core/tx/columnshard/counters/common
     contrib/ydb/core/base
 )
 
 GENERATE_ENUM_SERIALIZATION(columnshard.h)
+GENERATE_ENUM_SERIALIZATION(scan.h)
 
 END()

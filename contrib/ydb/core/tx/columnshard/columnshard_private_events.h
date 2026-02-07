@@ -1,6 +1,5 @@
 #pragma once
 
-#include "blob_manager.h"
 #include "blobs_action/abstract/gc.h"
 #include "defs.h"
 
@@ -11,6 +10,10 @@
 #include <contrib/ydb/core/tx/columnshard/engines/writer/indexed_blob_constructor.h>
 #include <contrib/ydb/core/tx/data_events/write_data.h>
 #include <contrib/ydb/core/formats/arrow/special_keys.h>
+
+namespace NKikimr::NOlap::NReader {
+class IApplyAction;
+}
 
 namespace NKikimr::NColumnShard {
 
@@ -37,10 +40,32 @@ struct TEvPrivate {
         EvWritingAddDataToBuffer,
         EvWritingFlushBuffer,
 
+        EvExportWritingFinished,
+        EvExportWritingFailed,
+        EvExportCursorSaved,
+        EvExportSaveCursor,
+
+        EvTaskProcessedResult,
+        EvPingSnapshotsUsage,
+
         EvEnd
     };
 
     static_assert(EvEnd < EventSpaceEnd(TEvents::ES_PRIVATE), "expect EvEnd < EventSpaceEnd(TEvents::ES_PRIVATE)");
+
+    class TEvTaskProcessedResult: public NActors::TEventLocal<TEvTaskProcessedResult, EvTaskProcessedResult> {
+    private:
+        TConclusion<std::shared_ptr<NOlap::NReader::IApplyAction>> Result;
+
+    public:
+        TConclusion<std::shared_ptr<NOlap::NReader::IApplyAction>> ExtractResult() {
+            return std::move(Result);
+        }
+
+        TEvTaskProcessedResult(const TConclusion<std::shared_ptr<NOlap::NReader::IApplyAction>>& result)
+            : Result(result) {
+        }
+    };
 
     struct TEvTieringModified: public TEventLocal<TEvTieringModified, EvTieringModified> {
     };
@@ -76,7 +101,7 @@ struct TEvPrivate {
 
     /// Common event for Indexing and GranuleCompaction: write index data in TTxWriteIndex transaction.
     struct TEvWriteIndex : public TEventLocal<TEvWriteIndex, EvWriteIndex> {
-        NOlap::TVersionedIndex IndexInfo;
+        std::shared_ptr<NOlap::TVersionedIndex> IndexInfo;
         std::shared_ptr<NOlap::TColumnEngineChanges> IndexChanges;
         bool GranuleCompaction{false};
         TUsage ResourceUsage;
@@ -84,10 +109,10 @@ struct TEvPrivate {
         TDuration Duration;
         TBlobPutResult::TPtr PutResult;
 
-        TEvWriteIndex(NOlap::TVersionedIndex&& indexInfo,
+        TEvWriteIndex(const std::shared_ptr<NOlap::TVersionedIndex>& indexInfo,
             std::shared_ptr<NOlap::TColumnEngineChanges> indexChanges,
             bool cacheData)
-            : IndexInfo(std::move(indexInfo))
+            : IndexInfo(indexInfo)
             , IndexChanges(indexChanges)
             , CacheData(cacheData)
         {
@@ -118,8 +143,9 @@ struct TEvPrivate {
 
     struct TEvReadFinished : public TEventLocal<TEvReadFinished, EvReadFinished> {
         explicit TEvReadFinished(ui64 requestCookie, ui64 txId = 0)
-            : RequestCookie(requestCookie), TxId(txId)
-        {}
+            : RequestCookie(requestCookie)
+            , TxId(txId) {
+        }
 
         ui64 RequestCookie;
         ui64 TxId;
@@ -133,11 +159,42 @@ struct TEvPrivate {
         bool Manual;
     };
 
-    class TEvWriteBlobsResult : public TEventLocal<TEvWriteBlobsResult, EvWriteBlobsResult> {
+    struct TEvPingSnapshotsUsage: public TEventLocal<TEvPingSnapshotsUsage, EvPingSnapshotsUsage> {
+        TEvPingSnapshotsUsage() = default;
+    };
+
+    class TEvWriteBlobsResult: public TEventLocal<TEvWriteBlobsResult, EvWriteBlobsResult> {
+    public:
+        enum EErrorClass {
+            Internal,
+            Request
+        };
     private:
         NColumnShard::TBlobPutResult::TPtr PutResult;
         NOlap::TWritingBuffer WritesBuffer;
+        YDB_READONLY_DEF(TString, ErrorMessage);
+        YDB_ACCESSOR(EErrorClass, ErrorClass, EErrorClass::Internal);
+
     public:
+
+        NKikimrDataEvents::TEvWriteResult::EStatus GetWriteResultStatus() const {
+            switch (ErrorClass) {
+                case EErrorClass::Internal:
+                    return NKikimrDataEvents::TEvWriteResult::STATUS_INTERNAL_ERROR;
+                case EErrorClass::Request:
+                    return NKikimrDataEvents::TEvWriteResult::STATUS_BAD_REQUEST;
+            }
+        }
+        
+        static std::unique_ptr<TEvWriteBlobsResult> Error(
+            const NKikimrProto::EReplyStatus status, NOlap::TWritingBuffer&& writesBuffer, const TString& error, const EErrorClass errorClass) {
+            std::unique_ptr<TEvWriteBlobsResult> result =
+                std::make_unique<TEvWriteBlobsResult>(std::make_shared<NColumnShard::TBlobPutResult>(status), std::move(writesBuffer));
+            result->ErrorMessage = error;
+            result->ErrorClass = errorClass;
+            return result;
+        }
+
         TEvWriteBlobsResult(const NColumnShard::TBlobPutResult::TPtr& putResult, NOlap::TWritingBuffer&& writesBuffer)
             : PutResult(putResult)
             , WritesBuffer(std::move(writesBuffer))

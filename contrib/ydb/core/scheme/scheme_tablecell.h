@@ -10,6 +10,7 @@
 #include <util/system/unaligned_mem.h>
 #include <util/memory/pool.h>
 
+#include <deque>
 #include <type_traits>
 
 namespace NKikimr {
@@ -168,6 +169,20 @@ public:
 static_assert(sizeof(TCell) == 12, "TCell must be 12 bytes");
 using TCellsRef = TConstArrayRef<const TCell>;
 
+inline size_t EstimateSize(TCellsRef cells) {
+    size_t cellsSize = cells.size();
+
+    size_t size = sizeof(TCell) * cellsSize;
+    for (auto& cell : cells) {
+        if (!cell.IsNull() && !cell.IsInline()) {
+            const size_t cellSize = cell.Size();
+            size += AlignUp(cellSize);
+        }
+    }
+
+    return size;
+}
+
 inline int CompareCellsAsByteString(const TCell& a, const TCell& b, bool isDescending) {
     const char* pa = (const char*)a.Data();
     const char* pb = (const char*)b.Data();
@@ -181,7 +196,7 @@ inline int CompareCellsAsByteString(const TCell& a, const TCell& b, bool isDesce
 
 // NULL is considered equal to another NULL and less than non-NULL
 // ATTENTION!!! return value is int!! (NOT just -1,0,1)
-inline int CompareTypedCells(const TCell& a, const TCell& b, NScheme::TTypeInfoOrder type) {
+inline int CompareTypedCells(const TCell& a, const TCell& b, const NScheme::TTypeInfoOrder& type) {
     using TPair = std::pair<ui64, ui64>;
     if (a.IsNull())
         return b.IsNull() ? 0 : -1;
@@ -216,6 +231,10 @@ inline int CompareTypedCells(const TCell& a, const TCell& b, NScheme::TTypeInfoO
     SIMPLE_TYPE_SWITCH(Datetime,  ui32);
     SIMPLE_TYPE_SWITCH(Timestamp, ui64);
     SIMPLE_TYPE_SWITCH(Interval,  i64);
+    SIMPLE_TYPE_SWITCH(Date32, i32);
+    SIMPLE_TYPE_SWITCH(Datetime64, i64);
+    SIMPLE_TYPE_SWITCH(Timestamp64, i64);
+    SIMPLE_TYPE_SWITCH(Interval64, i64);
 
 #undef SIMPLE_TYPE_SWITCH
 
@@ -252,14 +271,14 @@ inline int CompareTypedCells(const TCell& a, const TCell& b, NScheme::TTypeInfoO
 
     case NKikimr::NScheme::NTypeIds::Pg:
     {
-        auto typeDesc = type.GetTypeDesc();
+        auto typeDesc = type.GetPgTypeDesc();
         Y_ABORT_UNLESS(typeDesc, "no pg type descriptor");
         int result = NPg::PgNativeBinaryCompare(a.Data(), a.Size(), b.Data(), b.Size(), typeDesc);
         return type.IsDescending() ? -result : result;
     }
 
     default:
-        Y_DEBUG_ABORT_UNLESS(false, "Unknown type");
+        Y_DEBUG_ABORT("Unknown type");
     };
 
     return 0;
@@ -313,10 +332,14 @@ inline ui64 GetValueHash(NScheme::TTypeInfo info, const TCell& cell) {
     case NYql::NProto::TypeIds::Uint16:
         return THash<ui16>()(*(const ui16*)cell.Data());
     case NYql::NProto::TypeIds::Int32:
+    case NYql::NProto::TypeIds::Date32:
         return THash<i32>()(ReadUnaligned<i32>((const i32*)cell.Data()));
     case NYql::NProto::TypeIds::Uint32:
         return THash<ui32>()(ReadUnaligned<ui32>((const ui32*)cell.Data()));
     case NYql::NProto::TypeIds::Int64:
+    case NYql::NProto::TypeIds::Datetime64:
+    case NYql::NProto::TypeIds::Timestamp64:
+    case NYql::NProto::TypeIds::Interval64:
         return THash<i64>()(ReadUnaligned<i64>((const i64*)cell.Data()));
     case NYql::NProto::TypeIds::Uint64:
         return THash<ui64>()(ReadUnaligned<ui64>((const ui64*)cell.Data()));
@@ -349,12 +372,12 @@ inline ui64 GetValueHash(NScheme::TTypeInfo info, const TCell& cell) {
     }
 
     if (typeId == NKikimr::NScheme::NTypeIds::Pg) {
-        auto typeDesc = info.GetTypeDesc();
+        auto typeDesc = info.GetPgTypeDesc();
         Y_ABORT_UNLESS(typeDesc, "no pg type descriptor");
         return NPg::PgNativeBinaryHash(cell.Data(), cell.Size(), typeDesc);
     }
 
-    Y_DEBUG_ABORT_UNLESS(false, "Type not supported for user columns: %d", typeId);
+    Y_DEBUG_ABORT("Type not supported for user columns: %d", typeId);
     return 0;
 }
 
@@ -531,6 +554,14 @@ public:
     TConstArrayRef<TCell> GetCells() const {
         return Cells;
     }
+
+    explicit operator bool() const
+    {
+        return !Cells.empty();
+    }    
+
+    // read headers, assuming the buf is correct and append additional cells at the end
+    static bool UnsafeAppendCells(TConstArrayRef<TCell> cells, TString& serializedCellVec);
 
     static void Serialize(TString& res, TConstArrayRef<TCell> cells);
 
@@ -727,5 +758,8 @@ private:
 void DbgPrintValue(TString&, const TCell&, NScheme::TTypeInfo typeInfo);
 TString DbgPrintCell(const TCell& r, NScheme::TTypeInfo typeInfo, const NScheme::TTypeRegistry& typeRegistry);
 TString DbgPrintTuple(const TDbTupleRef& row, const NScheme::TTypeRegistry& typeRegistry);
+
+size_t GetCellMatrixHeaderSize();
+size_t GetCellHeaderSize();
 
 }

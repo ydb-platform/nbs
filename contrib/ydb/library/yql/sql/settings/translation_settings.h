@@ -5,6 +5,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/map.h>
+#include <util/generic/maybe.h>
 #include <util/generic/vector.h>
 
 namespace google::protobuf {
@@ -43,7 +44,8 @@ namespace NSQLTranslation {
 
     using TIncrementMonCounterFunction = std::function<void(const TString&, const TString&)>;
 
-    enum class EV0Behavior {
+    // persisted
+    enum class EV0Behavior : ui32 {
         Silent = 0,
         Report,
         Disable
@@ -59,6 +61,8 @@ namespace NSQLTranslation {
         static TPtr MakeAlwaysDisallow();
 
         static TPtr MakeAlwaysAllow();
+
+        static TPtr Make(bool allow);
     };
 
     struct TTableBindingSettings {
@@ -81,6 +85,7 @@ namespace NSQLTranslation {
 
         EBindingsMode BindingsMode;
         THashMap<TString, TTableBindingSettings> Bindings;
+        bool SaveWorldDependencies = false;
 
         // each (name, type) entry in this map is equivalent to
         // DECLARE $name AS type;
@@ -100,6 +105,7 @@ namespace NSQLTranslation {
         bool InferSyntaxVersion;
         EV0Behavior V0Behavior;
         bool V0ForceDisable;
+        bool PGDisable;
         bool WarnOnV0;
         ISqlFeaturePolicy::TPtr V0WarnAsError;
         ISqlFeaturePolicy::TPtr DqDefaultAuto;
@@ -113,6 +119,10 @@ namespace NSQLTranslation {
         bool AutoParametrizeValuesStmt = false;
 
         TGUCSettings::TPtr GUCSettings = std::make_shared<TGUCSettings>();
+        bool UnicodeLiterals = false;
+
+        TMaybe<TString> ApplicationName;
+        bool PgSortNulls = false;
     };
 
     bool ParseTranslationSettings(const TString& query, NSQLTranslation::TTranslationSettings& settings, NYql::TIssues& issues);

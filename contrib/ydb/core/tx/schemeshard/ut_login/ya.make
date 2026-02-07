@@ -19,6 +19,7 @@ PEERDIR(
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
     contrib/ydb/library/login
+    contrib/ydb/library/testlib/service_mocks/ldap_mock
     contrib/ydb/library/yql/public/udf/service/exception_policy
 )
 

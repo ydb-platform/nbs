@@ -1,7 +1,7 @@
 #include "completion.h"
 
-#include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue.h>
-#include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue_tag.h>
+#include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
+#include <contrib/libs/grpc/include/grpcpp/impl/completion_queue_tag.h>
 #include <contrib/libs/grpc/src/core/lib/iomgr/exec_ctx.h>
 #include <contrib/libs/grpc/src/core/lib/surface/completion_queue.h>
 

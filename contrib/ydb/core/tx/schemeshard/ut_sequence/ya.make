@@ -20,6 +20,7 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/core/tx/columnshard
+    contrib/ydb/core/tx/datashard
     contrib/ydb/core/tx/schemeshard/ut_helpers
     contrib/ydb/library/yql/public/udf/service/exception_policy
 )

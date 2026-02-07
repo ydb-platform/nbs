@@ -10,6 +10,7 @@ PEERDIR(
     contrib/ydb/library/yql/core
     contrib/ydb/library/yql/core/expr_nodes
     contrib/ydb/library/yql/ast
+    contrib/ydb/library/yql/utils/log
     library/cpp/containers/sorted_vector
     library/cpp/string_utils/parse_size
     library/cpp/string_utils/levenshtein_diff

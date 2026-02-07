@@ -1,6 +1,6 @@
 #include "scalars.h"
 
-#include <contrib/ydb/core/formats/arrow/switch_type.h>
+#include <contrib/ydb/library/formats/arrow/switch_type.h>
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 #include <util/system/unaligned_mem.h>
 

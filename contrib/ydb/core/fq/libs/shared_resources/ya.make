@@ -20,6 +20,7 @@ PEERDIR(
     contrib/ydb/library/db_pool
     contrib/ydb/library/logger
     contrib/ydb/library/security
+    contrib/ydb/public/sdk/cpp/client/extensions/solomon_stats
     contrib/ydb/public/sdk/cpp/client/ydb_driver
     contrib/ydb/public/sdk/cpp/client/ydb_extension
     contrib/ydb/public/sdk/cpp/client/ydb_table

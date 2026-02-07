@@ -41,7 +41,7 @@ TPartitionSourceManager::TModificationBatch TPartitionSourceManager::CreateModif
 }
 
 const TPartitionSourceManager::TPartitionNode* TPartitionSourceManager::GetPartitionNode() const {
-    return Partition.PartitionGraph.GetPartition(Partition.Partition);
+    return Partition.PartitionGraph.GetPartition(Partition.Partition.OriginalPartitionId);
 }
 
 TSourceIdStorage& TPartitionSourceManager::GetSourceIdStorage() const {
@@ -49,7 +49,7 @@ TSourceIdStorage& TPartitionSourceManager::GetSourceIdStorage() const {
 }
 
 bool TPartitionSourceManager::HasParents() const {
-    auto node = Partition.PartitionGraph.GetPartition(Partition.Partition);
+    auto node = GetPartitionNode();
     return node && !node->Parents.empty();
 }
 
@@ -60,7 +60,7 @@ bool TPartitionSourceManager::HasParents() const {
 
 TPartitionSourceManager::TModificationBatch::TModificationBatch(TPartitionSourceManager& manager, ESourceIdFormat format)
     : Manager(manager)
-    , Node(Manager.GetPartitionNode()) 
+    , Node(Manager.GetPartitionNode())
     , SourceIdWriter(format)
     , HeartbeatEmitter(Manager.Partition.SourceIdStorage) {
 }
@@ -81,7 +81,8 @@ void TPartitionSourceManager::TModificationBatch::Cancel() {
 }
 
 bool TPartitionSourceManager::TModificationBatch::HasModifications() const {
-    return !SourceIdWriter.GetSourceIdsToWrite().empty();
+    return !SourceIdWriter.GetSourceIdsToWrite().empty()
+        || !SourceIdWriter.GetSourceIdsToDelete().empty();
 }
 
 void TPartitionSourceManager::TModificationBatch::FillRequest(TEvKeyValue::TEvRequest* request) {
@@ -104,6 +105,7 @@ TPartitionSourceManager& TPartitionSourceManager::TModificationBatch::GetManager
 TPartitionSourceManager::TSourceInfo Convert(TSourceIdInfo value) {
     TPartitionSourceManager::TSourceInfo result(value.State);
     result.SeqNo = value.SeqNo;
+    result.MinSeqNo = value.MinSeqNo;
     result.Offset = value.Offset;
     result.Explicit = value.Explicit;
     result.WriteTimestamp = value.WriteTimestamp;

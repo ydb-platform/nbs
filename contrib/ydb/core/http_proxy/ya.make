@@ -38,10 +38,11 @@ PEERDIR(
     contrib/ydb/library/naming_conventions
     contrib/ydb/public/sdk/cpp/client/ydb_datastreams
     contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
+    contrib/ydb/public/sdk/cpp/client/ydb_topic/codecs
     contrib/ydb/public/sdk/cpp/client/iam_private
     contrib/ydb/services/datastreams
     contrib/ydb/services/persqueue_v1/actors
+    contrib/ydb/services/ymq
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/protos
 )

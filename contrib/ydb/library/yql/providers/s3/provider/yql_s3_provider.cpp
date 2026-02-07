@@ -14,7 +14,8 @@ TDataProviderInitializer GetS3DataProviderInitializer(IHTTPGateway::TPtr gateway
         TIntrusivePtr<TTypeAnnotationContext> typeCtx,
         const TOperationProgressWriter& progressWriter,
         const TYqlOperationOptions& operationOptions,
-        THiddenQueryAborter)
+        THiddenQueryAborter hiddenAborter,
+        const TQContext& qContext)
     {
         Y_UNUSED(sessionId);
         Y_UNUSED(userName);
@@ -22,6 +23,8 @@ TDataProviderInitializer GetS3DataProviderInitializer(IHTTPGateway::TPtr gateway
         Y_UNUSED(randomProvider);
         Y_UNUSED(progressWriter);
         Y_UNUSED(operationOptions);
+        Y_UNUSED(hiddenAborter);
+        Y_UNUSED(qContext);
 
         auto state = MakeIntrusive<TS3State>();
 
@@ -31,14 +34,14 @@ TDataProviderInitializer GetS3DataProviderInitializer(IHTTPGateway::TPtr gateway
         if (gatewaysConfig) {
             state->Configuration->Init(gatewaysConfig->GetS3(), typeCtx);
         }
-
         state->Configuration->AllowLocalFiles = allowLocalFiles;
+        state->Gateway = gateway;
 
         TDataProviderInfo info;
 
         info.Names.insert({TString{S3ProviderName}});
-        info.Source = CreateS3DataSource(state, gateway);
-        info.Sink = CreateS3DataSink(state, gateway);
+        info.Source = CreateS3DataSource(state);
+        info.Sink = CreateS3DataSink(state);
 
         return info;
     };

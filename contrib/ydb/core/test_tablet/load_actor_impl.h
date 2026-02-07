@@ -22,6 +22,7 @@ namespace NKikimr::NTestShard {
             ::NTestShard::TStateServer::EEntityState ConfirmedState = ::NTestShard::TStateServer::ABSENT;
             ::NTestShard::TStateServer::EEntityState PendingState = ::NTestShard::TStateServer::ABSENT;
             std::unique_ptr<TEvKeyValue::TEvRequest> Request;
+            NWilson::TTraceId TraceId;
             size_t ConfirmedKeyIndex = Max<size_t>();
 
             TKeyInfo(ui32 len)
@@ -119,6 +120,7 @@ namespace NKikimr::NTestShard {
         ui64 BytesOfData = 0;
 
         std::unordered_map<ui64, TWriteInfo> WritesInFlight; // cookie -> TWriteInfo
+        std::unordered_map<ui64, TString> PatchesInFlight;
         ui32 KeysWritten = 0;
         static constexpr TDuration WriteSpeedWindow = TDuration::Seconds(10);
         static constexpr TDuration ReadSpeedWindow = TDuration::Seconds(10);
@@ -136,7 +138,9 @@ namespace NKikimr::NTestShard {
 
         void GenerateKeyValue(TString *key, TString *value, bool *isInline);
         void IssueWrite();
+        void IssuePatch();
         void ProcessWriteResult(ui64 cookie, const google::protobuf::RepeatedPtrField<NKikimrClient::TKeyValueResponse::TWriteResult>& results);
+        void ProcessPatchResult(ui64 cookie, const google::protobuf::RepeatedPtrField<NKikimrClient::TKeyValueResponse::TPatchResult>& results);
         void TrimBytesWritten(TInstant now);
         void HandleWriteOnTime();
         void HandleDoSomeAction();
@@ -171,7 +175,8 @@ namespace NKikimr::NTestShard {
         std::deque<TKey*> TransitionInFlight;
 
         void RegisterTransition(TKey& key, ::NTestShard::TStateServer::EEntityState from,
-            ::NTestShard::TStateServer::EEntityState to, std::unique_ptr<TEvKeyValue::TEvRequest> ev = nullptr);
+            ::NTestShard::TStateServer::EEntityState to, std::unique_ptr<TEvKeyValue::TEvRequest> ev = nullptr,
+            NWilson::TTraceId traceId = {});
         void Handle(TEvStateServerWriteResult::TPtr ev);
 
         void MakeConfirmed(TKey& key);

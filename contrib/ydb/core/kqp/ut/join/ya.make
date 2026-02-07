@@ -26,6 +26,11 @@ PEERDIR(
     contrib/ydb/library/yql/udfs/common/digest
 )
 
+
+DATA (
+    arcadia/contrib/ydb/core/kqp/ut/join
+)
+
 YQL_LAST_ABI_VERSION()
 
 END()

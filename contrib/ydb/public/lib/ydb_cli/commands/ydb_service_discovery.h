@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ydb_command.h"
-#include "ydb_common.h"
+#include <contrib/ydb/public/lib/ydb_cli/commands/ydb_common.h>
+#include <contrib/ydb/public/lib/ydb_cli/commands/ydb_command.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
 

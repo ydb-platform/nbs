@@ -2,6 +2,10 @@ LIBRARY()
 
 SRCS(
     init.h
+    init.cpp
+    init_noop.cpp
+    dummy.h
+    dummy.cpp
 )
 
 PEERDIR(
@@ -22,3 +26,8 @@ GENERATE_ENUM_SERIALIZATION(init.h)
 YQL_LAST_ABI_VERSION()
 
 END()
+
+RECURSE_FOR_TESTS(
+    ut
+)
+

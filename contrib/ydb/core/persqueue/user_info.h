@@ -269,12 +269,12 @@ struct TUserInfo: public TUserInfoBase {
 
     }
 
-    void UpdateReadOffset(const i64 offset, TInstant writeTimestamp, TInstant createTimestamp, TInstant now) {
+    void UpdateReadOffset(const i64 offset, TInstant writeTimestamp, TInstant createTimestamp, TInstant now, bool force = false) {
         ReadOffset = offset;
         ReadWriteTimestamp = writeTimestamp;
         ReadCreateTimestamp = createTimestamp;
         WriteLagMs.Update((ReadWriteTimestamp - ReadCreateTimestamp).MilliSeconds(), ReadWriteTimestamp);
-        if (Subscriptions > 0) {
+        if (Subscriptions > 0 || force) {
             ReadTimestamp = now;
         }
     }
@@ -383,10 +383,6 @@ public:
     const TUserInfo* GetIfExists(const TString& user) const;
     TUserInfo* GetIfExists(const TString& user);
 
-    void UpdateConfig(const NKikimrPQ::TPQTabletConfig& config) {
-        Config = config;
-    }
-
     THashMap<TString, TUserInfo>& GetAll();
 
     TUserInfoBase CreateUserInfo(const TString& user,
@@ -422,7 +418,7 @@ private:
 
     TMaybe<TActorId> TabletActor;
     TMaybe<TActorId> PartitionActor;
-    NKikimrPQ::TPQTabletConfig Config;
+    const NKikimrPQ::TPQTabletConfig& Config;
 
     TString CloudId;
     TString DbId;

@@ -7,8 +7,26 @@
 #include <util/string/cast.h>
 #include <util/string/printf.h>
 
+#include <library/cpp/testing/hook/hook.h>
+
+#include <aws/core/Aws.h>
+
 using namespace NSchemeShardUT_Private;
 using namespace NKikimr::NWrappers::NTestHelpers;
+
+namespace {
+
+Aws::SDKOptions Options;
+
+Y_TEST_HOOK_BEFORE_RUN(InitAwsAPI) {
+    Aws::InitAPI(Options);
+}
+
+Y_TEST_HOOK_AFTER_RUN(ShutdownAwsAPI) {
+    Aws::ShutdownAPI(Options);
+}
+
+}
 
 Y_UNIT_TEST_SUITE(TBackupTests) {
     using TFillFn = std::function<void(TTestBasicRuntime&)>;
@@ -97,6 +115,30 @@ Y_UNIT_TEST_SUITE(TBackupTests) {
         )", [](TTestBasicRuntime& runtime) {
             UpdateRow(runtime, "Table", 1, "valueA", TTestTxConfig::FakeHiveTablets + 0);
             UpdateRow(runtime, "Table", 2, "valueb", TTestTxConfig::FakeHiveTablets + 1);
+        });
+    }
+
+    Y_UNIT_TEST_WITH_COMPRESSION(BackupUuidColumn) {
+        TTestBasicRuntime runtime;
+
+        Backup(runtime, ToString(Codec), R"(
+            Name: "Table"
+            Columns { Name: "key" Type: "Uint32" }
+            Columns { Name: "value" Type: "Uuid" }
+            KeyColumnNames: ["key"]
+        )", [](TTestBasicRuntime& runtime) {
+            NKikimrMiniKQL::TResult result;
+            TString error;
+            NKikimrProto::EReplyStatus status = LocalMiniKQL(runtime, TTestTxConfig::FakeHiveTablets, Sprintf(R"(
+                (
+                    (let key '( '('key (Uint32 '%d) ) ) )
+                    (let row '( '('value (Uuid '"%s") ) ) )
+                    (return (AsList (UpdateRow '__user__%s key row) ))
+                )
+            )", 1, "0000111122223333", "Table"), result, error);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(status, NKikimrProto::EReplyStatus::OK, error);
+            UNIT_ASSERT_VALUES_EQUAL(error, "");
         });
     }
 

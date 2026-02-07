@@ -1,7 +1,7 @@
 #pragma once
 
 #include "datashard.h"
-#include "datashard_locks.h"
+#include <contrib/ydb/core/tx/locks/locks.h>
 
 #include <contrib/ydb/core/base/row_version.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_eggs.h>
@@ -205,6 +205,7 @@ public:
     TActorId SessionId;
     TMonotonic StartTs;
     bool IsFinished = false;
+    bool ReadContinuePending = false;
 
     // note that we send SeqNo's starting from 1
     ui64 SeqNo = 0;

@@ -50,6 +50,12 @@ public:
         auto& record = ev->Record;
         record.SetPgWire(true);
         NKikimrKqp::TCreateSessionRequest& request = *record.MutableRequest();
+        if (ConnectionParams.count("application_name")) {
+            record.SetApplicationName(ConnectionParams["application_name"]);
+        }
+        if (ConnectionParams.count("user")) {
+            record.SetUserName(ConnectionParams["user"]);
+        }
         request.SetDatabase(database);
         BLOG_D("Sent CreateSessionRequest to kqpProxy " << ev->Record.ShortDebugString());
         Send(NKqp::MakeKqpProxyID(SelfId().NodeId()), ev.Release());
@@ -75,6 +81,7 @@ public:
             // TODO: report actuall error
             response->ErrorFields.push_back({'E', "ERROR"});
             response->ErrorFields.push_back({'M', record.GetError()});
+            //response->DropConnection = true; // it always closes connection on error on handshake
             Send(ConnectionEvent->Sender, response.Release(), 0, ev->Cookie);
             return PassAway();
         }

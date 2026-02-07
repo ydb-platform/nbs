@@ -11,6 +11,7 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/core/grpc_services/counters
     contrib/ydb/core/grpc_streaming
+    contrib/ydb/core/jaeger_tracing
     contrib/ydb/public/api/protos
     contrib/ydb/public/sdk/cpp/client/resources
     contrib/ydb/library/yql/public/issue

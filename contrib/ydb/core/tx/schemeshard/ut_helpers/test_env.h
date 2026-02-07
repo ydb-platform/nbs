@@ -9,6 +9,10 @@
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_export.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_identificators.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_import.h>
+#include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+#include <contrib/ydb/core/protos/follower_group.pb.h>
+#include <contrib/ydb/core/protos/msgbus_kv.pb.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 
@@ -60,6 +64,10 @@ namespace NSchemeShardUT_Private {
         OPTION(std::optional<bool>, EnableServerlessExclusiveDynamicNodes, std::nullopt);
         OPTION(std::optional<bool>, EnableAddColumsWithDefaults, std::nullopt);
         OPTION(std::optional<bool>, EnableReplaceIfExistsForExternalEntities, std::nullopt);
+        OPTION(std::optional<TString>, GraphBackendType, std::nullopt);
+        OPTION(std::optional<bool>, EnableChangefeedsOnIndexTables, std::nullopt);
+        OPTION(std::optional<bool>, EnableTieringInColumnShard, std::nullopt);
+        OPTION(std::optional<bool>, EnableParameterizedDecimal, std::nullopt);
 
         #undef OPTION
     };
@@ -128,7 +136,7 @@ namespace NSchemeShardUT_Private {
 
     private:
         static std::function<IActor*(const TActorId&, TTabletStorageInfo*)> GetTabletCreationFunc(ui32 type);
-        void AddDomain(TTestActorRuntime& runtime, TAppPrepare& app, ui32 domainUid, ui32 ssId, ui64 hive, ui64 schemeRoot);
+        void AddDomain(TTestActorRuntime& runtime, TAppPrepare& app, ui32 domainUid, ui64 hive, ui64 schemeRoot);
 
         void BootSchemeShard(TTestActorRuntime& runtime, ui64 schemeRoot);
         void BootTxAllocator(TTestActorRuntime& runtime, ui64 tabletId);

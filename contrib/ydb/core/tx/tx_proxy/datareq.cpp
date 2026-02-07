@@ -17,6 +17,7 @@
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/base/tx_processing.h>
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
+#include <contrib/ydb/core/protos/query_stats.pb.h>
 #include <contrib/ydb/core/engine/mkql_engine_flat.h>
 #include <contrib/ydb/core/engine/mkql_proto.h>
 #include <contrib/ydb/core/scheme/scheme_types_defs.h>
@@ -29,6 +30,7 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/protos/actors.pb.h>
 
 #include <util/generic/hash_set.h>
 #include <util/generic/queue.h>
@@ -175,7 +177,7 @@ struct TReadTableRequest : public TThrRefBase {
         , RequestVersion(tx.HasApiVersion() ? tx.GetApiVersion() : (ui32)NKikimrTxUserProxy::TReadTableTransaction::UNSPECIFIED)
     {
         for (auto &col : tx.GetColumns()) {
-            Columns.emplace_back(col, 0, NScheme::TTypeInfo(0));
+            Columns.emplace_back(col, 0, NScheme::TTypeInfo());
         }
 
         if (tx.HasSnapshotStep() && tx.HasSnapshotTxId()) {
@@ -1564,6 +1566,7 @@ void TDataReq::Handle(TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr &ev, 
             toExpand = toInclusive ? EParseRangeKeyExp::NONE : EParseRangeKeyExp::TO_NULL;
         }
     }
+
     if (!ParseRangeKey(ReadTableRequest->Range.GetFrom(), keyTypes,
                        ReadTableRequest->FromValues, fromExpand)
         || !ParseRangeKey(ReadTableRequest->Range.GetTo(), keyTypes,
@@ -2801,13 +2804,8 @@ ui64 GetFirstTablet(NSchemeCache::TSchemeCacheRequest &cacheRequest) {
     return firstKey.GetPartitions().begin()->ShardId;
 }
 
-const TDomainsInfo::TDomain& TDataReq::SelectDomain(NSchemeCache::TSchemeCacheRequest &cacheRequest, const TActorContext &ctx) {
-    ui64 firstTabletId = GetFirstTablet(cacheRequest);
-
-    auto appdata = AppData(ctx);
-    const ui32 selfDomain = appdata->DomainsInfo->GetDomainUidByTabletId(firstTabletId);
-    Y_ABORT_UNLESS(selfDomain != appdata->DomainsInfo->BadDomainId);
-    return appdata->DomainsInfo->GetDomain(selfDomain);
+const TDomainsInfo::TDomain& TDataReq::SelectDomain(NSchemeCache::TSchemeCacheRequest& /*cacheRequest*/, const TActorContext &ctx) {
+    return *AppData(ctx)->DomainsInfo->GetDomain();
 }
 
 ui64 TDataReq::SelectCoordinator(NSchemeCache::TSchemeCacheRequest &cacheRequest, const TActorContext &ctx) {
@@ -2866,11 +2864,7 @@ void TDataReq::RegisterPlan(const TActorContext &ctx) {
     Y_ABORT_UNLESS(domainsInfo);
 
     ui64 totalReadSize = 0;
-    TSet<ui32> affectedDomains;
     for (const auto &xp : PerTablet) {
-        const ui32 tabletDomain = domainsInfo->GetDomainUidByTabletId(xp.first);
-        Y_ABORT_UNLESS(tabletDomain != Max<ui32>());
-        affectedDomains.insert(tabletDomain);
         totalReadSize += xp.second.ReadSize;
     }
 
@@ -3033,7 +3027,7 @@ bool TDataReq::ParseRangeKey(const NKikimrMiniKQL::TParams &proto,
         auto& value = proto.GetValue();
         auto& type = proto.GetType();
         TString errStr;
-        bool res = NMiniKQL::CellsFromTuple(&type, value, keyType, true, key, errStr, memoryOwner);
+        bool res = NMiniKQL::CellsFromTuple(&type, value, keyType, {}, true, key, errStr, memoryOwner);
         if (!res) {
             UnresolvedKeys.push_back("Failed to parse range key tuple: " + errStr);
             return false;

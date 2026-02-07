@@ -7,6 +7,7 @@
 #include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/library/yql/providers/yt/expr_nodes/yql_yt_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/yt/common/yql_names.h>
+#include <contrib/ydb/library/yql/providers/yt/gateway/lib/yt_helpers.h>
 #include <contrib/ydb/library/yql/utils/log/log.h>
 #include <contrib/ydb/library/yql/public/udf/tz/udf_tz.h>
 #include <contrib/ydb/library/yql/public/decimal/yql_decimal.h>
@@ -16,6 +17,7 @@
 
 #include <library/cpp/yson/node/node_io.h>
 #include <yt/cpp/mapreduce/common/helpers.h>
+#include <yt/cpp/mapreduce/interface/serialize.h>
 
 #include <util/stream/output.h>
 #include <util/stream/str.h>
@@ -115,6 +117,18 @@ public:
         Converters.emplace(TCoInterval::CallableName(), [](const TExprNode& node) {
             return NYT::TNode(NYql::FromString<i64>(*node.Child(0), EDataSlot::Interval));
         });
+        Converters.emplace(TCoDate32::CallableName(), [](const TExprNode& node) {
+            return NYT::TNode((i64)NYql::FromString<i32>(*node.Child(0), EDataSlot::Date32));
+        });
+        Converters.emplace(TCoDatetime64::CallableName(), [](const TExprNode& node) {
+            return NYT::TNode(NYql::FromString<i64>(*node.Child(0), EDataSlot::Datetime64));
+        });
+        Converters.emplace(TCoTimestamp64::CallableName(), [](const TExprNode& node) {
+            return NYT::TNode(NYql::FromString<i64>(*node.Child(0), EDataSlot::Timestamp64));
+        });
+        Converters.emplace(TCoInterval64::CallableName(), [](const TExprNode& node) {
+            return NYT::TNode(NYql::FromString<i64>(*node.Child(0), EDataSlot::Interval64));
+        });
         Converters.emplace(TCoTzDate::CallableName(), [](const TExprNode& node) {
             TStringBuf tzName = node.Child(0)->Content();
             TStringBuf valueStr;
@@ -137,6 +151,30 @@ public:
             GetNext(tzName, ',', valueStr);
             TStringStream out;
             NMiniKQL::SerializeTzTimestamp(::FromString<ui64>(valueStr), NMiniKQL::GetTimezoneId(tzName), out);
+            return NYT::TNode(out.Str());
+        });
+        Converters.emplace(TCoTzDate32::CallableName(), [](const TExprNode& node) {
+            TStringBuf tzName = node.Child(0)->Content();
+            TStringBuf valueStr;
+            GetNext(tzName, ',', valueStr);
+            TStringStream out;
+            NMiniKQL::SerializeTzDate32(::FromString<i32>(valueStr), NMiniKQL::GetTimezoneId(tzName), out);
+            return NYT::TNode(out.Str());
+        });
+        Converters.emplace(TCoTzDatetime64::CallableName(), [](const TExprNode& node) {
+            TStringBuf tzName = node.Child(0)->Content();
+            TStringBuf valueStr;
+            GetNext(tzName, ',', valueStr);
+            TStringStream out;
+            NMiniKQL::SerializeTzDatetime64(::FromString<i64>(valueStr), NMiniKQL::GetTimezoneId(tzName), out);
+            return NYT::TNode(out.Str());
+        });
+        Converters.emplace(TCoTzTimestamp64::CallableName(), [](const TExprNode& node) {
+            TStringBuf tzName = node.Child(0)->Content();
+            TStringBuf valueStr;
+            GetNext(tzName, ',', valueStr);
+            TStringStream out;
+            NMiniKQL::SerializeTzTimestamp64(::FromString<i64>(valueStr), NMiniKQL::GetTimezoneId(tzName), out);
             return NYT::TNode(out.Str());
         });
         Converters.emplace(TCoUuid::CallableName(), [](const TExprNode& node) {
@@ -887,8 +925,14 @@ bool TYtOutTableInfo::Validate(const TExprNode& node, TExprContext& ctx) {
         return false;
     }
 
-    if (!ValidateSettings(*node.Child(TYtOutTable::idx_Settings), EYtSettingType::UniqueBy | EYtSettingType::OpHash, ctx)) {
+    if (!ValidateSettings(*node.Child(TYtOutTable::idx_Settings), EYtSettingType::UniqueBy | EYtSettingType::OpHash | EYtSettingType::ColumnGroups, ctx)) {
         return false;
+    }
+
+    if (auto setting = NYql::GetSetting(*node.Child(TYtOutTable::idx_Settings), EYtSettingType::ColumnGroups)) {
+        if (!ValidateColumnGroups(*setting, *node.Child(TYtOutTable::idx_RowSpec)->GetTypeAnn()->Cast<TStructExprType>(), ctx)) {
+            return false;
+        }
     }
 
     return true;
@@ -949,6 +993,15 @@ TYtOutTableInfo& TYtOutTableInfo::SetUnique(const TDistinctConstraintNode* disti
         }
     }
     return *this;
+}
+
+NYT::TNode TYtOutTableInfo::GetColumnGroups() const {
+    if (Settings) {
+        if (auto setting = NYql::GetSetting(Settings.Ref(), EYtSettingType::ColumnGroups)) {
+            return NYT::NodeFromYsonString(setting->Tail().Content());
+        }
+    }
+    return {};
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1445,6 +1498,10 @@ int CompareDataNodes(NNodes::TExprBase left, NNodes::TExprBase right)
         case EDataSlot::Interval:
         case EDataSlot::Date:
         case EDataSlot::Datetime:
+        case EDataSlot::Date32:
+        case EDataSlot::Datetime64:
+        case EDataSlot::Timestamp64:
+        case EDataSlot::Interval64:
             return NUdf::CompareValues(leftType,
                 TUnboxedValuePod(NYql::FromString<i64>(leftDataCtor.Literal().Ref(), leftType)),
                 TUnboxedValuePod(NYql::FromString<i64>(rightDataCtor.Literal().Ref(), leftType)));
@@ -2722,7 +2779,7 @@ bool TYtPathInfo::Validate(const TExprNode& node, TExprContext& ctx) {
         ctx.AddError(TIssue(ctx.GetPosition(node.Pos()), TStringBuilder() << "Expected " << TYtPath::CallableName()));
         return false;
     }
-    if (!EnsureArgsCount(node, 4, ctx)) {
+    if (!EnsureMinMaxArgsCount(node, 4, 5, ctx)) {
         return false;
     }
 
@@ -2755,6 +2812,10 @@ bool TYtPathInfo::Validate(const TExprNode& node, TExprContext& ctx) {
         return false;
     }
 
+    if (node.ChildrenSize() > TYtPath::idx_AdditionalAttributes && !EnsureAtom(*node.Child(TYtPath::idx_AdditionalAttributes), ctx)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -2774,6 +2835,9 @@ void TYtPathInfo::Parse(TExprBase node) {
 
     if (path.Stat().Maybe<TYtStat>()) {
         Stat = MakeIntrusive<TYtTableStatInfo>(path.Stat().Ptr());
+    }
+    if (path.AdditionalAttributes().Maybe<TCoAtom>()) {
+        AdditionalAttributes = path.AdditionalAttributes().Cast().Value();
     }
 }
 
@@ -2795,11 +2859,19 @@ TExprBase TYtPathInfo::ToExprNode(TExprContext& ctx, const TPositionHandle& pos,
     } else {
         pathBuilder.Stat<TCoVoid>().Build();
     }
+    if (AdditionalAttributes) {
+        pathBuilder.AdditionalAttributes<TCoAtom>()
+            .Value(*AdditionalAttributes, TNodeFlags::MultilineContent)
+        .Build();
+    }
 
     return pathBuilder.Done();
 }
 
 void TYtPathInfo::FillRichYPath(NYT::TRichYPath& path) const {
+    if (AdditionalAttributes) {
+        DeserializeRichYPathAttrs(*AdditionalAttributes, path);
+    }
     if (Columns) {
         // Should have the same criteria as in TYtPathInfo::GetCodecSpecNode()
         bool useAllColumns = !Table->RowSpec; // Always use all columns for YAMR format

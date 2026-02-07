@@ -1,6 +1,7 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
 #include <contrib/ydb/core/tx/datashard/datashard_failpoints.h>
+#include <contrib/ydb/core/tx/datashard/datashard_impl.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
@@ -236,31 +237,56 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                 .BeginTuple().AddElement().BeginOptional().Decimal(TDecimalValue("1.5", 22, 9)).EndOptional().EndTuple()
                 .Build());
 
-        auto ret = session.CreateTable("/Root/DecimalTest",
+       auto ret = session.CreateTable("/Root/DecimalTest",
                 TTableBuilder()
                     .AddNullableColumn("Key", TDecimalType(22, 9))
+                    .AddNullableColumn("Key35", TDecimalType(35, 10))
                     .AddNullableColumn("Value", TDecimalType(22, 9))
-                    .SetPrimaryKeyColumn("Key")
-                    // .SetPartitionAtKeys(partitions)  // Error at split boundary 0: Unsupported typeId 4865 at index 0
+                    .AddNullableColumn("Value35", TDecimalType(35, 10))
+                    .SetPrimaryKeyColumns({"Key", "Key35"})
+                    .SetPartitionAtKeys(partitions)
                     .Build()).GetValueSync();
         UNIT_ASSERT_C(ret.IsSuccess(), ret.GetIssues().ToString());
 
+        {
+            auto describeResult = session.DescribeTable("/Root/DecimalTest" , TDescribeTableSettings().WithKeyShardBoundary(true)).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(describeResult.GetStatus(), NYdb::EStatus::SUCCESS);
+            const NYdb::NTable::TTableDescription& tableDescription = describeResult.GetTableDescription();
+            const TVector<NYdb::NTable::TKeyRange>& keyRanges = tableDescription.GetKeyRanges();
+            const TVector<NYdb::NTable::TTableColumn>& columns = tableDescription.GetTableColumns();
+            UNIT_ASSERT_VALUES_EQUAL(columns.size(), 4);
+            UNIT_ASSERT_STRINGS_EQUAL(columns[0].Type.ToString(), "Decimal(22,9)?");
+            UNIT_ASSERT_STRINGS_EQUAL(columns[1].Type.ToString(), "Decimal(35,10)?");
+            auto extractValue = [](const TValue& val) {
+                auto parser = TValueParser(val);
+                parser.OpenTuple();
+                UNIT_ASSERT(parser.TryNextElement());
+                return parser.GetOptionalDecimal()->ToString();
+            };
+            UNIT_ASSERT_VALUES_EQUAL(keyRanges.size(), 2);
+            UNIT_ASSERT_STRINGS_EQUAL(extractValue(keyRanges[0].To()->GetValue()), "1.5");
+        }
+
         auto params = TParamsBuilder().AddParam("$in").BeginList()
                 .AddListItem().BeginStruct()
-                    .AddMember("Key").Decimal(TDecimalValue("1.0"))
-                    .AddMember("Value").Decimal(TDecimalValue("10.123456789"))
+                    .AddMember("Key").Decimal(TDecimalValue("1.0", 22, 9))
+                    .AddMember("Key35").Decimal(TDecimalValue("155555555555555.0", 35, 10))
+                    .AddMember("Value").Decimal(TDecimalValue("10.123456789", 22, 9))
+                    .AddMember("Value35").Decimal(TDecimalValue("155555555555555.123456789", 35, 10))
                     .EndStruct()
                 .AddListItem().BeginStruct()
-                    .AddMember("Key").Decimal(TDecimalValue("2.0"))
-                    .AddMember("Value").Decimal(TDecimalValue("20.987654321"))
+                    .AddMember("Key").Decimal(TDecimalValue("2.0", 22, 9))
+                    .AddMember("Key35").Decimal(TDecimalValue("255555555555555.0", 35, 10))
+                    .AddMember("Value").Decimal(TDecimalValue("20.987654321", 22, 9))
+                    .AddMember("Value35").Decimal(TDecimalValue("255555555555555.987654321", 35, 10))
                     .EndStruct()
                 .EndList().Build().Build();
 
         auto result = session.ExecuteDataQuery(R"(
             --!syntax_v1
-            DECLARE $in AS List<Struct<Key: Decimal(22, 9), Value: Decimal(22, 9)>>;
+            DECLARE $in AS List<Struct<Key: Decimal(22, 9), Key35: Decimal(35, 10), Value: Decimal(22, 9), Value35: Decimal(35, 10)>>;
             REPLACE INTO `/Root/DecimalTest`
-                SELECT Key, Value FROM AS_TABLE($in);
+                SELECT Key, Key35, Value, Value35 FROM AS_TABLE($in);
         )", TTxControl::BeginTx().CommitTx(), params).GetValueSync();
         UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
 
@@ -270,6 +296,12 @@ Y_UNIT_TEST_SUITE(KqpScan) {
             [["1"];["10.123456789"]];
             [["2"];["20.987654321"]]
         ])", StreamResultToYson(it));
+
+        auto it35 = db.StreamExecuteScanQuery("select Key35, max(Value35) from `/Root/DecimalTest` group by Key35 order by Key35").GetValueSync();
+        CompareYson(R"([
+            [["155555555555555"];["155555555555555.123456789"]];
+            [["255555555555555"];["255555555555555.987654321"]]
+        ])", StreamResultToYson(it35));        
     }
 
     Y_UNIT_TEST(TaggedScalar) {
@@ -498,17 +530,52 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                 .Build()
             .Build();
 
-        auto it = db.StreamExecuteScanQuery(R"(
-            DECLARE $key AS Uint64;
 
-            SELECT * FROM `/Root/EightShard` WHERE Key = $key;
-        )", params).GetValueSync();
+        {
+            auto it = db.StreamExecuteScanQuery(R"(
+                DECLARE $key AS Uint64;
 
-        UNIT_ASSERT(it.IsSuccess());
+                SELECT * FROM `/Root/EightShard` WHERE Key = $key;
+            )", params).GetValueSync();
 
-        CompareYson(R"([
-            [[1];[202u];["Value2"]]
-        ])", StreamResultToYson(it));
+            UNIT_ASSERT(it.IsSuccess());
+
+                   CompareYson(R"([
+                [[1];[202u];["Value2"]]
+            ])", StreamResultToYson(it));
+        }
+
+        {
+            auto it = db.StreamExecuteScanQuery(R"(
+                DECLARE $key AS Uint64;
+
+                SELECT * FROM `/Root/EightShard` WHERE Key = $key;
+            )", params).GetValueSync();
+
+            UNIT_ASSERT(it.IsSuccess());
+            auto part = it.ReadNext().GetValueSync();
+            UNIT_ASSERT(part.IsSuccess());
+
+
+            UNIT_ASSERT(part.HasVirtualTimestamp());
+            UNIT_ASSERT(part.GetVirtualTimestamp().GetStep() != 0);
+            UNIT_ASSERT(part.GetVirtualTimestamp().GetTxId() != 0);
+        }
+
+        {
+            auto it = db.StreamExecuteScanQuery(R"(
+                SELECT * FROM `/Root/EightShard` WHERE Key = 9876554123;
+            )", params).GetValueSync();
+
+            UNIT_ASSERT(it.IsSuccess());
+            auto part = it.ReadNext().GetValueSync();
+            UNIT_ASSERT(part.IsSuccess());
+
+
+            UNIT_ASSERT(part.HasVirtualTimestamp());
+            UNIT_ASSERT(part.GetVirtualTimestamp().GetStep() != 0);
+            UNIT_ASSERT(part.GetVirtualTimestamp().GetTxId() != 0);
+        }
     }
 
     Y_UNIT_TEST(AggregateByColumn) {
@@ -737,7 +804,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
             SELECT t1.Name, t1.Amount, t2.Id
             FROM Test AS t1
             LEFT JOIN Tmp AS t2
-            ON t1.Amount = t2.Value;
+            ON t1.Amount = t2.Value
+            ORDER BY t1.Name, t1.Amount, t2.Id;
         )").GetValueSync();
 
         UNIT_ASSERT_C(it.IsSuccess(), it.GetIssues().ToString());
@@ -1211,9 +1279,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
     }
 #endif
 
-    Y_UNIT_TEST_TWIN(PrunePartitionsByLiteral, WithPredicatesExtract) {
+    Y_UNIT_TEST(PrunePartitionsByLiteral) {
         auto cfg = AppCfg();
-        cfg.MutableTableServiceConfig()->SetEnablePredicateExtractForScanQueries(WithPredicatesExtract);
         auto kikimr = DefaultKikimrRunner({}, cfg);
         auto db = kikimr.GetTableClient();
 
@@ -1222,10 +1289,9 @@ Y_UNIT_TEST_SUITE(KqpScan) {
 
         // simple key
         {
-            auto it = db.StreamExecuteScanQuery(Sprintf(R"(
-                PRAGMA Kikimr.OptEnablePredicateExtract = '%s';
+            auto it = db.StreamExecuteScanQuery(R"(
                 SELECT * FROM `/Root/EightShard` WHERE Key = 301;
-            )", WithPredicatesExtract ? "true" : "false"), settings).GetValueSync();
+            )", settings).GetValueSync();
 
             UNIT_ASSERT(it.IsSuccess());
 
@@ -1244,11 +1310,10 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                 .AddParam("$ts").Int64(2).Build()
                 .Build();
 
-            auto it = db.StreamExecuteScanQuery(Sprintf(R"(
-                PRAGMA Kikimr.OptEnablePredicateExtract = '%s';
+            auto it = db.StreamExecuteScanQuery(R"(
                 DECLARE $ts AS Int64;
                 SELECT * FROM `/Root/Logs` WHERE App = "nginx" AND Ts > $ts
-            )", WithPredicatesExtract ? "true" : "false"), params, settings).GetValueSync();
+            )", params, settings).GetValueSync();
 
             UNIT_ASSERT(it.IsSuccess());
 
@@ -2152,7 +2217,6 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnableKqpScanQuerySourceRead(true);
-        appConfig.MutableTableServiceConfig()->SetEnablePredicateExtractForScanQueries(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -2172,7 +2236,6 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnableKqpScanQuerySourceRead(true);
-        appConfig.MutableTableServiceConfig()->SetEnablePredicateExtractForScanQueries(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -2193,7 +2256,6 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         TKikimrSettings settings;
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnableKqpScanQuerySourceRead(true);
-        appConfig.MutableTableServiceConfig()->SetEnablePredicateExtractForDataQueries(true);
         settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
         settings.SetAppConfig(appConfig);
 
@@ -2241,7 +2303,6 @@ Y_UNIT_TEST_SUITE(KqpScan) {
 
         {
             auto result = db.StreamExecuteScanQuery(R"(
-                PRAGMA kikimr.OptEnablePredicateExtract = "false";
                 $keys = SELECT Key FROM `/Root/EightShard`;
                 SELECT * FROM `/Root/KeyValue` WHERE Key IN $keys ORDER BY Key;
             )").GetValueSync();
@@ -2284,7 +2345,6 @@ Y_UNIT_TEST_SUITE(KqpScan) {
 
         {
             auto result = db.StreamExecuteScanQuery(R"(
-                PRAGMA kikimr.OptEnablePredicateExtract = "false";
                 $keys = SELECT Key FROM `/Root/KeyValue`;
                 SELECT * FROM `/Root/TestTable` WHERE Key1 IN $keys ORDER BY Key1, Key2;
             )").GetValueSync();
@@ -2370,9 +2430,9 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         bool firstAttemptToGetData = false;
 
         auto captureEvents = [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev) {
-            if (ev->GetTypeRewrite() == TEvTxProxySchemeCache::TEvNavigateKeySetResult::EventType) {
-                IActor* actor = runtime->FindActor(ev->GetRecipientRewrite());
-                if (actor && actor->GetActivityType() == NKikimrServices::TActivity::KQP_STREAM_LOOKUP_ACTOR) {
+            if (ev->GetTypeRewrite() == TEvTxProxySchemeCache::TEvResolveKeySetResult::EventType) {
+                Cerr << "Captured TEvTxProxySchemeCache::TEvResolveKeySetResult from " << runtime->FindActorName(ev->Sender) << " to " << runtime->FindActorName(ev->GetRecipientRewrite()) << Endl;
+                if (runtime->FindActorName(ev->GetRecipientRewrite()) == "KQP_STREAM_LOOKUP_ACTOR") {
                     if (!firstAttemptToGetData) {
                         // capture response from scheme cache until CA calls GetAsyncInputData()
                         captured.push_back(ev.Release());
@@ -2389,9 +2449,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                 auto& record = ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record;
                 Y_ASSERT(record.GetResultSet().rows().size() == 0);
 
-                auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                 resp->Record.SetEnough(false);
-                resp->Record.SetSeqNo(record.GetSeqNo());
                 runtime->Send(new IEventHandle(ev->Sender, sender, resp.Release()));
                 return true;
             }
@@ -2434,14 +2493,13 @@ Y_UNIT_TEST_SUITE(KqpScan) {
 
         createTable(createSession(), R"(
             --!syntax_v1
-            CREATE TABLE `/Root/Table` (Key int32, Value int32, PRIMARY KEY(Key));
+            CREATE TABLE `/Root/Table` (Key int32, Fk int32, Value int32, PRIMARY KEY(Key), INDEX Index GLOBAL ON (Fk));
         )");
 
         server->GetRuntime()->SetEventFilter(captureEvents);
 
         sendQuery(R"(
-            PRAGMA kikimr.OptEnablePredicateExtract = "false";
-            SELECT Value FROM `/Root/Table` WHERE Key IN AsList(1, 2, 3);
+            SELECT Value FROM `/Root/Table` VIEW Index WHERE Fk IN AsList(1, 2, 3);
         )");
     }
 

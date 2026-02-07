@@ -2,6 +2,10 @@
 
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
 
+#include <contrib/ydb/core/protos/node_broker.pb.h>
+#include <contrib/ydb/core/protos/console_base.pb.h>
+#include <contrib/ydb/core/protos/console_config.pb.h>
+
 namespace NKikimr {
 namespace NClient {
 

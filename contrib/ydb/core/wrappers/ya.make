@@ -19,7 +19,6 @@ ELSE()
         contrib/ydb/library/actors/core
         contrib/ydb/core/base
         contrib/ydb/core/protos
-        contrib/ydb/core/wrappers/ut_helpers
         contrib/ydb/core/wrappers/events
     )
 ENDIF()

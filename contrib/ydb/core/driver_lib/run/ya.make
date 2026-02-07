@@ -1,5 +1,15 @@
 LIBRARY(run)
 
+IF (OS_WINDOWS)
+    CFLAGS(
+        -DKIKIMR_DISABLE_S3_OPS
+    )
+ELSE()
+    PEERDIR(
+        contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core
+    )
+ENDIF()
+
 SRCS(
     auto_config_initializer.cpp
     config.cpp
@@ -7,8 +17,6 @@ SRCS(
     config_parser.cpp
     config_parser.h
     driver.h
-    dummy.cpp
-    dummy.h
     factories.h
     factories.cpp
     kikimr_services_initializers.cpp
@@ -19,8 +27,6 @@ SRCS(
     run.h
     service_initializer.cpp
     service_initializer.h
-    cert_auth_props.h
-    cert_auth_props.cpp
 )
 
 PEERDIR(
@@ -46,7 +52,10 @@ PEERDIR(
     library/cpp/svnversion
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/audit
+    contrib/ydb/core/audit/audit_config
+    contrib/ydb/core/audit/heartbeat_actor
     contrib/ydb/core/base
+    contrib/ydb/core/backup/controller
     contrib/ydb/core/blob_depot
     contrib/ydb/core/blobstorage
     contrib/ydb/core/blobstorage/backpressure
@@ -60,7 +69,6 @@ PEERDIR(
     contrib/ydb/core/cms
     contrib/ydb/core/cms/console
     contrib/ydb/core/control
-    contrib/ydb/core/config/init
     contrib/ydb/core/driver_lib/base_utils
     contrib/ydb/core/driver_lib/cli_config_base
     contrib/ydb/core/driver_lib/cli_utils
@@ -72,9 +80,9 @@ PEERDIR(
     contrib/ydb/core/graph/shard
     contrib/ydb/core/grpc_services
     contrib/ydb/core/grpc_services/base
-    contrib/ydb/core/grpc_services/auth_processor
     contrib/ydb/core/health_check
     contrib/ydb/core/http_proxy
+    contrib/ydb/core/jaeger_tracing
     contrib/ydb/core/kesus/proxy
     contrib/ydb/core/kesus/tablet
     contrib/ydb/core/keyvalue
@@ -101,8 +109,9 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/scheme_types
     contrib/ydb/core/security
-    contrib/ydb/core/statistics
+    contrib/ydb/core/security/ldap_auth_provider
     contrib/ydb/core/statistics/aggregator
+    contrib/ydb/core/statistics/service
     contrib/ydb/core/sys_view/processor
     contrib/ydb/core/sys_view/service
     contrib/ydb/core/tablet
@@ -113,6 +122,8 @@ PEERDIR(
     contrib/ydb/core/tx/columnshard
     contrib/ydb/core/tx/coordinator
     contrib/ydb/core/tx/conveyor/service
+    contrib/ydb/core/tx/limiter/service
+    contrib/ydb/core/tx/limiter/grouped_memory/usage
     contrib/ydb/core/tx/datashard
     contrib/ydb/core/tx/long_tx_service
     contrib/ydb/core/tx/long_tx_service/public
@@ -135,11 +146,16 @@ PEERDIR(
     contrib/ydb/library/pdisk_io
     contrib/ydb/library/security
     contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    contrib/ydb/library/yql/providers/yt/codec/codegen
+    contrib/ydb/library/yql/providers/yt/comp_nodes/llvm14
+    contrib/ydb/library/signal_backtrace
     contrib/ydb/library/yql/providers/pq/cm_client
+    contrib/ydb/library/yql/providers/s3/actors
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/public/lib/base
     contrib/ydb/public/lib/deprecated/client
     contrib/ydb/services/auth
+    contrib/ydb/services/backup
     contrib/ydb/services/cms
     contrib/ydb/services/dynamic_config
     contrib/ydb/services/datastreams
@@ -151,8 +167,6 @@ PEERDIR(
     contrib/ydb/services/maintenance
     contrib/ydb/services/metadata/ds_table
     contrib/ydb/services/metadata
-    contrib/ydb/services/bg_tasks/ds_table
-    contrib/ydb/services/bg_tasks
     contrib/ydb/services/ext_index/service
     contrib/ydb/services/ext_index/metadata
     contrib/ydb/services/monitoring
@@ -160,6 +174,8 @@ PEERDIR(
     contrib/ydb/services/deprecated/persqueue_v0
     contrib/ydb/services/persqueue_v1
     contrib/ydb/services/rate_limiter
+    contrib/ydb/services/replication
+    contrib/ydb/services/view
     contrib/ydb/services/ydb
 )
 

@@ -26,6 +26,7 @@ PEERDIR(
     contrib/ydb/library/yql/dq/runtime
     contrib/ydb/library/yql/dq/tasks
     contrib/ydb/library/yql/dq/actors/spilling
+    contrib/ydb/library/yql/minikql
     contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/public/issue
     contrib/ydb/core/quoter/public

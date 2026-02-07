@@ -4,7 +4,7 @@
 #include "executor_thread.h"
 #include "mon_stats.h"
 #include "scheduler_queue.h"
-#include <contrib/ydb/library/actors/util/activation_queue.h>
+#include <contrib/ydb/library/actors/queues/activation_queue.h>
 #include <contrib/ydb/library/actors/util/affinity.h>
 #include <contrib/ydb/library/actors/util/unordered_cache.h>
 #include <contrib/ydb/library/actors/util/threadparkpad.h>
@@ -26,7 +26,6 @@ namespace NActors {
         // Stuck actor monitoring
         TMutex StuckObserverMutex;
         std::vector<IActor*> Actors;
-        mutable std::vector<std::tuple<ui32, double>> DeadActorsUsage;
         friend class TGenericExecutorThread;
         friend class TSharedExecutorThread;
         void RecalculateStuckActors(TExecutorThreadStats& stats) const;
@@ -47,21 +46,16 @@ namespace NActors {
 
     class TExecutorPoolBase: public TExecutorPoolBaseMailboxed {
     protected:
-
-#ifdef RING_ACTIVATION_QUEUE
-        using TActivationQueue = TRingActivationQueue;
-#else
-        using TActivationQueue = TUnorderedCache<ui32, 512, 4>;
-#endif
+        using TUnorderedCacheActivationQueue = TUnorderedCache<ui32, 512, 4>;
 
         const i16 PoolThreads;
         TIntrusivePtr<TAffinity> ThreadsAffinity;
         TAtomic Semaphore = 0;
-        TActivationQueue Activations;
+        std::variant<TUnorderedCacheActivationQueue, TRingActivationQueue> Activations;
         TAtomic ActivationsRevolvingCounter = 0;
         std::atomic_bool StopFlag = false;
     public:
-        TExecutorPoolBase(ui32 poolId, ui32 threads, TAffinity* affinity);
+        TExecutorPoolBase(ui32 poolId, ui32 threads, TAffinity* affinity, bool useRingQueue);
         ~TExecutorPoolBase();
         void ScheduleActivation(ui32 activation) override;
         void SpecificScheduleActivation(ui32 activation) override;

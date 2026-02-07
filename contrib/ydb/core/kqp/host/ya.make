@@ -8,6 +8,7 @@ SRCS(
     kqp_transform.cpp
     kqp_translate.cpp
     kqp_type_ann.cpp
+    kqp_statement_rewrite.cpp
 )
 
 PEERDIR(
@@ -27,8 +28,10 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/udf_resolve
     contrib/ydb/library/yql/providers/config
     contrib/ydb/library/yql/providers/generic/provider
+    contrib/ydb/library/yql/providers/pg/provider
     contrib/ydb/library/yql/providers/result/provider
-    contrib/ydb/library/yql/providers/s3/provider
+    contrib/ydb/library/yql/providers/s3/expr_nodes
+    contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/common
 )
 
 YQL_LAST_ABI_VERSION()

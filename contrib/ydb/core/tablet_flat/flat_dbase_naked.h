@@ -24,6 +24,7 @@ namespace NTable {
             ui32 Table;
             TEpoch Head;
             TTxStamp Edge;
+            const TIntrusivePtr<TKeyRangeCacheNeedGCList>& GCList;
         };
 
         struct TTableWrapper {
@@ -32,7 +33,7 @@ namespace NTable {
 
             TTableWrapper(TArgs args)
                 : Table(args.Table)
-                , Self(new TTable(args.Head))
+                , Self(new TTable(args.Head, args.GCList))
                 , Edge(args.Edge)
             {
 
@@ -100,6 +101,24 @@ namespace NTable {
                 aggr.MemTableOps += Self->GetOpsCount();
             }
 
+            /**
+             * Returns serial before the transaction (when in transaction),
+             * but possibly after schema changes or memtable flushes.
+             */
+            ui64 StableSerial() const noexcept
+            {
+                return DataModified && !EpochSnapshot ? SerialBackup : Serial;
+            }
+
+            /**
+             * Returns epoch before the transaction (when in transaction),
+             * but possibly after schema changes or memtable flushes.
+             */
+            TEpoch StableHead() const noexcept
+            {
+                return EpochSnapshot ? *EpochSnapshot : Self->Head();
+            }
+
             const ui32 Table = Max<ui32>();
             const TIntrusivePtr<TTable> Self;
             const TTxStamp Edge = 0;    /* Stamp of last snapshot       */
@@ -127,11 +146,12 @@ namespace NTable {
         using TMemGlob = NPageCollection::TMemGlob;
 
         TDatabaseImpl(TTxStamp weak, TAutoPtr<TScheme> scheme, const TEdges *edges)
-            : Weak(weak)
+            : GCList(new TKeyRangeCacheNeedGCList)
+            , Weak(weak)
             , Redo(*this)
             , Scheme(scheme)
         {
-            for (auto it : Scheme->Tables) {
+            for (const auto& it : Scheme->Tables) {
                 auto *mine = edges ? edges->FindPtr(it.first) : nullptr;
 
                 MakeTable(it.first, mine ? *mine : TSnapEdge{ })->SetScheme(it.second);
@@ -143,6 +163,14 @@ namespace NTable {
         ui64 Serial() const noexcept
         {
             return Serial_;
+        }
+
+        /**
+         * Returns serial before the transaction (when in transaction)
+         */
+        ui64 StableSerial() const noexcept
+        {
+            return InTransaction ? Begin_ : Serial_;
         }
 
         TTableWrapper& Get(ui32 table, bool require) noexcept
@@ -445,6 +473,10 @@ namespace NTable {
             SchemeRollbackState.Tables.clear();
         }
 
+        void RunGC() {
+            GCList->RunGC();
+        }
+
         TDatabaseImpl& Switch(TTxStamp stamp) noexcept
         {
             Y_ABORT_UNLESS(!InTransaction, "Unexpected switch inside a transaction");
@@ -582,7 +614,7 @@ namespace NTable {
                 edge.Head = TEpoch(i64(head));
             }
 
-            TArgs args{ table, edge.Head, edge.TxStamp };
+            TArgs args{ table, edge.Head, edge.TxStamp, GCList };
 
             auto result = Tables.emplace(table, args);
 
@@ -775,7 +807,18 @@ namespace NTable {
             }
         }
 
+    public:
+        TDbRuntimeStats GetRuntimeStats() const {
+            TDbRuntimeStats stats;
+            for (auto& pr : Tables) {
+                // TODO: use a lazy aggregate to balance many idle tables vs frequent updates
+                stats += pr.second->RuntimeStats();
+            }
+            return stats;
+        }
+
     private:
+        const TIntrusivePtr<TKeyRangeCacheNeedGCList> GCList;
         const TTxStamp Weak;    /* db bootstrap upper stamp         */
         ui64 Stamp = 0;
         ui64 Serial_ = 1;       /* db global change serial number    */

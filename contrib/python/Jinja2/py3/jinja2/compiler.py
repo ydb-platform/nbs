@@ -1,4 +1,5 @@
 """Compiles nodes from the parser into Python code."""
+
 import typing as t
 from contextlib import contextmanager
 from functools import update_wrapper
@@ -24,6 +25,7 @@ from .visitor import NodeVisitor
 
 if t.TYPE_CHECKING:
     import typing_extensions as te
+
     from .environment import Environment
 
 F = t.TypeVar("F", bound=t.Callable[..., t.Any])
@@ -60,8 +62,7 @@ def _make_binop(op: str) -> t.Callable[["CodeGenerator", nodes.BinExpr, "Frame"]
     @optimizeconst
     def visitor(self: "CodeGenerator", node: nodes.BinExpr, frame: Frame) -> None:
         if (
-            self.environment.sandboxed
-            and op in self.environment.intercepted_binops  # type: ignore
+            self.environment.sandboxed and op in self.environment.intercepted_binops  # type: ignore
         ):
             self.write(f"environment.call_binop(context, {op!r}, ")
             self.visit(node.left, frame)
@@ -84,8 +85,7 @@ def _make_unop(
     @optimizeconst
     def visitor(self: "CodeGenerator", node: nodes.UnaryExpr, frame: Frame) -> None:
         if (
-            self.environment.sandboxed
-            and op in self.environment.intercepted_unops  # type: ignore
+            self.environment.sandboxed and op in self.environment.intercepted_unops  # type: ignore
         ):
             self.write(f"environment.call_unop(context, {op!r}, ")
             self.visit(node.node, frame)
@@ -133,7 +133,7 @@ def has_safe_repr(value: t.Any) -> bool:
     if type(value) in {tuple, list, set, frozenset}:
         return all(has_safe_repr(v) for v in value)
 
-    if type(value) is dict:
+    if type(value) is dict:  # noqa E721
         return all(has_safe_repr(k) and has_safe_repr(v) for k, v in value.items())
 
     return False
@@ -551,10 +551,13 @@ class CodeGenerator(NodeVisitor):
         for node in nodes:
             visitor.visit(node)
 
-        for id_map, names, dependency in (self.filters, visitor.filters, "filters"), (
-            self.tests,
-            visitor.tests,
-            "tests",
+        for id_map, names, dependency in (
+            (self.filters, visitor.filters, "filters"),
+            (
+                self.tests,
+                visitor.tests,
+                "tests",
+            ),
         ):
             for name in sorted(names):
                 if name not in id_map:
@@ -829,7 +832,8 @@ class CodeGenerator(NodeVisitor):
         assert frame is None, "no root frame allowed"
         eval_ctx = EvalContext(self.environment, self.name)
 
-        from .runtime import exported, async_exported
+        from .runtime import async_exported
+        from .runtime import exported
 
         if self.environment.is_async:
             exported_names = sorted(exported + async_exported)
@@ -993,7 +997,6 @@ class CodeGenerator(NodeVisitor):
         # far, we don't have to add a check if something extended
         # the template before this one.
         if self.extends_so_far > 0:
-
             # if we have a known extends we just add a template runtime
             # error into the generated code.  We could catch that at compile
             # time too, but i welcome it not to confuse users by throwing the
@@ -1407,7 +1410,7 @@ class CodeGenerator(NodeVisitor):
 
             if pass_arg is None:
 
-                def finalize(value: t.Any) -> t.Any:
+                def finalize(value: t.Any) -> t.Any:  # noqa: F811
                     return default(env_finalize(value))
 
             else:
@@ -1415,7 +1418,7 @@ class CodeGenerator(NodeVisitor):
 
                 if pass_arg == "environment":
 
-                    def finalize(value: t.Any) -> t.Any:
+                    def finalize(value: t.Any) -> t.Any:  # noqa: F811
                         return default(env_finalize(self.environment, value))
 
         self._finalize = self._FinalizeInfo(finalize, src)

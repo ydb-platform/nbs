@@ -33,18 +33,9 @@
 
 namespace NKikimr::NKqp {
 
-void ConvertKqpQueryResultToDbResult(const NKikimrMiniKQL::TResult& from, Ydb::ResultSet* to);
-
 TString ScriptExecutionRunnerActorIdString(const NActors::TActorId& actorId);
 bool ScriptExecutionRunnerActorIdFromString(const TString& executionId, TActorId& actorId);
 
-template<typename TFrom, typename TTo>
-inline void ConvertKqpQueryResultsToDbResult(const TFrom& from, TTo* to) {
-    const auto& results = from.GetResults();
-    for (const auto& result : results) {
-        ConvertKqpQueryResultToDbResult(result, to->add_result_sets());
-    }
-}
 
 class TKqpRequestInfo {
 public:
@@ -80,6 +71,8 @@ public:
     /// Accepts query text
     virtual void Collect(const TString& queryData) = 0;
 
+    virtual bool IsNull() { return false; }
+
     virtual ~IQueryReplayBackend() {};
 
     //// Updates configuration onn running backend, if applicable.
@@ -93,6 +86,10 @@ public:
     }
 
     virtual void UpdateConfig(const NKikimrConfig::TTableServiceConfig&) {
+    }
+
+    bool IsNull() {
+        return true;
     }
 
     ~TNullQueryReplayBackend() {

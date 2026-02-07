@@ -1,13 +1,16 @@
 #pragma once
 
 #include <library/cpp/lwtrace/shuttle.h>
+#include <contrib/ydb/core/kqp/common/kqp_tx.h>
 #include <contrib/ydb/core/kqp/common/kqp_event_ids.h>
 #include <contrib/ydb/core/kqp/common/kqp_user_request_context.h>
+#include <contrib/ydb/core/kqp/executer_actor/shards_resolver/kqp_shards_resolver_events.h>
 #include <contrib/ydb/core/kqp/query_data/kqp_query_data.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/lock_handle.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
+#include <contrib/ydb/core/protos/table_service_config.pb.h>
 
 namespace NKikimr {
 namespace NKqp {
@@ -25,6 +28,9 @@ struct TEvKqpExecuter {
 
         NLWTrace::TOrbit Orbit;
         IKqpGateway::TKqpSnapshot Snapshot;
+        std::optional<NYql::TKikimrPathId> BrokenLockPathId;
+        std::optional<ui64> BrokenLockShardId;
+
         ui64 ResultRowsCount = 0;
         ui64 ResultRowsBytes = 0;
 
@@ -65,7 +71,19 @@ struct TEvKqpExecuter {
         TKqpExecuterEvents::EvStreamData> {};
 
     struct TEvStreamDataAck : public TEventPB<TEvStreamDataAck, NKikimrKqp::TEvExecuterStreamDataAck,
-        TKqpExecuterEvents::EvStreamDataAck> {};
+        TKqpExecuterEvents::EvStreamDataAck>
+    {
+        friend class TEventPBBase;
+        explicit TEvStreamDataAck(ui64 seqno, ui64 channelId)
+        {
+            Record.SetSeqNo(seqno);
+            Record.SetChannelId(channelId);
+        }
+
+    private:
+        // using a little hack to hide default empty constructor
+        TEvStreamDataAck() = default;
+    };
 
     struct TEvStreamProfile : public TEventPB<TEvStreamProfile, NKikimrKqp::TEvExecuterStreamProfile,
         TKqpExecuterEvents::EvStreamProfile> {};
@@ -81,31 +99,22 @@ struct TEvKqpExecuter {
         NYql::TIssues Issues;
         TDuration CpuTime;
     };
-
-    struct TEvShardsResolveStatus : public TEventLocal<TEvShardsResolveStatus,
-        TKqpExecuterEvents::EvShardsResolveStatus>
-    {
-        Ydb::StatusIds::StatusCode Status = Ydb::StatusIds::SUCCESS;
-        NYql::TIssues Issues;
-
-        TMap<ui64, ui64> ShardNodes;
-        ui32 Unresolved = 0;
-    };
 };
+
+struct TKqpFederatedQuerySetup;
 
 IActor* CreateKqpExecuter(IKqpGateway::TExecPhysicalRequest&& request, const TString& database,
     const TIntrusiveConstPtr<NACLib::TUserToken>& userToken, TKqpRequestCounters::TPtr counters,
-    const NKikimrConfig::TTableServiceConfig::TAggregationConfig& aggregation,
-    const NKikimrConfig::TTableServiceConfig::TExecuterRetriesConfig& executerRetriesConfig,
+    const NKikimrConfig::TTableServiceConfig& tableServiceConfig,
     NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory, TPreparedQueryHolder::TConstPtr preparedQuery,
-    const NKikimrConfig::TTableServiceConfig::EChannelTransportVersion chanTransportVersion, const TActorId& creator,
-    TDuration maximalSecretsSnapshotWaitTime, const TIntrusivePtr<TUserRequestContext>& userRequestContext,
-    const bool enableOlapSink);
+    const TActorId& creator, const TIntrusivePtr<TUserRequestContext>& userRequestContext, ui32 statementResultIndex,
+    const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup, const TGUCSettings::TPtr& GUCSettings,
+    const TShardIdToTableInfoPtr& shardIdToTableInfo);
 
 IActor* CreateKqpSchemeExecuter(
     TKqpPhyTxHolder::TConstPtr phyTx, NKikimrKqp::EQueryType queryType, const TActorId& target,
     const TMaybe<TString>& requestType, const TString& database,
-    TIntrusiveConstPtr<NACLib::TUserToken> userToken,
+    TIntrusiveConstPtr<NACLib::TUserToken> userToken, const TString& clientAddress,
     bool temporary, TString SessionId, TIntrusivePtr<TUserRequestContext> ctx,
     const TActorId& kqpTempTablesAgentActor = TActorId());
 

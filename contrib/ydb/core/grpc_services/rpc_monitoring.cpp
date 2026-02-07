@@ -44,13 +44,11 @@ public:
     }
 
     void Bootstrap() {
-        if (GetProtoRequest()->do_not_cache() || !Request->GetDatabaseName()) {
+        if (GetProtoRequest()->do_not_cache() || !Request->GetDatabaseName() || !GetProtoRequest()->merge_records()) {
             SendHealthCheckRequest();
         } else {
-            auto domainInfo = AppData()->DomainsInfo->Domains.begin()->second;
             RegisterWithSameMailbox(CreateBoardLookupActor(MakeDatabaseMetadataCacheBoardPath(Request->GetDatabaseName().GetRef()),
                                                            SelfId(),
-                                                           domainInfo->DefaultStateStorageGroup,
                                                            EBoardLookupMode::Second));
             Become(&TThis::StateResolve);
         }

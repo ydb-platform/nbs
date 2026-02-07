@@ -1,6 +1,9 @@
+#include <contrib/ydb/public/api/protos/draft/ydb_maintenance.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_cms.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_monitoring.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_export.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_import.pb.h>
 
 #include <util/stream/output.h>
 
@@ -18,4 +21,20 @@ Y_DECLARE_OUT_SPEC(, Ydb::Monitoring::SelfCheck::Result, stream, value) {
 
 Y_DECLARE_OUT_SPEC(, Ydb::Monitoring::StatusFlag::Status, stream, value) {
     stream << Ydb::Monitoring::StatusFlag_Status_Name(value);
+}
+
+Y_DECLARE_OUT_SPEC(, Ydb::Export::ExportProgress::Progress, stream, value) {
+    stream << Ydb::Export::ExportProgress_Progress_Name(value);
+}
+
+Y_DECLARE_OUT_SPEC(, Ydb::Import::ImportProgress::Progress, stream, value) {
+    stream << Ydb::Import::ImportProgress_Progress_Name(value);
+}
+
+Y_DECLARE_OUT_SPEC(, Ydb::Maintenance::ActionState::ActionStatus, stream, value) {
+    stream << Ydb::Maintenance::ActionState::ActionStatus_Name(value);
+}
+
+Y_DECLARE_OUT_SPEC(, Ydb::Maintenance::ActionState::ActionReason, stream, value) {
+    stream << Ydb::Maintenance::ActionState::ActionReason_Name(value);
 }

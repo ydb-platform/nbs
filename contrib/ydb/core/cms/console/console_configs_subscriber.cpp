@@ -84,8 +84,7 @@ public:
     }
 
     void Bootstrap(const TActorContext &ctx) {
-        auto dinfo = AppData(ctx)->DomainsInfo;
-        if (dinfo->Domains.size() != 1) {
+        if (!AppData()->DomainsInfo->Domain) {
             Send(OwnerId, new NConsole::TEvConsole::TEvConfigSubscriptionError(Ydb::StatusIds::GENERIC_ERROR, "Ambiguous domain (use --domain option)"), 0, Cookie);
 
             Die(ctx);
@@ -93,15 +92,11 @@ public:
             return;
         }
 
-        DomainUid = dinfo->Domains.begin()->second->DomainUid;
-        StateStorageGroup = dinfo->GetDefaultStateStorageGroup(DomainUid);
-
         if (!Tenant) {
             SendPoolStatusRequest(ctx);
         } else {
             Subscribe(ctx);
         }
-
         Become(&TThis::StateWork);
     }
 
@@ -128,8 +123,7 @@ public:
     }
 
     void SendPoolStatusRequest(const TActorContext &ctx) {
-        ctx.Send(MakeTenantPoolID(ctx.SelfID.NodeId(), DomainUid), new TEvTenantPool::TEvGetStatus(true),
-            IEventHandle::FlagTrackDelivery);
+        ctx.Send(MakeTenantPoolID(ctx.SelfID.NodeId()), new TEvTenantPool::TEvGetStatus(true), IEventHandle::FlagTrackDelivery);
     }
 
     void Handle(TEvPrivate::TEvRetryPoolStatus::TPtr &/*ev*/, const TActorContext &ctx) {
@@ -266,11 +260,16 @@ public:
         auto *reflection = CurrentConfig.GetReflection();
         for (auto kind : rec.GetAffectedKinds()) {
             auto *field = desc1->FindFieldByNumber(kind);
-            if (field && reflection->HasField(CurrentConfig, field))
+            if (field && reflection->HasField(CurrentConfig, field)) {
                 reflection->ClearField(&CurrentConfig, field);
+            }
+            if (field && reflection->HasField(CurrentDynConfig, field)) {
+                reflection->ClearField(&CurrentDynConfig, field);
+            }
         }
 
         CurrentConfig.MergeFrom(rec.GetConfig());
+        CurrentDynConfig.MergeFrom(rec.GetConfig());
         if (newVersion.GetItems().empty())
             CurrentConfig.ClearVersion();
         else
@@ -279,7 +278,13 @@ public:
         notChanged &= changes.empty();
 
         if (!notChanged || !FirstUpdateSent) {
-            Send(OwnerId, new TEvConsole::TEvConfigSubscriptionNotification(Generation, CurrentConfig, changes, YamlConfig, VolatileYamlConfigs),
+            Send(OwnerId, new TEvConsole::TEvConfigSubscriptionNotification(
+                     Generation,
+                     CurrentConfig,
+                     changes,
+                     YamlConfig,
+                     VolatileYamlConfigs,
+                     CurrentDynConfig),
                 IEventHandle::FlagTrackDelivery, Cookie);
 
             FirstUpdateSent = true;
@@ -384,7 +389,7 @@ private:
     }
 
     void OpenPipe(const TActorContext &ctx) {
-        auto console = MakeConsoleID(StateStorageGroup);
+        auto console = MakeConsoleID();
 
         NTabletPipe::TClientConfig pipeConfig;
         pipeConfig.RetryPolicy = FastConnectRetryPolicy();
@@ -403,6 +408,7 @@ private:
     ui64 LastOrder;
 
     NKikimrConfig::TAppConfig CurrentConfig;
+    NKikimrConfig::TAppConfig CurrentDynConfig;
 
     bool ServeYaml = false;
     ui64 Version;
@@ -413,9 +419,6 @@ private:
 
     TString Tenant;
     TString NodeType;
-
-    ui32 DomainUid;
-    ui32 StateStorageGroup;
 
     TActorId Pipe;
 };

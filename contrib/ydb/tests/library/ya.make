@@ -83,10 +83,20 @@ IF (NOT PYTHON3)
     )
 ENDIF()
 
+IF (PYTHON3)
+    PEERDIR(
+        contrib/ydb/tools/ydbd_slice
+    )
+    PY_SRCS(
+        harness/ydbd_slice.py
+    )
+ENDIF()
+
 PEERDIR(
     contrib/python/PyHamcrest
     contrib/python/PyYAML
     contrib/python/cryptography
+    contrib/python/importlib-resources
     contrib/python/protobuf
     contrib/python/pytest
     contrib/python/setuptools
@@ -95,11 +105,15 @@ PEERDIR(
     library/python/svn_version
     library/python/testing/yatest_common
     contrib/ydb/core/protos
+    contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
+    contrib/ydb/public/sdk/python/enable_v3_new_behavior
     contrib/ydb/tests/oss/canonical
     contrib/ydb/tests/oss/ydb_sdk_import
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)

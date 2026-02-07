@@ -1,5 +1,7 @@
 #include "datashard_user_db.h"
 
+#include "datashard_impl.h"
+
 namespace NKikimr::NDataShard {
 
 TDataShardUserDb::TDataShardUserDb(TDataShard& self, NTable::TDatabase& db, ui64 globalTxId, const TRowVersion& readVersion, const TRowVersion& writeVersion, NMiniKQL::TEngineHostCounters& counters, TInstant now)
@@ -26,6 +28,8 @@ NTable::EReady TDataShardUserDb::SelectRow(
 {
     auto tid = Self.GetLocalTableId(tableId);
     Y_ABORT_UNLESS(tid != 0, "Unexpected SelectRow for an unknown table");
+
+    SetPerformedUserReads(true);
 
     return Db.Select(tid, key, tags, row, stats, /* readFlags */ 0,
         readVersion.GetOrElse(ReadVersion),
@@ -58,15 +62,13 @@ ui64 CalculateValueBytes(const TArrayRef<const NIceDb::TUpdateOp> ops) {
     return bytes;
 };
 
-void TDataShardUserDb::UpdateRow(
+void TDataShardUserDb::UpsertRow(
     const TTableId& tableId,
     const TArrayRef<const TRawTypeValue> key,
     const TArrayRef<const NIceDb::TUpdateOp> ops)
 {
     auto localTableId = Self.GetLocalTableId(tableId);
     Y_ABORT_UNLESS(localTableId != 0, "Unexpected UpdateRow for an unknown table");
-
-    ui64 valueBytes;
 
     // apply special columns if declared
     TUserTable::TSpecialUpdate specUpdates = Self.SpecialUpdates(Db, tableId);
@@ -88,7 +90,7 @@ void TDataShardUserDb::UpdateRow(
         }
 
         auto addExtendedOp = [&scheme, &tableInfo, &extendedOps](const ui64 columnTag, const ui64& columnValue) {
-            const NScheme::TTypeInfo vtype = scheme.GetColumnInfo(tableInfo, columnTag)->PType;
+            const NScheme::TTypeId vtype = scheme.GetColumnInfo(tableInfo, columnTag)->PType.GetTypeId();
             const char* ptr = static_cast<const char*>(static_cast<const void*>(&columnValue));
             TRawTypeValue rawTypeValue(ptr, sizeof(ui64), vtype);
             NIceDb::TUpdateOp extOp(columnTag, NTable::ECellOp::Set, rawTypeValue);
@@ -106,19 +108,59 @@ void TDataShardUserDb::UpdateRow(
         if (specUpdates.ColIdUpdateNo != Max<ui32>()) {
             addExtendedOp(specUpdates.ColIdUpdateNo, specUpdates.UpdateNo);
         }
-        UpdateRowInt(NTable::ERowOp::Upsert, tableId, localTableId, key, extendedOps);
+        UpsertRowInt(NTable::ERowOp::Upsert, tableId, localTableId, key, extendedOps);
 
-        valueBytes = CalculateValueBytes(extendedOps);
+        IncreaseUpdateCounters(key, extendedOps);
     } else {
-        UpdateRowInt(NTable::ERowOp::Upsert, tableId, localTableId, key, ops);
+        UpsertRowInt(NTable::ERowOp::Upsert, tableId, localTableId, key, ops);
 
-        valueBytes = CalculateValueBytes(ops);
+        IncreaseUpdateCounters(key, ops);
     }
+}
 
-    ui64 keyBytes = CalculateKeyBytes(key);
+void TDataShardUserDb::ReplaceRow(
+    const TTableId& tableId,
+    const TArrayRef<const TRawTypeValue> key,
+    const TArrayRef<const NIceDb::TUpdateOp> ops)
+{
+    auto localTableId = Self.GetLocalTableId(tableId);
+    Y_ABORT_UNLESS(localTableId != 0, "Unexpected ReplaceRow for an unknown table");
 
-    Counters.NUpdateRow++;
-    Counters.UpdateRowBytes += keyBytes + valueBytes;
+    UpsertRowInt(NTable::ERowOp::Reset, tableId, localTableId, key, ops);
+
+    IncreaseUpdateCounters(key, ops);
+}
+
+void TDataShardUserDb::InsertRow(
+    const TTableId& tableId,
+    const TArrayRef<const TRawTypeValue> key,
+    const TArrayRef<const NIceDb::TUpdateOp> ops)
+{
+    auto localTableId = Self.GetLocalTableId(tableId);
+    Y_ABORT_UNLESS(localTableId != 0, "Unexpected InsertRow for an unknown table");
+
+    if (RowExists(tableId, key))
+        throw TUniqueConstrainException();
+
+    UpsertRowInt(NTable::ERowOp::Upsert, tableId, localTableId, key, ops);
+
+    IncreaseUpdateCounters(key, ops);
+}
+
+void TDataShardUserDb::UpdateRow(
+    const TTableId& tableId,
+    const TArrayRef<const TRawTypeValue> key,
+    const TArrayRef<const NIceDb::TUpdateOp> ops)
+{
+    auto localTableId = Self.GetLocalTableId(tableId);
+    Y_ABORT_UNLESS(localTableId != 0, "Unexpected UpdateRow for an unknown table");
+
+    if (!RowExists(tableId, key))
+        return;
+
+    UpsertRowInt(NTable::ERowOp::Upsert, tableId, localTableId, key, ops);
+
+    IncreaseUpdateCounters(key, ops);
 }
 
 void TDataShardUserDb::EraseRow(
@@ -128,7 +170,7 @@ void TDataShardUserDb::EraseRow(
     auto localTableId = Self.GetLocalTableId(tableId);
     Y_ABORT_UNLESS(localTableId != 0, "Unexpected UpdateRow for an unknown table");
 
-    UpdateRowInt(NTable::ERowOp::Erase, tableId, localTableId, key, {});
+    UpsertRowInt(NTable::ERowOp::Erase, tableId, localTableId, key, {});
 
     ui64 keyBytes = CalculateKeyBytes(key);
     
@@ -136,7 +178,18 @@ void TDataShardUserDb::EraseRow(
     Counters.EraseRowBytes += keyBytes + 8;
 }
 
-void TDataShardUserDb::UpdateRowInt(
+void TDataShardUserDb::IncreaseUpdateCounters(
+    const TArrayRef<const TRawTypeValue> key, 
+    const TArrayRef<const NIceDb::TUpdateOp> ops) 
+{
+    ui64 valueBytes = CalculateValueBytes(ops);
+    ui64 keyBytes = CalculateKeyBytes(key);
+
+    Counters.NUpdateRow++;
+    Counters.UpdateRowBytes += keyBytes + valueBytes;
+}
+
+void TDataShardUserDb::UpsertRowInt(
     NTable::ERowOp rowOp,
     const TTableId& tableId,
     ui64 localTableId,
@@ -178,6 +231,25 @@ void TDataShardUserDb::UpdateRowInt(
     }
 
     Self.GetKeyAccessSampler()->AddSample(tableId, keyCells);
+}
+
+bool TDataShardUserDb::RowExists (
+    const TTableId& tableId,
+    const TArrayRef<const TRawTypeValue> key) 
+{
+    NTable::TRowState rowState;
+    const auto ready = SelectRow(tableId, key, {}, rowState);
+    switch (ready) {
+        case NTable::EReady::Page: {
+            throw TNotReadyTabletException();
+        }
+        case NTable::EReady::Data: {
+            return true;
+        }
+        case NTable::EReady::Gone: {
+            return false;
+        }
+    }
 }
 
 TSmallVec<TCell> TDataShardUserDb::ConvertTableKeys(const TArrayRef<const TRawTypeValue> key)
@@ -249,6 +321,11 @@ void TDataShardUserDb::CommitChanges(const TTableId& tableId, ui64 lockId, const
     Y_VERIFY_S(localTid, "Unexpected failure to find table " << tableId << " in datashard " << Self.TabletID());
 
     if (!Db.HasOpenTx(localTid, lockId)) {
+        if (Db.HasRemovedTx(localTid, lockId)) {
+            LOG_CRIT_S(*TlsActivationContext, NKikimrServices::TX_DATASHARD,
+                "Committing removed changes lockId# " << lockId << " tid# " << localTid << " shard# " << Self.TabletID());
+            Self.IncCounter(COUNTER_REMOVED_COMMITTED_TXS);
+        }
         return;
     }
 

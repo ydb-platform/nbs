@@ -13,7 +13,9 @@ Y_UNIT_TEST_SUITE(VDiskTest) {
 
         char value = 1;
         std::vector<TString> blobValues;
-        for (const ui32 size : {10, 1024, 576 * 1024, 1024 * 1024, 1536 * 1024}) {
+        std::vector<ui32> minHugeBlobValues = {8 * 1024, 12 * 1024, 60 * 1024, 64 * 1024, 512 * 1024};
+
+        for (const ui32 size : {10, 1024, 40 * 1024, 576 * 1024, 1024 * 1024, 1536 * 1024}) {
             for (ui32 i = 0; i < 10; ++i) {
                 TString data = TString::Uninitialized(size);
                 memset(data.Detach(), value++, data.size());
@@ -53,6 +55,7 @@ Y_UNIT_TEST_SUITE(VDiskTest) {
         ui64 minTotalSize = (ui64)4 << 30;
         ui64 totalSize = 0;
         ui8 channel = 0;
+        ui32 lastMinHugeBlobValue = 0;
 
         while (TInstant::Now() < end) {
             const ui64 tabletId = tabletIds[RandomNumber(tabletIds.size())];
@@ -67,6 +70,16 @@ Y_UNIT_TEST_SUITE(VDiskTest) {
 
             content.emplace(id, &data);
             totalSize += data.size();
+
+            if (RandomNumber(1000u) < 3) {
+                ui32 minHugeBlobValue;
+                do {
+                    minHugeBlobValue = minHugeBlobValues[RandomNumber(minHugeBlobValues.size())];
+                } while (minHugeBlobValue == lastMinHugeBlobValue);
+                lastMinHugeBlobValue = minHugeBlobValue;
+                env->ChangeMinHugeBlobSize(minHugeBlobValue);
+                Cerr << "Change MinHugeBlobSize# " << minHugeBlobValue << Endl; 
+            }
 
             if (totalSize > maxTotalSize || (totalSize >= minTotalSize && RandomNumber(1000u) < 3)) {
                 std::vector<TLogoBlobID> options;
@@ -132,6 +145,81 @@ Y_UNIT_TEST_SUITE(VDiskTest) {
                     validate();
                 }
             }
+        }
+    }
+
+    Y_UNIT_TEST(HugeBlobRecompaction) {
+        SetRandomSeed(FromString<int>(GetEnv("SEED", "1")));
+        std::optional<TTestEnv> env(std::in_place);
+
+        TString blobValue = TString::Uninitialized(400_KB);
+
+        auto changeMinHugeBlobSize = [&env](ui32 size) {
+            env->ChangeMinHugeBlobSize(size);
+            Cerr << "Change MinHugeBlobSize# " << size << Endl;
+        };
+
+        ui32 minHugeBlobSizeBefore = 500_KB;
+        ui32 minHugeBlobSizeAfter = 300_KB;
+
+        memset(blobValue.Detach(), 1, blobValue.size());
+
+        changeMinHugeBlobSize(minHugeBlobSizeBefore);
+
+        ui32 step = 1;
+
+        for (size_t i = 0; i < 100; i++) {
+            TLogoBlobID id(1, 1, step++, 0, blobValue.size(), 0, 1);
+
+            auto res = env->Put(id, blobValue);
+            UNIT_ASSERT_VALUES_EQUAL(res.GetStatus(), NKikimrProto::OK);
+        }
+
+        auto getCounters = [&env](ui8 level) {
+            auto vdiskCounters = env->GetCounters()->GetSubgroup("subsystem", "vdisk");
+            auto vdiskSub = vdiskCounters->GetSubgroup("counters", "vdisks")
+                ->GetSubgroup("storagePool", "static")
+                ->GetSubgroup("group", "000000000")
+                ->GetSubgroup("orderNumber", "00")
+                ->GetSubgroup("pdisk", "000000001")
+                ->GetSubgroup("media", "ssd");
+            auto levels = vdiskSub->GetSubgroup("subsystem", "levels");
+            auto levelSub = levels->GetSubgroup("level", ToString(level));
+            ui64 numItemsHuge = levelSub->FindCounter("NumItemsHuge")->GetAtomic();
+            ui64 numItemsInplaced = levelSub->FindCounter("NumItemsInplaced")->GetAtomic();
+            return std::make_tuple(numItemsHuge, numItemsInplaced);
+        };
+
+        env->Compact(true); // Fresh only
+
+        {
+            auto [numItemsHuge, numItemsInplaced] = getCounters(0);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsHuge, 0);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsInplaced, 100);
+        }
+
+        env->Compact();
+
+        {
+            auto [numItemsHuge, numItemsInplaced] = getCounters(17);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsHuge, 0);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsInplaced, 100);
+        }
+
+        changeMinHugeBlobSize(minHugeBlobSizeAfter);
+
+        {
+            auto [numItemsHuge, numItemsInplaced] = getCounters(17);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsHuge, 0);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsInplaced, 100);
+        }
+
+        env->Compact();
+
+        {
+            auto [numItemsHuge, numItemsInplaced] = getCounters(17);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsHuge, 100);
+            UNIT_ASSERT_VALUES_EQUAL(numItemsInplaced, 0);
         }
     }
 

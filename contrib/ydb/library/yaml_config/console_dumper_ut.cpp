@@ -2,6 +2,11 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/cms.pb.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
+#include <contrib/ydb/core/protos/key.pb.h>
+
 using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(ConsoleDumper) {

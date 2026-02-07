@@ -20,6 +20,7 @@
 #include <util/datetime/cputimer.h>
 
 #include "interconnect_impl.h"
+#include "interconnect_zc_processor.h"
 #include "poller_tcp.h"
 #include "poller_actor.h"
 #include "interconnect_channel.h"
@@ -31,6 +32,10 @@
 
 #include <unordered_set>
 #include <unordered_map>
+
+namespace NInterconnect {
+    class TInterconnectZcProcessor;
+}
 
 namespace NActors {
 
@@ -437,6 +442,8 @@ namespace NActors {
             return ReceiveContext->ClockSkew_us;
         }
 
+        std::optional<ui8> GetXDCFlags() const;
+
     private:
         friend class TInterconnectProxyTCP;
 
@@ -445,7 +452,9 @@ namespace NActors {
         void Terminate(TDisconnectReason reason);
         void PassAway() override;
 
+        void Enqueue(STATEFN_SIG);
         void Forward(STATEFN_SIG);
+        void ForwardDelayed();
         void Subscribe(STATEFN_SIG);
         void Unsubscribe(STATEFN_SIG);
 
@@ -456,6 +465,7 @@ namespace NActors {
             TimeLimit.emplace(GetMaxCyclesPerEvent());
             STRICT_STFUNC_BODY(
                 fFunc(TEvInterconnect::EvForward, Forward)
+                cFunc(TEvInterconnect::EvForwardDelayed, ForwardDelayed)
                 cFunc(TEvents::TEvPoisonPill::EventType, HandlePoison)
                 fFunc(TEvInterconnect::TEvConnectNode::EventType, Subscribe)
                 fFunc(TEvents::TEvSubscribe::EventType, Subscribe)
@@ -497,12 +507,13 @@ namespace NActors {
             return 128 * 1024;
         }
 
-        void SendUpdateToWhiteboard(bool connected = true);
+        void SendUpdateToWhiteboard(bool connected = true, bool reschedule = true);
         ui32 CalculateQueueUtilization();
 
         void Handle(TEvPollerReady::TPtr& ev);
         void Handle(TEvPollerRegisterResult::TPtr ev);
         void WriteData();
+        ssize_t HandleWriteResult(ssize_t r, const TString& err);
         ssize_t Write(NInterconnect::TOutgoingStream& stream, NInterconnect::TStreamSocket& socket, size_t maxBytes);
 
         ui32 MakePacket(bool data, TMaybe<ui64> pingMask = {});
@@ -562,7 +573,7 @@ namespace NActors {
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         const TSessionParams Params;
-        TMaybe<TEventHolderPool> Pool;
+        std::unique_ptr<TEventHolderPool> Pool;
         TMaybe<TChannelScheduler> ChannelScheduler;
         ui64 TotalOutputQueueSize;
         bool OutputStuckFlag;
@@ -611,6 +622,12 @@ namespace NActors {
 
         std::unordered_map<TActorId, ui64, TActorId::THash> Subscribers;
 
+        struct TDelayedEvent {
+            TAutoPtr<IEventHandle> Event;
+            NWilson::TSpan Span;
+        };
+        std::deque<TDelayedEvent> DelayedEvents;
+
         // time at which we want to send confirmation packet even if there was no outgoing data
         ui64 UnconfirmedBytes = 0;
         TMonotonic ForcePacketTimestamp = TMonotonic::Max();
@@ -641,6 +658,8 @@ namespace NActors {
         ui64 EqualizeCounter = 0;
 
         ui64 StarvingInRow = 0;
+
+        NInterconnect::TInterconnectZcProcessor ZcProcessor;
     };
 
     class TInterconnectSessionKiller

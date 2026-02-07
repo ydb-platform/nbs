@@ -13,7 +13,10 @@ SRCS(
     filter.cpp
     portion_info.cpp
     tier_info.cpp
+    defs.cpp
 )
+
+GENERATE_ENUM_SERIALIZATION(column_engine_logs.h)
 
 PEERDIR(
     contrib/libs/apache/arrow
@@ -29,7 +32,9 @@ PEERDIR(
     contrib/ydb/core/tx/columnshard/engines/insert_table
     contrib/ydb/core/tx/columnshard/engines/changes
     contrib/ydb/core/tx/columnshard/engines/portions
+    contrib/ydb/core/tx/columnshard/engines/protos
     contrib/ydb/core/tx/program
+    contrib/ydb/core/tx/columnshard/common
 
     # for NYql::NUdf alloc stuff used in binary_json
     contrib/ydb/library/yql/public/udf/service/exception_policy

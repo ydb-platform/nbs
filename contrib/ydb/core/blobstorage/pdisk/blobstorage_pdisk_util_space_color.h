@@ -3,6 +3,7 @@
 
 #include <contrib/ydb/core/protos/blobstorage_config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_disk_color.pb.h>
 
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_defs.h>
 

@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/protos/import.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_operation.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_import.pb.h>
 #include <contrib/ydb/public/lib/operation_id/operation_id.h>
 
 #include <util/string/cast.h>
@@ -20,7 +21,7 @@ struct TImportConv {
             NOperationId::AddOptionalValue(operationId, "kind", "s3");
             break;
         default:
-            Y_DEBUG_ABORT_UNLESS(false, "Unknown import kind");
+            Y_DEBUG_ABORT("Unknown import kind");
             break;
         }
 
@@ -41,13 +42,24 @@ struct TImportConv {
             operation.mutable_issues()->CopyFrom(import.GetIssues());
         }
 
+        if (import.HasStartTime()) {
+            *operation.mutable_create_time() = import.GetStartTime();
+        }
+        if (import.HasEndTime()) {
+            *operation.mutable_end_time() = import.GetEndTime();
+        }
+
+        if (import.HasUserSID()) {
+            operation.set_created_by(import.GetUserSID());
+        }
+
         using namespace Ydb::Import;
         switch (import.GetSettingsCase()) {
         case NKikimrImport::TImport::kImportFromS3Settings:
             Fill<ImportFromS3Metadata, ImportFromS3Result>(operation, import, import.GetImportFromS3Settings());
             break;
         default:
-            Y_DEBUG_ABORT_UNLESS(false, "Unknown import kind");
+            Y_DEBUG_ABORT("Unknown import kind");
             break;
         }
 

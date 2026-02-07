@@ -32,6 +32,7 @@ namespace NKikimrSharedCache {
 namespace NKikimrProto {
     class TKeyConfig;
     class TAuthConfig;
+    class TDataIntegrityTrailsConfig;
 
     namespace NFolderService {
         class TFolderServiceConfig;
@@ -61,6 +62,12 @@ namespace NKikimrConfig {
     class TAwsCompatibilityConfig;
     class TS3ProxyResolverConfig;
     class TBackgroundCleaningConfig;
+    class TGraphConfig;
+    class TMetadataCacheConfig;
+}
+
+namespace NKikimrReplication {
+    class TReplicationDefaults;
 }
 
 namespace NKikimrNetClassifier {
@@ -85,6 +92,7 @@ namespace NKikimr {
     class TResourceProfiles;
     class TControlBoard;
     class TFeatureFlags;
+    class TMetricsConfig;
 }
 
 namespace NKikimr {
@@ -134,9 +142,16 @@ namespace NPQ {
 
 class TFormatFactory;
 
+namespace NAudit {
+    class TAuditConfig;
+}
+
 struct TAppData {
     static const ui32 MagicTag = 0x2991AAF8;
     const ui32 Magic;
+
+    struct TImpl;
+    std::unique_ptr<TImpl> Impl;
 
     const ui32 SystemPoolId;
     const ui32 UserPoolId;
@@ -183,30 +198,6 @@ struct TAppData {
 
     THolder<NKikimrCms::TCmsConfig> DefaultCmsConfig;
 
-    std::unique_ptr<NKikimrStream::TStreamingConfig> StreamingConfigPtr;
-    std::unique_ptr<NKikimrPQ::TPQConfig> PQConfigPtr;
-    std::unique_ptr<NKikimrPQ::TPQClusterDiscoveryConfig> PQClusterDiscoveryConfigPtr;
-    std::unique_ptr<NKikimrNetClassifier::TNetClassifierConfig> NetClassifierConfigPtr;
-    std::unique_ptr<NKikimrNetClassifier::TNetClassifierDistributableConfig> NetClassifierDistributableConfigPtr;
-    std::unique_ptr<NKikimrConfig::TSqsConfig> SqsConfigPtr;
-    std::unique_ptr<NKikimrProto::TAuthConfig> AuthConfigPtr;
-    std::unique_ptr<NKikimrProto::TKeyConfig> KeyConfigPtr;
-    std::unique_ptr<NKikimrProto::TKeyConfig> PDiskKeyConfigPtr;
-    std::unique_ptr<TFeatureFlags> FeatureFlagsPtr;
-    std::unique_ptr<NKikimrConfig::THiveConfig> HiveConfigPtr;
-    std::unique_ptr<NKikimrConfig::TDataShardConfig> DataShardConfigPtr;
-    std::unique_ptr<NKikimrConfig::TColumnShardConfig> ColumnShardConfigPtr;
-    std::unique_ptr<NKikimrConfig::TSchemeShardConfig> SchemeShardConfigPtr;
-    std::unique_ptr<NKikimrConfig::TMeteringConfig> MeteringConfigPtr;
-    std::unique_ptr<NKikimrConfig::TAuditConfig> AuditConfigPtr;
-    std::unique_ptr<NKikimrConfig::TCompactionConfig> CompactionConfigPtr;
-    std::unique_ptr<NKikimrConfig::TDomainsConfig> DomainsConfigPtr;
-    std::unique_ptr<NKikimrConfig::TBootstrap> BootstrapConfigPtr;
-    std::unique_ptr<NKikimrConfig::TAwsCompatibilityConfig> AwsCompatibilityConfigPtr;
-    std::unique_ptr<NKikimrConfig::TS3ProxyResolverConfig> S3ProxyResolverConfigPtr;
-    std::unique_ptr<NKikimrSharedCache::TSharedCacheConfig> SharedCacheConfigPtr;
-    std::unique_ptr<NKikimrConfig::TBackgroundCleaningConfig> BackgroundCleaningConfigPtr;
-
     NKikimrStream::TStreamingConfig& StreamingConfig;
     NKikimrPQ::TPQConfig& PQConfig;
     NKikimrPQ::TPQClusterDiscoveryConfig& PQClusterDiscoveryConfig;
@@ -222,14 +213,21 @@ struct TAppData {
     NKikimrConfig::TColumnShardConfig& ColumnShardConfig;
     NKikimrConfig::TSchemeShardConfig& SchemeShardConfig;
     NKikimrConfig::TMeteringConfig& MeteringConfig;
-    NKikimrConfig::TAuditConfig& AuditConfig;
+    NKikimr::NAudit::TAuditConfig& AuditConfig;
     NKikimrConfig::TCompactionConfig& CompactionConfig;
     NKikimrConfig::TDomainsConfig& DomainsConfig;
     NKikimrConfig::TBootstrap& BootstrapConfig;
     NKikimrConfig::TAwsCompatibilityConfig& AwsCompatibilityConfig;
     NKikimrConfig::TS3ProxyResolverConfig& S3ProxyResolverConfig;
     NKikimrConfig::TBackgroundCleaningConfig& BackgroundCleaningConfig;
+    NKikimrConfig::TGraphConfig& GraphConfig;
+    NKikimrSharedCache::TSharedCacheConfig& SharedCacheConfig;
+    NKikimrConfig::TMetadataCacheConfig& MetadataCacheConfig;
+    NKikimrReplication::TReplicationDefaults& ReplicationConfig;
+    NKikimrProto::TDataIntegrityTrailsConfig& DataIntegrityTrailsConfig;
+    TMetricsConfig& MetricsConfig;
     bool EnforceUserTokenRequirement = false;
+    bool EnforceUserTokenCheckRequirement = false; // check token if it was specified
     bool AllowHugeKeyValueDeletes = true; // delete when all clients limit deletes per request
     bool EnableKqpSpilling = false;
     bool AllowShadowDataInSchemeShardForTests = false;
@@ -239,6 +237,7 @@ struct TAppData {
     TVector<TString> AdministrationAllowedSIDs; // users/groups which allowed to perform administrative tasks
     TVector<TString> DefaultUserSIDs;
     TString AllAuthenticatedUsers = "all-users@well-known";
+    TVector<TString> RegisterDynamicNodeAllowedSIDs;
     TString TenantName;
     TString NodeName;
 
@@ -280,6 +279,8 @@ struct TAppData {
             const NMiniKQL::IFunctionRegistry* functionRegistry,
             const TFormatFactory* formatFactory,
             TProgramShouldContinue *kikimrShouldContinue);
+
+    ~TAppData();
 };
 
 inline TAppData* AppData(NActors::TActorSystem* actorSystem) {

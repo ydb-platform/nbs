@@ -104,7 +104,7 @@ namespace NPQ {
 
         void Handle(TEvPQ::TEvBlobRequest::TPtr& ev, const TActorContext& ctx)
         {
-            ui32 partition = ev->Get()->Partition;
+            const TPartitionId& partition = ev->Get()->Partition;
             Cache.SetUserOffset(ctx, ev->Get()->User, partition, ev->Get()->ReadOffset);
 
             TKvRequest kvReq(TKvRequest::TypeRead, ev->Sender, ev->Get()->Cookie, partition);
@@ -263,7 +263,7 @@ namespace NPQ {
 
             auto srcRequest = ev->Get()->Record;
 
-            TKvRequest kvReq(TKvRequest::TypeWrite, ev->Sender, Max<ui64>(), Max<ui32>());
+            TKvRequest kvReq(TKvRequest::TypeWrite, ev->Sender, Max<ui64>(), TPartitionId(Max<ui32>()));
             kvReq.Blobs.reserve(srcRequest.CmdWriteSize());
 
             for (ui32 i = 0; i < srcRequest.CmdWriteSize(); ++i) {
@@ -317,7 +317,7 @@ namespace NPQ {
             HTML(out)
             {
                 DIV_CLASS_ID("tab-pane fade", "cache") {
-                    TABLE_SORTABLE_CLASS("table") {
+                    TABLE_CLASS("table") {
                         TABLEHEAD() {
                             TABLER() {
                                 TABLEH() {out << "Partition";}
@@ -333,7 +333,7 @@ namespace NPQ {
                                 if (!data)
                                     continue;
                                 TABLER() {
-                                    TABLED() {out << int(c.first.Partition);}
+                                    TABLED() {out << c.first.Partition;}
                                     TABLED() {out << c.first.Offset;}
                                     TABLED() {out << c.first.Count;}
                                     TABLED() {out << data->GetValue().size();}
@@ -345,7 +345,7 @@ namespace NPQ {
                     }
                 }
             }
-            ctx.Send(ev->Sender, new TEvPQ::TEvMonResponse(Max<ui32>(), TVector<TString>(), out.Str()));
+            ctx.Send(ev->Sender, new TEvPQ::TEvMonResponse(out.Str()));
         }
 
         void UpdateCounters(const TActorContext& ctx)

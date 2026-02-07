@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/yt/provider)
 
+TAG(ya:manual)
+
 SIZE(SMALL)
 
 SRCS(
@@ -26,7 +28,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/dq/common
     contrib/ydb/library/yql/providers/dq/provider
     contrib/ydb/library/yql/providers/result/provider
-    contrib/ydb/library/yql/sql/v1
+    contrib/ydb/library/yql/sql
     contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
     contrib/ydb/library/yql/minikql/comp_nodes/llvm14
     contrib/ydb/library/yql/sql/pg

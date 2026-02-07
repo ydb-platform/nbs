@@ -43,6 +43,7 @@ void UpdatePartitioningForCopyTable(TOperationId operationId, TTxState& txState,
 class TProposedWaitParts: public TSubOperationState {
 private:
     TOperationId OperationId;
+    const TTxState::ETxState NextState;
 
     TString DebugHint() const override {
         return TStringBuilder()
@@ -51,8 +52,9 @@ private:
     }
 
 public:
-    TProposedWaitParts(TOperationId id)
+    TProposedWaitParts(TOperationId id, TTxState::ETxState nextState = TTxState::Done)
         : OperationId(id)
+        , NextState(nextState)
     {
         IgnoreMessages(DebugHint(),
             { TEvHive::TEvCreateTabletReply::EventType
@@ -124,7 +126,7 @@ public:
         // Got notifications from all datashards?
         if (txState->ShardsInProgress.empty()) {
             NTableState::AckAllSchemaChanges(OperationId, *txState, context);
-            context.SS->ChangeTxState(db, OperationId, TTxState::Done);
+            context.SS->ChangeTxState(db, OperationId, NextState);
             return true;
         }
 
@@ -300,6 +302,9 @@ public:
                 break;
             case ETabletType::StatisticsAggregator:
                 context.SS->TabletCounters->Simple()[COUNTER_STATISTICS_AGGREGATOR_COUNT].Add(1);
+                break;
+            case ETabletType::BackupController:
+                context.SS->TabletCounters->Simple()[COUNTER_BACKUP_CONTROLLER_TABLET_COUNT].Add(1);
                 break;
             default:
                 break;
@@ -485,17 +490,7 @@ protected:
             << " opId# " << OperationId;
     }
 
-public:
-    explicit TDone(const TOperationId& id)
-        : OperationId(id)
-    {
-        IgnoreMessages(DebugHint(), AllIncomingEvents());
-    }
-
-    bool ProgressState(TOperationContext& context) override {
-        LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
-            "[" << context.SS->TabletID() << "] " << DebugHint() << "ProgressState");
-
+    bool Process(TOperationContext& context) {
         const auto* txState = context.SS->FindTx(OperationId);
 
         const auto& pathId = txState->TargetPathId;
@@ -531,8 +526,8 @@ public:
         // OlapStore tracks all tables that are under operation, make sure to unlink
         if (context.SS->ColumnTables.contains(pathId)) {
             auto tableInfo = context.SS->ColumnTables.at(pathId);
-            if (tableInfo->OlapStorePathId) {
-                auto& storePathId = *tableInfo->OlapStorePathId;
+            if (!tableInfo->IsStandalone()) {
+                const auto storePathId = tableInfo->GetOlapStorePathIdVerified();
                 if (context.SS->OlapStores.contains(storePathId)) {
                     auto storeInfo = context.SS->OlapStores.at(storePathId);
                     storeInfo->ColumnTablesUnderOperation.erase(pathId);
@@ -543,9 +538,71 @@ public:
         context.OnComplete.DoneOperation(OperationId);
         return true;
     }
+
+public:
+    explicit TDone(const TOperationId& id)
+        : OperationId(id)
+    {
+        IgnoreMessages(DebugHint(), AllIncomingEvents());
+    }
+
+    bool ProgressState(TOperationContext& context) override {
+        LOG_INFO_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+            "[" << context.SS->TabletID() << "] " << DebugHint() << "ProgressState");
+
+        return Process(context);
+    }
 };
 
 namespace NPQState {
+
+class TBootstrapConfigWrapper: public NKikimrPQ::TBootstrapConfig {
+    struct TSerializedProposeTransaction {
+        TString Value;
+
+        static TSerializedProposeTransaction Serialize(const NKikimrPQ::TBootstrapConfig& value) {
+            NKikimrPQ::TEvProposeTransaction record;
+            record.MutableConfig()->MutableBootstrapConfig()->CopyFrom(value);
+            return {record.SerializeAsString()};
+        }
+    };
+
+    struct TSerializedUpdateConfig {
+        TString Value;
+
+        static TSerializedUpdateConfig Serialize(const NKikimrPQ::TBootstrapConfig& value) {
+            NKikimrPQ::TUpdateConfig record;
+            record.MutableBootstrapConfig()->CopyFrom(value);
+            return {record.SerializeAsString()};
+        }
+    };
+
+    mutable std::optional<std::variant<
+        TSerializedProposeTransaction,
+        TSerializedUpdateConfig
+    >> PreSerialized;
+
+    template <typename T>
+    const TString& Get() const {
+        if (!PreSerialized) {
+            PreSerialized.emplace(T::Serialize(*this));
+        }
+
+        const auto* value = std::get_if<T>(&PreSerialized.value());
+        Y_ABORT_UNLESS(value);
+
+        return value->Value;
+    }
+
+public:
+    const TString& GetPreSerializedProposeTransaction() const {
+        return Get<TSerializedProposeTransaction>();
+    }
+
+    const TString& GetPreSerializedUpdateConfig() const {
+        return Get<TSerializedUpdateConfig>();
+    }
+};
 
 class TConfigureParts: public TSubOperationState {
 private:
@@ -579,7 +636,7 @@ public:
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
-        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup || txState->TxType == TTxState::TxAllocatePQ);
+        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup);
 
         TTabletId tabletId = TTabletId(ev->Get()->Record.GetOrigin());
         NKikimrPQ::EStatus status = ev->Get()->Record.GetStatus();
@@ -622,7 +679,6 @@ public:
         return false;
     }
 
-
     bool ProgressState(TOperationContext& context) override {
         TTabletId ssId = context.SS->SelfTabletId();
 
@@ -633,7 +689,7 @@ public:
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
-        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup || txState->TxType == TTxState::TxAllocatePQ);
+        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup);
 
         txState->ClearShardsInProgress();
 
@@ -664,7 +720,7 @@ public:
         TString databasePath = TPath::Init(context.SS->RootPathId(), context.SS).PathString();
         auto topicPath = TPath::Init(txState->TargetPathId, context.SS);
 
-        std::optional<NKikimrPQ::TBootstrapConfig> bootstrapConfig;
+        std::optional<TBootstrapConfigWrapper> bootstrapConfig;
         if (txState->TxType == TTxState::TxCreatePQGroup && topicPath.Parent().IsCdcStream()) {
             bootstrapConfig.emplace();
 
@@ -876,20 +932,37 @@ private:
             config.SetVersion(pqGroup.AlterData->AlterVersion);
         }
 
+        THashSet<ui32> linkedPartitions;
+
         for(const auto& pq : pqShard.Partitions) {
             config.AddPartitionIds(pq->PqId);
 
             auto& partition = *config.AddPartitions();
             FillPartition(partition, pq.Get(), 0);
+
+            linkedPartitions.insert(pq->PqId);
+            linkedPartitions.insert(pq->ParentPartitionIds.begin(), pq->ParentPartitionIds.end());
+            linkedPartitions.insert(pq->ChildPartitionIds.begin(), pq->ChildPartitionIds.end());
+            for (auto c : pq->ChildPartitionIds) {
+                auto it = pqGroup.Partitions.find(c);
+                if (it == pqGroup.Partitions.end()) {
+                    continue;
+                }
+                linkedPartitions.insert(it->second->ParentPartitionIds.begin(), it->second->ParentPartitionIds.end());
+            }
         }
 
-        for(const auto& p : pqGroup.Shards) {
-            const auto& pqShard = p.second;
-            const auto& tabletId = context.SS->ShardInfos[p.first].TabletID;
-            for (const auto& pq : pqShard->Partitions) {
-                auto& partition = *config.AddAllPartitions();
-                FillPartition(partition, pq.Get(), ui64(tabletId));
+        for(auto lp : linkedPartitions) {
+            auto it = pqGroup.Partitions.find(lp);
+            if (it == pqGroup.Partitions.end()) {
+                continue;
             }
+
+            auto* partitionInfo = it->second;
+            const auto& tabletId = context.SS->ShardInfos[partitionInfo->ShardIdx].TabletID;
+
+            auto& partition = *config.AddAllPartitions();
+            FillPartition(partition, partitionInfo, ui64(tabletId));
         }
     }
 
@@ -913,7 +986,7 @@ private:
                                  const TTopicTabletInfo& pqShard,
                                  const TString& topicName,
                                  const TString& topicPath,
-                                 const std::optional<NKikimrPQ::TBootstrapConfig>& bootstrapConfig,
+                                 const std::optional<TBootstrapConfigWrapper>& bootstrapConfig,
                                  const TString& cloudId,
                                  const TString& folderId,
                                  const TString& databaseId,
@@ -926,7 +999,7 @@ private:
                            const TTopicTabletInfo& pqShard,
                            const TString& topicName,
                            const TString& topicPath,
-                           const std::optional<NKikimrPQ::TBootstrapConfig>& bootstrapConfig,
+                           const std::optional<TBootstrapConfigWrapper>& bootstrapConfig,
                            const TString& cloudId,
                            const TString& folderId,
                            const TString& databaseId,
@@ -967,8 +1040,8 @@ public:
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
-        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup || txState->TxType == TTxState::TxAllocatePQ);
- 
+        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup);
+
         TPathId pathId = txState->TargetPathId;
         TPathElement::TPtr path = context.SS->PathsById.at(pathId);
 
@@ -992,7 +1065,7 @@ public:
 
         TTxState* txState = context.SS->FindTx(OperationId);
         Y_ABORT_UNLESS(txState);
-        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup || txState->TxType == TTxState::TxAllocatePQ);
+        Y_ABORT_UNLESS(txState->TxType == TTxState::TxCreatePQGroup || txState->TxType == TTxState::TxAlterPQGroup);
 
         //
         // If the program works according to the new scheme, then we must add PQ tablets to the list for

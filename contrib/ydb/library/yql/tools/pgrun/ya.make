@@ -12,6 +12,7 @@ PEERDIR(
     library/cpp/string_utils/base64
     contrib/libs/fmt
     library/cpp/yson
+    library/cpp/yson/node
     contrib/ydb/library/yql/sql/pg
     contrib/ydb/library/yql/core/facade
     contrib/ydb/library/yql/core/file_storage
@@ -30,6 +31,8 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/provider
     contrib/ydb/library/yql/providers/common/udf_resolve
     contrib/ydb/library/yql/providers/dq/provider
+    contrib/ydb/library/yql/providers/yt/common
+    contrib/ydb/library/yql/providers/yt/lib/schema
     contrib/ydb/library/yql/providers/yt/gateway/file
     contrib/ydb/library/yql/providers/yt/comp_nodes/llvm14
     contrib/ydb/library/yql/providers/yt/codec/codegen

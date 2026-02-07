@@ -1,5 +1,6 @@
 #include "schemeshard_import_flow_proposals.h"
 #include "schemeshard_path_describer.h"
+#include "schemeshard_xxport__helpers.h"
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/ydb_convert/table_description.h>
@@ -17,7 +18,7 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateTablePropose(
     Y_ABORT_UNLESS(itemIdx < importInfo->Items.size());
     const auto& item = importInfo->Items.at(itemIdx);
 
-    auto propose = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(ui64(txId), ss->TabletID());
+    auto propose = MakeModifySchemeTransaction(ss, txId, *importInfo);
     auto& record = propose->Record;
 
     if (importInfo->UserSID) {
@@ -25,7 +26,7 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateTablePropose(
     }
 
     auto& modifyScheme = *record.AddTransaction();
-    modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpCreateTable);
+    modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpCreateIndexedTable);
     modifyScheme.SetInternal(true);
 
     const TPath domainPath = TPath::Init(importInfo->DomainPathId, ss);
@@ -37,13 +38,55 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateTablePropose(
 
     modifyScheme.SetWorkingDir(wdAndPath.first);
 
-    auto& tableDesc = *modifyScheme.MutableCreateTable();
+    auto* indexedTable = modifyScheme.MutableCreateIndexedTable();
+    auto& tableDesc = *(indexedTable->MutableTableDescription());
     tableDesc.SetName(wdAndPath.second);
+    tableDesc.SetIsRestore(true);
 
     Y_ABORT_UNLESS(ss->TableProfilesLoaded);
     Ydb::StatusIds::StatusCode status;
-    if (!FillTableDescription(modifyScheme, item.Scheme, ss->TableProfiles, status, error)) {
+    if (!FillTableDescription(modifyScheme, item.Scheme, ss->TableProfiles, status, error, true)) {
         return nullptr;
+    }
+
+    for(const auto& column: item.Scheme.columns()) {
+        switch (column.default_value_case()) {
+            case Ydb::Table::ColumnMeta::kFromSequence: {
+                const auto& fromSequence = column.from_sequence();
+
+                auto seqDesc = indexedTable->MutableSequenceDescription()->Add();
+                seqDesc->SetName(fromSequence.name());
+                if (fromSequence.has_min_value()) {
+                    seqDesc->SetMinValue(fromSequence.min_value());
+                }
+                if (fromSequence.has_max_value()) {
+                    seqDesc->SetMaxValue(fromSequence.max_value());
+                }
+                if (fromSequence.has_start_value()) {
+                    seqDesc->SetStartValue(fromSequence.start_value());
+                }
+                if (fromSequence.has_cache()) {
+                    seqDesc->SetCache(fromSequence.cache());
+                }
+                if (fromSequence.has_increment()) {
+                    seqDesc->SetIncrement(fromSequence.increment());
+                }
+                if (fromSequence.has_cycle()) {
+                    seqDesc->SetCycle(fromSequence.cycle());
+                }
+                if (fromSequence.has_set_val()) {
+                    auto* setVal = seqDesc->MutableSetVal();
+                    setVal->SetNextUsed(fromSequence.set_val().next_used());
+                    setVal->SetNextValue(fromSequence.set_val().next_value());
+                }
+
+                break;
+            }
+            case Ydb::Table::ColumnMeta::kFromLiteral: {
+                break;
+            }
+            default: break;
+        }
     }
 
     return propose;
@@ -101,9 +144,10 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> RestorePropose(
     Y_ABORT_UNLESS(itemIdx < importInfo->Items.size());
     const auto& item = importInfo->Items.at(itemIdx);
 
-    auto propose = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(ui64(txId), ss->TabletID());
+    auto propose = MakeModifySchemeTransaction(ss, txId, *importInfo);
+    auto& record = propose->Record;
 
-    auto& modifyScheme = *propose->Record.AddTransaction();
+    auto& modifyScheme = *record.AddTransaction();
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpRestore);
     modifyScheme.SetInternal(true);
 
@@ -176,6 +220,9 @@ THolder<TEvIndexBuilder::TEvCreateRequest> BuildIndexPropose(
 
     const TPath dstPath = TPath::Init(item.DstPathId, ss);
     settings.set_source_path(dstPath.PathString());
+    if (ss->MaxRestoreBuildIndexShardsInFlight) {
+        settings.set_max_shards_in_flight(ss->MaxRestoreBuildIndexShardsInFlight);
+    }
 
     Y_ABORT_UNLESS(item.NextIndexIdx < item.Scheme.indexes_size());
     settings.mutable_index()->CopyFrom(item.Scheme.indexes(item.NextIndexIdx));
@@ -186,7 +233,9 @@ THolder<TEvIndexBuilder::TEvCreateRequest> BuildIndexPropose(
 
     const TPath domainPath = TPath::Init(importInfo->DomainPathId, ss);
     auto propose = MakeHolder<TEvIndexBuilder::TEvCreateRequest>(ui64(txId), domainPath.PathString(), std::move(settings));
-    (*propose->Record.MutableOperationParams()->mutable_labels())["uid"] = uid;
+    auto& request = propose->Record;
+    (*request.MutableOperationParams()->mutable_labels())["uid"] = uid;
+    request.SetInternal(true);
 
     return propose;
 }

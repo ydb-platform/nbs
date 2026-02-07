@@ -2,7 +2,7 @@
 /* $OpenLDAP$ */
 /* This work is part of OpenLDAP Software <http://www.openldap.org/>.
  *
- * Copyright 2008-2022 The OpenLDAP Foundation.
+ * Copyright 2008-2024 The OpenLDAP Foundation.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,10 +41,10 @@
 #include "ldap-int.h"
 #include "ldap-tls.h"
 
-#include <gnutls/gnutls.h>
-#include <gnutls/x509.h>
+#error #include <gnutls/gnutls.h>
+#error #include <gnutls/x509.h>
 #error #include <gnutls/abstract.h>
-#include <gnutls/crypto.h>
+#error #include <gnutls/crypto.h>
 
 typedef struct tlsg_ctx {
 	gnutls_certificate_credentials_t cred;

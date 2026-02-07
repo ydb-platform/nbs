@@ -1,5 +1,6 @@
 #pragma once
 
+#include "contrib/ydb/core/tablet_flat/flat_part_overlay.h"
 #include <contrib/ydb/core/tablet_flat/flat_table_subset.h>
 #include <contrib/ydb/core/tablet_flat/flat_iterator.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_scheme.h>
@@ -26,7 +27,7 @@ namespace NTest {
             for (auto &partView: Flatten) {
                 Y_ABORT_UNLESS(partView.Part, "Creating TWrapIter without a part");
                 Y_ABORT_UNLESS(partView.Slices, "Creating TWrapIter without slices");
-                Y_ABORT_UNLESS(!partView.Screen, "Creating TWrapIter with a screen");
+                TOverlay{partView.Screen, partView.Slices}.Validate();
                 parts.push_back(&partView);
             }
             std::sort(parts.begin(), parts.end(),
@@ -68,11 +69,11 @@ namespace NTest {
 
             for (auto &mem: Frozen)
                 Iter->Push(
-                    TMemIt::Make(*mem, mem.Snapshot, key, seek, KeyCellDefaults, &Iter->Remap, Env,
+                    TMemIter::Make(*mem, mem.Snapshot, key, seek, KeyCellDefaults, &Iter->Remap, Env,
                         TIter::Direction));
 
             for (auto &run: Levels) {
-                auto one = MakeHolder<TRunIt>(run, Remap().Tags, KeyCellDefaults, Env);
+                auto one = MakeHolder<TRunIter>(run, Remap().Tags, KeyCellDefaults, Env);
 
                 EReady status;
                 if constexpr (TIter::Direction == EDirection::Reverse) {
@@ -111,8 +112,8 @@ namespace NTest {
         TAutoPtr<TIter> Iter;
     };
 
-    using TWrapIter = TWrapIterImpl<TTableIt>;
-    using TWrapReverseIter = TWrapIterImpl<TTableReverseIt>;
+    using TWrapIter = TWrapIterImpl<TTableIter>;
+    using TWrapReverseIter = TWrapIterImpl<TTableReverseIter>;
 
 }
 }

@@ -1,7 +1,9 @@
 #pragma once
 #include <contrib/ydb/library/accessor/accessor.h>
+#include <contrib/ydb/core/formats/arrow/save_load/saver.h>
 
 namespace NKikimr::NOlap {
+using TColumnSaver = NArrow::NAccessor::TColumnSaver;
 
 class TChunkAddress {
 private:
@@ -33,5 +35,11 @@ public:
     TString DebugString() const;
 };
 
-
 }
+
+template<>
+struct ::THash<NKikimr::NOlap::TChunkAddress> {
+    inline ui64 operator()(const NKikimr::NOlap::TChunkAddress& a) const {
+        return ((ui64)a.GetEntityId()) << 16 + a.GetChunkIdx();
+    }
+};

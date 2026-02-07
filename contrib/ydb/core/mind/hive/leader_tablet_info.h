@@ -4,6 +4,7 @@
 #include "tablet_info.h"
 #include "follower_tablet_info.h"
 #include <contrib/ydb/core/base/channel_profiles.h>
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
 
 namespace NKikimr {
 namespace NHive {
@@ -49,16 +50,28 @@ public:
         }
     };
 
+    struct TChannelHistoryEntry {
+        ui32 Channel;
+        TTabletChannelInfo::THistoryEntry Entry;
+
+        TChannelHistoryEntry(ui32 channel, const TTabletChannelInfo::THistoryEntry& entry)
+            : Channel(channel)
+            , Entry(entry)
+        {
+        }
+    };
+
     TTabletId Id;
     ETabletState State;
     TTabletTypes::EType Type;
     TFullObjectId ObjectId;
     TSubDomainKey ObjectDomain;
-    TNodeFilter NodeFilter;
     NKikimrHive::TDataCentersPreference DataCentersPreference;
     TIntrusivePtr<TTabletStorageInfo> TabletStorageInfo;
     TChannelsBindings BoundChannels;
     std::bitset<MAX_TABLET_CHANNELS> ChannelProfileNewGroup;
+    std::vector<TChannelHistoryEntry> DeletedHistory;
+    bool WasAliveSinceCutHistory = false;
     NKikimrHive::TEvReassignTablet::EHiveReassignReason ChannelProfileReassignReason;
     ui32 KnownGeneration;
     TTabletCategoryInfo* Category;
@@ -80,7 +93,6 @@ public:
         , State(ETabletState::Unknown)
         , Type(TTabletTypes::TypeInvalid)
         , ObjectId(0, 0)
-        , NodeFilter(hive)
         , ChannelProfileReassignReason(NKikimrHive::TEvReassignTablet::HIVE_REASSIGN_REASON_NO)
         , KnownGeneration(0)
         , Category(nullptr)
@@ -334,10 +346,13 @@ public:
     bool AcquireAllocationUnit(ui32 channelId);
     bool ReleaseAllocationUnit(ui32 channelId);
     const NKikimrBlobStorage::TEvControllerSelectGroupsResult::TGroupParameters* FindFreeAllocationUnit(ui32 channelId);
-    TString GetChannelStoragePoolName(const TTabletChannelInfo& channel);
-    TString GetChannelStoragePoolName(const TChannelProfiles::TProfile::TChannel& channel);
-    TString GetChannelStoragePoolName(ui32 channelId);
-    TStoragePoolInfo& GetStoragePool(ui32 channelId);
+    TString GetChannelStoragePoolName(const TTabletChannelInfo& channel) const;
+    TString GetChannelStoragePoolName(const TChannelProfiles::TProfile::TChannel& channel) const;
+    TString GetChannelStoragePoolName(ui32 channelId) const;
+    TStoragePoolInfo& GetStoragePool(ui32 channelId) const;
+    void RestoreDeletedHistory();
+
+    void SetType(TTabletTypes::EType type);
 };
 
 } // NHive

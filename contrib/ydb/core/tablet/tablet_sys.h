@@ -93,6 +93,8 @@ class TTablet : public TActor<TTablet> {
         TVector<ui32> YellowMoveChannels;
         TVector<ui32> YellowStopChannels;
 
+        THashMap<ui32, float> ApproximateFreeSpaceShareByChannel;
+
         size_t ByteSize;
 
         TLogEntry(ui32 step, ui32 confirmedOnSend, ui64 sourceCookie)
@@ -251,7 +253,6 @@ class TTablet : public TActor<TTablet> {
     TString BlobStorageErrorReason;
     bool BlobStorageErrorReported = false;
 
-    ui64 StateStorageGroup() const;
     ui64 TabletID() const;
 
     void ReportTabletStateChange(ETabletState state);

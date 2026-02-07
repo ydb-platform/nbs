@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     scheme.cpp
+    analyze_actor.cpp
 )
 
 PEERDIR(
@@ -11,6 +12,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/gateway
     contrib/ydb/core/tx/schemeshard
     contrib/ydb/library/actors/core
+    contrib/ydb/library/services
 )
 
 YQL_LAST_ABI_VERSION()

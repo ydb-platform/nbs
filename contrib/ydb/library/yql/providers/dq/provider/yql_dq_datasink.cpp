@@ -36,7 +36,7 @@ public:
         , PhysicalFinalizingTransformer([] () { return CreateDqsFinalizingOptTransformer(); })
         , TypeAnnotationTransformer([state] () {
             return CreateDqsDataSinkTypeAnnotationTransformer(
-                state->TypeCtx, state->Settings->EnableDqReplicate.Get().GetOrElse(TDqSettings::TDefault::EnableDqReplicate));
+                state->TypeCtx, state->Settings->IsDqReplicateEnabled(*state->TypeCtx));
         })
         , ConstraintsTransformer([] () { return CreateDqDataSinkConstraintTransformer(); })
         , RecaptureTransformer([state] () { return CreateDqsRecaptureTransformer(state); })
@@ -216,7 +216,8 @@ public:
         return TPlanFormatterBase::GetOperationDisplayName(node);
     }
 
-    void WritePlanDetails(const TExprNode& node, NYson::TYsonWriter& writer) override {
+    void WritePlanDetails(const TExprNode& node, NYson::TYsonWriter& writer, bool withLimits) override {
+        Y_UNUSED(withLimits);
         if (auto maybeStage = TMaybeNode<TDqStageBase>(&node)) {
             writer.OnKeyedItem("Streams");
             writer.OnBeginMap();

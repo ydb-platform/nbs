@@ -54,7 +54,7 @@ virtual void Scenario(const TActorContext &ctx) {
 
     // prepare gc command -- it deletes all data from one tablet
     TGCSettings settings;
-    settings.TabletID = 0;
+    settings.TabletID = DefaultTestTabletId;
     settings.RecGen = 1;
     settings.RecGenCounter = 1;
     settings.Channel = 0;
@@ -81,8 +81,13 @@ virtual void Scenario(const TActorContext &ctx) {
             << " FreedChunks# " << FormatList(rec.GetFreedChunks()) << "\n";
     };
 
-    // now defrag only one disk
     TAllVDisks::TVDiskInstance &instance = Conf->VDisks->Get(0);
+
+    // wait for compaction
+    SyncRunner->Run(ctx, CreateWaitForCompaction(SyncRunner->NotifyID(), instance, true));
+    LOG_NOTICE(ctx, NActorsServices::TEST, "  COMPACTION done");
+
+    // now defrag only one disk
     TAutoPtr<IActor> defragCmd(CreateDefrag(SyncRunner->NotifyID(), instance, true, check));
     SyncRunner->Run(ctx, defragCmd);
     LOG_NOTICE(ctx, NActorsServices::TEST, "  Defrag completed");

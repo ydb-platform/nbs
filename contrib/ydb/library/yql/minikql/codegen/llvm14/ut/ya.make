@@ -1,5 +1,7 @@
 UNITTEST()
 
+TAG(ya:manual)
+
 PEERDIR(
     contrib/libs/llvm14/lib/IR
     contrib/libs/llvm14/lib/ExecutionEngine/MCJIT
@@ -17,7 +19,7 @@ IF (OS_LINUX)
     )
 ENDIF()
 
-
+USE_LLVM_BC14()
 SET(LLVM_VER 14)
 
 INCLUDE(../../ut/ya.make.inc)

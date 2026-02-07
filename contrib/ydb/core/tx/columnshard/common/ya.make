@@ -1,15 +1,17 @@
 LIBRARY()
 
 SRCS(
-    limits.h
+    limits.cpp
     reverse_accessor.cpp
     scalars.cpp
     snapshot.cpp
     portion.cpp
+    tablet_id.cpp
+    blob.cpp
 )
 
 PEERDIR(
-    contrib/ydb/core/protos
+    contrib/ydb/library/formats/arrow/protos
     contrib/libs/apache/arrow
     contrib/ydb/core/formats/arrow
     contrib/ydb/core/tx/columnshard/common/protos

@@ -356,12 +356,12 @@ inline int CompareRanges(const TTableRange& rangeX, const TTableRange& rangeY,
     Y_ABORT_UNLESS(!rangeX.Point);
     Y_ABORT_UNLESS(!rangeY.Point);
 
-    int xStart_yEnd = CompareBorders<true, false>(
+    int xStart_yEnd = CompareBorders<false, true>(
         rangeX.From, rangeY.To, rangeX.InclusiveFrom, rangeY.InclusiveTo, types);
     if (xStart_yEnd > 0)
         return 1;
 
-    int xEnd_yStart = CompareBorders<false, true>(
+    int xEnd_yStart = CompareBorders<true, false>(
         rangeX.To, rangeY.From, rangeX.InclusiveTo, rangeY.InclusiveFrom, types);
     if (xEnd_yStart < 0)
         return -1;
@@ -709,6 +709,18 @@ public:
         , KeyColumnTypes(keyColumnTypes.begin(), keyColumnTypes.end())
         , Columns(columns.begin(), columns.end())
         , Reverse(reverse)
+        , Status(EStatus::Unknown)
+        , Partitioning(std::make_shared<TVector<TKeyDesc::TPartitionInfo>>())
+    {}
+
+    static THolder<TKeyDesc> CreateMiniKeyDesc(const TVector<NScheme::TTypeInfo> &keyColumnTypes) {
+        return THolder<TKeyDesc>(new TKeyDesc(keyColumnTypes));
+    }
+private:
+    TKeyDesc(const TVector<NScheme::TTypeInfo> &keyColumnTypes)
+        : RowOperation(ERowOperation::Unknown)
+        , KeyColumnTypes(keyColumnTypes.begin(), keyColumnTypes.end())
+        , Reverse(false)
         , Status(EStatus::Unknown)
         , Partitioning(std::make_shared<TVector<TKeyDesc::TPartitionInfo>>())
     {}

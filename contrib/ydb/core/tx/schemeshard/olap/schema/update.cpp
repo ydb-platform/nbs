@@ -23,6 +23,10 @@ namespace NKikimr::NSchemeShard {
             return false;
         }
 
+        if (!Options.Parse(alterRequest, errors)) {
+            return false;
+        }
+
         return true;
     }
 }

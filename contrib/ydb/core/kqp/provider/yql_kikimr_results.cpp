@@ -4,6 +4,7 @@
 #include <contrib/ydb/library/dynumber/dynumber.h>
 #include <contrib/ydb/library/uuid/uuid.h>
 
+#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
 #include <contrib/ydb/library/yql/providers/common/codec/yql_codec_results.h>
 #include <contrib/ydb/library/yql/public/decimal/yql_decimal.h>
 
@@ -76,6 +77,11 @@ void WriteValueToYson(const TStringStream& stream, NCommon::TYsonResultWriter& w
                 return;
             }
 
+            if (type.GetData().GetScheme() == NYql::NProto::TypeIds::Yson) {
+                writer.OnRaw(value.GetBytes(), NYT::NYson::EYsonType::Node);
+                return;
+            }
+
             if (value.HasBool()) {
                 writer.OnBooleanScalar(value.GetBool());
             }
@@ -112,6 +118,24 @@ void WriteValueToYson(const TStringStream& stream, NCommon::TYsonResultWriter& w
                 writer.OnStringScalar(value.GetText());
             }
 
+            return;
+        }
+
+        case NKikimrMiniKQL::ETypeKind::Pg:
+        {
+            if (value.GetValueValueCase() == NKikimrMiniKQL::TValue::kNullFlagValue) {
+                writer.OnEntity();
+            } else if (value.HasBytes()) {
+                auto convert = NKikimr::NPg::PgNativeTextFromNativeBinary(
+                    value.GetBytes(), NKikimr::NPg::TypeDescFromPgTypeId(type.GetPg().Getoid())
+                );
+                YQL_ENSURE(!convert.Error, "Failed to convert pg value to text: " << *convert.Error);
+                writer.OnStringScalar(convert.Str);
+            } else if (value.HasText()) {
+                writer.OnStringScalar(value.GetText());
+            } else {
+                YQL_ENSURE(false, "malformed pg value");
+            }
             return;
         }
 
@@ -267,6 +291,14 @@ TExprNode::TPtr MakeAtomForDataType(EDataSlot slot, const NKikimrMiniKQL::TValue
     } else if (slot == EDataSlot::Timestamp) {
         return ctx.NewAtom(pos, ToString(value.GetUint64()));
     } else if (slot == EDataSlot::Interval) {
+        return ctx.NewAtom(pos, ToString(value.GetInt64()));
+    } else if (slot == EDataSlot::Date32) {
+        return ctx.NewAtom(pos, ToString(value.GetInt32()));
+    } else if (slot == EDataSlot::Datetime64) {
+        return ctx.NewAtom(pos, ToString(value.GetInt64()));
+    } else if (slot == EDataSlot::Timestamp64) {
+        return ctx.NewAtom(pos, ToString(value.GetInt64()));
+    } else if (slot == EDataSlot::Interval64) {
         return ctx.NewAtom(pos, ToString(value.GetInt64()));
     } else {
        return nullptr;
@@ -856,7 +888,7 @@ const TTypeAnnotationNode* ParseTypeFromYdbType(const Ydb::Type& type, TExprCont
         case Ydb::Type::kPgType: {
             if (!type.pg_type().type_name().empty()) {
                 const auto& typeName = type.pg_type().type_name();
-                auto* typeDesc = NKikimr::NPg::TypeDescFromPgTypeName(typeName);
+                auto typeDesc = NKikimr::NPg::TypeDescFromPgTypeName(typeName);
                 return ctx.MakeType<TPgExprType>(NKikimr::NPg::PgTypeIdFromTypeDesc(typeDesc));
             }
             return ctx.MakeType<TPgExprType>(type.pg_type().Getoid());

@@ -1,12 +1,14 @@
 UNITTEST_FOR(contrib/ydb/core/kafka_proxy)
 
 SIZE(medium)
+TIMEOUT(600)
 
 SRCS(
     ut_kafka_functions.cpp
     ut_protocol.cpp
     ut_serialization.cpp
     metarequest_ut.cpp
+    port_discovery_ut.cpp
 )
 
 PEERDIR(

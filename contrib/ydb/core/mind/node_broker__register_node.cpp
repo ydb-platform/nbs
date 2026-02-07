@@ -2,6 +2,7 @@
 #include "node_broker__scheme.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/protos/counters_node_broker.pb.h>
 
 namespace NKikimr {
 namespace NNodeBroker {
@@ -10,17 +11,18 @@ using namespace NKikimrNodeBroker;
 
 class TNodeBroker::TTxRegisterNode : public TTransactionBase<TNodeBroker> {
 public:
-    TTxRegisterNode(TNodeBroker *self, TEvNodeBroker::TEvRegistrationRequest::TPtr &ev,
-                    const NActors::TScopeId& scopeId, const TSubDomainKey& servicedSubDomain)
+    TTxRegisterNode(TNodeBroker *self, TEvPrivate::TEvResolvedRegistrationRequest::TPtr &resolvedEv)
         : TBase(self)
-        , Event(ev)
-        , ScopeId(scopeId)
-        , ServicedSubDomain(servicedSubDomain)
+        , Event(resolvedEv->Get()->Request)
+        , ScopeId(resolvedEv->Get()->ScopeId)
+        , ServicedSubDomain(resolvedEv->Get()->ServicedSubDomain)
         , NodeId(0)
         , ExtendLease(false)
         , FixNodeId(false)
     {
     }
+
+    TTxType GetTxType() const override { return TXTYPE_REGISTER_NODE; }
 
     bool Error(TStatus::ECode code,
                const TString &reason,
@@ -74,18 +76,22 @@ public:
             auto &node = Self->Nodes.find(it->second)->second;
             NodeId = node.NodeId;
 
-            if (node.Address != rec.GetAddress()
-                || node.ResolveHost != rec.GetResolveHost())
-                return Error(TStatus::WRONG_REQUEST,
-                             TStringBuilder() << "Another address is registered for "
-                             << host << ":" << port,
-                             ctx);
+            if (node.Address != rec.GetAddress() || node.ResolveHost != rec.GetResolveHost()) {
+                auto errorText = TStringBuilder() << "Another address is registered for " << host << ":" << port
+                    << ", expected (address, resolve host) = (" << node.Address << ", " << node.ResolveHost << ")"
+                    << ", got (address, resolve host) = (" << rec.GetAddress() << ", " << rec.GetResolveHost() << ")";
+
+                LOG_WARN_S(ctx, NKikimrServices::NODE_BROKER, errorText);
+                return Error(TStatus::WRONG_REQUEST, errorText, ctx);
+            }
 
             if (node.Location != loc && node.Location != TNodeLocation()) {
-                return Error(TStatus::WRONG_REQUEST,
-                             TStringBuilder() << "Another location is registered for "
-                             << host << ":" << port,
-                             ctx);
+                auto errorText = TStringBuilder() << "Another location is registered for " << host << ":" << port
+                    << ", expected = " << node.Location.ToString()
+                    << ", got = " << loc.ToString();
+
+                LOG_WARN_S(ctx, NKikimrServices::NODE_BROKER, errorText);
+                return Error(TStatus::WRONG_REQUEST, errorText, ctx);
             } else if (node.Location != loc) {
                 node.Location = loc;
                 Self->DbUpdateNodeLocation(node, txc);
@@ -98,7 +104,10 @@ public:
                 Self->DbUpdateNodeLease(node, txc);
                 ExtendLease = true;
             }
-            node.AuthorizedByCertificate = rec.GetAuthorizedByCertificate();
+            if (node.AuthorizedByCertificate != rec.GetAuthorizedByCertificate()) {
+                node.AuthorizedByCertificate = rec.GetAuthorizedByCertificate();
+                Self->DbUpdateNodeAuthorizedByCertificate(node, txc);
+            }
 
             if (Self->EnableStableNodeNames) {
                 if (ServicedSubDomain != node.ServicedSubDomain) {
@@ -186,11 +195,9 @@ private:
     bool FixNodeId;
 };
 
-ITransaction *TNodeBroker::CreateTxRegisterNode(TEvNodeBroker::TEvRegistrationRequest::TPtr &ev,
-                                                const NActors::TScopeId& scopeId,
-                                                const TSubDomainKey& servicedSubDomain)
+ITransaction *TNodeBroker::CreateTxRegisterNode(TEvPrivate::TEvResolvedRegistrationRequest::TPtr &ev)
 {
-    return new TTxRegisterNode(this, ev, scopeId, servicedSubDomain);
+    return new TTxRegisterNode(this, ev);
 }
 
 } // NNodeBroker

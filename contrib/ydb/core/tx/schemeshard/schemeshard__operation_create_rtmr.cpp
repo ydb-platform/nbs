@@ -236,7 +236,8 @@ public:
                 .NotDeleted()
                 .NotUnderDeleting()
                 .IsCommonSensePath()
-                .IsLikeDirectory();
+                .IsLikeDirectory()
+                .FailOnRestrictedCreateInTempZone();
 
             if (!checks) {
                 result->SetError(checks.GetStatus(), checks.GetError());
@@ -330,12 +331,11 @@ public:
         context.SS->TabletCounters->Simple()[COUNTER_RTMR_PARTITIONS_COUNT].Add(rtmrVolumeInfo->Partitions.size());
         context.SS->IncrementPathDbRefCount(newRtmrVolume->PathId);
 
-        context.SS->PersistPath(db, newRtmrVolume->PathId);
-
         if (!acl.empty()) {
             newRtmrVolume->ApplyACL(acl);
-            context.SS->PersistACL(db, newRtmrVolume);
         }
+        context.SS->PersistPath(db, newRtmrVolume->PathId);
+
         context.SS->PersistRtmrVolume(db, newRtmrVolume->PathId, rtmrVolumeInfo);
         context.SS->PersistTxState(db, OperationId);
 
@@ -366,8 +366,8 @@ public:
         Y_ABORT_UNLESS(shardsToCreate == txState.Shards.size(), "shardsToCreate=%ld != txStateShards=%ld",
             shardsToCreate, txState.Shards.size());
 
-        dstPath.DomainInfo()->IncPathsInside();
-        dstPath.DomainInfo()->AddInternalShards(txState);
+        dstPath.DomainInfo()->IncPathsInside(context.SS);
+        dstPath.DomainInfo()->AddInternalShards(txState, context.SS);
 
         dstPath.Base()->IncShardsInside(shardsToCreate);
         parentPath.Base()->IncAliveChildren();

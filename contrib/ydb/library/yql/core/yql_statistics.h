@@ -1,6 +1,12 @@
 #pragma once
 
+#include <contrib/ydb/library/minsketch/count_min_sketch.h>
+
+#include <library/cpp/json/json_reader.h>
+
 #include <util/generic/vector.h>
+#include <util/generic/hash.h>
+
 #include <util/generic/string.h>
 #include <optional>
 #include <iostream>
@@ -13,6 +19,27 @@ enum EStatisticsType : ui32 {
     ManyManyJoin
 };
 
+enum EStorageType : ui32 {
+    NA,
+    RowStorage,
+    ColumnStorage
+};
+
+// Providers may subclass this struct to associate specific statistics, useful to
+// derive stats for higher-level operators in the plan.
+struct IProviderStatistics {
+    virtual ~IProviderStatistics() {}
+};
+
+struct TColumnStatistics {
+    std::optional<double> NumUniqueVals;
+    std::optional<double> HyperLogLog;
+    std::shared_ptr<NKikimr::TCountMinSketch> CountMinSketch;
+    TString Type;
+
+    TColumnStatistics() {}
+};
+
 /**
  * Optimizer Statistics struct records per-table and per-column statistics
  * for the current operator in the plan. Currently, only Nrows and Ncols are
@@ -21,25 +48,51 @@ enum EStatisticsType : ui32 {
  * all of the time.
 */
 struct TOptimizerStatistics {
+    struct TKeyColumns : public TSimpleRefCount<TKeyColumns> {
+        TVector<TString> Data;
+        TKeyColumns(const TVector<TString>& vec) : Data(vec) {}
+    };
+
+    struct TColumnStatMap : public TSimpleRefCount<TColumnStatMap> {
+        THashMap<TString,TColumnStatistics> Data;
+        TColumnStatMap() {}
+        TColumnStatMap(const THashMap<TString,TColumnStatistics>& map) : Data(map) {}
+    };
+
     EStatisticsType Type = BaseTable;
     double Nrows = 0;
     int Ncols = 0;
-    double Cost;
-    TVector<TString> KeyColumns;
+    double ByteSize = 0;
+    double Cost = 0;
+    double Selectivity = 1.0;
+    TIntrusivePtr<TKeyColumns> KeyColumns;
+    TIntrusivePtr<TColumnStatMap> ColumnStatistics;
+    EStorageType StorageType = EStorageType::NA;
+    std::unique_ptr<const IProviderStatistics> Specific;
+    std::shared_ptr<TVector<TString>> Labels = {};
 
-    TString Descr;
-
+    TOptimizerStatistics(TOptimizerStatistics&&) = default;
     TOptimizerStatistics() {}
-    TOptimizerStatistics(double nrows, int ncols): Nrows(nrows), Ncols(ncols) {}
-    TOptimizerStatistics(double nrows, int ncols, double cost): Nrows(nrows), Ncols(ncols), Cost(cost) {}
-    TOptimizerStatistics(EStatisticsType type, double nrows, int ncols, double cost): Type(type), Nrows(nrows), Ncols(ncols), Cost(cost) {}
-    TOptimizerStatistics(EStatisticsType type, double nrows, int ncols, double cost, TVector<TString> keyColumns): Type(type), Nrows(nrows), Ncols(ncols), Cost(cost), KeyColumns(keyColumns) {}
-    TOptimizerStatistics(double nrows,int ncols, double cost, TString descr): Nrows(nrows), Ncols(ncols), Cost(cost), Descr(descr) {}
 
+    TOptimizerStatistics(
+        EStatisticsType type,
+        double nrows = 0.0,
+        int ncols = 0,
+        double byteSize = 0.0,
+        double cost = 0.0,
+        TIntrusivePtr<TKeyColumns> keyColumns = {},
+        TIntrusivePtr<TColumnStatMap> columnMap = {},
+        EStorageType storageType = EStorageType::NA,
+        std::unique_ptr<IProviderStatistics> specific = nullptr);
 
     TOptimizerStatistics& operator+=(const TOptimizerStatistics& other);
     bool Empty() const;
 
     friend std::ostream& operator<<(std::ostream& os, const TOptimizerStatistics& s);
+
+    TString ToString() const;
 };
+
+std::shared_ptr<TOptimizerStatistics> OverrideStatistics(const TOptimizerStatistics& s, const TStringBuf& tablePath, const std::shared_ptr<NJson::TJsonValue>& stats);
+
 }

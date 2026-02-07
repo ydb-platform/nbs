@@ -42,7 +42,6 @@ class TDatabase {
 public:
     using TMemGlobs = TVector<NPageCollection::TMemGlob>;
     using TCookieAllocator = NPageCollection::TCookieAllocator;
-    using TCounters = TDbStats;
 
     struct TProd {
         THolder<TChange> Change;
@@ -96,16 +95,16 @@ public:
 
     /*_ Call Next() before accessing each row including the 1st row. */
 
-    TAutoPtr<TTableIt> Iterate(ui32 table, TRawVals key, TTagsRef tags, ELookup) const noexcept;
-    TAutoPtr<TTableIt> IterateExact(ui32 table, TRawVals key, TTagsRef tags,
+    TAutoPtr<TTableIter> Iterate(ui32 table, TRawVals key, TTagsRef tags, ELookup) const noexcept;
+    TAutoPtr<TTableIter> IterateExact(ui32 table, TRawVals key, TTagsRef tags,
             TRowVersion snapshot = TRowVersion::Max(),
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
-    TAutoPtr<TTableIt> IterateRange(ui32 table, const TKeyRange& range, TTagsRef tags,
+    TAutoPtr<TTableIter> IterateRange(ui32 table, const TKeyRange& range, TTagsRef tags,
             TRowVersion snapshot = TRowVersion::Max(),
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
-    TAutoPtr<TTableReverseIt> IterateRangeReverse(ui32 table, const TKeyRange& range, TTagsRef tags,
+    TAutoPtr<TTableReverseIter> IterateRangeReverse(ui32 table, const TKeyRange& range, TTagsRef tags,
             TRowVersion snapshot = TRowVersion::Max(),
             const ITransactionMapPtr& visible = nullptr,
             const ITransactionObserverPtr& observer = nullptr) const noexcept;
@@ -214,7 +213,10 @@ public:
     ui64 GetTableIndexSize(ui32 table) const;
     ui64 GetTableSearchHeight(ui32 table) const;
     ui64 EstimateRowSize(ui32 table) const;
-    const TCounters& Counters() const noexcept;
+    void UpdateApproximateFreeSharesByChannel(const THashMap<ui32, float>& approximateFreeSpaceShareByChannel);
+    const TDbStats& Counters() const noexcept;
+    TDbRuntimeStats RuntimeCounters() const noexcept;
+
     TString SnapshotToLog(ui32 table, TTxStamp);
 
     TAutoPtr<TSubset> Subset(ui32 table, TArrayRef<const TLogoBlobID> bundle, TEpoch before) const;
@@ -303,8 +305,7 @@ private:
     TVector<ui32> ModifiedRefs;
     TVector<TUpdateOp> ModifiedOps;
 
-    mutable TDeque<TPartSimpleIt> TempIterators; // Keeps the last result of Select() valid
-    mutable THashSet<ui32> IteratedTables;
+    mutable TDeque<TPartIter> TempIterators; // Keeps the last result of Select() valid
 
     TVector<std::function<void()>> OnCommit_;
     TVector<std::function<void()>> OnRollback_;

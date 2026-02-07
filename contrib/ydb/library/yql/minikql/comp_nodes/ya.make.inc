@@ -15,6 +15,9 @@ SET(ORIG_SOURCES
     mkql_block_agg_some.cpp
     mkql_block_agg_sum.cpp
     mkql_block_coalesce.cpp
+    mkql_block_container.cpp
+    mkql_block_exists.cpp
+    mkql_block_getelem.cpp
     mkql_block_if.cpp
     mkql_block_just.cpp
     mkql_block_logical.cpp
@@ -22,7 +25,6 @@ SET(ORIG_SOURCES
     mkql_block_func.cpp
     mkql_block_skiptake.cpp
     mkql_block_top.cpp
-    mkql_block_tuple.cpp
     mkql_blocks.cpp
     mkql_callable.cpp
     mkql_chain_map.cpp
@@ -141,8 +143,11 @@ COPY(
     ${ORIG_SOURCES}
     OUTPUT_INCLUDES 
     ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h
+    ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_block_impl_codegen.h
+    ${BINDIR}/contrib/ydb/library/yql/minikql/computation/mkql_llvm_base.h
     ${BINDIR}/contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins_codegen.h
     ${BINDIR}/contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins_decimal.h
+    llvm/Support/raw_ostream.h
 )
 
 PEERDIR(
@@ -157,10 +162,12 @@ PEERDIR(
     contrib/ydb/library/yql/public/issue/protos
 )
 
-IF(ARCH_X86_64)
-    CFLAGS(
-        -mprfchw
-    )
+IF (ARCH_X86_64)
+
+CFLAGS(
+    -mprfchw
+)
+
 ENDIF()
 
 YQL_LAST_ABI_VERSION()

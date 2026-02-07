@@ -3,6 +3,7 @@
 
 #include "defs.h"
 #include "channel_profiles.h"
+#include "config_metrics.h"
 #include "domain.h"
 #include "feature_flags.h"
 #include "nameservice.h"
@@ -10,14 +11,22 @@
 #include "resource_profile.h"
 #include "event_filter.h"
 
+#include <contrib/ydb/core/audit/audit_config/audit_config.h>
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/grpc_services/grpc_helper.h>
 #include <contrib/ydb/core/protos/auth.pb.h>
+#include <contrib/ydb/core/protos/bootstrap.pb.h>
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/cms.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/data_integrity_trails.pb.h>
 #include <contrib/ydb/core/protos/key.pb.h>
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
+#include <contrib/ydb/core/protos/replication.pb.h>
 #include <contrib/ydb/core/protos/stream.pb.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
+#include <contrib/ydb/core/protos/shared_cache.pb.h>
 #include <contrib/ydb/library/pdisk_io/aio.h>
 
 #include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
@@ -30,6 +39,37 @@
 
 namespace NKikimr {
 
+struct TAppData::TImpl {
+    NKikimrStream::TStreamingConfig StreamingConfig;
+    NKikimrPQ::TPQConfig PQConfig;
+    NKikimrPQ::TPQClusterDiscoveryConfig PQClusterDiscoveryConfig;
+    NKikimrNetClassifier::TNetClassifierConfig NetClassifierConfig;
+    NKikimrNetClassifier::TNetClassifierDistributableConfig NetClassifierDistributableConfig;
+    NKikimrConfig::TSqsConfig SqsConfig;
+    NKikimrProto::TAuthConfig AuthConfig;
+    NKikimrProto::TKeyConfig KeyConfig;
+    NKikimrProto::TKeyConfig PDiskKeyConfig;
+    TFeatureFlags FeatureFlags;
+    NKikimrConfig::THiveConfig HiveConfig;
+    NKikimrConfig::TDataShardConfig DataShardConfig;
+    NKikimrConfig::TColumnShardConfig ColumnShardConfig;
+    NKikimrConfig::TSchemeShardConfig SchemeShardConfig;
+    NKikimrConfig::TMeteringConfig MeteringConfig;
+    NKikimr::NAudit::TAuditConfig AuditConfig;
+    NKikimrConfig::TCompactionConfig CompactionConfig;
+    NKikimrConfig::TDomainsConfig DomainsConfig;
+    NKikimrConfig::TBootstrap BootstrapConfig;
+    NKikimrConfig::TAwsCompatibilityConfig AwsCompatibilityConfig;
+    NKikimrConfig::TS3ProxyResolverConfig S3ProxyResolverConfig;
+    NKikimrConfig::TBackgroundCleaningConfig BackgroundCleaningConfig;
+    NKikimrConfig::TGraphConfig GraphConfig;
+    NKikimrSharedCache::TSharedCacheConfig SharedCacheConfig;
+    NKikimrConfig::TMetadataCacheConfig MetadataCacheConfig;
+    NKikimrReplication::TReplicationDefaults ReplicationConfig;
+    NKikimrProto::TDataIntegrityTrailsConfig DataIntegrityTrailsConfig;
+    TMetricsConfig MetricsConfig;
+};
+
 TAppData::TAppData(
         ui32 sysPoolId, ui32 userPoolId, ui32 ioPoolId, ui32 batchPoolId,
         TMap<TString, ui32> servicePools,
@@ -38,6 +78,7 @@ TAppData::TAppData(
         const TFormatFactory* formatFactory,
         TProgramShouldContinue *kikimrShouldContinue)
     : Magic(MagicTag)
+    , Impl(new TImpl)
     , SystemPoolId(sysPoolId)
     , UserPoolId(userPoolId)
     , IOPoolId(ioPoolId)
@@ -54,51 +95,38 @@ TAppData::TAppData(
     , Mon(nullptr)
     , Icb(new TControlBoard())
     , InFlightLimiterRegistry(new NGRpcService::TInFlightLimiterRegistry(Icb))
-    , StreamingConfigPtr(new NKikimrStream::TStreamingConfig())
-    , PQConfigPtr(new NKikimrPQ::TPQConfig())
-    , PQClusterDiscoveryConfigPtr(new NKikimrPQ::TPQClusterDiscoveryConfig())
-    , NetClassifierConfigPtr(new NKikimrNetClassifier::TNetClassifierConfig())
-    , NetClassifierDistributableConfigPtr(new NKikimrNetClassifier::TNetClassifierDistributableConfig())
-    , SqsConfigPtr(new NKikimrConfig::TSqsConfig())
-    , AuthConfigPtr(new NKikimrProto::TAuthConfig())
-    , KeyConfigPtr(new NKikimrProto::TKeyConfig())
-    , PDiskKeyConfigPtr(new NKikimrProto::TKeyConfig())
-    , FeatureFlagsPtr(new TFeatureFlags())
-    , HiveConfigPtr(new NKikimrConfig::THiveConfig())
-    , DataShardConfigPtr(new NKikimrConfig::TDataShardConfig())
-    , ColumnShardConfigPtr(new NKikimrConfig::TColumnShardConfig())
-    , SchemeShardConfigPtr(new NKikimrConfig::TSchemeShardConfig())
-    , MeteringConfigPtr(new NKikimrConfig::TMeteringConfig())
-    , AuditConfigPtr(new NKikimrConfig::TAuditConfig())
-    , CompactionConfigPtr(new NKikimrConfig::TCompactionConfig())
-    , DomainsConfigPtr(new NKikimrConfig::TDomainsConfig())
-    , BootstrapConfigPtr(new NKikimrConfig::TBootstrap())
-    , AwsCompatibilityConfigPtr(new NKikimrConfig::TAwsCompatibilityConfig())
-    , S3ProxyResolverConfigPtr(new NKikimrConfig::TS3ProxyResolverConfig())
-    , BackgroundCleaningConfigPtr(new NKikimrConfig::TBackgroundCleaningConfig())
-    , StreamingConfig(*StreamingConfigPtr.get())
-    , PQConfig(*PQConfigPtr.get())
-    , PQClusterDiscoveryConfig(*PQClusterDiscoveryConfigPtr.get())
-    , NetClassifierConfig(*NetClassifierConfigPtr.get())
-    , NetClassifierDistributableConfig(*NetClassifierDistributableConfigPtr.get())
-    , SqsConfig(*SqsConfigPtr.get())
-    , AuthConfig(*AuthConfigPtr.get())
-    , KeyConfig(*KeyConfigPtr.get())
-    , PDiskKeyConfig(*PDiskKeyConfigPtr.get())
-    , FeatureFlags(*FeatureFlagsPtr.get())
-    , HiveConfig(*HiveConfigPtr.get())
-    , DataShardConfig(*DataShardConfigPtr.get())
-    , ColumnShardConfig(*ColumnShardConfigPtr.get())
-    , SchemeShardConfig(*SchemeShardConfigPtr.get())
-    , MeteringConfig(*MeteringConfigPtr.get())
-    , AuditConfig(*AuditConfigPtr.get())
-    , CompactionConfig(*CompactionConfigPtr.get())
-    , DomainsConfig(*DomainsConfigPtr.get())
-    , BootstrapConfig(*BootstrapConfigPtr.get())
-    , AwsCompatibilityConfig(*AwsCompatibilityConfigPtr.get())
-    , S3ProxyResolverConfig(*S3ProxyResolverConfigPtr.get())
-    , BackgroundCleaningConfig(*BackgroundCleaningConfigPtr.get())
+    , StreamingConfig(Impl->StreamingConfig)
+    , PQConfig(Impl->PQConfig)
+    , PQClusterDiscoveryConfig(Impl->PQClusterDiscoveryConfig)
+    , NetClassifierConfig(Impl->NetClassifierConfig)
+    , NetClassifierDistributableConfig(Impl->NetClassifierDistributableConfig)
+    , SqsConfig(Impl->SqsConfig)
+    , AuthConfig(Impl->AuthConfig)
+    , KeyConfig(Impl->KeyConfig)
+    , PDiskKeyConfig(Impl->PDiskKeyConfig)
+    , FeatureFlags(Impl->FeatureFlags)
+    , HiveConfig(Impl->HiveConfig)
+    , DataShardConfig(Impl->DataShardConfig)
+    , ColumnShardConfig(Impl->ColumnShardConfig)
+    , SchemeShardConfig(Impl->SchemeShardConfig)
+    , MeteringConfig(Impl->MeteringConfig)
+    , AuditConfig(Impl->AuditConfig)
+    , CompactionConfig(Impl->CompactionConfig)
+    , DomainsConfig(Impl->DomainsConfig)
+    , BootstrapConfig(Impl->BootstrapConfig)
+    , AwsCompatibilityConfig(Impl->AwsCompatibilityConfig)
+    , S3ProxyResolverConfig(Impl->S3ProxyResolverConfig)
+    , BackgroundCleaningConfig(Impl->BackgroundCleaningConfig)
+    , GraphConfig(Impl->GraphConfig)
+    , SharedCacheConfig(Impl->SharedCacheConfig)
+    , MetadataCacheConfig(Impl->MetadataCacheConfig)
+    , ReplicationConfig(Impl->ReplicationConfig)
+    , DataIntegrityTrailsConfig(Impl->DataIntegrityTrailsConfig)
+    , MetricsConfig(Impl->MetricsConfig)
     , KikimrShouldContinue(kikimrShouldContinue)
+{}
+
+TAppData::~TAppData()
 {}
 
 TIntrusivePtr<IRandomProvider> TAppData::RandomProvider = CreateDefaultRandomProvider();

@@ -1,9 +1,13 @@
 #pragma once
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/protos/replication.pb.h>
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/follower_group.pb.h>
+#include <contrib/ydb/core/protos/subdomains.pb.h>
 
 #include <functional>
 
@@ -89,11 +93,17 @@ namespace NLs {
     void IsExternalTable(const NKikimrScheme::TEvDescribeSchemeResult& record);
     void IsExternalDataSource(const NKikimrScheme::TEvDescribeSchemeResult& record);
     void IsView(const NKikimrScheme::TEvDescribeSchemeResult& record);
+    void IsResourcePool(const NKikimrScheme::TEvDescribeSchemeResult& record);
     TCheckFunc CheckColumns(const TString& name, const TSet<TString>& columns, const TSet<TString>& droppedColumns, const TSet<TString> keyColumns,
                             NKikimrSchemeOp::EPathState pathState = NKikimrSchemeOp::EPathState::EPathStateNoChanges);
+    TCheckFunc CheckColumnType(const ui64 columnIndex, const TString& columnTypename);
     void CheckBoundaries(const NKikimrScheme::TEvDescribeSchemeResult& record);
     TCheckFunc PartitionCount(ui32 count);
     TCheckFunc PartitionKeys(TVector<TString> lastShardKeys);
+    // Checks if the serialized representation of an expected boundary is a prefix of the actual one.
+    // Similar to PartitionKeys check, but does not require you to pass split boundaries in a serialized form.
+    template <typename T>
+    TCheckFunc SplitBoundaries(TVector<T>&& expectedBoundaries);
     TCheckFunc FollowerCount(ui32 count);
     TCheckFunc CrossDataCenterFollowerCount(ui32 count);
     TCheckFunc AllowFollowerPromotion(bool val);
@@ -114,6 +124,8 @@ namespace NLs {
         NKikimrSchemeOp::TTTLSettings::EUnit columnUnit = NKikimrSchemeOp::TTTLSettings::UNIT_AUTO);
     TCheckFunc HasTtlDisabled();
     TCheckFunc IsBackupTable(bool value);
+    TCheckFunc ReplicationMode(NKikimrSchemeOp::TTableReplicationConfig::EReplicationMode mode);
+    TCheckFunc ReplicationState(NKikimrReplication::TReplicationState::StateCase state);
 
     TCheckFunc HasColumnTableSchemaPreset(const TString& presetName);
     TCheckFunc HasColumnTableSchemaVersion(ui64 schemaVersion);
@@ -132,12 +144,21 @@ namespace NLs {
     TCheckFunc IndexKeys(const TVector<TString>& keyNames);
     TCheckFunc IndexDataColumns(const TVector<TString>& dataColumnNames);
 
+    TCheckFunc SequenceName(const TString& name);
+    TCheckFunc SequenceIncrement(i64 increment);
+    TCheckFunc SequenceMaxValue(i64 maxValue);
+    TCheckFunc SequenceMinValue(i64 minValue);
+    TCheckFunc SequenceCycle(bool cycle);
+    TCheckFunc SequenceStartValue(i64 startValue);
+    TCheckFunc SequenceCache(ui64 cache);
+
     TCheckFunc StreamMode(NKikimrSchemeOp::ECdcStreamMode mode);
     TCheckFunc StreamFormat(NKikimrSchemeOp::ECdcStreamFormat format);
     TCheckFunc StreamState(NKikimrSchemeOp::ECdcStreamState state);
     TCheckFunc StreamVirtualTimestamps(bool value);
     TCheckFunc StreamResolvedTimestamps(const TDuration& value);
     TCheckFunc StreamAwsRegion(const TString& value);
+    TCheckFunc StreamInitialScanProgress(ui32 total, ui32 completed);
     TCheckFunc RetentionPeriod(const TDuration& value);
 
     TCheckFunc HasBackupInFly(ui64 txId);
@@ -152,7 +173,19 @@ namespace NLs {
     TCheckFunc DatabaseQuotas(ui64 dataStreamShards);
     TCheckFunc SharedHive(ui64 sharedHiveId);
     TCheckFunc ServerlessComputeResourcesMode(NKikimrSubDomains::EServerlessComputeResourcesMode serverlessComputeResourcesMode);
-    
+
+    struct TInverseTag {
+        bool Value = false;
+    };
+
+    void HasOffloadConfigBase(const NKikimrScheme::TEvDescribeSchemeResult& record, const TString* const config, TInverseTag inverse);
+    inline TCheckFunc HasOffloadConfig(TString config) {
+        return [config] (const NKikimrScheme::TEvDescribeSchemeResult& record) {
+            return HasOffloadConfigBase(record, config ? &config : nullptr, {});
+        };
+    }
+    inline void HasNotOffloadConfig(const NKikimrScheme::TEvDescribeSchemeResult& record) { return HasOffloadConfigBase(record, nullptr, {.Value = true}); }
+
     template<class TCheck>
     void PerformAllChecks(const NKikimrScheme::TEvDescribeSchemeResult& result, TCheck&& check) {
         check(result);

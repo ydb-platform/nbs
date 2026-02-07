@@ -99,6 +99,9 @@ namespace NKikimr::NBsController {
                         for (bool value : settings.GetEnableDonorMode()) {
                             Self->DonorMode = value;
                             db.Table<T>().Key(true).Update<T::DonorModeEnable>(Self->DonorMode);
+                            auto ev = std::make_unique<TEvControllerUpdateSelfHealInfo>();
+                            ev->DonorMode = Self->DonorMode;
+                            Self->Send(Self->SelfHealId, ev.release());
                         }
                         for (ui64 value : settings.GetScrubPeriodicitySeconds()) {
                             Self->ScrubPeriodicity = TDuration::Seconds(value);
@@ -177,7 +180,7 @@ namespace NKikimr::NBsController {
                     Response->MutableStatus()->RemoveLast();
                 }
 
-                State.emplace(*Self, Self->HostRecords, TActivationContext::Now());
+                State.emplace(*Self, Self->HostRecords, TActivationContext::Now(), TActivationContext::Monotonic());
                 State->CheckConsistency();
 
                 TString m;
@@ -204,7 +207,7 @@ namespace NKikimr::NBsController {
                                 expectedSlotSize.push_back(size);
                             }
                         }
-                        const auto availabilityDomainId = AppData()->DomainsInfo->GetDomainUidByTabletId(Self->TabletID());
+                        const auto availabilityDomainId = AppData()->DomainsInfo->GetDomain()->DomainUid;
                         Self->FitGroupsForUserConfig(*State, availabilityDomainId, Cmd, std::move(expectedSlotSize), status);
 
                         const TDuration passed = TDuration::Seconds(timer.Passed());
@@ -262,7 +265,8 @@ namespace NKikimr::NBsController {
 
                 const bool doLogCommand = Success && State->Changed();
                 Success = Success && Self->CommitConfigUpdates(*State, Cmd.GetIgnoreGroupFailModelChecks(),
-                    Cmd.GetIgnoreDegradedGroupsChecks(), Cmd.GetIgnoreDisintegratedGroupsChecks(), txc, &Error);
+                    Cmd.GetIgnoreDegradedGroupsChecks(), Cmd.GetIgnoreDisintegratedGroupsChecks(), txc, &Error,
+                    Response);
 
                 Finish();
                 if (doLogCommand) {
@@ -296,18 +300,22 @@ namespace NKikimr::NBsController {
             }
 
             void LogCommand(TTransactionContext& txc, TDuration executionTime) {
+                ui64 operationLogIndex = Self->NextOperationLogIndex;
                 // update operation log for write transaction
                 NIceDb::TNiceDb db(txc.DB);
                 TString requestBuffer, responseBuffer;
                 Y_PROTOBUF_SUPPRESS_NODISCARD Cmd.SerializeToString(&requestBuffer);
                 Y_PROTOBUF_SUPPRESS_NODISCARD Response->SerializeToString(&responseBuffer);
-                db.Table<Schema::OperationLog>().Key(Self->NextOperationLogIndex).Update(
+                db.Table<Schema::OperationLog>().Key(operationLogIndex).Update(
                     NIceDb::TUpdate<Schema::OperationLog::Timestamp>(TActivationContext::Now()),
                     NIceDb::TUpdate<Schema::OperationLog::Request>(requestBuffer),
                     NIceDb::TUpdate<Schema::OperationLog::Response>(responseBuffer),
                     NIceDb::TUpdate<Schema::OperationLog::ExecutionTime>(executionTime));
                 db.Table<Schema::State>().Key(true).Update(
                     NIceDb::TUpdate<Schema::State::NextOperationLogIndex>(++Self->NextOperationLogIndex));
+
+                STLOG(PRI_INFO, BS_CONTROLLER_AUDIT, BSCA10, "Finished processing command", (Request, Cmd.DebugString()),
+                        (Response, Response->DebugString()), (ExecutionTime, executionTime), (OperationLogIndex, operationLogIndex));
             }
 
             void ExecuteStep(TConfigState& state, const NKikimrBlobStorage::TConfigRequest::TCommand& cmd,
@@ -347,6 +355,10 @@ namespace NKikimr::NBsController {
                     HANDLE_COMMAND(SanitizeGroup)
                     HANDLE_COMMAND(CancelVirtualGroup)
                     HANDLE_COMMAND(SetVDiskReadOnly)
+                    HANDLE_COMMAND(RestartPDisk)
+                    HANDLE_COMMAND(SetPDiskReadOnly)
+                    HANDLE_COMMAND(StopPDisk)
+                    HANDLE_COMMAND(MovePDisk)
 
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kAddMigrationPlan:
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kDeleteMigrationPlan:
@@ -370,6 +382,8 @@ namespace NKikimr::NBsController {
                     STLOG(PRI_INFO, BS_CONTROLLER_AUDIT, BSCA09, "Transaction complete", (UniqueId, state->UniqueId),
                             (NextConfigTxSeqNo, configTxSeqNo));
                     Ev->Record.MutableResponse()->SetConfigTxSeqNo(configTxSeqNo);
+                } else {
+                    Ev->Record.MutableResponse()->SetConfigTxSeqNo(Self->NextConfigTxSeqNo - 1);
                 }
                 TActivationContext::Send(new IEventHandle(NotifyId, Self->SelfId(), Ev.Release(), 0, Cookie));
                 Self->UpdatePDisksCounters();

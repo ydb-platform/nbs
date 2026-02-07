@@ -43,6 +43,11 @@ ui64 GetNativeYtTypeFlagsImpl(const TTypeAnnotationNode* itemType) {
             case EDataSlot::Timestamp:
             case EDataSlot::Interval:
                 return NTCF_DATE;
+            case EDataSlot::Date32:
+            case EDataSlot::Datetime64:
+            case EDataSlot::Timestamp64:
+            case EDataSlot::Interval64:
+                return NTCF_BIGDATE;
             case EDataSlot::Json:
                 return NTCF_JSON;
             case EDataSlot::Float:
@@ -53,6 +58,9 @@ ui64 GetNativeYtTypeFlagsImpl(const TTypeAnnotationNode* itemType) {
             case EDataSlot::TzDate:
             case EDataSlot::TzDatetime:
             case EDataSlot::TzTimestamp:
+            case EDataSlot::TzDate32:
+            case EDataSlot::TzDatetime64:
+            case EDataSlot::TzTimestamp64:
             case EDataSlot::DyNumber:
             case EDataSlot::JsonDocument:
                 return NTCF_NO_YT_SUPPORT;

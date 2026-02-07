@@ -10,7 +10,9 @@ PEERDIR(
     contrib/ydb/core/kqp/runtime
     contrib/ydb/core/sys_view/common
     contrib/ydb/core/sys_view/nodes
+    contrib/ydb/core/sys_view/sessions
     contrib/ydb/core/sys_view/partition_stats
+    contrib/ydb/core/sys_view/pg_tables
     contrib/ydb/core/sys_view/query_stats
     contrib/ydb/core/sys_view/service
     contrib/ydb/core/sys_view/storage
@@ -25,6 +27,7 @@ RECURSE(
     common
     nodes
     partition_stats
+    pg_tables
     processor
     query_stats
     service

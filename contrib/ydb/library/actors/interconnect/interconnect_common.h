@@ -22,6 +22,11 @@ namespace NActors {
         REQUIRED, // encryption is mandatory
     };
 
+    enum class ESocketSendOptimization {
+        DISABLED,
+        IC_MSG_ZEROCOPY,
+    };
+
     struct TInterconnectSettings {
         TDuration Handshake;
         TDuration DeadPeer;
@@ -54,38 +59,35 @@ namespace NActors {
         TDuration FirstErrorSleep = TDuration::MilliSeconds(10);
         TDuration MaxErrorSleep = TDuration::Seconds(1);
         double ErrorSleepRetryMultiplier = 4.0;
-
-        ui32 GetSendBufferSize() const {
-            ui32 res = 512 * 1024; // 512 kb is the default value for send buffer
-            if (TCPSocketBufferSize) {
-                res = TCPSocketBufferSize;
-            }
-            return res;
-        }
+        TDuration EventDelay = TDuration::Zero();
+        ESocketSendOptimization SocketSendOptimization = ESocketSendOptimization::DISABLED;
     };
 
     struct TWhiteboardSessionStatus {
-        TActorSystem* ActorSystem;
-        ui32 PeerId;
-        TString Peer;
-        bool Connected;
-        bool Green;
-        bool Yellow;
-        bool Orange;
-        bool Red;
-        i64 ClockSkew;
+        enum class EFlag {
+            GREEN,
+            YELLOW,
+            ORANGE,
+            RED,
+        };
 
-        TWhiteboardSessionStatus(TActorSystem* actorSystem, ui32 peerId, const TString& peer, bool connected, bool green, bool yellow, bool orange, bool red, i64 clockSkew)
-            : ActorSystem(actorSystem)
-            , PeerId(peerId)
-            , Peer(peer)
-            , Connected(connected)
-            , Green(green)
-            , Yellow(yellow)
-            , Orange(orange)
-            , Red(red)
-            , ClockSkew(clockSkew)
-            {}
+        TActorSystem* ActorSystem;
+        ui32 PeerNodeId;
+        TString PeerName;
+        bool Connected;
+        // oneof {
+        bool SessionClosed = false;
+        bool SessionPendingConnection = false;
+        bool SessionConnected = false;
+        // }
+        EFlag ConnectStatus;
+        i64 ClockSkewUs;
+        bool ReportClockSkew;
+        ui64 PingTimeUs;
+        NActors::TScopeId ScopeId;
+        double Utilization;
+        ui64 ConnectTime;
+        ui64 BytesWrittenToSocket;
     };
 
     struct TChannelSettings {

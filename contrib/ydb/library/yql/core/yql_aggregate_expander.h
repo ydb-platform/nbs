@@ -8,12 +8,11 @@ namespace NYql {
 
 class TAggregateExpander {
 public:
-    TAggregateExpander(bool allowPickle, bool usePartitionsByKeys, const bool useFinalizeByKeys, const TExprNode::TPtr& node, TExprContext& ctx, TTypeAnnotationContext& typesCtx,
-        bool forceCompact = false, bool compactForDistinct = false, bool usePhases = false)
+    TAggregateExpander(bool usePartitionsByKeys, const bool useFinalizeByKeys, const TExprNode::TPtr& node, TExprContext& ctx, TTypeAnnotationContext& typesCtx,
+        bool forceCompact = false, bool compactForDistinct = false, bool usePhases = false, bool allowSpilling = false)
         : Node(node)
         , Ctx(ctx)
         , TypesCtx(typesCtx)
-        , AllowPickle(allowPickle)
         , UsePartitionsByKeys(usePartitionsByKeys)
         , UseFinalizeByKeys(useFinalizeByKeys)
         , ForceCompact(forceCompact)
@@ -26,6 +25,7 @@ public:
         , HaveSessionSetting(false)
         , OriginalRowType(nullptr)
         , RowType(nullptr)
+        , UseBlocks(typesCtx.IsBlockEngineEnabled() && !allowSpilling)
     {
         PreMap = Ctx.Builder(node->Pos())
             .Lambda()
@@ -44,6 +44,7 @@ public:
 private:
     using TIdxSet = std::set<ui32>;
 
+    TExprNode::TPtr ExpandAggregateWithFullOutput();
     TExprNode::TPtr ExpandAggApply(const TExprNode::TPtr& node);
     bool CollectTraits();
     TExprNode::TPtr RebuildAggregate();
@@ -93,7 +94,6 @@ private:
     const TExprNode::TPtr Node;
     TExprContext& Ctx;
     TTypeAnnotationContext& TypesCtx;
-    bool AllowPickle;
     bool UsePartitionsByKeys;
     bool UseFinalizeByKeys = false;
     bool ForceCompact;
@@ -116,6 +116,7 @@ private:
     const TStructExprType* RowType;
     TVector<const TItemExprType*> RowItems;
     TExprNode::TPtr PreMap;
+    bool UseBlocks;
 
     TExprNode::TListType InitialColumnNames;
     TExprNode::TListType FinalColumnNames;
@@ -131,8 +132,10 @@ private:
     std::unordered_map<std::string_view, TExprNode::TPtr> UdfWasChanged;
 };
 
-inline TExprNode::TPtr ExpandAggregatePeepholeImpl(const TExprNode::TPtr& node, TExprContext& ctx, TTypeAnnotationContext& typesCtx, const bool useFinalizeByKey, const bool useBlocks) {
-    TAggregateExpander aggExpander(false, !useFinalizeByKey && !useBlocks, useFinalizeByKey, node, ctx, typesCtx, true);
+inline TExprNode::TPtr ExpandAggregatePeepholeImpl(const TExprNode::TPtr& node, TExprContext& ctx, TTypeAnnotationContext& typesCtx,
+    const bool useFinalizeByKey, const bool useBlocks, const bool allowSpilling) {
+    TAggregateExpander aggExpander(!useFinalizeByKey && !useBlocks, useFinalizeByKey, node, ctx, typesCtx,
+        true, false, false, allowSpilling);
     return aggExpander.ExpandAggregate();
 }
 

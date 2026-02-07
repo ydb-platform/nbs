@@ -11,6 +11,7 @@ SRCS(
     yql_solomon_dq_integration.cpp
     yql_solomon_io_discovery.cpp
     yql_solomon_load_meta.cpp
+    yql_solomon_mkql_compiler.cpp
     yql_solomon_physical_optimize.cpp
     yql_solomon_provider.cpp
 )
@@ -19,6 +20,7 @@ PEERDIR(
     contrib/ydb/library/actors/protos
     contrib/ydb/library/yql/dq/expr_nodes
     contrib/ydb/library/yql/dq/integration
+    contrib/ydb/library/yql/dq/opt
     contrib/ydb/library/yql/providers/common/config
     contrib/ydb/library/yql/providers/common/proto
     contrib/ydb/library/yql/providers/common/provider
@@ -27,7 +29,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/result/expr_nodes
     contrib/ydb/library/yql/providers/solomon/expr_nodes
     contrib/ydb/library/yql/providers/solomon/proto
-    contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/providers/solomon/scheme
 )
 
 YQL_LAST_ABI_VERSION()

@@ -24,6 +24,7 @@ PEERDIR(
     library/cpp/threading/local_executor
     contrib/ydb/core/kqp
     contrib/ydb/core/kqp/ut/common
+    contrib/ydb/core/tx/columnshard/hooks/testing
     contrib/ydb/library/yql/sql/pg
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/public/lib/ut_helpers

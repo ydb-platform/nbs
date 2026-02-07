@@ -4,10 +4,10 @@
 
 namespace NKikimr::NColumnShard {
 
-class TTxWrite : public TTransactionBase<TColumnShard> {
+class TTxWrite : public NTabletFlatExecutor::TTransactionBase<TColumnShard> {
 public:
     TTxWrite(TColumnShard* self, const TEvPrivate::TEvWriteBlobsResult::TPtr& putBlobResult)
-        : TBase(self)
+        : NTabletFlatExecutor::TTransactionBase<TColumnShard>(self)
         , PutBlobResult(putBlobResult)
         , TabletTxNo(++Self->TabletTxCounter)
     {}
@@ -16,12 +16,35 @@ public:
     void Complete(const TActorContext& ctx) override;
     TTxType GetTxType() const override { return TXTYPE_WRITE; }
 
-    bool InsertOneBlob(TTransactionContext& txc, const NOlap::TWideSerializedBatch& batch, const TWriteId writeId);
-
 private:
     TEvPrivate::TEvWriteBlobsResult::TPtr PutBlobResult;
     const ui32 TabletTxNo;
-    std::vector<std::unique_ptr<NActors::IEventBase>> Results;
+
+    bool CommitOneBlob(TTransactionContext& txc, const NOlap::TWideSerializedBatch& batch, const TInsertWriteId writeId);
+    bool InsertOneBlob(TTransactionContext& txc, const NOlap::TWideSerializedBatch& batch, const TInsertWriteId writeId);
+
+    class TReplyInfo {
+    private:
+        std::unique_ptr<NActors::IEventBase> Event;
+        TActorId DestinationForReply;
+        const ui64 Cookie;
+    public:
+        TReplyInfo(std::unique_ptr<NActors::IEventBase>&& ev, const TActorId& destinationForReply, const ui64 cookie)
+            : Event(std::move(ev))
+            , DestinationForReply(destinationForReply)
+            , Cookie(cookie)
+        {
+
+        }
+
+        void DoSendReply(const TActorContext& ctx) {
+            ctx.Send(DestinationForReply, Event.release(), 0, Cookie);
+        }
+    };
+
+    std::vector<TReplyInfo> Results;
+    std::vector<std::shared_ptr<TTxController::ITransactionOperator>> ResultOperators;
+
 
     TStringBuilder TxPrefix() const {
         return TStringBuilder() << "TxWrite[" << ToString(TabletTxNo) << "] ";

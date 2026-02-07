@@ -69,9 +69,18 @@ public:
         html << "<tr><td>Memory.RecordsSize</td><td>" << Self->MemoryBackend.MetricsValues.size() << "</td></tr>";
 
         html << "<tr><td>Local.MetricsSize</td><td>" << DumpMetricsIndex(Self->LocalBackend.MetricsIndex) << "</td></tr>";
-        html << "<tr><td>StartTimestamp</td><td>" << Self->StartTimestamp.ToIsoStringLocalUpToSeconds() << "</td></tr>";
-        html << "<tr><td>ClearTimestamp</td><td>" << Self->ClearTimestamp.ToIsoStringLocalUpToSeconds() << "</td></tr>";
-        html << "<tr><td>CurrentTimestamp</td><td>" << Self->MetricsData.Timestamp.ToIsoStringLocalUpToSeconds() << "</td></tr>";
+        html << "<tr><td>AggregateTimestamp</td><td>" << Self->AggregateTimestamp.ToStringUpToSeconds() << "</td></tr>";
+        html << "<tr><td style='vertical-align:top'>AggregateSettings</td><td>";
+        for (bool wasLine = false; const auto& settings : Self->AggregateSettings) {
+            if (wasLine) {
+                html << "<br>";
+            }
+            html << settings.ToString();
+            wasLine = true;
+        }
+        html << "</td></tr>";
+
+        html << "<tr><td>CurrentTimestamp</td><td>" << Self->MetricsData.Timestamp.ToStringUpToSeconds() << "</td></tr>";
 
         html << "<tr><td style='vertical-align:top'>CurrentMetricsData</td><td>";
         bool wasLine = false;
@@ -80,6 +89,20 @@ public:
                 html << "<br>";
             }
             html << name << "=" << value;
+            wasLine = true;
+        }
+        for (const auto& [name, value] : Self->MetricsData.HistogramValues) {
+            if (wasLine) {
+                html << "<br>";
+            }
+            html << "histogram " << name << " " << value.size() << " points";
+            wasLine = true;
+        }
+        for (const auto& [name, value] : Self->MetricsData.ArithmeticValues) {
+            if (wasLine) {
+                html << "<br>";
+            }
+            html << "arithmetic " << name << " " << value.ValueA << " " << value.Op << " " << value.ValueB; 
             wasLine = true;
         }
         html << "</td></tr>";

@@ -291,6 +291,8 @@ Y_UNIT_TEST_SUITE(CheckSqlFormatter) {
              "CREATE TABLE user (\n\tCHANGEFEED user WITH (user = 'foo')\n);\n"},
             {"create table user(changefeed user with (user='foo',user='bar'))",
              "CREATE TABLE user (\n\tCHANGEFEED user WITH (user = 'foo', user = 'bar')\n);\n"},
+            {"create table user(user) AS SELECT 1","CREATE TABLE user (\n\tuser\n)\nAS\nSELECT\n    1;\n"},
+            {"create table user(user) AS VALUES (1), (2)","CREATE TABLE user (\n\tuser\n)\nAS\nVALUES\n    (1),\n    (2);\n"},
             {"create table user(foo int32, bar bool ?) inherits (s3:$cluster.xxx) partition by hash(a,b,hash) with (inherits=interval('PT1D') ON logical_time) tablestore tablestore",
               "CREATE TABLE user (\n"
               "\tfoo int32,\n"
@@ -378,6 +380,8 @@ Y_UNIT_TEST_SUITE(CheckSqlFormatter) {
         TCases cases = {
             {"create async replication user for table1 AS table2 with (user='foo')",
              "CREATE ASYNC REPLICATION user FOR table1 AS table2 WITH (user = 'foo');\n"},
+            {"alter async replication user set (user='foo')",
+             "ALTER ASYNC REPLICATION user SET (user = 'foo');\n"},
             {"drop async replication user",
              "DROP ASYNC REPLICATION user;\n"},
             {"drop async replication user cascade",
@@ -450,6 +454,12 @@ Y_UNIT_TEST_SUITE(CheckSqlFormatter) {
              "ALTER TABLE user\n\tRESET (user, user);\n"},
             {"alter table user add index user local on (user)",
              "ALTER TABLE user\n\tADD INDEX user LOCAL ON (user);\n"},
+            {"alter table user alter index idx set setting 'foo'",
+             "ALTER TABLE user\n\tALTER INDEX idx SET setting 'foo';\n"},
+            {"alter table user alter index idx set (setting = 'foo', another_setting = 'bar')",
+             "ALTER TABLE user\n\tALTER INDEX idx SET (setting = 'foo', another_setting = 'bar');\n"},
+            {"alter table user alter index idx reset (setting, another_setting)",
+             "ALTER TABLE user\n\tALTER INDEX idx RESET (setting, another_setting);\n"},
             {"alter table user drop index user",
              "ALTER TABLE user\n\tDROP INDEX user;\n"},
             {"alter table user rename to user",
@@ -497,6 +507,7 @@ Y_UNIT_TEST_SUITE(CheckSqlFormatter) {
         TSetup setup;
         setup.Run(cases);
     }
+
     Y_UNIT_TEST(AlterTopic) {
         TCases cases = {
              {"alter topic topic1 alter consumer c1 set (important = false)",
@@ -513,10 +524,25 @@ Y_UNIT_TEST_SUITE(CheckSqlFormatter) {
         TSetup setup;
         setup.Run(cases);
     }
+
     Y_UNIT_TEST(DropTopic) {
         TCases cases = {
             {"drop topic topic1",
              "DROP TOPIC topic1;\n"},
+        };
+
+        TSetup setup;
+        setup.Run(cases);
+    }
+
+    Y_UNIT_TEST(TopicExistsStatement) {
+        TCases cases = {
+            {"drop topic if exists topic1",
+             "DROP TOPIC IF EXISTS topic1;\n"},
+            {"create topic if not exists topic1 with (partition_count_limit = 5)",
+             "CREATE TOPIC IF NOT EXISTS topic1 WITH (\n\tpartition_count_limit = 5\n);\n"},
+             {"alter topic if exists topic1 alter consumer c1 set (important = false)",
+             "ALTER TOPIC IF EXISTS topic1\n\tALTER CONSUMER c1 SET (important = FALSE);\n"},
         };
 
         TSetup setup;
@@ -584,6 +610,8 @@ Y_UNIT_TEST_SUITE(CheckSqlFormatter) {
              "EVALUATE FOR $x IN []\n\tDO BEGIN\n\t\tSELECT\n\t\t\t$x;\n\tEND DO;\n"},
             {"evaluate for $x in [] do begin select $x; end do else do begin select 2; end do",
              "EVALUATE FOR $x IN []\n\tDO BEGIN\n\t\tSELECT\n\t\t\t$x;\n\tEND DO\nELSE\n\tDO BEGIN\n\t\tSELECT\n\t\t\t2;\n\tEND DO;\n"},
+            {"evaluate parallel for $x in [] do $a($x)",
+             "EVALUATE PARALLEL FOR $x IN []\n\tDO $a($x);\n"},
         };
 
         TSetup setup;
@@ -1551,9 +1579,16 @@ FROM Input MATCH_RECOGNIZE (PATTERN (A) DEFINE A AS A);
     }
 
     Y_UNIT_TEST(CreateView) {
-        TCases cases = {
-            {"creAte vIEw TheView wiTh (security_invoker = trUE) As SELect 1",
-             "CREATE VIEW TheView WITH (security_invoker = TRUE) AS\nSELECT\n\t1;\n"},
+        TCases cases = {{
+                "creAte vIEw TheView As SELect 1",
+                "CREATE VIEW TheView AS\nSELECT\n\t1;\n"
+            }, {
+                "creAte vIEw If Not ExIsTs TheView As SELect 1",
+                "CREATE VIEW IF NOT EXISTS TheView AS\nSELECT\n\t1;\n"
+            }, {
+                "creAte vIEw TheView wiTh (option = tRuE) As SELect 1",
+                "CREATE VIEW TheView WITH (option = TRUE) AS\nSELECT\n\t1;\n"
+            }
         };
 
         TSetup setup;
@@ -1561,9 +1596,61 @@ FROM Input MATCH_RECOGNIZE (PATTERN (A) DEFINE A AS A);
     }
 
     Y_UNIT_TEST(DropView) {
+        TCases cases = {{
+                "dRop viEW theVIEW",
+                "DROP VIEW theVIEW;\n"
+            }, {
+                "dRop viEW iF EXistS theVIEW",
+                "DROP VIEW IF EXISTS theVIEW;\n"
+            }
+        };
+
+        TSetup setup;
+        setup.Run(cases);
+    }
+
+    Y_UNIT_TEST(ResourcePoolOperations) {
         TCases cases = {
-            {"dRop viEW theVIEW",
-             "DROP VIEW theVIEW;\n"},
+            {"creAte reSourCe poOl naMe With (a = \"b\")",
+             "CREATE RESOURCE POOL naMe WITH (a = \"b\");\n"},
+             {"create resource pool eds with (a=\"a\",b=\"b\",c = true)",
+             "CREATE RESOURCE POOL eds WITH (\n\ta = \"a\",\n\tb = \"b\",\n\tc = TRUE\n);\n"},
+             {"alTer reSOurcE poOl naMe resEt (b, c), seT (x=y, z=false)",
+             "ALTER RESOURCE POOL naMe\n\tRESET (b, c),\n\tSET (x = y, z = FALSE);\n"},
+             {"alter resource pool eds reset (a), set (x=y)",
+             "ALTER RESOURCE POOL eds\n\tRESET (a),\n\tSET (x = y);\n"},
+            {"dRop reSourCe poOl naMe",
+             "DROP RESOURCE POOL naMe;\n"},
+        };
+
+        TSetup setup;
+        setup.Run(cases);
+    }
+
+    Y_UNIT_TEST(Analyze) {
+        TCases cases = {
+            {"analyze table (col1, col2, col3)",
+             "ANALYZE table (col1, col2, col3);\n"},
+             {"analyze table",
+             "ANALYZE table;\n"}
+        };
+
+        TSetup setup;
+        setup.Run(cases);
+    }
+
+    Y_UNIT_TEST(ResourcePoolClassifierOperations) {
+        TCases cases = {
+            {"creAte reSourCe poOl ClaSsiFIer naMe With (a = \"b\")",
+             "CREATE RESOURCE POOL CLASSIFIER naMe WITH (a = \"b\");\n"},
+             {"create resource pool classifier eds with (a=\"a\",b=\"b\",c = true)",
+             "CREATE RESOURCE POOL CLASSIFIER eds WITH (\n\ta = \"a\",\n\tb = \"b\",\n\tc = TRUE\n);\n"},
+             {"alTer reSOurcE poOl ClaSsiFIer naMe resEt (b, c), seT (x=y, z=false)",
+             "ALTER RESOURCE POOL CLASSIFIER naMe\n\tRESET (b, c),\n\tSET (x = y, z = FALSE);\n"},
+             {"alter resource pool classifier eds reset (a), set (x=y)",
+             "ALTER RESOURCE POOL CLASSIFIER eds\n\tRESET (a),\n\tSET (x = y);\n"},
+            {"dRop reSourCe poOl ClaSsiFIer naMe",
+             "DROP RESOURCE POOL CLASSIFIER naMe;\n"},
         };
 
         TSetup setup;

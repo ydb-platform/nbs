@@ -8,6 +8,7 @@ import "contrib/ydb/core/protos/blobstorage_pdisk_config.proto";
 import "contrib/ydb/core/protos/blobstorage_config.proto";
 import "contrib/ydb/core/protos/blobstorage_disk.proto";
 import "contrib/ydb/core/protos/blobstorage_disk_color.proto";
+import "contrib/ydb/core/protos/node_whiteboard.proto";
 
 package NKikimrBlobStorage;
 option java_package = "ru.yandex.kikimr.proto";
@@ -74,9 +75,11 @@ message TMsgQoS {
         uint32 ReplVDiskId = 11; // set when client is replication actor from specific vdisk
         uint64 VDiskLoadId = 13; // set when client is load test with specific tag
         uint32 VPatchVDiskId = 14; // set when client is vpatch actor from specific vdisk
+        uint32 BalancingVDiskId = 17; // set when client is balancing actor from specific vdisk
     }
     optional TExecTimeStats ExecTimeStats = 12;
     optional NActorsProto.TActorId SenderActorId = 15;
+    optional uint64 InternalMessageId = 16; // for in-process use
 }
 
 // message VDisk sends to the client, when backpressure window changes
@@ -465,6 +468,7 @@ message TEvVGetResult {
     optional NKikimrProto.EReplyStatus Status = 1;
     repeated TQueryResult Result = 2;
     optional NKikimrBlobStorage.TVDiskID VDiskID = 3;
+    optional string ErrorReason = 4;
 
     optional uint64 Cookie = 5;
     optional TMsgQoS MsgQoS = 10;
@@ -876,6 +880,7 @@ message TEvVStatusResult {
     optional bool JoinedGroup = 10;
     optional bool Replicated = 11 [default = false];
     optional float ApproximateFreeSpaceShare = 12; // must contain valid value if set
+    optional bool IsReadOnly = 13 [default = false];
     optional fixed64 IncarnationGuid = 30;
     optional TGroupInfo RecentGroup = 100; // filled in by VDisk on RACE when VDisk has newer generation
 }
@@ -1005,6 +1010,8 @@ message TNodeWardenServiceSet {
 
         optional TSerialManagementStage.E ManagementStage = 12;
         optional TPDiskSpaceColor.E SpaceColorBorder = 13;
+        optional bool ReadOnly = 14;
+        optional bool Stop = 15;
     }
 
     message TVDisk {
@@ -1081,6 +1088,7 @@ message TEvControllerRegisterNode {
     repeated uint32 GroupGenerations = 5; // must be zero entries (for old nodes) and the same number as in Groups for new ones
     repeated TVDiskStatus VDiskStatus = 6; // actual status for currently operating VDisks
     repeated TDriveData DrivesData = 7;
+    optional bool DeclarativePDiskManagement = 8;
 }
 
 message TEvControllerUpdateNodeDrives {
@@ -1101,16 +1109,6 @@ message TEvControllerNodeServiceSetUpdate {
     optional string InstanceId = 5;
     optional bool Comprehensive = 6; // if this flag is set to true, then there will be no any other entities than elisted in the ServiceSet
     optional uint64 AvailDomain = 7; // availability domain of the controller
-}
-
-message TEvControllerGroupReconfigureWipe {
-    reserved 1;
-    optional NKikimrBlobStorage.TVSlotId VSlotId = 2;
-}
-
-message TEvControllerGroupReconfigureWipeResult {
-    optional NKikimrProto.EReplyStatus Status = 1;
-    optional string ErrorReason = 2;
 }
 
 message TEvControllerConfigRequest {
@@ -1320,8 +1318,18 @@ message TEvControllerNodeReport {
         optional EVDiskPhase Phase = 3;
     }
 
+    enum EPDiskPhase {
+        PD_UNKNOWN = 0;
+        PD_RESTARTED = 1;
+    }
+    message TPDiskReport {
+        optional uint32 PDiskId = 1;
+        optional EPDiskPhase Phase = 2;
+    }
+
     optional uint32 NodeId = 1;
     repeated TVDiskReport VDiskReports = 2;
+    repeated TPDiskReport PDiskReports = 3;
 }
 
 message TEvControllerGroupDecommittedNotify {
@@ -1341,6 +1349,7 @@ message TGroupMetrics {
 message TEvControllerGroupMetricsExchange {
     repeated TGroupMetrics GroupMetrics = 1;
     repeated fixed32 GroupsToQuery = 2; // filled in by entities asking BSC to report some metrics in return
+    optional NKikimrWhiteboard.TBSGroupStateInfo WhiteboardUpdate = 3;
 }
 
 message TEvNodeWardenQueryGroupInfo {

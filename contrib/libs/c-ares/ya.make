@@ -10,7 +10,7 @@ LICENSE(
     Public-Domain
 )
 
-LICENSE_TEXTS(LICENSE.md)
+LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
 VERSION(1.20.1)
 
@@ -21,7 +21,6 @@ PEERDIR(
 )
 
 ADDINCL(
-    GLOBAL contrib/libs/c-ares
     GLOBAL contrib/libs/c-ares/include
     contrib/libs/c-ares/src/lib
 )
@@ -38,6 +37,10 @@ IF (ARCH_ARM7)
     CFLAGS(
         GLOBAL -D__SIZEOF_LONG__=4
     )
+ENDIF()
+
+IF (OS_DARWIN OR OS_IOS)
+    LDFLAGS(-lresolv)
 ENDIF()
 
 IF (NOT EXPORT_CMAKE)

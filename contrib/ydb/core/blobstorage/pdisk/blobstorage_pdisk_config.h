@@ -6,6 +6,11 @@
 #include <contrib/ydb/core/blobstorage/base/vdisk_priorities.h>
 #include <contrib/ydb/core/control/immediate_control_board_wrapper.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_config.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_disk.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_pdisk_config.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_disk_color.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 
 #include <contrib/ydb/library/pdisk_io/drivedata.h>
@@ -127,6 +132,9 @@ struct TPDiskConfig : public TThrRefBase {
 
     ui64 ExpectedSlotCount = 0;
 
+    // Free chunk permille that triggers Cyan color (e.g. 100 is 10%). Between 130 (default) and 13.
+    ui32 ChunkBaseLimit = 130;
+
     NKikimrConfig::TFeatureFlags FeatureFlags;
 
     ui64 MinLogChunksTotal = 4ull; // for tiny disks
@@ -146,6 +154,14 @@ struct TPDiskConfig : public TThrRefBase {
     ui64 YellowLogChunksMultiplier = 4;
 
     NKikimrBlobStorage::TPDiskSpaceColor::E SpaceColorBorder = NKikimrBlobStorage::TPDiskSpaceColor::GREEN;
+
+    bool ReadOnly = false;
+
+    ui32 CompletionThreadsCount = 1;
+
+    bool PlainDataChunks = false;
+
+    bool SeparateHugePriorities = false;
 
     TPDiskConfig(ui64 pDiskGuid, ui32 pdiskId, ui64 pDiskCategory)
         : TPDiskConfig({}, pDiskGuid, pdiskId, pDiskCategory)
@@ -293,6 +309,10 @@ struct TPDiskConfig : public TThrRefBase {
         str << " OrangeLogChunksMultiplier# " << OrangeLogChunksMultiplier << x;
         str << " WarningLogChunksMultiplier# " << WarningLogChunksMultiplier << x;
         str << " YellowLogChunksMultiplier# " << YellowLogChunksMultiplier << x;
+        str << " SpaceColorBorder# " << SpaceColorBorder << x;
+        str << " CompletionThreadsCount# " << CompletionThreadsCount << x;
+        str << " PlainDataChunks# " << PlainDataChunks << x;
+        str << " SeparateHugePriorities# " << SeparateHugePriorities << x;
         str << "}";
         return str.Str();
     }
@@ -370,8 +390,22 @@ struct TPDiskConfig : public TThrRefBase {
         if (cfg->HasExpectedSlotCount()) {
             ExpectedSlotCount = cfg->GetExpectedSlotCount();
         }
+
+        if (cfg->HasChunkBaseLimit()) {
+            ChunkBaseLimit = cfg->GetChunkBaseLimit();
+        }
+
+        if (cfg->HasCompletionThreadsCount()) {
+            CompletionThreadsCount = cfg->GetCompletionThreadsCount();
+        }
+        if (cfg->HasPlainDataChunks()) {
+            PlainDataChunks = cfg->GetPlainDataChunks();
+        }
+
+        if (cfg->HasSeparateHugePriorities()) {
+            SeparateHugePriorities = cfg->GetSeparateHugePriorities();
+        }
     }
 };
 
 } // NKikimr
-

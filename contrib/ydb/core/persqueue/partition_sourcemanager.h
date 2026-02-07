@@ -25,6 +25,7 @@ public:
 
         TSourceIdInfo::EState State;
         ui64 SeqNo = 0;
+        ui64 MinSeqNo = 0;
         ui64 Offset = 0;
         bool Explicit = false;
         TInstant WriteTimestamp;
@@ -105,8 +106,6 @@ private:
     const TPartitionNode* GetPartitionNode() const;
     TSourceIdStorage& GetSourceIdStorage() const;
     bool HasParents() const;
-
-    TActorId PartitionRequester(TPartitionId id, ui64 tabletId);
 
 
 private:

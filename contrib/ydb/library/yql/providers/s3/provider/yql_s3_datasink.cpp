@@ -29,7 +29,7 @@ void ScanPlanDependencies(const TExprNode::TPtr& input, TExprNode::TListType& ch
 
 class TS3DataSinkProvider : public TDataProviderBase {
 public:
-    TS3DataSinkProvider(TS3State::TPtr state, IHTTPGateway::TPtr)
+    TS3DataSinkProvider(TS3State::TPtr state)
         : State_(state)
         , TypeAnnotationTransformer_(CreateS3DataSinkTypeAnnotationTransformer(State_))
         , ExecutionTransformer_(CreateS3DataSinkExecTransformer(State_))
@@ -102,11 +102,14 @@ private:
             .Done().Ptr();
     }
 
-    void GetOutputs(const TExprNode& node, TVector<TPinInfo>& outputs) override {
+    ui32 GetOutputs(const TExprNode& node, TVector<TPinInfo>& outputs, bool withLimits) override {
+        Y_UNUSED(withLimits);
         if (const auto& maybeOp = TMaybeNode<TS3WriteObject>(&node)) {
             const auto& op = maybeOp.Cast();
             outputs.push_back(TPinInfo(nullptr, op.DataSink().Raw(), op.Target().Raw(), op.DataSink().Cluster().StringValue() + '.' + op.Target().Path().StringValue(), false));
+            return 1;
         }
+        return 0;
     }
 
     bool GetDependencies(const TExprNode& node, TExprNode::TListType& children, bool) override {
@@ -137,8 +140,8 @@ private:
 
 }
 
-TIntrusivePtr<IDataProvider> CreateS3DataSink(TS3State::TPtr state, IHTTPGateway::TPtr gateway) {
-    return new TS3DataSinkProvider(std::move(state), std::move(gateway));
+TIntrusivePtr<IDataProvider> CreateS3DataSink(TS3State::TPtr state) {
+    return new TS3DataSinkProvider(std::move(state));
 }
 
 } // namespace NYql

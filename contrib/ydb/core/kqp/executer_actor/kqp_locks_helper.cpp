@@ -3,6 +3,8 @@
 #include <contrib/ydb/library/yql/minikql/mkql_node.h>
 #include <contrib/ydb/library/yql/utils/yql_panic.h>
 
+#include <contrib/ydb/core/protos/data_events.pb.h>
+
 
 namespace NKikimr::NKqp {
 

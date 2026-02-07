@@ -2,40 +2,61 @@
 
 #include <contrib/ydb/core/protos/config.pb.h>
 
+#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
 #include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
+#include <contrib/ydb/library/yql/providers/yt/provider/yql_yt_gateway.h>
 
 #include <contrib/ydb/public/lib/ydb_cli/common/formats.h>
 
 
 namespace NKqpRun {
 
-struct TYdbSetupSettings {
-    TString DomainName = "Root";
+constexpr char YQL_TOKEN_VARIABLE[] = "YQL_TOKEN";
 
-    bool TraceOpt = false;
-    TMaybe<TString> LogOutputFile;
+struct TYdbSetupSettings {
+    ui32 NodeCount = 1;
+    TString DomainName = "Root";
+    TString DefaultPoolId;
+    TDuration InitializationTimeout = TDuration::Seconds(10);
+
+    bool MonitoringEnabled = false;
+    ui16 MonitoringPortOffset = 0;
+    bool TraceOptEnabled = false;
+    TString LogOutputFile;
 
     TString YqlToken;
-    NKikimr::NMiniKQL::IFunctionRegistry* FunctionRegistry = nullptr;
+    TIntrusivePtr<NKikimr::NMiniKQL::IMutableFunctionRegistry> FunctionRegistry;
+    NKikimr::NMiniKQL::TComputationNodeFactory ComputationFactory;
+    TIntrusivePtr<NYql::IYtGateway> YtGateway;
     NKikimrConfig::TAppConfig AppConfig;
+
+    ui64 InFlightLimit = 0;
 };
 
 
 struct TRunnerOptions {
+    enum class ETraceOptType {
+        Disabled,
+        Scheme,
+        Script,
+        All,
+    };
+
     enum class EResultOutputFormat {
         RowsJson,  // Rows in json format
         FullJson,  // Columns, rows and types in json format
+        FullProto,  // Columns, rows and types in proto string format
     };
 
-    i64 ResultsRowsLimit = 1000;
-
-    IOutputStream* ResultOutput = &Cout;
+    IOutputStream* ResultOutput = nullptr;
     IOutputStream* SchemeQueryAstOutput = nullptr;
     IOutputStream* ScriptQueryAstOutput = nullptr;
     IOutputStream* ScriptQueryPlanOutput = nullptr;
+    TString InProgressStatisticsOutputFile;
 
     EResultOutputFormat ResultOutputFormat = EResultOutputFormat::RowsJson;
     NYdb::NConsoleClient::EOutputFormat PlanOutputFormat = NYdb::NConsoleClient::EOutputFormat::Default;
+    ETraceOptType TraceOptType = ETraceOptType::Disabled;
 
     TYdbSetupSettings YdbSettings;
 };

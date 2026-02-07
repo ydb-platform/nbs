@@ -1,12 +1,6 @@
 LIBRARY()
 
 SRCS(
-    conveyor_task.cpp
-    description.cpp
-    queue.cpp
-    read_filter_merger.cpp
-    read_metadata.cpp
-    read_context.cpp
 )
 
 PEERDIR(
@@ -18,10 +12,12 @@ PEERDIR(
     contrib/ydb/core/tx/columnshard/resources
     contrib/ydb/core/tx/program
     contrib/ydb/core/tx/columnshard/engines/reader/plain_reader
+    contrib/ydb/core/tx/columnshard/engines/reader/sys_view
+    contrib/ydb/core/tx/columnshard/engines/reader/abstract
+    contrib/ydb/core/tx/columnshard/engines/reader/common
+    contrib/ydb/core/tx/columnshard/engines/reader/actor
+    contrib/ydb/core/tx/columnshard/engines/reader/transaction
     contrib/ydb/core/tx/columnshard/engines/scheme
 )
-
-GENERATE_ENUM_SERIALIZATION(read_metadata.h)
-YQL_LAST_ABI_VERSION()
 
 END()

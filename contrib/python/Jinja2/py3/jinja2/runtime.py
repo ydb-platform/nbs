@@ -1,4 +1,5 @@
 """The runtime functions and state used by compiled templates."""
+
 import functools
 import sys
 import typing as t
@@ -28,7 +29,9 @@ F = t.TypeVar("F", bound=t.Callable[..., t.Any])
 
 if t.TYPE_CHECKING:
     import logging
+
     import typing_extensions as te
+
     from .environment import Environment
 
     class LoopRenderFunc(te.Protocol):
@@ -37,8 +40,7 @@ if t.TYPE_CHECKING:
             reciter: t.Iterable[V],
             loop_render_func: "LoopRenderFunc",
             depth: int = 0,
-        ) -> str:
-            ...
+        ) -> str: ...
 
 
 # these variables are exported to the template runtime
@@ -259,7 +261,10 @@ class Context:
 
     @internalcode
     def call(
-        __self, __obj: t.Callable, *args: t.Any, **kwargs: t.Any  # noqa: B902
+        __self,
+        __obj: t.Callable[..., t.Any],
+        *args: t.Any,
+        **kwargs: t.Any,  # noqa: B902
     ) -> t.Union[t.Any, "Undefined"]:
         """Call the callable with the arguments and keyword arguments
         provided but inject the active context or environment as first
@@ -272,9 +277,9 @@ class Context:
         # Allow callable classes to take a context
         if (
             hasattr(__obj, "__call__")  # noqa: B004
-            and _PassArg.from_obj(__obj.__call__) is not None  # type: ignore
+            and _PassArg.from_obj(__obj.__call__) is not None
         ):
-            __obj = __obj.__call__  # type: ignore
+            __obj = __obj.__call__
 
         pass_arg = _PassArg.from_obj(__obj)
 
@@ -586,7 +591,7 @@ class AsyncLoopContext(LoopContext):
 
     @staticmethod
     def _to_iterator(  # type: ignore
-        iterable: t.Union[t.Iterable[V], t.AsyncIterable[V]]
+        iterable: t.Union[t.Iterable[V], t.AsyncIterable[V]],
     ) -> t.AsyncIterator[V]:
         return auto_aiter(iterable)
 
@@ -927,9 +932,7 @@ def make_logging_undefined(
         logger.addHandler(logging.StreamHandler(sys.stderr))
 
     def _log_message(undef: Undefined) -> None:
-        logger.warning(  # type: ignore
-            "Template variable warning: %s", undef._undefined_message
-        )
+        logger.warning("Template variable warning: %s", undef._undefined_message)
 
     class LoggingUndefined(base):  # type: ignore
         __slots__ = ()

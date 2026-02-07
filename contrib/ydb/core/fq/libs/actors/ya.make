@@ -79,8 +79,8 @@ PEERDIR(
     contrib/ydb/library/yql/providers/pq/cm_client
     contrib/ydb/library/yql/providers/pq/provider
     contrib/ydb/library/yql/providers/pq/task_meta
+    contrib/ydb/library/yql/providers/s3/actors_factory
     contrib/ydb/library/yql/providers/s3/provider
-    contrib/ydb/library/yql/providers/ydb/provider
     contrib/ydb/library/yql/public/issue
     contrib/ydb/library/yql/public/issue/protos
     contrib/ydb/library/yql/sql/settings

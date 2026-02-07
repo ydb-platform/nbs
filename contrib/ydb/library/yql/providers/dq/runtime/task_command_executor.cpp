@@ -6,6 +6,7 @@
 #include <contrib/ydb/library/yql/providers/dq/api/protos/dqs.pb.h>
 #include <contrib/ydb/library/yql/providers/dq/api/protos/task_command_executor.pb.h>
 #include <contrib/ydb/library/yql/utils/backtrace/backtrace.h>
+#include <contrib/ydb/library/yql/utils/failure_injector/failure_injector.h>
 
 #include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
@@ -46,6 +47,7 @@ template<typename T>
 void ToProto(T& proto, const NDq::TDqAsyncStats& stats)
 {
     proto.SetBytes(stats.Bytes);
+    proto.SetDecompressedBytes(stats.DecompressedBytes);
     proto.SetRows(stats.Rows);
     proto.SetChunks(stats.Chunks);
     proto.SetSplits(stats.Splits);
@@ -127,13 +129,11 @@ public:
                         "TaskRunner",
                         labels,
                         name);
-                    auto& old = CurrentJobStats[counterName];
                     if (name.EndsWith("Time")) {
-                        QueryStat.AddTimeCounter(counterName, value - old);
+                        QueryStat.SetTimeCounter(counterName, value);
                     } else {
-                        QueryStat.AddCounter(counterName, value - old);
+                        QueryStat.SetCounter(counterName, value);
                     }
-                    old = value;
                 }
             });
         }
@@ -522,6 +522,14 @@ public:
 
                 break;
             }
+            case NDqProto::TCommandHeader::CONFIGURE_FAILURE_INJECTOR: {
+                Y_ENSURE(header.GetVersion() <= CurrentProtocolVersion);
+                TFailureInjector::Activate();
+                NDqProto::TConfigureFailureInjectorRequest request;
+                request.Load(&input);
+                TFailureInjector::Set(request.name(), request.skip(), request.fail());
+                break;
+            }
             case NDqProto::TCommandHeader::GET_FREE_SPACE: {
                 Y_ENSURE(header.GetVersion() >= 2);
 
@@ -726,14 +734,14 @@ public:
 
             Y_ABORT_UNLESS(!Alloc);
             Y_ABORT_UNLESS(FunctionRegistry);
-            Alloc = std::make_unique<NKikimr::NMiniKQL::TScopedAlloc>(
+            Alloc = std::make_shared<NKikimr::NMiniKQL::TScopedAlloc>(
                 __LOCATION__,
                 NKikimr::TAlignedPagePoolCounters(),
                 FunctionRegistry->SupportsSizedAllocators(),
                 false
             );
 
-            Runner = MakeDqTaskRunner(*Alloc.get(), Ctx, settings, nullptr);
+            Runner = MakeDqTaskRunner(Alloc, Ctx, settings, nullptr);
         });
 
         auto guard = Runner->BindAllocator(DqConfiguration->MemoryLimit.Get().GetOrElse(0));
@@ -763,10 +771,9 @@ public:
         result.Save(&output);
     }
 private:
-    std::unique_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;
+    std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;
     NKikimr::NMiniKQL::TComputationNodeFactory ComputationFactory;
     TTaskTransformFactory TaskTransformFactory;
-    THashMap<TString, i64> CurrentJobStats;
     NKikimr::NMiniKQL::IStatsRegistry* JobStats;
     bool TerminateOnError;
     TIntrusivePtr<NDq::IDqTaskRunner> Runner;

@@ -11,6 +11,7 @@ PEERDIR(
     contrib/ydb/library/yql/sql/pg_dummy
     contrib/ydb/services/kesus
     contrib/ydb/services/persqueue_cluster_discovery
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
 )
 
 YQL_LAST_ABI_VERSION()

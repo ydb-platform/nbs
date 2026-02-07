@@ -3,12 +3,11 @@ LIBRARY()
 PEERDIR(
     contrib/libs/apache/arrow
     contrib/ydb/core/formats/arrow/dictionary
+    contrib/ydb/library/formats/arrow/transformer
 )
 
 SRCS(
-    abstract.cpp
     dictionary.cpp
-    composite.cpp
 )
 
 END()

@@ -122,7 +122,6 @@ namespace NActors {
                         actorPtr = pool->Actors.back();
                         actorPtr->StuckIndex = i;
                         pool->Actors.pop_back();
-                        pool->DeadActorsUsage.emplace_back(actor->GetActivityType(), actor->GetUsage(GetCycleCountFast()));
                     }
                 }
             }
@@ -207,7 +206,6 @@ namespace NActors {
 
         for (; Ctx.ExecutedEvents < Ctx.EventsPerMailbox; ++Ctx.ExecutedEvents) {
             if (TAutoPtr<IEventHandle> evExt = mailbox->Pop()) {
-                mailbox->ProcessEvents(mailbox);
                 recipient = evExt->GetRecipientRewrite();
                 TActorContext ctx(*mailbox, *this, eventStart, recipient);
                 TlsActivationContext = &ctx; // ensure dtor (if any) is called within actor system
@@ -253,14 +251,10 @@ namespace NActors {
                     hpnow = GetCycleCountFast();
                     hpprev = TlsThreadContext->UpdateStartOfProcessingEventTS(hpnow);
 
-                    mailbox->ProcessEvents(mailbox);
-                    actor->OnDequeueEvent();
-
                     size_t dyingActorsCnt = DyingActors.size();
                     Ctx.UpdateActorsStats(dyingActorsCnt);
                     if (dyingActorsCnt) {
                         DropUnregistered();
-                        mailbox->ProcessEvents(mailbox);
                         actor = nullptr;
                     }
 
@@ -269,6 +263,7 @@ namespace NActors {
                     
                     Ctx.AddElapsedCycles(activityType, hpnow - hpprev);
                     NHPTimer::STime elapsed = Ctx.AddEventProcessingStats(eventStart, hpnow, activityType, CurrentActorScheduledEventsCounter);
+                    mailbox->AddElapsedCycles(elapsed);
                     if (elapsed > 1000000) {
                         LwTraceSlowEvent(ev.Get(), evTypeForTracing, actorType, Ctx.PoolId, CurrentRecipient, NHPTimer::GetSeconds(elapsed) * 1000.0);
                     }
@@ -372,7 +367,7 @@ namespace NActors {
                 break; // empty queue, leave
             }
         }
-        TlsThreadContext->ActivationStartTS.store(GetCycleCountFast(), std::memory_order_release);
+        TlsThreadContext->ActivationStartTS.store(hpnow, std::memory_order_release);
         TlsThreadContext->ElapsingActorActivity.store(ActorSystemIndex, std::memory_order_release);
 
         NProfiling::TMemoryTagScope::Reset(0);
@@ -525,16 +520,15 @@ namespace NActors {
     }
 
     TGenericExecutorThread::TProcessingResult TSharedExecutorThread::ProcessSharedExecutorPool(TExecutorPoolBaseMailboxed *pool) {
+        TWorkerId workerId = (pool == ThreadCtx->ExecutorPools[0].load(std::memory_order_relaxed) ? -1 : -2);
         Ctx.Switch(
             pool,
             pool->MailboxTable.Get(),
             NHPTimer::GetClockRate() * TimePerMailbox.SecondsFloat(),
             EventsPerMailbox,
-            GetCycleCountFast() + SoftProcessingDurationTs,
+            (workerId == -1 ? -1 : GetCycleCountFast() + SoftProcessingDurationTs),
             &SharedStats[pool->PoolId]);
-        Y_ABORT_UNLESS(Ctx.Stats->ElapsedTicksByActivity.size());
-        Ctx.WorkerId = (pool == ThreadCtx->ExecutorPools[0].load(std::memory_order_relaxed) ? -1 : -2);
-        Y_ABORT_UNLESS(Ctx.Stats->ElapsedTicksByActivity.size());
+        Ctx.WorkerId = workerId;
         return ProcessExecutorPool(pool);
     }
 
@@ -812,4 +806,19 @@ namespace NActors {
         statsCopy.Aggregate(SharedStats[poolId]);
     }
 
+    void TGenericExecutorThread::GetCurrentStatsForHarmonizer(TExecutorThreadStats& statsCopy) {
+        statsCopy.SafeElapsedTicks = RelaxedLoad(&Ctx.Stats->SafeElapsedTicks);
+        statsCopy.CpuUs = RelaxedLoad(&Ctx.Stats->CpuUs);
+        statsCopy.NotEnoughCpuExecutions = RelaxedLoad(&Ctx.Stats->NotEnoughCpuExecutions);
+    }
+
+    void TGenericExecutorThread::GetSharedStatsForHarmonizer(i16 poolId, TExecutorThreadStats &stats) {
+        stats.SafeElapsedTicks = RelaxedLoad(&SharedStats[poolId].SafeElapsedTicks);
+        stats.CpuUs = RelaxedLoad(&SharedStats[poolId].CpuUs);
+        stats.NotEnoughCpuExecutions = RelaxedLoad(&SharedStats[poolId].NotEnoughCpuExecutions);
+    }
+
+
+    TGenericExecutorThreadCtx::~TGenericExecutorThreadCtx()
+    {}
 }

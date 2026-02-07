@@ -218,6 +218,7 @@ private:
         req->Record.MutableRequest()->SetType(NKikimrKqp::QUERY_TYPE_SQL_DML);
         req->Record.MutableRequest()->SetKeepSession(false);
         req->Record.MutableRequest()->SetDatabase(NKikimr::NPQ::GetDatabaseFromConfig(AppData(ctx)->PQConfig));
+        req->Record.MutableRequest()->SetUsePublicResponseDataFormat(true);
 
         req->Record.MutableRequest()->MutableQueryCachePolicy()->set_keep_in_cache(true);
         req->Record.MutableRequest()->MutableTxControl()->mutable_begin_tx()->mutable_serializable_read_write();
@@ -274,9 +275,14 @@ private:
 
         const auto& record = ev->Get()->Record.GetRef();
 
-        Y_ABORT_UNLESS(record.GetResponse().GetResults().size() == 1);
-        const auto& rr = record.GetResponse().GetResults(0).GetValue().GetStruct(0);
-        ui64 newVersion = rr.ListSize() == 0 ? 0 : rr.GetList(0).GetStruct(0).GetOptional().GetInt64();
+        Y_VERIFY(record.GetResponse().YdbResultsSize() == 1);
+        NYdb::TResultSetParser parser(record.GetResponse().GetYdbResults(0));
+
+        ui64 newVersion = 0;
+        if (parser.RowsCount() != 0) {
+            parser.TryNextRow();
+            newVersion = *parser.ColumnParser(0).GetOptionalInt64();
+        }
 
         LastVersionUpdate = ctx.Now();
         if (newVersion > CurrentTopicsVersion || CurrentTopicsVersion == 0 || SkipVersionCheck) {
@@ -293,17 +299,18 @@ private:
 
         const auto& record = ev->Get()->Record.GetRef();
 
-        Y_ABORT_UNLESS(record.GetResponse().GetResults().size() == 1);
+        Y_VERIFY(record.GetResponse().YdbResultsSize() == 1);
         TString path, dc;
-        const auto& rr = record.GetResponse().GetResults(0).GetValue().GetStruct(0);
-        for (const auto& row : rr.GetList()) {
-
-            path = row.GetStruct(0).GetOptional().GetText();
-            dc = row.GetStruct(1).GetOptional().GetText();
+        NYdb::TResultSetParser parser(record.GetResponse().GetYdbResults(0));
+        const ui32 rowCount = parser.RowsCount();
+        while (parser.TryNextRow()) {
+            path = *parser.ColumnParser(0).GetOptionalUtf8();
+            dc = *parser.ColumnParser(1).GetOptionalUtf8();
 
             NewTopics.emplace_back(decltype(NewTopics)::value_type{path, dc});
         }
-        if (rr.ListSize() > 0) {
+
+        if (rowCount > 0) {
             LastTopicKey = {path, dc};
             return RunQuery(EQueryType::EGetTopics, ctx);
         } else {
@@ -438,9 +445,7 @@ private:
     };
 private:
     static ui64 GetHiveTabletId(const TActorContext& ctx) {
-        TDomainsInfo* domainsInfo = AppData(ctx)->DomainsInfo.Get();
-        auto hiveTabletId = domainsInfo->GetHive(domainsInfo->GetDefaultHiveUid(domainsInfo->Domains.begin()->first));
-        return hiveTabletId;
+        return AppData(ctx)->DomainsInfo->GetHive();
     }
 
     void HandleDescribeTopics(TEvPqNewMetaCache::TEvDescribeTopicsRequest::TPtr& ev, const TActorContext& ctx) {
@@ -511,11 +516,16 @@ private:
         auto inserted = DescribeTopicsWaiters.insert(std::make_pair(reqId, waiter)).second;
         Y_ABORT_UNLESS(inserted);
 
+        TMaybe<TString> db = {};
+
         for (const auto& [path, database] : waiter->GetTopics()) {
+            if (!db) db = database;
+            if (*db != database) db = "";
             auto split = NKikimr::SplitPath(path);
-            Y_ABORT_UNLESS(!split.empty());
             TSchemeCacheNavigate::TEntry entry;
-            entry.Path.insert(entry.Path.end(), split.begin(), split.end());
+            if (!split.empty()) {
+                entry.Path.insert(entry.Path.end(), split.begin(), split.end());
+            }
 
             entry.SyncVersion = waiter->SyncVersion;
             entry.ShowPrivatePath = waiter->ShowPrivate;
@@ -523,8 +533,9 @@ private:
 
             schemeCacheRequest->ResultSet.emplace_back(std::move(entry));
         }
-
-        LOG_DEBUG_S(ctx, NKikimrServices::PQ_METACACHE, "send request for " << (waiter->Type == EWaiterType::DescribeAllTopics ? " all " : "") << waiter->GetTopics().size() << " topics, got " << DescribeTopicsWaiters.size() << " requests infly");
+        if (db) schemeCacheRequest->DatabaseName = *db;
+        LOG_DEBUG_S(ctx, NKikimrServices::PQ_METACACHE, "send request for " << (waiter->Type == EWaiterType::DescribeAllTopics ? " all " : "")
+                             << waiter->GetTopics().size() << " topics, got " << DescribeTopicsWaiters.size() << " requests infly, db = \"" << db << "\"");
 
         ctx.Send(SchemeCacheId, new TEvTxProxySchemeCache::TEvNavigateKeySet(schemeCacheRequest.release()));
     }
@@ -711,7 +722,7 @@ private:
     void ProcessNodesInfoWaitersQueue(bool status, const TActorContext& ctx) {
         if (DynamicNodesMapping == nullptr) {
             Y_ABORT_UNLESS(!status);
-            DynamicNodesMapping.reset(new THashMap<ui32, ui32>); 
+            DynamicNodesMapping.reset(new THashMap<ui32, ui32>);
         }
         while(!NodesMappingWaiters.empty()) {
             ctx.Send(NodesMappingWaiters.front(),

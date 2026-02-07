@@ -2,6 +2,8 @@
 #include "blobstorage_pdisk_impl.h"
 #include "blobstorage_pdisk_sectorrestorator.h"
 
+constexpr size_t MAX_RESULTS_PER_BATCH = 50; // It took ~0.25ms in VDisk's handler to process such batch
+
 namespace NKikimr {
 namespace NPDisk {
 
@@ -15,7 +17,7 @@ namespace NPDisk {
 void TCompletionLogWrite::Exec(TActorSystem *actorSystem) {
     // bool isNewChunksCommited = false;
     if (CommitedLogChunks) {
-        NWilson::TSpan span(TWilson::PDisk, TraceId.Clone(), "PDisk.CommitLogChunks");
+        NWilson::TSpan span(TWilson::PDiskBasic, TraceId.Clone(), "PDisk.CommitLogChunks");
         auto* req = PDisk->ReqCreator.CreateFromArgs<TCommitLogChunks>(std::move(CommitedLogChunks), std::move(span));
         PDisk->InputRequest(req);
         //isNewChunksCommited = true;
@@ -53,7 +55,9 @@ void TCompletionLogWrite::Exec(TActorSystem *actorSystem) {
                 HPMilliSecondsFloat(now - evLog.CreationTime),
                 HPMilliSecondsFloat(evLog.InputTime - evLog.CreationTime),
                 HPMilliSecondsFloat(evLog.ScheduleTime - evLog.InputTime),
-                HPMilliSecondsFloat(now - evLog.ScheduleTime));
+                HPMilliSecondsFloat(now - evLog.ScheduleTime),
+                HPMilliSecondsFloat(GetTime - SubmitTime),
+                batch ? batch->Result->Results.size() : 0);
         if (evLog.Result->Results) {
             evLog.Result->Results.front().Orbit = std::move(evLog.Orbit);
         }
@@ -65,7 +69,7 @@ void TCompletionLogWrite::Exec(TActorSystem *actorSystem) {
         }
         if (evLog.Result->Status == NKikimrProto::OK) {
             if (batch) {
-                if (batch->Sender == evLog.Sender) {
+                if (batch->Sender == evLog.Sender && batch->Result->Results.size() < MAX_RESULTS_PER_BATCH) {
                     batch->Result->Results.push_back(std::move(evLog.Result->Results[0]));
                 } else {
                     sendResponse(batch);
@@ -124,11 +128,17 @@ TCompletionChunkReadPart::TCompletionChunkReadPart(TPDisk *pDisk, TIntrusivePtr<
     , PayloadReadSize(payloadReadSize)
     , CommonBufferOffset(commonBufferOffset)
     , CumulativeCompletion(cumulativeCompletion)
+    , ChunkNonce(CumulativeCompletion->GetChunkNonce())
     , Buffer(PDisk->BufferPool->Pop())
     , IsTheLastPart(isTheLastPart)
     , UseT1ha0Hasher(useT1ha0Hasher)
     , Span(std::move(span))
 {
+    TCompletionAction::CanBeExecutedInAdditionalCompletionThread = true;
+
+    TBufferWithGaps *commonBuffer = CumulativeCompletion->GetCommonBuffer();
+    Destination = commonBuffer->RawDataPtr(CommonBufferOffset, PayloadReadSize);
+
     if (!IsTheLastPart) {
         CumulativeCompletion->AddPart();
     }
@@ -146,7 +156,7 @@ TBuffer *TCompletionChunkReadPart::GetBuffer() {
 }
 
 void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
-    auto execSpan = Span.CreateChild(TWilson::PDisk, "PDisk.CompletionChunkReadPart.Exec");
+    auto execSpan = Span.CreateChild(TWilson::PDiskDetailed, "PDisk.CompletionChunkReadPart.Exec");
     Y_ABORT_UNLESS(actorSystem);
     Y_ABORT_UNLESS(CumulativeCompletion);
     if (TCompletionAction::Result != EIoResult::Ok) {
@@ -163,8 +173,6 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
             Read->Offset + CommonBufferOffset, PayloadReadSize, firstSector, lastSector, sectorOffset);
     Y_ABORT_UNLESS(isOk);
 
-    TBufferWithGaps *commonBuffer = CumulativeCompletion->GetCommonBuffer();
-    ui8 *destination = commonBuffer->RawDataPtr(CommonBufferOffset, PayloadReadSize);
 
     ui8* source = Buffer->Data();
 
@@ -180,8 +188,6 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
         sectorOffset = 0;
     }
 
-    ui64 chunkNonce = CumulativeCompletion->GetChunkNonce();
-
     ui32 beginBadUserOffset = 0xffffffff;
     ui32 endBadUserOffset = 0xffffffff;
     ui32 userSectorSize = format.SectorPayloadSize();
@@ -190,7 +196,7 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
 
         TSectorRestorator restorator(false, 1, false,
             format, actorSystem, PDisk->PDiskActor, PDisk->PDiskId, &PDisk->Mon, PDisk->BufferPool.Get());
-        ui64 lastNonce = Min((ui64)0, chunkNonce - 1);
+        ui64 lastNonce = Min((ui64)0, ChunkNonce - 1);
         restorator.Restore(source, format.Offset(Read->ChunkIdx, sectorIdx), format.MagicDataChunk, lastNonce,
                 UseT1ha0Hasher, Read->Owner);
 
@@ -208,7 +214,7 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
                         << " for owner# " << Read->Owner
                         << " beginBadUserOffet# " << beginBadUserOffset << " endBadUserOffset# " << endBadUserOffset
                         << " due to multiple sectors with incorrect hashes. Marker# BPC001");
-                commonBuffer->AddGap(beginBadUserOffset, endBadUserOffset);
+                CumulativeCompletion->AddGap(beginBadUserOffset, endBadUserOffset);
                 beginBadUserOffset = 0xffffffff;
                 endBadUserOffset = 0xffffffff;
             }
@@ -218,16 +224,16 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
 
         // Decrypt data
         if (beginBadUserOffset != 0xffffffff) {
-            memset(destination, 0, sectorPayloadSize);
+            memset(Destination, 0, sectorPayloadSize);
         } else {
             TDataSectorFooter *footer = (TDataSectorFooter*) (source + format.SectorSize - sizeof(TDataSectorFooter));
-            if (footer->Nonce != chunkNonce + sectorIdx) {
+            if (footer->Nonce != ChunkNonce + sectorIdx) {
                 ui32 userOffset = sectorIdx * userSectorSize;
                 LOG_INFO_S(*actorSystem, NKikimrServices::BS_PDISK, "PDiskId# " << (ui32)PDisk->PDiskId
                         << " ReqId# " << Read->ReqId
                         << " Can't read chunk chunkIdx# " << Read->ChunkIdx
                         << " for owner# " << Read->Owner
-                        << " nonce mismatch: expected# " << (ui64)(chunkNonce + sectorIdx)
+                        << " nonce mismatch: expected# " << (ui64)(ChunkNonce + sectorIdx)
                         << ", on-disk# " << (ui64)footer->Nonce
                         << " for userOffset# " << userOffset
                         << " ! Marker# BPC002");
@@ -235,18 +241,18 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
                     beginBadUserOffset = userOffset;
                 }
                 endBadUserOffset = beginUserOffset + userSectorSize;
-                memset(destination, 0, sectorPayloadSize);
+                memset(Destination, 0, sectorPayloadSize);
             } else {
                 cypher.StartMessage(footer->Nonce);
-                if (sectorOffset > 0 || intptr_t(destination) % 32) {
+                if (sectorOffset > 0 || intptr_t(Destination) % 32) {
                     cypher.InplaceEncrypt(source, sectorOffset + sectorPayloadSize);
                     if (CommonBufferOffset == 0 || !IsTheLastPart) {
-                        memcpy(destination, source + sectorOffset, sectorPayloadSize);
+                        memcpy(Destination, source + sectorOffset, sectorPayloadSize);
                     } else {
-                        memcpy(destination, source, sectorPayloadSize);
+                        memcpy(Destination, source, sectorPayloadSize);
                     }
                 } else {
-                    cypher.Encrypt(destination, source, sectorPayloadSize);
+                    cypher.Encrypt(Destination, source, sectorPayloadSize);
                 }
                 if (CanarySize > 0) {
                     ui32 canaryPosition = sectorOffset + sectorPayloadSize;
@@ -256,7 +262,7 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
                 }
             }
         }
-        destination += sectorPayloadSize;
+        Destination += sectorPayloadSize;
         source += format.SectorSize;
         PayloadReadSize -= sectorPayloadSize;
         sectorPayloadSize = Min(format.SectorPayloadSize(), PayloadReadSize);
@@ -270,12 +276,14 @@ void TCompletionChunkReadPart::Exec(TActorSystem *actorSystem) {
             << " for owner# " << Read->Owner
             << " beginBadUserOffet# " << beginBadUserOffset << " endBadUserOffset# " << endBadUserOffset
             << " due to multiple sectors with incorrect hashes/nonces. Marker# BPC003");
-        commonBuffer->AddGap(beginBadUserOffset, endBadUserOffset);
+        CumulativeCompletion->AddGap(beginBadUserOffset, endBadUserOffset);
         beginBadUserOffset = 0xffffffff;
         endBadUserOffset = 0xffffffff;
     }
 
-    LWTRACK(PDiskChunkReadPieceComplete, Read->Orbit, PDisk->PDiskId, RawReadSize, CommonBufferOffset);
+    double deviceTimeMs = HPMilliSecondsFloat(GetTime - SubmitTime);
+    LWTRACK(PDiskChunkReadPieceComplete, Orbit, PDisk->PDiskId, RawReadSize, CommonBufferOffset, deviceTimeMs);
+    Read->Orbit.Join(Orbit);
     CumulativeCompletion->PartReadComplete(actorSystem);
     CumulativeCompletion = nullptr;
 
@@ -306,7 +314,7 @@ TCompletionChunkRead::~TCompletionChunkRead() {
 }
 
 void TCompletionChunkRead::Exec(TActorSystem *actorSystem) {
-    auto execSpan = Span.CreateChild(TWilson::PDisk, "PDisk.CompletionChunkRead.Exec");
+    auto execSpan = Span.CreateChild(TWilson::PDiskDetailed, "PDisk.CompletionChunkRead.Exec");
     THolder<TEvChunkReadResult> result = MakeHolder<TEvChunkReadResult>(NKikimrProto::OK,
         Read->ChunkIdx, Read->Offset, Read->Cookie, PDisk->GetStatusFlags(Read->Owner, Read->OwnerGroupType), "");
     result->Data = std::move(CommonBuffer);
@@ -393,7 +401,7 @@ void TChunkTrimCompletion::Exec(TActorSystem *actorSystem) {
             << ui64(responseTimeMs) << " sizeBytes# " << SizeBytes);
     LWPROBE(PDiskTrimResponseTime, PDisk->PDiskId, ReqId.Id, responseTimeMs, SizeBytes);
     PDisk->Mon.Trim.CountResponse();
-    NWilson::TSpan span(TWilson::PDisk, std::move(TraceId), "PDisk.TryTrimChunk", NWilson::EFlags::AUTO_END, actorSystem);
+    NWilson::TSpan span(TWilson::PDiskBasic, std::move(TraceId), "PDisk.TryTrimChunk", NWilson::EFlags::AUTO_END, actorSystem);
     span.Attribute("size", static_cast<i64>(SizeBytes));
     TTryTrimChunk *tryTrim = PDisk->ReqCreator.CreateFromArgs<TTryTrimChunk>(SizeBytes, std::move(span));
     PDisk->InputRequest(tryTrim);
@@ -402,4 +410,3 @@ void TChunkTrimCompletion::Exec(TActorSystem *actorSystem) {
 
 } // NPDisk
 } // NKikimr
-

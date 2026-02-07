@@ -1,6 +1,7 @@
 #include "chunks.h"
 #include <contrib/ydb/core/tx/columnshard/engines/portions/column_record.h>
 #include <contrib/ydb/core/tx/columnshard/engines/portions/portion_info.h>
+#include <contrib/ydb/core/tx/columnshard/engines/portions/constructor.h>
 
 namespace NKikimr::NOlap {
 
@@ -24,8 +25,9 @@ std::vector<std::shared_ptr<IPortionDataChunk>> IPortionColumnChunk::DoInternalS
     return result;
 }
 
-void IPortionColumnChunk::DoAddIntoPortion(const TBlobRange& bRange, TPortionInfo& portionInfo) const {
-    TColumnRecord rec(GetChunkAddress(), bRange, BuildSimpleChunkMeta());
+void IPortionColumnChunk::DoAddIntoPortionBeforeBlob(const TBlobRangeLink16& bRange, TPortionInfoConstructor& portionInfo) const {
+    AFL_VERIFY(!bRange.IsValid());
+    TColumnRecord rec(GetChunkAddressVerified(), bRange, BuildSimpleChunkMeta());
     portionInfo.AppendOneChunkColumn(std::move(rec));
 }
 

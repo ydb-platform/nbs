@@ -7,6 +7,7 @@
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/table_index.h>
+#include <contrib/ydb/core/protos/table_stats.pb.h>
 
 #include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
 
@@ -30,7 +31,7 @@ inline bool IsAllowedKeyType(NScheme::TTypeInfo typeInfo) {
         case NScheme::NTypeIds::JsonDocument:
             return false;
         case NScheme::NTypeIds::Pg:
-            return NPg::TypeDescIsComparable(typeInfo.GetTypeDesc());
+            return NPg::TypeDescIsComparable(typeInfo.GetPgTypeDesc());
         default:
             return true;
     }
@@ -53,7 +54,7 @@ inline NKikimrSchemeOp::TModifyScheme TransactionTemplate(const TString& working
     return tx;
 }
 
-TSerializedCellVec ChooseSplitKeyByHistogram(const NKikimrTableStats::THistogram& histogram,
+TSerializedCellVec ChooseSplitKeyByHistogram(const NKikimrTableStats::THistogram& histogram, ui64 total,
                                   const TConstArrayRef<NScheme::TTypeInfo>& keyColumnTypes);
 
 class TShardDeleter {

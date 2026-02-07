@@ -654,7 +654,7 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
         TestDropTable(runtime, ++txId, "/MyRoot", "TableMoveTwice");
         env.TestWaitNotification(runtime, txId);
 
-        env.TestWaitTabletDeletion(runtime, {9437194, 9437195});
+        env.TestWaitTabletDeletion(runtime, {72075186233409546, 72075186233409547});
 
         TestDescribeResult(DescribePath(runtime, "/MyRoot"),
                            {NLs::ChildrenCount(0),
@@ -1190,5 +1190,26 @@ Y_UNIT_TEST_SUITE(TSchemeShardMoveTest) {
 
         TestMoveTable(runtime, ++txId, "/MyRoot/Table", "/MyRoot/TableMove");
         env.TestWaitNotification(runtime, txId);
+    }
+
+    Y_UNIT_TEST(MoveTableWithSequence) {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+
+        TestCreateIndexedTable(runtime, ++txId, "/MyRoot", R"(
+            TableDescription {
+              Name: "Table"
+              Columns { Name: "key" Type: "Uint64" DefaultFromSequence: "myseq" }
+              Columns { Name: "value" Type: "Uint64" }
+              KeyColumnNames: ["key"]
+            }
+            SequenceDescription {
+                Name: "myseq"
+            }
+        )");
+        env.TestWaitNotification(runtime, txId);
+
+        TestMoveTable(runtime, ++txId, "/MyRoot/Table", "/MyRoot/TableMove", {NKikimrScheme::StatusPreconditionFailed});
     }
 }

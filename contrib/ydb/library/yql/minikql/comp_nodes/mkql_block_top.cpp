@@ -3,7 +3,7 @@
 #include <contrib/ydb/library/yql/minikql/computation/mkql_block_reader.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_block_builder.h>
 #include <contrib/ydb/library/yql/minikql/computation/mkql_block_impl.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_block_impl_codegen.h>
+#include <contrib/ydb/library/yql/minikql/computation/mkql_block_impl_codegen.h>  // Y_IGNORE
 
 #include <contrib/ydb/library/yql/public/udf/arrow/block_item_comparator.h>
 

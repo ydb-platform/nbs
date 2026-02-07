@@ -1,7 +1,9 @@
 #include "schemeshard_export_flow_proposals.h"
 #include "schemeshard_path_describer.h"
+#include "schemeshard_xxport__helpers.h"
 
 #include <contrib/ydb/core/ydb_convert/compression.h>
+#include <contrib/ydb/public/api/protos/ydb_export.pb.h>
 
 #include <util/string/builder.h>
 #include <util/string/cast.h>
@@ -14,12 +16,8 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> MkDirPropose(
     TTxId txId,
     const TExportInfo::TPtr exportInfo
 ) {
-    auto propose = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(ui64(txId), ss->TabletID());
+    auto propose = MakeModifySchemeTransaction(ss, txId, *exportInfo);
     auto& record = propose->Record;
-
-    if (exportInfo->UserSID) {
-        record.SetOwner(*exportInfo->UserSID);
-    }
 
     auto& modifyScheme = *record.AddTransaction();
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpMkDir);
@@ -39,12 +37,8 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> CopyTablesPropose(
     TTxId txId,
     const TExportInfo::TPtr exportInfo
 ) {
-    auto propose = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(ui64(txId), ss->TabletID());
+    auto propose = MakeModifySchemeTransaction(ss, txId, *exportInfo);
     auto& record = propose->Record;
-
-    if (exportInfo->UserSID) {
-        record.SetOwner(*exportInfo->UserSID);
-    }
 
     auto& modifyScheme = *record.AddTransaction();
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpCreateConsistentCopyTables);
@@ -75,11 +69,48 @@ static NKikimrSchemeOp::TPathDescription GetTableDescription(TSchemeShard* ss, c
     opts.SetReturnPartitioningInfo(false);
     opts.SetReturnPartitionConfig(true);
     opts.SetReturnBoundaries(true);
+    opts.SetReturnIndexTableBoundaries(true);
 
     auto desc = DescribePath(ss, TlsActivationContext->AsActorContext(), pathId, opts);
     auto record = desc->GetRecord();
 
     return record.GetPathDescription();
+}
+
+void FillSetValForSequences(TSchemeShard* ss, NKikimrSchemeOp::TTableDescription& description,
+        const TPathId& exportItemPathId) {
+    NKikimrSchemeOp::TDescribeOptions opts;
+    opts.SetReturnSetVal(true);
+
+    auto pathDescription = DescribePath(ss, TlsActivationContext->AsActorContext(), exportItemPathId, opts);
+    auto tableDescription = pathDescription->GetRecord().GetPathDescription().GetTable();
+
+    THashMap<TString, NKikimrSchemeOp::TSequenceDescription::TSetVal> setValForSequences;
+
+    for (const auto& sequenceDescription : tableDescription.GetSequences()) {
+        if (sequenceDescription.HasSetVal()) {
+            setValForSequences[sequenceDescription.GetName()] = sequenceDescription.GetSetVal();
+        }
+    }
+
+    for (auto& sequenceDescription : *description.MutableSequences()) {
+        auto it = setValForSequences.find(sequenceDescription.GetName());
+        if (it != setValForSequences.end()) {
+            *sequenceDescription.MutableSetVal() = it->second;
+        }
+    }
+}
+
+void FillPartitioning(TSchemeShard* ss, NKikimrSchemeOp::TTableDescription& desc, const TPathId& exportItemPathId) {
+    NKikimrSchemeOp::TDescribeOptions opts;
+    opts.SetReturnPartitionConfig(true);
+    opts.SetReturnBoundaries(true);
+
+    auto copiedPath = DescribePath(ss, TlsActivationContext->AsActorContext(), exportItemPathId, opts);
+    const auto& copiedTable = copiedPath->GetRecord().GetPathDescription().GetTable();
+
+    *desc.MutableSplitBoundary() = copiedTable.GetSplitBoundary();
+    *desc.MutablePartitionConfig()->MutablePartitioningPolicy() = copiedTable.GetPartitionConfig().GetPartitioningPolicy();
 }
 
 THolder<TEvSchemeShard::TEvModifySchemeTransaction> BackupPropose(
@@ -90,9 +121,10 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> BackupPropose(
 ) {
     Y_ABORT_UNLESS(itemIdx < exportInfo->Items.size());
 
-    auto propose = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(ui64(txId), ss->TabletID());
+    auto propose = MakeModifySchemeTransaction(ss, txId, *exportInfo);
+    auto& record = propose->Record;
 
-    auto& modifyScheme = *propose->Record.AddTransaction();
+    auto& modifyScheme = *record.AddTransaction();
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpBackup);
     modifyScheme.SetInternal(true);
 
@@ -105,8 +137,15 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> BackupPropose(
     task.SetNeedToBill(!exportInfo->UserSID || !ss->SystemBackupSIDs.contains(*exportInfo->UserSID));
 
     const TPath sourcePath = TPath::Init(exportInfo->Items[itemIdx].SourcePathId, ss);
-    if (sourcePath.IsResolved()) {
-        task.MutableTable()->CopyFrom(GetTableDescription(ss, sourcePath.Base()->PathId));
+    const TPath exportItemPath = exportPath.Child(ToString(itemIdx));
+    if (sourcePath.IsResolved() && exportItemPath.IsResolved()) {
+        auto sourceDescription = GetTableDescription(ss, sourcePath.Base()->PathId);
+        if (sourceDescription.HasTable()) {
+            FillSetValForSequences(
+                ss, *sourceDescription.MutableTable(), exportItemPath.Base()->PathId);
+            FillPartitioning(ss, *sourceDescription.MutableTable(), exportItemPath.Base()->PathId);
+        }
+        task.MutableTable()->CopyFrom(sourceDescription);
     }
 
     task.SetSnapshotStep(exportInfo->SnapshotStep);
@@ -174,9 +213,10 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> DropPropose(
     const TExportInfo::TPtr exportInfo,
     ui32 itemIdx
 ) {
-    auto propose = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(ui64(txId), ss->TabletID());
+    auto propose = MakeModifySchemeTransaction(ss, txId, *exportInfo);
+    auto& record = propose->Record;
 
-    auto& modifyScheme = *propose->Record.AddTransaction();
+    auto& modifyScheme = *record.AddTransaction();
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpDropTable);
     modifyScheme.SetInternal(true);
 
@@ -194,9 +234,10 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> DropPropose(
     TTxId txId,
     const TExportInfo::TPtr exportInfo
 ) {
-    auto propose = MakeHolder<TEvSchemeShard::TEvModifySchemeTransaction>(ui64(txId), ss->TabletID());
+    auto propose = MakeModifySchemeTransaction(ss, txId, *exportInfo);
+    auto& record = propose->Record;
 
-    auto& modifyScheme = *propose->Record.AddTransaction();
+    auto& modifyScheme = *record.AddTransaction();
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpRmDir);
     modifyScheme.SetInternal(true);
 

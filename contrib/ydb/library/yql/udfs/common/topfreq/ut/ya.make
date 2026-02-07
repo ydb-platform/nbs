@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/udfs/common/topfreq/static)
 
+TAG(ya:manual)
+
 SRCS(
     ../topfreq_udf_ut.cpp
 )

@@ -1,8 +1,9 @@
 #pragma once
 
 #include "defs.h"
+#include "activity_guard.h"
+#include "executor_thread.h"
 #include "thread_context.h"
-#include "worker_context.h"
 
 #include <contrib/ydb/library/actors/util/datetime.h>
 #include <contrib/ydb/library/actors/util/threadparkpad.h>
@@ -21,7 +22,7 @@ namespace NActors {
     };
 
     struct TGenericExecutorThreadCtx {
-        TAutoPtr<TGenericExecutorThread> Thread;
+        std::unique_ptr<TGenericExecutorThread> Thread;
 
     protected:
         friend class TIOExecutorPool;
@@ -31,6 +32,8 @@ namespace NActors {
         std::atomic<ui64> WaitingFlag = static_cast<ui64>(EThreadState::None);
 
     public:
+        ~TGenericExecutorThreadCtx(); // in executor_thread.cpp
+
         ui64 StartWakingTs = 0;
 
         ui64 GetStateInt() {
@@ -58,11 +61,13 @@ namespace NActors {
 
         template <typename TDerived, typename TWaitState>
         void Spin(ui64 spinThresholdCycles, std::atomic<bool> *stopFlag) {
-            ui64 start = GetCycleCountFast();
             bool doSpin = true;
+            NHPTimer::STime start = GetCycleCountFast();
+            TInternalActorTypeGuard<EInternalActorSystemActivity::ACTOR_SYSTEM_SPIN> activityGuard(start);
             while (true) {
                 for (ui32 j = 0; doSpin && j < 12; ++j) {
-                    if (GetCycleCountFast() >= (start + spinThresholdCycles)) {
+                    NHPTimer::STime hpnow = GetCycleCountFast();
+                    if (hpnow >= i64(start + spinThresholdCycles)) {
                         doSpin = false;
                         break;
                     }
@@ -98,8 +103,8 @@ namespace NActors {
 
             NHPTimer::STime hpnow = GetCycleCountFast();
             NHPTimer::STime hpprev = TlsThreadContext->UpdateStartOfProcessingEventTS(hpnow);
-            TlsThreadContext->ElapsingActorActivity.store(Max<ui64>(), std::memory_order_release);
-            TlsThreadContext->WorkerCtx->AddElapsedCycles(TlsThreadContext->ActorSystemIndex, hpnow - hpprev);
+            ui32 prevActivity = TlsThreadContext->ElapsingActorActivity.exchange(Max<ui64>(), std::memory_order_acq_rel);
+            TlsThreadContext->WorkerCtx->AddElapsedCycles(prevActivity, hpnow - hpprev);
             do {
                 if (WaitingPad.Park()) // interrupted
                     return true;
@@ -213,7 +218,11 @@ namespace NActors {
             WaitingPad.Interrupt();
         }
 
-        TSharedExecutorThreadCtx() = default;
+        TSharedExecutorThreadCtx() {
+            for (ui32 idx = 0; idx < MaxPoolsForSharedThreads; ++idx) {
+                ExecutorPools[idx].store(nullptr, std::memory_order_release);
+            }
+        }
     };
 
 }

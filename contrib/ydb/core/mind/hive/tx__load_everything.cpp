@@ -17,9 +17,7 @@ public:
 
         TAppData* appData = AppData();
         TDomainsInfo* domainsInfo = appData->DomainsInfo.Get();
-        const TDomainsInfo::TDomain& domain = domainsInfo->GetDomain(Self->HiveDomain);
-
-        TTabletId rootHiveId = domainsInfo->GetHive(domain.DefaultHiveUid);
+        TTabletId rootHiveId = domainsInfo->GetHive();
         bool isRootHive = (rootHiveId == Self->TabletID());
 
         NIceDb::TNiceDb db(txc.DB);
@@ -36,7 +34,6 @@ public:
         Self->Keeper.Clear();
         Self->Domains.clear();
         Self->BlockedOwners.clear();
-        Self->RegisteredDataCenterNodes.clear();
 
         Self->Domains[Self->RootDomainKey].Path = Self->RootDomainName;
         Self->Domains[Self->RootDomainKey].HiveId = rootHiveId;
@@ -58,6 +55,8 @@ public:
             auto nodeRowset = db.Table<Schema::Node>().Select();
             auto configRowset = db.Table<Schema::State>().Select();
             auto categoryRowset = db.Table<Schema::TabletCategory>().Select();
+            auto availabilityRowset = db.Table<Schema::TabletAvailabilityRestrictions>().Select();
+            auto operationsRowset = db.Table<Schema::OperationsLog>().Select();
             if (!tabletRowset.IsReady()
                     || !tabletChannelRowset.IsReady()
                     || !tabletChannelGenRowset.IsReady()
@@ -72,7 +71,9 @@ public:
                     || !tabletOwnersRowset.IsReady()
                     || !nodeRowset.IsReady()
                     || !configRowset.IsReady()
-                    || !categoryRowset.IsReady())
+                    || !categoryRowset.IsReady()
+                    || !availabilityRowset.IsReady()
+                    || !operationsRowset.IsReady())
                 return false;
         }
 
@@ -277,6 +278,9 @@ public:
                 if (domainRowset.HaveValue<Schema::SubDomain::ServerlessComputeResourcesMode>()) {
                     domain.ServerlessComputeResourcesMode = domainRowset.GetValue<Schema::SubDomain::ServerlessComputeResourcesMode>();
                 }
+                if (domainRowset.HaveValue<Schema::SubDomain::ScaleRecommenderPolicies>()) {
+                    domain.SetScaleRecommenderPolicies(domainRowset.GetValue<Schema::SubDomain::ScaleRecommenderPolicies>());
+                }
 
                 if (!domainRowset.Next())
                     return false;
@@ -315,6 +319,12 @@ public:
                 node.ServicedDomains = nodeRowset.GetValueOrDefault<Schema::Node::ServicedDomains>();
                 node.Statistics = nodeRowset.GetValueOrDefault<Schema::Node::Statistics>();
                 node.Name = nodeRowset.GetValueOrDefault<Schema::Node::Name>();
+                node.BecomeUpOnRestart = nodeRowset.GetValueOrDefault<Schema::Node::BecomeUpOnRestart>(false);
+                if (node.BecomeUpOnRestart) {
+                    // If a node must become up on restart, it must have been down
+                    // That was not persisted to avoid issues with downgrades
+                    node.Down = true;
+                }
                 if (nodeRowset.HaveValue<Schema::Node::Location>()) {
                     auto location = nodeRowset.GetValue<Schema::Node::Location>();
                     if (location.HasDataCenter()) {
@@ -330,9 +340,9 @@ public:
                     // it's safe to call here, because there is no any tablets in the node yet
                     node.BecomeDisconnected();
                 }
-                if (node.CanBeDeleted()) {
+                if (Self->TryToDeleteNode(&node)) {
+                    // node is deleted from hashmap
                     db.Table<Schema::Node>().Key(nodeId).Delete();
-                    Self->Nodes.erase(nodeId);
                 } else if (node.IsUnknown() && node.LocationAcquired) {
                     Self->AddRegisteredDataCentersNode(node.Location.GetDataCenterId(), node.Id);
                 }
@@ -381,7 +391,7 @@ public:
                             std::tuple<TTabletId>(tabletId),
                             std::tuple<TTabletId, THive&>(tabletId, *Self)).first->second;
                 tablet.State = tabletRowset.GetValue<Schema::Tablet::State>();
-                tablet.Type = tabletRowset.GetValue<Schema::Tablet::TabletType>();
+                tablet.SetType(tabletRowset.GetValue<Schema::Tablet::TabletType>());
 
                 TObjectId objectId = tabletRowset.GetValueOrDefault<Schema::Tablet::ObjectID>();
                 TOwnerIdxType::TValueType owner = tabletRowset.GetValue<Schema::Tablet::Owner>();
@@ -601,6 +611,11 @@ public:
                     TFollowerGroup& followerGroup = tablet->GetFollowerGroup(followerGroupId);
                     TFollowerTabletInfo& follower = tablet->AddFollower(followerGroup, followerId);
                     follower.Statistics = tabletFollowerRowset.GetValueOrDefault<Schema::TabletFollowerTablet::Statistics>();
+                    if (tabletFollowerRowset.HaveValue<Schema::TabletFollowerTablet::DataCenter>()) {
+                        auto dc = tabletFollowerRowset.GetValue<Schema::TabletFollowerTablet::DataCenter>();
+                        follower.NodeFilter.AllowedDataCenters = {dc};
+                        Self->DataCenters[dc].Followers[{tabletId, followerGroup.Id}].push_back(std::prev(tablet->Followers.end()));
+                    }
                     if (nodeId == 0) {
                         follower.BecomeStopped();
                     } else {
@@ -622,6 +637,58 @@ public:
                     << numMissingTablets << " for missing tablets)");
         }
 
+        // Compatability: some per-dc followers do not have their datacenter set - try to set it now
+        for (auto& [tabletId, tablet] : Self->Tablets) {
+            for (auto& group : tablet.FollowerGroups) {
+                if (!group.FollowerCountPerDataCenter) {
+                    continue;
+                }
+                std::map<TDataCenterId, i32> dataCentersToCover; // dc -> need x more followers in dc
+                for (const auto& [dc, _] : Self->DataCenters) {
+                    dataCentersToCover[dc] = group.GetFollowerCountForDataCenter(dc);
+                }
+                auto groupId = group.Id;
+                auto filterGroup = [groupId](auto&& follower) { return follower->FollowerGroup.Id == groupId;};
+                auto groupFollowersIters = std::views::iota(tablet.Followers.begin(), tablet.Followers.end()) | std::views::filter(filterGroup);
+                std::vector<TDataCenterInfo::TFollowerIter> followersWithoutDc;
+                for (auto followerIt : groupFollowersIters) {
+                    auto& allowedDc = followerIt->NodeFilter.AllowedDataCenters;
+                    if (allowedDc.size() == 1) {
+                        --dataCentersToCover[allowedDc.front()];
+                        continue;
+                    }
+                    bool ok = false;
+                    if (followerIt->Node) {
+                        auto dc = followerIt->Node->Location.GetDataCenterId();
+                        auto& cnt = dataCentersToCover[dc];
+                        if (cnt > 0) {
+                            --cnt;
+                            allowedDc = {dc};
+                            Self->DataCenters[dc].Followers[{tabletId, groupId}].push_back(followerIt);
+                            Self->PendingFollowerUpdates.Update({tabletId, followerIt->Id}, dc);
+                            ok = true;
+                        }
+                    }
+                    if (!ok) {
+                        followersWithoutDc.push_back(followerIt);
+                    }
+                }
+                auto dcIt = dataCentersToCover.begin();
+                for (auto follower : followersWithoutDc) {
+                    while (dcIt != dataCentersToCover.end() && dcIt->second <= 0) {
+                        ++dcIt;
+                    }
+                    if (dcIt == dataCentersToCover.end()) {
+                        break;
+                    }
+                    follower->NodeFilter.AllowedDataCenters = {dcIt->first};
+                    Self->DataCenters[dcIt->first].Followers[{tabletId, groupId}].push_back(follower);
+                    Self->PendingFollowerUpdates.Update(follower->GetFullTabletId(), dcIt->first);
+                    --dcIt->second;
+                }
+            }
+        }
+
         {
             size_t numMetrics = 0;
             size_t numMissingTablets = 0;
@@ -636,9 +703,9 @@ public:
                     TFollowerId followerId = metricsRowset.GetValue<Schema::Metrics::FollowerID>();
                     auto* leaderOrFollower = tablet->FindTablet(followerId);
                     if (leaderOrFollower) {
-                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumCPU.InitiaizeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumCPU>());
-                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumMemory.InitiaizeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumMemory>());
-                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumNetwork.InitiaizeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumNetwork>());
+                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumCPU.InitializeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumCPU>());
+                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumMemory.InitializeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumMemory>());
+                        leaderOrFollower->MutableResourceMetricsAggregates().MaximumNetwork.InitializeFrom(metricsRowset.GetValueOrDefault<Schema::Metrics::MaximumNetwork>());
                         // do not reorder
                         leaderOrFollower->UpdateResourceUsage(metricsRowset.GetValueOrDefault<Schema::Metrics::ProtoMetrics>());
                     }
@@ -652,18 +719,63 @@ public:
                     << numMissingTablets << " for missing tablets)");
         }
 
+        {
+            size_t numRestrictions = 0;
+            size_t numMissingNodes = 0;
+            auto availabilityRestrictionsRowset = db.Table<Schema::TabletAvailabilityRestrictions>().Select();
+            if (!availabilityRestrictionsRowset.IsReady()) {
+                return false;
+            }
+            while (!availabilityRestrictionsRowset.EndOfSet()) {
+                ++numRestrictions;
+                TNodeId nodeId = availabilityRestrictionsRowset.GetValue<Schema::TabletAvailabilityRestrictions::Node>();
+                auto node = Self->FindNode(nodeId);
+                if (node) {
+                    auto tabletType = availabilityRestrictionsRowset.GetValue<Schema::TabletAvailabilityRestrictions::TabletType>();
+                    auto maxCount = availabilityRestrictionsRowset.GetValue<Schema::TabletAvailabilityRestrictions::MaxCount>();
+                    node->TabletAvailabilityRestrictions[tabletType] = maxCount;
+                } else {
+                    ++numMissingNodes;
+                }
+                if (!availabilityRestrictionsRowset.Next()) {
+                    return false;
+                }
+            }
+            BLOG_NOTICE("THive::TTxLoadEverything loaded " << numRestrictions << " tablet availability restrictions ("
+                        << numMissingNodes << " for missing nodes)");
+        }
+
         size_t numDeletedNodes = 0;
+        size_t numDeletedRestrictions = 0;
+        TInstant now = TActivationContext::Now();
         for (auto itNode = Self->Nodes.begin(); itNode != Self->Nodes.end();) {
-            if (itNode->second.CanBeDeleted()) {
+            if (itNode->second.CanBeDeleted(now)) {
+                ++numDeletedNodes;
+                auto restrictionsRowset = db.Table<Schema::TabletAvailabilityRestrictions>().Range(itNode->first).Select();
+                while (!restrictionsRowset.EndOfSet()) {
+                    ++numDeletedRestrictions;
+                    db.Table<Schema::TabletAvailabilityRestrictions>().Key(restrictionsRowset.GetKey()).Delete();
+                    if (!restrictionsRowset.Next()) {
+                        return false;
+                    }
+                }
                 db.Table<Schema::Node>().Key(itNode->first).Delete();
                 itNode = Self->Nodes.erase(itNode);
             } else {
                 ++itNode;
             }
         }
-        BLOG_NOTICE("THive::TTxLoadEverything deleted " << numDeletedNodes << " unnecessary nodes");
+        BLOG_NOTICE("THive::TTxLoadEverything deleted " << numDeletedNodes << " unnecessary nodes << (and " << numDeletedRestrictions << " restrictions for them)");
 
         TTabletId nextTabletId = Max(maxTabletId + 1, Self->NextTabletId);
+
+        auto operationsRowset = db.Table<Schema::OperationsLog>().All().Reverse().Select();
+        if (!operationsRowset.IsReady()) {
+            return false;
+        }
+        if (operationsRowset.IsValid()) {
+            Self->OperationsLogIndex = operationsRowset.GetValue<Schema::OperationsLog::Index>();
+        }
 
         if (isRootHive) {
             if (numSequences == 0) {
@@ -737,8 +849,13 @@ public:
         Self->MigrationState = NKikimrHive::EMigrationState::MIGRATION_READY;
         ctx.Send(Self->SelfId(), new TEvPrivate::TEvBootTablets());
 
+        if (!Self->PendingFollowerUpdates.Empty()) {
+            ctx.Send(Self->SelfId(), new TEvPrivate::TEvUpdateFollowers);
+            Self->ProcessFollowerUpdatesScheduled = true;
+        }
+
         for (auto it = Self->Nodes.begin(); it != Self->Nodes.end(); ++it) {
-            Self->ScheduleUnlockTabletExecution(it->second);
+            Self->ScheduleUnlockTabletExecution(it->second, NKikimrHive::LOCK_LOST_REASON_HIVE_RESTART);
         }
     }
 };

@@ -1,17 +1,18 @@
 #include "proxy.h"
 
-#include <contrib/ydb/core/docapi/traits.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
-#include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/base/tx_processing.h>
-#include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/base/path.h>
-
+#include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/base/tx_processing.h>
+#include <contrib/ydb/core/docapi/traits.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/library/aclib/aclib.h>
-
 #include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/protobuf_printer/security_printer.h>
+#include <contrib/ydb/library/ydb_issue/issue_helpers.h>
+#include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
+
 #include <util/string/cast.h>
 
 namespace NKikimr {
@@ -125,12 +126,6 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
         case NKikimrSchemeOp::ESchemeOpCreatePersQueueGroup:
             return *modifyScheme.MutableCreatePersQueueGroup()->MutableName();
 
-        case NKikimrSchemeOp::ESchemeOpAllocatePersQueueGroup:
-            return *modifyScheme.MutableAllocatePersQueueGroup()->MutableName();
-
-        case NKikimrSchemeOp::ESchemeOpDeallocatePersQueueGroup:
-            return *modifyScheme.MutableDeallocatePersQueueGroup()->MutableName();
-
         case NKikimrSchemeOp::ESchemeOpDropTable:
         case NKikimrSchemeOp::ESchemeOpDropPersQueueGroup:
         case NKikimrSchemeOp::ESchemeOpRmDir:
@@ -147,10 +142,12 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
         case NKikimrSchemeOp::ESchemeOpDropColumnTable:
         case NKikimrSchemeOp::ESchemeOpDropSequence:
         case NKikimrSchemeOp::ESchemeOpDropReplication:
+        case NKikimrSchemeOp::ESchemeOpDropReplicationCascade:
         case NKikimrSchemeOp::ESchemeOpDropBlobDepot:
         case NKikimrSchemeOp::ESchemeOpDropExternalTable:
         case NKikimrSchemeOp::ESchemeOpDropExternalDataSource:
         case NKikimrSchemeOp::ESchemeOpDropView:
+        case NKikimrSchemeOp::ESchemeOpDropResourcePool:
             return *modifyScheme.MutableDrop()->MutableName();
 
         case NKikimrSchemeOp::ESchemeOpAlterTable:
@@ -344,6 +341,21 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
 
         case NKikimrSchemeOp::ESchemeOpAlterView:
             Y_ABORT("no implementation for ESchemeOpAlterView");
+
+        case NKikimrSchemeOp::ESchemeOpCreateContinuousBackup:
+            return *modifyScheme.MutableCreateContinuousBackup()->MutableTableName();
+
+        case NKikimrSchemeOp::ESchemeOpAlterContinuousBackup:
+            return *modifyScheme.MutableAlterContinuousBackup()->MutableTableName();
+
+        case NKikimrSchemeOp::ESchemeOpDropContinuousBackup:
+            return *modifyScheme.MutableDropContinuousBackup()->MutableTableName();
+
+        case NKikimrSchemeOp::ESchemeOpCreateResourcePool:
+            return *modifyScheme.MutableCreateResourcePool()->MutableName();
+
+        case NKikimrSchemeOp::ESchemeOpAlterResourcePool:
+            return *modifyScheme.MutableCreateResourcePool()->MutableName();
         }
     }
 
@@ -366,6 +378,7 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
         case NKikimrSchemeOp::ESchemeOpCreateExternalTable:
         case NKikimrSchemeOp::ESchemeOpCreateExternalDataSource:
         case NKikimrSchemeOp::ESchemeOpCreateView:
+        case NKikimrSchemeOp::ESchemeOpCreateResourcePool:
             return true;
         default:
             return false;
@@ -598,6 +611,10 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
         case NKikimrSchemeOp::ESchemeOpAlterBlobDepot:
         case NKikimrSchemeOp::ESchemeOpAlterExternalTable:
         case NKikimrSchemeOp::ESchemeOpAlterExternalDataSource:
+        case NKikimrSchemeOp::ESchemeOpCreateContinuousBackup:
+        case NKikimrSchemeOp::ESchemeOpAlterContinuousBackup:
+        case NKikimrSchemeOp::ESchemeOpDropContinuousBackup:
+        case NKikimrSchemeOp::ESchemeOpAlterResourcePool:
         {
             auto toResolve = TPathToResolve(pbModifyScheme.GetOperationType());
             toResolve.Path = Merge(workingDir, SplitPath(GetPathNameForScheme(pbModifyScheme)));
@@ -610,17 +627,18 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
         case NKikimrSchemeOp::ESchemeOpDropFileStore:
         case NKikimrSchemeOp::ESchemeOpDropKesus:
         case NKikimrSchemeOp::ESchemeOpDropPersQueueGroup:
-        case NKikimrSchemeOp::ESchemeOpDeallocatePersQueueGroup:
         case NKikimrSchemeOp::ESchemeOpDropTable:
         case NKikimrSchemeOp::ESchemeOpDropSolomonVolume:
         case NKikimrSchemeOp::ESchemeOpDropColumnStore:
         case NKikimrSchemeOp::ESchemeOpDropColumnTable:
         case NKikimrSchemeOp::ESchemeOpDropSequence:
         case NKikimrSchemeOp::ESchemeOpDropReplication:
+        case NKikimrSchemeOp::ESchemeOpDropReplicationCascade:
         case NKikimrSchemeOp::ESchemeOpDropBlobDepot:
         case NKikimrSchemeOp::ESchemeOpDropExternalTable:
         case NKikimrSchemeOp::ESchemeOpDropExternalDataSource:
         case NKikimrSchemeOp::ESchemeOpDropView:
+        case NKikimrSchemeOp::ESchemeOpDropResourcePool:
         {
             auto toResolve = TPathToResolve(pbModifyScheme.GetOperationType());
             toResolve.Path = Merge(workingDir, SplitPath(GetPathNameForScheme(pbModifyScheme)));
@@ -682,6 +700,7 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
         case NKikimrSchemeOp::ESchemeOpCreateExternalTable:
         case NKikimrSchemeOp::ESchemeOpCreateExternalDataSource:
         case NKikimrSchemeOp::ESchemeOpCreateView:
+        case NKikimrSchemeOp::ESchemeOpCreateResourcePool:
         {
             auto toResolve = TPathToResolve(pbModifyScheme.GetOperationType());
             toResolve.Path = workingDir;
@@ -743,7 +762,6 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
             break;
         }
         case NKikimrSchemeOp::ESchemeOpCreatePersQueueGroup:
-        case NKikimrSchemeOp::ESchemeOpAllocatePersQueueGroup:
         {
             auto toResolve = TPathToResolve(pbModifyScheme.GetOperationType());
             toResolve.Path = workingDir;
@@ -885,7 +903,7 @@ struct TBaseSchemeReq: public TActorBootstrapped<TDerived> {
 
         LOG_ERROR_S(ctx, NKikimrServices::TX_PROXY, "Unexpected response from scheme cache"
             << ": " << navigate->ToString(*AppData()->TypeRegistry));
-        Y_DEBUG_ABORT_UNLESS(false, "Unreachable");
+        Y_DEBUG_ABORT("Unreachable");
 
         TxProxyMon->ResolveKeySetFail->Inc();
         ReportStatus(TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ResolveError, ctx);
@@ -1165,7 +1183,7 @@ void TFlatSchemeReq::Bootstrap(const TActorContext &ctx) {
                 "Actor# " << ctx.SelfID.ToString()
                           << " txid# " << TxId
                           << " Bootstrap EvSchemeRequest"
-                          << " record: " << GetRequestProto().DebugString());
+                          << " record: " << SecureDebugString(GetRequestProto()));
     Y_ABORT_UNLESS(GetRequestEv().HasModifyScheme());
     Y_ABORT_UNLESS(!GetRequestEv().HasTransactionalModification());
 
@@ -1300,7 +1318,7 @@ void TSchemeTransactionalReq::Bootstrap(const TActorContext &ctx) {
                 "Actor# " << ctx.SelfID.ToString()
                           << " txid# " << TxId
                           << " Bootstrap EvSchemeRequest"
-                          << " record: " << GetRequestProto().DebugString());
+                          << " record: " << SecureDebugString(GetRequestProto()));
     Y_ABORT_UNLESS(!GetRequestEv().HasModifyScheme());
     Y_ABORT_UNLESS(GetRequestEv().HasTransactionalModification());
 

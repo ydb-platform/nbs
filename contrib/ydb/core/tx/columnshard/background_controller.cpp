@@ -3,41 +3,15 @@
 
 namespace NKikimr::NColumnShard {
 
-void TBackgroundController::StartTtl(const NOlap::TColumnEngineChanges& changes) {
-    Y_ABORT_UNLESS(TtlPortions.empty());
-    TtlPortions = changes.GetTouchedPortions();
-}
-
-bool TBackgroundController::StartCompaction(const NOlap::TPlanCompactionInfo& info, const NOlap::TColumnEngineChanges& changes) {
+bool TBackgroundController::StartCompaction(const NOlap::TPlanCompactionInfo& info) {
     Y_ABORT_UNLESS(ActiveCompactionInfo.emplace(info.GetPathId(), info).second);
-    Y_ABORT_UNLESS(CompactionInfoPortions.emplace(info.GetPathId(), changes.GetTouchedPortions()).second);
     return true;
-}
-
-THashSet<NOlap::TPortionAddress> TBackgroundController::GetConflictTTLPortions() const {
-    THashSet<NOlap::TPortionAddress> result = TtlPortions;
-    for (auto&& i : CompactionInfoPortions) {
-        for (auto&& g : i.second) {
-            Y_ABORT_UNLESS(result.emplace(g).second);
-        }
-    }
-    return result;
-}
-
-THashSet<NOlap::TPortionAddress> TBackgroundController::GetConflictCompactionPortions() const {
-    THashSet<NOlap::TPortionAddress> result = TtlPortions;
-    for (auto&& i : CompactionInfoPortions) {
-        for (auto&& g : i.second) {
-            Y_ABORT_UNLESS(result.emplace(g).second);
-        }
-    }
-    return result;
 }
 
 void TBackgroundController::CheckDeadlines() {
     for (auto&& i : ActiveCompactionInfo) {
         if (TMonotonic::Now() - i.second.GetStartTime() > NOlap::TCompactionLimits::CompactionTimeout) {
-            AFL_EMERG(NKikimrServices::TX_COLUMNSHARD)("event", "deadline_compaction");
+            AFL_CRIT(NKikimrServices::TX_COLUMNSHARD)("event", "deadline_compaction");
             Y_DEBUG_ABORT_UNLESS(false);
         }
     }
@@ -46,7 +20,7 @@ void TBackgroundController::CheckDeadlines() {
 void TBackgroundController::CheckDeadlinesIndexation() {
     for (auto&& i : ActiveIndexationTasks) {
         if (TMonotonic::Now() - i.second > NOlap::TCompactionLimits::CompactionTimeout) {
-            AFL_EMERG(NKikimrServices::TX_COLUMNSHARD)("event", "deadline_compaction")("task_id", i.first);
+            AFL_CRIT(NKikimrServices::TX_COLUMNSHARD)("event", "deadline_indexation")("task_id", i.first);
             Y_DEBUG_ABORT_UNLESS(false);
         }
     }
@@ -71,15 +45,6 @@ TString TBackgroundController::DebugStringIndexation() const {
     sb << ";";
     sb << "}";
     return sb;
-}
-
-TString TBackgroundActivity::DebugString() const {
-    return TStringBuilder()
-        << "indexation:" << HasIndexation() << ";"
-        << "compaction:" << HasCompaction() << ";"
-        << "cleanup:" << HasCleanup() << ";"
-        << "ttl:" << HasTtl() << ";"
-        ;
 }
 
 }

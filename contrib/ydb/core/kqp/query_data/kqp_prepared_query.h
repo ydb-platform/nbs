@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/kqp/query_data/kqp_predictor.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/core/protos/kqp.pb.h>
+#include <contrib/ydb/core/protos/kqp_physical.pb.h>
 
 #include <util/generic/vector.h>
 
@@ -142,7 +143,10 @@ private:
 
 public:
 
-    TPreparedQueryHolder(NKikimrKqp::TPreparedQuery* proto, const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry);
+    TPreparedQueryHolder(
+        NKikimrKqp::TPreparedQuery* proto,
+        const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
+        bool noFillTables = false);
     ~TPreparedQueryHolder();
 
     using TConstPtr = std::shared_ptr<const TPreparedQueryHolder>;

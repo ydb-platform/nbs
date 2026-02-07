@@ -13,6 +13,7 @@ PEERDIR(
     contrib/ydb/core/kqp/run_script_actor
     contrib/ydb/core/kqp/proxy_service
     contrib/ydb/core/kqp/ut/common
+    contrib/ydb/core/kqp/workload_service/ut/common
     contrib/ydb/library/yql/sql/pg_dummy
     contrib/ydb/public/sdk/cpp/client/ydb_query
     contrib/ydb/public/sdk/cpp/client/ydb_driver
