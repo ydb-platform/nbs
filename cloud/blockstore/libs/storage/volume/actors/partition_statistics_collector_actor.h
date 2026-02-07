@@ -22,7 +22,7 @@ private:
 
     NProto::TError LastError;
 
-    ui32 FailedResponses = 0;
+    size_t ResponsesCount = 0;
 
 public:
     TPartitionStatisticsCollectorActor(
@@ -47,6 +47,10 @@ private:
 
     void HandleGetPartCountersResponse(
         TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetPartCountersUndelivery(
+        TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 
