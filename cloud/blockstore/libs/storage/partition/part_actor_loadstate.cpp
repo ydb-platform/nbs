@@ -231,6 +231,18 @@ void TPartitionActor::CompleteLoadState(
         maxBlobsPerRange,
         Config->GetCompactionRangeCountPerRun());
 
+    FreshBlocksCompanion = std::make_unique<TFreshBlocksCompanion>(
+        StorageAccessMode,
+        partitionConfig,
+        Info(),
+        FreshBlocksCompanionClient,
+        *State,
+        *State,
+        *State,
+        *State,
+        *State,
+        LogTitle);
+
     MapBaseDiskIdToTabletId(ctx);
 
     State->InitFreshBlocks(args.FreshBlocks);
@@ -286,10 +298,13 @@ void TPartitionActor::CompleteLoadState(
 
 void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
 {
-    auto totalBlocksCount = State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
+    auto totalBlocksCount =
+        State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
     UpdateStorageStat(totalBlocksCount * State->GetBlockSize());
 
-    LoadFreshBlobs(ctx);
+    FreshBlocksCompanion->LoadFreshBlobs(
+        ctx,
+        State->GetMeta().GetTrimFreshLogToCommitId());
 }
 
 void TPartitionActor::FreshBlobsLoaded(const TActorContext& ctx)

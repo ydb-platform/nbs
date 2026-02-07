@@ -12,9 +12,9 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
-#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
@@ -28,6 +28,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -105,6 +106,27 @@ class TPartitionActor final
 
     static constexpr ui64 BootWakeupEventTag = 1;
 
+    struct TFreshBlocksCompanionClient: public IFreshBlocksCompanionClient
+    {
+        TPartitionActor& PartitionActor;
+
+        explicit TFreshBlocksCompanionClient(TPartitionActor& partitionActor)
+            : PartitionActor(partitionActor)
+        {}
+
+        void FreshBlobsLoaded(const NActors::TActorContext& ctx) override
+        {
+            PartitionActor.FreshBlobsLoaded(ctx);
+        }
+
+        void Die(const NActors::TActorContext& ctx) override
+        {
+            PartitionActor.Suicide(ctx);
+        }
+    };
+
+    friend TFreshBlocksCompanionClient;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -162,6 +184,10 @@ private:
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
 
+    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
+
+    TFreshBlocksCompanionClient FreshBlocksCompanionClient{*this};
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,
@@ -214,7 +240,6 @@ private:
     void SendGetUsedBlocksFromBaseDisk(const NActors::TActorContext& ctx);
     void FinalizeLoadState(const NActors::TActorContext& ctx);
 
-    void LoadFreshBlobs(const NActors::TActorContext& ctx);
     void FreshBlobsLoaded(const NActors::TActorContext& ctx);
 
     void ConfirmBlobs(const NActors::TActorContext& ctx);

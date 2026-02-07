@@ -953,8 +953,12 @@ STFUNC(TPartitionActor::StateInit)
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
-        HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
-        HFunc(TEvPartitionPrivate::TEvConfirmBlobsCompleted, HandleConfirmBlobsCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted,
+            FreshBlocksCompanion->HandleLoadFreshBlobsCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvConfirmBlobsCompleted,
+            HandleConfirmBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
