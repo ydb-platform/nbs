@@ -147,7 +147,9 @@ void TIndexTabletActor::ReplayOpLog(
                 {}, // originalError, doesn't matter w/o requestInfo
                 request.GetFileSystemId(),
                 request.GetNodeId(),
-                op.GetEntryId());
+                op.GetEntryId(),
+                false // isLocalRename - doesn't matter w/o requestInfo
+            );
         } else {
             const TString message = ReportUnknownOpLogEntry(
                 TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());

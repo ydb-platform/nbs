@@ -303,17 +303,12 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     // to use CommitId here in order not to generate some other unique
     // ui64
     args.OpLogEntry.SetEntryId(args.CommitId);
-    auto* shardRequest =
-        args.OpLogEntry.MutableRenameNodeInDestinationRequest();
-    shardRequest->MutableHeaders()->CopyFrom(
-        args.Request.GetHeaders());
-    shardRequest->SetFileSystemId(args.NewParentShardId);
-    shardRequest->SetNewParentId(args.Request.GetNewParentId());
-    shardRequest->SetNewName(args.Request.GetNewName());
-    shardRequest->SetFlags(args.Request.GetFlags());
-    shardRequest->SetSourceNodeShardId(args.ChildRef->ShardId);
-    shardRequest->SetSourceNodeShardNodeName(args.ChildRef->ShardNodeName);
-    *shardRequest->MutableOriginalRequest() = args.Request;
+    *args.OpLogEntry.MutableRenameNodeInDestinationRequest() =
+        MakeRenameNodeInDestinationRequest(
+            args.Request,
+            args.ChildRef->ShardId,
+            args.ChildRef->ShardNodeName,
+            args.NewParentShardId);
 
     db.WriteOpLogEntry(args.OpLogEntry);
 
@@ -631,6 +626,27 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProtoPrivate::TRenameNodeInDestinationRequest
+MakeRenameNodeInDestinationRequest(
+    NProto::TRenameNodeRequest originalRequest,
+    TString sourceNodeShardId,
+    TString sourceNodeShardNodeName,
+    TString newParentShardId)
+{
+    NProtoPrivate::TRenameNodeInDestinationRequest request;
+    request.MutableHeaders()->CopyFrom(originalRequest.GetHeaders());
+    request.SetFileSystemId(std::move(newParentShardId));
+    request.SetNewParentId(originalRequest.GetNewParentId());
+    request.SetNewName(originalRequest.GetNewName());
+    request.SetFlags(originalRequest.GetFlags());
+    request.SetSourceNodeShardId(std::move(sourceNodeShardId));
+    request.SetSourceNodeShardNodeName(std::move(sourceNodeShardNodeName));
+    *request.MutableOriginalRequest() = std::move(originalRequest);
+    return request;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

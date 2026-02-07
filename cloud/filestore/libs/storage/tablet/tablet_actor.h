@@ -92,6 +92,15 @@ void BuildBackendInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProtoPrivate::TRenameNodeInDestinationRequest
+MakeRenameNodeInDestinationRequest(
+    NProto::TRenameNodeRequest originalRequest,
+    TString sourceNodeShardId,
+    TString sourceNodeShardNodeName,
+    TString newParentShardId);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletActor final
     : public NActors::TActor<TIndexTabletActor>
     , public TTabletBase<TIndexTabletActor>
@@ -733,7 +742,17 @@ private:
         NProto::TError originalError,
         TString shardId,
         ui64 nodeId,
-        ui64 opLogEntryId);
+        ui64 opLogEntryId,
+        bool isLocalRename);
+
+    void RegisterGetNodeInfoAndPrepareUnlinkActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
+        TString dstShardId,
+        TString dstShardNodeName,
+        bool isLocalRename);
 
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
@@ -882,6 +901,10 @@ private:
 
     void HandleDoRenameNodeInDestination(
         const TEvIndexTabletPrivate::TEvDoRenameNodeInDestination::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDoRenameNode(
+        const TEvIndexTabletPrivate::TEvDoRenameNode::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleNodeRenamedInDestination(
