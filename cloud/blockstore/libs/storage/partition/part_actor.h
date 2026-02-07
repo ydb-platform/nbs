@@ -12,9 +12,9 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
-#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
@@ -29,6 +29,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/writeblob_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -105,6 +106,85 @@ class TPartitionActor final
 
     static constexpr ui64 BootWakeupEventTag = 1;
 
+    struct TWriteBlobCompanionClient: public IWriteBlobCompanionClient
+    {
+        TPartitionActor& Owner;
+
+        explicit TWriteBlobCompanionClient(TPartitionActor& owner)
+            : Owner(owner)
+        {}
+
+        void UpdateWriteThroughput(
+            const TInstant& now,
+            const NKikimr::NMetrics::TChannel& channel,
+            const NKikimr::NMetrics::TGroupId& group,
+            ui64 value) override
+        {
+            Owner.UpdateWriteThroughput(now, channel, group, value);
+        }
+
+        void UpdateNetworkStat(const TInstant& now, ui64 value) override
+        {
+            Owner.UpdateNetworkStat(now, value);
+        }
+
+        void ScheduleYellowStateUpdate(
+            const NActors::TActorContext& ctx) override
+        {
+            Owner.ScheduleYellowStateUpdate(ctx);
+        }
+
+        void UpdateYellowState(const NActors::TActorContext& ctx) override
+        {
+            Owner.UpdateYellowState(ctx);
+        }
+
+        void ReassignChannelsIfNeeded(
+            const NActors::TActorContext& ctx) override
+        {
+            Owner.ReassignChannelsIfNeeded(ctx);
+        }
+
+        void UpdateChannelPermissions(
+            const NActors::TActorContext& ctx,
+            ui32 channel,
+            EChannelPermissions permissions) override
+        {
+            Owner.UpdateChannelPermissions(ctx, channel, permissions);
+        }
+
+        void RegisterSuccess(TInstant now, ui32 groupId) override
+        {
+            Owner.State->RegisterSuccess(now, groupId);
+        }
+
+        void RegisterDowntime(TInstant now, ui32 groupId) override
+        {
+            Owner.State->RegisterDowntime(now, groupId);
+        }
+
+        void ProcessIOQueue(
+            const NActors::TActorContext& ctx,
+            ui32 channel) override
+        {
+            Owner.ProcessIOQueue(ctx, channel);
+        }
+
+        TPartitionDiskCounters& GetPartCounters() override
+        {
+            return *Owner.PartCounters;
+        }
+
+        // IMortalActor implements
+
+        void Die(const NActors::TActorContext& ctx) override
+        {
+            Owner.Suicide(ctx);
+        }
+    };
+
+    friend TWriteBlobCompanionClient;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -161,6 +241,10 @@ private:
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
+
+    TWriteBlobCompanionClient WriteBlobCompanionClient{*this};
+
+    std::unique_ptr<TWriteBlobCompanion> WriteBlobCompanion;
 
 public:
     TPartitionActor(
@@ -634,10 +718,6 @@ private:
         const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWriteBlobCompleted(
-        const TEvPartitionPrivate::TEvWriteBlobCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandlePatchBlobCompleted(
         const TEvPartitionPrivate::TEvPatchBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -696,10 +776,6 @@ private:
 
     void HandleAddConfirmedBlobsCompleted(
         const TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleLongRunningBlobOperation(
-        const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleDescribeBlocksCompleted(

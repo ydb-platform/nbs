@@ -8,7 +8,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPoisonPillHelper::TPoisonPillHelper(IPoisonPillHelperOwner* owner)
+TPoisonPillHelper::TPoisonPillHelper(IMortalActor* owner)
     : Owner(owner)
 {}
 

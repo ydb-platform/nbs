@@ -9,6 +9,9 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
+#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
+
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -18,6 +21,7 @@ namespace NCloud::NBlockStore::NStorage {
 #define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
     xxx(ReadBlob,                  __VA_ARGS__)                                \
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
+    xxx(WriteBlob,                 __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -230,6 +234,70 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // WriteBlob
+    //
+
+    struct TWriteBlobRequest
+    {
+        NActors::TActorId Proxy;
+
+        const TPartialBlobId BlobId;
+        std::variant<TGuardedSgList, TString> Data;
+        // BlockSize is used to calculate checksums. If it's 0, checksums won't
+        // be calculated.
+        const ui32 BlockSizeForChecksums;
+        const bool Async;
+        const TInstant Deadline;
+
+        template <typename TData>
+        TWriteBlobRequest(
+                TPartialBlobId blobId,
+                TData data,
+                ui32 blockSizeForChecksums,
+                bool async,
+                TInstant deadline = TInstant::Max())
+            : BlobId(blobId)
+            , Data(std::move(data))
+            , BlockSizeForChecksums(blockSizeForChecksums)
+            , Async(async)
+            , Deadline(deadline)
+        {}
+    };
+
+    struct TWriteBlobResponse
+    {
+        TVector<ui32> BlockChecksums;
+        ui64 ExecCycles = 0;
+    };
+
+    //
+    // WriteBlobCompleted
+    //
+
+    struct TWriteBlobCompleted
+    {
+        TPartialBlobId BlobId;
+        NKikimr::TStorageStatusFlags StorageStatusFlags;
+        double ApproximateFreeSpaceShare = 0;
+        TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
+
+        TWriteBlobCompleted() = default;
+
+        TWriteBlobCompleted(
+                const TPartialBlobId& blobId,
+                NKikimr::TStorageStatusFlags storageStatusFlags,
+                double approximateFreeSpaceShare,
+                TDuration requestTime)
+            : BlobId(blobId)
+            , StorageStatusFlags(storageStatusFlags)
+            , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
+            , RequestTime(requestTime)
+        {}
+    };
+
+
+    //
     // Events declaration
     //
 
@@ -247,6 +315,8 @@ struct TEvPartitionCommonPrivate
         EvGetPartCountersRequest,
         EvGetPartCountersResponse,
         EvPartCountersCombined,
+
+        EvWriteBlobCompleted,
 
         EvEnd
     };
@@ -267,6 +337,8 @@ struct TEvPartitionCommonPrivate
         TResponseEvent<TGetPartCountersResponse, EvGetPartCountersResponse>;
     using TEvPartCountersCombined =
         TResponseEvent<TPartCountersCombined, EvPartCountersCombined>;
+    using TEvWriteBlobCompleted =
+        TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

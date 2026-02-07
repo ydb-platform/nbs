@@ -3969,8 +3969,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvWriteBlobResponse: {
-                        auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         auto& e = const_cast<NProto::TError&>(msg->Error);
                         e.SetCode(E_REJECTED);
                         break;
@@ -4005,8 +4005,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         ++pillCount;
                         break;
                     }
-                    case TEvPartitionPrivate::EvWriteBlobResponse: {
-                        auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         auto& e = const_cast<NProto::TError&>(msg->Error);
                         e.SetCode(E_REJECTED);
                         break;
@@ -4555,7 +4555,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool writeBlobSeen = false;
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvWriteBlobRequest: {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
                         writeBlobSeen = true;
                         break;
                     }
@@ -4609,7 +4609,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool writeBlobSeen = false;
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvWriteBlobRequest: {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
                         writeBlobSeen = true;
                         break;
                     }
@@ -5971,7 +5971,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvPartitionPrivate::EvWriteBlobResponse) {
+                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvWriteBlobResponse) {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -9202,7 +9202,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         evPatchObserved = true;
                         break;
                     }
-                    case TEvPartitionPrivate::EvWriteBlobRequest: {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
                         evWriteObserved = true;
                         break;
                     }
@@ -10164,10 +10164,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     break;
                 }
 
-                case TEvPartitionPrivate::EvWriteBlobRequest: {
+                case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
                     if (spoofWriteBlobs) {
                         auto response =
-                            std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                            std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         response->BlockChecksums.resize(1);
                         runtime->Send(new IEventHandle(
                             event->Sender,
@@ -12929,9 +12929,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
         {
             switch (ev->GetTypeRewrite()) {
-                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
                     auto* msg =
-                        ev->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        ev->Get<TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                     auto& e = const_cast<NProto::TError&>(msg->Error);
                     e.SetCode(E_REJECTED);
                     return false;
@@ -12946,7 +12946,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             *runtime,
             TVector<std::pair<ui32, ui32>>{
                 {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
-                 TEvPartitionPrivate::EvWriteBlobResponse}});
+                 TEvPartitionCommonPrivate::EvWriteBlobResponse}});
         runtime->SetEventFilter(orderFilter(rejectWriteBlobFilter));
 
         TPartitionClient partition(*runtime);
@@ -12985,10 +12985,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
                         if (rejectWrite) {
                             auto* msg = ev->Get<
-                                TEvPartitionPrivate::TEvWriteBlobResponse>();
+                                TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                             auto& e = const_cast<NProto::TError&>(msg->Error);
                             e.SetCode(E_REJECTED);
                         }
@@ -13069,9 +13069,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
         {
             switch (ev->GetTypeRewrite()) {
-                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
                     auto* msg =
-                        ev->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        ev->Get<TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                     auto& e = const_cast<NProto::TError&>(msg->Error);
                     e.SetCode(E_REJECTED);
                     return false;
@@ -13090,7 +13090,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             *runtime,
             TVector<std::pair<ui32, ui32>>{
                 {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
-                 TEvPartitionPrivate::EvWriteBlobResponse}});
+                 TEvPartitionCommonPrivate::EvWriteBlobResponse}});
         runtime->SetEventFilter(addWriteBlobOrderFilter(rejectionFilter));
 
         TPartitionClient partition(*runtime);
@@ -13111,7 +13111,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TEventExecutionOrderFilter writeAddBlobOrderFilter(
             *runtime,
             TVector<std::pair<ui32, ui32>>{
-                {TEvPartitionPrivate::EvWriteBlobResponse,
+                {TEvPartitionCommonPrivate::EvWriteBlobResponse,
                  TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse}});
         runtime->SetEventFilter(writeAddBlobOrderFilter(rejectionFilter));
 
@@ -13390,11 +13390,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         }
                         break;
                     }
-                    case TEvPartitionPrivate::EvWriteBlobCompleted: {
-                        using TEvent = TEvPartitionPrivate::TEvWriteBlobCompleted;
+                    case TEvPartitionCommonPrivate::EvWriteBlobCompleted: {
+                        using TEvent =
+                            TEvPartitionCommonPrivate::TEvWriteBlobCompleted;
                         auto* msg = ev->Get<TEvent>();
-                        if (msg->BlobId.Channel() == 4 && saveBlobs)
-                        {
+                        if (msg->BlobId.Channel() == 4 && saveBlobs) {
                             expectedBlobs.emplace(msg->BlobId.CommitId());
                         }
                         break;
@@ -13453,10 +13453,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
         {
             switch (ev->GetTypeRewrite()) {
-                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
                     if (shouldRejectWriteBlob) {
                         auto* msg = ev->Get<
-                            TEvPartitionPrivate::TEvWriteBlobResponse>();
+                            TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         auto& e = const_cast<NProto::TError&>(msg->Error);
                         e.SetCode(E_REJECTED);
                     }

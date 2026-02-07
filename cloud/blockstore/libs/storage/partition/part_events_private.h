@@ -164,7 +164,6 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(xxx, ...)                        \
-    xxx(WriteBlob,                 __VA_ARGS__)                                \
     xxx(AddBlobs,                  __VA_ARGS__)                                \
     xxx(AddFreshBlocks,            __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
@@ -226,65 +225,6 @@ struct TBlockCountRebuildState
 
 struct TEvPartitionPrivate
 {
-    //
-    // WriteBlob
-    //
-
-    struct TWriteBlobRequest
-    {
-        NActors::TActorId Proxy;
-
-        const TPartialBlobId BlobId;
-        std::variant<TGuardedSgList, TString> Data;
-        // BlockSize is used to calculate checksums. If it's 0, checksums won't
-        // be calculated.
-        const ui32 BlockSizeForChecksums;
-        const bool Async;
-        const TInstant Deadline;
-
-        template <typename TData>
-        TWriteBlobRequest(
-                TPartialBlobId blobId,
-                TData data,
-                ui32 blockSizeForChecksums,
-                bool async,
-                TInstant deadline = TInstant::Max())
-            : BlobId(blobId)
-            , Data(std::move(data))
-            , BlockSizeForChecksums(blockSizeForChecksums)
-            , Async(async)
-            , Deadline(deadline)
-        {}
-    };
-
-    struct TWriteBlobResponse
-    {
-        TVector<ui32> BlockChecksums;
-        ui64 ExecCycles = 0;
-    };
-
-    struct TWriteBlobCompleted
-    {
-        TPartialBlobId BlobId;
-        NKikimr::TStorageStatusFlags StorageStatusFlags;
-        double ApproximateFreeSpaceShare = 0;
-        TDuration RequestTime;
-        ui64 BSGroupOperationId = 0;
-
-        TWriteBlobCompleted() = default;
-
-        TWriteBlobCompleted(
-                const TPartialBlobId& blobId,
-                NKikimr::TStorageStatusFlags storageStatusFlags,
-                double approximateFreeSpaceShare,
-                TDuration requestTime)
-            : BlobId(blobId)
-            , StorageStatusFlags(storageStatusFlags)
-            , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
-            , RequestTime(requestTime)
-        {}
-    };
-
     //
     // PatchBlob
     //
@@ -946,7 +886,6 @@ struct TEvPartitionPrivate
         EvSendBackpressureReport,
         EvProcessWriteQueue,
 
-        EvWriteBlobCompleted,
         EvReadBlocksCompleted,
         EvWriteBlocksCompleted,
         EvZeroBlocksCompleted,
@@ -977,7 +916,6 @@ struct TEvPartitionPrivate
     using TEvProcessWriteQueue = TRequestEvent<TEmpty, EvProcessWriteQueue>;
     using TEvLoadCompactionMapChunkRequest = TRequestEvent<TLoadCompactionMapChunkRequest, EvLoadCompactionMapChunkRequest>;
 
-    using TEvWriteBlobCompleted = TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
     using TEvZeroBlocksCompleted = TResponseEvent<TZeroBlocksCompleted, EvZeroBlocksCompleted>;

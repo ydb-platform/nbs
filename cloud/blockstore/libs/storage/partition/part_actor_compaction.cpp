@@ -227,7 +227,7 @@ private:
         const TActorContext& ctx);
 
     void HandleWriteBlobResponse(
-        const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePatchBlobResponse(
@@ -565,7 +565,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 std::move(request));
         } else {
             auto request =
-                std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                     rc.DataBlobId,
                     rc.BlobContent.GetGuardedSgList(),
                     0,           // blockSizeForChecksums
@@ -576,7 +576,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvWriteBlobRequest",
+                    "TEvPartitionCommonPrivate::TEvWriteBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
             request->CallContext->RequestId =
@@ -952,7 +952,7 @@ void TCompactionActor::HandleWriteOrPatchBlobResponse(
 }
 
 void TCompactionActor::HandleWriteBlobResponse(
-    const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     HandleWriteOrPatchBlobResponse(*ev, ctx);
@@ -1002,7 +1002,9 @@ STFUNC(TCompactionActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvPatchBlobResponse, HandlePatchBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
