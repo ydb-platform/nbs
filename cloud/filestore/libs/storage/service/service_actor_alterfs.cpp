@@ -546,16 +546,16 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     }
 
     if (FileStoreConfig.ShardConfigs.size() < ExistingShardIds.size()) {
-        if (!StrictFileSystemSizeEnforcementEnabled || ExplicitShardCount) {
+        if (ExplicitShardCount) {
             ReplyAndDie(
                 ctx,
                 MakeError(E_ARGUMENT, "Cannot decrease number of shards"));
             return;
         } else {
-            // We can't reduce shards count but in strict mode we should resize
-            // all the shards to have the same size as the main filesystem.
-            // So, FileStoreConfig.ShardConfigs should have the same size as
-            // ExistingShardIds.
+            // We can't reduce the shard count, but in strict mode we should
+            // resize all shards so that they have the same size as the main
+            // filesystem. In non-strict mode, we simply keep the number of
+            // shards the same and alter only the main filesystem.
             FileStoreConfig.ShardConfigs.clear();
             FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
                 *StorageConfig,
