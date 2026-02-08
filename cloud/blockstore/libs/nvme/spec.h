@@ -792,6 +792,13 @@ struct nvme_ns_data {
     uint8_t vendor_specific[3712];
 };
 
+struct nvme_ctrlr_list {
+    uint16_t num;
+    uint16_t identifiers[2047];
+};
+
+static_assert(sizeof(nvme_ctrlr_list) == 4096);
+
 enum nvme_secure_erase_setting {
     NVME_FMT_NVM_SES_NO_SECURE_ERASE = 0x0,
     NVME_FMT_NVM_SES_USER_DATA_ERASE = 0x1,
