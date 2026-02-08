@@ -6,7 +6,8 @@ from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.local_nvme_pb2 import TLocalNVMeConfig
-from cloud.blockstore.libs.storage.protos.local_nvme_pb2 import TNVMeDevice, TNVMeDeviceList
+from cloud.blockstore.libs.storage.protos.local_nvme_pb2 import \
+    TNVMeDevice, TNVMeDeviceList, TLocalNVMeServiceState
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
@@ -72,12 +73,19 @@ def create_local_nvme_config():
 
     ensure_path_exists(path)
 
-    path = os.path.join(path, "devices.txt")
+    devicesPath = os.path.join(path, "devices.txt")
 
-    with open(path, 'w') as f:
+    with open(devicesPath, 'w') as f:
         f.write(MessageToString(TNVMeDeviceList(Devices=LOCAL_NVME_DEVICES)))
 
-    return TLocalNVMeConfig(DevicesSourceUri=f"file://{path}")
+    cacheFilePath = os.path.join(path, "cache.txt")
+
+    with open(cacheFilePath, 'w') as f:
+        f.write(MessageToString(TLocalNVMeServiceState(Devices=LOCAL_NVME_DEVICES)))
+
+    return TLocalNVMeConfig(
+        DevicesSourceUri=f"file://{devicesPath}",
+        StateCacheFilePath=cacheFilePath)
 
 
 @pytest.fixture(name='nbs')

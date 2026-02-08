@@ -9,6 +9,7 @@
 #include <util/folder/tempdir.h>
 #include <util/generic/vector.h>
 #include <util/stream/file.h>
+#include <util/stream/format.h>
 #include <util/system/fs.h>
 
 namespace NCloud::NBlockStore {
@@ -16,6 +17,14 @@ namespace NCloud::NBlockStore {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void WriteFileHex(const TFsPath& path, ui32 value)
+{
+    TFile file{path, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly};
+
+    TFileOutput stream{file};
+    stream << Hex(value, HF_ADDX) << '\n';
+}
 
 auto ReadFile(const TFsPath& path) -> TString
 {
@@ -58,8 +67,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             const TFsPath devicePath = GetPCIDevicePath(device);
             NFs::MakeDirectoryRecursive(devicePath);
 
-            TFileOutput(devicePath / "vendor").Write(device.GetVendorId());
-            TFileOutput(devicePath / "device").Write(device.GetDeviceId());
+            WriteFileHex(devicePath / "vendor", device.GetVendorId());
+            WriteFileHex(devicePath / "device", device.GetDeviceId());
 
             const TFsPath groupPath = PrepareIOMMUGroup(device.GetIOMMUGroup());
             NFs::SymLink(groupPath, devicePath / "iommu_group");
@@ -140,7 +149,6 @@ struct TFixture: public NUnitTest::TBaseFixture
         return {list.GetDevices().begin(), list.GetDevices().end()};
     }
 
-    // /sys/kernel/iommu_groups/<group>; /devices/
     auto PrepareIOMMUGroup(ui32 group) -> TFsPath
     {
         TFsPath path = SysFsRoot / "kernel/iommu_groups/" / ToString(group);
@@ -255,6 +263,38 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
 
             auto ctrlName = SysFs->GetNVMeCtrlNameFromPCIAddr(pciAddr);
             UNIT_ASSERT_VALUES_EQUAL("", ctrlName);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldGetNVMeDeviceFromPCIAddr, TFixture)
+    {
+        for (const auto& expected: Devices) {
+            const auto& pciAddr = expected.GetPCIAddress();
+            const auto device = SysFs->GetNVMeDeviceFromPCIAddr(pciAddr);
+
+            if (SysFs->GetDriverForPCIDevice(pciAddr) == "nvme") {
+                // Device is bound to the nvme driver, so we can retrieve full
+                // device info including serial number and model
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.DebugString(),
+                    device.DebugString());
+                continue;
+            }
+
+            // Device is not bound to the nvme driver, so only PCI-level
+            // info is available (serial number and model will be empty)
+            UNIT_ASSERT_VALUES_EQUAL("", device.GetSerialNumber());
+            UNIT_ASSERT_VALUES_EQUAL("", device.GetModel());
+            UNIT_ASSERT_VALUES_EQUAL(pciAddr, device.GetPCIAddress());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.GetIOMMUGroup(),
+                device.GetIOMMUGroup());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.GetVendorId(),
+                device.GetVendorId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.GetDeviceId(),
+                device.GetDeviceId());
         }
     }
 }

@@ -2,6 +2,8 @@
 
 #include <util/folder/path.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
+#include <util/string/strip.h>
 #include <util/system/fs.h>
 
 namespace NCloud::NBlockStore {
@@ -15,6 +17,16 @@ void WriteFile(const TFsPath& path, TStringBuf data)
     TFile file{path, EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly};
 
     TFileOutput(file).Write(data);
+}
+
+TString ReadFile(const TFsPath& path)
+{
+    return Strip(TFileInput{path}.ReadAll());
+}
+
+ui32 ReadHexFromFile(const TFsPath& path)
+{
+    return std::stoul(ReadFile(path), nullptr, 16);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,6 +90,33 @@ public:
         }
 
         return {};
+    }
+
+    auto GetNVMeDeviceFromPCIAddr(const TString& pciAddr)
+        -> NProto::TNVMeDevice final
+    {
+        const TFsPath path = SysFsRoot / "bus/pci/devices" / pciAddr;
+
+        NProto::TNVMeDevice device;
+        device.SetPCIAddress(pciAddr);
+        device.SetVendorId(ReadHexFromFile(path / "vendor"));
+        device.SetDeviceId(ReadHexFromFile(path / "device"));
+
+        const auto name = GetNVMeCtrlNameFromPCIAddr(pciAddr);
+        if (!name.empty()) {
+            const auto nvme = path / "nvme" / name;
+
+            device.SetSerialNumber(ReadFile(nvme / "serial"));
+            device.SetModel(ReadFile(nvme / "model"));
+        }
+
+        const TFsPath iommuPath = path / "iommu_group";
+        if (iommuPath.Exists()) {
+            const auto value = iommuPath.ReadLink().Basename();
+            device.SetIOMMUGroup(std::stoul(value));
+        }
+
+        return device;
     }
 };
 

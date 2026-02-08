@@ -49,6 +49,15 @@ TString Join(TStringBuf delim, const R& range)
     return ss.Str();
 }
 
+// // xx:xx.x -> 0000:xx:xx.x
+TString NormalizePCIAddr(const TString& pciAddr)
+{
+    if (std::ranges::count(pciAddr, ':') == 1) {
+        return "0000:" + pciAddr;
+    }
+    return pciAddr;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalNVMeService final
@@ -254,8 +263,40 @@ auto TLocalNVMeService::FetchDevices() -> NProto::TError
         "Fetched NVMe devices (" << devices.size()
                                  << "): " << Join(", ", devices));
 
-    for (const auto& device: devices) {
-        Devices[device.GetSerialNumber()] = device;
+    // We expect Device provider to provide serial numbers and PCI addresses
+
+    for (const auto& src: devices) {
+        if (src.GetPCIAddress().empty()) {
+            STORAGE_WARN("Ignore device with empty PCI address: " << src);
+            continue;
+        }
+
+        if (src.GetSerialNumber().empty()) {
+            STORAGE_WARN("Ignore device with empty serial number: " << src);
+            continue;
+        }
+
+        const auto pciAddr = NormalizePCIAddr(src.GetPCIAddress());
+
+        auto [device, deviceError] =
+            SafeExecute<TResultOrError<NProto::TNVMeDevice>>(
+                [&] { return SysFs->GetNVMeDeviceFromPCIAddr(pciAddr); });
+
+        if (HasError(deviceError)) {
+            STORAGE_ERROR(
+                "Failed to retrieve information about "
+                << src << ": " << FormatError(deviceError));
+            continue;
+        }
+
+        if (device.GetSerialNumber() != src.GetSerialNumber()) {
+            STORAGE_ERROR(
+                "Serial numbers don't match: " << src << " vs " << device
+                                               << ". Ignore device");
+            continue;
+        }
+
+        Devices[device.GetSerialNumber()] = std::move(device);
     }
 
     UpdateStateCache();
@@ -358,11 +399,12 @@ auto TLocalNVMeService::BindDeviceToDriver(
         "Bind " << device.GetSerialNumber().Quote() << " to " << driverName
                 << " driver");
 
-    try {
-        SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
-    } catch (...) {
-        return MakeError(E_FAIL, CurrentExceptionMessage());
-    }
+    return SafeExecute<NProto::TError>(
+        [&]
+        {
+            SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
+            return MakeError(S_OK);
+        });
 
     return {};
 }
