@@ -145,6 +145,59 @@ TResultOrError<TMmapRegionMetadata> TServerState::GetMmapRegion(ui64 mmapId)
     return it->second.ToMetadata();
 }
 
+NProto::TError TServerState::LockAddressRanges(
+    ui64 mmapId,
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
+{
+    TLightWriteGuard guard(StateLock);
+    auto it = MmapRegions.find(mmapId);
+    if (it == MmapRegions.end()) {
+        return MakeError(
+            E_TRANSPORT_ERROR,
+            Sprintf("Mmap region not found: %lu", mmapId));
+    }
+
+    NKikimr::TIntervalSet<ui64> addressRanges;
+
+    for (const auto& iovec: iovecs) {
+        addressRanges.Add(iovec.GetBase(), iovec.GetBase() + iovec.GetLength());
+    }
+
+    if (addressRanges & it->second.GetLockedAddressRanges()) {
+        return MakeError(
+            E_TRANSPORT_ERROR,
+            Sprintf(
+                "Address ranges from the mmap region %lu are already in use",
+                mmapId));
+    }
+
+    it->second.GetLockedAddressRanges().Add(addressRanges);
+    return {};
+}
+
+NProto::TError TServerState::ReleaseAddressRanges(
+    ui64 mmapId,
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
+{
+    TLightWriteGuard guard(StateLock);
+    auto it = MmapRegions.find(mmapId);
+    if (it == MmapRegions.end()) {
+        return MakeError(
+            E_TRANSPORT_ERROR,
+            Sprintf("Mmap region not found: %lu", mmapId));
+    }
+
+    NKikimr::TIntervalSet<ui64> addressRanges;
+
+    for (const auto& iovec: iovecs) {
+        it->second.GetLockedAddressRanges().Subtract(
+            iovec.GetBase(),
+            iovec.GetBase() + iovec.GetLength());
+    }
+
+    return {};
+}
+
 NProto::TError TServerState::PingMmapRegion(ui64 mmapId)
 {
     TLightWriteGuard guard(StateLock);

@@ -278,6 +278,67 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
             getResult.GetResult().LatestActivityTimestamp,
             oldTimestamp);
     }
+
+    Y_UNIT_TEST(ShouldRejectLockingIntersectingRegions)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath());
+
+        const size_t fileSize = 4096;
+        TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
+
+        auto result = state.CreateMmapRegion(relativePath, fileSize);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto mmapInfo = result.ExtractResult();
+
+        google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+        auto iovec = iovecs.Add();
+        iovec->SetBase(0);
+        iovec->SetLength(100);
+
+        iovec = iovecs.Add();
+        iovec->SetBase(4000);
+        iovec->SetLength(100);
+
+        result = state.LockAddressRanges(mmapInfo.Id, iovecs);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        result = state.LockAddressRanges(mmapInfo.Id, iovecs);
+        UNIT_ASSERT(HasError(result));
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(50);
+            iovec->SetLength(1000);
+
+            result = state.LockAddressRanges(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(50);
+            iovec->SetLength(10);
+
+            result = state.LockAddressRanges(mmapInfo.Id, iovecs);
+            UNIT_ASSERT(HasError(result));
+        }
+
+        state.ReleaseAddressRanges(mmapInfo.Id, iovecs);
+
+        {
+            google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+            auto iovec = iovecs.Add();
+            iovec->SetBase(50);
+            iovec->SetLength(10);
+
+            result = state.LockAddressRanges(mmapInfo.Id, iovecs);
+            UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NServer
