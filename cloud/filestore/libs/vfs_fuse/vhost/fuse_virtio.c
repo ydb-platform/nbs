@@ -34,13 +34,14 @@ struct fuse_virtio_dev
     struct vhd_fsdev_info fsdev;
 
     struct vhd_vdev* vdev;
+    struct fuse_virtio_queue* queues;
     struct vhd_request_queue** rqs;
     int rq_count;
 };
 
 struct fuse_virtio_queue
 {
-    // not used
+    int queue_index;
 };
 
 struct fuse_virtio_request
@@ -237,7 +238,7 @@ static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
     return ptr - buf;
 }
 
-static int process_request(struct fuse_session* se, struct vhd_io* io)
+static int process_request(struct fuse_session* se, struct vhd_io* io, int queue_index)
 {
     struct vhd_fs_io* fsio = vhd_get_fs_io(io);
     VHD_ASSERT(fsio->sglist.nbuffers > 0);
@@ -247,6 +248,7 @@ static int process_request(struct fuse_session* se, struct vhd_io* io)
         sizeof(struct iovec) * (fsio->sglist.nbuffers - 1));
 
     req->io = io;
+    req->ch.virtio_queue = &((struct fuse_virtio_dev*)se->virtio_dev)->queues[queue_index];
 
     split_request_buffers(req, &fsio->sglist);
     VHD_ASSERT(req->in.count + req->out.count == fsio->sglist.nbuffers);
@@ -353,6 +355,7 @@ static void unregister_complete_and_free_dev(void* ctx)
     for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
         vhd_release_request_queue(dev->rqs[queue_index]);
     }
+    vhd_free(dev->queues);
     vhd_free(dev->rqs);
     vhd_free(dev);
 }
@@ -439,9 +442,15 @@ int virtio_session_mount(struct fuse_session* se)
         se->num_backend_queues);
 
     dev->rq_count = se->num_backend_queues;
+    dev->queues = vhd_zalloc(sizeof(dev->queues[0]) * dev->rq_count);
     dev->rqs = vhd_zalloc(sizeof(dev->rqs[0]) * dev->rq_count);
+    if (!dev->queues || !dev->rqs) {
+        ret = -ENOMEM;
+        goto clean;
+    }
 
     for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
+        dev->queues[queue_index].queue_index = queue_index;
         dev->rqs[queue_index] = vhd_create_request_queue();
         if (!dev->rqs[queue_index]) {
             ret = -ENOMEM;
@@ -468,6 +477,9 @@ clean:
     while (queue_index) {
         vhd_release_request_queue(dev->rqs[--queue_index]);
     }
+    if (dev->queues) {
+        vhd_free(dev->queues);
+    }
     if (dev->rqs) {
         vhd_free(dev->rqs);
     }
@@ -486,6 +498,7 @@ void virtio_session_close(struct fuse_session* se)
     for (queue_index = 0; queue_index < dev->rq_count; queue_index++) {
         vhd_release_request_queue(dev->rqs[queue_index]);
     }
+    vhd_free(dev->queues);
     vhd_free(dev->rqs);
     vhd_free(dev);
 
@@ -529,7 +542,7 @@ int virtio_session_loop(struct fuse_session* se, int queue_index)
 
         struct vhd_request req;
         while (vhd_dequeue_request(dev->rqs[queue_index], &req)) {
-            res = process_request(se, req.io);
+            res = process_request(se, req.io, queue_index);
             if (res < 0) {
                 VHD_LOG_WARN("request processing failure %d", -res);
             }
@@ -599,4 +612,13 @@ int virtio_out_buf(struct fuse_session *se, struct fuse_chan *ch,
     *iov = req->out.iov;
     *count = req->out.count;
     return 0;
+}
+
+int virtio_queue_index(struct fuse_chan* ch)
+{
+    if (!ch || !ch->virtio_queue) {
+        return -1;
+    }
+
+    return ch->virtio_queue->queue_index;
 }
