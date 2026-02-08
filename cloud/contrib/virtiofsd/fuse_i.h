@@ -11,14 +11,23 @@
 
 #define FUSE_USE_VERSION 31
 #include "fuse_lowlevel.h"
+#include <stdatomic.h>
 
 struct fuse_virtio_dev;
 struct fuse_virtio_queue;
+
+enum fuse_req_list_kind {
+    FUSE_REQ_LIST_NONE = 0,
+    FUSE_REQ_LIST_QUEUE = 1,
+    FUSE_REQ_LIST_INTERRUPTS = 2,
+};
 
 struct fuse_req {
     struct fuse_session *se;
     uint64_t unique;
     int ctr;
+    int req_queue_index;
+    enum fuse_req_list_kind list_kind;
     pthread_mutex_t lock;
     struct fuse_ctx ctx;
     struct fuse_chan *ch;
@@ -57,9 +66,11 @@ struct fuse_session {
     void *userdata;
     uid_t owner;
     struct fuse_conn_info conn;
-    struct fuse_req list;
+    struct fuse_req *req_queues;
+    pthread_mutex_t *req_queue_locks;
     struct fuse_req interrupts;
-    pthread_mutex_t lock;
+    pthread_mutex_t interrupts_lock;
+    atomic_bool has_pending_interrupts;
     pthread_rwlock_t init_rwlock;
     int got_destroy;
     int broken_splice_nonblock;

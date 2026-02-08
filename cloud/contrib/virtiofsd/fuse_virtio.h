@@ -33,5 +33,6 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
 
 int virtio_out_buf(struct fuse_session *se, struct fuse_chan *ch,
                    struct iovec **iov, int *count);
+int virtio_queue_index(struct fuse_chan *ch);
 
 #endif
