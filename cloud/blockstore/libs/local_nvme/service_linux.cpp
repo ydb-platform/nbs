@@ -109,6 +109,8 @@ private:
     auto CreateStateSnapshot() -> NProto::TLocalNVMeServiceState;
     auto SanitizeNVMeDevice(TCont* c, const NProto::TNVMeDevice& device)
         -> NProto::TError;
+    auto ResetToSingleNamespace(const NProto::TNVMeDevice& device)
+        -> NProto::TError;
     auto GetNVMeCtrlPath(const NProto::TNVMeDevice& device) -> TFsPath;
     auto BindDeviceToDriver(
         const NProto::TNVMeDevice& device,
@@ -416,15 +418,11 @@ try {
 
     const TFsPath ctrlPath = GetNVMeCtrlPath(device);
 
-    if (auto error = NVMeManager->Sanitize(ctrlPath); HasError(error)) {
-        return error;
-    }
+    CheckError(NVMeManager->Sanitize(ctrlPath));
 
     for (;;) {
         auto [r, error] = NVMeManager->GetSanitizeStatus(ctrlPath);
-        if (HasError(error)) {
-            return error;
-        }
+        CheckError(error);
 
         STORAGE_DEBUG(
             "Sanitize status for " << device.GetSerialNumber() << ": "
@@ -447,6 +445,22 @@ try {
     return MakeError(E_FAIL, CurrentExceptionMessage());
 }
 
+auto TLocalNVMeService::ResetToSingleNamespace(
+    const NProto::TNVMeDevice& device) -> NProto::TError
+{
+    STORAGE_INFO(
+        "Reset NVMe " << device.GetSerialNumber().Quote()
+                      << " to single namespace");
+
+    return NoexceptInvoke(
+        [&]
+        {
+            const TFsPath ctrlPath = GetNVMeCtrlPath(device);
+
+            return NVMeManager->ResetToSingleNamespace(ctrlPath);
+        });
+}
+
 auto TLocalNVMeService::ReleaseDevice(TCont* c, const TString& serialNumber)
     -> NProto::TError
 {
@@ -464,6 +478,10 @@ auto TLocalNVMeService::ReleaseDevice(TCont* c, const TString& serialNumber)
     }
 
     if (auto error = SanitizeNVMeDevice(c, *device); HasError(error)) {
+        return error;
+    }
+
+    if (auto error = ResetToSingleNamespace(*device); HasError(error)) {
         return error;
     }
 
