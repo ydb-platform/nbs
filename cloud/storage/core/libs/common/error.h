@@ -512,6 +512,33 @@ NProto::TError MakeTabletIsDeadError(
     ui32 code,
     const TSourceLocation& location);
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+using TNoexceptInvokeResult = std::conditional_t<
+    std::is_void_v<T> || std::is_convertible_v<T, NProto::TError>,
+    NProto::TError,
+    TResultOrError<T>>;
+
+template <std::invocable T, typename R = std::invoke_result_t<T>>
+auto NoexceptInvoke(T&& block) noexcept -> TNoexceptInvokeResult<R>
+{
+    try {
+        if constexpr (std::is_void_v<R>) {
+            std::invoke(std::forward<T>(block));
+            return {};
+        } else {
+            return std::invoke(std::forward<T>(block));
+        }
+    } catch (const TServiceError& e) {
+        return MakeError(e.GetCode(), TString(e.GetMessage()));
+    } catch (const TIoSystemError& e) {
+        return MakeError(MAKE_SYSTEM_ERROR(e.Status()), e.what());
+    } catch (...) {
+        return MakeError(E_FAIL, CurrentExceptionMessage());
+    }
+}
+
 }   // namespace NCloud
 
 ////////////////////////////////////////////////////////////////////////////////

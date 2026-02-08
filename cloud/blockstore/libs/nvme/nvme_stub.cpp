@@ -75,6 +75,13 @@ public:
 
         return TSanitizeStatus{};
     }
+
+    NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
+    }
 };
 
 }   // namespace
