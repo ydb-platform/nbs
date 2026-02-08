@@ -306,8 +306,10 @@ static ui32 CalcCompletionQueueShardCount(const TVFSConfig& vfsConfig)
 
     const ui32 queues = CalcFrontendVhostQueueCount(vfsConfig);
 
-    // Use ~2x queues and round to power of two for cheap shard indexing,
-    // then clamp to keep shard count in a reasonable range.
+    // Use ~2x queues, then round shard count to a power of two.
+    // Power-of-two is required because shard indexing uses a bitmask
+    // (`x & (shards-1)`), which only distributes correctly when shards is 2^n.
+    // Clamp to keep shard count in a reasonable range.
     const ui32 shards = FastClp2(queues * 2);
     return std::clamp(shards, MinShards, MaxShards);
 }
