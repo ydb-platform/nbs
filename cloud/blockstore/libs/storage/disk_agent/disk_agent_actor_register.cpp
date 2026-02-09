@@ -125,10 +125,12 @@ void TRegisterActor::HandleRegisterAgentResponse(
         msg->Record.GetDevicesToDisableIO().cend());
     Error = msg->GetError();
 
-    if (!AttachDetacPathsEnabled ||
-        (!record.GetControlPlaneRequestNumber().GetDiskRegistryGeneration() &&
-         !record.GetControlPlaneRequestNumber().GetRequestNumber() &&
-         record.GetPathsToAttach().empty()))
+    const bool drAttachDetachPathsEnabled =
+        !record.GetControlPlaneRequestNumber().GetDiskRegistryGeneration() &&
+        !record.GetControlPlaneRequestNumber().GetRequestNumber() &&
+        record.GetPathsToAttach().empty();
+    if (!AttachDetacPathsEnabled || drAttachDetachPathsEnabled ||
+        HasError(Error))
     {
         ReplyAndDie(ctx);
         return;
@@ -149,11 +151,7 @@ void TRegisterActor::DetachPathsIfNeeded(const TActorContext& ctx)
 
     THashSet<TString> pathsNeedToBeDetached;
     for (const auto& d: Config.GetDevices()) {
-        if (BinarySearch(
-                PathsToAttach.begin(),
-                PathsToAttach.end(),
-                d.GetDeviceName()))
-        {
+        if (std::ranges::binary_search(PathsToAttach, d.GetDeviceName())) {
             continue;
         }
 
