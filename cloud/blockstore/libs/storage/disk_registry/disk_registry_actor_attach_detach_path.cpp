@@ -283,9 +283,8 @@ void TDiskRegistryActor::TryToDetachPaths(
         agent->GetNodeId(),
         std::move(paths),
         Config->GetAttachDetachPathRequestTimeout(),
-        TRequestContext{
-            .RequestInfo = std::move(requestInfo),
-            .ActionType = actionType});
+        std::move(requestInfo),
+        actionType);
     AgentsWithDetachRequestsInProgress[agentId] = actorId;
 }
 
