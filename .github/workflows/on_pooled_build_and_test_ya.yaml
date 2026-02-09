@@ -119,26 +119,30 @@ jobs:
       run: |
         chown -R root:root $GITHUB_WORKSPACE
     - name: Checkout PR
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       if: github.event.pull_request.head.sha != ''
       with:
         submodules: true
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+        clean: true
     - name: Rebase PR
       if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
       run: |
+        [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
         git config user.email "robot-nbs@nebius.com"
         git config user.name "Robot NBS"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
+        git submodule update --init --recursive
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: true
         set-safe-directory: '*'
+        clean: true
 
     - name: set up nebius cli
       id: cli
@@ -295,26 +299,30 @@ jobs:
         run: |
           chown -R root:root $GITHUB_WORKSPACE
       - name: Checkout PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: true
+          clean: true
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: Rebase PR
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
+          [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
+          git submodule update --init --recursive
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: true
           set-safe-directory: '*'
+          clean: true
 
       - name: set up nebius cli
         id: cli
