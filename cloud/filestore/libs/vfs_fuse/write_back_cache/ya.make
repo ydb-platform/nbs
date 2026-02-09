@@ -9,6 +9,7 @@ SRCS(
     sequence_id_generator.cpp
     utils.cpp
     write_back_cache.cpp
+    write_back_cache_state.cpp
     write_back_cache_stats.cpp
     write_data_request_builder.cpp
     write_data_request_manager.cpp
