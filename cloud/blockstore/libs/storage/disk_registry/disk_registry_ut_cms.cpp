@@ -1510,8 +1510,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto response =
             DiskRegistry->BackupDiskRegistryState(NProto::BDRSS_LOCAL_DB);
-        const auto pathAttachStates =
-            response->Record.GetBackup().GetAgents(0).GetPathAttachStates();
+        const auto pathAttachStates = response->Record.GetLocalDBBackup()
+                                          .GetAgents(0)
+                                          .GetPathAttachStates();
         auto it = pathAttachStates.find("dev-1");
         UNIT_ASSERT(it != pathAttachStates.end());
         UNIT_ASSERT_VALUES_EQUAL(
