@@ -89,6 +89,13 @@ struct TTestNvmeManager
 
         return NNvme::TSanitizeStatus{};
     }
+
+    NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

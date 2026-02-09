@@ -37,6 +37,8 @@ struct INvmeManager
     virtual TResultOrError<bool> IsSsd(const TString& path) = 0;
 
     virtual TResultOrError<TString> GetSerialNumber(const TString& path) = 0;
+
+    virtual NProto::TError ResetToSingleNamespace(const TString& ctrlPath) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

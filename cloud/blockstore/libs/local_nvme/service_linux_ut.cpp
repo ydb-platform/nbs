@@ -122,6 +122,13 @@ public:
         return TString();
     }
 
+    NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
+    }
+
 public:
     void WaitSanitizeRequested()
     {
@@ -905,6 +912,11 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         auto future = Service->ReleaseNVMeDevice(Devices[0].GetSerialNumber());
         NVMeManager->WaitSanitizeRequested();
+        NVMeManager->UpdateSanitizeStatus(
+            ctrlPath,
+            MakeError(E_TRY_AGAIN),
+            10.0);
+        Sleep(200ms);
         NVMeManager->UpdateSanitizeStatus(
             ctrlPath,
             MakeError(E_FAIL, "fail"),
