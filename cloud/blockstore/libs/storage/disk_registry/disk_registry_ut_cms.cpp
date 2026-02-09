@@ -1508,7 +1508,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         RegisterAgents(*Runtime, 1);
 
-        auto response = DiskRegistry->BackupDiskRegistryState(true);
+        auto response = DiskRegistry->BackupDiskRegistryState(
+            EBackupDiskRegistryStateSource.BDRSS_MEMORY);
         const auto pathAttachStates =
             response->Record.GetBackup().GetAgents(0).GetPathAttachStates();
         auto it = pathAttachStates.find("dev-1");
