@@ -43,7 +43,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             TStringBuilder() << "LoadFreshBlobs failed, error: "
                              << FormatError(msg->GetError()),
             {{"disk", PartitionConfig.GetDiskId()}});
-        Client.Die(ctx);
+        Client.Poison(ctx);
         return;
     }
 
@@ -69,7 +69,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
                                  << FormatError(error),
                 {{"disk", PartitionConfig.GetDiskId()},
                  {"commit_id", blob.CommitId}});
-            Client.Die(ctx);
+            Client.Poison(ctx);
             return;
         }
 
@@ -92,4 +92,4 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
     Client.FreshBlobsLoaded(ctx);
 }
 
-}  // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage
