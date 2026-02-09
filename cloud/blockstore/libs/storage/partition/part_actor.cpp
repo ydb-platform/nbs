@@ -399,6 +399,10 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
     for (const auto& actor: Actors.GetActors()) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
+
+    if (FreshBlocksCompanion) {
+        FreshBlocksCompanion->KillActors(ctx);
+    }
 }
 
 void TPartitionActor::AddTransaction(

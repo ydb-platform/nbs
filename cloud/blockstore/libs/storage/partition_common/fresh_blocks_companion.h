@@ -55,6 +55,8 @@ public:
         TPartitionFreshBlocksState& freshBlocksState,
         TLogTitle logTitle);
 
+    void KillActors(const NActors::TActorContext& ctx);
+
     void LoadFreshBlobs(
         const NActors::TActorContext& ctx,
         ui64 persistedTrimFreshLogToCommitId);

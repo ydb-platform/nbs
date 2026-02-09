@@ -28,4 +28,11 @@ TFreshBlocksCompanion::TFreshBlocksCompanion(
     , LogTitle(std::move(logTitle))
 {}
 
+void TFreshBlocksCompanion::KillActors(const NActors::TActorContext& ctx)
+{
+    for (const auto& actor: Actors.GetActors()) {
+        NCloud::Send<NActors::TEvents::TEvPoisonPill>(ctx, actor);
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
