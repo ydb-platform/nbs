@@ -13,6 +13,7 @@ namespace {
 struct TActiveInterval
 {
     ui64 End = 0;
+    // Item index in the input vector
     size_t Index = 0;
 
     bool operator<(const TActiveInterval& other) const
@@ -23,57 +24,70 @@ struct TActiveInterval
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBuilder
+class TDisjointIntervalBuilder
 {
 private:
     // This field is used as a result of the algorithm
-    TVector<TIntervalPart> Parts;
-    TVector<TActiveInterval> Heap;
+    TVector<TIntervalPart> DisjointIntervalParts;
+
+    // Intervals containing the most recently used offset.
+    // Represented as a max-heap (intervals with the larger Index come first).
+    TVector<TActiveInterval> ActiveIntervals;
 
 public:
-    explicit TBuilder(size_t capacity)
-        : Parts(Reserve(capacity * 2))
-        , Heap(Reserve(capacity))
+    explicit TDisjointIntervalBuilder(size_t capacity)
+        : DisjointIntervalParts(Reserve(capacity * 2))
+        , ActiveIntervals(Reserve(capacity))
     {}
 
     void AddInterval(ui64 begin, ui64 end, size_t index)
     {
-        ProcessHeap(begin);
+        ProcessActiveIntervalsUpToOffset(begin);
 
-        Heap.push_back({end, index});
-        std::push_heap(Heap.begin(), Heap.end());
+        ActiveIntervals.push_back({end, index});
+        std::push_heap(ActiveIntervals.begin(), ActiveIntervals.end());
 
-        if (Parts.empty() || Parts.back().End <= begin) {
-            Parts.push_back({begin, end, index});
-        } else if (Parts.back().Index <= index) {
-            if (Parts.back().Begin < begin) {
-                Parts.back().End = begin;
-                Parts.push_back({begin, end, index});
+        if (DisjointIntervalParts.empty() ||
+            DisjointIntervalParts.back().End <= begin)
+        {
+            // There are no active intervals - just start a new interval
+            DisjointIntervalParts.push_back({begin, end, index});
+        } else if (DisjointIntervalParts.back().Index <= index) {
+            // The newly added interval overlaps with the current top interval
+            // and has higher Index - we need to cut the current interval
+            if (DisjointIntervalParts.back().Begin < begin) {
+                DisjointIntervalParts.back().End = begin;
+                DisjointIntervalParts.push_back({begin, end, index});
             } else {
-                Parts.back() = {begin, end, index};
+                DisjointIntervalParts.back() = {begin, end, index};
             }
         }
     }
 
     TVector<TIntervalPart> Build()
     {
-        ProcessHeap(Max<ui64>());
-        return std::move(Parts);
+        ProcessActiveIntervalsUpToOffset(Max<ui64>());
+        return std::move(DisjointIntervalParts);
     }
 
 private:
-    void ProcessHeap(ui64 offset)
+    // Processed active intervals and builds disjoint intervals considering that
+    // there will be no interval with starting point before the specified offset
+    void ProcessActiveIntervalsUpToOffset(ui64 offset)
     {
-        while (!Heap.empty() && Heap.front().End <= offset) {
-            Y_ABORT_UNLESS(!Parts.empty());
+        while (!ActiveIntervals.empty() &&
+               ActiveIntervals.front().End <= offset)
+        {
+            Y_ABORT_UNLESS(!DisjointIntervalParts.empty());
 
-            std::pop_heap(Heap.begin(), Heap.end());
-            Heap.pop_back();
+            std::pop_heap(ActiveIntervals.begin(), ActiveIntervals.end());
+            ActiveIntervals.pop_back();
 
-            if (!Heap.empty()) {
-                const auto top = Heap.front();
-                if (top.End > Parts.back().End) {
-                    Parts.push_back({Parts.back().End, top.End, top.Index});
+            if (!ActiveIntervals.empty()) {
+                const auto top = ActiveIntervals.front();
+                if (top.End > DisjointIntervalParts.back().End) {
+                    DisjointIntervalParts.push_back(
+                        {DisjointIntervalParts.back().End, top.End, top.Index});
                 }
             }
         }
@@ -103,7 +117,7 @@ TVector<TIntervalPart> BuildDisjointIntervalParts(
         [](const TIntervalPart& lhs, const TIntervalPart& rhs)
         { return lhs.Begin < rhs.Begin; });
 
-    TBuilder builder(intervals.size());
+    TDisjointIntervalBuilder builder(intervals.size());
 
     for (const auto& interval: input) {
         builder.AddInterval(interval.Begin, interval.End, interval.Index);

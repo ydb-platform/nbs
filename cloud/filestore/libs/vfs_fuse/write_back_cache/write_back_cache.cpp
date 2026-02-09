@@ -1146,24 +1146,26 @@ private:
 
         size_t entryCount = 0;
 
-        auto writeDataBatch = RequestBuilder->BuildWriteDataRequests(
-            nodeState->NodeId,
-            [&](const auto& visitor)
-            {
-                auto guard = Guard(Lock);
+        auto batchBuilder = RequestBuilder->CreateWriteDataRequestBatchBuilder(
+            nodeState->NodeId);
 
-                for (auto* entry: nodeState->CachedEntries) {
-                    if (!visitor(
-                            entry->GetHandle(),
-                            entry->GetOffset(),
-                            entry->GetBuffer()))
-                    {
-                        break;
-                    }
-                    entryCount++;
-                    entry->StartFlush(this);
+        {
+            auto guard = Guard(Lock);
+
+            for (auto* entry: nodeState->CachedEntries) {
+                if (!batchBuilder->AddRequest(
+                        entry->GetHandle(),
+                        entry->GetOffset(),
+                        entry->GetBuffer()))
+                {
+                    break;
                 }
-            });
+                entryCount++;
+                entry->StartFlush(this);
+            }
+        }
+
+        auto writeDataBatch = batchBuilder->Build();
 
         // Flush cannot be scheduled when CachedEntries is empty
         Y_ABORT_UNLESS(writeDataBatch.AffectedRequestCount > 0);

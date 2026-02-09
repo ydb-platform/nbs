@@ -10,43 +10,39 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TData
+struct TWriteDataRequestPart
 {
+    // Offset in the node
     ui64 Offset = 0;
+    // Data to be written at the specified offset
     TStringBuf Data;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TRequestData
-{
-    ui64 Handle = 0;
-    TVector<TData> Parts;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Reads a sequence of contiguous write data entry parts as a single buffer.
 // Provides a method to read data across multiple entry parts efficiently.
-class TContiguousWriteDataEntryPartsReader
+class TContiguousWriteDataRequestPartsReader
 {
 public:
-    using TIterator = TVector<TData>::const_iterator;
+    using TWriteDataRequestPartIterator =
+        TVector<TWriteDataRequestPart>::const_iterator;
 
 private:
-    TIterator Current;
+    TWriteDataRequestPartIterator Current;
     ui64 CurrentReadOffset = 0;
     ui64 RemainingSize = 0;
 
 public:
-    TContiguousWriteDataEntryPartsReader(TIterator begin, TIterator end)
+    TContiguousWriteDataRequestPartsReader(
+        TWriteDataRequestPartIterator begin,
+        TWriteDataRequestPartIterator end)
         : Current(begin)
     {
-        if (begin < end) {
-            Y_DEBUG_ABORT_UNLESS(Validate(begin, end));
-            const auto* prev = std::prev(end);
-            RemainingSize = prev->Offset + prev->Data.size() - begin->Offset;
-        }
+        Y_ABORT_UNLESS(begin < end);
+        Y_DEBUG_ABORT_UNLESS(Validate(begin, end));
+        const auto* prev = std::prev(end);
+        RemainingSize = prev->Offset + prev->Data.size() - begin->Offset;
     }
 
     ui64 GetOffset() const
@@ -105,7 +101,9 @@ public:
 
     // Validates a range of data entry parts to ensure they form a contiguous
     // sequence. Additionally checks that each part has non-zero length.
-    static bool Validate(TIterator begin, TIterator end)
+    static bool Validate(
+        TWriteDataRequestPartIterator begin,
+        TWriteDataRequestPartIterator end)
     {
         if (begin == end) {
             return true;
@@ -131,7 +129,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<TData> BuildDisjointIntervalParts(const TVector<TData>& data)
+TVector<TWriteDataRequestPart> BuildDisjointRequestDataParts(
+    const TVector<TWriteDataRequestPart>& data)
 {
     TVector<TInterval> intervals(Reserve(data.size()));
 
@@ -141,7 +140,7 @@ TVector<TData> BuildDisjointIntervalParts(const TVector<TData>& data)
 
     auto intervalParts = BuildDisjointIntervalParts(intervals);
 
-    TVector<TData> dataParts;
+    TVector<TWriteDataRequestPart> dataParts;
     for (const auto& part: intervalParts) {
         const auto& src = data[part.Index];
         dataParts.push_back(
@@ -156,149 +155,128 @@ TVector<TData> BuildDisjointIntervalParts(const TVector<TData>& data)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteDataRequestBuilder: public IWriteDataRequestBuilder
+class TWriteDataRequestBatchBuilder: public IWriteDataRequestBatchBuilder
 {
 private:
+    const ui64 NodeId;
     const TWriteDataRequestBuilderConfig Config;
 
+    NKikimr::TIntervalSet<ui64, 16> IntervalSet;
+    ui64 EstimatedRequestCount = 0;
+    ui64 EstimatedByteCount = 0;
+
+    ui64 Handle = 0;
+    TVector<TWriteDataRequestPart> InputRequests;
+
 public:
-    explicit TWriteDataRequestBuilder(
-        const TWriteDataRequestBuilderConfig& config)
-        : Config(config)
+    TWriteDataRequestBatchBuilder(
+        ui64 nodeId,
+        TWriteDataRequestBuilderConfig config)
+        : NodeId(nodeId)
+        , Config(std::move(config))
+    {}
+
+    bool AddRequest(ui64 handle, ui64 offset, TStringBuf data) override
     {
-        Y_ABORT_UNLESS(Config.MaxWriteRequestSize > 0);
-        Y_ABORT_UNLESS(Config.MaxWriteRequestsCount > 0);
-        Y_ABORT_UNLESS(Config.MaxSumWriteRequestsSize > 0);
+        Y_ABORT_UNLESS(!data.empty(), "Empty requests are not allowed");
+
+        if (InputRequests.empty()) {
+            Handle = handle;
+        }
+
+        IntervalSet.Add(offset, offset + data.size());
+
+        // Value byteCount has to be calculated using O(N) algorithm
+        // because TIntervalSet does not track the sum of lengths of intervals.
+        // Same for requestCount.
+        //
+        // An euristic is used here to reduce complexity:
+        // - Pessimistically estimate byteCount and requestCount values using
+        //   an assumption that the intervals do not intersect nor touch
+        // - Calculate the actual values only when the limits are exceeded
+        //
+        // Notes:
+        // - maxWriteRequestsCount is expected to be small (default: 32)
+        // - maxSumWriteRequestsSize (default: 16MiB) is expected to be times
+        //   larger than maxWriteRequestSize (default: 1MiB) and the size of
+        //   TWriteDataEntry buffer (maximal: 1MiB)
+        EstimatedRequestCount +=
+            ((data.size() - 1) / Config.MaxWriteRequestSize) + 1;
+        EstimatedByteCount += data.size();
+
+        if (EstimatedRequestCount > Config.MaxWriteRequestsCount ||
+            EstimatedByteCount > Config.MaxSumWriteRequestsSize)
+        {
+            // Calculate the actual values
+            ui64 requestCount = 0;
+            ui64 byteCount = 0;
+
+            for (const auto& interval: IntervalSet) {
+                auto size = interval.second - interval.first;
+                requestCount += ((size - 1) / Config.MaxWriteRequestSize) + 1;
+                byteCount += size;
+            }
+
+            // Still exceed the limits - don't accept more entries
+            if ((requestCount > Config.MaxWriteRequestsCount ||
+                 byteCount > Config.MaxSumWriteRequestsSize) &&
+                !InputRequests.empty())
+            {
+                return false;
+            }
+
+            EstimatedRequestCount = requestCount;
+            EstimatedByteCount = byteCount;
+        }
+
+        InputRequests.push_back({offset, data});
+        return true;
     }
 
-    TWriteDataBatch BuildWriteDataRequests(
-        ui64 nodeId,
-        const TDataSupplier& supplier) const override
+    TWriteDataRequestBatch Build() override
     {
-        auto cachedData = TakeCachedDataWithLimits(supplier);
-
-        if (cachedData.Parts.empty()) {
+        if (InputRequests.empty()) {
             return {};
         }
 
-        auto cachedDataParts = BuildDisjointIntervalParts(cachedData.Parts);
+        auto dataParts = BuildDisjointRequestDataParts(InputRequests);
 
-        auto requests = DoBuildWriteDataRequests(
-            nodeId,
-            cachedData.Handle,
-            cachedDataParts);
-
-        return {
-            .Requests = std::move(requests),
-            .AffectedRequestCount = cachedData.Parts.size()};
-    }
-
-private:
-    TRequestData TakeCachedDataWithLimits(
-        const IWriteDataRequestBuilder::TDataSupplier& supplier) const
-    {
-        NKikimr::TIntervalSet<ui64, 16> intervalSet;
-        ui64 estimatedRequestCount = 0;
-        ui64 estimatedByteCount = 0;
-
-        TRequestData res;
-
-        auto visitor = [&](ui64 handle, ui64 offset, const TStringBuf& data)
-        {
-            if (res.Parts.empty()) {
-                res.Handle = handle;
-            }
-
-            Y_ABORT_UNLESS(!data.Empty(), "Empty requests are not allowed");
-
-            intervalSet.Add(offset, offset + data.size());
-
-            // Value byteCount has to be calculated using O(N) algorithm
-            // because TIntervalSet does not track the sum of lengths of
-            // intervals. Same for requestCount.
-            //
-            // A heuristic is used here to reduce complexity:
-            // - Pessimistically estimate byteCount and requestCount values
-            //   using an assumption that the intervals do not intersect/touch
-            // - Calculate the actual values only when the limits are exceeded
-            //
-            // Notes:
-            // - maxWriteRequestsCount is expected to be small (default: 32)
-            // - maxSumWriteRequestsSize (default: 16MiB) is expected to be
-            //   times larger than maxWriteRequestSize (default: 1MiB) and the
-            //   size of TWriteDataEntry buffer (maximal: 1MiB)
-            estimatedByteCount += data.size();
-            estimatedRequestCount +=
-                ((data.size() - 1) / Config.MaxWriteRequestSize) + 1;
-
-            if (estimatedRequestCount > Config.MaxWriteRequestsCount ||
-                estimatedByteCount > Config.MaxSumWriteRequestsSize)
-            {
-                // Calculate the actual values
-                ui64 requestCount = 0;
-                ui64 byteCount = 0;
-
-                for (const auto& interval: intervalSet) {
-                    auto size = interval.second - interval.first;
-                    requestCount +=
-                        ((size - 1) / Config.MaxWriteRequestSize) + 1;
-                    byteCount += size;
-                }
-
-                // Still exceed the limits - don't accept more entries
-                if (requestCount > Config.MaxWriteRequestsCount ||
-                    byteCount > Config.MaxSumWriteRequestsSize)
-                {
-                    // At least one request should be processed
-                    if (!res.Parts.empty()) {
-                        return false;
-                    }
-                }
-
-                estimatedRequestCount = requestCount;
-                estimatedByteCount = byteCount;
-            }
-
-            res.Parts.push_back({offset, data});
-            return true;
-        };
-
-        supplier(visitor);
+        TWriteDataRequestBatch res;
+        res.Requests = BuildRequestsFromParts(dataParts);
+        res.AffectedRequestCount = InputRequests.size();
 
         return res;
     }
 
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>>
-    DoBuildWriteDataRequests(
-        ui64 nodeId,
-        ui64 handle,
-        const TVector<TData>& parts) const
+private:
+    TVector<std::shared_ptr<NProto::TWriteDataRequest>> BuildRequestsFromParts(
+        const TVector<TWriteDataRequestPart>& dataParts)
     {
         TVector<std::shared_ptr<NProto::TWriteDataRequest>> res;
 
         size_t partIndex = 0;
-        while (partIndex < parts.size()) {
+        while (partIndex < dataParts.size()) {
             auto rangeEndIndex = partIndex;
 
-            while (++rangeEndIndex < parts.size()) {
-                const auto& prevPart = parts[rangeEndIndex - 1];
+            while (++rangeEndIndex < dataParts.size()) {
+                const auto& prevPart = dataParts[rangeEndIndex - 1];
                 const auto end = prevPart.Offset + prevPart.Data.size();
-                Y_DEBUG_ABORT_UNLESS(end <= parts[rangeEndIndex].Offset);
+                Y_DEBUG_ABORT_UNLESS(end <= dataParts[rangeEndIndex].Offset);
 
-                if (end != parts[rangeEndIndex].Offset) {
+                if (end != dataParts[rangeEndIndex].Offset) {
                     break;
                 }
             }
 
-            TContiguousWriteDataEntryPartsReader reader(
-                parts.begin() + partIndex,
-                parts.begin() + rangeEndIndex);
+            TContiguousWriteDataRequestPartsReader reader(
+                dataParts.begin() + partIndex,
+                dataParts.begin() + rangeEndIndex);
 
             while (reader.GetRemainingSize() > 0) {
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(Config.FileSystemId);
-                request->SetNodeId(nodeId);
-                request->SetHandle(handle);
+                request->SetNodeId(NodeId);
+                request->SetHandle(Handle);
                 request->SetOffset(reader.GetOffset());
 
                 if (Config.ZeroCopyWriteEnabled) {
@@ -325,6 +303,26 @@ private:
         }
 
         return res;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteDataRequestBuilder: public IWriteDataRequestBuilder
+{
+private:
+    TWriteDataRequestBuilderConfig Config;
+
+public:
+    explicit TWriteDataRequestBuilder(
+        const TWriteDataRequestBuilderConfig& config)
+        : Config(config)
+    {}
+
+    std::unique_ptr<IWriteDataRequestBatchBuilder>
+    CreateWriteDataRequestBatchBuilder(ui64 nodeId) override
+    {
+        return std::make_unique<TWriteDataRequestBatchBuilder>(nodeId, Config);
     }
 };
 

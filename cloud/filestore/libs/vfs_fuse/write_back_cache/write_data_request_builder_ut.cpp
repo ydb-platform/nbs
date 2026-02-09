@@ -94,20 +94,24 @@ struct TBootstrap
             .ZeroCopyWriteEnabled = false,
         });
 
-        auto res = builder->BuildWriteDataRequests(
-            0,
-            [&](const auto& visitor)
-            {
-                for (size_t i = 0; i < entries.Entries.size(); i++) {
-                    const auto& e = entries.Entries[i];
-                    const auto& buffer = entries.Buffers[i];
+        auto batchBuilder =
+            builder->CreateWriteDataRequestBatchBuilder(/* nodeId = */ 0);
 
-                    if (!visitor(0, e.Offset, buffer)) {
-                        break;
-                    }
-                }
-            });
+        size_t requestCount = 0;
 
+        for (size_t i = 0; i < entries.Entries.size(); i++) {
+            const auto& e = entries.Entries[i];
+            const auto& buffer = entries.Buffers[i];
+
+            if (!batchBuilder->AddRequest(/* handle = */ 0, e.Offset, buffer)) {
+                break;
+            }
+            requestCount++;
+        }
+
+        auto res = batchBuilder->Build();
+
+        Y_ABORT_UNLESS(res.AffectedRequestCount == requestCount);
         return res.AffectedRequestCount;
     }
 
