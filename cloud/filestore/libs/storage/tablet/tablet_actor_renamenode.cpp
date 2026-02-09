@@ -668,36 +668,43 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
-    if (args.SecondPassRequired) {
-        if (args.NewChildRef) {
-            TABLET_VERIFY(args.ChildRef);
-            RegisterGetNodeInfoAndPrepareUnlinkActor(
-                ctx,
-                args.RequestInfo,
-                MakeRenameNodeInDestinationRequest(
-                    args.Request,
-                    args.ChildRef->ShardId,
-                    args.ChildRef->ShardNodeName,
-                    args.NewChildRef->ShardId),
-                std::move(args.ProfileLogRequest),
-                std::move(args.NewChildRef->ShardId),
-                std::move(args.NewChildRef->ShardNodeName),
-                true /* isLocalRename */);
-            return;
+    bool refsValidated = false;
+    if (args.SecondPassRequired || args.IsSecondPass) {
+        if (!args.NewChildRef) {
+            auto message = ReportChildRefIsNull(TStringBuilder()
+                << "RenameNode_Dst: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        } else if (!args.ChildRef) {
+            auto message = ReportChildRefIsNull(TStringBuilder()
+                << "RenameNode_Src: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        } else {
+            refsValidated = true;
         }
+    }
 
-        auto message = ReportChildRefIsNull(TStringBuilder()
-            << "RenameNode: " << args.Request.ShortDebugString());
-        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+    if (refsValidated && args.SecondPassRequired) {
+        RegisterGetNodeInfoAndPrepareUnlinkActor(
+            ctx,
+            args.RequestInfo,
+            MakeRenameNodeInDestinationRequest(
+                args.Request,
+                args.ChildRef->ShardId,
+                args.ChildRef->ShardNodeName,
+                args.NewChildRef->ShardId),
+            std::move(args.ProfileLogRequest),
+            std::move(args.NewChildRef->ShardId),
+            std::move(args.NewChildRef->ShardNodeName),
+            true /* isLocalRename */);
+        return;
     }
 
     if (HasError(args.Error)
+            && refsValidated
             && args.IsSecondPass
             && args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE)
     {
         if (args.AbortUnlinkOpLogEntryId) {
-            TABLET_VERIFY_C(args.ChildRef, args.Request.Utf8DebugString());
-            TABLET_VERIFY(args.NewChildRef);
             RegisterAbortUnlinkDirectoryInShardActor(
                 ctx,
                 args.RequestInfo,

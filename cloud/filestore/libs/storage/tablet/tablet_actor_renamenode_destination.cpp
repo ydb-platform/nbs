@@ -844,12 +844,6 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
     auto* msg = ev->Get();
 
     UnlockNodeRef({msg->Request.GetNewParentId(), msg->Request.GetNewName()});
-    if (msg->IsLocalRename) {
-        const auto& renameNodeRequest = msg->Request.GetOriginalRequest();
-        UnlockNodeRef({
-            renameNodeRequest.GetNodeId(),
-            renameNodeRequest.GetName()});
-    }
 
     Y_DEFER {
         ExecuteTx<TDeleteOpLogEntry>(
@@ -876,6 +870,23 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
     }
 
     if (msg->IsLocalRename) {
+        //
+        // Source NodeRef unlocking should be done only if we have a RequestInfo
+        // It means that we're currently processing a RenameNode request which
+        // in turn means that the affected source NodeRef was locked at the
+        // start of this request.
+        //
+        // An AbortUnlinkDirectoryNodeInShard request which is replayed via OpLog
+        // doesn't need to take a source NodeRef lock - it just cleans up the
+        // PreparedForUnlink flag for the directory pointed to by the
+        // destination NodeRef that could've been set before a crash.
+        //
+
+        const auto& renameNodeRequest = msg->Request.GetOriginalRequest();
+        UnlockNodeRef({
+            renameNodeRequest.GetNodeId(),
+            renameNodeRequest.GetName()});
+
         Metrics.RenameNode.Update(
             1,
             0,
