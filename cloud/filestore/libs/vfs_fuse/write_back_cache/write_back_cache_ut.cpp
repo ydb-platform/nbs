@@ -38,6 +38,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 CacheCapacityBytes = 1024 * 1024 + 1024;
+constexpr ui32 TestDataByteCount = 4096;
 
 constexpr ui32 DefaultMaxWriteRequestSize = 1_MB;
 constexpr ui32 DefaultMaxWriteRequestsCount = 64;
@@ -202,6 +203,8 @@ struct TBootstrap
 
     std::atomic<int> SessionWriteDataHandlerCalled;
 
+    TString TestData;
+
     TBootstrap(const TBootstrapArgs& args = {})
         : CacheAutomaticFlushPeriod(args.AutomaticFlushPeriod)
         , MaxWriteRequestSize(args.MaxWriteRequestSize)
@@ -298,10 +301,8 @@ struct TBootstrap
                 request->GetOffset() + request->GetBuffer().length(),
                 unflushed.length());
 
-            auto from = TStringBuf(unflushed).SubString(
-                request->GetOffset(),
-                request->GetBuffer().length());
-            UNIT_ASSERT_VALUES_EQUAL(from, request->GetBuffer());
+            auto from = TStringBuf(request->GetBuffer())
+                            .Skip(request->GetBufferOffset());
 
             auto& to = FlushedData[nodeId];
             // Append zeroes if needed
@@ -322,6 +323,10 @@ struct TBootstrap
         RecreateCache();
 
         CallContext = MakeIntrusive<TCallContext>("FileSystemId");
+
+        for (ui32 i = 0; i < TestDataByteCount; i++) {
+            TestData.append(static_cast<char>('a' + (i % 26)));
+        }
     }
 
     void MoveIovecsToBuffer(NProto::TWriteDataRequest& request) const
@@ -393,6 +398,13 @@ struct TBootstrap
     {
         auto handle = nodeId + NodeToHandleOffset;
         return ReadFromCache(nodeId, handle, offset, length);
+    }
+
+    TString ReadDataFromCacheSync(ui64 nodeId, ui64 offset, ui64 length)
+    {
+        auto handle = nodeId + NodeToHandleOffset;
+        auto resp = ReadFromCache(nodeId, handle, offset, length).GetValue();
+        return resp.GetBuffer().substr(resp.GetBufferOffset());
     }
 
     void ValidateCache(ui64 nodeId, ui64 offset, size_t length)
@@ -816,6 +828,13 @@ public:
             Triggers.front().SetValue();
             Triggers.pop_front();
         }
+    }
+
+    void ProceedOne()
+    {
+        Y_ABORT_UNLESS(!Triggers.empty());
+        Triggers.front().SetValue();
+        Triggers.pop_front();
     }
 };
 
@@ -1281,6 +1300,106 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             {.WithCacheRecreation = true, .ZeroCopyWriteEnabled = true});
     }
 
+    Y_UNIT_TEST(FullyRandomized)
+    {
+        const ui32 NodeCount = 4;
+        const ui32 RecreationProbability = 10;
+        const ui32 FlushProbability = 10;
+        const ui32 WriteDataFailureProbability = 20;
+        const ui32 Iterations = 10000;
+        const ui32 MaxOffset = 1000;
+        const ui32 MaxLength = 100;
+
+        TBootstrap b({.UseTestTimerAndScheduler = true});
+
+        b.Session->WriteDataHandler =
+            [prevHandler = std::move(
+                 b.Session->WriteDataHandler)](auto context, auto request)
+        {
+            if (RandomNumber(100u) < WriteDataFailureProbability) {
+                return MakeFuture<NProto::TWriteDataResponse>(
+                    TErrorResponse(E_REJECTED, "Simulated WriteData failure"));
+            } else {
+                return prevHandler(std::move(context), std::move(request));
+            }
+        };
+
+        ui32 flushSucceededCount = 0;
+        ui32 flushFailedCount = 0;
+
+        for (ui32 i = 0; i < Iterations; i++)
+        {
+            {
+                const ui32 nodeId = RandomNumber(NodeCount);
+                const ui64 offset = RandomNumber(MaxOffset);
+                const ui64 length = RandomNumber(MaxLength) + 1;
+
+                auto buffer =
+                    NUnitTest::RandomString(length, RandomNumber<ui32>());
+
+                auto future = b.WriteToCache(nodeId, offset, std::move(buffer));
+                while (!future.HasValue()) {
+                    UNIT_ASSERT(!future.HasException());
+                    b.RunAllScheduledTasks();
+                }
+            }
+
+            if (RandomNumber(100u) < FlushProbability) {
+                const ui32 nodeId = RandomNumber(NodeCount);
+                auto future = b.Cache.FlushNodeData(nodeId);
+                while (!future.HasValue()) {
+                    UNIT_ASSERT(!future.HasException());
+                    b.RunAllScheduledTasks();
+                }
+                if (HasError(future.GetValue())) {
+                    flushFailedCount++;
+                } else {
+                    flushSucceededCount++;
+                }
+            }
+
+            {
+                const ui32 nodeId = RandomNumber(NodeCount);
+                const ui64 offset = RandomNumber(MaxOffset);
+                const ui64 length = RandomNumber(MaxLength) + 1;
+
+                auto future = b.ReadFromCache(nodeId, offset, length);
+                while (!future.HasValue()) {
+                    UNIT_ASSERT(!future.HasException());
+                    b.RunAllScheduledTasks();
+                }
+
+                TString expectedResult = "";
+                {
+                    std::unique_lock lock(b.ExpectedDataMutex);
+                    auto* ptr = b.ExpectedData.FindPtr(nodeId);
+                    if (ptr != nullptr) {
+                        auto buf = TStringBuf(*ptr);
+                        buf = buf.Skip(Min(offset, buf.size()));
+                        buf = buf.Trunc(Min(length, buf.size()));
+                        expectedResult = buf;
+                    }
+                }
+
+                const auto& resp = future.GetValue();
+                UNIT_ASSERT_STRINGS_EQUAL_C(
+                    expectedResult,
+                    resp.GetBuffer().substr(resp.GetBufferOffset()),
+                    TStringBuilder()
+                        << " while reading @" << nodeId << " at offset "
+                        << offset << " and length " << length);
+            }
+
+            if (RandomNumber(100u) < RecreationProbability) {
+                b.RecreateCache();
+            }
+        }
+
+        // Ensure that randomized test works correctly
+        UNIT_ASSERT_LT(0, flushSucceededCount);
+        UNIT_ASSERT_LT(0, flushFailedCount);
+    }
+
     Y_UNIT_TEST(ShouldWriteAndFlushConcurrently)
     {
         TBootstrap b;
@@ -1434,11 +1553,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         int pendingWriteRequests = 0;
         ui64 nextOffset = 0;
 
-        auto promise = NewPromise<NProto::TWriteDataResponse>();
+        auto promise = NewPromise();
 
-        b.Session->WriteDataHandler = [&] (auto, auto) {
+        b.Session->WriteDataHandler = [&](auto, auto)
+        {
             writeRequestsActual++;
-            return promise.GetFuture();
+            auto result = NewPromise<NProto::TWriteDataResponse>();
+            promise.GetFuture().Subscribe([result](auto) mutable
+                                          { result.SetValue({}); });
+            return result.GetFuture();
         };
 
         while (pendingWriteRequests < 32) {
@@ -1450,7 +1573,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             }
         }
 
-        promise.SetValue({});
+        promise.SetValue();
 
         b.Cache.FlushNodeData(1);
 
@@ -1482,7 +1605,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Flush starts synchronously in FlushData call and makes an attempt
         // to write data but fails
         UNIT_ASSERT_GE(writeAttempts, 0);
-        UNIT_ASSERT(!flushFuture.HasValue());
+        UNIT_ASSERT(flushFuture.HasValue());
+        UNIT_ASSERT(HasError(flushFuture.GetValue()));
 
         // WriteData request from Flush succeeds after WriteAttemptsThreshold
         // attempts.
@@ -1490,7 +1614,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             b.RunAllScheduledTasks();
         }
 
-        UNIT_ASSERT(flushFuture.HasValue());
         UNIT_ASSERT_EQUAL(writeAttempts, WriteAttemptsThreshold);
     }
 
@@ -1665,7 +1788,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto now = b.Timer->Now();
         auto flushFuture1 = b.Cache.FlushNodeData(1);
 
-        UNIT_ASSERT(!flushFuture1.HasValue());
+        // Flush request is failed but flush attempts will be retried
+        UNIT_ASSERT(flushFuture1.HasValue());
+        UNIT_ASSERT(HasError(flushFuture1.GetValue()));
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
@@ -1673,10 +1798,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.RunAllScheduledTasks();
+
+        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
+        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
+        UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
+        UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
+
         auto flushFuture2 = b.Cache.FlushNodeData(2);
 
-        UNIT_ASSERT(!flushFuture1.HasValue());
         UNIT_ASSERT(flushFuture2.HasValue());
+        UNIT_ASSERT(!HasError(flushFuture2.GetValue()));
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
@@ -2171,6 +2302,232 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.ReleaseNodeStateRef(ref6);
         UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
         b.Cache.ReleaseNodeStateRef(ref7);
+    }
+
+    Y_UNIT_TEST(FlushShouldFailIfWriteDataFails)
+    {
+        TBootstrap b({.UseTestTimerAndScheduler = true});
+
+        TDeque<uint> errors;
+
+        b.Session->WriteDataHandler = [&](auto, auto) {
+            UNIT_ASSERT(!errors.empty());
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(errors.front());
+            errors.pop_front();
+            return MakeFuture(std::move(response));
+        };
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.WriteToCacheSync(1, 10, "def");
+
+        errors.push_back(S_OK);
+        errors.push_back(E_TIMEOUT);
+
+        auto flushFuture1 = b.Cache.FlushNodeData(1);
+        UNIT_ASSERT(flushFuture1.HasValue());
+        UNIT_ASSERT(HasError(flushFuture1.GetValue()));
+
+        errors.push_back(E_TIMEOUT);
+
+        auto flushFuture2 = b.Cache.FlushNodeData(1);
+        UNIT_ASSERT(!flushFuture2.HasValue());
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT(flushFuture2.HasValue());
+        UNIT_ASSERT(HasError(flushFuture2.GetValue()));
+
+        errors.push_back(S_OK);
+
+        auto flushFuture3 = b.Cache.FlushNodeData(1);
+        UNIT_ASSERT(!flushFuture3.HasValue());
+        b.WriteToCacheSync(1, 20, "xyz");
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT(flushFuture3.HasValue());
+        UNIT_ASSERT(!HasError(flushFuture3.GetValue()));
+
+        errors.push_back(S_OK);
+
+        auto flushFuture4 = b.Cache.FlushNodeData(1);
+        UNIT_ASSERT(flushFuture4.HasValue());
+        UNIT_ASSERT(!HasError(flushFuture4.GetValue()));
+
+        UNIT_ASSERT(errors.empty());
+    }
+
+    Y_UNIT_TEST(ReleaseHandleShouldTriggerFlush)
+    {
+        TBootstrap b;
+
+        TDeque<uint> errors;
+
+        b.Session->WriteDataHandler = [&](auto, auto) {
+            UNIT_ASSERT(!errors.empty());
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(errors.front());
+            errors.pop_front();
+            return MakeFuture(std::move(response));
+        };
+
+        b.WriteToCacheSync(1, 1, 0, "abc");
+
+        errors.push_back(S_OK);
+
+        // No WriteData requests associated with handle - no flush
+        auto releaseHandleFuture1 = b.Cache.ReleaseHandle(1, 3);
+        UNIT_ASSERT(releaseHandleFuture1.HasValue());
+        UNIT_ASSERT(!HasError(releaseHandleFuture1.GetValue()));
+        UNIT_ASSERT(!errors.empty());
+
+        // One WriteData request associated with handle - flush
+        auto releaseHandleFuture2 = b.Cache.ReleaseHandle(1, 1);
+        UNIT_ASSERT(releaseHandleFuture2.HasValue());
+        UNIT_ASSERT(!HasError(releaseHandleFuture2.GetValue()));
+        UNIT_ASSERT(errors.empty());
+    }
+
+    Y_UNIT_TEST(ShouldFlushOnlyAffectedRequestsOnReleaseHandle)
+    {
+        TBootstrap b({.MaxWriteRequestsCount = 1});
+
+        UNIT_ASSERT(b.WriteToCache(1, 1, 0, "A", {}).HasValue());
+        UNIT_ASSERT(b.WriteToCache(1, 2, 2, "B", {}).HasValue());
+        UNIT_ASSERT(b.WriteToCache(1, 3, 4, "C", {}).HasValue());
+        UNIT_ASSERT(b.WriteToCache(1, 4, 6, "D", {}).HasValue());
+
+        UNIT_ASSERT(b.Cache.ReleaseHandle(1, 2).HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(3, b.FlushedData[1].size());
+
+        UNIT_ASSERT(b.Cache.ReleaseHandle(1, 1).HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(3, b.FlushedData[1].size());
+
+        UNIT_ASSERT(b.Cache.ReleaseHandle(1, 4).HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(7, b.FlushedData[1].size());
+    }
+
+    Y_UNIT_TEST(ShouldDropCacheWhenFlushFailsOnReleaseHandle)
+    {
+        TBootstrap b({.UseTestTimerAndScheduler = true});
+
+        b.Session->WriteDataHandler = [&](auto, auto) {
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(E_TIMEOUT);
+            return MakeFuture(std::move(response));
+        };
+
+        UNIT_ASSERT(b.WriteToCache(1, 1, 0, b.TestData, {}).HasValue());
+
+        TFuture<NProto::TWriteDataResponse> pendingWriteDataRequest1;
+
+        while (true) {
+            pendingWriteDataRequest1 = b.WriteToCache(1, 2, 0, b.TestData, {});
+            if (!pendingWriteDataRequest1.HasValue()) {
+                break;
+            }
+        }
+
+        auto pendingWriteDataRequest2 = b.WriteToCache(1, 3, 0, b.TestData, {});
+        UNIT_ASSERT(!pendingWriteDataRequest2.HasValue());
+
+        // We have 3 pending requests - WriteData request will be failed only
+        // after the last ReleaseHandle is called
+
+        auto releaseHandle1 = b.Cache.ReleaseHandle(1, 1);
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT(!releaseHandle1.HasValue());
+        UNIT_ASSERT(!pendingWriteDataRequest1.HasValue());
+        UNIT_ASSERT(!pendingWriteDataRequest2.HasValue());
+
+        auto releaseHandle2 = b.Cache.ReleaseHandle(1, 2);
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT(!releaseHandle2.HasValue());
+        UNIT_ASSERT(!pendingWriteDataRequest1.HasValue());
+        UNIT_ASSERT(!pendingWriteDataRequest2.HasValue());
+
+        auto releaseHandle3 = b.Cache.ReleaseHandle(1, 3);
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT(releaseHandle1.HasValue());
+        UNIT_ASSERT(releaseHandle2.HasValue());
+        UNIT_ASSERT(releaseHandle3.HasValue());
+        UNIT_ASSERT(pendingWriteDataRequest1.HasValue());
+        UNIT_ASSERT(HasError(pendingWriteDataRequest1.GetValue()));
+        UNIT_ASSERT(pendingWriteDataRequest2.HasValue());
+        UNIT_ASSERT(HasError(pendingWriteDataRequest2.GetValue()));
+
+        // Cache is dropped
+        {
+            std::unique_lock lock(b.ExpectedDataMutex);
+            b.ExpectedData[1] = {};
+        }
+
+        UNIT_ASSERT_STRINGS_EQUAL("", b.ReadDataFromCacheSync(1, 0, 3));
+    }
+
+    Y_UNIT_TEST(FlushAllShouldFailWhenFlushFailsForAllNodes)
+    {
+        TBootstrap b({.UseTestTimerAndScheduler = true});
+
+        TDeque<ui32> responses =
+            {E_TIMEOUT, E_TIMEOUT, E_TIMEOUT, E_TIMEOUT, S_OK, E_TIMEOUT, S_OK};
+
+        b.Session->WriteDataHandler = [&](auto, auto) {
+            UNIT_ASSERT(!responses.empty());
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(responses.front());
+            responses.pop_front();
+            return MakeFuture(std::move(response));
+        };
+
+        // Prevent write requests initiated by Flush from completing immediately
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        UNIT_ASSERT(b.WriteToCache(1, 1, 0, b.TestData, {}).HasValue());
+        UNIT_ASSERT(b.WriteToCache(2, 2, 0, b.TestData, {}).HasValue());
+
+        auto future = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(!future.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(HasError(future.GetValue()));
+
+        // Flush is expected to retry in background
+        auto future2 = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future2.HasValue());
+        b.RunAllScheduledTasks();
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(!future2.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future2.HasValue());
+        UNIT_ASSERT(HasError(future2.GetValue()));
+
+        // Keep node 1 state
+        b.Cache.AcquireNodeStateRef();
+        auto future3 = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future3.HasValue());
+        b.RunAllScheduledTasks();
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(!future3.HasValue());
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future3.HasValue());
+        UNIT_ASSERT(HasError(future3.GetValue()));
+
+        // Complete flush
+        auto future4 = b.Cache.FlushAllData();
+        UNIT_ASSERT(!future4.HasValue());
+        b.RunAllScheduledTasks();
+
+        writeRequests.ProceedOne();
+        UNIT_ASSERT(future4.HasValue());
+        UNIT_ASSERT(!HasError(future4.GetValue()));
+
+        UNIT_ASSERT(responses.empty());
     }
 }
 

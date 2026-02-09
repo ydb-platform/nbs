@@ -3127,6 +3127,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
     {
+        // Test scenario:
+        // 1. Create a session with WriteBackCache enabled.
+        // 2. Make 3 WriteData requests to 3 different nodes and ensure that
+        //    the data is cached.
+        // 3. Restart the session with WriteBackCache disabled.
+        // 4. Try to write more data to the nodes and ensure the correct logic.
+        //   - nodeId: explicit flush, then write
+        //   - nodeId + 1: write (flush should be done in background)
+        //   - nodeId + 2: write (flush should be failed in background)
         const TString sessionId = CreateGuidAsString();
 
         std::atomic<int> writeDataCalled = 0;
@@ -3159,11 +3168,22 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 return MakeFuture(result);
             };
 
-            bootstrap.Service->WriteDataHandler = [&counter](auto, const auto&)
+            bootstrap.Service->WriteDataHandler =
+                [&counter](
+                    auto,
+                    const std::shared_ptr<NProto::TWriteDataRequest>& request)
             {
                 counter++;
                 NProto::TWriteDataResponse result;
+                if (request->GetNodeId() == nodeId + 2) {
+                    *result.MutableError() = MakeError(E_IO, "Simulated error");
+                }
                 return MakeFuture(result);
+            };
+
+            bootstrap.Service->DestroyHandleHandler = [](auto, auto)
+            {
+                return MakeFuture<NProto::TDestroyHandleResponse>({});
             };
 
             return bootstrap;
@@ -3178,14 +3198,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Stop();
             };
 
-            auto reqWrite = std::make_shared<TWriteRequest>(
-                nodeId,
-                handleId,
-                0,
-                CreateBuffer(4096, 'a'));
-            reqWrite->In->Body.flags |= O_WRONLY;
-            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
-            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            for (int i = 0; i < 3; i++) {
+                auto reqWrite = std::make_shared<TWriteRequest>(
+                    nodeId + i,
+                    handleId + i,
+                    0,
+                    "a");
+                reqWrite->In->Body.flags |= O_WRONLY;
+                auto write =
+                    bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+                UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            }
 
             auto suspend = bootstrap.Loop->SuspendAsync();
             UNIT_ASSERT(suspend.Wait(WaitTimeout));
@@ -3214,6 +3237,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled2.load());
 
+            // 1. Flush then write
             auto flush =
                 bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
             UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
@@ -3221,18 +3245,42 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             // cache should be flushed
             UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
 
-            auto reqWrite = std::make_shared<TWriteRequest>(
-                nodeId,
-                handleId,
-                0,
-                CreateBuffer(4096, 'a'));
-            reqWrite->In->Body.flags |= O_WRONLY;
-            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
-            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            auto writeRequest1 =
+                std::make_shared<TWriteRequest>(nodeId, handleId, 0, "b");
+            writeRequest1->In->Body.flags |= O_WRONLY;
+            auto writeResponse1 =
+                bootstrap.Fuse->SendRequest<TWriteRequest>(writeRequest1);
 
-            // Cache is drained and disabled - new requests go directly
-            // to the session
+            UNIT_ASSERT(writeResponse1.Wait(WaitTimeout));
+            UNIT_ASSERT(writeResponse1.HasValue());
             UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled2.load());
+
+            // 2. Write (with implicit flush)
+            auto writeRequest2 = std::make_shared<TWriteRequest>(
+                nodeId + 1,
+                handleId + 1,
+                0,
+                "b");
+            writeRequest2->In->Body.flags |= O_WRONLY;
+            auto writeResponse2 =
+                bootstrap.Fuse->SendRequest<TWriteRequest>(writeRequest2);
+
+            UNIT_ASSERT(writeResponse2.Wait(WaitTimeout));
+            UNIT_ASSERT(writeResponse2.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(4, writeDataCalled2.load());
+
+            // 3. Write (with failed flush)
+            auto writeRequest3 = std::make_shared<TWriteRequest>(
+                nodeId + 2,
+                handleId + 2,
+                0,
+                "b");
+            writeRequest3->In->Body.flags |= O_WRONLY;
+            auto writeResponse3 =
+                bootstrap.Fuse->SendRequest<TWriteRequest>(writeRequest3);
+            UNIT_ASSERT(writeResponse3.Wait(WaitTimeout));
+            UNIT_ASSERT(writeResponse3.HasException());
+            UNIT_ASSERT_VALUES_EQUAL(5, writeDataCalled2.load());
 
             auto suspend = bootstrap.Loop->SuspendAsync();
             UNIT_ASSERT(suspend.Wait(WaitTimeout));
@@ -3240,7 +3288,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         {
             TFileRingBuffer ringBuffer(path, WriteBackCacheCapacity);
-            UNIT_ASSERT(ringBuffer.Empty());
+            UNIT_ASSERT_VALUES_EQUAL(1, ringBuffer.Size());
         }
 
         {
@@ -3251,6 +3299,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             {
                 bootstrap.Stop();
             };
+
+            auto releaseHandleRequest =
+                std::make_shared<TReleaseRequest>(nodeId + 2, handleId + 2);
+            auto releaseResponse = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                releaseHandleRequest);
+            UNIT_ASSERT(releaseResponse.Wait(WaitTimeout));
         }
 
         UNIT_ASSERT(!path.Exists());
@@ -3641,6 +3695,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         test("DirectoryRead", getSizeFromDirectoryRead);
         test("CachedRead", getSizeFromCachedRead);
         test("DirectRead", getSizeFromDirectRead);
+    }
+
+    Y_UNIT_TEST(ShouldHandleFlushErrors)
+    {
+
     }
 }
 

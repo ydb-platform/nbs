@@ -1214,8 +1214,12 @@ private:
 
             WriteBackCache.FlushAllData().Subscribe(
                 [w = weak_from_this(),
-                 s = std::move(stopCompleted)](const TFuture<void>& f) mutable
+                 s = std::move(stopCompleted)](const auto& f) mutable
                 {
+                    // FlushAllData may fail, but there is no need to check
+                    // result for error here:
+                    // - the error is already reported by WriteBackCache
+                    // - we will check WriteBackCache for the emptiness later
                     f.GetValue();
                     if (auto p = w.lock()) {
                         p->StopAsyncOnWriteBackCacheFlushed(std::move(s));
@@ -1230,9 +1234,11 @@ private:
 
     void StopAsyncOnWriteBackCacheFlushed(TPromise<void> stopCompleted)
     {
-        Y_ABORT_UNLESS(
-            WriteBackCache && WriteBackCache.IsEmpty(),
-            "WriteBackCache was not emptied after FlushAllData");
+        if (WriteBackCache && !WriteBackCache.IsEmpty()) {
+            ReportWriteBackCacheCreatingOrDeletingError(
+                "WriteBackCache was not emptied after FlushAllData, unflushed "
+                "data will be lost");
+        }
 
         STORAGE_INFO(
             "[f:%s][c:%s] completed FlushAllData",

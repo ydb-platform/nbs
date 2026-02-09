@@ -183,6 +183,11 @@ public:
     void FinishFlush(TImpl* impl);
     void Complete(TImpl* impl);
 
+    void Fail(
+        const NProto::TError& error,
+        TQueuedOperations& pendingOperations,
+        TImpl* impl);
+
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
 
 private:
