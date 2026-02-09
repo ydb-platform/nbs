@@ -1574,7 +1574,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldListMultipleNodesWithGetNodeAttrBatch)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        config.SetGetNodeAttrBatchEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
