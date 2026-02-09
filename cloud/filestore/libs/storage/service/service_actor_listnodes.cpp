@@ -36,7 +36,6 @@ private:
 
     // Control flags
     const bool MultiTabletForwardingEnabled;
-    const bool GetNodeAttrBatchEnabled;
     const bool Unsafe;
 
     // Response data
@@ -59,7 +58,6 @@ public:
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
         bool multiTabletForwardingEnabled,
-        bool getNodeAttrBatchEnabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog);
 
@@ -80,8 +78,6 @@ private:
     void HandleGetNodeAttrBatchResponse(
         const TEvIndexTablet::TEvGetNodeAttrBatchResponse::TPtr& ev,
         const TActorContext& ctx);
-
-    void GetNodeAttrs(const TActorContext& ctx);
 
     void HandleGetNodeAttrResponse(
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
@@ -108,14 +104,12 @@ TListNodesActor::TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
         bool multiTabletForwardingEnabled,
-        bool getNodeAttrBatchEnabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(ListNodesRequest.GetFileSystemId())
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
-    , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
     , Unsafe(ListNodesRequest.GetUnsafe())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
@@ -209,44 +203,6 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
     }
 }
 
-void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
-{
-    if (!MultiTabletForwardingEnabled) {
-        GetNodeAttrResponses = Response.NodesSize();
-        return;
-    }
-
-    for (ui64 cookie = 0; cookie < Response.NodesSize(); ++cookie) {
-        const auto& node = Response.GetNodes(cookie);
-        if (node.GetShardFileSystemId()) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "[%s] Executing GetNodeAttr in shard for %s, %s",
-                LogTag.c_str(),
-                node.GetShardFileSystemId().c_str(),
-                node.GetShardNodeName().Quote().c_str());
-
-            auto request =
-                std::make_unique<TEvService::TEvGetNodeAttrRequest>();
-            request->Record.MutableHeaders()->CopyFrom(
-                ListNodesRequest.GetHeaders());
-            request->Record.SetFileSystemId(node.GetShardFileSystemId());
-            request->Record.SetNodeId(RootNodeId);
-            request->Record.SetName(node.GetShardNodeName());
-
-            // forward request through tablet proxy
-            ctx.Send(
-                MakeIndexTabletProxyServiceId(),
-                request.release(),
-                0, // flags
-                cookie);
-        } else {
-            ++GetNodeAttrResponses;
-        }
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TListNodesActor::HandleListNodesResponse(
@@ -261,11 +217,8 @@ void TListNodesActor::HandleListNodesResponse(
     }
 
     Response = std::move(msg->Record);
-    if (GetNodeAttrBatchEnabled) {
-        GetNodeAttrsBatch(ctx);
-    } else {
-        GetNodeAttrs(ctx);
-    }
+    GetNodeAttrsBatch(ctx);
+
 
     if (GetNodeAttrResponses == Response.NodesSize()) {
         LOG_DEBUG(
@@ -714,7 +667,6 @@ void TStorageServiceActor::HandleListNodes(
         std::move(requestInfo),
         std::move(msg->Record),
         multiTabletForwardingEnabled,
-        StorageConfig->GetGetNodeAttrBatchEnabled(),
         session->RequestStats,
         ProfileLog);
 
