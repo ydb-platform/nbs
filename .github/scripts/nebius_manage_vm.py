@@ -728,7 +728,7 @@ async def main() -> None:
     )
     create.add_argument(
         "--github-override-existing-runner",
-        default="true",
+        default="false",
         help="Whether to update GitHub Runner if it's already installed",
     )
 
