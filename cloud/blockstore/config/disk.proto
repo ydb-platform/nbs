@@ -104,6 +104,15 @@ message TNVMeTargetArgs
 
 message TStorageDiscoveryConfig
 {
+    enum EHashScheme
+    {
+        // Uses the device number to calculate the hash of the device id.
+        HS_LEGACY = 0;
+
+        // Uses the full path to the device to calc hash for device id.
+        HS_FULL_PATH = 1;
+    }
+
     message TLayout
     {
         // Reserved space at the beginning of the file.
@@ -139,6 +148,9 @@ message TStorageDiscoveryConfig
 
         // Block size.
         optional uint32 BlockSize = 7;
+
+        // Device id hash scheme.
+        optional EHashScheme HashScheme = 8;
     }
 
     message TPathConfig
