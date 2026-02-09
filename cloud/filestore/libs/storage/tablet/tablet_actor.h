@@ -466,8 +466,6 @@ private:
     TStorageConfigPtr Config;
     TDiagnosticsConfigPtr DiagConfig;
 
-    const bool UseNoneCompactionPolicy;
-
     struct TCompactionStateLoadStatus
     {
         TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadQueue;
@@ -496,8 +494,7 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry,
-        bool useNoneCompactionPolicy);
+        NMetrics::IMetricsRegistryPtr metricsRegistry);
     ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;
