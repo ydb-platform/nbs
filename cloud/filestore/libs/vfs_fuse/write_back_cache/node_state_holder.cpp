@@ -10,7 +10,7 @@ TNodeStateHolder::TNodeStateHolder(IWriteBackCacheStatsPtr stats)
 
 TNodeState& TNodeStateHolder::GetOrCreateNodeState(ui64 nodeId)
 {
-    auto [it, inserted] = NodeStates.try_emplace(nodeId, TNodeState(nodeId));
+    auto [it, inserted] = NodeStates.try_emplace(nodeId, TNodeState{});
     if (inserted) {
         Stats->IncrementNodeCount();
     }

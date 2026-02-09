@@ -15,8 +15,8 @@ bool TTestStorage::Empty() const
 
 void TTestStorage::Visit(const TVisitor& visitor)
 {
-    for (const auto& it: Data) {
-        visitor(*it.second);
+    for (const auto& it: List) {
+        visitor(it.Data);
     }
 }
 
@@ -31,8 +31,10 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
         return nullptr;
     }
 
-    auto item = std::make_unique<TString>(size, 0);
-    char* res = item->begin();
+    auto item = std::make_unique<TEntry>();
+    item->Data = TString::Uninitialized(size);
+    List.PushBack(item.get());
+    char* res = item->Data.begin();
 
     Data[res] = std::move(item);
 

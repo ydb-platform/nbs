@@ -1,25 +1,29 @@
 #pragma once
 
 #include "node_cache.h"
-#include "read_write_range_lock.h"
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/hash.h>
+#include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNodeFlushState
+enum class ENodeFlushStatus
 {
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> WriteRequests;
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
-    size_t AffectedWriteDataEntriesCount = 0;
-    size_t InFlightWriteRequestsCount = 0;
-    bool Executing = false;
+    // Node has no unflushed requests
+    NothingToFlush,
+
+    // Node has unflushed requests but flush conditions are not met
+    ReadyToFlush,
+
+    // Flush is scheduled for the node
+    FlushScheduled
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,25 +45,19 @@ struct TFlushRequest
 
 struct TNodeState
 {
-    const ui64 NodeId;
-
     // Holds pending, unflushed and flushed requests
     // Tracks cached data parts
     TNodeCache Cache;
 
-    // Prevent from concurrent read and write requests with overlapping ranges
-    TReadWriteRangeLock RangeLock;
-
-    TNodeFlushState FlushState;
+    // Prevents flushed requests from being evicted from Cache
+    TMultiSet<ui64> CachedDataPins;
 
     // Flush requests are fulfilled when there are no pending or unflushed
     // requests with SequenceId less or equal than |TFlushRequest::SequenceId|.
     // Flush requests are stored in chronological order: SequenceId values are
     // strictly increasing so newer flush requests have larger SequenceId.
     TDeque<TFlushRequest> FlushRequests;
-
-    // All entries with RequestId <= |AutomaticFlushRequestId| are to be flushed
-    ui64 AutomaticFlushRequestId = 0;
+    ENodeFlushStatus FlushStatus = ENodeFlushStatus::NothingToFlush;
 
     // Cached data extends the node size but until the data is flushed,
     // the changes are not visible to the tablet. FileSystem requests that
@@ -67,32 +65,9 @@ struct TNodeState
     // should have the node size adjusted to this value.
     ui64 CachedNodeSize = 0;
 
-    explicit TNodeState(ui64 nodeId)
-        : NodeId(nodeId)
-    {}
-
     bool CanBeDeleted() const
     {
-        if (Cache.Empty() && RangeLock.Empty()) {
-            Y_ABORT_UNLESS(!FlushState.Executing);
-            return true;
-        }
-        return false;
-    }
-
-    bool ShouldFlush(ui64 maxFlushAllRequestId) const
-    {
-        if (!Cache.HasUnflushedRequests()) {
-            return false;
-        }
-
-        if (!FlushRequests.empty()) {
-            return true;
-        }
-
-        const ui64 minRequestId = Cache.GetMinUnflushedSequenceId();
-        return minRequestId <= maxFlushAllRequestId ||
-               minRequestId <= AutomaticFlushRequestId;
+        return Cache.Empty() && FlushRequests.empty() && CachedDataPins.empty();
     }
 };
 
