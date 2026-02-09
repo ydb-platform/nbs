@@ -1,12 +1,13 @@
 #include "part_actor.h"
 
-#include <cloud/storage/core/libs/common/format.h>
+#include "fresh_blocks_companion_client.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
@@ -397,6 +398,10 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
 {
     for (const auto& actor: Actors.GetActors()) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
+    }
+
+    if (FreshBlocksCompanion) {
+        FreshBlocksCompanion->KillActors(ctx);
     }
 }
 
@@ -901,6 +906,12 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
                : Config->GetBlobStorageAsyncRequestTimeoutHDD();
 }
 
+void TPartitionActor::CreateFreshBlocksCompanionClient()
+{
+    FreshBlocksCompanionClient =
+        std::make_unique<TFreshBlocksCompanionClient>(*this);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -953,8 +964,12 @@ STFUNC(TPartitionActor::StateInit)
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
-        HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
-        HFunc(TEvPartitionPrivate::TEvConfirmBlobsCompleted, HandleConfirmBlobsCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted,
+            FreshBlocksCompanion->HandleLoadFreshBlobsCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvConfirmBlobsCompleted,
+            HandleConfirmBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);

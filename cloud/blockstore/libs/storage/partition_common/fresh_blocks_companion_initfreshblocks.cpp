@@ -1,10 +1,12 @@
-#include "part_actor.h"
+#include "fresh_blocks_companion.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_loadfreshblobs.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+#include <cloud/storage/core/libs/actors/helpers.h>
+
+namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
@@ -12,24 +14,25 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::LoadFreshBlobs(const TActorContext& ctx)
+void TFreshBlocksCompanion::LoadFreshBlobs(
+    const TActorContext& ctx,
+    ui64 persistedTrimFreshLogToCommitId)
 {
-    auto freshChannels = State->GetChannelsByKind([](auto kind) {
-        return kind == EChannelDataKind::Fresh;
-    });
+    auto freshChannels = ChannelsState.GetChannelsByKind(
+        [](auto kind) { return kind == EChannelDataKind::Fresh; });
 
     auto actor = NCloud::Register<TLoadFreshBlobsActor>(
         ctx,
-        SelfId(),
+        ctx.SelfID,
         Info(),
         StorageAccessMode,
-        State->GetMeta().GetTrimFreshLogToCommitId(),
+        persistedTrimFreshLogToCommitId,
         std::move(freshChannels));
 
     Actors.Insert(actor);
 }
 
-void TPartitionActor::HandleLoadFreshBlobsCompleted(
+void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
     const TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -40,7 +43,7 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             TStringBuilder() << "LoadFreshBlobs failed, error: "
                              << FormatError(msg->GetError()),
             {{"disk", PartitionConfig.GetDiskId()}});
-        Suicide(ctx);
+        Client.Poison(ctx);
         return;
     }
 
@@ -52,11 +55,11 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
 
     Actors.Erase(ev->Sender);
 
-    TVector<TOwningFreshBlock> blocks;
+    TVector<NPartition::TOwningFreshBlock> blocks;
     for (const auto& blob: msg->Blobs) {
         auto error = ParseFreshBlobContent(
             blob.CommitId,
-            State->GetBlockSize(),
+            PartitionConfig.GetBlockSize(),
             blob.Data,
             blocks);
 
@@ -66,25 +69,27 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
                                  << FormatError(error),
                 {{"disk", PartitionConfig.GetDiskId()},
                  {"commit_id", blob.CommitId}});
-            Suicide(ctx);
+            Client.Poison(ctx);
             return;
         }
 
-        State->AddFreshBlob({blob.CommitId, blob.Data.size()});
-        State->IncrementUnflushedFreshBlobByteCount(blob.Data.size());
+        FreshBlobState.AddFreshBlob({blob.CommitId, blob.Data.size()});
+        FlushState.IncrementUnflushedFreshBlobByteCount(blob.Data.size());
     }
 
     for (const auto& block: blocks) {
-        State->AccessTrimFreshLogBarriers().AcquireBarrier(block.Meta.CommitId);
+        TrimFreshLogState.AccessTrimFreshLogBarriers().AcquireBarrier(
+            block.Meta.CommitId);
     }
 
-    State->InitFreshBlocks(blocks);
-    State->IncrementUnflushedFreshBlobCount(msg->Blobs.size());
-    State->IncrementUnflushedFreshBlocksFromChannelCount(blocks.size());
+    FreshBlocksState.InitFreshBlocks(blocks);
+    FlushState.IncrementUnflushedFreshBlobCount(msg->Blobs.size());
+    FreshBlocksState.IncrementUnflushedFreshBlocksFromChannelCount(
+        blocks.size());
 
     // TODO(NBS-1976): update used blocks map
 
-    FreshBlobsLoaded(ctx);
+    Client.FreshBlobsLoaded(ctx);
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

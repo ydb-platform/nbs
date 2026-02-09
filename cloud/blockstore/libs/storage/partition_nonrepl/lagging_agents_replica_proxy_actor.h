@@ -32,7 +32,7 @@ namespace NCloud::NBlockStore::NStorage {
 // partition using the dirty blocks bitmap.
 class TLaggingAgentsReplicaProxyActor final
     : public NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>
-    , public IPoisonPillHelperOwner
+    , public IMortalActor
 {
     enum class ERequestKind
     {
@@ -170,8 +170,8 @@ private:
         const NActors::TActorContext& ctx,
         NActors::TActorId* actorId);
 
-    // IPoisonPillHelperOwner implementation:
-    void Die(const NActors::TActorContext& ctx) override;
+    // IMortalActor implementation:
+    void Poison(const NActors::TActorContext& ctx) override;
 
 private:
     STFUNC(StateWork);

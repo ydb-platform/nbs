@@ -750,7 +750,7 @@ void TLaggingAgentsReplicaProxyActor::DestroyChildActor(
     *actorId = TActorId();
 }
 
-void TLaggingAgentsReplicaProxyActor::Die(const NActors::TActorContext& ctx)
+void TLaggingAgentsReplicaProxyActor::Poison(const NActors::TActorContext& ctx)
 {
     TBase::Die(ctx);
 }
