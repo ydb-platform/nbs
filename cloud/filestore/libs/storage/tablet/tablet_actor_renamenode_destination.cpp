@@ -139,6 +139,11 @@ void TGetNodeInfoAndPrepareUnlinkActor::SendRequest(
     const TString& shardNodeName,
     ui64 cookie)
 {
+    if (shardId.empty()) {
+        ++ResultCount;
+        return;
+    }
+
     auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
     request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
     request->Record.SetFileSystemId(shardId);
@@ -173,6 +178,10 @@ void TGetNodeInfoAndPrepareUnlinkActor::SendRequests(const TActorContext& ctx)
         DstShardId,
         DstShardNodeName,
         DstCookie);
+
+    if (ResultCount == 2) {
+        ReplyAndDie(ctx, MakeError(S_FALSE));
+    }
 }
 
 void TGetNodeInfoAndPrepareUnlinkActor::LogAbort(
@@ -835,6 +844,12 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
     auto* msg = ev->Get();
 
     UnlockNodeRef({msg->Request.GetNewParentId(), msg->Request.GetNewName()});
+    if (msg->IsLocalRename) {
+        const auto& renameNodeRequest = msg->Request.GetOriginalRequest();
+        UnlockNodeRef({
+            renameNodeRequest.GetNodeId(),
+            renameNodeRequest.GetName()});
+    }
 
     Y_DEFER {
         ExecuteTx<TDeleteOpLogEntry>(

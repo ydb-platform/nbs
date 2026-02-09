@@ -423,11 +423,27 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         bool newChildIsDir = false;
         bool newChildIsEmpty = false;
         ui64 newChildNodeId = InvalidNodeId;
+
+        if (args.ChildRef->IsExternal()) {
+            if (args.IsSecondPass) {
+                childIsDir =
+                    args.SourceNodeAttr.GetType() == NProto::E_DIRECTORY_NODE;
+            } else {
+                args.SecondPassRequired =
+                    Config->GetDirectoryCreationInShardsEnabled();
+            }
+        } else {
+            childIsDir =
+                args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE;
+        }
+
+        if (args.SecondPassRequired) {
+            return true;
+        }
+
         if (args.NewChildRef->IsExternal()) {
             if (args.IsSecondPass) {
                 newChildNodeId = args.DestinationNodeAttr.GetId();
-                childIsDir =
-                    args.SourceNodeAttr.GetType() == NProto::E_DIRECTORY_NODE;
                 newChildIsDir = args.DestinationNodeAttr.GetType()
                     == NProto::E_DIRECTORY_NODE;
 
@@ -439,12 +455,11 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
                 newChildIsEmpty = true;
             } else {
-                args.SecondPassRequired = true;
+                args.SecondPassRequired =
+                    Config->GetDirectoryCreationInShardsEnabled();
             }
         } else {
             newChildNodeId = args.NewChildNode->NodeId;
-            childIsDir =
-                args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE;
             newChildIsDir =
                 args.NewChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE;
             if (newChildIsDir) {
@@ -465,7 +480,11 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             }
         }
 
-        if (newChildNodeId != InvalidNodeId && newChildIsDir) {
+        if (args.SecondPassRequired) {
+            return true;
+        }
+
+        if (newChildIsDir) {
             if (!childIsDir) {
                 args.Error = ErrorIsDirectory(newChildNodeId);
                 return true;
