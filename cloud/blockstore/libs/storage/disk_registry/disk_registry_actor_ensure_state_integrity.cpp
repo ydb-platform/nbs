@@ -96,13 +96,10 @@ void TEnsureStateIntegrityActor::HandleBackupDiskRegistryStateResponse(
     const TEvDiskRegistry::TEvBackupDiskRegistryStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    static_assert(sizeof(TDiskRegistryState) == 2144);
-
     const auto* msg = ev->Get();
 
     google::protobuf::util::MessageDifferencer diff;
 
-    DiffReport.clear();
     diff.ReportDifferencesToString(&DiffReport);
     diff.set_report_ignores(false);
     diff.set_report_moves(false);
@@ -132,6 +129,11 @@ void TEnsureStateIntegrityActor::HandleBackupDiskRegistryStateResponse(
         descriptor->FindFieldByName("AutomaticallyReplacedDevices"));
     diff.TreatAsSmartSet(descriptor->FindFieldByName("UserNotifications"));
     diff.TreatAsSmartSet(descriptor->FindFieldByName("SuspendedDevices"));
+
+    // After adding a new field to the DiskRegistryState class, include a
+    // comparison method if needed and update the value to reflect the current
+    // size of the class.
+    static_assert(sizeof(TDiskRegistryState) == 2144);
 
     const bool equal = diff.Compare(
         msg->Record.GetMemoryBackup(),
@@ -186,11 +188,17 @@ void TDiskRegistryActor::HandleEnsureDiskRegistryStateIntegrity(
         "%s Received EnsureDiskRegistryStateIntegrity request",
         LogTitle.GetWithTime().c_str());
 
+    // The sender of the scheduled messages is not specified
+    TActorId sender = ev->Sender;
+    if(!ev->Sender) {
+        sender = ctx.SelfID;
+    }
+
     NCloud::Register<TEnsureStateIntegrityActor>(
         ctx,
         LogTitle.GetChildWithTags(GetCycleCount(), {}),
         ctx.SelfID,
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
+        CreateRequestInfo(sender, ev->Cookie, msg->CallContext));
 }
 
 void TDiskRegistryActor::HandleEnsureDiskRegistryStateIntegrityResponse(
@@ -199,12 +207,9 @@ void TDiskRegistryActor::HandleEnsureDiskRegistryStateIntegrityResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
     if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            msg->GetErrorReason().c_str());
-        ReportDiskRegistryStateIntegrityBroken(msg->GetErrorReason());
+        ReportDiskRegistryStateIntegrityBroken(FormatError(msg->GetError()));
     }
 
     ScheduleEnsureDiskRegistryStateIntegrity(ctx);

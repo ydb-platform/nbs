@@ -310,7 +310,7 @@ void TDiskRegistryActor::ScheduleEnsureDiskRegistryStateIntegrity(
 
     ctx.Schedule(
         Config->GetEnsureDiskRegistryStateIntegrityInterval(),
-        new TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest);
+        new TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -881,6 +881,15 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityRequest,
             HandleGetClusterCapacity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

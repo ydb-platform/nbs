@@ -1928,5 +1928,6 @@ message TEnsureDiskRegistryStateIntegrityRequest
 
 message TEnsureDiskRegistryStateIntegrityResponse
 {
+    // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
