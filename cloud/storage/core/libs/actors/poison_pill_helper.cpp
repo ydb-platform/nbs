@@ -72,7 +72,7 @@ void TPoisonPillHelper::ReplyAndDie(const TActorContext& ctx)
         std::make_unique<TEvents::TEvPoisonTaken>(),
         0,   // flags
         Poisoner->Cookie);
-    Owner->Die(ctx);
+    Owner->Poison(ctx);
 }
 
 }   // namespace NCloud

@@ -171,7 +171,7 @@ private:
         NActors::TActorId* actorId);
 
     // IMortalActor implementation:
-    void Die(const NActors::TActorContext& ctx) override;
+    void Poison(const NActors::TActorContext& ctx) override;
 
 private:
     STFUNC(StateWork);

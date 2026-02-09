@@ -260,9 +260,9 @@ public:
     [[nodiscard]] bool IsMigrationAllowed() const;
 
     // IMortalActor implementation
-    void Die(const NActors::TActorContext& ctx) override
+    void Poison(const NActors::TActorContext& ctx) override
     {
-        TBase::Die(ctx);
+        Die(ctx);
     }
 
 protected:

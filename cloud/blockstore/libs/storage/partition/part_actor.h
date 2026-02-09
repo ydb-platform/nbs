@@ -58,6 +58,9 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFreshBlocksCompanionClient;
+
+////////////////////////////////////////////////////////////////////////////////
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
     , public TTabletBase<TPartitionActor>
@@ -105,25 +108,6 @@ class TPartitionActor final
     };
 
     static constexpr ui64 BootWakeupEventTag = 1;
-
-    struct TFreshBlocksCompanionClient: public IFreshBlocksCompanionClient
-    {
-        TPartitionActor& PartitionActor;
-
-        explicit TFreshBlocksCompanionClient(TPartitionActor& partitionActor)
-            : PartitionActor(partitionActor)
-        {}
-
-        void FreshBlobsLoaded(const NActors::TActorContext& ctx) override
-        {
-            PartitionActor.FreshBlobsLoaded(ctx);
-        }
-
-        void Die(const NActors::TActorContext& ctx) override
-        {
-            PartitionActor.Suicide(ctx);
-        }
-    };
 
     friend TFreshBlocksCompanionClient;
 
@@ -186,7 +170,7 @@ private:
 
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
 
-    TFreshBlocksCompanionClient FreshBlocksCompanionClient{*this};
+    std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
 public:
     TPartitionActor(
@@ -503,6 +487,8 @@ private:
         TBlockBuffer blockBuffer);
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+
+    void CreateFreshBlocksCompanionClient();
 
 private:
     STFUNC(StateBoot);

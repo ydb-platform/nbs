@@ -1,5 +1,7 @@
 #include "part_actor.h"
 
+#include "fresh_blocks_companion_client.h"
+
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -231,11 +233,13 @@ void TPartitionActor::CompleteLoadState(
         maxBlobsPerRange,
         Config->GetCompactionRangeCountPerRun());
 
+    CreateFreshBlocksCompanionClient();
+
     FreshBlocksCompanion = std::make_unique<TFreshBlocksCompanion>(
         StorageAccessMode,
         partitionConfig,
         Info(),
-        FreshBlocksCompanionClient,
+        *FreshBlocksCompanionClient,
         *State,
         *State,
         *State,

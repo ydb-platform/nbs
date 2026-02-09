@@ -7,7 +7,7 @@ namespace NCloud {
 class IMortalActor
 {
 public:
-    virtual void Die(const NActors::TActorContext& ctx) = 0;
+    virtual void Poison(const NActors::TActorContext& ctx) = 0;
 
     virtual ~IMortalActor() = default;
 };
