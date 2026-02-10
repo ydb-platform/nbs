@@ -60,6 +60,7 @@ struct TBootstrap
         char* ptr = Storage->Alloc(data.size());
         if (ptr != nullptr) {
             data.copy(ptr, data.size());
+            Storage->Commit();
         }
         return ptr;
     }
