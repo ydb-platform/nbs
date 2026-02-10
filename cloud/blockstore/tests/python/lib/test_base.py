@@ -455,6 +455,8 @@ def wait_for_secure_erase(mon_port, pool='default', kind='default', expectedAgen
 
     @retrying.retry(wait_fixed=1000, stop_max_delay=300000)
     def ensure_free_bytes():
+        nonlocal seen_zero_free_bytes
+
         sensors = get_nbs_counters(mon_port)['sensors']
         agents = get_sensor_by_name(sensors, 'disk_registry', 'AgentsInOnlineState', 0)
         if agents < expectedAgents:
