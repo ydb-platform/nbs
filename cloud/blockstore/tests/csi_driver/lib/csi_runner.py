@@ -102,6 +102,7 @@ class NbsCsiDriverRunner:
             f"--endpoint={str(self._endpoint)}",
             "--nfs-vhost-port=0",
             "--nfs-server-port=0",
+            "-v=4",
         ]
 
         if self._local_fs_config:
