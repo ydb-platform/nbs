@@ -61,7 +61,18 @@ void TPoisonPillHelper::HandlePoisonPill(
     const NActors::TActorContext& ctx)
 {
     auto* actorId = PoisonPillCookieToOwnedActorId.FindPtr(ev->Cookie);
+
+    Cerr << "--------------------------" << Endl;
+    Cerr << "Self Id: " << ctx.SelfID << Endl;
+    Cerr << "Sender: " << ev->Sender << Endl;
+    Cerr << "Recipient: " << ev->Recipient << Endl;
+    Cerr << "RecipientRewrite: " << ev->GetRecipientRewrite() << Endl;
+    Cerr << "Flags: " << ev->Flags << Endl;
+    Cerr << "Actor: " << (actorId ? ToString(*actorId) : "null") << Endl;
+    Cerr << "--------------------------" << Endl;
+
     if (actorId) {
+
         ReleaseOwnership(ctx, *actorId);
         PoisonPillCookieToOwnedActorId.erase(ev->Cookie);
 

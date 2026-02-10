@@ -943,7 +943,7 @@ void TVolumeActor::HandleTabletStatus(
             partition->Bootstrapper = {};
 
             auto topActor = partition->GetTopActorId();
-            if (topActor) {
+            if (topActor && State->GetPartitions().size() == 1) {
                 NCloud::Send<TEvents::TEvPoisonPill>(ctx, topActor);
             }
 
@@ -977,7 +977,7 @@ void TVolumeActor::HandleTabletStatus(
         partition->Bootstrapper = {};
 
         auto topActor = partition->GetTopActorId();
-        if (topActor) {
+        if (topActor && State->GetPartitions().size() == 1) {
             NCloud::Send<TEvents::TEvPoisonPill>(ctx, topActor);
         }
 
