@@ -3136,34 +3136,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
 
-        auto listDiskStates = [&]
-        {
-            auto response = diskRegistry.ListDiskStates();
-            auto& states = *response->Record.MutableDiskStates();
-            SortBy(states, [](const auto& s) { return s.GetDiskId(); });
-            return states;
-        };
-
         auto countSpecificAgentStatus = [&](NProto::EAgentState expectedState,
                                             const TString& expectedMessage)
         {
             size_t count = 0;
-            for (auto& agent: agents) {
-                auto agentResponse =
-                    diskRegistry.GetAgentNodeId(agent.agentid());
-
-                if (agentResponse->Record.GetAgentState() == expectedState) {
-                    bool success = true;
-
-                    for (auto& state: listDiskStates()) {
-                        if (state.GetStateMessage() != expectedMessage) {
-                            success = false;
-                            break;
-                        }
-                    }
-                    if (success) {
-                        count += 1;
-                    }
+            auto response = diskRegistry.QueryAgentsInfo();
+            for (auto& agent_info: response->Record.GetAgents()) {
+                if (agent_info.GetState() == expectedState &&
+                    agent_info.GetStateMessage() == expectedMessage)
+                {
+                    count += 1;
                 }
             }
             return count;

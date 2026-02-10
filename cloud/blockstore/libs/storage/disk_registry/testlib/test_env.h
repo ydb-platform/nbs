@@ -1145,6 +1145,10 @@ public:
         return std::make_unique<TEvService::TEvListDiskStatesRequest>();
     }
 
+    auto CreateQueryAgentsInfoRequest() {
+        return std::make_unique<TEvService::TEvQueryAgentsInfoRequest>();
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
