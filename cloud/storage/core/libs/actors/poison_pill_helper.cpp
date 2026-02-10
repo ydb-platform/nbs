@@ -10,23 +10,6 @@ using namespace NActors;
 
 namespace NCloud {
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui64 GetRandomCookie()
-{
-    for (;;) {
-        if (ui64 cookie = RandomNumber<ui64>()) {
-            return cookie;
-        }
-    }
-}
-
-const ui64 kPoisonPillCookie = GetRandomCookie();
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TPoisonPillHelper::TPoisonPillHelper(IPoisonPillHelperOwner* owner)
@@ -62,17 +45,7 @@ void TPoisonPillHelper::HandlePoisonPill(
 {
     auto* actorId = PoisonPillCookieToOwnedActorId.FindPtr(ev->Cookie);
 
-    Cerr << "--------------------------" << Endl;
-    Cerr << "Self Id: " << ctx.SelfID << Endl;
-    Cerr << "Sender: " << ev->Sender << Endl;
-    Cerr << "Recipient: " << ev->Recipient << Endl;
-    Cerr << "RecipientRewrite: " << ev->GetRecipientRewrite() << Endl;
-    Cerr << "Flags: " << ev->Flags << Endl;
-    Cerr << "Actor: " << (actorId ? ToString(*actorId) : "null") << Endl;
-    Cerr << "--------------------------" << Endl;
-
-    if (actorId) {
-
+    if (actorId && ev->Sender == ctx.SelfID) {
         ReleaseOwnership(ctx, *actorId);
         PoisonPillCookieToOwnedActorId.erase(ev->Cookie);
 
@@ -97,7 +70,7 @@ void TPoisonPillHelper::HandlePoisonTaken(
 void TPoisonPillHelper::KillActors(const TActorContext& ctx)
 {
     for (auto actor: OwnedActors) {
-        auto cookie = GetRandomCookie();
+        auto cookie = GetNextPoisonCookie();
 
         PoisonPillCookieToOwnedActorId[cookie] = actor;
 
@@ -121,6 +94,14 @@ void TPoisonPillHelper::ReplyAndDie(const TActorContext& ctx)
         0,   // flags
         Poisoner->Cookie);
     Owner->Die(ctx);
+}
+
+ui64 TPoisonPillHelper::GetNextPoisonCookie()
+{
+    constexpr ui64 PoisonPillHelperCookiesFlag = ui64{1} << 63;
+    auto cookieCounter = CookieCounter++;
+
+    return cookieCounter | PoisonPillHelperCookiesFlag;
 }
 
 }   // namespace NCloud
