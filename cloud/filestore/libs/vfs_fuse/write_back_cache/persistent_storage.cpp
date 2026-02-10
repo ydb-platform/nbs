@@ -80,22 +80,7 @@ public:
     char* Alloc(size_t size) override
     {
         Y_ENSURE(size > 0, "Zero-size allocations are not allowed");
-
-        if (Storage.GetAvailableByteCount() < size) {
-            return nullptr;
-        }
-
-        char* ptr = Storage.Alloc(size);
-
-        Y_ABORT_UNLESS(
-            ptr != nullptr,
-            "Allocation failed despite GetAvailableByteCount() check: size = "
-            "%lu, available = %lu, filename = %s",
-            size,
-            Storage.GetAvailableByteCount(),
-            Config.FilePath.c_str());
-
-        return ptr;
+        return Storage.Alloc(size);
     }
 
     void Commit() override
