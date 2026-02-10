@@ -292,6 +292,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -394,6 +397,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -554,6 +560,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -755,6 +764,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //

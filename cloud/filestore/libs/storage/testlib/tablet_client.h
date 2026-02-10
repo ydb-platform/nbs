@@ -326,6 +326,16 @@ public:
         return requestToTablet;
     }
 
+    auto CreateConfigureShardsRequest(bool directoryCreationInShardsEnabled)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            directoryCreationInShardsEnabled);
+
+        return request;
+    }
+
     auto CreateConfigureAsShardRequest(ui32 shardNo)
     {
         auto request =

@@ -430,7 +430,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
                     args.SourceNodeAttr.GetType() == NProto::E_DIRECTORY_NODE;
             } else {
                 args.SecondPassRequired =
-                    Config->GetDirectoryCreationInShardsEnabled();
+                    GetFileSystem().GetDirectoryCreationInShardsEnabled();
             }
         } else {
             childIsDir =
@@ -456,7 +456,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
                 newChildIsEmpty = true;
             } else {
                 args.SecondPassRequired =
-                    Config->GetDirectoryCreationInShardsEnabled();
+                    GetFileSystem().GetDirectoryCreationInShardsEnabled();
             }
         } else {
             newChildNodeId = args.NewChildNode->NodeId;
