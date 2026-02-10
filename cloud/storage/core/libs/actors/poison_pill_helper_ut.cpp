@@ -1,14 +1,18 @@
 #include "poison_pill_helper.h"
 
-#include <library/cpp/testing/unittest/registar.h>
-
+#include <contrib/ydb/core/testlib/actors/test_runtime.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
+#include <library/cpp/testing/unittest/registar.h>
+
 using namespace NActors;
 
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -20,12 +24,12 @@ public:
     TActorId Sender;
 
 private:
-    TTestActorRuntimeBase Runtime;
+    TTestActorRuntime Runtime;
 
 public:
     TMyTestEnv()
     {
-        Runtime.Initialize();
+        NKikimr::SetupTabletServices(Runtime);
         Sender = Runtime.AllocateEdgeActor();
     }
 
@@ -53,6 +57,11 @@ public:
         TAutoPtr<IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TEvents::TEvPoisonTaken>(handle, timeout);
         return handle;
+    }
+
+    TTestActorRuntimeBase& AccessRuntime()
+    {
+        return Runtime;
     }
 };
 
@@ -82,6 +91,7 @@ private:
             std::make_unique<TEvents::TEvPoisonTaken>(),
             0,
             ev->Cookie);
+        Die(ctx);
     }
 };
 
@@ -95,6 +105,7 @@ private:
     using TBase = TActor<TParentActor>;
     TPoisonPillHelper PoisonPillHelper;
     ui32 ChildCount;
+    TVector<TActorId> Children;
 
 public:
     TParentActor(ui32 childCount)
@@ -106,6 +117,11 @@ public:
     void Die(const NActors::TActorContext& ctx) override
     {
         TBase::Die(ctx);
+    }
+
+    TVector<TActorId> GetChildren()
+    {
+        return Children;
     }
 
 private:
@@ -134,15 +150,14 @@ private:
 
         // Give ownership for long time.
         for (ui32 i = 0; i < ChildCount; ++i) {
-            PoisonPillHelper.TakeOwnership(
-                ctx,
-                ctx.Register(new TChildActor()));
+            Children.push_back(ctx.Register(new TChildActor()));
+            PoisonPillHelper.TakeOwnership(ctx, Children.back());
         }
-
     }
 };
 
 }   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TPoisonPillHelperTest)
@@ -170,6 +185,39 @@ Y_UNIT_TEST_SUITE(TPoisonPillHelperTest)
         auto actorId = testEnv.Register(std::make_unique<TParentActor>(0));
 
         testEnv.Send(actorId, std::make_unique<TEvents::TEvBootstrap>(), 0);
+
+        testEnv.Send(actorId, std::make_unique<TEvents::TEvPoisonPill>(), 1000);
+
+        auto poisonTakenEvent =
+            testEnv.GrabPoisonTakenEvent(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_UNEQUAL(nullptr, poisonTakenEvent);
+        UNIT_ASSERT_VALUES_EQUAL(1000, poisonTakenEvent->Cookie);
+    }
+
+    Y_UNIT_TEST(ReleaseOwnershipWhenChildIsDead)
+    {
+        TMyTestEnv testEnv;
+
+        auto actorId = testEnv.Register(std::make_unique<TParentActor>(10));
+
+        testEnv.Send(actorId, std::make_unique<TEvents::TEvBootstrap>(), 0);
+
+        testEnv.DispatchEvents(10ms);
+
+        auto* actorHandle = dynamic_cast<TParentActor*>(
+            testEnv.AccessRuntime().FindActor(actorId));
+
+        auto children = actorHandle->GetChildren();
+
+        UNIT_ASSERT_VALUES_EQUAL(10, children.size());
+
+        for (auto child: children) {
+            testEnv.Send(child, std::make_unique<TEvents::TEvPoisonPill>(), 0);
+
+            auto poisonTakenEvent =
+                testEnv.GrabPoisonTakenEvent(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_UNEQUAL(nullptr, poisonTakenEvent);
+        }
 
         testEnv.Send(actorId, std::make_unique<TEvents::TEvPoisonPill>(), 1000);
 

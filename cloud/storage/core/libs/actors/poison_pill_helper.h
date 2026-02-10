@@ -37,6 +37,8 @@ private:
     TSet<NActors::TActorId> OwnedActors;
     std::optional<TPoisoner> Poisoner;
 
+    THashMap<ui64, NActors::TActorId> PoisonPillCookieToOwnedActorId;
+
 public:
     explicit TPoisonPillHelper(IPoisonPillHelperOwner* owner);
     virtual ~TPoisonPillHelper();
