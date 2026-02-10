@@ -64,6 +64,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(RemoveOrphanDevices,                __VA_ARGS__)                       \
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
     xxx(ReplaceBrokenDevicesAfterRestart,   __VA_ARGS__)                       \
+    xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1494,6 +1495,36 @@ struct TTxDiskRegistry
         void Clear()
         {
             // nothing to do
+        }
+    };
+
+    //
+    // UpdatePathAttachState
+    //
+
+    struct TUpdatePathAttachState
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString AgentId;
+        const TString Path;
+        const NProto::EPathAttachState NewState;
+
+        NProto::TError Error;
+
+        TUpdatePathAttachState(
+            TRequestInfoPtr requestInfo,
+            TString agentId,
+            TString path,
+            NProto::EPathAttachState newState)
+            : RequestInfo(std::move(requestInfo))
+            , AgentId(std::move(agentId))
+            , Path(std::move(path))
+            , NewState(newState)
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
         }
     };
 };

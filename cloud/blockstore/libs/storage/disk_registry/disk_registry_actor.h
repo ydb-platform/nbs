@@ -131,7 +131,7 @@ private:
     TTransactionTimeTracker TransactionTimeTracker;
 
     THashMap<TString, NActors::TActorId>
-        AgentsWithDetachRequestsInProgress;
+        AgentsWithAttachDetachRequestsInProgress;
 
 public:
     TDiskRegistryActor(
@@ -341,6 +341,13 @@ private:
     void ScheduleEnsureDiskRegistryStateIntegrity(
         const NActors::TActorContext& ctx);
 
+    void ProcessPathsToAttachOnAgent(
+        const NActors::TActorContext& ctx,
+        const NProto::TAgentConfig* agent,
+        const THashSet<TString>& paths);
+
+    void ProcessPathsToAttach(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -533,8 +540,8 @@ private:
         const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleDetachPathsOperationCompleted(
-        const TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted::
+    void HandleAttachDetachPathsOperationCompleted(
+        const TEvDiskRegistryPrivate::TEvAttachDetachPathsOperationCompleted::
             TPtr& ev,
         const NActors::TActorContext& ctx);
 

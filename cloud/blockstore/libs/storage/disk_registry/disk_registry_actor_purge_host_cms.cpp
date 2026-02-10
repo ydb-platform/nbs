@@ -96,6 +96,8 @@ void TDiskRegistryActor::CompletePurgeHostCms(
     SecureErase(ctx);
     StartMigration(ctx);
 
+    ProcessPathsToAttach(ctx);
+
     auto response =
         std::make_unique<TEvDiskRegistryPrivate::TEvPurgeHostCmsResponse>(
             std::move(args.Error),

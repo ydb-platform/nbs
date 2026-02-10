@@ -920,6 +920,26 @@ public:
 
     bool HasDependentDisks(const TAgentId& agentId, const TString& path);
 
+    [[nodiscard]] NProto::TError UpdatePathAttachState(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId,
+        const TString& path,
+        NProto::EPathAttachState state);
+
+    void AttachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path);
+
+    void AttachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent);
+
+    const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttach() const
+    {
+        return AgentList.GetPathsToAttach();
+    }
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -1408,6 +1428,17 @@ private:
         const TString& masterDiskId);
 
     [[nodiscard]] bool IsUnavailableOrBroken(const TDeviceId& deviceId) const;
+
+    void AttachDetachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        bool attach);
+
+    void AttachDetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path,
+        bool attach);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

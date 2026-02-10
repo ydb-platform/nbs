@@ -770,6 +770,8 @@ public:
     [[nodiscard]] TDuration GetResourceMetricsUpdateInterval() const;
 
     [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
+
+    [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
 };
 
 ui64 GetAllocationUnit(
