@@ -14,7 +14,7 @@ struct ILocalNVMeDeviceProvider
 {
     virtual ~ILocalNVMeDeviceProvider() = default;
 
-    [[nodiscard]] virtual auto ListNVMeDevices() const
+    [[nodiscard]] virtual auto ListNVMeDevices()
         -> NThreading::TFuture<TVector<NProto::TNVMeDevice>> = 0;
 };
 

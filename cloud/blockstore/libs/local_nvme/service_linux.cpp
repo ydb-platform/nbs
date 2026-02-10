@@ -96,8 +96,7 @@ public:
 
     // ILocalNVMeService
 
-    [[nodiscard]] auto ListNVMeDevices() const
-        -> TFuture<TListDevicesResult> final;
+    [[nodiscard]] auto ListNVMeDevices() -> TFuture<TListDevicesResult> final;
 
     [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
         -> TFuture<NProto::TError> final;
@@ -189,7 +188,7 @@ void TLocalNVMeService::Start()
 void TLocalNVMeService::Stop()
 {}
 
-auto TLocalNVMeService::ListNVMeDevices() const -> TFuture<TListDevicesResult>
+auto TLocalNVMeService::ListNVMeDevices() -> TFuture<TListDevicesResult>
 {
     STORAGE_INFO("List NVMe devices");
 

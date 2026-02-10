@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package NTest.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/tools/testing/infra-device-provider/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+service TInfraService
+{
+    rpc ListDevices(TListDevicesRequest) returns (TListDevicesResponse);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDevice
+{
+    string PCIeAddress = 1;
+    string SerialNumber = 2;
+}
+
+message TListDevicesRequest {
+}
+
+message TListDevicesResponse
+{
+    repeated TDevice Devices = 1;
+}

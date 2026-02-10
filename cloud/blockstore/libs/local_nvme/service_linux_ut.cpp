@@ -3,6 +3,7 @@
 #include "config.h"
 #include "device_provider.h"
 #include "sysfs_helpers.h"
+#include "test_grpc_device_provider.h"
 
 #include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
@@ -19,6 +20,7 @@
 #include <util/generic/string.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
+#include <util/system/env.h>
 #include <util/system/event.h>
 #include <util/system/tempfile.h>
 
@@ -41,7 +43,7 @@ struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
     TPromise<TVector<NProto::TNVMeDevice>> Promise =
         NewPromise<TVector<NProto::TNVMeDevice>>();
 
-    [[nodiscard]] auto ListNVMeDevices() const
+    [[nodiscard]] auto ListNVMeDevices()
         -> TFuture<TVector<NProto::TNVMeDevice>> final
     {
         return Promise;
@@ -192,21 +194,20 @@ struct TTestSysFs final: ISysFs
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture: public NUnitTest::TBaseFixture
+struct TFixtureBase: public NUnitTest::TBaseFixture
 {
     TString StateCacheFile;
     TVector<NProto::TNVMeDevice> Devices;
 
     TLocalNVMeConfigPtr Config;
     ILoggingServicePtr Logging;
-    std::shared_ptr<TTestLocalNVMeDeviceProvider> DeviceProvider;
     std::shared_ptr<TTestNVMeManager> NVMeManager;
     TExecutorPtr Executor;
     std::shared_ptr<TTestSysFs> SysFs;
 
     ILocalNVMeServicePtr Service;
 
-    void SetUp(NUnitTest::TTestContext& /*testContext*/) final
+    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
         SysFs = std::make_shared<TTestSysFs>();
 
@@ -217,17 +218,13 @@ struct TFixture: public NUnitTest::TBaseFixture
             CreateLoggingService("console", {.FiltrationLevel = TLOG_DEBUG});
         Logging->Start();
 
-        DeviceProvider = std::make_shared<TTestLocalNVMeDeviceProvider>();
         NVMeManager = std::make_shared<TTestNVMeManager>();
 
         Executor = TExecutor::Create("TestExecutor");
         Executor->Start();
-
-        Service = CreateService();
-        Service->Start();
     }
 
-    void TearDown(NUnitTest::TTestContext& /* testContext */) final
+    void TearDown(NUnitTest::TTestContext& /* testContext */) override
     {
         Service->Stop();
         Executor->Stop();
@@ -238,12 +235,13 @@ struct TFixture: public NUnitTest::TBaseFixture
         }
     }
 
-    auto CreateService() -> ILocalNVMeServicePtr
+    auto CreateService(ILocalNVMeDeviceProviderPtr deviceProvider)
+        -> ILocalNVMeServicePtr
     {
         return CreateLocalNVMeService(
             Config,
             Logging,
-            std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider),
+            std::move(deviceProvider),
             std::static_pointer_cast<INvmeManager>(NVMeManager),
             Executor,
             std::static_pointer_cast<ISysFs>(SysFs));
@@ -342,6 +340,36 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         return proto;
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFixture: public TFixtureBase
+{
+    std::shared_ptr<TTestLocalNVMeDeviceProvider> DeviceProvider;
+
+    void SetUp(NUnitTest::TTestContext& testContext) override
+    {
+        TFixtureBase::SetUp(testContext);
+
+        DeviceProvider = std::make_shared<TTestLocalNVMeDeviceProvider>();
+
+        Service = CreateService();
+        Service->Start();
+    }
+
+    auto CreateService() -> ILocalNVMeServicePtr
+    {
+        return TFixtureBase::CreateService(
+            std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider));
+    }
+
+    void TearDown(NUnitTest::TTestContext& testContext) override
+    {
+        TFixtureBase::TearDown(testContext);
+
+        DeviceProvider.reset();
+    }
 
     void SetProviderReady()
     {
@@ -373,6 +401,41 @@ struct TFixture: public NUnitTest::TBaseFixture
         }
 
         DeviceProvider->Promise.SetValue(devices);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFixtureInfra: public TFixtureBase
+{
+    std::shared_ptr<TTestInfraGrpcClient> InfraClient;
+    std::shared_ptr<TTestGrpcDeviceProvider> DeviceProvider;
+
+    void SetUp(NUnitTest::TTestContext& testContext) override
+    {
+        TFixtureBase::SetUp(testContext);
+
+        InfraClient = std::make_shared<TTestInfraGrpcClient>(
+            Logging,
+            GetEnv("INFRA_DEVICE_PROVIDER_SOCKET"));
+
+        InfraClient->Start();
+
+        DeviceProvider = std::make_shared<TTestGrpcDeviceProvider>(InfraClient);
+
+        Service = CreateService(
+            std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider));
+        Service->Start();
+    }
+
+    void TearDown(NUnitTest::TTestContext& testContext) override
+    {
+        DeviceProvider.reset();
+
+        InfraClient->Stop();
+        InfraClient.reset();
+
+        TFixtureBase::SetUp(testContext);
     }
 };
 
@@ -924,6 +987,20 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         const auto& error = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_FAIL, error.GetCode(), FormatError(error));
+    }
+
+    Y_UNIT_TEST_F(ShouldGetDevicesFromInfra, TFixtureInfra)
+    {
+        auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+        for (size_t i = 0; i != Devices.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                Devices[i].DebugString(),
+                devices[i].DebugString(),
+                "#" << i);
+        }
     }
 }
 

@@ -1,0 +1,9 @@
+devices:
+  - pci: 0000:f1:00.0
+    serial: NVME_0
+  - pci: 0000:31:00.0
+    serial: NVME_1
+  - pci: 0000:33:00.0
+    serial: NVME_2
+  - pci: 0000:34:00.0
+    serial: NVME_3
