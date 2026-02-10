@@ -942,7 +942,7 @@ void TVolumeActor::HandleTabletStatus(
             partition->RetryPolicy.Reset(ctx.Now());
             partition->Bootstrapper = {};
 
-            auto topActor = partition->GetTop();
+            auto topActor = partition->GetTopActorId();
             if (topActor) {
                 NCloud::Send<TEvents::TEvPoisonPill>(ctx, topActor);
             }
@@ -976,7 +976,7 @@ void TVolumeActor::HandleTabletStatus(
     if (shouldRestart) {
         partition->Bootstrapper = {};
 
-        auto topActor = partition->GetTop();
+        auto topActor = partition->GetTopActorId();
         if (topActor) {
             NCloud::Send<TEvents::TEvPoisonPill>(ctx, topActor);
         }

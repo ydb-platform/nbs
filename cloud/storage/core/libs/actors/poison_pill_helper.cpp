@@ -62,8 +62,8 @@ void TPoisonPillHelper::HandlePoisonPill(
 {
     auto* actorId = PoisonPillCookieToOwnedActorId.FindPtr(ev->Cookie);
     if (actorId) {
-        PoisonPillCookieToOwnedActorId.erase(ev->Cookie);
         ReleaseOwnership(ctx, *actorId);
+        PoisonPillCookieToOwnedActorId.erase(ev->Cookie);
 
         return;
     }
@@ -87,18 +87,14 @@ void TPoisonPillHelper::KillActors(const TActorContext& ctx)
 {
     for (auto actor: OwnedActors) {
         auto cookie = GetRandomCookie();
-        auto event = std::make_unique<IEventHandle>(
-            actor,
-            ctx.SelfID,
-            new TEvents::TEvPoisonPill(),
-            IEventHandle::FlagForwardOnNondelivery,
-            cookie,       // cookie
-            &ctx.SelfID   // forwardOnNondelivery
-        );
 
         PoisonPillCookieToOwnedActorId[cookie] = actor;
 
-        ctx.Send(event.release());
+        SendWithUndeliveryTracking(
+            ctx,
+            actor,
+            std::make_unique<TEvents::TEvPoisonPill>(),
+            cookie);
     }
 }
 
