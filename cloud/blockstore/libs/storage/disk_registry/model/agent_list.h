@@ -60,6 +60,8 @@ private:
 
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
 
+    THashMap<TAgentId, THashSet<TString>> PathsToAttach;
+
     TLog Log;
 
 public:
@@ -133,6 +135,10 @@ public:
         const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
     TVector<TString> GetAgentIdsWithOverriddenListParams() const;
+
+    const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttach() const;
+    void AddPathToAttach(const TString& agentId, const TString& path);
+    void DeletePathToAttach(const TString& agentId, const TString& path);
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);

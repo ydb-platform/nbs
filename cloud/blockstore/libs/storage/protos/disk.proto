@@ -37,7 +37,9 @@ enum EPathAttachState
 {
     PATH_ATTACH_STATE_ATTACHED = 0;
     PATH_ATTACH_STATE_DETACHED = 1;
+    PATH_ATTACH_STATE_ATTACHING = 2;
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 // Mean time between failures.
 

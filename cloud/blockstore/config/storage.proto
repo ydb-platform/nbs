@@ -1433,4 +1433,7 @@ message TStorageServiceConfig
 
     // Enables separate fresh blocks writer.
     optional bool FreshBlocksWriterEnabled = 484;
+
+    // Maximum number of inflight attach/detach path requests.
+    optional uint32 MaxInflightAttachDetachPathRequestsProcessing = 485;
 }

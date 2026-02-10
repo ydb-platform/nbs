@@ -213,6 +213,8 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ScheduleEnsureDiskRegistryStateIntegrity(ctx);
 
+    ProcessPathsToAttach(ctx);
+
     if (auto orphanDevices = State->FindOrphanDevices()) {
         LOG_INFO(
             ctx,
