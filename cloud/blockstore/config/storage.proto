@@ -1419,4 +1419,7 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // Maximum number of inflight attach/detach path requests.
+    optional uint32 MaxInflightAttachDetachPathRequestsProcessing = 481;
 }

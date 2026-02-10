@@ -47,12 +47,20 @@ constexpr ui32 DefaultLogicalBlockSize = 4_KB;
 enum ETestEvents
 {
     EvRegisterAgent = EventSpaceBegin(NKikimr::TEvents::ES_USERSPACE + 1),
+    EvBrokeDevice = EvRegisterAgent + 1,
 };
 
 struct TEvRegisterAgent
     : public NActors::TEventBase<TEvRegisterAgent, ETestEvents::EvRegisterAgent>
 {
     DEFINE_SIMPLE_NONLOCAL_EVENT(TEvRegisterAgent, "TEvRegisterAgent");
+};
+
+struct TEvBrokeDevice
+    : public NActors::TEventBase<TEvBrokeDevice, ETestEvents::EvBrokeDevice>
+{
+    TString DeviceUUID;
+    DEFINE_SIMPLE_NONLOCAL_EVENT(TEvBrokeDevice, "TEvBrokeDevice");
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,7 +193,10 @@ private:
 
             HFunc(TEvDiskAgent::TEvDetachPathsRequest, HandleDetachPaths)
 
+            HFunc(TEvDiskAgent::TEvAttachPathsRequest, HandleAttachPaths)
+
             HFunc(TEvRegisterAgent, HandleRegisterAgent)
+            HFunc(TEvBrokeDevice, HandleBrokeDevice)
 
             default:
                 //HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY);
@@ -203,6 +214,21 @@ private:
         Y_UNUSED(ev);
 
         Die(ctx);
+    }
+
+    void HandleBrokeDevice(
+        const TEvBrokeDevice::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ctx);
+        auto& uuid = ev->Get()->DeviceUUID;
+        auto* device = FindIfPtr(
+            *Config.MutableDevices(),
+            [&](auto& device) { return device.GetDeviceUUID() == uuid; });
+
+        if (device) {
+            device->SetState(NProto::DEVICE_STATE_ERROR);
+        }
     }
 
     void HandleRegisterAgent(
@@ -295,6 +321,25 @@ private:
     {
         auto response = std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>();
 
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleAttachPaths(
+        const TEvDiskAgent::TEvAttachPathsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto& record = ev->Get()->Record;
+        THashSet<TString> paths;
+        for (const auto& path: record.GetPathsToAttach()) {
+            paths.emplace(path);
+        }
+
+        auto response = std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>();
+        for (auto& device : Config.GetDevices()) {
+            if (paths.contains(device.GetDeviceName())) {
+                *response->Record.AddAttachedDevices() = device;
+            }
+        }
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 };

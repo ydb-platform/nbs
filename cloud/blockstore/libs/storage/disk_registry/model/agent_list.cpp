@@ -104,6 +104,14 @@ TAgentList::TAgentList(
     if (ComponentGroup) {
         RejectAgentTimeoutCounter.Register(ComponentGroup, "RejectAgentTimeout");
     }
+
+    for (const auto& agents: Agents) {
+        for (const auto& [path, state]: agents.GetPathAttachStates()) {
+            if (state == NProto::PATH_ATTACH_STATE_ATTACHING) {
+                AddPathToAttach(agents.GetAgentId(), path);
+            }
+        }
+    }
 }
 
 NProto::TAgentConfig& TAgentList::AddAgent(NProto::TAgentConfig config)
@@ -649,6 +657,7 @@ void TAgentList::RemoveAgentByIdx(size_t index)
 
     AgentIdToIdx.erase(agent.GetAgentId());
     NodeIdToIdx.erase(agent.GetNodeId());
+    PathsToAttach.erase(agent.GetAgentId());
 
     Agents.pop_back();
 
@@ -690,6 +699,37 @@ TVector<TString> TAgentList::GetAgentIdsWithOverriddenListParams() const
         agentIds.push_back(agentId);
     }
     return agentIds;
+}
+
+auto TAgentList::GetPathsToAttach() const
+    -> const THashMap<TAgentId, THashSet<TString>>&
+{
+    return PathsToAttach;
+}
+
+void TAgentList::AddPathToAttach(
+    const TString& agentId,
+    const TString& path)
+{
+    auto& pathsForAgent = PathsToAttach[agentId];
+    pathsForAgent.insert(path);
+}
+
+void TAgentList::DeletePathToAttach(
+    const TString& agentId,
+    const TString& path)
+{
+    auto it = PathsToAttach.find(agentId);
+    if (it == PathsToAttach.end()) {
+        return;
+    }
+
+    auto& pathsForAgent = it->second;
+    pathsForAgent.erase(path);
+
+    if (!pathsForAgent) {
+        PathsToAttach.erase(it);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

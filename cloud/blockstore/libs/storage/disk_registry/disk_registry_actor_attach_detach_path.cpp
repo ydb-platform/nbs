@@ -32,23 +32,27 @@ IEventBasePtr CreateResponseByActionType(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDetachPathActor: public TActorBootstrapped<TDetachPathActor>
+class TAttachDetachPathActor: public TActorBootstrapped<TAttachDetachPathActor>
 {
 private:
     const TActorId Owner;
     const TString AgentId;
     const ui64 NodeId;
+    const bool IsAttach;
     const TDuration DiskAgentRequestTimeout;
     TVector<TString> Paths;
 
     TRequestInfoPtr RequestInfo;
     NProto::TAction_EType ActionType;
 
+    ui64 PendingRequests = 0;
+
 public:
-    TDetachPathActor(
+    TAttachDetachPathActor(
         TActorId owner,
         TString agentId,
         ui64 nodeId,
+        bool isAttach,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
         TRequestInfoPtr requestInfo,
@@ -57,24 +61,44 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 public:
-    IEventBasePtr CreateDetachRequest();
+    template <typename TEvRequest>
+    IEventBasePtr CreateAttachDetachRequest();
 
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
+    void UpdatePathAttachStates(const TActorContext& ctx);
+
+    void UpdateDeviceStatesIfNeeded(
+        const TActorContext& ctx,
+        const NProto::TAttachPathsResponse& response);
+
 public:
     STFUNC(StateWaitAttachDetach);
+    STFUNC(StateMarkErrorDevices);
+    STFUNC(StateUpdatePathAttachState);
 
-    void HandleDetachPathsRequestUndelivered(
-        const TEvDiskAgent::TEvDetachPathsRequest::TPtr& ev,
+    template <typename TEvRequest>
+    void HandleAttachDetachPathRequestUndelivered(
+        const TEvRequest& ev,
         const TActorContext& ctx);
 
-    void HandleRequestTimeout(
+    void HandleAttachDetachPathTimeout(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleDetachPathsResult(
-        const TEvDiskAgent::TEvDetachPathsResponse::TPtr& ev,
+    template <typename TEvent>
+    void HandleAttachDetachPathResult(
+        const TEvent& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleChangeDeviceStateResponse(
+        const TEvDiskRegistry::TEvChangeDeviceStateResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdatePathAttachStateResult(
+        const TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse::TPtr&
+            ev,
+        const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -83,10 +107,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDetachPathActor::TDetachPathActor(
+TAttachDetachPathActor::TAttachDetachPathActor(
         TActorId owner,
         TString agentId,
         ui64 nodeId,
+        bool isAttach,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
         TRequestInfoPtr requestInfo,
@@ -94,15 +119,19 @@ TDetachPathActor::TDetachPathActor(
     : Owner(owner)
     , AgentId(std::move(agentId))
     , NodeId(nodeId)
+    , IsAttach(isAttach)
     , DiskAgentRequestTimeout(diskAgentRequestTimeout)
     , Paths(std::move(paths))
     , RequestInfo(std::move(requestInfo))
     , ActionType(actionType)
 {}
 
-void TDetachPathActor::Bootstrap(const TActorContext& ctx)
+void TAttachDetachPathActor::Bootstrap(const TActorContext& ctx)
 {
-    IEventBasePtr request = CreateDetachRequest();
+    IEventBasePtr request =
+        IsAttach
+            ? CreateAttachDetachRequest<TEvDiskAgent::TEvAttachPathsRequest>()
+            : CreateAttachDetachRequest<TEvDiskAgent::TEvDetachPathsRequest>();
 
     auto event = std::make_unique<IEventHandle>(
         MakeDiskAgentServiceId(NodeId),
@@ -119,59 +148,132 @@ void TDetachPathActor::Bootstrap(const TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "Sending detach paths request to disk agent %s with "
+        "Sending %s paths request to disk agent %s with "
         "paths[%s]",
+        IsAttach ? "attach" : "detach",
         AgentId.Quote().c_str(),
         JoinSeq(",", Paths).c_str());
 
     Become(&TThis::StateWaitAttachDetach);
 }
 
-IEventBasePtr TDetachPathActor::CreateDetachRequest()
+template <typename TEvRequest>
+IEventBasePtr TAttachDetachPathActor::CreateAttachDetachRequest()
 {
-    auto request = std::make_unique<TEvDiskAgent::TEvDetachPathsRequest>();
+    auto request = std::make_unique<TEvRequest>();
 
-    request->Record.MutablePathsToDetach()->Add(Paths.begin(), Paths.end());
+    auto* mutablePaths = [&]()
+    {
+        if constexpr (
+            std::is_same_v<TEvRequest, TEvDiskAgent::TEvAttachPathsRequest>)
+        {
+            return request->Record.MutablePathsToAttach();
+        } else {
+            return request->Record.MutablePathsToDetach();
+        }
+    }();
+
+    mutablePaths->Add(Paths.begin(), Paths.end());
 
     return request;
 }
 
-void TDetachPathActor::ReplyAndDie(
+void TAttachDetachPathActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response =
-        CreateResponseByActionType(ActionType, error);
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    if (RequestInfo) {
+        auto response = CreateResponseByActionType(ActionType, error);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    }
 
     auto request = std::make_unique<
-        TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted>(
+        TEvDiskRegistryPrivate::TEvAttachDetachPathsOperationCompleted>(
         std::move(error));
     request->AgentId = AgentId;
+    request->IsAttach = IsAttach;
     NCloud::Send(ctx, Owner, std::move(request));
     Die(ctx);
 }
 
-void TDetachPathActor::HandleDetachPathsRequestUndelivered(
-    const TEvDiskAgent::TEvDetachPathsRequest::TPtr& ev,
+void TAttachDetachPathActor::UpdatePathAttachStates(const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(PendingRequests == 0);
+    Y_ABORT_UNLESS(IsAttach);
+    for (auto& path : Paths) {
+        auto request = std::make_unique<
+            TEvDiskRegistryPrivate::TEvUpdatePathAttachStateRequest>();
+        request->Path = path;
+        request->AgentId = AgentId;
+        request->NewState = NProto::PATH_ATTACH_STATE_ATTACHED;
+
+        NCloud::Send(ctx, Owner, std::move(request));
+        ++PendingRequests;
+    }
+
+    Become(&TThis::StateUpdatePathAttachState);
+}
+
+void TAttachDetachPathActor::UpdateDeviceStatesIfNeeded(
+    const TActorContext& ctx,
+    const NProto::TAttachPathsResponse& response)
+{
+    Y_ABORT_UNLESS(PendingRequests == 0);
+    Y_ABORT_UNLESS(IsAttach);
+    bool hasErrorDevices = false;
+    for (const auto& device: response.GetAttachedDevices()) {
+        if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+            hasErrorDevices = true;
+            ++PendingRequests;
+
+            auto request = std::make_unique<
+                TEvDiskRegistry::TEvChangeDeviceStateRequest>();
+
+            request->Record.SetDeviceUUID(device.GetDeviceUUID());
+            request->Record.SetDeviceState(NProto::DEVICE_STATE_ERROR);
+            request->Record.SetReason(device.GetStateMessage());
+
+            NCloud::Send(ctx, Owner, std::move(request));
+        }
+    }
+
+    if (hasErrorDevices) {
+        Become(&TThis::StateMarkErrorDevices);
+        return;
+    }
+    UpdatePathAttachStates(ctx);
+}
+
+template <typename TEvRequest>
+void TAttachDetachPathActor::HandleAttachDetachPathRequestUndelivered(
+    const TEvRequest& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     ReplyAndDie(ctx, MakeError(E_REJECTED, "request undelivered"));
 }
 
-void TDetachPathActor::HandleRequestTimeout(
+void TAttachDetachPathActor::HandleAttachDetachPathTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_TIMEOUT, "request timed out"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "request timed out"));
 }
 
-void TDetachPathActor::HandleDetachPathsResult(
-    const TEvDiskAgent::TEvDetachPathsResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+template <typename TEvResponse>
+void TAttachDetachPathActor::HandleAttachDetachPathResult(
+    const TEvResponse& ev,
+    const TActorContext& ctx)
 {
+    using TEvAttachResponse = TEvDiskAgent::TEvAttachPathsResponse::TPtr;
+
+    if constexpr (std::is_same_v<TEvResponse, TEvAttachResponse>) {
+        Y_ABORT_UNLESS(IsAttach);
+    } else {
+        Y_ABORT_UNLESS(!IsAttach);
+    }
+
     auto* msg = ev->Get();
     auto& record = msg->Record;
     const auto& error = record.GetError();
@@ -188,10 +290,50 @@ void TDetachPathActor::HandleDetachPathsResult(
             AgentId.Quote().c_str());
     }
 
-    ReplyAndDie(ctx, {});
+    if constexpr (std::is_same_v<TEvResponse, TEvAttachResponse>) {
+        UpdateDeviceStatesIfNeeded(ctx, record);
+    } else {
+        ReplyAndDie(ctx, {});
+    }
 }
 
-void TDetachPathActor::HandlePoisonPill(
+void TAttachDetachPathActor::HandleChangeDeviceStateResponse(
+    const TEvDiskRegistry::TEvChangeDeviceStateResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    auto& error = *msg->Record.MutableError();
+
+    if (HasError(error)) {
+        ReplyAndDie(ctx, std::move(error));
+        return;
+    }
+
+    --PendingRequests;
+    if (PendingRequests == 0) {
+        UpdatePathAttachStates(ctx);
+    }
+}
+
+void TAttachDetachPathActor::HandleUpdatePathAttachStateResult(
+    const TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    const auto& error = msg->Error;
+
+    if (HasError(error)) {
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
+    --PendingRequests;
+    if (PendingRequests == 0) {
+        ReplyAndDie(ctx, {});
+    }
+}
+
+void TAttachDetachPathActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -199,18 +341,63 @@ void TDetachPathActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 }
 
-STFUNC(TDetachPathActor::StateWaitAttachDetach)
+STFUNC(TAttachDetachPathActor::StateWaitAttachDetach)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(
+            TEvDiskAgent::TEvAttachPathsRequest,
+            HandleAttachDetachPathRequestUndelivered);
+        HFunc(
             TEvDiskAgent::TEvDetachPathsRequest,
-            HandleDetachPathsRequestUndelivered);
+            HandleAttachDetachPathRequestUndelivered);
 
-        HFunc(TEvents::TEvWakeup, HandleRequestTimeout);
+        HFunc(TEvents::TEvWakeup, HandleAttachDetachPathTimeout)
 
-        HFunc(TEvDiskAgent::TEvDetachPathsResponse, HandleDetachPathsResult);
+        HFunc(TEvDiskAgent::TEvAttachPathsResponse, HandleAttachDetachPathResult);
+        HFunc(TEvDiskAgent::TEvDetachPathsResponse, HandleAttachDetachPathResult);
+
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TAttachDetachPathActor::StateMarkErrorDevices)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvDiskRegistry::TEvChangeDeviceStateResponse,
+            HandleChangeDeviceStateResponse);
+
+        IgnoreFunc(TEvents::TEvWakeup);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TAttachDetachPathActor::StateUpdatePathAttachState)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse,
+            HandleUpdatePathAttachStateResult);
+
+        IgnoreFunc(TEvents::TEvWakeup);
 
         default:
             HandleUnexpectedEvent(
@@ -232,7 +419,7 @@ void TDiskRegistryActor::TryToDetachPaths(
     TRequestInfoPtr requestInfo,
     NProto::TAction_EType actionType)
 {
-    if (AgentsWithDetachRequestsInProgress.contains(agentId)) {
+    if (AgentsWithAttachDetachRequestsInProgress.contains(agentId)) {
         auto response = CreateResponseByActionType(
             actionType,
             MakeError(
@@ -276,20 +463,21 @@ void TDiskRegistryActor::TryToDetachPaths(
         return;
     }
 
-    auto actorId = NCloud::Register<TDetachPathActor>(
+    auto actorId = NCloud::Register<TAttachDetachPathActor>(
         ctx,
         ctx.SelfID,
         agentId,
         agent->GetNodeId(),
+        false,   // detach
         std::move(paths),
         Config->GetAttachDetachPathRequestTimeout(),
         std::move(requestInfo),
         actionType);
-    AgentsWithDetachRequestsInProgress[agentId] = actorId;
+    AgentsWithAttachDetachRequestsInProgress[agentId] = actorId;
 }
 
-void TDiskRegistryActor::HandleDetachPathsOperationCompleted(
-    const TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted::TPtr& ev,
+void TDiskRegistryActor::HandleAttachDetachPathsOperationCompleted(
+    const TEvDiskRegistryPrivate::TEvAttachDetachPathsOperationCompleted::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -298,7 +486,8 @@ void TDiskRegistryActor::HandleDetachPathsOperationCompleted(
                                          : NActors::NLog::PRI_INFO;
 
     TStringBuilder builder;
-    builder << LogTitle.GetWithTime() << " detach request on agent "
+    builder << LogTitle.GetWithTime() << " "
+            << (msg->IsAttach ? "attach" : "detach") << " request on agent "
             << msg->AgentId.Quote();
 
     if (HasError(msg->Error)) {
@@ -309,7 +498,190 @@ void TDiskRegistryActor::HandleDetachPathsOperationCompleted(
 
     LOG_LOG(ctx, priority, TBlockStoreComponents::DISK_REGISTRY, builder);
 
-    AgentsWithDetachRequestsInProgress.erase(msg->AgentId);
+    AgentsWithAttachDetachRequestsInProgress.erase(msg->AgentId);
+
+    ProcessPathsToAttach(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistryActor::ProcessPathsToAttachOnAgent(
+    const NActors::TActorContext& ctx,
+    const NProto::TAgentConfig* agent,
+    const THashSet<TString>& paths)
+{
+    const TString& agentId = agent->GetAgentId();
+    TVector<TString> pathsToAttach;
+    for (const auto& path: paths) {
+        auto it = agent->GetPathAttachStates().find(path);
+        Y_DEBUG_ABORT_UNLESS(it != agent->GetPathAttachStates().end());
+        if (it == agent->GetPathAttachStates().end()) {
+            continue;
+        }
+
+        if (it->second != NProto::PATH_ATTACH_STATE_ATTACHING) {
+            continue;
+        }
+
+        pathsToAttach.emplace_back(path);
+    }
+
+    if (!pathsToAttach) {
+        return;
+    }
+
+    auto actorId = NCloud::Register<TAttachDetachPathActor>(
+        ctx,
+        ctx.SelfID,
+        agentId,
+        agent->GetNodeId(),
+        true,   // isAttach
+        std::move(pathsToAttach),
+        Config->GetAttachDetachPathRequestTimeout(),
+        nullptr,   // requestInfo
+        NProto::TAction_EType::TAction_EType_ADD_DEVICE);
+    AgentsWithAttachDetachRequestsInProgress[agentId] = actorId;
+}
+
+void TDiskRegistryActor::ProcessPathsToAttach(const TActorContext& ctx)
+{
+    if (!Config->GetAttachDetachPathsEnabled()) {
+        return;
+    }
+
+    if (AgentsWithAttachDetachRequestsInProgress.size() ==
+        Config->GetMaxInflightAttachDetachPathRequestsProcessing())
+    {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Max inflight of attach detach requests reached, will try "
+            "later",
+            LogTitle.GetWithTime().c_str());
+        return;
+    }
+
+    auto pathsNeedToProcess = State->GetPathsToAttach();
+    if (!pathsNeedToProcess) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s No attach detach path requests to process, will try later",
+            LogTitle.GetWithTime().c_str());
+        return;
+    }
+
+    for (const auto& [agentId, paths]: pathsNeedToProcess) {
+        if (AgentsWithAttachDetachRequestsInProgress.contains(agentId)) {
+            continue;
+        }
+
+        const auto* agent = State->FindAgent(agentId);
+        if (!agent || agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE ||
+            agent->GetTemporaryAgent())
+        {
+            continue;
+        }
+
+        ProcessPathsToAttachOnAgent(ctx, agent, paths);
+
+        if (AgentsWithAttachDetachRequestsInProgress.size() ==
+            Config->GetMaxInflightAttachDetachPathRequestsProcessing())
+        {
+            return;
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistryActor::HandleUpdatePathAttachState(
+    const TEvDiskRegistryPrivate::TEvUpdatePathAttachStateRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(UpdatePathAttachState);
+
+    if (!Config->GetAttachDetachPathsEnabled()) {
+        auto response = std::make_unique<
+            TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse>(MakeError(
+            E_PRECONDITION_FAILED,
+            "path attach detach feature disabled"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdatePathAttachState request: Agent=%s, Path=%s, "
+        "State=%d",
+        LogTitle.GetWithTime().c_str(),
+        msg->AgentId.Quote().c_str(),
+        msg->Path.Quote().c_str(),
+        static_cast<int>(msg->NewState));
+
+    ExecuteTx<TUpdatePathAttachState>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->AgentId),
+        std::move(msg->Path),
+        msg->NewState);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TDiskRegistryActor::PrepareUpdatePathAttachState(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxDiskRegistry::TUpdatePathAttachState& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TDiskRegistryActor::ExecuteUpdatePathAttachState(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxDiskRegistry::TUpdatePathAttachState& args)
+{
+    Y_UNUSED(ctx);
+    TDiskRegistryDatabase db(tx.DB);
+    args.Error = State->UpdatePathAttachState(
+        db,
+        args.AgentId,
+        args.Path,
+        args.NewState);
+}
+
+void TDiskRegistryActor::CompleteUpdatePathAttachState(
+    const TActorContext& ctx,
+    TTxDiskRegistry::TUpdatePathAttachState& args)
+{
+    LOG_LOG(
+        ctx,
+        HasError(args.Error) ? NLog::PRI_ERROR : NLog::PRI_INFO,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s UpdatePathAttachState result: Agent=%s, Path=%s, Error=%s",
+        LogTitle.GetWithTime().c_str(),
+        args.AgentId.c_str(),
+        args.Path.c_str(),
+        FormatError(args.Error).c_str());
+
+    auto response = std::make_unique<
+        TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse>(
+        std::move(args.Error));
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    SecureErase(ctx);
+    ProcessPathsToAttach(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

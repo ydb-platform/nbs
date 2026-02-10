@@ -665,6 +665,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
+                                                                               \
+    xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
