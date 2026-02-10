@@ -311,7 +311,7 @@ message TStorageConfig
     optional uint32 ReadAheadMaxGapPercentage = 350;
     optional uint32 ReadAheadCacheMaxHandlesPerNode = 351;
 
-    reserved 352;
+    optional bool NewLocalDBCompactionPolicyEnabled = 352 [deprecated = true];
 
     // If greater than 0, the node index cache will be used. It caches
     // GetNodeAttrRequests to avoid executing GetNodeAttr tx for hot nodes.
