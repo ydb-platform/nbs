@@ -361,7 +361,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 const ui32 entrySize =
                     RandomNumber(Min(remainingBytes + 1, testUpToEntrySize));
                 const auto data = GenerateData(entrySize);
-                const auto maxAllocationSize = rb->GetMaxAllocationBytesCount();
+                const auto maxAllocationSize = rb->GetAvailableByteCount();
                 const bool pushed = ri.PushBack(data);
                 UNIT_ASSERT_VALUES_EQUAL(pushed, rb->PushBack(data));
                 if (pushed) {
@@ -601,19 +601,19 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer rb(f.GetName(), len);
 
         // 36 - header size (8)
-        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(28, rb.GetAvailableByteCount());
         UNIT_ASSERT(rb.PushBack("abcd"));
-        UNIT_ASSERT_EQUAL(16, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(16, rb.GetAvailableByteCount());
         UNIT_ASSERT(rb.PushBack("efgh"));
-        UNIT_ASSERT_EQUAL(4, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(4, rb.GetAvailableByteCount());
         UNIT_ASSERT(rb.PushBack("ijkl"));
-        UNIT_ASSERT_EQUAL(0, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(0, rb.GetAvailableByteCount());
         rb.PopFront();
-        UNIT_ASSERT_EQUAL(3, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(3, rb.GetAvailableByteCount());
         rb.PopFront();
-        UNIT_ASSERT_EQUAL(15, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(15, rb.GetAvailableByteCount());
         rb.PopFront();
-        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(28, rb.GetAvailableByteCount());
     }
 
     Y_UNIT_TEST(ShouldGetAndSetMetadata_ZeroMetadataCapacity)
