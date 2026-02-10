@@ -664,6 +664,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
+    xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
     xxx(ShapingThrottlerStandardBudgetMultiplier,      ui32,      0                  )\
     xxx(ShapingThrottlerBoostBudgetMultiplier,         ui32,      0                  )\
     xxx(ShapingThrottlerBoostRefillBudgetMultiplier,   ui32,      0                  )\

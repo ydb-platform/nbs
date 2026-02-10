@@ -404,7 +404,8 @@ void TServerStats::RequestCompleted(
     const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
     const auto predictedTime = callContext.GetPossiblePostponeDuration();
     const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
-    const auto waitTime = postponedTime + backoffTime;
+    const auto shapingTime = callContext.Time(EProcessingStage::Shaping);
+    const auto waitTime = postponedTime + backoffTime + shapingTime;
     const auto errorFlags = error.GetFlags();
     auto errorKind = GetDiagnosticsErrorKind(error);
 
@@ -558,6 +559,7 @@ void TServerStats::RequestCompleted(
         << ", postponed: " << FormatDuration(postponedTime)
         << ", predicted: " << FormatDuration(predictedTime)
         << ", backoff: " << FormatDuration(backoffTime)
+        << ", shaping: " << FormatDuration(shapingTime)
         << ", size: " << FormatByteSize(req.RequestBytes)
         << ", unaligned: " << req.Unaligned
         << maxTimeSuppressedMessage

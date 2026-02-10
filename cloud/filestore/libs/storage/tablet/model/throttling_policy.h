@@ -80,6 +80,8 @@ public:
     bool TryPostpone(
         TInstant ts,
         const TThrottlingRequestInfo& requestInfo) override;
+    [[nodiscard]] TDuration GetRequestCost(
+        const TThrottlingRequestInfo& requestInfo) const override;
     TMaybe<TDuration> SuggestDelay(
         TInstant ts,
         TDuration queueTime,

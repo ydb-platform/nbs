@@ -33,7 +33,10 @@ namespace {
 Y_HAS_MEMBER(SetDeprecatedThrottlerDelay);
 
 template <typename TMethod>
-void StoreThrottlerDelay(typename TMethod::TResponse& response, TDuration delay)
+void StoreThrottlerDelay(
+    typename TMethod::TResponse& response,
+    TDuration delay,
+    TDuration shapingDelay)
 {
     using TProtoType = decltype(TMethod::TResponse::Record);
     static_assert(
@@ -43,6 +46,8 @@ void StoreThrottlerDelay(typename TMethod::TResponse& response, TDuration delay)
         response.Record.SetDeprecatedThrottlerDelay(delay.MicroSeconds());
         response.Record.MutableHeaders()->MutableThrottler()->SetDelay(
             delay.MicroSeconds());
+        response.Record.MutableHeaders()->MutableThrottler()->SetShapingDelay(
+            shapingDelay.MicroSeconds());
     }
 }
 
@@ -61,7 +66,8 @@ void RejectVolumeRequest(
 
     StoreThrottlerDelay<TMethod>(
         *response,
-        callContext.Time(EProcessingStage::Postponed));
+        callContext.Time(EProcessingStage::Postponed),
+        callContext.Time(EProcessingStage::Shaping));
 
     NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
@@ -337,7 +343,8 @@ void TVolumeActor::FillResponse(
 
     StoreThrottlerDelay<TMethod>(
         response,
-        callContext.Time(EProcessingStage::Postponed));
+        callContext.Time(EProcessingStage::Postponed),
+        callContext.Time(EProcessingStage::Shaping));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

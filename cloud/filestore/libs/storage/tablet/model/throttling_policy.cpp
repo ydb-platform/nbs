@@ -206,6 +206,13 @@ bool TThrottlingPolicy::TryPostpone(
     return Impl->TryPostpone(requestInfo);
 }
 
+TDuration TThrottlingPolicy::GetRequestCost(
+    const TThrottlingRequestInfo& requestInfo) const
+{
+    Y_UNUSED(requestInfo);
+    return TDuration::Zero();
+}
+
 TMaybe<TDuration> TThrottlingPolicy::SuggestDelay(
     TInstant ts,
     TDuration queueTime,
