@@ -14,6 +14,7 @@
 #include <cloud/filestore/libs/service/filestore_test.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/init.h>
@@ -237,13 +238,16 @@ struct TServerSetup
         TServerConfigPtr config,
         ILoggingServicePtr logging,
         IRequestStatsPtr requestStats,
+        NMonitoring::TDynamicCountersPtr counters,
         IFileStoreServicePtr service)
     {
         return CreateServer(
             std::move(config),
             std::move(logging),
             std::move(requestStats),
+            std::move(counters),
             CreateProfileLogStub(),
+            CreateSchedulerStub(),
             std::move(service));
     }
 };
@@ -268,12 +272,15 @@ struct TVHostSetup
         TServerConfigPtr config,
         ILoggingServicePtr logging,
         IRequestStatsPtr requestStats,
+        NMonitoring::TDynamicCountersPtr counters,
         IEndpointManagerPtr service)
     {
         return CreateServer(
             std::move(config),
             std::move(logging),
             std::move(requestStats),
+            std::move(counters),
+            CreateSchedulerStub(),
             std::move(service));
     }
 };
@@ -317,6 +324,7 @@ public:
             ServerConfig,
             Logging,
             registry->GetRequestStats(),
+            Counters,
             Service);
 
         CreateClient();
@@ -783,6 +791,29 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         const auto& response = insecureFuture.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
+    }
+
+    Y_UNIT_TEST(ShouldRegisterServerStatsCounters)
+    {
+        NProto::TServerConfig serverConfig;
+        serverConfig.SetSharedMemoryTransportEnabled(true);
+
+        TBootstrap<TServerSetup> bootstrap(serverConfig);
+
+        bootstrap.Service->PingHandler = [] (auto, auto) {
+            return MakeFuture<NProto::TPingResponse>();
+        };
+
+        bootstrap.Start();
+
+        auto serverCounters =
+            bootstrap.Counters->GetSubgroup("component", "server");
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            serverCounters->GetCounter("MmapRegionCount")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            serverCounters->GetCounter("TotalMmapSizeBytes")->GetAtomic());
     }
 }
 

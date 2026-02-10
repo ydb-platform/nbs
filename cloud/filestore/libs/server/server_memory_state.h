@@ -67,6 +67,12 @@ private:
     TMmapRegionMetadata Metadata;
 };
 
+struct TServerStateStats
+{
+    size_t MmapRegionCount = 0;
+    ui64 TotalMmapSize = 0;
+};
+
 class TServerState
 {
 public:
@@ -85,6 +91,8 @@ public:
     TResultOrError<TMmapRegionMetadata> GetMmapRegion(ui64 mmapId);
 
     NProto::TError PingMmapRegion(ui64 mmapId);
+
+    [[nodiscard]] TServerStateStats GetStateStats() const;
 
 private:
     TLightRWLock StateLock;
