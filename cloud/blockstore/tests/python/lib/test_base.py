@@ -428,30 +428,39 @@ def __get_dirty_devices(sensors, pool, kind, default_value=0):
 
 # wait for DiskAgent registration & secure erase
 def wait_for_free_bytes(mon_port, pool='default', kind='default'):
-    while True:
-        logging.info("Wait for agents...")
-        time.sleep(1)
+
+    @retrying.retry(wait_fixed=1000, stop_max_delay=300000)
+    def ensure_free_bytes():
         sensors = get_nbs_counters(mon_port)['sensors']
         bytes = __get_free_bytes(sensors, pool, kind)
 
-        if bytes > 0:
-            logging.info("Bytes: {}".format(bytes))
-            break
+        if not bytes:
+            raise Exception(f"There is no free space in the pool '{pool}'")
+
+        logging.info("Bytes: {}".format(bytes))
+
+    logging.info("Wait for agents...")
+    time.sleep(1)
+
+    ensure_free_bytes()
 
 
 # wait for DA & secure erase of all available devices
 def wait_for_secure_erase(mon_port, pool='default', kind='default', expectedAgents=1):
+
     if expectedAgents == 0:
         return
 
     seen_zero_free_bytes = False
-    while True:
-        logging.info("Wait for agents ...")
-        time.sleep(1)
+
+    @retrying.retry(wait_fixed=1000, stop_max_delay=300000)
+    def ensure_free_bytes():
+        nonlocal seen_zero_free_bytes
+
         sensors = get_nbs_counters(mon_port)['sensors']
         agents = get_sensor_by_name(sensors, 'disk_registry', 'AgentsInOnlineState', 0)
         if agents < expectedAgents:
-            continue
+            raise Exception(f"Too few agents: {agents} vs {expectedAgents}")
 
         logging.info("Agents: {}".format(agents))
 
@@ -459,7 +468,7 @@ def wait_for_secure_erase(mon_port, pool='default', kind='default', expectedAgen
         logging.info("Dirty devices: {}".format(dd))
 
         if dd:
-            continue
+            raise Exception(f"There are dirty devices: {dd}")
 
         bytes = __get_free_bytes(sensors, pool, kind)
         logging.info("Bytes: {}".format(bytes))
@@ -476,11 +485,13 @@ def wait_for_secure_erase(mon_port, pool='default', kind='default', expectedAgen
             # are published, we need to do one more loop.
             if not seen_zero_free_bytes:
                 seen_zero_free_bytes = True
-                continue
+                raise Exception(f"There is no free space in the pool '{pool}'")
 
         assert bytes != 0
 
-        break
+    logging.info("Wait for agents ...")
+    time.sleep(1)
+    ensure_free_bytes()
 
 
 ################################################################################
