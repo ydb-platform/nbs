@@ -240,11 +240,11 @@ void TPartitionActor::CompleteLoadState(
         partitionConfig,
         Info(),
         *FreshBlocksCompanionClient,
-        *State,
-        *State,
-        *State,
-        *State,
-        *State,
+        *State,   // channelsState
+        *State,   // freshBlobState
+        *State,   // flushState
+        *State,   // trimFreshLogState
+        *State,   // freshBlocksState
         LogTitle);
 
     MapBaseDiskIdToTabletId(ctx);
