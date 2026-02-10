@@ -563,7 +563,7 @@ void TWriteBlobCompanion::HandleWriteBlobCompleted(
                 {{"disk", PartitionConfig.GetDiskId()},
                  {"actor", ev->Sender.ToString()},
                  {"group", groupId}});
-            Client.Die(ctx);
+            Client.Poison(ctx);
             return;
         }
     } else {
