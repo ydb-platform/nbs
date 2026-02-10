@@ -17,6 +17,7 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <algorithm>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -87,6 +88,8 @@ private:
     TVector<std::pair<ui32, TBlockRange32>> Ranges;
     TVector<TCallContextPtr> ForkedCompactionTxCallContexts;
     ui32 AwaitedCompactionTxCall = 0;
+    using InfoWithIndex = std::pair<TRangeCompactionInfo, ui32>;
+    TVector<InfoWithIndex> RangeCompactionInfosWithIndices;  // TODO:_ do it normally
 
     TVector<TRangeCompactionInfo> RangeCompactionInfos;
     TVector<TRequest> Requests;
@@ -250,7 +253,8 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             Tablet,
-            std::move(request));
+            std::move(request),
+            i);
     }
 
     Ranges.clear();
@@ -849,10 +853,16 @@ void TCompactionActor::HandleCompactionTxResponse(
         return;
     }
 
-    std::move(
-        msg->RangeCompactionInfos.begin(),
-        msg->RangeCompactionInfos.end(),
-        std::back_insert_iterator<TVector<TRangeCompactionInfo>>(RangeCompactionInfos));
+    ui32 batchIndex = ev->Cookie;
+    for (ui32 i = 0; i < msg->RangeCompactionInfos.size(); ++i) {
+        RangeCompactionInfosWithIndices.emplace_back(
+            std::move(msg->RangeCompactionInfos[i]),
+            batchIndex + i);
+    }
+    // std::move(
+    //     msg->RangeCompactionInfos.begin(),
+    //     msg->RangeCompactionInfos.end(),
+    //     std::back_insert_iterator<TVector<TRangeCompactionInfo>>(RangeCompactionInfos));
     std::move(
         msg->CompactionRequests.begin(),
         msg->CompactionRequests.end(),
@@ -860,6 +870,26 @@ void TCompactionActor::HandleCompactionTxResponse(
 
     if (--AwaitedCompactionTxCall) {
         return;
+    }
+
+    // TODO:_ use Sort
+    // std::sort(
+    //     RangeCompactionInfosWithIndices.begin(),
+    //     RangeCompactionInfosWithIndices.end(),
+    //     [](const InfoWithIndex& l, const InfoWithIndex& r)
+    //     { return l.sedond < r.second; });
+    TVector<InfoWithIndex*> infos;
+    for (auto& info: RangeCompactionInfosWithIndices) {
+        infos.push_back(&info);
+    }
+    Sort(
+        infos,
+        [](const InfoWithIndex* l, const InfoWithIndex* r)
+        { return l->second < r->second; });
+
+    for (ui32 i = 0; i < infos.size(); ++i) {
+        RangeCompactionInfos.push_back(
+            std::move(infos[i]->first));
     }
 
     // TODO:_ exec cycles
@@ -1539,3 +1569,5 @@ void TPartitionActor::HandleCompactionCompleted(
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
+
+// TODO:_ upper bould on message size = ??? There could be many requests!
