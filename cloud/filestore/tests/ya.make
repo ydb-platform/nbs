@@ -22,6 +22,7 @@ RECURSE_FOR_TESTS(
     fio_migration
     fs_posix_compliance
     guest_cache
+    lease_expiration
     loadtest
     profile_log
     registration
