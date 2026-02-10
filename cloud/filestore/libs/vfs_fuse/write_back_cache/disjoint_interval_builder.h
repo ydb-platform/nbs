@@ -28,7 +28,7 @@ struct TIntervalPart
  * @return A sorted vector of non-overlapping intervals including indices of
  *   the original intervals.
  *
- * Example: [1, 3], [3, 5], [2, 4] => [1, 2]: 0, [2, 4]: 2, [4, 5]: 1
+ * Example: [1, 4), [3, 6), [2, 5) => [1, 3): 0, [2, 5): 2, [4, 6): 1
  */
 TVector<TIntervalPart> BuildDisjointIntervalParts(
     const TVector<TInterval>& intervals);

@@ -2,7 +2,7 @@
 
 #include "disjoint_interval_builder.h"
 
-#include <contrib/ydb/core/util/interval_set.h>
+#include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -129,6 +129,56 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TWriteRequestCounter
+{
+private:
+    const ui64 MaxWriteRequestSize;
+    TDisjointIntervalMap<ui64, ui64> SeparatedIntervalsMap;
+    ui64 WriteRequestCount = 0;
+    ui64 SumWriteRequestsSize = 0;
+
+public:
+    explicit TWriteRequestCounter(ui64 maxSumWriteRequestSize)
+        : MaxWriteRequestSize(maxSumWriteRequestSize)
+    {}
+
+    void AddInterval(ui64 begin, ui64 end)
+    {
+        Y_ABORT_UNLESS(begin < end);
+
+        // Remove all overlapping and touching intervals
+        SeparatedIntervalsMap.VisitOverlapping(
+            begin > 0 ? begin - 1 : 0,
+            end < Max<ui64>() ? end + 1 : Max<ui64>(),
+            [this, &begin, &end](auto it)
+            {
+                const TDisjointIntervalMap<ui64, ui64>::TItem& e = it->second;
+                WriteRequestCount -= e.Value;
+                SumWriteRequestsSize -= e.End - e.Begin;
+                begin = Min(begin, e.Begin);
+                end = Max(end, e.End);
+                SeparatedIntervalsMap.Remove(it);
+            });
+
+        const ui64 count = ((end - begin - 1) / MaxWriteRequestSize) + 1;
+        SeparatedIntervalsMap.Add(begin, end, count);
+        WriteRequestCount += count;
+        SumWriteRequestsSize += end - begin;
+    }
+
+    ui64 GetWriteRequestCount() const
+    {
+        return WriteRequestCount;
+    }
+
+    ui64 GetSumWriteRequestsSize() const
+    {
+        return SumWriteRequestsSize;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TVector<TWriteDataRequestPart> BuildDisjointRequestDataParts(
     const TVector<TWriteDataRequestPart>& data)
 {
@@ -161,9 +211,7 @@ private:
     const ui64 NodeId;
     const TWriteDataRequestBuilderConfig Config;
 
-    NKikimr::TIntervalSet<ui64, 16> IntervalSet;
-    ui64 EstimatedRequestCount = 0;
-    ui64 EstimatedByteCount = 0;
+    TWriteRequestCounter WriteDataRequestCounter;
 
     ui64 Handle = 0;
     TVector<TWriteDataRequestPart> InputRequests;
@@ -174,6 +222,7 @@ public:
         TWriteDataRequestBuilderConfig config)
         : NodeId(nodeId)
         , Config(std::move(config))
+        , WriteDataRequestCounter(Config.MaxWriteRequestSize)
     {}
 
     bool AddRequest(ui64 handle, ui64 offset, TStringBuf data) override
@@ -184,49 +233,15 @@ public:
             Handle = handle;
         }
 
-        IntervalSet.Add(offset, offset + data.size());
+        WriteDataRequestCounter.AddInterval(offset, offset + data.size());
 
-        // Value byteCount has to be calculated using O(N) algorithm
-        // because TIntervalSet does not track the sum of lengths of intervals.
-        // Same for requestCount.
-        //
-        // An euristic is used here to reduce complexity:
-        // - Pessimistically estimate byteCount and requestCount values using
-        //   an assumption that the intervals do not intersect nor touch
-        // - Calculate the actual values only when the limits are exceeded
-        //
-        // Notes:
-        // - maxWriteRequestsCount is expected to be small (default: 32)
-        // - maxSumWriteRequestsSize (default: 16MiB) is expected to be times
-        //   larger than maxWriteRequestSize (default: 1MiB) and the size of
-        //   TWriteDataEntry buffer (maximal: 1MiB)
-        EstimatedRequestCount +=
-            ((data.size() - 1) / Config.MaxWriteRequestSize) + 1;
-        EstimatedByteCount += data.size();
-
-        if (EstimatedRequestCount > Config.MaxWriteRequestsCount ||
-            EstimatedByteCount > Config.MaxSumWriteRequestsSize)
+        if ((WriteDataRequestCounter.GetWriteRequestCount() >
+                 Config.MaxWriteRequestsCount ||
+             WriteDataRequestCounter.GetSumWriteRequestsSize() >
+                 Config.MaxSumWriteRequestsSize) &&
+            !InputRequests.empty())
         {
-            // Calculate the actual values
-            ui64 requestCount = 0;
-            ui64 byteCount = 0;
-
-            for (const auto& interval: IntervalSet) {
-                auto size = interval.second - interval.first;
-                requestCount += ((size - 1) / Config.MaxWriteRequestSize) + 1;
-                byteCount += size;
-            }
-
-            // Still exceed the limits - don't accept more entries
-            if ((requestCount > Config.MaxWriteRequestsCount ||
-                 byteCount > Config.MaxSumWriteRequestsSize) &&
-                !InputRequests.empty())
-            {
-                return false;
-            }
-
-            EstimatedRequestCount = requestCount;
-            EstimatedByteCount = byteCount;
+            return false;
         }
 
         InputRequests.push_back({offset, data});
@@ -261,7 +276,7 @@ private:
             while (++rangeEndIndex < dataParts.size()) {
                 const auto& prevPart = dataParts[rangeEndIndex - 1];
                 const auto end = prevPart.Offset + prevPart.Data.size();
-                Y_DEBUG_ABORT_UNLESS(end <= dataParts[rangeEndIndex].Offset);
+                Y_ABORT_UNLESS(end <= dataParts[rangeEndIndex].Offset);
 
                 if (end != dataParts[rangeEndIndex].Offset) {
                     break;
