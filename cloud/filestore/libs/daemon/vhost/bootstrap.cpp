@@ -40,6 +40,7 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/daemon/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -528,6 +529,16 @@ void TBootstrapVhost::StopComponents()
 
 void TBootstrapVhost::Drain()
 {
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr &&
+        GetShouldContinue().PollState() != TProgramShouldContinue::Continue)
+    {
+        auto code = GetShouldContinue().GetReturnCode();
+        if (code == NodeLeaseExpirationExitCode) {
+            ythrow TAppShouldExitWithoutShutdownException()
+                << "Node lease is expired";
+        }
+    }
+
     if (EndpointManager) {
         EndpointManager->Drain();
     }
