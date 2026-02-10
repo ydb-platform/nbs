@@ -44,22 +44,16 @@ public:
         return Max<ui64>();
     }
 
-    const void* Alloc(const TAllocationWriter& writer, size_t size) override
+    char* Alloc(size_t size) override
     {
         if (Capacity > 0 && ChunkMap.size() >= Capacity) {
             return nullptr;
         }
 
-        auto str = TString::Uninitialized(size);
-        writer(str.begin(), size);
-
-        // The returned pointer should be different from the pointer
-        // passed to the writer
         auto chunk = std::make_unique<TChunk>();
         chunk->Data = TString::Uninitialized(size);
-        str.copy(chunk->Data.begin(), size);
 
-        const void* res = chunk->Data.data();
+        char* res = chunk->Data.begin();
 
         ChunkList.PushBack(chunk.get());
         ChunkMap[res] = std::move(chunk);
@@ -68,6 +62,9 @@ public:
 
         return res;
     }
+
+    void Commit() override
+    {}
 
     void Free(const void* ptr) override
     {

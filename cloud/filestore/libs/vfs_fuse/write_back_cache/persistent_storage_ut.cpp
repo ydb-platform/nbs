@@ -55,15 +55,13 @@ struct TBootstrap
         return Initialize();
     }
 
-    const void* Alloc(const TString& data) const
+    const char* Alloc(const TString& data) const
     {
-        return Storage->Alloc(
-            [&data](char* ptr, size_t size)
-            {
-                UNIT_ASSERT(size == data.size());
-                data.copy(ptr, size);
-            },
-            data.size());
+        char* ptr = Storage->Alloc(data.size());
+        if (ptr != nullptr) {
+            data.copy(ptr, data.size());
+        }
+        return ptr;
     }
 
     void Free(const void* ptr) const

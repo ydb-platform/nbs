@@ -54,13 +54,19 @@ struct IPersistentStorage
     /**
      * Allocates a buffer of the given size.
      *
-     * On successful allocation, calls the writer, which should fill the buffer,
-     * and returns a pointer to the buffer in persistent storage.
-     * The returned pointer may differ from the pointer passed to the writer.
+     * On successful allocation, returns a pointer to the buffer in persistent
+     * storage. The caller should fill the buffer and call Commit.
      *
      * Returns nullptr if there is not enough free space in the storage.
      */
-    virtual const void* Alloc(const TAllocationWriter& writer, size_t size) = 0;
+    virtual char* Alloc(size_t size) = 0;
+
+    /**
+     * Commits previous memory allocation
+     *
+     * Memory that was allocated but not committed will be lost
+     */
+    virtual void Commit() = 0;
 
     // Frees a previously allocated buffer.
     virtual void Free(const void* ptr) = 0;

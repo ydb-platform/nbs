@@ -829,6 +829,66 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 TString(static_cast<char*>(m.Ptr()), m.Length()));
         }
     }
+
+    Y_UNIT_TEST(ShouldSupportInPlaceAllocation)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        TString data1 = "vastya";
+        TString data2 = "ivan";
+
+        auto* ptr1 = rb.Alloc(data1.size());
+        UNIT_ASSERT(ptr1 != nullptr);
+        data1.copy(ptr1, data1.size());
+        rb.Commit();
+
+        auto* ptr2 = rb.Alloc(data2.size());
+        UNIT_ASSERT(ptr2 != nullptr);
+        data2.copy(ptr2, data2.size());
+        rb.Commit();
+
+        UNIT_ASSERT_VALUES_EQUAL(data1, rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(data2, rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("", rb.Front());
+    }
+
+    Y_UNIT_TEST(ShouldDropNotCommittedEntry)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+
+        TString data1 = "vastya";
+        TString data2 = "ivan";
+
+        {
+            TFileRingBuffer rb(f.GetName(), len);
+
+            auto* ptr1 = rb.Alloc(data1.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
+            UNIT_ASSERT(ptr1 != nullptr);
+            data1.copy(ptr1, data1.size());
+            rb.Commit();
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+
+            auto* ptr2 = rb.Alloc(data2.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT(ptr2 != nullptr);
+            data2.copy(ptr2, data2.size());
+        }
+
+        {
+            TFileRingBuffer rb(f.GetName(), len);
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(data1, rb.Front());
+            rb.PopFront();
+
+            UNIT_ASSERT_VALUES_EQUAL("", rb.Front());
+        }
+    }
 }
 
 }   // namespace NCloud

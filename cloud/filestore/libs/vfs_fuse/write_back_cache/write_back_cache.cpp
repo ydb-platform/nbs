@@ -1033,14 +1033,15 @@ private:
             auto& entry = PendingEntries.front();
             auto serializedSize = entry->GetSerializedSize();
 
-            const auto* allocationPtr = PersistentStorage->Alloc(
-                [&](char* ptr, size_t size) { entry->Serialize({ptr, size}); },
-                serializedSize);
-
+            char* allocationPtr = PersistentStorage->Alloc(serializedSize);
             if (allocationPtr == nullptr) {
                 RequestFlushAllCachedData();
                 break;
             }
+
+            entry->Serialize({allocationPtr, serializedSize});
+
+            PersistentStorage->Commit();
 
             entry->MoveRequestBuffer(allocationPtr, QueuedOperations, this);
 

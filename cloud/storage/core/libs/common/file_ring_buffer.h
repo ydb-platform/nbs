@@ -48,6 +48,16 @@ public:
 
 public:
     bool PushBack(TStringBuf data);
+
+    // Implement in-place allocation.
+    // Returns a pointer to the allocated memory or nullptr if allocation failed
+    // Commit should be called after writing data to the allocated memory
+    char* Alloc(size_t size);
+
+    // Calculate checksum for the previously allocated memory using Alloc
+    // and advance the write pointer
+    void Commit();
+
     TStringBuf Front() const;
     TStringBuf Back() const;
     void PopFront();

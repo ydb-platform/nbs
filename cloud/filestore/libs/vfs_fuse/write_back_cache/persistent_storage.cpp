@@ -77,7 +77,7 @@ public:
         return Storage.GetMaxSupportedAllocationByteCount();
     }
 
-    const void* Alloc(const TAllocationWriter& writer, size_t size) override
+    char* Alloc(size_t size) override
     {
         Y_ENSURE(size > 0, "Zero-size allocations are not allowed");
 
@@ -85,15 +85,23 @@ public:
             return nullptr;
         }
 
-        // TFileRingBuffer does not support in-place allocation yet
-        auto buffer = TString::Uninitialized(size);
-        writer(buffer.begin(), size);
+        char* ptr = Storage.Alloc(size);
 
-        Y_ABORT_UNLESS(Storage.PushBack(buffer));
+        Y_ABORT_UNLESS(
+            ptr != nullptr,
+            "Allocation failed despite GetAvailableByteCount() check: size = "
+            "%lu, available = %lu, filename = %s",
+            size,
+            Storage.GetAvailableByteCount(),
+            Config.FilePath.c_str());
 
+        return ptr;
+    }
+
+    void Commit() override
+    {
+        Storage.Commit();
         UpdateStats();
-
-        return Storage.Back().data();
     }
 
     void Free(const void* ptr) override

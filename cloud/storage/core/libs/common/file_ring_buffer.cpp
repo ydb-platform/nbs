@@ -230,6 +230,10 @@ private:
     ui64 Count = 0;
     bool Corrupted = false;
 
+    TEntryHeader* CurrentAllocation = nullptr;
+    ui64 WritePosAfterCommit = 0;
+    ui64 LastEntrySizeAfterCommit = 0;
+
 private:
     THeader* Header()
     {
@@ -493,18 +497,35 @@ public:
 
     bool PushBack(TStringBuf data)
     {
+        char* ptr = Alloc(data.size());
+        if (ptr == nullptr) {
+            return false;
+        }
+
+        data.copy(ptr, data.size());
+
+        Commit();
+        return true;
+    }
+
+    char* Alloc(size_t size)
+    {
+        Y_ENSURE(
+            CurrentAllocation == nullptr,
+            "Previous allocation is not committed");
+
         if (IsCorrupted()) {
             // TODO: should return error code
-            return false;
+            return nullptr;
         }
 
-        if (data.empty()) {
-            return false;
+        if (size == 0) {
+            return nullptr;
         }
 
-        const auto sz = data.size() + sizeof(TEntryHeader);
+        const auto sz = size + sizeof(TEntryHeader);
         if (sz > Header()->DataCapacity) {
-            return false;
+            return nullptr;
         }
         auto writePos = Header()->WritePos;
 
@@ -518,7 +539,7 @@ public:
                 if (freeSpace < sz) {
                     if (Header()->ReadPos <= sz) {
                         // out of space
-                        return false;
+                        return nullptr;
                     }
                     auto* eh = Data.GetEntryHeader(Header()->WritePos);
                     if (eh != nullptr) {
@@ -532,18 +553,36 @@ public:
                 // there should remain free space between the occupied regions
                 if (freeSpace <= sz) {
                     // out of space
-                    return false;
+                    return nullptr;
                 }
             }
         }
 
-        Data.WriteEntry(writePos, data);
+        CurrentAllocation = Data.GetEntryHeader(writePos);
+        CurrentAllocation->DataSize = size;
 
-        Header()->WritePos = writePos + sz;
-        Header()->LastEntrySize = sz;
+        WritePosAfterCommit = writePos + sz;
+        LastEntrySizeAfterCommit = sz;
+
+        char* ptr = Data.GetEntryData(CurrentAllocation);
+        Y_ABORT_UNLESS(ptr != nullptr);
+        return ptr;
+    }
+
+    void Commit()
+    {
+        Y_ENSURE(CurrentAllocation != nullptr, "Nothing to commit");
+
+        char* ptr = Data.GetEntryData(CurrentAllocation);
+        Y_ABORT_UNLESS(ptr != nullptr);
+
+        CurrentAllocation->Checksum = Crc32c(ptr, CurrentAllocation->DataSize);
+
+        Header()->WritePos = WritePosAfterCommit;
+        Header()->LastEntrySize = LastEntrySizeAfterCommit;
         ++Count;
 
-        return true;
+        CurrentAllocation = nullptr;
     }
 
     TStringBuf Front() const
@@ -751,6 +790,16 @@ TFileRingBuffer::~TFileRingBuffer() = default;
 bool TFileRingBuffer::PushBack(TStringBuf data)
 {
     return Impl->PushBack(data);
+}
+
+char* TFileRingBuffer::Alloc(size_t size)
+{
+    return Impl->Alloc(size);
+}
+
+void TFileRingBuffer::Commit()
+{
+    Impl->Commit();
 }
 
 TStringBuf TFileRingBuffer::Front() const
