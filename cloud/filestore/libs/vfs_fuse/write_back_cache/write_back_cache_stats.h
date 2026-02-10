@@ -1,5 +1,7 @@
 #pragma once
 
+#include "persistent_storage.h"
+
 #include <util/datetime/base.h>
 #include <util/system/types.h>
 
@@ -63,19 +65,9 @@ enum class EReadDataRequestCacheStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPersistentStorageStats
+struct IWriteBackCacheStats: public IPersistentStorageStats
 {
-    ui64 RawCapacityByteCount = 0;
-    ui64 RawUsedByteCount = 0;
-    ui64 EntryCount = 0;
-    bool IsCorrupted = false;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct IWriteBackCacheStats
-{
-    virtual ~IWriteBackCacheStats() = default;
+    ~IWriteBackCacheStats() override = default;
 
     virtual void ResetNonDerivativeCounters() = 0;
 
@@ -100,9 +92,6 @@ struct IWriteBackCacheStats
     virtual void AddReadDataStats(
         EReadDataRequestCacheStatus status,
         TDuration pendingDuration) = 0;
-
-    virtual void UpdatePersistentStorageStats(
-        const TPersistentStorageStats& stats) = 0;
 };
 
 using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;

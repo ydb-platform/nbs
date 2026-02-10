@@ -16,14 +16,14 @@ namespace {
 class TFileRingBufferStorage: public IPersistentStorage
 {
 private:
-    IWriteBackCacheStatsPtr Stats;
+    const IPersistentStorageStatsPtr Stats;
     TFileRingBuffer Storage;
     THashSet<const void*> DeletedEntries;
     const TPersistentStorageConfig Config;
 
 public:
     TFileRingBufferStorage(
-        IWriteBackCacheStatsPtr stats,
+        IPersistentStorageStatsPtr stats,
         TPersistentStorageConfig config)
         : Stats(std::move(stats))
         , Storage(config.FilePath, config.DataCapacity, config.MetadataCapacity)
@@ -74,21 +74,14 @@ public:
 
     ui64 GetMaxSupportedAllocationByteCount() const override
     {
-        // Full capacity minus entry header
-        return Storage.GetRawCapacity() - 8;
+        return Storage.GetMaxSupportedAllocationByteCount();
     }
 
     const void* Alloc(const TAllocationWriter& writer, size_t size) override
     {
         Y_ENSURE(size > 0, "Zero-size allocations are not allowed");
 
-        if (Storage.GetMaxAllocationBytesCount() < size) {
-            Y_ENSURE(
-                !Storage.Empty(),
-                "The requested allocation size "
-                    << size << " exceeds the maximum allocation size "
-                    << Storage.GetMaxAllocationBytesCount());
-
+        if (Storage.GetAvailableByteCount() < size) {
             return nullptr;
         }
 
@@ -147,7 +140,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
-    IWriteBackCacheStatsPtr stats,
+    IPersistentStorageStatsPtr stats,
     TPersistentStorageConfig config)
 {
     auto storage = std::make_shared<TFileRingBufferStorage>(

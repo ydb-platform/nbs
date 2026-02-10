@@ -1,13 +1,33 @@
 #pragma once
 
-#include "write_back_cache_stats.h"
-
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/function_ref.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TPersistentStorageStats
+{
+    ui64 RawCapacityByteCount = 0;
+    ui64 RawUsedByteCount = 0;
+    ui64 EntryCount = 0;
+    bool IsCorrupted = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IPersistentStorageStats
+{
+    virtual ~IPersistentStorageStats() = default;
+
+    virtual void UpdatePersistentStorageStats(
+        const TPersistentStorageStats& stats) = 0;
+};
+
+using IPersistentStorageStatsPtr = std::shared_ptr<IPersistentStorageStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -39,8 +59,6 @@ struct IPersistentStorage
      * The returned pointer may differ from the pointer passed to the writer.
      *
      * Returns nullptr if there is not enough free space in the storage.
-     * Throws an exception if the allocation size exceeds
-     * MaxSupportedAllocationByteCount.
      */
     virtual const void* Alloc(const TAllocationWriter& writer, size_t size) = 0;
 
@@ -59,14 +77,13 @@ struct TPersistentStorageConfig
     TString FilePath;
     ui64 DataCapacity = 0;
     ui64 MetadataCapacity = 0;
-    bool EnableChecksumCalculation = false;
     bool EnableChecksumValidation = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
-    IWriteBackCacheStatsPtr stats,
+    IPersistentStorageStatsPtr stats,
     TPersistentStorageConfig config);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -4,7 +4,7 @@
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/write_back_cache_stats_test.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>

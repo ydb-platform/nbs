@@ -1,4 +1,4 @@
-#include "persistent_storage_test.h"
+#include "test_persistent_storage.h"
 
 #include <util/generic/hash.h>
 #include <util/generic/intrlist.h>

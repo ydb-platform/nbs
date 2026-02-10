@@ -668,7 +668,7 @@ public:
         return res + Header()->WritePos - Header()->ReadPos;
     }
 
-    ui64 GetMaxAllocationBytesCount() const
+    ui64 GetAvailableByteCount() const
     {
         if (IsCorrupted()) {
             return 0;
@@ -687,6 +687,17 @@ public:
         }
         return maxRawSize > sizeof(TEntryHeader)
                    ? maxRawSize - sizeof(TEntryHeader)
+                   : 0;
+    }
+
+    ui64 GetMaxSupportedAllocationByteCount() const
+    {
+        if (IsCorrupted()) {
+            return 0;
+        }
+
+        return Header()->DataCapacity > sizeof(TEntryHeader)
+                   ? Header()->DataCapacity - sizeof(TEntryHeader)
                    : 0;
     }
 
@@ -797,9 +808,14 @@ ui64 TFileRingBuffer::GetRawUsedBytesCount() const
     return Impl->GetRawUsedBytesCount();
 }
 
-ui64 TFileRingBuffer::GetMaxAllocationBytesCount() const
+ui64 TFileRingBuffer::GetAvailableByteCount() const
 {
-    return Impl->GetMaxAllocationBytesCount();
+    return Impl->GetAvailableByteCount();
+}
+
+ui64 TFileRingBuffer::GetMaxSupportedAllocationByteCount() const
+{
+    return Impl->GetMaxSupportedAllocationByteCount();
 }
 
 bool TFileRingBuffer::ValidateMetadata() const

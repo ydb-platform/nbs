@@ -1,6 +1,6 @@
 #include "persistent_storage.h"
 
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/write_back_cache_stats_test.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -34,7 +34,6 @@ struct TBootstrap
             {.FilePath = TempFile.GetName(),
              .DataCapacity = DefaultCapacity,
              .MetadataCapacity = 0,
-             .EnableChecksumCalculation = true,
              .EnableChecksumValidation = true});
 
         if (HasError(res)) {
@@ -165,11 +164,6 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
             b.Alloc(""),
             yexception,
             "The requested allocation size is zero");
-
-        UNIT_ASSERT_EXCEPTION_C(
-            b.Alloc(TString(DefaultCapacity + 1, 'x')),
-            yexception,
-            "The requested allocation size exceeds the storage capacity");
     }
 
     Y_UNIT_TEST(ShouldRecreateStorage)
