@@ -50,6 +50,7 @@ SRCS(
     part_database.cpp
     part_schema.cpp
     part_state.cpp
+    write_blob_companion_client.cpp
 )
 
 PEERDIR(

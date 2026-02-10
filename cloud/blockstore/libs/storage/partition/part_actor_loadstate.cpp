@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include "fresh_blocks_companion_client.h"
+#include "write_blob_companion_client.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -247,6 +248,8 @@ void TPartitionActor::CompleteLoadState(
         *State,   // freshBlocksState
         LogTitle);
 
+    CreateWriteBlobCompanionClient();
+
     WriteBlobCompanion = std::make_unique<TWriteBlobCompanion>(
         Config,
         PartitionConfig,
@@ -257,7 +260,7 @@ void TPartitionActor::CompleteLoadState(
         DiagnosticsConfig,
         BSGroupOperationTimeTracker,
         BSGroupOperationId,
-        WriteBlobCompanionClient,
+        *WriteBlobCompanionClient,
         *State,
         LogTitle);
 

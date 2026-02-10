@@ -61,6 +61,8 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 struct TFreshBlocksCompanionClient;
 
+struct TWriteBlobCompanionClient;
+
 ////////////////////////////////////////////////////////////////////////////////
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
@@ -111,83 +113,6 @@ class TPartitionActor final
     static constexpr ui64 BootWakeupEventTag = 1;
 
     friend TFreshBlocksCompanionClient;
-
-    struct TWriteBlobCompanionClient: public IWriteBlobCompanionClient
-    {
-        TPartitionActor& Owner;
-
-        explicit TWriteBlobCompanionClient(TPartitionActor& owner)
-            : Owner(owner)
-        {}
-
-        void UpdateWriteThroughput(
-            const TInstant& now,
-            const NKikimr::NMetrics::TChannel& channel,
-            const NKikimr::NMetrics::TGroupId& group,
-            ui64 value) override
-        {
-            Owner.UpdateWriteThroughput(now, channel, group, value);
-        }
-
-        void UpdateNetworkStat(const TInstant& now, ui64 value) override
-        {
-            Owner.UpdateNetworkStat(now, value);
-        }
-
-        void ScheduleYellowStateUpdate(
-            const NActors::TActorContext& ctx) override
-        {
-            Owner.ScheduleYellowStateUpdate(ctx);
-        }
-
-        void UpdateYellowState(const NActors::TActorContext& ctx) override
-        {
-            Owner.UpdateYellowState(ctx);
-        }
-
-        void ReassignChannelsIfNeeded(
-            const NActors::TActorContext& ctx) override
-        {
-            Owner.ReassignChannelsIfNeeded(ctx);
-        }
-
-        void UpdateChannelPermissions(
-            const NActors::TActorContext& ctx,
-            ui32 channel,
-            EChannelPermissions permissions) override
-        {
-            Owner.UpdateChannelPermissions(ctx, channel, permissions);
-        }
-
-        void RegisterSuccess(TInstant now, ui32 groupId) override
-        {
-            Owner.State->RegisterSuccess(now, groupId);
-        }
-
-        void RegisterDowntime(TInstant now, ui32 groupId) override
-        {
-            Owner.State->RegisterDowntime(now, groupId);
-        }
-
-        void ProcessIOQueue(
-            const NActors::TActorContext& ctx,
-            ui32 channel) override
-        {
-            Owner.ProcessIOQueue(ctx, channel);
-        }
-
-        TPartitionDiskCounters& GetPartCounters() override
-        {
-            return *Owner.PartCounters;
-        }
-
-        // IMortalActor implements
-
-        void Poison(const NActors::TActorContext& ctx) override
-        {
-            Owner.Suicide(ctx);
-        }
-    };
 
     friend TWriteBlobCompanionClient;
 
@@ -251,7 +176,7 @@ private:
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
-    TWriteBlobCompanionClient WriteBlobCompanionClient{*this};
+    std::unique_ptr<TWriteBlobCompanionClient> WriteBlobCompanionClient;
     std::unique_ptr<TWriteBlobCompanion> WriteBlobCompanion;
 
 public:
@@ -571,6 +496,8 @@ private:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
 
     void CreateFreshBlocksCompanionClient();
+
+    void CreateWriteBlobCompanionClient();
 
 private:
     STFUNC(StateBoot);

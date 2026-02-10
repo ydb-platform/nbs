@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include "fresh_blocks_companion_client.h"
+#include "write_blob_companion_client.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -917,6 +918,12 @@ void TPartitionActor::CreateFreshBlocksCompanionClient()
 {
     FreshBlocksCompanionClient =
         std::make_unique<TFreshBlocksCompanionClient>(*this);
+}
+
+void TPartitionActor::CreateWriteBlobCompanionClient()
+{
+    WriteBlobCompanionClient =
+        std::make_unique<TWriteBlobCompanionClient>(*this);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
