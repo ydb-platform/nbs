@@ -232,7 +232,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", help="output file path", default="rootfs.img")
     parser.add_argument("--release", help="Ubuntu release name",
-                        default="noble")
+                        default="plucky")
     parser.add_argument("--arch", help="Ubuntu architecture", default="amd64")
     parser.add_argument("--image", help="image file path to use instead of downloading", default=None)
     parser.add_argument("--cloud-images-mirror",
