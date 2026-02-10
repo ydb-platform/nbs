@@ -836,7 +836,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 64;
         TFileRingBuffer rb(f.GetName(), len);
 
-        TString data1 = "vastya";
+        TString data1 = "vasya";
         TString data2 = "ivan";
 
         auto* ptr1 = rb.Alloc(data1.size());
@@ -861,7 +861,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto f = TTempFileHandle();
         const ui32 len = 64;
 
-        TString data1 = "vastya";
+        TString data1 = "vasya";
         TString data2 = "ivan";
 
         {
