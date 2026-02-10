@@ -32,15 +32,18 @@
 
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
+#include <util/generic/bitops.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include "util/system/file_lock.h"
 #include <util/system/fs.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
+#include <util/system/spinlock.h>
 #include <util/system/thread.h>
 #include <util/thread/factory.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <pthread.h>
 
@@ -106,17 +109,25 @@ class TCompletionQueue final
     , public IIncompleteRequestProvider
 {
 private:
+    // Bucket of in-flight requests to reduce contention and track per request
+    // bucket counters.
+    struct Y_CACHE_ALIGNED TRequestBucket
+    {
+        TAdaptiveLock Lock;
+        THashMap<fuse_req_t, TCallContextPtr> Requests;
+        i64 Inflight = 0;
+        TAtomicCounter Completing = {0};
+    };
+
     const TString FileSystemId;
     const IRequestStatsPtr RequestStats;
     TLog Log;
     const NProto::EStorageMediaKind RequestMediaKind;
+    const ui32 RequestBucketCount;
+    TVector<TRequestBucket> RequestBuckets;
 
     enum fuse_cancelation_code CancelCode{};
     NAtomic::TBool ShouldStop = false;
-    TAtomicCounter CompletingCount = {0};
-
-    TMutex RequestsLock;
-    THashMap<fuse_req_t, TCallContextPtr> Requests;
 
     TPromise<void> StopPromise = NewPromise<void>();
 
@@ -125,68 +136,57 @@ public:
             TString fileSystemId,
             IRequestStatsPtr stats,
             TLog& log,
-            NProto::EStorageMediaKind requestMediaKind)
+            NProto::EStorageMediaKind requestMediaKind,
+            ui32 requestBucketCount)
         : FileSystemId(std::move(fileSystemId))
         , RequestStats(std::move(stats))
         , Log(log)
         , RequestMediaKind(requestMediaKind)
+        , RequestBucketCount(requestBucketCount)
+        , RequestBuckets(requestBucketCount)
     {
+        Y_ABORT_UNLESS(IsPowerOf2(RequestBucketCount));
     }
 
+public:
     TMaybe<enum fuse_cancelation_code> Enqueue(
         fuse_req_t req,
         TCallContextPtr context)
     {
-        TGuard g{RequestsLock};
-
         if (ShouldStop) {
             return CancelCode;
         }
 
-        Requests[req] = std::move(context);
+        auto& requestBucket = RequestBuckets[GetRequestBucketIndex(req)];
+        TGuard g{requestBucket.Lock};
+
+        // Re-check after acquiring the request bucket lock to avoid enqueueing
+        // after stop is requested while we were waiting.
+        if (ShouldStop) {
+            return CancelCode;
+        }
+
+        requestBucket.Requests[req] = std::move(context);
+        ++requestBucket.Inflight;
         return Nothing();
     }
 
     int Complete(fuse_req_t req, TCompletionCallback cb) noexcept override
     {
-        with_lock (RequestsLock) {
-            if (!Requests.erase(req)) {
+        auto& requestBucket = RequestBuckets[GetRequestBucketIndex(req)];
+        with_lock (requestBucket.Lock) {
+            if (!requestBucket.Requests.erase(req)) {
                 return 0;
             }
-            CompletingCount.Inc();
+            --requestBucket.Inflight;
+            requestBucket.Completing.Inc();
         }
 
         int ret = cb(req);
-        auto completingCount = CompletingCount.Dec();
-        bool noCompleting = completingCount == 0;
+        requestBucket.Completing.Dec();
 
         if (ShouldStop) {
-            STORAGE_INFO("[f:%s] Complete: completing left: %ld",
-                FileSystemId.c_str(),
-                completingCount);
-
-            if (noCompleting) {
-                bool noInflight = false;
-                ui32 requestsSize = 0;
-                with_lock (RequestsLock) {
-                    noInflight = Requests.empty();
-                    requestsSize = Requests.size();
-                    // double-checking needed because inflight count and completing
-                    // count should be checked together atomically
-                    completingCount = CompletingCount.Val();
-                    noCompleting = completingCount == 0;
-                }
-
-                STORAGE_INFO("[f:%s] Complete: completing left: %ld"
-                    ", requests left: %u",
-                    FileSystemId.c_str(),
-                    completingCount,
-                    requestsSize);
-
-                if (noInflight && noCompleting) {
-                    StopPromise.TrySetValue();
-                }
-            }
+            TryStop();
         }
 
         return ret;
@@ -197,25 +197,28 @@ public:
         CancelCode = code;
         ShouldStop = true;
 
-        bool canStop = false;
-        ui32 requestsSize = 0;
+        i64 requestsSize = 0;
         i64 completingCount = 0;
 
-        with_lock (RequestsLock) {
-            requestsSize = Requests.size();
-            completingCount = CompletingCount.Val();
-            canStop = Requests.empty() && completingCount == 0;
-
-            // cancel signal is needed for the ops that may be indefinitely
-            // retried by our vfs layer - e.g. AcquireLock
-            for (auto& request: Requests) {
-                request.second->CancellationCode = CancelCode;
-                request.second->Cancelled = true;
+        for (auto& requestBucket: RequestBuckets) {
+            with_lock (requestBucket.Lock) {
+                // cancel signal is needed for the ops that may be indefinitely
+                // retried by our vfs layer - e.g. AcquireLock
+                for (auto& request: requestBucket.Requests) {
+                    request.second->CancellationCode = CancelCode;
+                    request.second->Cancelled = true;
+                }
+                requestsSize += requestBucket.Requests.size();
             }
         }
 
+        for (const auto& requestBucket: RequestBuckets) {
+            completingCount += requestBucket.Completing.Val();
+        }
+        const bool canStop = requestsSize == 0 && completingCount == 0;
+
         STORAGE_INFO(
-            "[f:%s] StopAsync: completing left: %ld, requests left: %u, "
+            "[f:%s] StopAsync: completing left: %ld, requests left: %ld, "
             "fuse cancellation code: %u",
             FileSystemId.c_str(),
             completingCount,
@@ -224,6 +227,8 @@ public:
 
         if (canStop) {
             StopPromise.TrySetValue();
+        } else {
+            TryStop();
         }
 
         return StopPromise;
@@ -233,16 +238,59 @@ public:
     {
         auto now = GetCycleCount();
 
-        TGuard g{RequestsLock};
-        for (auto&& [_, context]: Requests) {
-            if (const auto time = context->CalcRequestTime(now); time) {
-                collector.Collect(
-                    TIncompleteRequest(
-                        RequestMediaKind,
-                        context->RequestType,
-                        time.ExecutionTime,
-                        time.TotalTime));
+        for (auto& requestBucket: RequestBuckets) {
+            TGuard g{requestBucket.Lock};
+            for (auto&& [_, context]: requestBucket.Requests) {
+                if (const auto time = context->CalcRequestTime(now); time) {
+                    collector.Collect(
+                        TIncompleteRequest(
+                            RequestMediaKind,
+                            context->RequestType,
+                            time.ExecutionTime,
+                            time.TotalTime));
+                }
             }
+        }
+    }
+
+private:
+    ui32 GetRequestBucketIndex(fuse_req_t req) const
+    {
+        // Use fuse_req_unique(req) as a stable per-request id for bucket
+        // selection.
+        return fuse_req_unique(req) & (RequestBucketCount - 1);
+    }
+
+    void TryStop()
+    {
+        if (!ShouldStop) {
+            return;
+        }
+
+        TVector<std::unique_ptr<TGuard<TAdaptiveLock>>> guards;
+        guards.reserve(RequestBucketCount);
+
+        for (auto& requestBucket: RequestBuckets) {
+            guards.emplace_back(
+                std::make_unique<TGuard<TAdaptiveLock>>(requestBucket.Lock));
+        }
+
+        i64 inflight = 0;
+        i64 completing = 0;
+        for (const auto& requestBucket: RequestBuckets) {
+            inflight += requestBucket.Inflight;
+            completing += requestBucket.Completing.Val();
+        }
+
+        STORAGE_INFO(
+            "[f:%s] TryStop: completing left: %ld"
+            ", requests left: %ld",
+            FileSystemId.c_str(),
+            completing,
+            inflight);
+
+        if (inflight == 0 && completing == 0) {
+            StopPromise.TrySetValue();
         }
     }
 };
@@ -253,6 +301,25 @@ static ui32 CalcFrontendVhostQueueCount(const TVFSConfig& vfsConfig)
 {
     // HIPRIO + number of requests queues
     return Max(2u, vfsConfig.GetVhostQueuesCount());
+}
+
+static ui32 CalcCompletionQueueRequestBucketCount(const TVFSConfig& vfsConfig)
+{
+    constexpr ui32 MinRequestBuckets = 16;
+    constexpr ui32 MaxRequestBuckets = 256;
+
+    const ui32 queues = CalcFrontendVhostQueueCount(vfsConfig);
+
+    // Use ~2x queues, then round request bucket count to a power of two.
+    // Power-of-two is required because request bucket indexing uses a bitmask
+    // (`x & (requestBuckets-1)`), which only distributes correctly when
+    // request bucket count is 2^n.
+    // Clamp to keep request bucket count in a reasonable range.
+    const ui32 requestBuckets = FastClp2(queues * 2);
+    return std::clamp(
+        requestBuckets,
+        MinRequestBuckets,
+        MaxRequestBuckets);
 }
 
 class TArgs
@@ -899,7 +966,8 @@ private:
                 Config->GetFileSystemId(),
                 RequestStats,
                 Log,
-                StorageMediaKind);
+                StorageMediaKind,
+                CalcCompletionQueueRequestBucketCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
 
             SessionId = response.GetSession().GetSessionId();

@@ -294,15 +294,15 @@ void TFileSystem::ReplyAttr(
 
 void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
 {
-    NFuse::CancelRequest(
-        Log,
-        *RequestStats,
-        *callContext,
-        req);
-
     // notifying CompletionQueue about request completion to decrement inflight
     // request counter and unblock the stopping procedure
-    CompletionQueue->Complete(req, [&] (fuse_req_t) { return 0; });
+    CompletionQueue->Complete(
+        req,
+        [&](fuse_req_t request)
+        {
+            NFuse::CancelRequest(Log, *RequestStats, *callContext, request);
+            return 0;
+        });
 }
 
 void TFileSystem::CompleteAsyncDestroyHandle(
