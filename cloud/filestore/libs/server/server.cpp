@@ -1550,7 +1550,6 @@ private:
     std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
 
     ISchedulerPtr Scheduler;
-    static constexpr TDuration RefreshInterval = TDuration::Seconds(15);
 
 public:
     template <typename T>
@@ -1591,9 +1590,11 @@ private:
     void Refresh()
     {
         if constexpr (requires { AppCtx.State; }) {
-            if (AppCtx.State && AppCtx.ServerStats) {
-                AppCtx.ServerStats->Update(AppCtx.State->GetStateStats());
-            }
+            Y_ABORT_UNLESS(
+                AppCtx.State && AppCtx.Stats,
+                "State and Stats should be initialized upon TServer::Refresh "
+                "call");
+            AppCtx.ServerStats->Update(AppCtx.State->GetStateStats());
         }
 
         ScheduleRefresh();
@@ -1607,8 +1608,9 @@ private:
 
         auto weak_ptr = this->weak_from_this();
         Scheduler->Schedule(
-            TInstant::Now() + RefreshInterval,
-            [weak_ptr]() {
+            TInstant::Now() + UpdateCountersInterval,
+            [weak_ptr]()
+            {
                 if (auto self = weak_ptr.lock()) {
                     self->Refresh();
                 }
