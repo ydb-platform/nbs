@@ -667,10 +667,10 @@ void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext&
         "[%s] Reply and die",
         SelfId().ToString().c_str());
 
-    for (auto [_, start]: AgentId2EndpointFuture) {
-        start.Subscribe([start](auto...) {
-            if (start.HasValue()) {
-                start.GetValue()->Stop();
+    for (auto [_, endpoint]: AgentId2EndpointFuture) {
+        endpoint.Subscribe([endpoint](auto...) {
+            if (endpoint.HasValue()) {
+                endpoint.GetValue()->Stop();
             }
         });
     }
