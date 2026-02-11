@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error.h"
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -50,13 +52,14 @@ public:
     bool PushBack(TStringBuf data);
 
     // Implement in-place allocation.
-    // Returns a pointer to the allocated memory or nullptr if allocation failed
-    // Commit should be called after writing data to the allocated memory
-    char* Alloc(size_t size);
+    // Returns a pointer to the allocated memory or nullptr if storage is full.
+    // Returns an error if allocation is not possible due to corruption or
+    // invalid data.
+    TResultOrError<char*> Alloc(size_t size);
 
     // Calculate checksum for the previously allocated memory using Alloc
-    // and advance the write pointer
-    void Commit();
+    // and advance the write pointer.
+    bool Commit();
 
     TStringBuf Front() const;
     TStringBuf Back() const;

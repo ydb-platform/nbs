@@ -44,7 +44,7 @@ public:
         return Max<ui64>();
     }
 
-    char* Alloc(size_t size) override
+    TResultOrError<char*> Alloc(size_t size) override
     {
         if (Capacity > 0 && ChunkMap.size() >= Capacity) {
             return nullptr;
@@ -63,8 +63,10 @@ public:
         return res;
     }
 
-    void Commit() override
-    {}
+    bool Commit() override
+    {
+        return true;
+    }
 
     void Free(const void* ptr) override
     {

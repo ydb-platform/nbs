@@ -77,16 +77,16 @@ public:
         return Storage.GetMaxSupportedAllocationByteCount();
     }
 
-    char* Alloc(size_t size) override
+    TResultOrError<char*> Alloc(size_t size) override
     {
-        Y_ENSURE(size > 0, "Zero-size allocations are not allowed");
         return Storage.Alloc(size);
     }
 
-    void Commit() override
+    bool Commit() override
     {
-        Storage.Commit();
+        auto res = Storage.Commit();
         UpdateStats();
+        return res;
     }
 
     void Free(const void* ptr) override

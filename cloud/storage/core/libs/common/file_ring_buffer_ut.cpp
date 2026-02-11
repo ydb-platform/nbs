@@ -839,14 +839,16 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TString data1 = "vasya";
         TString data2 = "ivan";
 
-        auto* ptr1 = rb.Alloc(data1.size());
-        UNIT_ASSERT(ptr1 != nullptr);
-        data1.copy(ptr1, data1.size());
+        auto alloc1 = rb.Alloc(data1.size());
+        UNIT_ASSERT(!HasError(alloc1));
+        UNIT_ASSERT(alloc1.GetResult() != nullptr);
+        data1.copy(alloc1.GetResult(), data1.size());
         rb.Commit();
 
-        auto* ptr2 = rb.Alloc(data2.size());
-        UNIT_ASSERT(ptr2 != nullptr);
-        data2.copy(ptr2, data2.size());
+        auto alloc2 = rb.Alloc(data2.size());
+        UNIT_ASSERT(!HasError(alloc2));
+        UNIT_ASSERT(alloc2.GetResult() != nullptr);
+        data2.copy(alloc2.GetResult(), data2.size());
         rb.Commit();
 
         UNIT_ASSERT_VALUES_EQUAL(data1, rb.Front());
@@ -867,17 +869,19 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         {
             TFileRingBuffer rb(f.GetName(), len);
 
-            auto* ptr1 = rb.Alloc(data1.size());
+            auto alloc1 = rb.Alloc(data1.size());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
-            UNIT_ASSERT(ptr1 != nullptr);
-            data1.copy(ptr1, data1.size());
+            UNIT_ASSERT(!HasError(alloc1));
+            UNIT_ASSERT(alloc1.GetResult() != nullptr);
+            data1.copy(alloc1.GetResult(), data1.size());
             rb.Commit();
             UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
 
-            auto* ptr2 = rb.Alloc(data2.size());
+            auto alloc2 = rb.Alloc(data2.size());
             UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
-            UNIT_ASSERT(ptr2 != nullptr);
-            data2.copy(ptr2, data2.size());
+            UNIT_ASSERT(!HasError(alloc2));
+            UNIT_ASSERT(alloc2.GetResult() != nullptr);
+            data2.copy(alloc2.GetResult(), data2.size());
         }
 
         {
@@ -888,6 +892,35 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
             UNIT_ASSERT_VALUES_EQUAL("", rb.Front());
         }
+    }
+
+    Y_UNIT_TEST(AllocShouldReturnExtendedStatus)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        auto alloc1 = rb.Alloc(128);
+        UNIT_ASSERT(!HasError(alloc1));
+        UNIT_ASSERT(alloc1.GetResult() == nullptr);
+
+        auto alloc2 = rb.Alloc(0);
+        UNIT_ASSERT(HasError(alloc2));
+
+        // Alloc without commit
+        auto alloc3 = rb.Alloc(1);
+        UNIT_ASSERT(!HasError(alloc3));
+        auto alloc4 = rb.Alloc(1);
+        UNIT_ASSERT(HasError(alloc4));
+        UNIT_ASSERT(rb.Commit());
+
+        // Commit without alloc
+        UNIT_ASSERT(!rb.Commit());
+
+        rb.SetCorrupted();
+
+        auto alloc5 = rb.Alloc(2);
+        UNIT_ASSERT(HasError(alloc5));
     }
 }
 

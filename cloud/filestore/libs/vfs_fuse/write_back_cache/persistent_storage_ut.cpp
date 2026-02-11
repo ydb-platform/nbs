@@ -57,12 +57,21 @@ struct TBootstrap
 
     const char* Alloc(const TString& data) const
     {
-        char* ptr = Storage->Alloc(data.size());
+        auto allocationResult = Storage->Alloc(data.size());
+        UNIT_ASSERT(!HasError(allocationResult));
+
+        char* ptr = allocationResult.GetResult();
         if (ptr != nullptr) {
             data.copy(ptr, data.size());
-            Storage->Commit();
+            UNIT_ASSERT(Storage->Commit());
         }
         return ptr;
+    }
+
+    bool AllocHasError(const TString& data) const
+    {
+        auto allocationResult = Storage->Alloc(data.size());
+        return HasError(allocationResult);
     }
 
     void Free(const void* ptr) const
@@ -159,10 +168,7 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         UNIT_ASSERT(!HasError(b.Initialize()));
         UNIT_ASSERT(b.Storage->Empty());
 
-        UNIT_ASSERT_EXCEPTION_C(
-            b.Alloc(""),
-            yexception,
-            "The requested allocation size is zero");
+        UNIT_ASSERT(b.AllocHasError(""));
     }
 
     Y_UNIT_TEST(ShouldRecreateStorage)

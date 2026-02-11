@@ -348,12 +348,10 @@ private:
 
             Header()->ReadPos = front.ActualPos;
             Header()->WritePos = back.GetNextEntryPos();
-
-            auto lastEntrySize = back.GetNextEntryPos() - back.ActualPos;
-            if (Header()->LastEntrySize != lastEntrySize) {
-                SetCorrupted();
-                Header()->LastEntrySize = lastEntrySize;
-            }
+            // Updating WritePos and LastEntrySize is not performed atomically
+            // It may happen that only one field was updated before crash - need
+            // to correct the value.
+            Header()->LastEntrySize = back.GetNextEntryPos() - back.ActualPos;
         } else {
             Header()->ReadPos = 0;
             Header()->WritePos = 0;
@@ -497,30 +495,34 @@ public:
 
     bool PushBack(TStringBuf data)
     {
-        char* ptr = Alloc(data.size());
-        if (ptr == nullptr) {
+        auto allocationStatus = Alloc(data.size());
+        if (HasError(allocationStatus) ||
+            allocationStatus.GetResult() == nullptr)
+        {
             return false;
         }
 
-        data.copy(ptr, data.size());
+        data.copy(allocationStatus.GetResult(), data.size());
 
-        Commit();
-        return true;
+        return Commit();
     }
 
-    char* Alloc(size_t size)
+    TResultOrError<char*> Alloc(size_t size)
     {
-        Y_ENSURE(
-            CurrentAllocation == nullptr,
-            "Previous allocation is not committed");
+        if (CurrentAllocation != nullptr) {
+            return MakeError(
+                E_INVALID_STATE,
+                "Previous allocation is not committed");
+        }
 
         if (IsCorrupted()) {
-            // TODO: should return error code
-            return nullptr;
+            return MakeError(E_INVALID_STATE, "Buffer is corrupted");
         }
 
         if (size == 0) {
-            return nullptr;
+            return MakeError(
+                E_ARGUMENT,
+                "Zero size allocations are not allowed");
         }
 
         const auto sz = size + sizeof(TEntryHeader);
@@ -569,20 +571,27 @@ public:
         return ptr;
     }
 
-    void Commit()
+    bool Commit()
     {
-        Y_ENSURE(CurrentAllocation != nullptr, "Nothing to commit");
+        if (CurrentAllocation == nullptr) {
+            return false;
+        }
 
         char* ptr = Data.GetEntryData(CurrentAllocation);
         Y_ABORT_UNLESS(ptr != nullptr);
 
         CurrentAllocation->Checksum = Crc32c(ptr, CurrentAllocation->DataSize);
 
+        // We need to ensure that all previous writes are visible before
+        // updating the write position
+        std::atomic_thread_fence(std::memory_order_release);
+
         Header()->WritePos = WritePosAfterCommit;
         Header()->LastEntrySize = LastEntrySizeAfterCommit;
         ++Count;
 
         CurrentAllocation = nullptr;
+        return true;
     }
 
     TStringBuf Front() const
@@ -792,14 +801,14 @@ bool TFileRingBuffer::PushBack(TStringBuf data)
     return Impl->PushBack(data);
 }
 
-char* TFileRingBuffer::Alloc(size_t size)
+TResultOrError<char*> TFileRingBuffer::Alloc(size_t size)
 {
     return Impl->Alloc(size);
 }
 
-void TFileRingBuffer::Commit()
+bool TFileRingBuffer::Commit()
 {
-    Impl->Commit();
+    return Impl->Commit();
 }
 
 TStringBuf TFileRingBuffer::Front() const

@@ -58,15 +58,21 @@ struct IPersistentStorage
      * storage. The caller should fill the buffer and call Commit.
      *
      * Returns nullptr if there is not enough free space in the storage.
+     *
+     * Returns an error if allocation is not possible due to other reasons.
      */
-    virtual char* Alloc(size_t size) = 0;
+    virtual TResultOrError<char*> Alloc(size_t size) = 0;
 
     /**
      * Commits previous memory allocation
      *
-     * Memory that was allocated but not committed will be lost
+     * Memory that was allocated but not committed will be lost at buffer
+     * recreation.
+     *
+     * Returns true if the commit was successful.
+     * Returns false if Alloc was not called.
      */
-    virtual void Commit() = 0;
+    virtual bool Commit() = 0;
 
     // Frees a previously allocated buffer.
     virtual void Free(const void* ptr) = 0;

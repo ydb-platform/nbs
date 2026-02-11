@@ -1033,7 +1033,14 @@ private:
             auto& entry = PendingEntries.front();
             auto serializedSize = entry->GetSerializedSize();
 
-            char* allocationPtr = PersistentStorage->Alloc(serializedSize);
+            auto allocationResult = PersistentStorage->Alloc(serializedSize);
+
+            Y_ABORT_UNLESS(
+                !HasError(allocationResult),
+                "Failed to allocate memory in the persistent storage: %s",
+                allocationResult.GetError().GetMessage().c_str());
+
+            char* allocationPtr = allocationResult.GetResult();
             if (allocationPtr == nullptr) {
                 RequestFlushAllCachedData();
                 break;
