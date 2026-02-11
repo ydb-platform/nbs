@@ -709,6 +709,7 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProto::TCreateNodeRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
         TCreateNodeInShardResult result);

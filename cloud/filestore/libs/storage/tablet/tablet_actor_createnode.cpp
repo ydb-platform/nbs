@@ -99,6 +99,7 @@ private:
     TRequestInfoPtr RequestInfo;
     const TActorId ParentId;
     NProto::TCreateNodeRequest Request;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
@@ -113,6 +114,7 @@ public:
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProto::TCreateNodeRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
         TCreateNodeInShardResult result);
@@ -152,6 +154,7 @@ TCreateNodeInShardActor::TCreateNodeInShardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& parentId,
         NProto::TCreateNodeRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
         TCreateNodeInShardResult result)
@@ -159,6 +162,7 @@ TCreateNodeInShardActor::TCreateNodeInShardActor(
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
     , Request(std::move(request))
+    , ProfileLogRequest(std::move(profileLogRequest))
     , RequestId(requestId)
     , OpLogEntryId(opLogEntryId)
     , Result(std::move(result))
@@ -448,7 +452,8 @@ void TCreateNodeInShardActor::ReplyAndDie(
         RequestId,
         OpLogEntryId,
         std::move(*Request.MutableName()),
-        std::move(Result)));
+        std::move(Result),
+        std::move(ProfileLogRequest)));
 
     Die(ctx);
 }
@@ -482,11 +487,19 @@ void TIndexTabletActor::HandleCreateNode(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
     auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
         ev,
         ctx,
         ValidateRequest,
         !BehaveAsShard(msg->Record.GetHeaders()) /* validateSession */);
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::CreateNode,
+        msg->Record,
+        ctx.Now());
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
     if (!BehaveAsShard(msg->Record.GetHeaders())) {
@@ -508,7 +521,15 @@ void TIndexTabletActor::HandleCreateNode(
                         "node not yet created in shard");
                 }
 
-                return NCloud::Reply(ctx, *ev, std::move(response));
+                auto error = response->Record.GetError();
+                NCloud::Reply(ctx, *ev, std::move(response));
+                FinalizeProfileLogRequestInfo(
+                    std::move(profileLogRequest),
+                    ctx.Now(),
+                    GetFileSystemId(),
+                    error,
+                    ProfileLog);
+                return;
             }
 
             session->DropDupEntry(requestId);
@@ -536,6 +557,7 @@ void TIndexTabletActor::HandleCreateNode(
         ctx,
         std::move(requestInfo),
         std::move(msg->Record),
+        std::move(profileLogRequest),
         parentNodeId,
         targetNodeId,
         std::move(attrs));
@@ -769,6 +791,13 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             shardRequest->SetNodeId(RootNodeId);
             shardRequest->SetName(args.ShardNodeName);
             shardRequest->ClearShardFileSystemId();
+            const bool serialized = args.ProfileLogRequest.SerializeToString(
+                args.OpLogEntry.MutableProfileLogRequest());
+            if (!serialized) {
+                ReportBrokenProfileLogRequest(TStringBuilder()
+                    << "Written OpLogEntry: "
+                    << args.OpLogEntry.ShortUtf8DebugString().Quote());
+            }
 
             db.WriteOpLogEntry(args.OpLogEntry);
         }
@@ -862,6 +891,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
             ctx,
             args.RequestInfo,
             std::move(*args.OpLogEntry.MutableCreateNodeRequest()),
+            std::move(args.ProfileLogRequest),
             args.RequestId,
             args.OpLogEntry.GetEntryId(),
             std::move(args.Response));
@@ -916,6 +946,13 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         ctx.Now() - args.RequestInfo->StartedTs);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -934,6 +971,13 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
     WorkerActors.erase(ev->Sender);
 
     EndNodeCreateInShard(msg->NodeName);
+
+    NProto::TError error;
+    if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {
+        error = x->GetError();
+    } else if (auto* x = std::get_if<NProto::TCreateHandleResponse>(&res)) {
+        error = x->GetError();
+    }
 
     if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {
         if (msg->RequestInfo) {
@@ -992,6 +1036,13 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
             0,
             TStringBuilder() << "bad variant index: " << res.index());
     }
+
+    FinalizeProfileLogRequestInfo(
+        std::move(msg->ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        error,
+        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1044,6 +1095,7 @@ void TIndexTabletActor::RegisterCreateNodeInShardActor(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     NProto::TCreateNodeRequest request,
+    NProto::TProfileLogRequestInfo profileLogRequest,
     ui64 requestId,
     ui64 opLogEntryId,
     TCreateNodeInShardResult result)
@@ -1055,6 +1107,7 @@ void TIndexTabletActor::RegisterCreateNodeInShardActor(
         std::move(requestInfo),
         ctx.SelfID,
         std::move(request),
+        std::move(profileLogRequest),
         requestId,
         opLogEntryId,
         std::move(result));

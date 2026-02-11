@@ -827,6 +827,15 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
     auto& res = msg->Result;
 
     NProto::TError error;
+    if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&res)) {
+        error = x->GetError();
+    } else if (auto* x = std::get_if<
+            NProtoPrivate::TRenameNodeInDestinationResponse>(&res))
+    {
+        error = x->GetError();
+    } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&res)) {
+        error = x->GetError();
+    }
 
     if (msg->RequestInfo) {
         RemoveInFlightRequest(*msg->RequestInfo);
@@ -841,8 +850,6 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
-
-            error = response->GetError();
 
             Metrics.RenameNode.Update(
                 1,
@@ -861,8 +868,6 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
-
-            error = response->GetError();
 
             Metrics.RenameNode.Update(
                 1,
@@ -883,8 +888,6 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                     response->Record,
                     msg->RequestInfo->CallContext,
                     ctx);
-
-                error = response->GetError();
 
                 Metrics.UnlinkNode.Update(
                     1,

@@ -26,11 +26,21 @@ void TIndexTabletActor::ReplayOpLog(
             LogTag.c_str(),
             op.ShortUtf8DebugString().Quote().c_str());
 
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        const auto& serializedRequest = op.GetProfileLogRequest();
+        if (serializedRequest
+                && !profileLogRequest.ParseFromString(serializedRequest))
+        {
+            ReportBrokenProfileLogRequest(TStringBuilder() << "Replayed"
+                << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
+        }
+
         if (op.HasCreateNodeRequest()) {
             RegisterCreateNodeInShardActor(
                 ctx,
                 nullptr, // requestInfo
                 op.GetCreateNodeRequest(),
+                std::move(profileLogRequest),
                 op.GetRequestId(), // needed for DupCache update (only for
                                    // shard requests originating from
                                    // CreateNode requests)
@@ -76,15 +86,6 @@ void TIndexTabletActor::ReplayOpLog(
                         TStringBuilder()
                         << "Request: " << op.ShortUtf8DebugString());
                 }
-            }
-
-            NProto::TProfileLogRequestInfo profileLogRequest;
-            const auto& serializedRequest = op.GetProfileLogRequest();
-            if (serializedRequest
-                    && !profileLogRequest.ParseFromString(serializedRequest))
-            {
-                ReportBrokenProfileLogRequest(TStringBuilder() << "Replayed"
-                    << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
             }
 
             RegisterUnlinkNodeInShardActor(

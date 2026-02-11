@@ -739,6 +739,7 @@ struct TTxIndexTablet
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -763,10 +764,12 @@ struct TTxIndexTablet
         TCreateNode(
                 TRequestInfoPtr requestInfo,
                 NProto::TCreateNodeRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest,
                 ui64 parentNodeId,
                 ui64 targetNodeId,
                 NProto::TNode attrs)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(parentNodeId)
             , TargetNodeId(targetNodeId)
@@ -791,6 +794,8 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+
+            // deliberately not calling TProfileAware::Clear()
         }
     };
 
@@ -1741,6 +1746,7 @@ struct TTxIndexTablet
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -1769,8 +1775,10 @@ struct TTxIndexTablet
 
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
-                NProto::TCreateHandleRequest request)
+                NProto::TCreateHandleRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , NodeId(request.GetNodeId())
             , Name(request.GetName())
@@ -1801,6 +1809,8 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+
+            // deliberately not calling TProfileAware::Clear()
         }
     };
 
