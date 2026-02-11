@@ -27,7 +27,7 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
         // default values
         UNIT_ASSERT_VALUES_EQUAL("/Root", config.GetSchemeShardDir());
         UNIT_ASSERT_VALUES_EQUAL(4, config.GetPipeClientRetryCount());
-        UNIT_ASSERT_VALUES_EQUAL(false, config.GetWriteBatchEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(false, config.GetNewCleanupEnabled());
 
         // overridden values
         UNIT_ASSERT_VALUES_EQUAL(
@@ -40,7 +40,7 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
         // feature-overridden values
         NCloud::NProto::TFeaturesConfig featuresConfigProto;
         featuresConfigProto.AddFeatures();
-        featuresConfigProto.MutableFeatures(0)->SetName("WriteBatchEnabled");
+        featuresConfigProto.MutableFeatures(0)->SetName("NewCleanupEnabled");
         featuresConfigProto.MutableFeatures(0)->MutableWhitelist()->AddCloudIds(
             "test-cloud");
 
@@ -48,10 +48,10 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
             std::make_shared<NFeatures::TFeaturesConfig>(featuresConfigProto));
 
         config.SetCloudFolderEntity("other-cloud", "folder", "entity");
-        UNIT_ASSERT_VALUES_EQUAL(false, config.GetWriteBatchEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(false, config.GetNewCleanupEnabled());
 
         config.SetCloudFolderEntity("test-cloud", "folder", "entity");
-        UNIT_ASSERT_VALUES_EQUAL(true, config.GetWriteBatchEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(true, config.GetNewCleanupEnabled());
     }
 }
 

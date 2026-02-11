@@ -287,7 +287,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
 
         NCloud::NProto::TFeaturesConfig featuresConfigProto;
         auto* feature = featuresConfigProto.AddFeatures();
-        feature->SetName("WriteBatchEnabled");
+        feature->SetName("NewCleanupEnabled");
         feature->MutableWhitelist()->AddCloudIds("test_cloud");
 
         env.GetStorageConfig()->SetFeaturesConfig(
@@ -303,7 +303,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
                 response->Record.GetStorageConfig()
-                    .GetWriteBatchEnabled());
+                    .GetNewCleanupEnabled());
         }
 
         tablet.RebootTablet();
@@ -313,7 +313,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
                 response->Record.GetStorageConfig()
-                    .GetWriteBatchEnabled());
+                    .GetNewCleanupEnabled());
         }
     }
 }
