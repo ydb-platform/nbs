@@ -582,12 +582,10 @@ struct TBootstrap
         UNIT_ASSERT_EQUAL(0, Stats->NodeCount);
         UNIT_ASSERT_EQUAL(0, Stats->StorageStats.RawUsedByteCount);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->CachedStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushingStats.MinTime);
+        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->UnflushedStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushedStats.MinTime);
         UNIT_ASSERT_EQUAL(0, Stats->PendingStats.InProgressCount);
-        UNIT_ASSERT_EQUAL(0, Stats->CachedStats.InProgressCount);
-        UNIT_ASSERT_EQUAL(0, Stats->FlushingStats.InProgressCount);
+        UNIT_ASSERT_EQUAL(0, Stats->UnflushedStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->FlushedStats.InProgressCount);
     }
 
@@ -631,27 +629,14 @@ struct TBootstrap
             expectedMinTime);
     }
 
-    void CheckCachedWriteDataRequestStats(
+    void CheckUnflushedWriteDataRequestStats(
         ui64 expectedInProgressCount,
         ui64 expectedCount,
         TInstant expectedMinTime)
     {
         CheckWriteDataRequestStats(
-            Stats->CachedStats,
-            "Cached",
-            expectedInProgressCount,
-            expectedCount,
-            expectedMinTime);
-    }
-
-    void CheckFlushingWriteDataRequestStats(
-        ui64 expectedInProgressCount,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->FlushingStats,
-            "Flushing",
+            Stats->UnflushedStats,
+            "Unflushed",
             expectedInProgressCount,
             expectedCount,
             expectedMinTime);
@@ -883,7 +868,7 @@ struct TStatsCalculator
         }
     }
 
-    ui64 GetCachedQueueRequestCount() const
+    ui64 GetUnflushedQueueRequestCount() const
     {
         return Queue.size();
     }
@@ -1242,9 +1227,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             UNIT_ASSERT_EQUAL(0, b.Stats->PendingStats.InProgressCount);
             UNIT_ASSERT_EQUAL(
-                stats.GetCachedQueueRequestCount(),
-                b.Stats->CachedStats.InProgressCount +
-                    b.Stats->FlushingStats.InProgressCount +
+                stats.GetUnflushedQueueRequestCount(),
+                b.Stats->UnflushedStats.InProgressCount +
                     b.Stats->FlushedStats.InProgressCount);
             UNIT_ASSERT_EQUAL(stats.GetNodeCount(), b.Stats->NodeCount);
             UNIT_ASSERT_EQUAL(stats.FlushCount, b.Stats->CompletedFlushCount);
@@ -1659,17 +1643,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.FlushingStats.MinTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
-        auto now = b.Timer->Now();
         auto flushFuture1 = b.Cache.FlushNodeData(1);
 
         UNIT_ASSERT(!flushFuture1.HasValue());
         UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.RunAllScheduledTasks();
@@ -1680,7 +1661,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.RunAllScheduledTasks();
@@ -1689,7 +1669,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), stats.FlushingStats.MinTime);
     }
 
     Y_UNIT_TEST(ShouldReportNodeCount)
@@ -1745,8 +1724,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 0, "abc");
 
         b.CheckPendingWriteDataRequestStats(0, 1, zero);
-        b.CheckCachedWriteDataRequestStats(1, 0, t1);
-        b.CheckFlushingWriteDataRequestStats(0, 0, zero);
+        b.CheckUnflushedWriteDataRequestStats(1, 0, t1);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
         // --- T2
@@ -1756,8 +1734,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(2, 1, "xyz");
 
         b.CheckPendingWriteDataRequestStats(0, 3, zero);
-        b.CheckCachedWriteDataRequestStats(3, 0, t1);
-        b.CheckFlushingWriteDataRequestStats(0, 0, zero);
+        b.CheckUnflushedWriteDataRequestStats(3, 0, t1);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
         // --- T3
@@ -1768,8 +1745,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.FlushNodeData(2);
 
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
-        b.CheckCachedWriteDataRequestStats(2, 2, t1);
-        b.CheckFlushingWriteDataRequestStats(2, 0, t3);
+        b.CheckUnflushedWriteDataRequestStats(4, 0, t1);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
         writeRequests.ProceedAll();
@@ -1777,8 +1753,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // WriteData requests for node 2 are flushed but they cannot be removed
         // from the middle of the queue
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
-        b.CheckCachedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushingWriteDataRequestStats(0, 3, zero);
+        b.CheckUnflushedWriteDataRequestStats(1, 3, t1);
         b.CheckFlushedWriteDataRequestStats(3, 0, t3);
 
         // --- T4
@@ -1790,8 +1765,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Cache recreation forces the requests stored in the queue to be
         // flushed again
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
-        b.CheckCachedWriteDataRequestStats(4, 4, t4);
-        b.CheckFlushingWriteDataRequestStats(0, 3, zero);
+        b.CheckUnflushedWriteDataRequestStats(4, 3, t4);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
         // --- T5
@@ -1809,8 +1783,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // FlushAll should have been triggered by hitting cache capacity
         b.CheckPendingWriteDataRequestStats(1, count + 4, t5);
-        b.CheckCachedWriteDataRequestStats(0, count + 8, zero);
-        b.CheckFlushingWriteDataRequestStats(count + 4, 3, t5);
+        b.CheckUnflushedWriteDataRequestStats(count + 4, 3, t4);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
         // --- T6
@@ -1819,8 +1792,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
-        b.CheckCachedWriteDataRequestStats(1, count + 8, t6);
-        b.CheckFlushingWriteDataRequestStats(0, count + 7, zero);
+        b.CheckUnflushedWriteDataRequestStats(1, count + 7, t6);
         b.CheckFlushedWriteDataRequestStats(0, count + 4, zero);
 
         // --- T7
@@ -1831,8 +1803,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
-        b.CheckCachedWriteDataRequestStats(0, count + 9, zero);
-        b.CheckFlushingWriteDataRequestStats(0, count + 8, zero);
+        b.CheckUnflushedWriteDataRequestStats(0, count + 8, zero);
         b.CheckFlushedWriteDataRequestStats(0, count + 5, zero);
 
         b.CheckStatsAreEmpty();
@@ -1886,11 +1857,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Timer->Sleep(TDuration::Seconds(1));
         writeRequests.ProceedAll();
 
-        UNIT_ASSERT_EQUAL(4, stats.Data.size());
-        UNIT_ASSERT_EQUAL(TDuration::Zero(), stats.Data[0]);
-        UNIT_ASSERT_EQUAL(TDuration::Zero(), stats.Data[1]);
-        UNIT_ASSERT_EQUAL(TDuration::Zero(), stats.Data[2]);
-        UNIT_ASSERT_EQUAL(TDuration::Seconds(1), stats.Data[3]);
+        UNIT_ASSERT_EQUAL(2, stats.CacheFullHitCount);
+        UNIT_ASSERT_EQUAL(1, stats.CachePartialHitCount);
+        UNIT_ASSERT_EQUAL(1, stats.CacheMissCount);
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithAutomaticFlush)
@@ -1979,7 +1948,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         writeRequests.ProceedAll();
 
-        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->CachedStats.InProgressCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->UnflushedStats.InProgressCount);
     }
 
     Y_UNIT_TEST(ShouldFlushPendingRequests_FlushNodeData)
@@ -2002,7 +1971,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         UNIT_ASSERT(flushNodeDataFuture.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(1, b.Stats->CachedStats.InProgressCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Stats->UnflushedStats.InProgressCount);
     }
 
     Y_UNIT_TEST(ShouldFlushPendingRequests_FlushAllData)
@@ -2027,7 +1996,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         UNIT_ASSERT(flushAllDataFuture.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->CachedStats.InProgressCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->UnflushedStats.InProgressCount);
         UNIT_ASSERT(b.Cache.IsEmpty());
     }
 

@@ -48,12 +48,9 @@ public:
         Y_UNUSED(minTime);
     }
 
-    void AddReadDataStats(
-        EReadDataRequestCacheStatus status,
-        TDuration duration) override
+    void AddReadDataStats(EReadDataRequestCacheStatus status) override
     {
         Y_UNUSED(status);
-        Y_UNUSED(duration);
     }
 
     void UpdatePersistentStorageStats(

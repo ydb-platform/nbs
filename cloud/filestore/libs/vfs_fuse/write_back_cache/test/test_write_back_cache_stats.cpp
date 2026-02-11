@@ -18,8 +18,7 @@ void TTestWriteBackCacheStats::ResetNonDerivativeCounters()
     NodeCount = 0;
 
     PendingStats.ResetNonDerivativeCounters();
-    CachedStats.ResetNonDerivativeCounters();
-    FlushingStats.ResetNonDerivativeCounters();
+    UnflushedStats.ResetNonDerivativeCounters();
     FlushedStats.ResetNonDerivativeCounters();
 }
 
@@ -55,10 +54,8 @@ TTestWriteDataRequestStats& TTestWriteBackCacheStats::GetWriteStats(
     switch (status) {
         case EWriteDataRequestStatus::Pending:
             return PendingStats;
-        case EWriteDataRequestStatus::Cached:
-            return CachedStats;
-        case EWriteDataRequestStatus::Flushing:
-            return FlushingStats;
+        case EWriteDataRequestStatus::Unflushed:
+            return UnflushedStats;
         case EWriteDataRequestStatus::Flushed:
             return FlushedStats;
         default:
@@ -94,12 +91,8 @@ void TTestWriteBackCacheStats::WriteDataRequestUpdateMinTime(
 }
 
 void TTestWriteBackCacheStats::AddReadDataStats(
-    EReadDataRequestCacheStatus status,
-    TDuration pendingDuration)
+    EReadDataRequestCacheStatus status)
 {
-    if (ReadStats.Data.size() < MaxItems) {
-        ReadStats.Data.push_back(pendingDuration);
-    }
     switch (status) {
         case EReadDataRequestCacheStatus::Miss:
             ReadStats.CacheMissCount++;

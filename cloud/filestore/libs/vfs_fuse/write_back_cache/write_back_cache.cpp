@@ -34,7 +34,6 @@ struct TPendingReadDataRequest
     TCallContextPtr CallContext;
     std::shared_ptr<NProto::TReadDataRequest> Request;
     TPromise<NProto::TReadDataResponse> Promise;
-    TInstant PendingTime = TInstant::Zero();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -287,8 +286,7 @@ private:
 
     // Stats processing - entries filtered by status
     TIntrusiveList<TWriteDataEntry> PendingStatusEntries;
-    TIntrusiveList<TWriteDataEntry> CachedStatusEntries;
-    TIntrusiveList<TWriteDataEntry> FlushingStatusEntries;
+    TIntrusiveList<TWriteDataEntry> UnflushedStatusEntries;
     TIntrusiveList<TWriteDataEntry> FlushedStatusEntries;
 
 public:
@@ -469,8 +467,7 @@ public:
         TPendingReadDataRequest pendingRequest = {
             .CallContext = std::move(callContext),
             .Request = std::move(request),
-            .Promise = NewPromise<NProto::TReadDataResponse>(),
-            .PendingTime = Timer->Now()};
+            .Promise = NewPromise<NProto::TReadDataResponse>()};
 
         auto result = pendingRequest.Promise.GetFuture();
         result.Subscribe(std::move(unlocker));
@@ -972,8 +969,6 @@ private:
         state.Length = request.Request->GetLength();
         state.Promise = std::move(request.Promise);
 
-        auto waitDuration = Timer->Now() - request.PendingTime;
-
         state.Parts = CalculateDataPartsToReadAndFillBuffer(
             nodeId,
             state.StartingFromOffset,
@@ -989,9 +984,7 @@ private:
             Y_ABORT_UNLESS(state.Buffer.size() == state.Length);
             NProto::TReadDataResponse response;
             response.SetBuffer(std::move(state.Buffer));
-            Stats->AddReadDataStats(
-                EReadDataRequestCacheStatus::FullHit,
-                waitDuration);
+            Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
             state.Promise.SetValue(std::move(response));
             return;
         }
@@ -1000,7 +993,7 @@ private:
             ? EReadDataRequestCacheStatus::Miss
             : EReadDataRequestCacheStatus::PartialHit;
 
-        Stats->AddReadDataStats(cacheState, waitDuration);
+        Stats->AddReadDataStats(cacheState);
 
         // Cache is not sufficient to serve the request - read all the data
         // and merge with the cached parts
@@ -1131,7 +1124,6 @@ private:
                     break;
                 }
                 entryCount++;
-                entry->StartFlush(this);
             }
         }
 
@@ -1255,7 +1247,7 @@ private:
             nodeState->FlushState.AffectedWriteDataEntriesCount--;
 
             auto* entry = RemoveFrontCachedEntry(nodeState);
-            entry->FinishFlush(this);
+            entry->SetFlushed(this);
 
             nodeState->AllEntries.Remove(entry);
             AllEntries.Remove(entry);
@@ -1337,10 +1329,8 @@ private:
         switch (status) {
             case EWriteDataRequestStatus::Pending:
                 return PendingStatusEntries;
-            case EWriteDataRequestStatus::Cached:
-                return CachedStatusEntries;
-            case EWriteDataRequestStatus::Flushing:
-                return FlushingStatusEntries;
+            case EWriteDataRequestStatus::Unflushed:
+                return UnflushedStatusEntries;
             case EWriteDataRequestStatus::Flushed:
                 return FlushedStatusEntries;
             default:
@@ -1483,7 +1473,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
             serializedRequest.data());
 
     CachedRequest = allocationPtr;
-    SetStatus(EWriteDataRequestStatus::Cached, impl);
+    SetStatus(EWriteDataRequestStatus::Unflushed, impl);
 }
 
 size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
@@ -1546,7 +1536,7 @@ void TWriteBackCache::TWriteDataEntry::MoveRequestBuffer(
         reinterpret_cast<const TCachedWriteDataRequest*>(allocationPtr);
     PendingRequest.reset();
 
-    SetStatus(EWriteDataRequestStatus::Cached, impl);
+    SetStatus(EWriteDataRequestStatus::Unflushed, impl);
 
     if (CachedPromise.Initialized()) {
         pendingOperations.WriteDataCompleted.push_back(
@@ -1554,16 +1544,9 @@ void TWriteBackCache::TWriteDataEntry::MoveRequestBuffer(
     }
 }
 
-void TWriteBackCache::TWriteDataEntry::StartFlush(TImpl* impl)
+void TWriteBackCache::TWriteDataEntry::SetFlushed(TImpl* impl)
 {
-    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Cached);
-    SetStatus(EWriteDataRequestStatus::Flushing, impl);
-}
-
-void TWriteBackCache::TWriteDataEntry::FinishFlush(
-    TImpl* impl)
-{
-    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Flushing);
+    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Unflushed);
     SetStatus(EWriteDataRequestStatus::Flushed, impl);
 }
 

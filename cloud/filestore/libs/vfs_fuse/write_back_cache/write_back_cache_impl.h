@@ -158,11 +158,6 @@ public:
         return GetOffset() + ByteCount;
     }
 
-    bool IsCached() const
-    {
-        return Status == NWriteBackCache::EWriteDataRequestStatus::Cached;
-    }
-
     bool IsCorrupted() const
     {
         return Status == NWriteBackCache::EWriteDataRequestStatus::Corrupted;
@@ -184,8 +179,7 @@ public:
         TQueuedOperations& pendingOperations,
         TImpl* impl);
 
-    void StartFlush(TImpl* impl);
-    void FinishFlush(TImpl* impl);
+    void SetFlushed(TImpl* impl);
     void Complete(TImpl* impl);
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
