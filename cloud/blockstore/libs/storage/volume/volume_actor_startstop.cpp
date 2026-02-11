@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/bootstrapper/bootstrapper.h>
+#include <cloud/blockstore/libs/storage/fresh_blocks_writer/fresh_blocks_writer_actor.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
 #include <cloud/blockstore/libs/storage/partition2/part2.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
@@ -31,6 +32,7 @@ using namespace NActors;
 using namespace NKikimr;
 
 using namespace NCloud::NBlockStore::NStorage::NPartition;
+using namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter;
 
 using namespace NCloud::NStorage;
 
@@ -925,6 +927,18 @@ void TVolumeActor::HandleTabletStatus(
             auto actorStack = TActorsStack(
                 msg->TabletUser,
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
+
+
+            TActorId freshBlocksWriterId;
+            if (Config->GetFreshBlocksWriterEnabled()) {
+                actorStack = WrapWithFreshBlocksWriterIfNeeded(
+                    ctx,
+                    std::move(actorStack),
+                    msg->TabletId);
+
+                freshBlocksWriterId = actorStack.GetTop();
+            }
+
             if (State->GetPartitions().size() == 1) {
                 actorStack = WrapWithFollowerActorIfNeeded(
                     ctx,
@@ -932,10 +946,19 @@ void TVolumeActor::HandleTabletStatus(
                     true);
             }
             partition->SetStarted(std::move(actorStack));
-            NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
-                ctx,
-                msg->TabletUser,
-                msg->TabletId);
+
+            if (freshBlocksWriterId) {
+                NCloud::Send<NFreshBlocksWriter::TEvFreshBlocksWriter::
+                                 TEvWaitReadyRequest>(
+                    ctx,
+                    freshBlocksWriterId,
+                    msg->TabletId);
+            } else {
+                NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
+                    ctx,
+                    msg->TabletUser,
+                    msg->TabletId);
+            }
             break;
         }
         case TEvBootstrapper::STOPPED: {
@@ -1001,9 +1024,10 @@ void TVolumeActor::HandleTabletStatus(
     }
 }
 
-void TVolumeActor::HandleWaitReadyResponse(
-    const TEvPartition::TEvWaitReadyResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TVolumeActor::HandleWaitReadyResponseImpl(
+    const NActors::TActorContext& ctx,
+    ui64 tabletId,
+    const NActors::TActorId& sender)
 {
     auto oldState = State->GetPartitionsState();
     Y_DEFER
@@ -1011,14 +1035,11 @@ void TVolumeActor::HandleWaitReadyResponse(
         OnPartitionStateChanged(ctx, oldState);
     };
 
-    const ui64 tabletId = ev->Cookie;
-
     auto* partition = State->GetPartition(tabletId);
 
     // Drop unexpected responses in case of restart races
-    if (partition &&
-        partition->State == TPartitionInfo::STARTED &&
-        partition->IsKnownActorId(ev->Sender))
+    if (partition && partition->State == TPartitionInfo::STARTED &&
+        partition->IsKnownActorId(sender))
     {
         partition->SetReady();
 
@@ -1029,6 +1050,56 @@ void TVolumeActor::HandleWaitReadyResponse(
             OnStarted(ctx);
         }
     }
+}
+
+void TVolumeActor::HandleWaitReadyResponse(
+    const TEvPartition::TEvWaitReadyResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    HandleWaitReadyResponseImpl(ctx, ev->Cookie, ev->Sender);
+}
+
+void TVolumeActor::HandleWaitReadyResponse(
+    const TEvFreshBlocksWriter::TEvWaitReadyResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    HandleWaitReadyResponseImpl(ctx, ev->Cookie, ev->Sender);
+}
+
+TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
+    const NActors::TActorContext& ctx,
+    TActorsStack actors,
+    ui64 partTabletId)
+{
+    if (!Config->GetFreshBlocksWriterEnabled()) {
+        return actors;
+    }
+
+    auto* part = State->GetPartition(partTabletId);
+
+    auto config = Config;
+    auto partitionConfig = part->PartitionConfig;
+    auto storageAccessMode = State->GetStorageAccessMode();
+    auto partitionIndex = part->PartitionIndex;
+    auto siblingCount = State->GetPartitions().size();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "creating fresh blocks writer");
+
+    auto actorId =
+        NCloud::Register<NFreshBlocksWriter::TFreshBlocksWriterActor>(
+            ctx,
+            std::move(config),
+            std::move(partitionConfig),
+            storageAccessMode,
+            partitionIndex,
+            siblingCount,
+            actors.GetTop(),
+            partTabletId);
+    actors.Push(actorId, TActorsStack::EActorPurpose::FreshBlocksWriter);
+    return actors;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

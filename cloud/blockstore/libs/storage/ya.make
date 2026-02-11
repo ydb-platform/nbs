@@ -6,6 +6,7 @@ RECURSE(
     disk_common
     disk_registry
     disk_registry_proxy
+    fresh_blocks_writer
     model
     partition
     partition2

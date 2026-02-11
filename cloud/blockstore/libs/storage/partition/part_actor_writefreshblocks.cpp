@@ -469,6 +469,8 @@ void TPartitionActor::WriteFreshBlocks(
     const TActorContext& ctx,
     TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer)
 {
+    Y_ABORT_UNLESS(!Config->GetFreshBlocksWriterEnabled());
+
     if (requestsInBuffer.empty()) {
         return;
     }
@@ -846,6 +848,8 @@ void TPartitionActor::ZeroFreshBlocks(
     TBlockRange32 writeRange,
     ui64 commitId)
 {
+    Y_ABORT_UNLESS(!Config->GetFreshBlocksWriterEnabled());
+
     const bool freshChannelZeroRequestsEnabled =
         Config->GetFreshChannelZeroRequestsEnabled();
 

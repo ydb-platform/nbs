@@ -1426,4 +1426,7 @@ message TStorageServiceConfig
     // Periodically checks disk registry state consistency with local db.
     // If equals zero check is disabled.
     optional uint32 EnsureDiskRegistryStateIntegrityInterval = 482;
+
+    // Enables separate fresh blocks writer.
+    optional bool FreshBlocksWriterEnabled = 483;
 }
