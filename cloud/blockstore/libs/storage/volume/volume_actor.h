@@ -16,11 +16,12 @@
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
-#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -1044,8 +1045,18 @@ private:
         const NCloud::NStorage::TEvHiveProxy::TEvBootExternalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleWaitReadyResponseImpl(
+        const NActors::TActorContext& ctx,
+        ui64 tabletId,
+        const NActors::TActorId& sender);
+
     void HandleWaitReadyResponse(
         const NPartition::TEvPartition::TEvWaitReadyResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWaitReadyResponse(
+        const NFreshBlocksWriter::TEvFreshBlocksWriter::TEvWaitReadyResponse::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleBackpressureReport(
@@ -1334,6 +1345,11 @@ private:
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    TActorsStack WrapWithFreshBlocksWriterIfNeeded(
+        const NActors::TActorContext& ctx,
+        TActorsStack actors,
+        ui64 partTabletId);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolumePrivate)

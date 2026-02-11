@@ -9,13 +9,24 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(xxx, ...)                     \
-// BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS
+#define BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(xxx, ...)                      \
+    xxx(WaitReady,               __VA_ARGS__)                                  \
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEvFreshBlocksWriter
 {
+    //
+    // WaitReady
+    //
+
+    struct TWaitReadyRequest
+    {
+    };
+
+    struct TWaitReadyResponse
+    {
+    };
 
     //
     // Events declaration
@@ -34,6 +45,7 @@ struct TEvFreshBlocksWriter
         EvEnd < (int)TBlockStoreEvents::FRESH_BLOCKS_WRITER_END,
         "EvEnd expected to be < TBlockStoreEvents::FRESH_BLOCKS_WRITER_END");
 
+    BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

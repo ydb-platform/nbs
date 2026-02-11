@@ -327,6 +327,12 @@ void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
         State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
     UpdateStorageStat(totalBlocksCount * State->GetBlockSize());
 
+    // Fresh is managed by separate actor, no need to load it.
+    if (Config->GetFreshBlocksWriterEnabled()) {
+        FreshBlobsLoaded(ctx);
+        return;
+    }
+
     FreshBlocksCompanion->LoadFreshBlobs(
         ctx,
         State->GetMeta().GetTrimFreshLogToCommitId());

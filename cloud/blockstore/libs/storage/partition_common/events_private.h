@@ -23,6 +23,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
     xxx(WriteBlob,                 __VA_ARGS__)                                \
     xxx(PatchBlob,                 __VA_ARGS__)                                \
+    xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -237,7 +238,6 @@ struct TEvPartitionCommonPrivate
     //
     // WriteBlob
     //
-
     struct TWriteBlobRequest
     {
         NActors::TActorId Proxy;
@@ -364,6 +364,21 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // GetFreshChannelsInfo
+    //
+    struct TGetFreshChannelsInfoRequest
+    {
+    };
+
+    struct TGetFreshChannelsInfoResponse
+    {
+        NKikimr::TTabletStorageInfoPtr TabletInfo;
+        ui64 ChannelsCount;
+        ui64 Generation;
+
+        ui64 PersistedTrimFreshLogToCommitId;
+    };
+
     // Events declaration
     //
 
