@@ -94,7 +94,7 @@ void TModifySchemeActor::HandleStatus(
 
     auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus) record.GetStatus();
     switch (status) {
-        case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:
+        case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:{
             if(!UseSchemeCache) {
                 LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
                 "Request %s with TxId# %lu completed immediately",
@@ -104,8 +104,19 @@ void TModifySchemeActor::HandleStatus(
                 ReplyAndDie(ctx);
                 break;
             }
-            TxId = ev->Get()->Record.GetPathCreateTxId();
+
+            switch (ModifyScheme.GetOperationType()) {
+                case NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume:
+                    TxId = ev->Get()->Record.GetPathCreateTxId();
+                    break;
+                case NKikimrSchemeOp::ESchemeOpDropBlockStoreVolume:
+                    TxId = ev->Get()->Record.GetPathDropTxId();
+                    break;
+                default:
+                    break;
+            }
             [[fallthrough]];
+        }
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecInProgress:
             LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
                 "Request %s with TxId# %lu in progress, waiting for completion",
