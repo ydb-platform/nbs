@@ -941,6 +941,12 @@ void TVolumeActor::HandleTabletStatus(
         case TEvBootstrapper::STOPPED: {
             partition->RetryPolicy.Reset(ctx.Now());
             partition->Bootstrapper = {};
+
+            auto topActor = partition->GetTopActorId();
+            if (topActor && State->GetPartitions().size() == 1) {
+                NCloud::Send<TEvents::TEvPoisonPill>(ctx, topActor);
+            }
+
             partition->SetStopped();
             break;
         }
@@ -969,6 +975,12 @@ void TVolumeActor::HandleTabletStatus(
 
     if (shouldRestart) {
         partition->Bootstrapper = {};
+
+        auto topActor = partition->GetTopActorId();
+        if (topActor && State->GetPartitions().size() == 1) {
+            NCloud::Send<TEvents::TEvPoisonPill>(ctx, topActor);
+        }
+
         partition->SetFailed(msg->Message);
         if (partition->StorageInfo) {
             partition->StorageInfo = {};

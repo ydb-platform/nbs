@@ -2,6 +2,10 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 
+#include <util/string/join.h>
+
+using namespace std::chrono_literals;
+
 using namespace NActors;
 
 namespace NCloud {
@@ -39,6 +43,15 @@ void TPoisonPillHelper::HandlePoisonPill(
     const NActors::TEvents::TEvPoisonPill::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
+    auto* actorId = PoisonPillCookieToOwnedActorId.FindPtr(ev->Cookie);
+
+    if (actorId && ev->Sender == ctx.SelfID) {
+        ReleaseOwnership(ctx, *actorId);
+        PoisonPillCookieToOwnedActorId.erase(ev->Cookie);
+
+        return;
+    }
+
     Y_DEBUG_ABORT_UNLESS(!Poisoner);
 
     Poisoner = TPoisoner{ev->Sender, ev->Cookie};
@@ -57,7 +70,15 @@ void TPoisonPillHelper::HandlePoisonTaken(
 void TPoisonPillHelper::KillActors(const TActorContext& ctx)
 {
     for (auto actor: OwnedActors) {
-        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
+        auto cookie = GetNextPoisonCookie();
+
+        PoisonPillCookieToOwnedActorId[cookie] = actor;
+
+        SendWithUndeliveryTracking(
+            ctx,
+            actor,
+            std::make_unique<TEvents::TEvPoisonPill>(),
+            cookie);
     }
 }
 
@@ -73,6 +94,14 @@ void TPoisonPillHelper::ReplyAndDie(const TActorContext& ctx)
         0,   // flags
         Poisoner->Cookie);
     Owner->Poison(ctx);
+}
+
+ui64 TPoisonPillHelper::GetNextPoisonCookie()
+{
+    constexpr ui64 PoisonPillHelperCookiesFlag = ui64{1} << 63;
+    auto cookieCounter = CookieCounter++;
+
+    return cookieCounter | PoisonPillHelperCookiesFlag;
 }
 
 }   // namespace NCloud
