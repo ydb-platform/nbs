@@ -719,18 +719,21 @@ struct TEvIndexTabletPrivate
         NProto::TError OriginalError;
         NProto::TError Error;
         const ui64 OpLogEntryId;
+        const bool IsLocalRename;
 
         TUnlinkDirectoryNodeAbortedInShard(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TRenameNodeInDestinationRequest request,
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 NProto::TError originalError,
-                ui64 opLogEntryId)
+                ui64 opLogEntryId,
+                bool isLocalRename)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
             , ProfileLogRequest(std::move(profileLogRequest))
             , OriginalError(std::move(originalError))
             , OpLogEntryId(opLogEntryId)
+            , IsLocalRename(isLocalRename)
         {
         }
     };
@@ -1162,6 +1165,7 @@ struct TEvIndexTabletPrivate
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
         EvDoRenameNodeInDestination,
+        EvDoRenameNode,
         EvUnlinkDirectoryNodeAbortedInShard,
         EvNodeRenamedInDestination,
 
@@ -1213,6 +1217,9 @@ struct TEvIndexTabletPrivate
 
     using TEvDoRenameNodeInDestination =
         TRequestEvent<TDoRenameNodeInDestination, EvDoRenameNodeInDestination>;
+
+    using TEvDoRenameNode =
+        TRequestEvent<TDoRenameNodeInDestination, EvDoRenameNode>;
 
     using TEvNodeRenamedInDestination =
         TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;

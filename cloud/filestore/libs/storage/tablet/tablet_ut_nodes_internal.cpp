@@ -274,10 +274,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
-    TABLET_TEST_4K_ONLY(
-        ShouldReturnErrorUponRenameNodeInDestinationForFileToDirOp)
+    void DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
     {
-        TTestEnv env;
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
         const ui32 nodeIdx = env.CreateNode("nfs");
@@ -289,6 +292,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -308,7 +314,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -318,33 +325,67 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
         CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_ISDIR,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name1,
-            shardId2,
-            uuid2);
-        response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name1,
+                shardId2,
+                uuid2);
+            response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            tablet.SendRenameNodeRequest(RootNodeId, name1, RootNodeId, name2);
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            tablet.SendRenameNodeRequest(RootNodeId, name2, RootNodeId, name1);
+            response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
     }
 
     TABLET_TEST_4K_ONLY(
-        ShouldCheckDstEmptinessUponRenameNodeInDestinationForDirToDirOp)
+        ShouldReturnErrorUponRenameNodeInDestinationForFileToDirOp)
     {
-        TTestEnv env;
+        DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldReturnErrorUponRenameNodeForFileToDirOp)
+    {
+        DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    void DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
         const ui32 nodeIdx = env.CreateNode("nfs");
@@ -356,6 +397,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -367,7 +411,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         //  uuid2 -> id2 (dir)
         //  name2 -> uuid2
         //
-        //  uuid3 -> id3 (dir)
+        //  uuid3 -> id3 (file)
         //  name2/name3 -> uuid3
         //
         //  move name1 to name2 -> fail
@@ -381,7 +425,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -399,29 +444,51 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid3));
         CreateExternalRef(tablet, dir2, name3, shardId3, uuid3);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_NOTEMPTY,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOTEMPTY,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            tablet.SendRenameNodeRequest(
+                RootNodeId,
+                name1,
+                RootNodeId,
+                name2);
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOTEMPTY,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         DeleteRef(tablet, dir2, name3);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
-        response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            tablet.SendRenameNodeRequest(RootNodeId, name1, RootNodeId, name2);
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         const auto nodeRef = tablet.UnsafeGetNodeRef(RootNodeId, name2)->Record;
         UNIT_ASSERT_VALUES_EQUAL(shardId1, nodeRef.GetShardId());
@@ -429,9 +496,27 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     }
 
     TABLET_TEST_4K_ONLY(
-        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOp)
+        ShouldCheckDstEmptinessUponRenameNodeInDestinationForDirToDirOp)
     {
-        TTestEnv env;
+        DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldCheckDstEmptinessUponRenameNodeForDirToDirOp)
+    {
+        DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    void DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
         const ui32 nodeIdx = env.CreateNode("nfs");
@@ -475,6 +560,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -500,7 +588,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -511,11 +600,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
         CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+        } else {
+            tablet.SendRenameNodeRequest(RootNodeId, name1, RootNodeId, name2);
+        }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(abortRequest);
@@ -567,11 +660,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         shouldIntercept = false;
         env.GetRuntime().Send(abortRequest.release(), nodeIdx);
 
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_ISDIR,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         //
         // Abort OpLogEntry should be deleted.
@@ -599,9 +700,27 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     }
 
     TABLET_TEST_4K_ONLY(
-        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOpAfterReboot)
+        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOp)
     {
-        TTestEnv env;
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldAbortUnlinkUponRenameNodeForDirToDirOp)
+    {
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    void DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
 
         const ui32 nodeIdx = env.CreateNode("nfs");
@@ -645,6 +764,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -672,7 +794,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -683,11 +806,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
         CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+        } else {
+            tablet.SendRenameNodeRequest(
+                RootNodeId,
+                name1,
+                RootNodeId,
+                name2);
+        }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(abortRequest);
@@ -746,11 +877,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         // E_REJECTED is expected because tablet actor died.
         //
 
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         //
         // Abort OpLogEntry should be deleted.
@@ -775,6 +914,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 response->GetStatus(),
                 FormatError(response->GetError()));
         }
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOpAfterReboot)
+    {
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot)
+    {
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
+            tabletConfig,
+            false /* useRenameInDestination */);
     }
 
     TABLET_TEST_4K_ONLY(

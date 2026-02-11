@@ -194,13 +194,74 @@ void TIndexTabletActor::HandleRenameNode(
         return;
     }
 
-    if (error.GetCode() == S_FALSE) {
-        ExecuteTx<TRenameNode>(
-            ctx,
-            std::move(requestInfo),
-            std::move(msg->Record),
-            std::move(profileLogRequest));
+    if (error.GetCode() != S_FALSE) {
+        //
+        // Processed by HandleCrossShardRenameNodeImpl.
+        //
+
+        return;
     }
+
+    //
+    // NewParent is also managed by this shard, we need to lock the destination
+    // NodeRef as well.
+    //
+
+    if (!TryLockNodeRef({
+            msg->Record.GetNewParentId(),
+            msg->Record.GetNewName()}))
+    {
+        UnlockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
+        auto error = MakeError(E_REJECTED, TStringBuilder() << "new node ref "
+            << msg->Record.GetNewParentId() << " " << msg->Record.GetNewName()
+            << " is locked for RenameNode");
+        auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+            error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
+        return;
+    }
+
+    ExecuteTx<TRenameNode>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record),
+        std::move(profileLogRequest));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleDoRenameNode(
+    const TEvIndexTabletPrivate::TEvDoRenameNode::TPtr& ev,
+    const TActorContext& ctx)
+{
+    WorkerActors.erase(ev->Sender);
+
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Error)) {
+        UnlockNodeRef({
+            msg->Request.GetOriginalRequest().GetNodeId(),
+            msg->Request.GetOriginalRequest().GetName()});
+        UnlockNodeRef({
+            msg->Request.GetOriginalRequest().GetNewParentId(),
+            msg->Request.GetOriginalRequest().GetNewName()});
+
+        using TMethod = TEvService::TRenameNodeMethod;
+        auto response =
+            std::make_unique<TMethod::TResponse>(std::move(msg->Error));
+        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        return;
+    }
+
+    ExecuteTx<TRenameNode>(
+        ctx,
+        std::move(msg->RequestInfo),
+        std::move(*msg->Request.MutableOriginalRequest()),
+        std::move(msg->ProfileLogRequest),
+        std::move(msg->SourceNodeAttr),
+        std::move(msg->DestinationNodeAttr),
+        msg->OpLogEntryId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -358,31 +419,79 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             }
         }
 
-        if (args.NewChildNode && args.NewChildNode->Attrs.GetType()
-                == NProto::E_DIRECTORY_NODE)
-        {
-            if (!args.ChildNode || args.ChildNode->Attrs.GetType()
-                    != NProto::E_DIRECTORY_NODE)
-            {
-                args.Error = ErrorIsDirectory(args.NewChildNode->NodeId);
+        bool childIsDir = false;
+        bool newChildIsDir = false;
+        bool newChildIsEmpty = false;
+        ui64 newChildNodeId = InvalidNodeId;
+
+        if (args.ChildRef->IsExternal()) {
+            if (args.IsSecondPass) {
+                childIsDir =
+                    args.SourceNodeAttr.GetType() == NProto::E_DIRECTORY_NODE;
+            } else {
+                args.SecondPassRequired =
+                    GetFileSystem().GetDirectoryCreationInShardsEnabled();
+            }
+        } else {
+            childIsDir =
+                args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE;
+        }
+
+        if (args.SecondPassRequired) {
+            return true;
+        }
+
+        if (args.NewChildRef->IsExternal()) {
+            if (args.IsSecondPass) {
+                newChildNodeId = args.DestinationNodeAttr.GetId();
+                newChildIsDir = args.DestinationNodeAttr.GetType()
+                    == NProto::E_DIRECTORY_NODE;
+
+                //
+                // If we are here, it means that we have already successfully
+                // prepared dst node for unlink which means that it's empty
+                // and is going to stay empty.
+                //
+
+                newChildIsEmpty = true;
+            } else {
+                args.SecondPassRequired =
+                    GetFileSystem().GetDirectoryCreationInShardsEnabled();
+            }
+        } else {
+            newChildNodeId = args.NewChildNode->NodeId;
+            newChildIsDir =
+                args.NewChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE;
+            if (newChildIsDir) {
+                // 1 entry is enough to prevent rename
+                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                if (!ReadNodeRefs(
+                        db,
+                        args.NewChildNode->NodeId,
+                        args.CommitId,
+                        {},
+                        refs,
+                        1))
+                {
+                    return false;
+                }
+
+                newChildIsEmpty = refs.empty();
+            }
+        }
+
+        if (args.SecondPassRequired) {
+            return true;
+        }
+
+        if (newChildIsDir) {
+            if (!childIsDir) {
+                args.Error = ErrorIsDirectory(newChildNodeId);
                 return true;
             }
 
-            // 1 entry is enough to prevent rename
-            TVector<IIndexTabletDatabase::TNodeRef> refs;
-            if (!ReadNodeRefs(
-                    db,
-                    args.NewChildNode->NodeId,
-                    args.CommitId,
-                    {},
-                    refs,
-                    1))
-            {
-                return false;
-            }
-
-            if (!refs.empty()) {
-                args.Error = ErrorIsNotEmpty(args.NewChildNode->NodeId);
+            if (!newChildIsEmpty) {
+                args.Error = ErrorIsNotEmpty(newChildNodeId);
                 return true;
             }
         }
@@ -402,6 +511,10 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
     FILESTORE_VALIDATE_TX_ERROR(RenameNode, args);
     if (args.Error.GetCode() == S_ALREADY) {
         return; // nothing to do
+    }
+
+    if (args.SecondPassRequired) {
+        return;
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
@@ -472,6 +585,10 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                     << ", Error: " << FormatError(e), nodeId);
             }
         } else {
+            if (args.AbortUnlinkOpLogEntryId) {
+                db.DeleteOpLogEntry(args.AbortUnlinkOpLogEntryId);
+            }
+
             // remove target ref
             UnlinkExternalNode(
                 db,
@@ -493,6 +610,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             shardRequest->SetFileSystemId(args.NewChildRef->ShardId);
             shardRequest->SetNodeId(RootNodeId);
             shardRequest->SetName(args.NewChildRef->ShardNodeName);
+            shardRequest->SetUnlinkDirectory(
+                args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE);
 
             db.WriteOpLogEntry(args.OpLogEntry);
         }
@@ -549,7 +668,68 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
+    bool refsValidated = false;
+    if (args.SecondPassRequired || args.IsSecondPass) {
+        if (!args.NewChildRef) {
+            auto message = ReportChildRefIsNull(TStringBuilder()
+                << "RenameNode_Dst: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        } else if (!args.ChildRef) {
+            auto message = ReportChildRefIsNull(TStringBuilder()
+                << "RenameNode_Src: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        } else {
+            refsValidated = true;
+        }
+    }
+
+    if (refsValidated && args.SecondPassRequired) {
+        RegisterGetNodeInfoAndPrepareUnlinkActor(
+            ctx,
+            args.RequestInfo,
+            MakeRenameNodeInDestinationRequest(
+                args.Request,
+                args.ChildRef->ShardId,
+                args.ChildRef->ShardNodeName,
+                args.NewChildRef->ShardId),
+            std::move(args.ProfileLogRequest),
+            std::move(args.NewChildRef->ShardId),
+            std::move(args.NewChildRef->ShardNodeName),
+            true /* isLocalRename */);
+        return;
+    }
+
+    if (HasError(args.Error)
+            && refsValidated
+            && args.IsSecondPass
+            && args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE)
+    {
+        if (args.AbortUnlinkOpLogEntryId) {
+            RegisterAbortUnlinkDirectoryInShardActor(
+                ctx,
+                args.RequestInfo,
+                MakeRenameNodeInDestinationRequest(
+                    args.Request,
+                    args.ChildRef->ShardId,
+                    args.ChildRef->ShardNodeName,
+                    args.NewChildRef->ShardId),
+                std::move(args.ProfileLogRequest),
+                args.Error,
+                args.NewChildRef->ShardId,
+                args.DestinationNodeAttr.GetId(),
+                args.AbortUnlinkOpLogEntryId,
+                true /* isLocalRename */);
+            return;
+        }
+
+        auto message = ReportMissingOpLogEntryId(TStringBuilder()
+            << "RenameNode: " << args.Request.ShortDebugString()
+            << ", original error: " << FormatError(args.Error));
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+    }
+
     UnlockNodeRef({args.ParentNodeId, args.Name});
+    UnlockNodeRef({args.NewParentNodeId, args.NewName});
 
     InvalidateNodeCaches(args.ParentNodeId);
     InvalidateNodeCaches(args.NewParentNodeId);
