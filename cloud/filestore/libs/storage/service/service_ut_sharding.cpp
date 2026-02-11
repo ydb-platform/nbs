@@ -7056,5 +7056,66 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         DoShouldShardedFileSystemHitNodesCountLimit(config, true);
         DoShouldShardedFileSystemHitNodesCountLimit(config, false);
     }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldNotUpdateShardBalancerInTabletZombieState)
+    {
+        // This test verifies the fix for the following crash:
+        // 1. TEvAggregateStatsCompleted was sent.
+        // 2. The filesystem was resized,
+        //    TIndexTabletActor::ExecuteTx_ConfigureShards was called,
+        //    and ShardBalancer was recreated with a new number of shards.
+        // 3. TEvAggregateStatsCompleted was handled, and UpdateShardBalancer
+        //    was called with the old number of shards,
+        //    which caused Y_ABORT_UNLESS(stats.size() == Metas.size())
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        // filter out TEvents::TEvPoisonPill in order not to kill the main
+        // tablet
+        bool poisonPillDropped = false;
+        bool shardsConfigured = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvConfigureShardsRequest: {
+                        shardsConfigured = true;
+                        break;
+                    }
+                    case TEvents::TSystem::PoisonPill: {
+                        if (shardsConfigured) {
+                            poisonPillDropped = true;
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            });
+
+        service.ResizeFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount() * 2);
+
+        env.GetRuntime().SetEventFilter(
+            &TTestActorRuntimeBase::DefaultFilterFunc);
+        using TCompletion = TEvIndexTabletPrivate::TEvAggregateStatsCompleted;
+        NProtoPrivate::TStorageStats statsForTablet;
+        TVector<TShardStats> shardStats(2);
+
+        auto completion = std::make_unique<TCompletion>(
+            NProto::TError(),
+            std::move(statsForTablet),
+            std::move(shardStats),
+            TInstant());
+
+        env.GetRuntime().Send(
+            new IEventHandle(
+                fsInfo.MainTabletActorId,   // recipient
+                TActorId(),                 // sender
+                completion.release(),
+                0,   // flags
+                0),
+            0);
+    }
 }
 }   // namespace NCloud::NFileStore::NStorage
