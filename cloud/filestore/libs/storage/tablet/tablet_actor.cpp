@@ -1433,21 +1433,6 @@ bool TIndexTabletActor::HasNodesLeft() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
-    ui32 nonNetworkMetricsBalancingFactor)
-{
-    i64 sumRequestBytes =
-        ReadBlob.RequestBytes + WriteBlob.RequestBytes +
-        WriteData.RequestBytes +
-        (DescribeData.Count + AddData.Count + ReadData.Count) *
-            nonNetworkMetricsBalancingFactor;
-    auto delta = sumRequestBytes - LastNetworkMetric;
-    LastNetworkMetric = sumRequestBytes;
-    return delta;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 bool TIndexTabletActor::IsMainTablet() const
 {
     return GetFileSystem().GetShardNo() == 0;
