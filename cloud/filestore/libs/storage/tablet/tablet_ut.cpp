@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
+#include <cloud/storage/core/libs/features/features_config.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -276,6 +278,43 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, registerNonShardCount);
         UNIT_ASSERT_VALUES_EQUAL(1, registerShardCount);
+    }
+
+    Y_UNIT_TEST(ShouldRespectFeaturesConfig)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        auto* feature = featuresConfigProto.AddFeatures();
+        feature->SetName("WriteBatchEnabled");
+        feature->MutableWhitelist()->AddCloudIds("test_cloud");
+
+        env.GetStorageConfig()->SetFeaturesConfig(
+            std::make_shared<NFeatures::TFeaturesConfig>(featuresConfigProto));
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        {
+            auto response = tablet.GetStorageConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response->Record.GetStorageConfig()
+                    .GetWriteBatchEnabled());
+        }
+
+        tablet.RebootTablet();
+
+        {
+            auto response = tablet.GetStorageConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response->Record.GetStorageConfig()
+                    .GetWriteBatchEnabled());
+        }
     }
 }
 
