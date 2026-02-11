@@ -259,6 +259,7 @@ def generate_log_txt():
         b"BLOCKSTORE_EXTERNAL_ENDPOINT",
         b"BLOCKSTORE_VHOST",
         b"BLOCKSTORE_RDMA",
+        b"BLOCKSTORE_NVME",
         b"BLOCKSTORE_LOCAL_NVME",
     ]
 

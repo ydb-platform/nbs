@@ -162,7 +162,9 @@ IStorageProviderPtr CreateStorageProvider(
     return result;
 }
 
-NNvme::INvmeManagerPtr CreateNvmeManager(const TDiskAgentConfig& config)
+NNvme::INvmeManagerPtr CreateNvmeManager(
+    ILoggingServicePtr logging,
+    const TDiskAgentConfig& config)
 {
     switch (config.GetBackend()) {
         case NProto::DISK_AGENT_BACKEND_SPDK:
@@ -171,7 +173,9 @@ NNvme::INvmeManagerPtr CreateNvmeManager(const TDiskAgentConfig& config)
         case NProto::DISK_AGENT_BACKEND_NULL:
         case NProto::DISK_AGENT_BACKEND_IO_URING:
         case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
-            return NNvme::CreateNvmeManager(config.GetSecureEraseTimeout());
+            return NNvme::CreateNvmeManager(
+                std::move(logging),
+                config.GetSecureEraseTimeout());
     }
 
     return nullptr;
@@ -182,13 +186,16 @@ NNvme::INvmeManagerPtr CreateNvmeManager(const TDiskAgentConfig& config)
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
+    ILoggingServicePtr logging,
     const TDiskAgentConfig& config)
 {
+    Y_ABORT_UNLESS(logging);
+
     if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK) {
         return {};
     }
 
-    auto nvmeManager = CreateNvmeManager(config);
+    auto nvmeManager = CreateNvmeManager(std::move(logging), config);
     auto provider = CreateFileIOServiceProvider(config);
 
     return {
