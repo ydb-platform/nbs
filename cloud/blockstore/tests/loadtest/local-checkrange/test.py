@@ -1,5 +1,3 @@
-import logging
-import os
 import pytest
 import json
 
@@ -12,19 +10,20 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, \
-    wait_for_nbs_server, wait_for_disk_agent, run_test, wait_for_secure_erase
+    wait_for_nbs_server, wait_for_disk_agent, run_test, \
+    wait_for_secure_erase, remove_file_devices
 from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
     setup_nonreplicated, create_devices, setup_disk_registry_config, \
     enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, \
     DeviceInfo
+from cloud.blockstore.tests.python.lib.config import \
+    process_config
 
 from contrib.ydb.tests.library.harness.kikimr_cluster import \
     kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import \
     KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_runner import \
-    get_unique_path_for_current_test, ensure_path_exists
 
 import yatest.common as yatest_common
 
@@ -79,53 +78,6 @@ TESTS = [
         agent_count=1,
     ),
 ]
-
-
-def __remove_file_devices(devices):
-    logging.info("Remove temporary device files")
-    for d in devices:
-        if d.path is not None:
-            logging.info("unlink %s (%s)" % (d.uuid, d.path))
-            assert d.handle is not None
-            d.handle.close()
-            os.unlink(d.path)
-
-
-def __process_config(config_path, devices_per_agent):
-    with open(config_path) as c:
-        config_data = c.read()
-    device_tag = "\"$DEVICE:"
-    prev_index = 0
-    new_config_data = ""
-    has_replacements = False
-    while True:
-        next_device_tag_index = config_data.find(device_tag, prev_index)
-        if next_device_tag_index == -1:
-            new_config_data += config_data[prev_index:]
-            break
-        new_config_data += config_data[prev_index:next_device_tag_index]
-        prev_index = next_device_tag_index + len(device_tag)
-        next_index = config_data.find("\"", prev_index)
-        assert next_index != -1
-        agent_id, device_id = config_data[prev_index:next_index].split("/")
-        new_config_data += "\"%s\"" % devices_per_agent[int(
-            agent_id)][int(device_id)].path
-        has_replacements = True
-
-        prev_index = next_index + 1
-
-    if has_replacements:
-        config_folder = get_unique_path_for_current_test(
-            output_path=yatest_common.output_path(),
-            sub_folder="test_configs")
-        ensure_path_exists(config_folder)
-        config_path = os.path.join(
-            config_folder,
-            os.path.basename(config_path) + ".patched")
-        with open(config_path, "w") as new_c:
-            new_c.write(new_config_data)
-
-    return config_path
 
 
 def __run_test(test_case):
@@ -265,7 +217,7 @@ def __run_test(test_case):
         if test_case.agent_count > 0:
             wait_for_secure_erase(
                 nbs.mon_port, expectedAgents=test_case.agent_count)
-            config_path = __process_config(
+            config_path = process_config(
                 test_case.config_path, devices_per_agent)
 
         client = NbsClient(nbs.nbs_port)
@@ -303,7 +255,7 @@ def __run_test(test_case):
         if kikimr_cluster is not None:
             kikimr_cluster.stop()
         if test_case.agent_count > 0:
-            __remove_file_devices(devices)
+            remove_file_devices(devices)
 
     return ret
 

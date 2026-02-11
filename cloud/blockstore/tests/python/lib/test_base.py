@@ -547,3 +547,13 @@ def file_parse(file_path, proto_type):
 def file_parse_as_json(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
+
+
+def remove_file_devices(devices):
+    logging.info("Remove temporary device files")
+    for d in devices:
+        if d.path is not None:
+            logging.info("unlink %s (%s)" % (d.uuid, d.path))
+            assert d.handle is not None
+            d.handle.close()
+            os.unlink(d.path)
