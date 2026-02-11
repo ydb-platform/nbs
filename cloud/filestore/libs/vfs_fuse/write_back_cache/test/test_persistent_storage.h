@@ -1,22 +1,35 @@
 #pragma once
 
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/persistent_storage.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
+
+#include <util/generic/hash.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ITestPersistentStorage: public IPersistentStorage
+class TTestStorage: public IPersistentStorage
 {
-    virtual void SetCapacity(size_t capacity) = 0;
+private:
+    const IPersistentStorageStatsPtr Stats;
+    THashMap<const void*, std::unique_ptr<TString>> Data;
+    size_t Capacity = 0;
+
+public:
+    explicit TTestStorage(IPersistentStorageStatsPtr stats);
+
+    bool Empty() const override;
+    void Visit(const TVisitor& visitor) override;
+    ui64 GetMaxSupportedAllocationByteCount() const override;
+    TResultOrError<char*> Alloc(size_t size) override;
+    bool Commit() override;
+    void Free(const void* ptr) override;
+    TPersistentStorageStats GetStats() const override;
+
+    void SetCapacity(size_t capacity);
+
+private:
+    void UpdateStats();
 };
-
-using ITestPersistentStoragePtr = std::shared_ptr<ITestPersistentStorage>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-ITestPersistentStoragePtr CreateTestPersistentStorage(
-    IWriteBackCacheStatsPtr stats);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
