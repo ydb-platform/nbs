@@ -156,7 +156,11 @@ void TModifyVolumeActor::HandleModifySchemeResponse(
                 }
                 break;
             case NKikimrScheme::StatusMultipleModifications:
+                error.SetCode(E_REJECTED);
                 error = GetErrorFromPreconditionFailed(error);
+                break;
+            case NKikimrScheme::StatusNotAvailable:
+                error.SetCode(E_REJECTED);
                 break;
             default:
                 break;
