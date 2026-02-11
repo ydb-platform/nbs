@@ -1185,6 +1185,7 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         // private api
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAggregateStatsCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
@@ -1218,9 +1219,6 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
-        HFunc(
-            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
-            HandleAggregateStatsCompleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
