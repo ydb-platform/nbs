@@ -505,12 +505,9 @@ func IsNotFoundError(e error) bool {
 	return errors.As(e, &clientErr) && clientErr.Code == nbs_client.E_NOT_FOUND
 }
 
-func IsGetChangedBlocksNotSupportedError(e error) bool {
+func IsNotImplementedError(e error) bool {
 	clientErr := nbs_client.GetClientError(e)
-
-	// TODO: don't check E_ARGUMENT after https://github.com/ydb-platform/nbs/issues/1297#issuecomment-2149816298
-	return clientErr.Code == nbs_client.E_ARGUMENT && strings.Contains(clientErr.Error(), "Disk registry based disks can not handle GetChangedBlocks requests for normal checkpoints") ||
-		clientErr.Code == nbs_client.E_NOT_IMPLEMENTED
+	return clientErr.Code == nbs_client.E_NOT_IMPLEMENTED
 }
 
 func IsAlterPlacementGroupMembershipPublicError(e error) bool {
@@ -1837,7 +1834,7 @@ func (c *client) GetScanDiskStatus(
 		return ScanDiskStatus{}, err
 	}
 
-	return fromScanDiskProgress(response.Progress), err
+	return fromScanDiskProgress(response.Progress), nil
 }
 
 func (c *client) FinishFillDisk(
@@ -1891,7 +1888,7 @@ func (c *client) GetClusterCapacity(
 		infos = append(infos, info)
 	}
 
-	return infos, err
+	return infos, nil
 }
 
 func (c *client) ZoneID() string {
@@ -1959,7 +1956,7 @@ func (c *client) describeVolume(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return volume, err
+	return volume, nil
 }
 
 func (c *client) describePlacementGroup(
@@ -1982,7 +1979,7 @@ func (c *client) describePlacementGroup(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return group, err
+	return group, nil
 }
 
 func (c *client) ping(ctx context.Context) (err error) {
@@ -2187,7 +2184,7 @@ func (c *client) assignVolume(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return volume, err
+	return volume, nil
 }
 
 func (c *client) describeVolumeModel(
@@ -2225,7 +2222,7 @@ func (c *client) describeVolumeModel(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return model, err
+	return model, nil
 }
 
 func (c *client) createPlacementGroup(
@@ -2339,7 +2336,7 @@ func (c *client) listDiskStates(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return states, err
+	return states, nil
 }
 
 func (c *client) listPlacementGroups(
@@ -2358,7 +2355,7 @@ func (c *client) listPlacementGroups(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return groups, err
+	return groups, nil
 }
 
 func (c *client) getChangedBlocks(
@@ -2384,7 +2381,7 @@ func (c *client) getChangedBlocks(
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	return blockMask, err
+	return blockMask, nil
 }
 
 func (c *client) statVolume(
@@ -2398,5 +2395,5 @@ func (c *client) statVolume(
 	if err != nil {
 		return nil, nil, wrapError(err)
 	}
-	return volume, stats, err
+	return volume, stats, nil
 }

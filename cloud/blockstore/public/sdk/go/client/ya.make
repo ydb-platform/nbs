@@ -26,6 +26,7 @@ GO_TEST_SRCS(
     client_test.go
     discovery_test.go
     durable_test.go
+    error_test.go
     grpc_test.go
     log_test.go
     session_test.go
