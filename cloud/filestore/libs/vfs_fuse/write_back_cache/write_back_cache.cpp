@@ -1,6 +1,7 @@
 #include "write_back_cache_impl.h"
 
 #include "read_write_range_lock.h"
+#include "write_data_request_builder.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -84,10 +85,6 @@ struct TFlushConfig
 {
     TDuration AutomaticFlushPeriod;
     TDuration FlushRetryPeriod;
-    ui32 MaxWriteRequestSize = 0;
-    ui32 MaxWriteRequestsCount = 0;
-    ui32 MaxSumWriteRequestsSize = 0;
-    bool ZeroCopyWriteEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,112 +258,6 @@ struct TWriteBackCache::TQueuedOperations
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Reads a sequence of contiguous write data entry parts as a single buffer.
-// Provides a method to read data across multiple entry parts efficiently.
-class TWriteBackCache::TContiguousWriteDataEntryPartsReader
-{
-public:
-    using TIterator = TVector<TWriteDataEntryPart>::const_iterator;
-
-private:
-    TIterator Current;
-    ui64 CurrentReadOffset = 0;
-    ui64 RemainingSize = 0;
-
-public:
-    TContiguousWriteDataEntryPartsReader(
-            TIterator begin,
-            TIterator end)
-        : Current(begin)
-    {
-        if (begin < end) {
-            Y_DEBUG_ABORT_UNLESS(Validate(begin, end));
-            RemainingSize = std::prev(end)->GetEnd() - begin->Offset;
-        }
-    }
-
-    ui64 GetOffset() const
-    {
-        return Current->Offset + CurrentReadOffset;
-    }
-
-    ui64 GetRemainingSize() const
-    {
-        return RemainingSize;
-    }
-
-    TString Read(ui64 maxBytesToRead)
-    {
-        auto bytesToRead = Min(RemainingSize, maxBytesToRead);
-        if (bytesToRead == 0) {
-            return {};
-        }
-
-        auto buffer = TString::Uninitialized(bytesToRead);
-
-        while (bytesToRead > 0) {
-            auto part = ReadInPlace(bytesToRead);
-            Y_ABORT_UNLESS(part.size() > 0 && part.size() <= bytesToRead);
-            part.copy(buffer.vend() - bytesToRead, part.size());
-            bytesToRead -= part.size();
-        }
-
-        return buffer;
-    }
-
-    TStringBuf ReadInPlace(ui64 maxBytesToRead)
-    {
-        if (RemainingSize == 0) {
-            return {};
-        }
-
-        // Nagivate to the next element if the current one is fully read.
-        if (CurrentReadOffset == Current->Length) {
-            Current++;
-            CurrentReadOffset = 0;
-            // The next element is guaranteed to be non-empty
-            Y_ABORT_UNLESS(Current->Length > 0);
-        }
-
-        const auto len =
-            Min(Current->Length - CurrentReadOffset, maxBytesToRead);
-        const char* data = Current->Source->GetBuffer().data() +
-                           Current->OffsetInSource + CurrentReadOffset;
-
-        CurrentReadOffset += len;
-        RemainingSize -= len;
-
-        return {data, len};
-    }
-
-    // Validates a range of data entry parts to ensure they form a contiguous
-    // sequence. Additionally checks that each part has non-zero length.
-    static bool Validate(TIterator begin, TIterator end)
-    {
-        if (begin == end) {
-            return true;
-        }
-
-        for (const auto* it = begin; it != end; it = std::next(it)) {
-            if (it->Length == 0) {
-                return false;
-            }
-        }
-
-        const auto* prev = begin;
-        for (const auto* it = std::next(begin); it != end; it = std::next(it)) {
-            if (prev->GetEnd() != it->Offset) {
-                return false;
-            }
-            prev = it;
-        }
-
-        return true;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
 {
@@ -380,6 +271,7 @@ private:
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
     const IWriteBackCacheStatsPtr Stats;
+    const NWriteBackCache::IWriteDataRequestBuilderPtr RequestBuilder;
     const TFlushConfig FlushConfig;
     const TLog Log;
     const TString LogTag;
@@ -447,6 +339,7 @@ public:
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             IWriteBackCacheStatsPtr stats,
+            NWriteBackCache::IWriteDataRequestBuilderPtr requestBuilder,
             TLog log,
             const TString& fileSystemId,
             const TString& clientId,
@@ -457,10 +350,11 @@ public:
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , Stats(std::move(stats))
+        , RequestBuilder(std::move(requestBuilder))
         , FlushConfig(flushConfig)
         , Log(std::move(log))
         , LogTag(
-            Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
+              Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , FileSystemId(fileSystemId)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
@@ -713,67 +607,6 @@ public:
         ProcessQueuedOperations(guard);
 
         return future;
-    }
-
-    // should be protected by |Lock|
-    auto MakeWriteDataRequestsForFlush(
-        ui64 nodeId,
-        ui64 handle,
-        const TVector<TWriteDataEntryPart>& parts) const
-        -> TVector<std::shared_ptr<NProto::TWriteDataRequest>>
-    {
-        TVector<std::shared_ptr<NProto::TWriteDataRequest>> res;
-
-        size_t partIndex = 0;
-        while (partIndex < parts.size()) {
-            auto rangeEndIndex = partIndex;
-
-            while (++rangeEndIndex < parts.size()) {
-                const auto& prevPart = parts[rangeEndIndex - 1];
-                Y_DEBUG_ABORT_UNLESS(
-                    prevPart.GetEnd() <= parts[rangeEndIndex].Offset);
-
-                if (prevPart.GetEnd() != parts[rangeEndIndex].Offset) {
-                    break;
-                }
-            }
-
-            TContiguousWriteDataEntryPartsReader reader(
-                parts.begin() + partIndex,
-                parts.begin() + rangeEndIndex);
-
-            while (reader.GetRemainingSize() > 0) {
-                auto request = std::make_shared<NProto::TWriteDataRequest>();
-                request->SetFileSystemId(FileSystemId);
-                request->SetNodeId(nodeId);
-                request->SetHandle(handle);
-                request->SetOffset(reader.GetOffset());
-
-                if (FlushConfig.ZeroCopyWriteEnabled) {
-                    auto remainingBytes = FlushConfig.MaxWriteRequestSize;
-                    while (remainingBytes > 0) {
-                        auto part = reader.ReadInPlace(remainingBytes);
-                        if (part.empty()) {
-                            break;
-                        }
-                        Y_ABORT_UNLESS(part.size() <= remainingBytes);
-                        remainingBytes -= part.size();
-                        auto* iovec = request->AddIovecs();
-                        iovec->SetBase(reinterpret_cast<ui64>(part.data()));
-                        iovec->SetLength(part.size());
-                    }
-                } else {
-                    request->SetBuffer(
-                        reader.Read(FlushConfig.MaxWriteRequestSize));
-                }
-
-                res.push_back(std::move(request));
-            }
-
-            partIndex = rangeEndIndex;
-        }
-
-        return res;
     }
 
     TFuture<void> FlushNodeData(ui64 nodeId)
@@ -1311,57 +1144,39 @@ private:
             return;
         }
 
-        TVector<TWriteDataEntryPart> parts;
-        ui64 handle = InvalidHandle;
+        size_t entryCount = 0;
 
-        with_lock (Lock) {
-            // Flush cannot be scheduled when CachedEntries is empty
-            Y_ABORT_UNLESS(!nodeState->CachedEntries.empty());
+        auto batchBuilder = RequestBuilder->CreateWriteDataRequestBatchBuilder(
+            nodeState->NodeId);
 
-            // Use any valid handle for generating write requests
-            handle = nodeState->CachedEntries.front()->GetHandle();
+        {
+            auto guard = Guard(Lock);
 
-            auto entryCount = TUtil::CalculateEntriesCountToFlush(
-                nodeState->CachedEntries,
-                FlushConfig.MaxWriteRequestSize,
-                FlushConfig.MaxWriteRequestsCount,
-                FlushConfig.MaxSumWriteRequestsSize);
-
-            if (entryCount == 0) {
-                STORAGE_WARN(
-                    LogTag << " WriteBackCache WriteData request size exceeds "
-                    "flush limits, flushing anyway "
-                    << "{\"MaxWriteRequestSize\": "
-                    << FlushConfig.MaxWriteRequestSize
-                    << ", \"MaxWriteRequestsCount\": "
-                    << FlushConfig.MaxWriteRequestsCount
-                    << ", \"MaxSumWriteRequestsSize\": "
-                    << FlushConfig.MaxSumWriteRequestsSize
-                    << ", \"WriteDataRequestSize\": "
-                    << nodeState->CachedEntries.front()->GetBuffer().size()
-                    << "}");
-                entryCount = 1;
-            }
-
-            parts = TUtil::CalculateDataPartsToFlush(
-                nodeState->CachedEntries,
-                entryCount);
-
-            // Non-empty CachedEntries cannot produce empty parts
-            Y_ABORT_UNLESS(!parts.empty());
-
-            nodeState->FlushState.AffectedWriteDataEntriesCount = entryCount;
-
-            for (size_t i = 0; i < entryCount; i++) {
-                auto* entry = nodeState->CachedEntries[i];
+            for (auto* entry: nodeState->CachedEntries) {
+                if (!batchBuilder->AddRequest(
+                        entry->GetHandle(),
+                        entry->GetOffset(),
+                        entry->GetBuffer()))
+                {
+                    break;
+                }
+                entryCount++;
                 entry->StartFlush(this);
             }
-
-            Stats->FlushStarted();
         }
 
+        auto writeDataBatch = batchBuilder->Build();
+
+        // Flush cannot be scheduled when CachedEntries is empty
+        Y_ABORT_UNLESS(writeDataBatch.AffectedRequestCount > 0);
+        Y_ABORT_UNLESS(!writeDataBatch.Requests.empty());
+        Y_ABORT_UNLESS(writeDataBatch.AffectedRequestCount == entryCount);
+
+        Stats->FlushStarted();
+
+        nodeState->FlushState.AffectedWriteDataEntriesCount = entryCount;
         nodeState->FlushState.WriteRequests =
-            MakeWriteDataRequestsForFlush(nodeState->NodeId, handle, parts);
+            std::move(writeDataBatch.Requests);
     }
 
     void StartFlush(TNodeState* nodeState)
@@ -1601,23 +1416,24 @@ TWriteBackCache::TWriteBackCache(
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize,
         bool zeroCopyWriteEnabled)
-    : Impl(
-        new TImpl(
-            std::move(session),
-            std::move(scheduler),
-            std::move(timer),
-            std::move(stats),
-            std::move(log),
-            fileSystemId,
-            clientId,
-            filePath,
-            capacityBytes,
-            {.AutomaticFlushPeriod = automaticFlushPeriod,
-             .FlushRetryPeriod = flushRetryPeriod,
-             .MaxWriteRequestSize = maxWriteRequestSize,
-             .MaxWriteRequestsCount = maxWriteRequestsCount,
-             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
-             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
+    : Impl(new TImpl(
+          std::move(session),
+          std::move(scheduler),
+          std::move(timer),
+          std::move(stats),
+          NWriteBackCache::CreateWriteDataRequestBuilder(
+              {.FileSystemId = fileSystemId,
+               .MaxWriteRequestSize = maxWriteRequestSize,
+               .MaxWriteRequestsCount = maxWriteRequestsCount,
+               .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
+               .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}),
+          std::move(log),
+          fileSystemId,
+          clientId,
+          filePath,
+          capacityBytes,
+          {.AutomaticFlushPeriod = automaticFlushPeriod,
+           .FlushRetryPeriod = flushRetryPeriod}))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }
