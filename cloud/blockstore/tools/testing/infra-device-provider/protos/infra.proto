@@ -19,7 +19,8 @@ message TDevice
     string SerialNumber = 2;
 }
 
-message TListDevicesRequest {
+message TListDevicesRequest
+{
 }
 
 message TListDevicesResponse
