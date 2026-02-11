@@ -322,7 +322,9 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+            auto entry = std::make_unique<TWriteDataEntry>(
+                std::move(request),
+                NThreading::NewPromise<NProto::TWriteDataResponse>());
             entries.push_back(std::move(entry));
         }
 
@@ -375,7 +377,9 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+            auto entry = std::make_unique<TWriteDataEntry>(
+                std::move(request),
+                NThreading::NewPromise<NProto::TWriteDataResponse>());
             entries.push_back(std::move(entry));
         }
 
@@ -481,7 +485,9 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             request->SetOffset(e.Offset);
             request->SetBuffer(TString(e.Length, 'a')); // dummy buffer
 
-            auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
+            auto entry = std::make_unique<TWriteDataEntry>(
+                std::move(request),
+                NThreading::NewPromise<NProto::TWriteDataResponse>());
             entries.push_back(std::move(entry));
         }
 

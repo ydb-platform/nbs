@@ -83,8 +83,9 @@ private:
     TInstant StatusChangeTime = TInstant::Zero();
 
 public:
-    explicit TWriteDataEntry(
-        std::shared_ptr<NProto::TWriteDataRequest> request);
+    TWriteDataEntry(
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        NThreading::TPromise<NProto::TWriteDataResponse> cachedPromise);
 
     TWriteDataEntry(
         TStringBuf serializedRequest,
