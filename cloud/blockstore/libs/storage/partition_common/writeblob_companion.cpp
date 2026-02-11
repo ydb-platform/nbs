@@ -218,13 +218,14 @@ void TWriteBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobCompleted>(
-        error);
-    request->BlobId = Request->BlobId;
-    request->StorageStatusFlags = StorageStatusFlags;
-    request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
-    request->RequestTime = ResponseReceived - RequestSent;
-    request->BSGroupOperationId = BSGroupOperationId;
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobCompleted>(
+            error,
+            Request->BlobId,
+            StorageStatusFlags,
+            ApproximateFreeSpaceShare,
+            ResponseReceived - RequestSent,
+            BSGroupOperationId);
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }

@@ -288,11 +288,13 @@ struct TEvPartitionCommonPrivate
                 const TPartialBlobId& blobId,
                 NKikimr::TStorageStatusFlags storageStatusFlags,
                 double approximateFreeSpaceShare,
-                TDuration requestTime)
+                TDuration requestTime,
+                ui64 bsGroupOperationId)
             : BlobId(blobId)
             , StorageStatusFlags(storageStatusFlags)
             , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
             , RequestTime(requestTime)
+            , BSGroupOperationId(bsGroupOperationId)
         {}
     };
 
