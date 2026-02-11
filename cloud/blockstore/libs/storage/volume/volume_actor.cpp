@@ -3,6 +3,7 @@
 #include "volume_database.h"
 
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
@@ -33,6 +34,7 @@ using namespace NKikimr::NNodeWhiteboard;
 using namespace NKikimr::NTabletFlatExecutor;
 
 using namespace NCloud::NBlockStore::NStorage::NPartition;
+using namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter;
 
 using namespace NCloud::NStorage;
 
@@ -1065,6 +1067,9 @@ STFUNC(TVolumeActor::StateWork)
 
         HFunc(TEvHiveProxy::TEvBootExternalResponse, HandleBootExternalResponse);
         HFunc(TEvPartition::TEvWaitReadyResponse, HandleWaitReadyResponse);
+        HFunc(
+            TEvFreshBlocksWriter::TEvWaitReadyResponse,
+            HandleWaitReadyResponse);
         HFunc(TEvPartition::TEvBackpressureReport, HandleBackpressureReport);
         HFunc(TEvPartition::TEvGarbageCollectorCompleted, HandleGarbageCollectorCompleted);
 

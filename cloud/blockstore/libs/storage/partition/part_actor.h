@@ -172,6 +172,8 @@ private:
 
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
+    TRequestInfoPtr Poisoner;
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,
