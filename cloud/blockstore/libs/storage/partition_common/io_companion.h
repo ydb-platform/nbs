@@ -16,7 +16,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class IWriteBlobCompanionClient: public IMortalActor
+class IIOCompanionClient: public IMortalActor
 {
 public:
     virtual void UpdateWriteThroughput(
@@ -24,7 +24,12 @@ public:
         const NKikimr::NMetrics::TChannel& channel,
         const NKikimr::NMetrics::TGroupId& group,
         ui64 value) = 0;
-
+    virtual void UpdateReadThroughput(
+        const TInstant& now,
+        const NKikimr::NMetrics::TChannel& channel,
+        const NKikimr::NMetrics::TGroupId& group,
+        ui64 value,
+        bool isOverlayDisk) = 0;
     virtual void UpdateNetworkStat(const TInstant& now, ui64 value) = 0;
 
     virtual void ScheduleYellowStateUpdate(
@@ -32,7 +37,6 @@ public:
     virtual void UpdateYellowState(const NActors::TActorContext& ctx) = 0;
     virtual void ReassignChannelsIfNeeded(
         const NActors::TActorContext& ctx) = 0;
-
     virtual void UpdateChannelPermissions(
         const NActors::TActorContext& ctx,
         ui32 channel,
@@ -41,16 +45,12 @@ public:
     virtual void RegisterSuccess(TInstant now, ui32 groupId) = 0;
     virtual void RegisterDowntime(TInstant now, ui32 groupId) = 0;
 
-    virtual void ProcessIOQueue(
-        const NActors::TActorContext& ctx,
-        ui32 channel) = 0;
-
     virtual TPartitionDiskCounters& GetPartCounters() = 0;
 
-    ~IWriteBlobCompanionClient() override = default;
+    ~IIOCompanionClient() override = default;
 };
 
-class TWriteBlobCompanion
+class TIOCompanion
 {
 private:
     const TStorageConfigPtr Config;
@@ -60,23 +60,26 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
     const NActors::TActorId VolumeActorId;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const EStorageAccessMode StorageAccessMode;
 
     TBSGroupOperationTimeTracker& BSGroupOperationTimeTracker;
 
     ui64& BSGroupOperationId;
 
-    IWriteBlobCompanionClient& Client;
+    IIOCompanionClient& Client;
 
     TPartitionChannelsState& ChannelsState;
 
     ui32 WriteBlobErrorCount = 0;
+
+    ui32 ReadBlobErrorCount = 0;
 
     TLogTitle& LogTitle;
 
     TRunningActors Actors;
 
 public:
-    TWriteBlobCompanion(
+    TIOCompanion(
         TStorageConfigPtr config,
         const NProto::TPartitionConfig& partitionConfig,
         NKikimr::TTabletStorageInfo* tabletStorageInfo,
@@ -84,9 +87,10 @@ public:
         const NBlockCodecs::ICodec* blobCodec,
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigPtr diagnosticsConfig,
+        EStorageAccessMode storageAccessMode,
         TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
         ui64& bsGroupOperationId,
-        IWriteBlobCompanionClient& client,
+        IIOCompanionClient& client,
         TPartitionChannelsState& channelsState,
         TLogTitle& logTitle);
 
@@ -101,6 +105,24 @@ public:
     void HandleLongRunningBlobOperation(
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleReadBlob(
+        const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReadBlobCompleted(
+        const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePatchBlob(
+        const TEvPartitionCommonPrivate::TEvPatchBlobRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePatchBlobCompleted(
+        const TEvPartitionCommonPrivate::TEvPatchBlobCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
 
 private:
     auto Info()

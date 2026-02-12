@@ -463,26 +463,6 @@ void TPartitionActor::ReleaseTransactions()
     }
 }
 
-void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
-{
-    while (auto request = State->DequeueIORequest(channel)) {
-        auto actorId = NCloud::Register(ctx, std::move(request->Actor));
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Partition registered request actor with id [%lu]",
-            LogTitle.GetWithTime().c_str(),
-            actorId);
-        Actors.Insert(actorId);
-        BSGroupOperationTimeTracker.OnStarted(
-            request->BSGroupOperationId,
-            request->Group,
-            request->OperationType,
-            GetCycleCount(),
-            request->BlockSize);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 ui64 TPartitionActor::CalcChannelHistorySize() const
@@ -1037,7 +1017,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvWriteBlobCompleted,
             WriteBlobCompanion->HandleWriteBlobCompleted);
-        HFunc(TEvPartitionPrivate::TEvPatchBlobCompleted, HandlePatchBlobCompleted);
+        HFunc(TEvPartitionCommonPrivate::TEvPatchBlobCompleted, HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);

@@ -1,4 +1,4 @@
-#include "writeblob_companion.h"
+#include "io_companion.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -373,34 +373,7 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBlobCompanion::TWriteBlobCompanion(
-        TStorageConfigPtr config,
-        const NProto::TPartitionConfig& partitionConfig,
-        NKikimr::TTabletStorageInfo* tabletStorageInfo,
-        ui64 tabletID,
-        const NBlockCodecs::ICodec* blobCodec,
-        const NActors::TActorId& volumeActorId,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
-        ui64& bsGroupOperationId,
-        IWriteBlobCompanionClient& client,
-        TPartitionChannelsState& channelsState,
-        TLogTitle& logTitle)
-    : Config(std::move(config))
-    , PartitionConfig(partitionConfig)
-    , TabletStorageInfo(tabletStorageInfo)
-    , TabletID(tabletID)
-    , BlobCodec(blobCodec)
-    , VolumeActorId(volumeActorId)
-    , DiagnosticsConfig(std::move(diagnosticsConfig))
-    , BSGroupOperationTimeTracker(bsGroupOperationTimeTracker)
-    , BSGroupOperationId(bsGroupOperationId)
-    , Client(client)
-    , ChannelsState(channelsState)
-    , LogTitle(logTitle)
-{}
-
-void TWriteBlobCompanion::HandleWriteBlob(
+void TIOCompanion::HandleWriteBlob(
     const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -469,10 +442,10 @@ void TWriteBlobCompanion::HandleWriteBlob(
         TBSGroupOperationTimeTracker::EOperationType::Write,
         PartitionConfig.GetBlockSize());
 
-    Client.ProcessIOQueue(ctx, channel);
+    ProcessIOQueue(ctx, channel);
 }
 
-void TWriteBlobCompanion::HandleWriteBlobCompleted(
+void TIOCompanion::HandleWriteBlobCompleted(
     const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -571,10 +544,10 @@ void TWriteBlobCompanion::HandleWriteBlobCompleted(
         Client.RegisterSuccess(ctx.Now(), groupId);
     }
 
-    Client.ProcessIOQueue(ctx, channel);
+    ProcessIOQueue(ctx, channel);
 }
 
-void TWriteBlobCompanion::HandleLongRunningBlobOperation(
+void TIOCompanion::HandleLongRunningBlobOperation(
     const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
     const NActors::TActorContext& ctx)
 {

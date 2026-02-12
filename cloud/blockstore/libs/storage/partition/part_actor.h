@@ -61,7 +61,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 struct TFreshBlocksCompanionClient;
 
-struct TWriteBlobCompanionClient;
+struct TIOCompanionClient;
 
 ////////////////////////////////////////////////////////////////////////////////
 class TPartitionActor final
@@ -114,7 +114,7 @@ class TPartitionActor final
 
     friend TFreshBlocksCompanionClient;
 
-    friend TWriteBlobCompanionClient;
+    friend TIOCompanionClient;
 
 private:
     const ui64 StartTime = GetCycleCount();
@@ -176,8 +176,8 @@ private:
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
-    std::unique_ptr<TWriteBlobCompanionClient> WriteBlobCompanionClient;
-    std::unique_ptr<TWriteBlobCompanion> WriteBlobCompanion;
+    std::unique_ptr<TIOCompanionClient> WriteBlobCompanionClient;
+    std::unique_ptr<TIOCompanion> WriteBlobCompanion;
 
 public:
     TPartitionActor(
@@ -354,7 +354,6 @@ private:
         TBlockRange32 writeRange,
         ui64 commitId);
 
-    void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
     void ClearWriteQueue(const NActors::TActorContext& ctx);
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
     void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
@@ -655,7 +654,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandlePatchBlobCompleted(
-        const TEvPartitionPrivate::TEvPatchBlobCompleted::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvPatchBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadBlocksCompleted(
