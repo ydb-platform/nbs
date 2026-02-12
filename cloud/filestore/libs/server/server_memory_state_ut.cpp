@@ -46,7 +46,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     Y_UNIT_TEST(ShouldCreateMmapRegion)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
@@ -105,7 +105,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     Y_UNIT_TEST(ShouldFailCreateMmapRegionWithEdgeCases)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         TString relativePath = env.CreateTestFile("test_file.dat", 4096);
 
@@ -130,7 +130,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     Y_UNIT_TEST(ShouldCreateMmapRegionForNestedPath)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
         TString relativePath = env.CreateTestFile(JoinFsPaths(
@@ -152,7 +152,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     Y_UNIT_TEST(ShouldFailCreateMmapRegionForNonExistentFile)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         auto result = state.CreateMmapRegion("nonexistent.dat", 4096);
 
@@ -162,7 +162,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     Y_UNIT_TEST(ShouldDestroyMmapRegion)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
@@ -192,7 +192,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     Y_UNIT_TEST(ShouldListMmapRegions)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         auto regions = state.ListMmapRegions();
         UNIT_ASSERT_VALUES_EQUAL(0u, regions.size());
@@ -227,7 +227,7 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
     Y_UNIT_TEST(ShouldGetMmapRegion)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
@@ -252,10 +252,28 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
             result.GetError().GetCode());
     }
 
+    Y_UNIT_TEST(ShouldInvalidateTimedOutRegions)
+    {
+        TTestEnv env;
+        TServerState state(env.GetBasePath(), TDuration::Seconds(1));
+
+        TString path1 = env.CreateTestFile("file1.dat", 4096);
+
+        auto result = state.CreateMmapRegion(path1, 4096);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(1u, state.ListMmapRegions().size());
+
+        Sleep(TDuration::Seconds(2));
+
+        state.InvalidateTimedOutRegions();
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.ListMmapRegions().size());
+    }
+
     Y_UNIT_TEST(ShouldPingMmapRegion)
     {
         TTestEnv env;
-        TServerState state(env.GetBasePath());
+        TServerState state(env.GetBasePath(), TDuration::Max());
 
         const size_t fileSize = 4096;
         TString relativePath = env.CreateTestFile("test_file.dat", fileSize);
