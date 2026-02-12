@@ -360,7 +360,8 @@ void TIndexTabletActor::HandleAddData(
         profileLogRequest,
         EFileStoreRequest::AddData,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
 
     auto replyError = [&] (const NProto::TError& error)
     {

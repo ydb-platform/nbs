@@ -743,7 +743,9 @@ void TIndexTabletActor::CompleteTx_Compaction(
             1,  // count
             0,  // requestBytes
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.Compaction.DudCount.fetch_add(1, std::memory_order_relaxed);
+        Metrics.CompactionExtra.DudCount.fetch_add(
+            1,
+            std::memory_order_relaxed);
         return;
     }
 

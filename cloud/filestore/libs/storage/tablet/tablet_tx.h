@@ -15,6 +15,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
+#include <cloud/filestore/libs/storage/tablet/model/request_metrics.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -1476,6 +1477,7 @@ struct TTxIndexTablet
         const NProto::TGetNodeAttrRequest Request;
         const ui64 NodeId;
         const TString Name;
+        TTabletRequestMetrics& RequestMetrics;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -1486,12 +1488,14 @@ struct TTxIndexTablet
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
-                const NProto::TGetNodeAttrRequest& request)
+                const NProto::TGetNodeAttrRequest& request,
+                TTabletRequestMetrics& requestMetrics)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
             , NodeId(request.GetNodeId())
             , Name(request.GetName())
+            , RequestMetrics(requestMetrics)
         {}
 
         void Clear() override

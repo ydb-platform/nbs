@@ -128,16 +128,18 @@ void InitTabletProfileLogRequestInfo(
 
 void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
-    EFileStoreSystemRequest requestType,
-    TInstant currentTs)
+    EFileStoreRequest requestType,
+    TInstant currentTs,
+    bool behaveAsShard)
 {
     profileLogRequest.SetRequestType(static_cast<ui32>(requestType));
+    profileLogRequest.SetBehaveAsShard(behaveAsShard);
     InitTabletProfileLogRequestInfo(profileLogRequest, currentTs);
 }
 
 void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
-    EFileStoreRequest requestType,
+    EFileStoreSystemRequest requestType,
     TInstant currentTs)
 {
     profileLogRequest.SetRequestType(static_cast<ui32>(requestType));

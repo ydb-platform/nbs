@@ -113,6 +113,8 @@ message TProfileLogRequestInfo {
     optional uint64 LoopThreadId = 11;
 
     optional string ClientId = 12;
+
+    optional bool BehaveAsShard = 13;
 };
 
 message TProfileLogRecord {

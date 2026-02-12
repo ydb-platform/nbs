@@ -146,6 +146,7 @@ void TGetNodeInfoAndPrepareUnlinkActor::SendRequest(
 
     auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
     request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     request->Record.SetFileSystemId(shardId);
     request->Record.SetNodeId(RootNodeId);
     request->Record.SetName(shardNodeName);
@@ -190,6 +191,7 @@ void TGetNodeInfoAndPrepareUnlinkActor::LogAbort(
     NProto::TOpLogEntry entry;
     auto* abortRequest = entry.MutableAbortUnlinkDirectoryNodeInShardRequest();
     abortRequest->MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    abortRequest->MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     abortRequest->SetFileSystemId(DstShardId);
     abortRequest->SetNodeId(Result.DestinationNodeAttr.GetId());
     abortRequest->MutableOriginalRequest()->CopyFrom(Result.Request);
@@ -212,6 +214,7 @@ void TGetNodeInfoAndPrepareUnlinkActor::PrepareUnlink(
 {
     auto request = std::make_unique<TEvPrepareUnlinkRequest>();
     request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     request->Record.SetFileSystemId(DstShardId);
     request->Record.SetNodeId(Result.DestinationNodeAttr.GetId());
     request->Record.MutableOriginalRequest()->CopyFrom(Result.Request);

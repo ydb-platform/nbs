@@ -62,7 +62,8 @@ void InitTabletProfileLogRequestInfo(
 void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreRequest requestType,
-    TInstant currentTs);
+    TInstant currentTs,
+    bool behaveAsShard);
 
 void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
@@ -74,9 +75,14 @@ void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreRequest requestType,
     const TProtoRequest &proto,
-    TInstant currentTs)
+    TInstant currentTs,
+    bool behaveAsShard)
 {
-    InitTabletProfileLogRequestInfo(profileLogRequest, requestType, currentTs);
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        requestType,
+        currentTs,
+        behaveAsShard);
     InitProfileLogRequestInfo(profileLogRequest, proto);
 }
 
