@@ -2,9 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/config.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
-#include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
-#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
@@ -261,335 +259,11 @@ STFUNC(TAggregateStatsActor::StateWork)
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-void RegisterSensor(
-    IMetricsRegistryPtr registry,
-    TString name,
-    const std::atomic<i64>& source,
-    EAggregationType aggrType,
-    EMetricType metrType)
-{
-    registry->Register(
-        {CreateSensor(std::move(name))},
-        source,
-        aggrType,
-        metrType);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TIndexTabletActor::TMetrics::TMetrics(IMetricsRegistryPtr metricsRegistry)
-    : StorageRegistry(CreateScopedMetricsRegistry(
-        {CreateLabel("component", "storage")},
-        metricsRegistry))
-    , StorageFsRegistry(CreateScopedMetricsRegistry(
-        {CreateLabel("component", "storage_fs"), CreateLabel("host", "cluster")},
-        metricsRegistry))
-    , FsRegistry(CreateMetricsRegistryStub())
-    , AggregatableFsRegistry(CreateMetricsRegistryStub())
-{}
-
-void TIndexTabletActor::TMetrics::Register(
-    const TString& fsId,
-    const TString& cloudId,
-    const TString& folderId,
-    const TString& mediaKind)
-{
-    if (Initialized) {
-        return;
-    }
-
-    auto totalKindRegistry = CreateScopedMetricsRegistry(
-        {CreateLabel("type", mediaKind)},
-        StorageRegistry);
-
-    FsRegistry = CreateScopedMetricsRegistry(
-        {
-            CreateLabel("filesystem", fsId),
-            CreateLabel("cloud", cloudId),
-            CreateLabel("folder", folderId),
-        },
-        StorageFsRegistry);
-    AggregatableFsRegistry = CreateScopedMetricsRegistry(
-        {},
-        {std::move(totalKindRegistry), FsRegistry});
-
-#define REGISTER(registry, name, aggrType, metrType)                           \
-    RegisterSensor(registry, #name, name, aggrType, metrType)                  \
-// REGISTER
-
-#define REGISTER_AGGREGATABLE_SUM(name, metrType)                              \
-    REGISTER(                                                                  \
-        AggregatableFsRegistry,                                                \
-        name,                                                                  \
-        EAggregationType::AT_SUM,                                              \
-        metrType)                                                              \
-// REGISTER_AGGREGATABLE_SUM
-
-#define REGISTER_LOCAL(name, metrType)                                         \
-    REGISTER(                                                                  \
-        FsRegistry,                                                            \
-        name,                                                                  \
-        EAggregationType::AT_SUM,                                              \
-        metrType)                                                              \
-// REGISTER_LOCAL
-
-    REGISTER_AGGREGATABLE_SUM(TotalBytesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedBytesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        AggregateUsedBytesCount,
-        EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(TotalNodesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedNodesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        AggregateUsedNodesCount,
-        EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedDirectHandlesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(SevenBytesHandlesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(ActiveSessionsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(OrphanSessionsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(SessionCleanupAttempts, EMetricType::MT_DERIVATIVE);
-
-    REGISTER_LOCAL(
-        StrictFileSystemSizeEnforcementEnabled,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(DirectoryCreationInShardsEnabled, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(WritableChannelCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UnwritableChannelCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(ChannelsToMoveCount, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        ReadAheadCacheHitCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        ReadAheadCacheNodeCount,
-        EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheHitCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheNodeCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateROCacheHitCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateROCacheMissCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateRWCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodesCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodesCapacity,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodeRefsCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodeRefsCapacity,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodeAttrsCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodeAttrsCapacity,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodeRefsExhaustivenessCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateNodeRefsExhaustivenessCapacity,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        InMemoryIndexStateIsExhaustive,
-        EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        MixedIndexLoadedRanges,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        MixedIndexOffloadedRanges,
-        EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(FreshBytesItemCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(DeletionMarkersCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        LargeDeletionMarkersCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(GarbageQueueSize, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(GarbageBytesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(FreshBlocksCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(CMMixedBlobsCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(CMDeletionMarkersCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(CMGarbageBlocksCount, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(IsWriteAllowed, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(FlushBackpressureValue, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(FlushBackpressureThreshold, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(FlushBytesBackpressureValue, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(FlushBytesBackpressureThreshold, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CompactionBackpressureValue, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(CleanupBackpressureThreshold, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
-
-    REGISTER_LOCAL(TabletStartTimestamp, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        NodesOpenForWritingBySingleSession,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        NodesOpenForWritingByMultipleSessions,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        NodesOpenForReadingBySingleSession,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
-        NodesOpenForReadingByMultipleSessions,
-        EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(OrphanNodesCount, EMetricType::MT_ABSOLUTE);
-
-    // Throttling
-    REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(MaxWriteBandwidth, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(MaxReadIops, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(MaxWriteIops, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(RejectedRequests, EMetricType::MT_DERIVATIVE);
-    REGISTER_LOCAL(PostponedRequests, EMetricType::MT_DERIVATIVE);
-    REGISTER_LOCAL(UsedQuota, EMetricType::MT_DERIVATIVE);
-    MaxUsedQuota.Register(
-        FsRegistry,
-        {CreateSensor("MaxUsedQuota")},
-        EAggregationType::AT_MAX);
-    ReadDataPostponed.Register(
-        FsRegistry,
-        {CreateLabel("request", "ReadData"), CreateLabel("histogram", "ThrottlerDelay")});
-    WriteDataPostponed.Register(
-        FsRegistry,
-        {CreateLabel("request", "WriteData"), CreateLabel("histogram", "ThrottlerDelay")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        UncompressedBytesWritten,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        CompressedBytesWritten,
-        EMetricType::MT_DERIVATIVE);
-
-#define REGISTER_REQUEST(name)                                                 \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
-        name.Count,                                                            \
-        EMetricType::MT_DERIVATIVE);                                           \
-                                                                               \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
-        name.RequestBytes,                                                     \
-        EMetricType::MT_DERIVATIVE);                                           \
-                                                                               \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
-        name.TimeSumUs,                                                        \
-        EMetricType::MT_DERIVATIVE);                                           \
-                                                                               \
-    name.Time.Register(                                                        \
-        AggregatableFsRegistry,                                                \
-        {CreateLabel("request", #name), CreateLabel("histogram", "Time")});    \
-// REGISTER_REQUEST
-
-    REGISTER_REQUEST(ReadBlob);
-    REGISTER_REQUEST(WriteBlob);
-    REGISTER_REQUEST(PatchBlob);
-
-    REGISTER_REQUEST(DescribeData);
-    REGISTER_REQUEST(GenerateBlobIds);
-    REGISTER_REQUEST(AddData);
-    REGISTER_REQUEST(GetStorageStats);
-    REGISTER_REQUEST(GetNodeAttrBatch);
-    REGISTER_REQUEST(RenameNodeInDestination);
-    REGISTER_REQUEST(PrepareUnlinkDirectoryNodeInShard);
-    REGISTER_REQUEST(AbortUnlinkDirectoryNodeInShard);
-
-    REGISTER_REQUEST(ReadData);
-    REGISTER_REQUEST(WriteData);
-
-    REGISTER_REQUEST(ListNodes);
-    REGISTER_AGGREGATABLE_SUM(
-        ListNodes.RequestedBytesPrecharge,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        ListNodes.PrepareAttempts,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_REQUEST(GetNodeAttr);
-    REGISTER_REQUEST(CreateHandle);
-    REGISTER_REQUEST(DestroyHandle);
-    REGISTER_REQUEST(CreateNode);
-    REGISTER_REQUEST(RenameNode);
-    REGISTER_REQUEST(UnlinkNode);
-    REGISTER_REQUEST(StatFileStore);
-    REGISTER_REQUEST(GetNodeXAttr);
-
-    REGISTER_REQUEST(Compaction);
-    REGISTER_AGGREGATABLE_SUM(Compaction.DudCount, EMetricType::MT_DERIVATIVE);
-    REGISTER_REQUEST(Cleanup);
-    REGISTER_REQUEST(Flush);
-    REGISTER_REQUEST(FlushBytes);
-    REGISTER_REQUEST(TrimBytes);
-    REGISTER_REQUEST(CollectGarbage);
-
-    REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(MaxGarbageBlocksInRange, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_LOCAL(CurrentLoad, EMetricType::MT_ABSOLUTE);
-    REGISTER_LOCAL(Suffer, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(OverloadedCount, EMetricType::MT_DERIVATIVE);
-
-    //
-    // Exporting this metric to be able to see what's our tablet actor's opinion
-    // about its own CPU usage. ActorSystem's ElapsedMicrosecByActivity metric
-    // should in theory give the same value but being able to verify it via
-    // an explicit counter is useful.
-    //
-
-    REGISTER_AGGREGATABLE_SUM(CPUUsageMicros, EMetricType::MT_DERIVATIVE);
-
-#undef REGISTER_REQUEST
-#undef REGISTER_LOCAL
-#undef REGISTER_AGGREGATABLE_SUM
-#undef REGISTER
-
-    BusyIdleCalc.Register(&BusyTime, &IdleTime);
-
-    Initialized = true;
-}
-
-void TIndexTabletActor::TMetrics::Update(
+void TIndexTabletActor::UpdateMetrics(
     TInstant now,
     const TDiagnosticsConfig& diagConfig,
     const NProto::TFileSystem& fileSystem,
@@ -610,211 +284,192 @@ void TIndexTabletActor::TMetrics::Update(
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
-    Store(TotalBytesCount, fileSystem.GetBlocksCount() * blockSize);
-    Store(UsedBytesCount, stats.GetUsedBlocksCount() * blockSize);
+    Store(Metrics.TotalBytesCount, fileSystem.GetBlocksCount() * blockSize);
+    Store(Metrics.UsedBytesCount, stats.GetUsedBlocksCount() * blockSize);
 
-    Store(TotalNodesCount, fileSystem.GetNodesCount());
-    Store(UsedNodesCount, stats.GetUsedNodesCount());
+    Store(Metrics.TotalNodesCount, fileSystem.GetNodesCount());
+    Store(Metrics.UsedNodesCount, stats.GetUsedNodesCount());
 
-    Store(UsedSessionsCount, stats.GetUsedSessionsCount());
-    Store(UsedHandlesCount, stats.GetUsedHandlesCount());
-    Store(UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
-    Store(SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
-    Store(UsedLocksCount, stats.GetUsedLocksCount());
+    Store(Metrics.UsedSessionsCount, stats.GetUsedSessionsCount());
+    Store(Metrics.UsedHandlesCount, stats.GetUsedHandlesCount());
+    Store(Metrics.UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
+    Store(Metrics.SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
+    Store(Metrics.UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(
-        StrictFileSystemSizeEnforcementEnabled,
+        Metrics.StrictFileSystemSizeEnforcementEnabled,
         fileSystem.GetStrictFileSystemSizeEnforcementEnabled());
     Store(
-        DirectoryCreationInShardsEnabled,
+        Metrics.DirectoryCreationInShardsEnabled,
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
-    Store(FreshBytesCount, stats.GetFreshBytesCount());
-    Store(FreshBytesItemCount, stats.GetFreshBytesItemCount());
-    Store(DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
-    Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
-    Store(MixedBlobsCount, stats.GetMixedBlobsCount());
-    Store(DeletionMarkersCount, stats.GetDeletionMarkersCount());
-    Store(LargeDeletionMarkersCount, stats.GetLargeDeletionMarkersCount());
-    Store(GarbageQueueSize, stats.GetGarbageQueueSize());
-    Store(GarbageBytesCount, stats.GetGarbageBlocksCount() * blockSize);
-    Store(FreshBlocksCount, stats.GetFreshBlocksCount());
-    Store(CMMixedBlobsCount, compactionStats.TotalBlobsCount);
-    Store(CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
-    Store(CMGarbageBlocksCount, compactionStats.TotalGarbageBlocksCount);
+    Store(Metrics.FreshBytesCount, stats.GetFreshBytesCount());
+    Store(Metrics.FreshBytesItemCount, stats.GetFreshBytesItemCount());
+    Store(Metrics.DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
+    Store(Metrics.MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
+    Store(Metrics.MixedBlobsCount, stats.GetMixedBlobsCount());
+    Store(Metrics.DeletionMarkersCount, stats.GetDeletionMarkersCount());
+    Store(
+        Metrics.LargeDeletionMarkersCount,
+        stats.GetLargeDeletionMarkersCount());
+    Store(Metrics.GarbageQueueSize, stats.GetGarbageQueueSize());
+    Store(Metrics.GarbageBytesCount, stats.GetGarbageBlocksCount() * blockSize);
+    Store(Metrics.FreshBlocksCount, stats.GetFreshBlocksCount());
+    Store(Metrics.CMMixedBlobsCount, compactionStats.TotalBlobsCount);
+    Store(Metrics.CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
+    Store(
+        Metrics.CMGarbageBlocksCount,
+        compactionStats.TotalGarbageBlocksCount);
 
     TString backpressureReason;
     Store(
-        IsWriteAllowed,
+        Metrics.IsWriteAllowed,
         TIndexTabletActor::IsWriteAllowed(
             backpressureThresholds,
             backpressureValues,
             &backpressureReason));
 
-    Store(FlushBackpressureValue, backpressureValues.Flush);
-    Store(FlushBackpressureThreshold, backpressureThresholds.Flush);
-    Store(FlushBytesBackpressureValue, backpressureValues.FlushBytes);
-    Store(FlushBytesBackpressureThreshold, backpressureThresholds.FlushBytes);
-    Store(CompactionBackpressureValue, backpressureValues.CompactionScore);
-    Store(CompactionBackpressureThreshold, backpressureThresholds.CompactionScore);
-    Store(CleanupBackpressureValue, backpressureValues.CleanupScore);
-    Store(CleanupBackpressureThreshold, backpressureThresholds.CleanupScore);
+    Store(Metrics.FlushBackpressureValue, backpressureValues.Flush);
+    Store(Metrics.FlushBackpressureThreshold, backpressureThresholds.Flush);
+    Store(Metrics.FlushBytesBackpressureValue, backpressureValues.FlushBytes);
+    Store(
+        Metrics.FlushBytesBackpressureThreshold,
+        backpressureThresholds.FlushBytes);
+    Store(
+        Metrics.CompactionBackpressureValue,
+        backpressureValues.CompactionScore);
+    Store(
+        Metrics.CompactionBackpressureThreshold,
+        backpressureThresholds.CompactionScore);
+    Store(Metrics.CleanupBackpressureValue, backpressureValues.CleanupScore);
+    Store(
+        Metrics.CleanupBackpressureThreshold,
+        backpressureThresholds.CleanupScore);
 
-    Store(MaxReadIops, performanceProfile.GetMaxReadIops());
-    Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());
-    Store(MaxReadBandwidth, performanceProfile.GetMaxReadBandwidth());
-    Store(MaxWriteBandwidth, performanceProfile.GetMaxWriteBandwidth());
+    Store(Metrics.MaxReadIops, performanceProfile.GetMaxReadIops());
+    Store(Metrics.MaxWriteIops, performanceProfile.GetMaxWriteIops());
+    Store(Metrics.MaxReadBandwidth, performanceProfile.GetMaxReadBandwidth());
+    Store(Metrics.MaxWriteBandwidth, performanceProfile.GetMaxWriteBandwidth());
 
-    Store(AllocatedCompactionRangesCount, compactionStats.AllocatedRangesCount);
-    Store(UsedCompactionRangesCount, compactionStats.UsedRangesCount);
+    Store(
+        Metrics.AllocatedCompactionRangesCount,
+        compactionStats.AllocatedRangesCount);
+    Store(Metrics.UsedCompactionRangesCount, compactionStats.UsedRangesCount);
 
     if (compactionStats.TopRangesByCompactionScore.empty()) {
-        Store(MaxBlobsInRange, 0);
+        Store(Metrics.MaxBlobsInRange, 0);
     } else {
         Store(
-            MaxBlobsInRange,
+            Metrics.MaxBlobsInRange,
             compactionStats.TopRangesByCompactionScore.front()
                 .Stats.BlobsCount);
     }
     if (compactionStats.TopRangesByCleanupScore.empty()) {
-        Store(MaxDeletionsInRange, 0);
+        Store(Metrics.MaxDeletionsInRange, 0);
     } else {
         Store(
-            MaxDeletionsInRange,
+            Metrics.MaxDeletionsInRange,
             compactionStats.TopRangesByCleanupScore.front()
                 .Stats.DeletionsCount);
     }
     if (compactionStats.TopRangesByGarbageScore.empty()) {
-        Store(MaxGarbageBlocksInRange, 0);
+        Store(Metrics.MaxGarbageBlocksInRange, 0);
     } else {
         Store(
-            MaxGarbageBlocksInRange,
+            Metrics.MaxGarbageBlocksInRange,
             compactionStats.TopRangesByGarbageScore.front()
                 .Stats.GarbageBlocksCount);
     }
 
-    Store(StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
-    Store(StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
-    Store(ActiveSessionsCount, sessionsStats.ActiveSessionsCount);
-    Store(OrphanSessionsCount, sessionsStats.OrphanSessionsCount);
-    Store(WritableChannelCount, channelsStats.WritableChannelCount);
-    Store(UnwritableChannelCount, channelsStats.UnwritableChannelCount);
-    Store(ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
-    Store(ReadAheadCacheNodeCount, readAheadStats.NodeCount);
-    Store(NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
-
-    Store(InMemoryIndexStateNodesCount, inMemoryIndexStateStats.NodesCount);
-    Store(InMemoryIndexStateNodesCapacity, inMemoryIndexStateStats.NodesCapacity);
-    Store(InMemoryIndexStateNodeRefsCount, inMemoryIndexStateStats.NodeRefsCount);
-    Store(InMemoryIndexStateNodeRefsCapacity, inMemoryIndexStateStats.NodeRefsCapacity);
-    Store(InMemoryIndexStateNodeAttrsCount, inMemoryIndexStateStats.NodeAttrsCount);
-    Store(InMemoryIndexStateNodeAttrsCapacity, inMemoryIndexStateStats.NodeAttrsCapacity);
-    Store(InMemoryIndexStateNodeRefsExhaustivenessCount, inMemoryIndexStateStats.NodeRefsExhaustivenessCount);
-    Store(InMemoryIndexStateNodeRefsExhaustivenessCapacity, inMemoryIndexStateStats.NodeRefsExhaustivenessCapacity);
-    Store(InMemoryIndexStateIsExhaustive, inMemoryIndexStateStats.IsNodeRefsExhaustive);
-
-    Store(MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);
-    Store(MixedIndexOffloadedRanges, blobMetaMapStats.OffloadedRanges);
+    Store(Metrics.StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
+    Store(Metrics.StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
+    Store(Metrics.ActiveSessionsCount, sessionsStats.ActiveSessionsCount);
+    Store(Metrics.OrphanSessionsCount, sessionsStats.OrphanSessionsCount);
+    Store(Metrics.WritableChannelCount, channelsStats.WritableChannelCount);
+    Store(Metrics.UnwritableChannelCount, channelsStats.UnwritableChannelCount);
+    Store(Metrics.ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
+    Store(Metrics.ReadAheadCacheNodeCount, readAheadStats.NodeCount);
+    Store(Metrics.NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
 
     Store(
-        NodesOpenForWritingBySingleSession,
+        Metrics.InMemoryIndexStateNodesCount,
+        inMemoryIndexStateStats.NodesCount);
+    Store(
+        Metrics.InMemoryIndexStateNodesCapacity,
+        inMemoryIndexStateStats.NodesCapacity);
+    Store(
+        Metrics.InMemoryIndexStateNodeRefsCount,
+        inMemoryIndexStateStats.NodeRefsCount);
+    Store(
+        Metrics.InMemoryIndexStateNodeRefsCapacity,
+        inMemoryIndexStateStats.NodeRefsCapacity);
+    Store(
+        Metrics.InMemoryIndexStateNodeAttrsCount,
+        inMemoryIndexStateStats.NodeAttrsCount);
+    Store(
+        Metrics.InMemoryIndexStateNodeAttrsCapacity,
+        inMemoryIndexStateStats.NodeAttrsCapacity);
+    Store(
+        Metrics.InMemoryIndexStateNodeRefsExhaustivenessCount,
+        inMemoryIndexStateStats.NodeRefsExhaustivenessCount);
+    Store(
+        Metrics.InMemoryIndexStateNodeRefsExhaustivenessCapacity,
+        inMemoryIndexStateStats.NodeRefsExhaustivenessCapacity);
+    Store(
+        Metrics.InMemoryIndexStateIsExhaustive,
+        inMemoryIndexStateStats.IsNodeRefsExhaustive);
+
+    Store(Metrics.MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);
+    Store(Metrics.MixedIndexOffloadedRanges, blobMetaMapStats.OffloadedRanges);
+
+    Store(
+        Metrics.NodesOpenForWritingBySingleSession,
         nodeToSessionCounters.NodesOpenForWritingBySingleSession);
     Store(
-        NodesOpenForWritingByMultipleSessions,
+        Metrics.NodesOpenForWritingByMultipleSessions,
         nodeToSessionCounters.NodesOpenForWritingByMultipleSessions);
     Store(
-        NodesOpenForReadingBySingleSession,
+        Metrics.NodesOpenForReadingBySingleSession,
         nodeToSessionCounters.NodesOpenForReadingBySingleSession);
     Store(
-        NodesOpenForReadingByMultipleSessions,
+        Metrics.NodesOpenForReadingByMultipleSessions,
         nodeToSessionCounters.NodesOpenForReadingByMultipleSessions);
 
-    Store(OrphanNodesCount, miscNodeStats.OrphanNodesCount);
+    Store(Metrics.OrphanNodesCount, miscNodeStats.OrphanNodesCount);
 
-    BusyIdleCalc.OnUpdateStats();
-    UpdatePerformanceMetrics(now, diagConfig, fileSystem);
+    Metrics.BusyIdleCalc.OnUpdateStats();
+    Metrics.UpdatePerformanceMetrics(now, diagConfig, fileSystem);
 
-    ReadBlob.UpdatePrev(now);
-    WriteBlob.UpdatePrev(now);
-    PatchBlob.UpdatePrev(now);
+    Metrics.ReadBlob.UpdatePrev(now);
+    Metrics.WriteBlob.UpdatePrev(now);
+    Metrics.PatchBlob.UpdatePrev(now);
 
-    DescribeData.UpdatePrev(now);
-    GenerateBlobIds.UpdatePrev(now);
-    AddData.UpdatePrev(now);
-    GetStorageStats.UpdatePrev(now);
-    GetNodeAttrBatch.UpdatePrev(now);
-    RenameNodeInDestination.UpdatePrev(now);
-    PrepareUnlinkDirectoryNodeInShard.UpdatePrev(now);
-    AbortUnlinkDirectoryNodeInShard.UpdatePrev(now);
+    Metrics.DescribeData.UpdatePrev(now);
+    Metrics.GenerateBlobIds.UpdatePrev(now);
+    Metrics.AddData.UpdatePrev(now);
+    Metrics.GetStorageStats.UpdatePrev(now);
+    Metrics.GetNodeAttrBatch.UpdatePrev(now);
+    Metrics.RenameNodeInDestination.UpdatePrev(now);
+    Metrics.PrepareUnlinkDirectoryNodeInShard.UpdatePrev(now);
+    Metrics.AbortUnlinkDirectoryNodeInShard.UpdatePrev(now);
 
-    ReadData.UpdatePrev(now);
-    WriteData.UpdatePrev(now);
-    ListNodes.UpdatePrev(now);
-    GetNodeAttr.UpdatePrev(now);
-    CreateHandle.UpdatePrev(now);
-    DestroyHandle.UpdatePrev(now);
-    CreateNode.UpdatePrev(now);
-    RenameNode.UpdatePrev(now);
-    UnlinkNode.UpdatePrev(now);
-    StatFileStore.UpdatePrev(now);
-    GetNodeXAttr.UpdatePrev(now);
+    Metrics.ReadData.UpdatePrev(now);
+    Metrics.WriteData.UpdatePrev(now);
+    Metrics.ListNodes.UpdatePrev(now);
+    Metrics.GetNodeAttr.UpdatePrev(now);
+    Metrics.CreateHandle.UpdatePrev(now);
+    Metrics.DestroyHandle.UpdatePrev(now);
+    Metrics.CreateNode.UpdatePrev(now);
+    Metrics.RenameNode.UpdatePrev(now);
+    Metrics.UnlinkNode.UpdatePrev(now);
+    Metrics.StatFileStore.UpdatePrev(now);
+    Metrics.GetNodeXAttr.UpdatePrev(now);
 
-    Cleanup.UpdatePrev(now);
-    Flush.UpdatePrev(now);
-    FlushBytes.UpdatePrev(now);
-    TrimBytes.UpdatePrev(now);
-    CollectGarbage.UpdatePrev(now);
-}
-
-void TIndexTabletActor::TMetrics::UpdatePerformanceMetrics(
-    TInstant now,
-    const TDiagnosticsConfig& diagConfig,
-    const NProto::TFileSystem& fileSystem)
-{
-    const ui32 expectedParallelism = 32;
-    double load = 0;
-    bool suffer = false;
-    auto calcSufferAndLoad = [&] (
-        const TRequestPerformanceProfile& rpp,
-        const TRequestMetrics& rm)
-    {
-        if (!rpp.RPS) {
-            return;
-        }
-
-        load += rm.RPS(now) / rpp.RPS;
-        ui64 expectedLatencyUs = 1'000'000 / rpp.RPS;
-        if (rpp.Throughput) {
-            expectedLatencyUs +=
-                1'000'000 * rm.AverageRequestSize() / rpp.Throughput;
-            load += rm.Throughput(now) / rpp.Throughput;
-        }
-
-        const auto averageLatency = rm.AverageLatency();
-        suffer |= TDuration::MicroSeconds(expectedLatencyUs)
-            < averageLatency / expectedParallelism;
-    };
-
-    const auto& pp =
-        fileSystem.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
-        ? diagConfig.GetSSDFileSystemPerformanceProfile()
-        : diagConfig.GetHDDFileSystemPerformanceProfile();
-
-    calcSufferAndLoad(pp.Read, ReadData);
-    calcSufferAndLoad(pp.Read, DescribeData);
-    calcSufferAndLoad(pp.Write, WriteData);
-    calcSufferAndLoad(pp.Write, AddData);
-    calcSufferAndLoad(pp.ListNodes, ListNodes);
-    calcSufferAndLoad(pp.GetNodeAttr, GetNodeAttr);
-    calcSufferAndLoad(pp.CreateHandle, CreateHandle);
-    calcSufferAndLoad(pp.DestroyHandle, DestroyHandle);
-    calcSufferAndLoad(pp.CreateNode, CreateNode);
-    calcSufferAndLoad(pp.RenameNode, RenameNode);
-    calcSufferAndLoad(pp.UnlinkNode, UnlinkNode);
-    calcSufferAndLoad(pp.StatFileStore, StatFileStore);
-
-    Store(CurrentLoad, load * 1000);
-    Store(Suffer, load < 1 ? suffer : 0);
+    Metrics.Cleanup.UpdatePrev(now);
+    Metrics.Flush.UpdatePrev(now);
+    Metrics.FlushBytes.UpdatePrev(now);
+    Metrics.TrimBytes.UpdatePrev(now);
+    Metrics.CollectGarbage.UpdatePrev(now);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -853,7 +508,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
     // correct values to solomon. If we reorder these two actions, we can
     // aggregate zero values, in the middle of the registration (or right after
     // registration, before update).
-    Metrics.Update(
+    UpdateMetrics(
         now,
         *DiagConfig,
         fs,
@@ -941,8 +596,7 @@ void TIndexTabletActor::HandleUpdateCounters(
 {
     Y_UNUSED(ev);
 
-    UpdateCounters();
-    Metrics.Update(
+    UpdateMetrics(
         ctx.Now(),
         *DiagConfig,
         GetFileSystem(),
@@ -1010,21 +664,6 @@ void TIndexTabletActor::HandleUpdateCounters(
         WorkerActors.insert(actorId);
         CachedStatsFetchingStartTs = ctx.Now();
     }
-}
-
-void TIndexTabletActor::UpdateCounters()
-{
-#define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
-    {                                                                          \
-        auto& counter = Counters->Simple()[                                    \
-            TIndexTabletCounters::SIMPLE_COUNTER_Stats_##name];                \
-        counter.Set(Get##name());                                              \
-    }                                                                          \
-// FILESTORE_TABLET_UPDATE_COUNTER
-
-    FILESTORE_TABLET_STATS(FILESTORE_TABLET_UPDATE_COUNTER)
-
-#undef FILESTORE_TABLET_UPDATE_COUNTER
 }
 
 ////////////////////////////////////////////////////////////////////////////////
