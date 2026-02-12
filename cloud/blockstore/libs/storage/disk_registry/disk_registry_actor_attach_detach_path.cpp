@@ -32,12 +32,6 @@ IEventBasePtr CreateResponseByActionType(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestContext
-{
-    TRequestInfoPtr RequestInfo;
-    NProto::TAction_EType ActionType;
-};
-
 class TDetachPathActor: public TActorBootstrapped<TDetachPathActor>
 {
 private:
@@ -47,7 +41,8 @@ private:
     const TDuration DiskAgentRequestTimeout;
     TVector<TString> Paths;
 
-    TRequestContext RequestContext;
+    TRequestInfoPtr RequestInfo;
+    NProto::TAction_EType ActionType;
 
 public:
     TDetachPathActor(
@@ -56,7 +51,8 @@ public:
         ui64 nodeId,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
-        TRequestContext requestContext);
+        TRequestInfoPtr requestInfo,
+        NProto::TAction_EType actionType);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -93,13 +89,15 @@ TDetachPathActor::TDetachPathActor(
         ui64 nodeId,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
-        TRequestContext requestContext)
+        TRequestInfoPtr requestInfo,
+        NProto::TAction_EType actionType)
     : Owner(owner)
     , AgentId(std::move(agentId))
     , NodeId(nodeId)
     , DiskAgentRequestTimeout(diskAgentRequestTimeout)
     , Paths(std::move(paths))
-    , RequestContext(std::move(requestContext))
+    , RequestInfo(std::move(requestInfo))
+    , ActionType(actionType)
 {}
 
 void TDetachPathActor::Bootstrap(const TActorContext& ctx)
@@ -143,8 +141,8 @@ void TDetachPathActor::ReplyAndDie(
     NProto::TError error)
 {
     auto response =
-        CreateResponseByActionType(RequestContext.ActionType, error);
-    NCloud::Reply(ctx, *RequestContext.RequestInfo, std::move(response));
+        CreateResponseByActionType(ActionType, error);
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     auto request = std::make_unique<
         TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted>(
@@ -285,9 +283,8 @@ void TDiskRegistryActor::TryToDetachPaths(
         agent->GetNodeId(),
         std::move(paths),
         Config->GetAttachDetachPathRequestTimeout(),
-        TRequestContext{
-            .RequestInfo = std::move(requestInfo),
-            .ActionType = actionType});
+        std::move(requestInfo),
+        actionType);
     AgentsWithDetachRequestsInProgress[agentId] = actorId;
 }
 
