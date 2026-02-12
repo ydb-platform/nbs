@@ -1,4 +1,4 @@
-#include "write_back_cache_stats_test.h"
+#include "test_write_back_cache_stats.h"
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 

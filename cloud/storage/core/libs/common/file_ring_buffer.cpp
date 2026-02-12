@@ -230,6 +230,10 @@ private:
     ui64 Count = 0;
     bool Corrupted = false;
 
+    TEntryHeader* CurrentAllocation = nullptr;
+    ui64 WritePosAfterCommit = 0;
+    ui64 LastEntrySizeAfterCommit = 0;
+
 private:
     THeader* Header()
     {
@@ -305,11 +309,6 @@ private:
             : TEntryInfo::CreateInvalid();
     }
 
-    void SetCorrupted()
-    {
-        Corrupted = true;
-    }
-
     void ValidateStructure()
     {
         const ui64 mapLength = static_cast<ui64>(Map.Length());
@@ -349,12 +348,10 @@ private:
 
             Header()->ReadPos = front.ActualPos;
             Header()->WritePos = back.GetNextEntryPos();
-
-            auto lastEntrySize = back.GetNextEntryPos() - back.ActualPos;
-            if (Header()->LastEntrySize != lastEntrySize) {
-                SetCorrupted();
-                Header()->LastEntrySize = lastEntrySize;
-            }
+            // Updating WritePos and LastEntrySize is not performed atomically
+            // It may happen that only one field was updated before crash - need
+            // to correct the value.
+            Header()->LastEntrySize = back.GetNextEntryPos() - back.ActualPos;
         } else {
             Header()->ReadPos = 0;
             Header()->WritePos = 0;
@@ -498,18 +495,39 @@ public:
 
     bool PushBack(TStringBuf data)
     {
+        auto allocationStatus = Alloc(data.size());
+        if (HasError(allocationStatus) ||
+            allocationStatus.GetResult() == nullptr)
+        {
+            return false;
+        }
+
+        data.copy(allocationStatus.GetResult(), data.size());
+
+        return Commit();
+    }
+
+    TResultOrError<char*> Alloc(size_t size)
+    {
+        if (CurrentAllocation != nullptr) {
+            return MakeError(
+                E_INVALID_STATE,
+                "Previous allocation is not committed");
+        }
+
         if (IsCorrupted()) {
-            // TODO: should return error code
-            return false;
+            return MakeError(E_INVALID_STATE, "Buffer is corrupted");
         }
 
-        if (data.empty()) {
-            return false;
+        if (size == 0) {
+            return MakeError(
+                E_ARGUMENT,
+                "Zero size allocations are not allowed");
         }
 
-        const auto sz = data.size() + sizeof(TEntryHeader);
+        const auto sz = size + sizeof(TEntryHeader);
         if (sz > Header()->DataCapacity) {
-            return false;
+            return nullptr;
         }
         auto writePos = Header()->WritePos;
 
@@ -523,7 +541,7 @@ public:
                 if (freeSpace < sz) {
                     if (Header()->ReadPos <= sz) {
                         // out of space
-                        return false;
+                        return nullptr;
                     }
                     auto* eh = Data.GetEntryHeader(Header()->WritePos);
                     if (eh != nullptr) {
@@ -537,17 +555,42 @@ public:
                 // there should remain free space between the occupied regions
                 if (freeSpace <= sz) {
                     // out of space
-                    return false;
+                    return nullptr;
                 }
             }
         }
 
-        Data.WriteEntry(writePos, data);
+        CurrentAllocation = Data.GetEntryHeader(writePos);
+        CurrentAllocation->DataSize = size;
 
-        Header()->WritePos = writePos + sz;
-        Header()->LastEntrySize = sz;
+        WritePosAfterCommit = writePos + sz;
+        LastEntrySizeAfterCommit = sz;
+
+        char* ptr = Data.GetEntryData(CurrentAllocation);
+        Y_ABORT_UNLESS(ptr != nullptr);
+        return ptr;
+    }
+
+    bool Commit()
+    {
+        if (CurrentAllocation == nullptr) {
+            return false;
+        }
+
+        char* ptr = Data.GetEntryData(CurrentAllocation);
+        Y_ABORT_UNLESS(ptr != nullptr);
+
+        CurrentAllocation->Checksum = Crc32c(ptr, CurrentAllocation->DataSize);
+
+        // We need to ensure that all previous writes are visible before
+        // updating the write position
+        std::atomic_thread_fence(std::memory_order_release);
+
+        Header()->WritePos = WritePosAfterCommit;
+        Header()->LastEntrySize = LastEntrySizeAfterCommit;
         ++Count;
 
+        CurrentAllocation = nullptr;
         return true;
     }
 
@@ -655,6 +698,11 @@ public:
         return Corrupted;
     }
 
+    void SetCorrupted()
+    {
+        Corrupted = true;
+    }
+
     ui64 GetRawCapacity() const
     {
         return Header()->DataCapacity;
@@ -668,7 +716,7 @@ public:
         return res + Header()->WritePos - Header()->ReadPos;
     }
 
-    ui64 GetMaxAllocationBytesCount() const
+    ui64 GetAvailableByteCount() const
     {
         if (IsCorrupted()) {
             return 0;
@@ -687,6 +735,17 @@ public:
         }
         return maxRawSize > sizeof(TEntryHeader)
                    ? maxRawSize - sizeof(TEntryHeader)
+                   : 0;
+    }
+
+    ui64 GetMaxSupportedAllocationByteCount() const
+    {
+        if (IsCorrupted()) {
+            return 0;
+        }
+
+        return Header()->DataCapacity > sizeof(TEntryHeader)
+                   ? Header()->DataCapacity - sizeof(TEntryHeader)
                    : 0;
     }
 
@@ -742,6 +801,16 @@ bool TFileRingBuffer::PushBack(TStringBuf data)
     return Impl->PushBack(data);
 }
 
+TResultOrError<char*> TFileRingBuffer::Alloc(size_t size)
+{
+    return Impl->Alloc(size);
+}
+
+bool TFileRingBuffer::Commit()
+{
+    return Impl->Commit();
+}
+
 TStringBuf TFileRingBuffer::Front() const
 {
     return Impl->Front();
@@ -782,6 +851,11 @@ bool TFileRingBuffer::IsCorrupted() const
     return Impl->IsCorrupted();
 }
 
+void TFileRingBuffer::SetCorrupted()
+{
+    Impl->SetCorrupted();
+}
+
 ui64 TFileRingBuffer::GetRawCapacity() const
 {
     return Impl->GetRawCapacity();
@@ -792,9 +866,14 @@ ui64 TFileRingBuffer::GetRawUsedBytesCount() const
     return Impl->GetRawUsedBytesCount();
 }
 
-ui64 TFileRingBuffer::GetMaxAllocationBytesCount() const
+ui64 TFileRingBuffer::GetAvailableByteCount() const
 {
-    return Impl->GetMaxAllocationBytesCount();
+    return Impl->GetAvailableByteCount();
+}
+
+ui64 TFileRingBuffer::GetMaxSupportedAllocationByteCount() const
+{
+    return Impl->GetMaxSupportedAllocationByteCount();
 }
 
 bool TFileRingBuffer::ValidateMetadata() const

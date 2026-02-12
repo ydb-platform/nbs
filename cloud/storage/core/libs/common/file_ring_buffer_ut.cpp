@@ -361,7 +361,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 const ui32 entrySize =
                     RandomNumber(Min(remainingBytes + 1, testUpToEntrySize));
                 const auto data = GenerateData(entrySize);
-                const auto maxAllocationSize = rb->GetMaxAllocationBytesCount();
+                const auto maxAllocationSize = rb->GetAvailableByteCount();
                 const bool pushed = ri.PushBack(data);
                 UNIT_ASSERT_VALUES_EQUAL(pushed, rb->PushBack(data));
                 if (pushed) {
@@ -601,19 +601,19 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer rb(f.GetName(), len);
 
         // 36 - header size (8)
-        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(28, rb.GetAvailableByteCount());
         UNIT_ASSERT(rb.PushBack("abcd"));
-        UNIT_ASSERT_EQUAL(16, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(16, rb.GetAvailableByteCount());
         UNIT_ASSERT(rb.PushBack("efgh"));
-        UNIT_ASSERT_EQUAL(4, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(4, rb.GetAvailableByteCount());
         UNIT_ASSERT(rb.PushBack("ijkl"));
-        UNIT_ASSERT_EQUAL(0, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(0, rb.GetAvailableByteCount());
         rb.PopFront();
-        UNIT_ASSERT_EQUAL(3, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(3, rb.GetAvailableByteCount());
         rb.PopFront();
-        UNIT_ASSERT_EQUAL(15, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(15, rb.GetAvailableByteCount());
         rb.PopFront();
-        UNIT_ASSERT_EQUAL(28, rb.GetMaxAllocationBytesCount());
+        UNIT_ASSERT_EQUAL(28, rb.GetAvailableByteCount());
     }
 
     Y_UNIT_TEST(ShouldGetAndSetMetadata_ZeroMetadataCapacity)
@@ -828,6 +828,99 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 resized,
                 TString(static_cast<char*>(m.Ptr()), m.Length()));
         }
+    }
+
+    Y_UNIT_TEST(ShouldSupportInPlaceAllocation)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        TString data1 = "vasya";
+        TString data2 = "ivan";
+
+        auto alloc1 = rb.Alloc(data1.size());
+        UNIT_ASSERT(!HasError(alloc1));
+        UNIT_ASSERT(alloc1.GetResult() != nullptr);
+        data1.copy(alloc1.GetResult(), data1.size());
+        rb.Commit();
+
+        auto alloc2 = rb.Alloc(data2.size());
+        UNIT_ASSERT(!HasError(alloc2));
+        UNIT_ASSERT(alloc2.GetResult() != nullptr);
+        data2.copy(alloc2.GetResult(), data2.size());
+        rb.Commit();
+
+        UNIT_ASSERT_VALUES_EQUAL(data1, rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(data2, rb.Front());
+        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL("", rb.Front());
+    }
+
+    Y_UNIT_TEST(ShouldDropNotCommittedEntry)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+
+        TString data1 = "vasya";
+        TString data2 = "ivan";
+
+        {
+            TFileRingBuffer rb(f.GetName(), len);
+
+            auto alloc1 = rb.Alloc(data1.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
+            UNIT_ASSERT(!HasError(alloc1));
+            UNIT_ASSERT(alloc1.GetResult() != nullptr);
+            data1.copy(alloc1.GetResult(), data1.size());
+            rb.Commit();
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+
+            auto alloc2 = rb.Alloc(data2.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT(!HasError(alloc2));
+            UNIT_ASSERT(alloc2.GetResult() != nullptr);
+            data2.copy(alloc2.GetResult(), data2.size());
+        }
+
+        {
+            TFileRingBuffer rb(f.GetName(), len);
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(data1, rb.Front());
+            rb.PopFront();
+
+            UNIT_ASSERT_VALUES_EQUAL("", rb.Front());
+        }
+    }
+
+    Y_UNIT_TEST(AllocShouldReturnExtendedStatus)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        TFileRingBuffer rb(f.GetName(), len);
+
+        auto alloc1 = rb.Alloc(128);
+        UNIT_ASSERT(!HasError(alloc1));
+        UNIT_ASSERT(alloc1.GetResult() == nullptr);
+
+        auto alloc2 = rb.Alloc(0);
+        UNIT_ASSERT(HasError(alloc2));
+
+        // Alloc without commit
+        auto alloc3 = rb.Alloc(1);
+        UNIT_ASSERT(!HasError(alloc3));
+        auto alloc4 = rb.Alloc(1);
+        UNIT_ASSERT(HasError(alloc4));
+        UNIT_ASSERT(rb.Commit());
+
+        // Commit without alloc
+        UNIT_ASSERT(!rb.Commit());
+
+        rb.SetCorrupted();
+
+        auto alloc5 = rb.Alloc(2);
+        UNIT_ASSERT(HasError(alloc5));
     }
 }
 
