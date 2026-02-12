@@ -225,14 +225,16 @@ void TBootstrapCommon::InitDiagnostics()
         Metrics->SetupCounters(Monitoring->GetCounters());
     }
 
+    FilestoreCounters = FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters());
+
     FsCountersProvider = CreateFsCountersProvider(
         MetricsComponent,
-        FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()));
+        FilestoreCounters);
 
     StatsRegistry = CreateRequestStatsRegistry(
         MetricsComponent,
         Configs->DiagnosticsConfig,
-        FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()),
+        FilestoreCounters,
         Timer,
         UserCounters,
         FsCountersProvider);

@@ -40,6 +40,14 @@ using namespace NKikimr;
 
 using namespace NCloud::NStorage;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TString ServerMetricsComponent = "server";
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrapServer::TBootstrapServer(std::shared_ptr<NKikimr::TModuleFactories> moduleFactories)
@@ -102,7 +110,9 @@ void TBootstrapServer::InitComponents()
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
+        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent),
         ProfileLog,
+        Scheduler,
         Service);
     RegisterServer(Server);
 

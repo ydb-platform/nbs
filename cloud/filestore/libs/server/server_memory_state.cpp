@@ -161,4 +161,16 @@ NProto::TError TServerState::PingMmapRegion(ui64 mmapId)
     return NProto::TError{};
 }
 
+TServerStateStats TServerState::GetStateStats() const
+{
+    TLightReadGuard guard(StateLock);
+
+    TServerStateStats info;
+    info.MmapRegionCount = MmapRegions.size();
+    for (const auto& [id, region] : MmapRegions) {
+        info.TotalMmapSize += region.ToMetadata().Size;
+    }
+    return info;
+}
+
 }   // namespace NCloud::NFileStore::NServer

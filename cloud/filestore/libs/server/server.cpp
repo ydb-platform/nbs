@@ -3,6 +3,7 @@
 #include "config.h"
 #include "probes.h"
 #include "server_memory_state.h"
+#include "server_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
@@ -17,6 +18,7 @@
 #include <cloud/filestore/public/api/protos/server.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/auth_metadata.h>
@@ -241,6 +243,7 @@ struct TFileStoreContext: TAppContext
     IFileStoreServicePtr ServiceImpl;
 
     TServerStatePtr State;
+    TServerStatsPtr ServerStats;
 };
 
 struct TEndpointManagerContext : TAppContext
@@ -1546,32 +1549,72 @@ private:
 
     std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
 
+    ISchedulerPtr Scheduler;
+
 public:
     template <typename T>
     TServer(
             TServerConfigPtr config,
             ILoggingServicePtr logging,
             IRequestStatsPtr requestStats,
+            NMonitoring::TDynamicCountersPtr counters,
             IProfileLogPtr profileLog,
+            ISchedulerPtr scheduler,
             T service)
         : Config(std::move(config))
         , Logging(std::move(logging))
+        , Scheduler(std::move(scheduler))
     {
-        InitializeAppContext(AppCtx, service);
+        InitializeAppContext(AppCtx, service, counters);
         AppCtx.ServiceImpl = std::move(service);
         AppCtx.Stats = std::move(requestStats);
         AppCtx.ProfileLog = std::move(profileLog);
     }
 
 private:
-    void InitializeAppContext(auto& ctx, auto& /*service*/)
+    void InitializeAppContext(
+        auto& ctx,
+        auto& /*service*/,
+        NMonitoring::TDynamicCountersPtr counters)
     {
         if constexpr (requires { ctx.State; }) { // Implemented only for TFileStoreContext
             if (Config->GetSharedMemoryTransportEnabled()) {
                 ctx.State = std::make_shared<TServerState>(
                     Config->GetSharedMemoryBasePath());
+
+                ctx.ServerStats = std::make_shared<TServerStats>(counters);
             }
         }
+    }
+
+    void Refresh()
+    {
+        if constexpr (requires { AppCtx.State; }) {
+            Y_ABORT_UNLESS(
+                AppCtx.State && AppCtx.Stats,
+                "State and Stats should be initialized upon TServer::Refresh "
+                "call");
+            AppCtx.ServerStats->Update(AppCtx.State->GetStateStats());
+        }
+
+        ScheduleRefresh();
+    }
+
+    void ScheduleRefresh()
+    {
+        if (AtomicGet(AppCtx.ShouldStop)) {
+            return;
+        }
+
+        auto weak_ptr = this->weak_from_this();
+        Scheduler->Schedule(
+            TInstant::Now() + UpdateCountersInterval,
+            [weak_ptr]()
+            {
+                if (auto self = weak_ptr.lock()) {
+                    self->Refresh();
+                }
+            });
     }
 
 public:
@@ -1674,6 +1717,12 @@ public:
                 for (ui32 i = 0; i < Config->GetPreparedRequestsCount(); ++i) {
                     StartRequests(*executor, AppCtx);
                 }
+            }
+        }
+
+        if constexpr (requires { AppCtx.ServerStats; }) {
+            if (AppCtx.ServerStats) {
+                ScheduleRefresh();
             }
         }
     }
@@ -1815,14 +1864,18 @@ IServerPtr CreateServer(
     TServerConfigPtr config,
     ILoggingServicePtr logging,
     IRequestStatsPtr requestStats,
+    NMonitoring::TDynamicCountersPtr counters,
     IProfileLogPtr profileLog,
+    ISchedulerPtr scheduler,
     IFileStoreServicePtr service)
 {
     return std::make_shared<TFileStoreServer>(
         std::move(config),
         std::move(logging),
         std::move(requestStats),
+        std::move(counters),
         std::move(profileLog),
+        std::move(scheduler),
         std::move(service));
 }
 
@@ -1832,13 +1885,17 @@ IServerPtr CreateServer(
     TServerConfigPtr config,
     ILoggingServicePtr logging,
     IRequestStatsPtr requestStats,
+    NMonitoring::TDynamicCountersPtr counters,
+    ISchedulerPtr scheduler,
     IEndpointManagerPtr service)
 {
     return std::make_shared<TEndpointManagerServer>(
         std::move(config),
         std::move(logging),
         std::move(requestStats),
+        std::move(counters),
         CreateProfileLogStub(),
+        std::move(scheduler),
         std::move(service));
 }
 

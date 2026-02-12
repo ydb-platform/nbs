@@ -65,6 +65,7 @@ protected:
     ISchedulerPtr BackgroundScheduler;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    NMonitoring::TDynamicCountersPtr FilestoreCounters;
     IFileIOServicePtr FileIOService;
     NMetrics::IMetricsServicePtr Metrics;
     IFsCountersProviderPtr FsCountersProvider;
