@@ -120,10 +120,11 @@ def describe_placement_group(env, run, group_id):
     return file_parse(env.results_path, TDescribePlacementGroupResponse())
 
 
-def describe_volume(env, run, disk_id):
+def describe_volume(env, run, disk_id, exact_disk_id_match=False):
     clear_file(env.results_file)
     req = TDescribeVolumeRequest()
     req.DiskId = disk_id
+    req.Headers.ExactDiskIdMatch = exact_disk_id_match
     tmp_file = tempfile.NamedTemporaryFile(suffix=".tmp")
     tmp_file.write(text_format.MessageToString(req).encode("utf8"))
     tmp_file.flush()
@@ -913,5 +914,27 @@ def test_createvolume_with_tags():
     print(volume_info)
     assert volume_info.Volume.Tags['tag1'] == "value1"
     assert volume_info.Volume.Tags['tag2'] == "value2"
+
+    tear_down(env)
+
+
+def test_describe_volume_with_exact_disk_id_match():
+    env, run = setup(with_nrd=True, nrd_device_count=2, rack='')
+
+    run("createvolume",
+        "--disk-id", "vol0-copy",
+        "--blocks-count", str(NRD_BLOCKS_COUNT),
+        "--storage-media-kind", "nonreplicated")
+
+    assert file_equal(env.results_path, 'OK\n')
+    clear_file(env.results_file)
+
+    # Check that the volume 'vol0-copy' not found for 'vol0' with exact match
+    response = describe_volume(env, run, 'vol0', True)
+    assert "Path not found" in response.Error.Message
+
+    # Check that the volume 'vol0-copy' found for 'vol0' without exact match
+    response = describe_volume(env, run, 'vol0', False)
+    assert response.Volume.DiskId == "vol0-copy"
 
     tear_down(env)
