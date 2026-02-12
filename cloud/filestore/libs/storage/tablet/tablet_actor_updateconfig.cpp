@@ -247,6 +247,11 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
+    Config->SetCloudFolderEntity(
+        GetCloudId(),
+        GetFolderId(),
+        GetFileSystemId());
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s Sending OK response for UpdateConfig with version=%u",
         LogTag.c_str(),
