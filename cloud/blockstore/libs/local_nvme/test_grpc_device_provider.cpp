@@ -1,6 +1,7 @@
 #include "test_grpc_device_provider.h"
 
-#include "generic_grpc_device_provider.h"
+#include "device_provider.h"
+#include "generic_inventory_service_client.h"
 
 #include <cloud/blockstore/tools/testing/infra-device-provider/protos/infra.grpc.pb.h>
 #include <cloud/blockstore/tools/testing/infra-device-provider/protos/infra.pb.h>
@@ -8,6 +9,8 @@
 namespace NCloud::NBlockStore {
 
 namespace {
+
+using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -27,41 +30,57 @@ struct TTestServiceTrait
     {
         return service.AsyncListDevices(&clientContext, request, &cq);
     }
-
-    static auto GetResult(TListDevicesResponse response)
-        -> TVector<NProto::TNVMeDevice>
-    {
-        TVector<NProto::TNVMeDevice> devices;
-        devices.reserve(response.DevicesSize());
-
-        for (auto& src: *response.MutableDevices()) {
-            auto& dst = devices.emplace_back();
-            dst.SetPCIAddress(src.GetPCIeAddress());
-            dst.SetSerialNumber(src.GetSerialNumber());
-        }
-
-        return devices;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestGrpcDeviceProvider
-    : TGenericGrpcDeviceProvider<TTestGrpcDeviceProvider, TTestServiceTrait>
+struct TTestGrpcDeviceProvider: ILocalNVMeDeviceProvider
 {
+    TGenericInventoryServiceClient<TTestServiceTrait> Client;
     const TString OwnerId;
 
     TTestGrpcDeviceProvider(
         ILoggingServicePtr logging,
         TString socketPath,
         TString ownerId)
-        : TGenericGrpcDeviceProvider(std::move(logging), std::move(socketPath))
+        : Client(std::move(logging), std::move(socketPath))
         , OwnerId(std::move(ownerId))
     {}
 
-    void PrepareRequest(NTest::NProto::TListDevicesRequest& request)
+    void Start() final
     {
+        Client.Start();
+    }
+
+    void Stop() final
+    {
+        Client.Stop();
+    }
+
+    [[nodiscard]] auto ListNVMeDevices()
+        -> TFuture<TVector<NProto::TNVMeDevice>> final
+    {
+        NTest::NProto::TListDevicesRequest request;
         request.SetOwnerId(OwnerId);
+
+        return Client.ListDevices(std::move(request))
+            .Apply(
+                [](const auto& future)
+                {
+                    const NTest::NProto::TListDevicesResponse& response =
+                        future.GetValue();
+
+                    TVector<NProto::TNVMeDevice> devices;
+                    devices.reserve(response.DevicesSize());
+
+                    for (const auto& src: response.GetDevices()) {
+                        auto& dst = devices.emplace_back();
+                        dst.SetPCIAddress(src.GetPCIeAddress());
+                        dst.SetSerialNumber(src.GetSerialNumber());
+                    }
+
+                    return devices;
+                });
     }
 };
 

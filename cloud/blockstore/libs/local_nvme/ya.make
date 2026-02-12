@@ -3,7 +3,7 @@ LIBRARY()
 SRCS(
     config.cpp
     device_provider.cpp
-    generic_grpc_device_provider.cpp
+    generic_inventory_service_client.cpp
     service.cpp
 )
 

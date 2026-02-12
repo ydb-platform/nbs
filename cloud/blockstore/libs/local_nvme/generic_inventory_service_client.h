@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include "device_provider.h"
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -25,13 +23,15 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TDerived, typename TServiceTraits>
-class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
+template <typename TServiceTraits>
+class TGenericInventoryServiceClient
 {
-    using TSelf = TGenericGrpcDeviceProvider<TDerived, TServiceTraits>;
+    using TSelf = TGenericInventoryServiceClient<TServiceTraits>;
 
     using TService = typename TServiceTraits::TService;
     using TServiceStub = typename TService::Stub;
+    using TProtoRequest = typename TServiceTraits::TListDevicesRequest;
+    using TProtoResponse = typename TServiceTraits::TListDevicesResponse;
 
     struct IRequestHandler
     {
@@ -41,10 +41,7 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
 
     struct TListDevicesRequestHandler: IRequestHandler
     {
-        using TProtoRequest = typename TServiceTraits::TListDevicesRequest;
-        using TProtoResponse = typename TServiceTraits::TListDevicesResponse;
         using TReader = grpc::ClientAsyncResponseReader<TProtoResponse>;
-        using TResult = TVector<NProto::TNVMeDevice>;
 
         grpc::ClientContext ClientContext;
         grpc::Status Status;
@@ -54,11 +51,15 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
         TProtoRequest Request;
         TProtoResponse Response;
 
-        NThreading::TPromise<TResult> Promise =
-            NThreading::NewPromise<TResult>();
+        NThreading::TPromise<TProtoResponse> Promise =
+            NThreading::NewPromise<TProtoResponse>();
+
+        explicit TListDevicesRequestHandler(TProtoRequest request)
+            : Request(std::move(request))
+        {}
 
         auto Execute(TServiceStub& service, grpc::CompletionQueue& cq)
-            -> NThreading::TFuture<TResult>
+            -> NThreading::TFuture<TProtoResponse>
         {
             auto future = Promise.GetFuture();
 
@@ -80,8 +81,7 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
                         TServiceError(MAKE_GRPC_ERROR(Status.error_code()))
                         << Status.error_message()));
             } else {
-                Promise.SetValue(
-                    TServiceTraits::GetResult(std::move(Response)));
+                Promise.SetValue(std::move(Response));
             }
         }
     };
@@ -92,25 +92,28 @@ private:
     const ILoggingServicePtr Logging;
     const TString SocketPath;
 
-    TLog Log;
-
     std::thread Thread;
     grpc::CompletionQueue CQ;
 
     std::shared_ptr<TServiceStub> Service;
 
+protected:
+    TLog Log;
+
 public:
-    TGenericGrpcDeviceProvider(ILoggingServicePtr logging, TString socketPath)
+    TGenericInventoryServiceClient(
+        ILoggingServicePtr logging,
+        TString socketPath)
         : Logging(std::move(logging))
         , SocketPath(std::move(socketPath))
     {}
 
-    ~TGenericGrpcDeviceProvider() override
+    ~TGenericInventoryServiceClient()
     {
-        StopImpl();
+        Stop();
     }
 
-    void Start() final
+    void Start()
     {
         Log = Logging->CreateLog("BLOCKSTORE_NVME");
 
@@ -125,25 +128,7 @@ public:
         Thread = std::thread{&TSelf::ThreadFn, this};
     }
 
-    void Stop() final
-    {
-        StopImpl();
-    }
-
-    [[nodiscard]] auto ListNVMeDevices()
-        -> NThreading::TFuture<TVector<NProto::TNVMeDevice>> final
-    {
-        auto handler = std::make_unique<TListDevicesRequestHandler>();
-
-        static_cast<TDerived*>(this)->PrepareRequest(handler->Request);
-
-        auto future = handler->Execute(*Service, CQ);
-        Y_UNUSED(handler.release());
-        return future;
-    }
-
-private:
-    void StopImpl()
+    void Stop()
     {
         if (!Thread.joinable()) {
             return;
@@ -159,6 +144,18 @@ private:
         Log = {};
     }
 
+    [[nodiscard]] auto ListDevices(TProtoRequest request)
+        -> NThreading::TFuture<TProtoResponse>
+    {
+        auto handler =
+            std::make_unique<TListDevicesRequestHandler>(std::move(request));
+
+        auto future = handler->Execute(*Service, CQ);
+        Y_UNUSED(handler.release());
+        return future;
+    }
+
+private:
     void ThreadFn()
     {
         SetCurrentThreadName("NVMeDP");

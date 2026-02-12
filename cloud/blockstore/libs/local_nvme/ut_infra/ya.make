@@ -3,7 +3,7 @@ UNITTEST_FOR(cloud/blockstore/libs/local_nvme)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
-    generic_grpc_device_provider_ut.cpp
+    test_grpc_device_provider_ut.cpp
     test_grpc_device_provider.cpp
 )
 
