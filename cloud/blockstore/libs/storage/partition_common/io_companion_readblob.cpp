@@ -1,4 +1,4 @@
-#include "part_actor.h"
+#include "io_companion.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -9,11 +9,10 @@
 #include <cloud/storage/core/libs/common/alloc.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
@@ -23,7 +22,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::HandleReadBlob(
+void TIOCompanion::HandleReadBlob(
     const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -49,10 +48,10 @@ void TPartitionActor::HandleReadBlob(
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
-        SelfId(),
+        ctx.SelfID,
         VolumeActorId,
-        TabletID(),
-        State->GetBlockSize(),
+        TabletID,
+        PartitionConfig.GetBlockSize(),
         msg->ShouldCalculateChecksums,
         StorageAccessMode,
         std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
@@ -63,7 +62,7 @@ void TPartitionActor::HandleReadBlob(
         bsGroupOperationId,
         DiagnosticsConfig->GetPassTraceIdToBlobstorage());
 
-    if (blob.TabletID() != TabletID()) {
+    if (blob.TabletID() != TabletID) {
         // Treat this situation as we were reading from base disk.
         // TODO(svartmetal): verify that |blobTabletId| corresponds to base
         // disk partition tablet.
@@ -74,21 +73,21 @@ void TPartitionActor::HandleReadBlob(
             groupId,
             TBSGroupOperationTimeTracker::EOperationType::Read,
             GetCycleCount(),
-            State->GetBlockSize());
+            PartitionConfig.GetBlockSize());
         return;
     }
 
-    State->EnqueueIORequest(
+    ChannelsState.EnqueueIORequest(
         channel,
         std::move(readBlobActor),
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Read,
-        State->GetBlockSize());
+        PartitionConfig.GetBlockSize());
     ProcessIOQueue(ctx, channel);
 }
 
-void TPartitionActor::HandleReadBlobCompleted(
+void TIOCompanion::HandleReadBlobCompleted(
     const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -104,14 +103,14 @@ void TPartitionActor::HandleReadBlobCompleted(
 
     const ui32 channel = msg->BlobId.Channel();
     const ui32 groupId = msg->GroupId;
-    const bool isOverlayDisk = blobTabletId != TabletID();
-    UpdateNetworkStat(ctx.Now(), msg->BytesCount);
+    const bool isOverlayDisk = blobTabletId != TabletID;
+    Client.UpdateNetworkStat(ctx.Now(), msg->BytesCount);
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleReadBlobCompleted: invalid blob id received");
     } else {
-        UpdateReadThroughput(
+        Client.UpdateReadThroughput(
             ctx.Now(),
             channel,
             groupId,
@@ -124,7 +123,7 @@ void TPartitionActor::HandleReadBlobCompleted(
         // TODO(svartmetal): verify that |blobTabletId| corresponds to base
         // disk partition tablet.
 
-        PartCounters->RequestCounters.ReadBlob.AddRequest(
+        Client.GetPartCounters().RequestCounters.ReadBlob.AddRequest(
             msg->RequestTime.MicroSeconds(),
             msg->BytesCount,
             1,
@@ -133,13 +132,13 @@ void TPartitionActor::HandleReadBlobCompleted(
         return;
     }
 
-    PartCounters->RequestCounters.ReadBlob.AddRequest(
+    Client.GetPartCounters().RequestCounters.ReadBlob.AddRequest(
         msg->RequestTime.MicroSeconds(),
         msg->BytesCount,
         1,
-        State->GetChannelDataKind(channel));
+        ChannelsState.GetChannelDataKind(channel));
 
-    State->CompleteIORequest(channel);
+    ChannelsState.CompleteIORequest(channel);
 
     if (FAILED(msg->GetStatus())) {
         LOG_WARN(
@@ -149,7 +148,7 @@ void TPartitionActor::HandleReadBlobCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        if (blobTabletId != TabletID()) {
+        if (blobTabletId != TabletID) {
             // Treat this situation as we were reading from base disk.
             // TODO(svartmetal): verify that |blobTabletId| corresponds to base
             // disk partition tablet.
@@ -165,11 +164,10 @@ void TPartitionActor::HandleReadBlobCompleted(
         }
 
         if (msg->DeadlineSeen) {
-            PartCounters->Simple.ReadBlobDeadlineCount.Increment(1);
+            Client.GetPartCounters().Simple.ReadBlobDeadlineCount.Increment(1);
         }
 
-        if (State->IncrementReadBlobErrorCount()
-                >= Config->GetMaxReadBlobErrorsBeforeSuicide())
+        if (++ReadBlobErrorCount >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 TStringBuilder()
@@ -178,14 +176,14 @@ void TPartitionActor::HandleReadBlobCompleted(
                 {{"disk", PartitionConfig.GetDiskId()},
                  {"actor", ev->Sender.ToString()},
                  {"group", groupId}});
-            Suicide(ctx);
+            Client.Poison(ctx);
             return;
         }
     } else {
-        State->RegisterSuccess(ctx.Now(), groupId);
+        Client.RegisterSuccess(ctx.Now(), groupId);
     }
 
     ProcessIOQueue(ctx, channel);
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

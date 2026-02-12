@@ -22,6 +22,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadBlob,                  __VA_ARGS__)                                \
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
     xxx(WriteBlob,                 __VA_ARGS__)                                \
+    xxx(PatchBlob,                 __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -298,6 +299,69 @@ struct TEvPartitionCommonPrivate
         {}
     };
 
+    //
+    // PatchBlob
+    //
+
+    struct TPatchBlobRequest
+    {
+        NActors::TActorId Proxy;
+        TPartialBlobId OriginalBlobId;
+        TPartialBlobId PatchedBlobId;
+
+        TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> Diffs;
+        ui32 DiffCount;
+
+        bool Async = false;
+        TInstant Deadline;
+
+        TPatchBlobRequest() = default;
+
+        TPatchBlobRequest(
+                const TPartialBlobId& originalBlobId,
+                const TPartialBlobId& patchedBlobId,
+                TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> diffs,
+                ui32 diffCount,
+                bool async,
+                TInstant deadline)
+            : OriginalBlobId(originalBlobId)
+            , PatchedBlobId(patchedBlobId)
+            , Diffs(std::move(diffs))
+            , DiffCount(diffCount)
+            , Async(async)
+            , Deadline(deadline)
+        {}
+    };
+
+    struct TPatchBlobResponse
+    {
+        ui64 ExecCycles = 0;
+    };
+
+    struct TPatchBlobCompleted
+    {
+        TPartialBlobId OriginalBlobId;
+        TPartialBlobId PatchedBlobId;
+        NKikimr::TStorageStatusFlags StorageStatusFlags;
+        double ApproximateFreeSpaceShare = 0;
+        TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
+
+        TPatchBlobCompleted() = default;
+
+        TPatchBlobCompleted(
+                const TPartialBlobId& originalBlobId,
+                const TPartialBlobId& patchedBlobId,
+                NKikimr::TStorageStatusFlags storageStatusFlags,
+                double approximateFreeSpaceShare,
+                TDuration requestTime)
+            : OriginalBlobId(originalBlobId)
+            , PatchedBlobId(patchedBlobId)
+            , StorageStatusFlags(storageStatusFlags)
+            , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
+            , RequestTime(requestTime)
+        {}
+    };
 
     //
     // Events declaration
@@ -317,7 +381,7 @@ struct TEvPartitionCommonPrivate
         EvGetPartCountersRequest,
         EvGetPartCountersResponse,
         EvPartCountersCombined,
-
+        EvPatchBlobCompleted,
         EvWriteBlobCompleted,
 
         EvEnd
@@ -341,6 +405,9 @@ struct TEvPartitionCommonPrivate
         TResponseEvent<TPartCountersCombined, EvPartCountersCombined>;
     using TEvWriteBlobCompleted =
         TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
+
+    using TEvPatchBlobCompleted =
+        TResponseEvent<TPatchBlobCompleted, EvPatchBlobCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

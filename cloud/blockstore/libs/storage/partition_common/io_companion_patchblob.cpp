@@ -1,7 +1,9 @@
-#include "part_actor.h"
+#include "io_companion.h"
+#include "cloud/storage/core/libs/tablet/blob_id.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
@@ -10,10 +12,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
-namespace NCloud {
-namespace NBlockStore {
-namespace NStorage {
-namespace NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
@@ -30,8 +29,8 @@ namespace {
 class TPatchBlobActor final
     : public TActorBootstrapped<TPatchBlobActor>
 {
-    using TRequest = TEvPartitionPrivate::TEvPatchBlobRequest;
-    using TResponse = TEvPartitionPrivate::TEvPatchBlobResponse;
+    using TRequest = TEvPartitionCommonPrivate::TEvPatchBlobRequest;
+    using TResponse = TEvPartitionCommonPrivate::TEvPatchBlobResponse;
 
 private:
     const TActorId TabletActorId;
@@ -165,7 +164,7 @@ void TPatchBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvPatchBlobCompleted>(
+    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvPatchBlobCompleted>(
         error);
     request->OriginalBlobId = Request->OriginalBlobId;
     request->PatchedBlobId = Request->PatchedBlobId;
@@ -249,7 +248,7 @@ void TPatchBlobActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvPatchBlobResponse>(
+    auto response = std::make_unique<TEvPartitionCommonPrivate::TEvPatchBlobResponse>(
         MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
@@ -312,13 +311,13 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::HandlePatchBlob(
-    const TEvPartitionPrivate::TEvPatchBlobRequest::TPtr& ev,
+void TIOCompanion::HandlePatchBlob(
+    const TEvPartitionCommonPrivate::TEvPatchBlobRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TPatchBlobMethod>(
+    auto requestInfo = CreateRequestInfo<TEvPartitionCommonPrivate::TPatchBlobMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -341,14 +340,14 @@ void TPartitionActor::HandlePatchBlob(
         Info()->BSProxyIDForChannel(channel, msg->PatchedBlobId.Generation());
     ui64 bsGroupOperationId = BSGroupOperationId++;
 
-    State->EnqueueIORequest(
+    ChannelsState.EnqueueIORequest(
         channel,
         std::make_unique<TPatchBlobActor>(
-            SelfId(),
+            ctx.SelfID,
             requestInfo,
-            TabletID(),
+            TabletID,
             PartitionConfig.GetDiskId(),
-            std::unique_ptr<TEvPartitionPrivate::TEvPatchBlobRequest>(
+            std::unique_ptr<TEvPartitionCommonPrivate::TEvPatchBlobRequest>(
                 msg.Release()),
             originalGroupId,
             LogTitle.GetChild(GetCycleCount()),
@@ -357,13 +356,13 @@ void TPartitionActor::HandlePatchBlob(
         bsGroupOperationId,
         originalGroupId,
         TBSGroupOperationTimeTracker::EOperationType::Patch,
-        State->GetBlockSize());
+        PartitionConfig.GetBlockSize());
 
     ProcessIOQueue(ctx, channel);
 }
 
-void TPartitionActor::HandlePatchBlobCompleted(
-    const TEvPartitionPrivate::TEvPatchBlobCompleted::TPtr& ev,
+void TIOCompanion::HandlePatchBlobCompleted(
+    const TEvPartitionCommonPrivate::TEvPatchBlobCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -385,8 +384,8 @@ void TPartitionActor::HandlePatchBlobCompleted(
     if (msg->StorageStatusFlags.Check(isValidFlag)) {
         const auto permissions = StorageStatusFlags2ChannelPermissions(
             msg->StorageStatusFlags);
-        UpdateChannelPermissions(ctx, patchedChannel, permissions);
-        State->UpdateChannelFreeSpaceShare(
+        Client.UpdateChannelPermissions(ctx, patchedChannel, permissions);
+        ChannelsState.UpdateChannelFreeSpaceShare(
             patchedChannel,
             msg->ApproximateFreeSpaceShare);
 
@@ -399,8 +398,8 @@ void TPartitionActor::HandlePatchBlobCompleted(
                 patchedChannel,
                 patchedGroup);
 
-            ScheduleYellowStateUpdate(ctx);
-            ReassignChannelsIfNeeded(ctx);
+            Client.ScheduleYellowStateUpdate(ctx);
+            Client.ReassignChannelsIfNeeded(ctx);
         }
     }
 
@@ -409,33 +408,30 @@ void TPartitionActor::HandlePatchBlobCompleted(
             TStringBuilder() << "Stop tablet because of PatchBlob error: "
                              << FormatError(msg->GetError()),
             {{"disk", PartitionConfig.GetDiskId()}});
-        Suicide(ctx);
+        Client.Poison(ctx);
         return;
     }
 
     if (patchedGroup == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(0, "HandlePatchBlobCompleted: invalid blob id received");
     } else {
-        UpdateWriteThroughput(
+        Client.UpdateWriteThroughput(
             ctx.Now(),
             patchedChannel,
             patchedGroup,
             msg->PatchedBlobId.BlobSize());
     }
-    UpdateNetworkStat(ctx.Now(), msg->PatchedBlobId.BlobSize());
+    Client.UpdateNetworkStat(ctx.Now(), msg->PatchedBlobId.BlobSize());
 
-    PartCounters->RequestCounters.PatchBlob.AddRequest(
+    Client.GetPartCounters().RequestCounters.PatchBlob.AddRequest(
         msg->RequestTime.MicroSeconds(),
         msg->PatchedBlobId.BlobSize(),
         1,
-        State->GetChannelDataKind(patchedChannel));
+        ChannelsState.GetChannelDataKind(patchedChannel));
 
-    State->CompleteIORequest(patchedChannel);
+    ChannelsState.CompleteIORequest(patchedChannel);
 
     ProcessIOQueue(ctx, patchedChannel);
 }
 
-}   // namespace NPartition
-}   // namespace NStorage
-}   // namespace NBlockStore
-}   // namespace NCloud
+}   // namespace NCloud::NBlockStore::NStorage

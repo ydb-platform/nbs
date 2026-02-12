@@ -175,7 +175,6 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(CollectGarbage,            __VA_ARGS__)                                \
     xxx(AddGarbage,                __VA_ARGS__)                                \
     xxx(DeleteGarbage,             __VA_ARGS__)                                \
-    xxx(PatchBlob,                 __VA_ARGS__)                                \
     xxx(AddConfirmedBlobs,         __VA_ARGS__)                                \
     xxx(AddUnconfirmedBlobs,       __VA_ARGS__)                                \
     xxx(DeleteUnconfirmedBlobs,    __VA_ARGS__)                                \
@@ -225,70 +224,6 @@ struct TBlockCountRebuildState
 
 struct TEvPartitionPrivate
 {
-    //
-    // PatchBlob
-    //
-
-    struct TPatchBlobRequest
-    {
-        NActors::TActorId Proxy;
-        TPartialBlobId OriginalBlobId;
-        TPartialBlobId PatchedBlobId;
-
-        TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> Diffs;
-        ui32 DiffCount;
-
-        bool Async = false;
-        TInstant Deadline;
-
-        TPatchBlobRequest() = default;
-
-        TPatchBlobRequest(
-                const TPartialBlobId& originalBlobId,
-                const TPartialBlobId& patchedBlobId,
-                TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> diffs,
-                ui32 diffCount,
-                bool async,
-                TInstant deadline)
-            : OriginalBlobId(originalBlobId)
-            , PatchedBlobId(patchedBlobId)
-            , Diffs(std::move(diffs))
-            , DiffCount(diffCount)
-            , Async(async)
-            , Deadline(deadline)
-        {}
-    };
-
-    struct TPatchBlobResponse
-    {
-        ui64 ExecCycles = 0;
-    };
-
-    struct TPatchBlobCompleted
-    {
-        TPartialBlobId OriginalBlobId;
-        TPartialBlobId PatchedBlobId;
-        NKikimr::TStorageStatusFlags StorageStatusFlags;
-        double ApproximateFreeSpaceShare = 0;
-        TDuration RequestTime;
-        ui64 BSGroupOperationId = 0;
-
-        TPatchBlobCompleted() = default;
-
-        TPatchBlobCompleted(
-                const TPartialBlobId& originalBlobId,
-                const TPartialBlobId& patchedBlobId,
-                NKikimr::TStorageStatusFlags storageStatusFlags,
-                double approximateFreeSpaceShare,
-                TDuration requestTime)
-            : OriginalBlobId(originalBlobId)
-            , PatchedBlobId(patchedBlobId)
-            , StorageStatusFlags(storageStatusFlags)
-            , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
-            , RequestTime(requestTime)
-        {}
-    };
-
     //
     // AddBlobs
     //
@@ -897,7 +832,6 @@ struct TEvPartitionPrivate
         EvScanDiskCompleted,
         EvLoadStateCompleted,
         EvGetChangedBlocksCompleted,
-        EvPatchBlobCompleted,
         EvAddConfirmedBlobsCompleted,
         EvConfirmBlobsCompleted,
         EvLoadCompactionMapChunkRequest,
@@ -927,7 +861,6 @@ struct TEvPartitionPrivate
     using TEvScanDiskCompleted = TResponseEvent<TScanDiskCompleted, EvScanDiskCompleted>;
     using TEvLoadStateCompleted = TResponseEvent<TLoadStateCompleted, EvLoadStateCompleted>;
     using TEvGetChangedBlocksCompleted = TResponseEvent<TOperationCompleted, EvGetChangedBlocksCompleted>;
-    using TEvPatchBlobCompleted = TResponseEvent<TPatchBlobCompleted, EvPatchBlobCompleted>;
     using TEvAddConfirmedBlobsCompleted = TResponseEvent<TOperationCompleted, EvAddConfirmedBlobsCompleted>;
     using TEvConfirmBlobsCompleted = TResponseEvent<TConfirmBlobsCompleted, EvConfirmBlobsCompleted>;
 };

@@ -250,7 +250,7 @@ void TPartitionActor::CompleteLoadState(
 
     CreateWriteBlobCompanionClient();
 
-    WriteBlobCompanion = std::make_unique<TWriteBlobCompanion>(
+    WriteBlobCompanion = std::make_unique<TIOCompanion>(
         Config,
         PartitionConfig,
         Info(),
