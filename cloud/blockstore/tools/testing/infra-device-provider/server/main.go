@@ -21,6 +21,7 @@ import (
 type device struct {
 	PCIeAddress  string `yaml:"pci"`
 	SerialNumber string `yaml:"serial"`
+	OwnerId      string `yaml:"owner"`
 }
 
 type config struct {
@@ -33,7 +34,7 @@ type InfraService struct {
 	pb.UnimplementedTInfraServiceServer
 
 	mu      sync.RWMutex
-	devices []*pb.TDevice
+	devices map[string][]*pb.TDevice
 }
 
 func (s *InfraService) ListDevices(
@@ -41,21 +42,21 @@ func (s *InfraService) ListDevices(
 	req *pb.TListDevicesRequest,
 ) (*pb.TListDevicesResponse, error) {
 
-	log.Printf("Processing ListDevices request...")
+	log.Printf("Processing ListDevices request (%q)...", req.OwnerId)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	resp := &pb.TListDevicesResponse{
-		Devices: s.devices,
-	}
+	devices := s.devices[req.OwnerId]
 
-	return resp, nil
+	return &pb.TListDevicesResponse{
+		Devices: devices,
+	}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func loadDevices(path string) ([]*pb.TDevice, error) {
+func loadDevices(path string) (map[string][]*pb.TDevice, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -66,9 +67,10 @@ func loadDevices(path string) ([]*pb.TDevice, error) {
 		return nil, err
 	}
 
-	devices := make([]*pb.TDevice, 0, len(cfg.Devices))
+	devices := make(map[string][]*pb.TDevice)
+
 	for _, d := range cfg.Devices {
-		devices = append(devices, &pb.TDevice{
+		devices[d.OwnerId] = append(devices[d.OwnerId], &pb.TDevice{
 			PCIeAddress:  d.PCIeAddress,
 			SerialNumber: d.SerialNumber,
 		})

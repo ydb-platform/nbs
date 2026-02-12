@@ -21,6 +21,7 @@ message TDevice
 
 message TListDevicesRequest
 {
+    string OwnerId = 1;
 }
 
 message TListDevicesResponse

@@ -11,7 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TInfraServiceTrait
+struct TTestServiceTrait
 {
     using TService = NTest::NProto::TInfraService;
     using TListDevicesRequest = NTest::NProto::TListDevicesRequest;
@@ -19,13 +19,13 @@ struct TInfraServiceTrait
 
     static auto AsyncListDevices(
         TService::Stub& service,
-        grpc::ClientContext* clientContext,
+        grpc::ClientContext& clientContext,
         const TListDevicesRequest& request,
-        grpc::CompletionQueue* cq)
+        grpc::CompletionQueue& cq)
         -> std::unique_ptr<
             grpc::ClientAsyncResponseReader<TListDevicesResponse>>
     {
-        return service.AsyncListDevices(clientContext, request, cq);
+        return service.AsyncListDevices(&clientContext, request, &cq);
     }
 
     static auto GetResult(TListDevicesResponse response)
@@ -44,20 +44,40 @@ struct TInfraServiceTrait
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestGrpcDeviceProvider
+    : TGenericGrpcDeviceProvider<TTestGrpcDeviceProvider, TTestServiceTrait>
+{
+    const TString OwnerId;
+
+    TTestGrpcDeviceProvider(
+        ILoggingServicePtr logging,
+        TString socketPath,
+        TString ownerId)
+        : TGenericGrpcDeviceProvider(std::move(logging), std::move(socketPath))
+        , OwnerId(std::move(ownerId))
+    {}
+
+    void PrepareRequest(NTest::NProto::TListDevicesRequest& request)
+    {
+        request.SetOwnerId(OwnerId);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 auto CreateTestGrpcDeviceProvider(
     ILoggingServicePtr logging,
-    TString socketPath) -> ILocalNVMeDeviceProviderPtr
+    TString socketPath,
+    TString ownerId) -> ILocalNVMeDeviceProviderPtr
 {
-    using TTestGrpcDeviceProvider =
-        TGenericGrpcDeviceProvider<TInfraServiceTrait>;
-
     return std::make_shared<TTestGrpcDeviceProvider>(
         std::move(logging),
-        std::move(socketPath));
+        std::move(socketPath),
+        std::move(ownerId));
 }
 
 }   // namespace NCloud::NBlockStore

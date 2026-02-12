@@ -25,12 +25,12 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TTraits>
+template <typename TDerived, typename TServiceTraits>
 class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
 {
-    using TSelf = TGenericGrpcDeviceProvider<TTraits>;
+    using TSelf = TGenericGrpcDeviceProvider<TDerived, TServiceTraits>;
 
-    using TService = typename TTraits::TService;
+    using TService = typename TServiceTraits::TService;
     using TServiceStub = typename TService::Stub;
 
     struct IRequestHandler
@@ -41,8 +41,8 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
 
     struct TListDevicesRequestHandler: IRequestHandler
     {
-        using TProtoRequest = typename TTraits::TListDevicesRequest;
-        using TProtoResponse = typename TTraits::TListDevicesResponse;
+        using TProtoRequest = typename TServiceTraits::TListDevicesRequest;
+        using TProtoResponse = typename TServiceTraits::TListDevicesResponse;
         using TReader = grpc::ClientAsyncResponseReader<TProtoResponse>;
         using TResult = TVector<NProto::TNVMeDevice>;
 
@@ -62,11 +62,8 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
         {
             auto future = Promise.GetFuture();
 
-            Reader = TTraits::AsyncListDevices(
-                service,
-                &ClientContext,
-                Request,
-                &cq);
+            Reader =
+                TServiceTraits::AsyncListDevices(service, ClientContext, Request, cq);
             Reader->Finish(&Response, &Status, this);
 
             return future;
@@ -80,7 +77,7 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
                         TServiceError(MAKE_GRPC_ERROR(Status.error_code()))
                         << Status.error_message()));
             } else {
-                Promise.SetValue(TTraits::GetResult(std::move(Response)));
+                Promise.SetValue(TServiceTraits::GetResult(std::move(Response)));
             }
         }
     };
@@ -133,6 +130,9 @@ public:
         -> NThreading::TFuture<TVector<NProto::TNVMeDevice>> final
     {
         auto handler = std::make_unique<TListDevicesRequestHandler>();
+
+        static_cast<TDerived*>(this)->PrepareRequest(handler->Request);
+
         auto future = handler->Execute(*Service, CQ);
         Y_UNUSED(handler.release());
         return future;

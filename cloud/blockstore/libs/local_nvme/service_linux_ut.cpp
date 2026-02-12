@@ -422,7 +422,8 @@ struct TFixtureInfra: public TFixtureBase
 
         DeviceProvider = CreateTestGrpcDeviceProvider(
             Logging,
-            GetEnv("INFRA_DEVICE_PROVIDER_SOCKET"));
+            GetEnv("INFRA_DEVICE_PROVIDER_SOCKET"),
+            "nbs");
         DeviceProvider->Start();
 
         Service = CreateService(

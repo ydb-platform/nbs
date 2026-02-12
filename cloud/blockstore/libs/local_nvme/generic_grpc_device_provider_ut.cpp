@@ -22,14 +22,28 @@ Y_UNIT_TEST_SUITE(TGrpcDeviceProviderTest)
         const TString socketPath = GetEnv("INFRA_DEVICE_PROVIDER_SOCKET");
         UNIT_ASSERT_UNEQUAL("", socketPath);
 
-        auto deviceProvider = CreateTestGrpcDeviceProvider(logging, socketPath);
-        deviceProvider->Start();
+        {
+            auto deviceProvider =
+                CreateTestGrpcDeviceProvider(logging, socketPath, "nbs");
+            deviceProvider->Start();
 
-        auto future = deviceProvider->ListNVMeDevices();
-        const auto& devices = future.GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
+            auto future = deviceProvider->ListNVMeDevices();
+            const auto& devices = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
 
-        deviceProvider->Stop();
+            deviceProvider->Stop();
+        }
+        {
+            auto deviceProvider =
+                CreateTestGrpcDeviceProvider(logging, socketPath, "ydb");
+            deviceProvider->Start();
+
+            auto future = deviceProvider->ListNVMeDevices();
+            const auto& devices = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
+
+            deviceProvider->Stop();
+        }
     }
 }
 
