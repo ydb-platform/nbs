@@ -310,7 +310,10 @@ void TDiskRegistryActor::ScheduleEnsureDiskRegistryStateIntegrity(
 
     ctx.Schedule(
         Config->GetEnsureDiskRegistryStateIntegrityInterval(),
-        new TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest());
+        std::make_unique<IEventHandle>(
+            SelfId(),
+            SelfId(),
+            new TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

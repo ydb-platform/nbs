@@ -188,17 +188,11 @@ void TDiskRegistryActor::HandleEnsureDiskRegistryStateIntegrity(
         "%s Received EnsureDiskRegistryStateIntegrity request",
         LogTitle.GetWithTime().c_str());
 
-    // The sender of the scheduled messages is not specified
-    TActorId sender = ev->Sender;
-    if(!ev->Sender) {
-        sender = ctx.SelfID;
-    }
-
     NCloud::Register<TEnsureStateIntegrityActor>(
         ctx,
         LogTitle.GetChildWithTags(GetCycleCount(), {}),
         ctx.SelfID,
-        CreateRequestInfo(sender, ev->Cookie, msg->CallContext));
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
 }
 
 void TDiskRegistryActor::HandleEnsureDiskRegistryStateIntegrityResponse(
