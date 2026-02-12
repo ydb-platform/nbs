@@ -43,6 +43,12 @@ struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
     TPromise<TVector<NProto::TNVMeDevice>> Promise =
         NewPromise<TVector<NProto::TNVMeDevice>>();
 
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
     [[nodiscard]] auto ListNVMeDevices()
         -> TFuture<TVector<NProto::TNVMeDevice>> final
     {
@@ -408,20 +414,16 @@ struct TFixture: public TFixtureBase
 
 struct TFixtureInfra: public TFixtureBase
 {
-    std::shared_ptr<TTestInfraGrpcClient> InfraClient;
     std::shared_ptr<TTestGrpcDeviceProvider> DeviceProvider;
 
     void SetUp(NUnitTest::TTestContext& testContext) override
     {
         TFixtureBase::SetUp(testContext);
 
-        InfraClient = std::make_shared<TTestInfraGrpcClient>(
+        DeviceProvider = std::make_shared<TTestGrpcDeviceProvider>(
             Logging,
             GetEnv("INFRA_DEVICE_PROVIDER_SOCKET"));
-
-        InfraClient->Start();
-
-        DeviceProvider = std::make_shared<TTestGrpcDeviceProvider>(InfraClient);
+        DeviceProvider->Start();
 
         Service = CreateService(
             std::static_pointer_cast<ILocalNVMeDeviceProvider>(DeviceProvider));
@@ -430,12 +432,10 @@ struct TFixtureInfra: public TFixtureBase
 
     void TearDown(NUnitTest::TTestContext& testContext) override
     {
+        TFixtureBase::TearDown(testContext);
+
+        DeviceProvider->Stop();
         DeviceProvider.reset();
-
-        InfraClient->Stop();
-        InfraClient.reset();
-
-        TFixtureBase::SetUp(testContext);
     }
 };
 

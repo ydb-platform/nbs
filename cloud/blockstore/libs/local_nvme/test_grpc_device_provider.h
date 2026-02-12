@@ -44,8 +44,6 @@ struct TInfraServiceTrait
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TTestInfraGrpcClient = TGenericInfraGrpcClient<TInfraServiceTrait>;
-using TTestGrpcDeviceProvider =
-    TGenericGrpcDeviceProvider<TTestInfraGrpcClient>;
+using TTestGrpcDeviceProvider = TGenericGrpcDeviceProvider<TInfraServiceTrait>;
 
 }   // namespace NCloud::NBlockStore

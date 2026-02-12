@@ -20,17 +20,14 @@ Y_UNIT_TEST_SUITE(TGrpcDeviceProviderTest)
         const TString socketPath = GetEnv("INFRA_DEVICE_PROVIDER_SOCKET");
         UNIT_ASSERT_UNEQUAL("", socketPath);
 
-        const auto client =
-            std::make_shared<TTestInfraGrpcClient>(logging, socketPath);
-        client->Start();
-
-        TTestGrpcDeviceProvider provider{client};
+        TTestGrpcDeviceProvider provider{logging, socketPath};
+        provider.Start();
 
         auto future = provider.ListNVMeDevices();
         const auto& devices = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
 
-        client->Stop();
+        provider.Stop();
     }
 }
 

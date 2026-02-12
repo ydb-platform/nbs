@@ -26,9 +26,9 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TTraits>
-class TGenericInfraGrpcClient final: public IStartable
+class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
 {
-    using TSelf = TGenericInfraGrpcClient<TTraits>;
+    using TSelf = TGenericGrpcDeviceProvider<TTraits>;
 
     using TService = typename TTraits::TService;
     using TServiceStub = typename TService::Stub;
@@ -99,19 +99,19 @@ private:
     std::shared_ptr<TServiceStub> Service;
 
 public:
-    TGenericInfraGrpcClient(ILoggingServicePtr logging, TString socketPath)
+    TGenericGrpcDeviceProvider(ILoggingServicePtr logging, TString socketPath)
         : Logging(std::move(logging))
         , SocketPath(std::move(socketPath))
     {}
 
-    ~TGenericInfraGrpcClient() override
+    ~TGenericGrpcDeviceProvider() override
     {
         StopImpl();
     }
 
-    void Start() override
+    void Start() final
     {
-        Log = Logging->CreateLog("BLOCKSTORE_SERVER");
+        Log = Logging->CreateLog("BLOCKSTORE_NVME");
 
         STORAGE_INFO("Connecting to " << SocketPath << " socket");
 
@@ -124,13 +124,13 @@ public:
         Thread = std::thread{&TSelf::ThreadFn, this};
     }
 
-    void Stop() override
+    void Stop() final
     {
         StopImpl();
     }
 
     [[nodiscard]] auto ListNVMeDevices()
-        -> NThreading::TFuture<TVector<NProto::TNVMeDevice>>
+        -> NThreading::TFuture<TVector<NProto::TNVMeDevice>> final
     {
         auto handler = std::make_unique<TListDevicesRequestHandler>();
         auto future = handler->Execute(*Service, CQ);
@@ -167,26 +167,6 @@ private:
                 static_cast<IRequestHandler*>(tag));
             requestHandler->Complete();
         }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TClient>
-class TGenericGrpcDeviceProvider final: public ILocalNVMeDeviceProvider
-{
-private:
-    std::shared_ptr<TClient> Client;
-
-public:
-    explicit TGenericGrpcDeviceProvider(std::shared_ptr<TClient> client)
-        : Client(std::move(client))
-    {}
-
-    [[nodiscard]] auto ListNVMeDevices()
-        -> NThreading::TFuture<TVector<NProto::TNVMeDevice>> override
-    {
-        return Client->ListNVMeDevices();
     }
 };
 

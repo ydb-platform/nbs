@@ -23,6 +23,12 @@ public:
         : Path(std::move(path))
     {}
 
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
     [[nodiscard]] auto ListNVMeDevices()
         -> TFuture<TVector<NProto::TNVMeDevice>> final
     {
@@ -41,6 +47,12 @@ public:
 class TLocalNVMeDeviceProviderStub final: public ILocalNVMeDeviceProvider
 {
 public:
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
     [[nodiscard]] auto ListNVMeDevices()
         -> TFuture<TVector<NProto::TNVMeDevice>> final
     {
