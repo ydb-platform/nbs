@@ -61,6 +61,12 @@ struct TByDeviceUUID
 struct TTestNvmeManager
     : NNvme::INvmeManager
 {
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
     TFuture<NProto::TError> Format(
         const TString& path,
         NNvme::nvme_secure_erase_setting ses) override

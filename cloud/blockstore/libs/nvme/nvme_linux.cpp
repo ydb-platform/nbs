@@ -1,8 +1,9 @@
 #include "nvme.h"
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
-
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
@@ -148,36 +149,6 @@ nvme_ns_data IdentifyAllocatedNs(TFileHandle& device, ui32 nsid)
     return ns;
 }
 
-// returns (LBA format index, block size)
-auto PickLbaFormat(TFileHandle& device) -> std::pair<ui8, ui32>
-{
-    // Create a temporary namespace to query actual formats
-    const ui32 nsid = CreateNamespace(
-        device,
-        4096,   // totalBlocks
-        0);     // lbaFormatIndex
-
-    const auto ns = IdentifyAllocatedNs(device, nsid);
-    if (ns.nlbaf == 0) {
-        STORAGE_THROW_SERVICE_ERROR(E_INVALID_STATE)
-            << "list of LBA formats is empty";
-    }
-
-    DeleteNamespace(device, nsid);
-
-    std::span formats{ns.lbaf, ns.nlbaf};
-
-    // Pick the most performant format without metadata
-    auto cmp = [](const auto& lhs, const auto& rhs)
-    {
-        return std::tie(lhs.ms, lhs.rp) < std::tie(rhs.ms, rhs.rp);
-    };
-
-    auto it = std::ranges::min_element(formats, cmp);
-
-    return {std::distance(formats.begin(), it), 1U << it->lbads};
-}
-
 nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
 {
     nvme_ctrlr_data ctrl = {};
@@ -307,6 +278,9 @@ class TNvmeManager final
     : public INvmeManager
 {
 private:
+    const ILoggingServicePtr Logging;
+    TLog Log;
+
     ITaskQueuePtr Executor;
     TDuration Timeout;  // admin command timeout
 
@@ -373,9 +347,18 @@ private:
     }
 
 public:
-    TNvmeManager(ITaskQueuePtr executor, TDuration timeout)
-        : Executor(executor)
+    TNvmeManager(ILoggingServicePtr logging, ITaskQueuePtr executor, TDuration timeout)
+        : Logging(std::move(logging))
+        , Executor(executor)
         , Timeout(timeout)
+    {}
+
+    void Start() final
+    {
+        Log = Logging->CreateLog("BLOCKSTORE_NVME");
+    }
+
+    void Stop() final
     {}
 
     TFuture<NProto::TError> Format(
@@ -554,6 +537,11 @@ public:
 
                 nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device);
 
+                STORAGE_DEBUG(
+                    "Current NVMe capacity: unallocated="
+                    << ctrl.unvmcap[0] << " bytes total=" << ctrl.tnvmcap[0]
+                    << " bytes");
+
                 if (!ctrl.oacs.ns_manage) {
                     STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                         << "NVMe doesn't support namespace management";
@@ -568,7 +556,10 @@ public:
 
                 while (auto nsIds = ListAllocatedNamespaces(device)) {
                     for (ui32 nsid: nsIds) {
+                        STORAGE_DEBUG("Detach ns: " << nsid << "...");
                         DetachNamespaceFromAll(device, nsid);
+
+                        STORAGE_DEBUG("Delete ns: " << nsid << "...");
                         DeleteNamespace(device, nsid);
                     }
                 }
@@ -576,12 +567,23 @@ public:
                 // Re-read controller for updated unallocated capacity
                 ctrl = NVMeIdentifyCtrl(device);
 
+                STORAGE_DEBUG(
+                    "NVMe capacity after deleting namespaces: unallocated="
+                    << ctrl.unvmcap[0] << " bytes total=" << ctrl.tnvmcap[0]
+                    << " bytes");
+
                 const auto [lbaFormatIndex, blockSize] = PickLbaFormat(device);
 
                 const ui64 unvmcap = ctrl.unvmcap[0];
                 const ui64 tnvmcap = ctrl.tnvmcap[0];
                 const ui64 capacity = unvmcap ? unvmcap : tnvmcap;
                 const ui64 totalBlocks = capacity / blockSize;
+
+                STORAGE_DEBUG(
+                    "Create a namespace with "
+                    << FormatByteSize(capacity) << " and LBA format #"
+                    << static_cast<int>(lbaFormatIndex) << " (" << blockSize
+                    << " B)");
 
                 const ui32 nsid =
                     CreateNamespace(device, totalBlocks, lbaFormatIndex);
@@ -591,15 +593,48 @@ public:
                 return MakeError(S_OK);
             });
     }
+
+    // returns (LBA format index, block size)
+    auto PickLbaFormat(TFileHandle& device) -> std::pair<ui8, ui32>
+    {
+        STORAGE_DEBUG("Create a temporary namespace to query actual formats");
+
+        // Create a temporary namespace to query actual formats
+
+        const ui32 totalBlocks = 4096;
+        const ui32 nsid = CreateNamespace(
+            device,
+            totalBlocks,
+            0);   // lbaFormatIndex
+
+        STORAGE_DEBUG("Query formats");
+        auto ns = IdentifyAllocatedNs(device, nsid);
+
+        STORAGE_DEBUG("Delete the temporary namespace");
+        DeleteNamespace(device, nsid);
+
+        std::span formats(ns.lbaf, ns.nlbaf + 1);
+
+        // Pick the most performant format without metadata
+        auto cmp = [](const auto& lhs, const auto& rhs)
+        {
+            return std::tie(lhs.ms, lhs.rp) < std::tie(rhs.ms, rhs.rp);
+        };
+
+        auto it = std::ranges::min_element(formats, cmp);
+
+        return {std::distance(formats.begin(), it), 1U << it->lbads};
+    }
 };
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-INvmeManagerPtr CreateNvmeManager(TDuration timeout)
+INvmeManagerPtr CreateNvmeManager(ILoggingServicePtr logging, TDuration timeout)
 {
     return std::make_shared<TNvmeManager>(
+        std::move(logging),
         CreateLongRunningTaskExecutor("SecureErase"),
         timeout);
 }

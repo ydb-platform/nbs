@@ -784,6 +784,7 @@ void TBootstrapBase::InitLocalService()
         CreateSingleFileIOServiceProvider(CreateAIOService());
 
     NvmeManager = CreateNvmeManager(
+        Logging,
         Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
     Service = CreateLocalService(
@@ -931,6 +932,7 @@ void TBootstrapBase::Start()
 
     START_KIKIMR_COMPONENT(AsyncLogger);
     START_COMMON_COMPONENT(Logging);
+    START_COMMON_COMPONENT(NvmeManager);
     START_KIKIMR_COMPONENT(LogbrokerService);
     START_KIKIMR_COMPONENT(NotifyService);
     START_COMMON_COMPONENT(Monitoring);
@@ -1053,6 +1055,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(ProfileLog);
     STOP_COMMON_COMPONENT(Monitoring);
     STOP_KIKIMR_COMPONENT(LogbrokerService);
+    STOP_COMMON_COMPONENT(NvmeManager);
     STOP_COMMON_COMPONENT(Logging);
     STOP_KIKIMR_COMPONENT(AsyncLogger);
 

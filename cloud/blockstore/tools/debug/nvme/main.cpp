@@ -28,13 +28,14 @@ namespace {
 class TApp
 {
 private:
-    const NNvme::INvmeManagerPtr NVMe = NNvme::CreateNvmeManager(1min);
     const ISysFsPtr SysFs = CreateSysFs("/sys");
 
     TOpts Opts;
 
     ILoggingServicePtr Logging;
     TLog Log;
+
+    NNvme::INvmeManagerPtr NVMe;
 
 public:
     int HandleDescribe(int argc, const char** argv)
@@ -86,6 +87,25 @@ public:
             {
                 STORAGE_DEBUG("Sanitize " << path.Quote());
                 CheckError(NVMe->Sanitize(path));
+
+                for (;;) {
+                    const auto& [r, error] = NVMe->GetSanitizeStatus(path);
+                    CheckError(error);
+
+                    STORAGE_DEBUG(
+                        "Sanitize status: " << FormatError(r.Status)
+                                            << " progress: " << r.Progress);
+
+                    if (!HasError(r.Status)) {
+                        break;
+                    }
+
+                    if (r.Status.GetCode() != E_TRY_AGAIN) {
+                        CheckError(r.Status);
+                    }
+
+                    Sleep(100ms);
+                }
             });
     }
 
@@ -127,6 +147,8 @@ private:
         Logging =
             CreateLoggingService("console", {.FiltrationLevel = logPriority});
         Log = Logging->CreateLog("NVME");
+
+        NVMe = NNvme::CreateNvmeManager(Logging, 1min);
     }
 
     void AddCtrlPathOption(TString& path)

@@ -64,6 +64,12 @@ private:
     TAutoEvent SanitizeRequested;
 
 public:
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
     auto Format(const TString& path, nvme_secure_erase_setting ses)
         -> TFuture<NProto::TError> final
     {
