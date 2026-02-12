@@ -14,6 +14,13 @@ struct TIOCompanionClient: public IIOCompanionClient
         : Owner(owner)
     {}
 
+    void UpdateReadThroughput(
+        const TInstant& now,
+        const NKikimr::NMetrics::TChannel& channel,
+        const NKikimr::NMetrics::TGroupId& group,
+        ui64 value,
+        bool isOverlayDisk) override;
+
     void UpdateWriteThroughput(
         const TInstant& now,
         const NKikimr::NMetrics::TChannel& channel,

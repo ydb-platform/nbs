@@ -57,5 +57,11 @@ void TIOCompanion::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
     }
 }
 
+void TIOCompanion::KillActors(const NActors::TActorContext& ctx)
+{
+    for (const auto& actor: Actors.GetActors()) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
+    }
+}
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1,7 +1,7 @@
 #include "part_actor.h"
 
 #include "fresh_blocks_companion_client.h"
-#include "write_blob_companion_client.h"
+#include "io_companion_client.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -403,6 +403,9 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
 
     if (FreshBlocksCompanion) {
         FreshBlocksCompanion->KillActors(ctx);
+    }
+    if (IOCompanion) {
+        IOCompanion->KillActors(ctx);
     }
 }
 
@@ -826,7 +829,21 @@ void TPartitionActor::HandleWriteBlob(
     const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    WriteBlobCompanion->HandleWriteBlob(ev, ctx);
+    IOCompanion->HandleWriteBlob(ev, ctx);
+}
+
+void TPartitionActor::HandleReadBlob(
+    const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    IOCompanion->HandleReadBlob(ev, ctx);
+}
+
+void TPartitionActor::HandlePatchBlob(
+    const TEvPartitionCommonPrivate::TEvPatchBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    IOCompanion->HandlePatchBlob(ev, ctx);
 }
 
 bool TPartitionActor::HandleRequests(STFUNC_SIG)
@@ -900,10 +917,9 @@ void TPartitionActor::CreateFreshBlocksCompanionClient()
         std::make_unique<TFreshBlocksCompanionClient>(*this);
 }
 
-void TPartitionActor::CreateWriteBlobCompanionClient()
+void TPartitionActor::CreateIOCompanionClient()
 {
-    WriteBlobCompanionClient =
-        std::make_unique<TWriteBlobCompanionClient>(*this);
+    WriteBlobCompanionClient = std::make_unique<TIOCompanionClient>(*this);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1010,14 +1026,18 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
         HFunc(TEvPartitionPrivate::TEvProcessWriteQueue, HandleProcessWriteQueue);
 
-        HFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted, HandleReadBlobCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted,
+            IOCompanion->HandleReadBlobCompleted);
         HFunc(
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
-            WriteBlobCompanion->HandleLongRunningBlobOperation);
+            IOCompanion->HandleLongRunningBlobOperation);
         HFunc(
             TEvPartitionCommonPrivate::TEvWriteBlobCompleted,
-            WriteBlobCompanion->HandleWriteBlobCompleted);
-        HFunc(TEvPartitionCommonPrivate::TEvPatchBlobCompleted, HandlePatchBlobCompleted);
+            IOCompanion->HandleWriteBlobCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvPatchBlobCompleted,
+            IOCompanion->HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);

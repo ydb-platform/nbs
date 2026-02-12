@@ -124,6 +124,8 @@ public:
 
     void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
 
+    void KillActors(const NActors::TActorContext& ctx);
+
 private:
     auto Info()
     {

@@ -1,8 +1,18 @@
-#include "write_blob_companion_client.h"
+#include "io_companion_client.h"
 
 #include "part_actor.h"
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
+
+void TIOCompanionClient::UpdateReadThroughput(
+    const TInstant& now,
+    const NKikimr::NMetrics::TChannel& channel,
+    const NKikimr::NMetrics::TGroupId& group,
+    ui64 value,
+    bool isOverlayDisk)
+{
+    Owner.UpdateReadThroughput(now, channel, group, value, isOverlayDisk);
+}
 
 void TIOCompanionClient::UpdateWriteThroughput(
     const TInstant& now,

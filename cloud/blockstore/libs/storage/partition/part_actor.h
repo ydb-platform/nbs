@@ -29,8 +29,8 @@
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/io_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
-#include <cloud/blockstore/libs/storage/partition_common/writeblob_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -177,7 +177,7 @@ private:
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
     std::unique_ptr<TIOCompanionClient> WriteBlobCompanionClient;
-    std::unique_ptr<TIOCompanion> WriteBlobCompanion;
+    std::unique_ptr<TIOCompanion> IOCompanion;
 
 public:
     TPartitionActor(
@@ -496,7 +496,7 @@ private:
 
     void CreateFreshBlocksCompanionClient();
 
-    void CreateWriteBlobCompanionClient();
+    void CreateIOCompanionClient();
 
 private:
     STFUNC(StateBoot);
