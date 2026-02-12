@@ -238,7 +238,7 @@ def __run_test(test_case):
 
         checkrange_output_file = yatest_common.output_path() + \
             "/checkrange_output.data"
-        client.checkrange(
+        client.check_range(
             test_case.volume_name,
             checkrange_output_file,
             test_case.disk_blocks_count,
@@ -295,20 +295,26 @@ def __check_expected_fields_content(
         expected_problem_ranges):
     test_mirrors = test_case.is_mirror
     for r in json_data['Ranges']:
+        if r.get('Start') is None or r.get('End') is None:
+            raise Exception(
+                "Expected 'Start' or 'End' is missing for a correct range")
         start = r['Start']
         end = r['End']
+
         has_error = r.get('Error') is not None
         if not has_error:
-            checksums = r['DiskChecksums']
-            if checksums is None or len(checksums) == 0:
+            checksums = r.get('DiskChecksums', [])
+            if len(checksums) == 0:
                 raise Exception(
                     f"Expected 'DiskChecksums' is missing for correct range "
                     f"{start}-{end}")
             continue
+
         if not test_mirrors:
             continue
-        inconsistent_checksums = r['InconsistentChecksums']
-        if inconsistent_checksums is None:
+
+        inconsistent_checksums = r.get('InconsistentChecksums', [])
+        if len(inconsistent_checksums) == 0:
             raise Exception(
                 f"Expected 'InconsistentChecksums' array for problem range "
                 f"{start}-{end}")
@@ -319,25 +325,22 @@ def __check_expected_fields_content(
         expected_problem_ranges.append((start, end))
 
         for inconsistent_checksum in inconsistent_checksums:
-            checksums = inconsistent_checksum['Data']
-            if checksums is None or len(checksums) == 0:
+            checksums = inconsistent_checksum.get('Data', [])
+            if len(checksums) == 0:
                 raise Exception(
                     f"Expected 'Data' is missing for problem range "
                     f"{start}-{end}")
 
 
 def __check_problem_ranges_merge_algorithm(json_data, expected_problem_ranges):
-    actual_problem_ranges = json_data['Summary'].get('ProblemRanges')
-    actual_problem_ranges_size = 0
-    if actual_problem_ranges is not None:
-        actual_problem_ranges_size = len(actual_problem_ranges)
-
+    actual_problem_ranges = json_data['Summary'].get('ProblemRanges', [])
     merged_expected_problem_ranges = __merge_ranges(expected_problem_ranges)
-    if len(merged_expected_problem_ranges) != actual_problem_ranges_size:
+
+    if len(merged_expected_problem_ranges) != len(actual_problem_ranges):
         raise Exception(
             f"Expected length of merged ProblemRanges"
             " {len(merged_expected_problem_ranges)}"
-            f" is not equal to actual {actual_problem_ranges_size}")
+            f" is not equal to actual {len(actual_problem_ranges)}")
     if len(merged_expected_problem_ranges) != 0:
         i = 0
         for r1, r2 in zip(merged_expected_problem_ranges,

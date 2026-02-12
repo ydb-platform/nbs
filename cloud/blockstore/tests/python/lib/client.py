@@ -120,7 +120,7 @@ class NbsClient:
             "--verbose", "error"
         ], stdout=PIPE, stderr=PIPE, text=True)
 
-    def checkrange(self, disk_id, output_file, blocks_count=0, blocks_per_request=1024):
+    def check_range(self, disk_id, output_file, blocks_count=0, blocks_per_request=1024):
         p = subprocess.run([
             self.__binary_path,
             "checkrange",
