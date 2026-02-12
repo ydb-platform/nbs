@@ -58,6 +58,23 @@ void TIndexTabletActor::HandleCreateHandle(
     }
 
     auto* msg = ev->Get();
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::CreateHandle,
+        msg->Record,
+        ctx.Now());
+
+    auto onReply = [&] (const NProto::TError& error) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
+    };
+
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
         const bool shouldStoreHandles = BehaveAsShard(msg->Record.GetHeaders())
@@ -96,7 +113,9 @@ void TIndexTabletActor::HandleCreateHandle(
                 << " HandleId=" << response->Record.GetHandle());
             session->DropDupEntry(requestId);
         } else {
-            return NCloud::Reply(ctx, *ev, std::move(response));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(MakeError(S_ALREADY));
+            return;
         }
     }
 
@@ -120,8 +139,9 @@ void TIndexTabletActor::HandleCreateHandle(
                 LogTag.c_str(),
                 FormatError(error).Quote().c_str());
 
-            auto response = std::make_unique<TResponse>(std::move(error));
+            auto response = std::make_unique<TResponse>(error);
             NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(error);
             return;
         }
     }
@@ -137,7 +157,8 @@ void TIndexTabletActor::HandleCreateHandle(
     ExecuteTx<TCreateHandle>(
         ctx,
         std::move(requestInfo),
-        std::move(msg->Record));
+        std::move(msg->Record),
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -439,6 +460,13 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->SetNodeId(RootNodeId);
         shardRequest->SetName(args.ShardNodeName);
         shardRequest->ClearShardFileSystemId();
+        const bool serialized = args.ProfileLogRequest.SerializeToString(
+            args.OpLogEntry.MutableProfileLogRequest());
+        if (!serialized) {
+            ReportBrokenProfileLogRequest(TStringBuilder()
+                << "Written OpLogEntry: "
+                << args.OpLogEntry.ShortUtf8DebugString().Quote());
+        }
 
         db.WriteOpLogEntry(args.OpLogEntry);
     }
@@ -482,6 +510,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
             ctx,
             args.RequestInfo,
             std::move(*args.OpLogEntry.MutableCreateNodeRequest()),
+            std::move(args.ProfileLogRequest),
             args.RequestId,
             args.OpLogEntry.GetEntryId(),
             std::move(args.Response));
@@ -506,6 +535,13 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

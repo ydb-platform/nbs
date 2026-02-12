@@ -1118,7 +1118,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"));
         UNIT_ASSERT_VALUES_EQUAL(6, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            2,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::CreateNode)].size());
 
         service.ListNodes(headers, 1);

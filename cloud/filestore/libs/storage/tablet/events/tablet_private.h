@@ -653,6 +653,7 @@ struct TEvIndexTabletPrivate
         const ui64 OpLogEntryId;
         const TString NodeName;
         TCreateNodeInShardResult Result;
+        NProto::TProfileLogRequestInfo ProfileLogRequest;
 
         TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
@@ -660,13 +661,15 @@ struct TEvIndexTabletPrivate
                 ui64 requestId,
                 ui64 opLogEntryId,
                 TString nodeName,
-                TCreateNodeInShardResult result)
+                TCreateNodeInShardResult result,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
             , NodeName(std::move(nodeName))
             , Result(std::move(result))
+            , ProfileLogRequest(std::move(profileLogRequest))
         {
         }
     };
