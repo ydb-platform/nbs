@@ -67,6 +67,7 @@ def parse_args(args):
     parser.add_argument("--retry-broken-disk-registry-based-disk-checkpoint", action='store_true', default=False)
     parser.add_argument("--cell-selection-policy", type=str, default="FIRST_IN_CONFIG")
     parser.add_argument("--allow-filestore-force-destroy", action='store_true', default=False)
+    parser.add_argument("--without-shadow-disks", action='store_true', default=False)
     args, _ = parser.parse_known_args(args=args)
     return args
 
@@ -137,7 +138,9 @@ def start(argv):
         compute_port=compute_port,
         kms_port=kms_port,
         destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
-        disk_agent_count=args.disk_agent_count)
+        disk_agent_count=args.disk_agent_count,
+        without_shadow_disks=args.without_shadow_disks,
+    )
     nbs.start()
     set_env("DISK_MANAGER_RECIPE_NBS_PORT", str(nbs.port))
 
@@ -160,7 +163,9 @@ def start(argv):
             ydb_client=ydb2.client,
             compute_port=compute_port,
             kms_port=kms_port,
-            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes)
+            destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
+            without_shadow_disks=args.without_shadow_disks,
+        )
         nbs2.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs2.nbs.stderr_file_name)
 
@@ -181,6 +186,7 @@ def start(argv):
             compute_port=compute_port,
             kms_port=kms_port,
             destruction_allowed_only_for_disks_with_id_prefixes=destruction_allowed_only_for_disks_with_id_prefixes,
+            without_shadow_disks=args.without_shadow_disks,
         )
         nbs3.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs3.nbs.stderr_file_name)
@@ -216,7 +222,8 @@ def start(argv):
             cell_id="zone-d",
             cells=[
                 {"cell_id": "zone-d-shard1", "hosts": [f"localhost:{nbs5_secure_port}"]},
-            ]
+            ],
+            without_shadow_disks=args.without_shadow_disks,
         )
         nbs4.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs4.nbs.stderr_file_name)
@@ -242,7 +249,8 @@ def start(argv):
             cell_id="zone-d-shard1",
             cells=[
                 {"cell_id": "zone-d", "hosts": [f"localhost:{nbs4_secure_port}"]},
-            ]
+            ],
+            without_shadow_disks=args.without_shadow_disks,
         )
         nbs5.start()
         append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nbs5.nbs.stderr_file_name)

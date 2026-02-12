@@ -31,6 +31,7 @@ RECURSE_FOR_TESTS(
     private_service_test
     with_broken_checkpoints_test
     with_broken_checkpoints_nemesis_test
+    without_shadow_disks_test
     snapshot_service_nemesis_test
     snapshot_service_test
     testcommon

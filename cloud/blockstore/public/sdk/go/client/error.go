@@ -1,6 +1,8 @@
 package client
 
 import (
+	"errors"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -116,7 +118,9 @@ func GetClientCode(err error) uint32 {
 		return S_OK
 	}
 
-	if cerr, ok := err.(*ClientError); ok {
+	cerr := &ClientError{}
+
+	if errors.As(err, &cerr) {
 		return cerr.Code
 	}
 
@@ -128,7 +132,9 @@ func GetClientError(err error) ClientError {
 		return ClientError{S_OK, ""}
 	}
 
-	if cerr, ok := err.(*ClientError); ok {
+	cerr := &ClientError{}
+
+	if errors.As(err, &cerr) {
 		return *cerr
 	}
 
