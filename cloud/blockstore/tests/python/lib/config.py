@@ -19,6 +19,10 @@ from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 from contrib.ydb.core.protos.msgbus_pb2 import TConsoleRequest
 from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig, \
     TDynamicNameserviceConfig, TLogConfig
+from contrib.ydb.tests.library.harness.kikimr_runner import \
+    get_unique_path_for_current_test, ensure_path_exists
+
+import yatest.common as yatest_common
 
 
 class NbsConfigurator:
@@ -368,3 +372,40 @@ def storage_config_with_default_limits():
     storage.HDDMaxWriteIops = iops
 
     return storage
+
+
+def process_config(config_path, devices_per_agent):
+    with open(config_path) as c:
+        config_data = c.read()
+    device_tag = "\"$DEVICE:"
+    prev_index = 0
+    new_config_data = ""
+    has_replacements = False
+    while True:
+        next_device_tag_index = config_data.find(device_tag, prev_index)
+        if next_device_tag_index == -1:
+            new_config_data += config_data[prev_index:]
+            break
+        new_config_data += config_data[prev_index:next_device_tag_index]
+        prev_index = next_device_tag_index + len(device_tag)
+        next_index = config_data.find("\"", prev_index)
+        assert next_index != -1
+        agent_id, device_id = config_data[prev_index:next_index].split("/")
+        new_config_data += "\"%s\"" % devices_per_agent[int(
+            agent_id)][int(device_id)].path
+        has_replacements = True
+
+        prev_index = next_index + 1
+
+    if has_replacements:
+        config_folder = get_unique_path_for_current_test(
+            output_path=yatest_common.output_path(),
+            sub_folder="test_configs")
+        ensure_path_exists(config_folder)
+        config_path = os.path.join(
+            config_folder,
+            os.path.basename(config_path) + ".patched")
+        with open(config_path, "w") as new_c:
+            new_c.write(new_config_data)
+
+    return config_path
