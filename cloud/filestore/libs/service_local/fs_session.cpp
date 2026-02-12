@@ -99,6 +99,16 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     auto clientSessionStatePath = StatePath / ("client_" + clientId);
     clientSessionStatePath.MkDir();
 
+    auto lockPath = clientSessionStatePath / "session.lock";
+    lockPath.Touch();
+    auto fileLock = MakeHolder<TFileLock>(lockPath.GetPath());
+    if (!fileLock->TryAcquire()) {
+        return TErrorResponse(
+            E_FAIL,
+            TStringBuilder() << "Failed to lock session state file " << lockPath
+                             << " invalid session: " << sessionId.Quote());
+    }
+
     session = std::make_shared<TSession>(
         Store.GetFileSystemId(),
         RootPath,
@@ -110,7 +120,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetNodeCleanupBatchSize(),
         Config->GetSnapshotsDirEnabled(),
         Config->GetSnapshotsDirRefreshInterval(),
-        Logging);
+        Logging,
+        std::move(fileLock));
 
     session->Init(request.GetRestoreClientSession());
     session->AddSubSession(sessionSeqNo, readOnly);
