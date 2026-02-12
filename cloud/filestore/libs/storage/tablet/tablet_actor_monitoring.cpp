@@ -750,7 +750,7 @@ void DumpSessions(
                         }
                         TABLED() { out << ss.SeqNo; }
                         TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
-                        TABLED() { out << ToString(ss.Owner); }
+                        TABLED() { out << ToString(ss.PipeInfo.Owner); }
                         TABLED() { out << session.InactivityDeadline.ToString(); }
                     }
                 };

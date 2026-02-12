@@ -845,17 +845,17 @@ void TStorageServiceActor::HandleSessionCreated(
 
     auto* session = State->FindSession(msg->SessionId);
     if (SUCCEEDED(msg->GetStatus())) {
-        // in case of vhost restart we don't know session id
-        // so inevitably will create new actor
-        auto actorId = ev->Sender;
+        auto newSessionActor = ev->Sender;
         if (session &&
             session->SessionActor &&
-            session->SessionActor != ev->Sender)
+            session->SessionActor != newSessionActor)
         {
-            ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
-            actorId = session->SessionActor;
+            // killing old session actor
+            ctx.Send(session->SessionActor, new TEvents::TEvPoisonPill());
         }
 
+        // in case of vhost restart we don't know session id
+        // so inevitably will create new actor
         if (!session) {
             LOG_INFO(ctx, TFileStoreComponents::SERVICE,
                 "%s session created (%s), state(%lu)",
@@ -885,7 +885,7 @@ void TStorageServiceActor::HandleSessionCreated(
                 msg->ReadOnly,
                 mediaKind,
                 std::move(stats),
-                actorId,
+                newSessionActor,
                 msg->TabletId);
 
             Y_ABORT_UNLESS(session);
@@ -894,7 +894,7 @@ void TStorageServiceActor::HandleSessionCreated(
                 msg->SessionState,
                 msg->FileStore);
             session->AddSubSession(msg->SessionSeqNo, msg->ReadOnly);
-            session->SessionActor = actorId;
+            session->SessionActor = newSessionActor;
         }
     } else if (session) {
         // else it's an old notify from a dead actor
