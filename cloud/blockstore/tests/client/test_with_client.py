@@ -894,3 +894,24 @@ def test_enabled_configs_dispatcher():
     ret = common.canonical_file(env.results_path, local=True)
     tear_down(env)
     return ret
+
+
+def test_createvolume_with_tags():
+    env, run = setup(with_nrd=True, nrd_device_count=2, rack='')
+
+    run("createvolume",
+        "--disk-id", "vol0",
+        "--blocks-count", str(NRD_BLOCKS_COUNT),
+        "--storage-media-kind", "nonreplicated",
+        "--tags", "tag1=value1,tag2=value2")
+
+    assert file_equal(env.results_path, 'OK\n')
+    clear_file(env.results_file)
+
+    # Check that the volume is created with tags
+    volume_info = describe_volume(env, run, 'vol0')
+    print(volume_info)
+    assert volume_info.Volume.Tags['tag1'] == "value1"
+    assert volume_info.Volume.Tags['tag2'] == "value2"
+
+    tear_down(env)
