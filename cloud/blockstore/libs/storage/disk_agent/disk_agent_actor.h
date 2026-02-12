@@ -190,12 +190,6 @@ private:
     NProto::TError UpdateControlPlaneRequestNumber(
         TControlPlaneRequestNumber controlPlaneRequestNumber);
 
-    // Separates valid paths into attached and detached categories, filtering
-    // out unknown paths.
-    // Returns: [attached paths, detached paths]
-    auto SplitPaths(google::protobuf::RepeatedPtrField<TString> paths) const
-        -> std::pair<TVector<TString>, TVector<TString>>;
-
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);

@@ -191,8 +191,7 @@ void TRegisterActor::AttachPathsIfNeeded(const TActorContext& ctx)
         attachRequest->Record.MutableControlPlaneRequestNumber();
     cpRequestNumber->SetDiskRegistryGeneration(
         ControlPlaneRequestNumber.Generation);
-    cpRequestNumber->SetRequestNumber(
-        ControlPlaneRequestNumber.RequestNumber + 1);
+    cpRequestNumber->SetRequestNumber(ControlPlaneRequestNumber.RequestNumber);
 
     attachRequest->Record.MutablePathsToAttach()->Assign(
         std::make_move_iterator(PathsToAttach.begin()),
