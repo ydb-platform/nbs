@@ -62,8 +62,11 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
         {
             auto future = Promise.GetFuture();
 
-            Reader =
-                TServiceTraits::AsyncListDevices(service, ClientContext, Request, cq);
+            Reader = TServiceTraits::AsyncListDevices(
+                service,
+                ClientContext,
+                Request,
+                cq);
             Reader->Finish(&Response, &Status, this);
 
             return future;
@@ -77,7 +80,8 @@ class TGenericGrpcDeviceProvider: public ILocalNVMeDeviceProvider
                         TServiceError(MAKE_GRPC_ERROR(Status.error_code()))
                         << Status.error_message()));
             } else {
-                Promise.SetValue(TServiceTraits::GetResult(std::move(Response)));
+                Promise.SetValue(
+                    TServiceTraits::GetResult(std::move(Response)));
             }
         }
     };

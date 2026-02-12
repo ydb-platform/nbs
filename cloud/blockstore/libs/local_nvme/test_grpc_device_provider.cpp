@@ -69,15 +69,20 @@ struct TTestGrpcDeviceProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto CreateTestGrpcDeviceProvider(
-    ILoggingServicePtr logging,
-    TString socketPath,
-    TString ownerId) -> ILocalNVMeDeviceProviderPtr
+auto CreateTestGrpcDeviceProvider(ILoggingServicePtr logging, TStringBuf uri)
+    -> ILocalNVMeDeviceProviderPtr
 {
+    uri.SkipPrefix("unix://");
+
+    TStringBuf ownerId;
+    TStringBuf socketPath;
+
+    uri.Split("@", ownerId, socketPath);
+
     return std::make_shared<TTestGrpcDeviceProvider>(
         std::move(logging),
-        std::move(socketPath),
-        std::move(ownerId));
+        ToString(socketPath),
+        ToString(ownerId));
 }
 
 }   // namespace NCloud::NBlockStore

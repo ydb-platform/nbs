@@ -23,8 +23,9 @@ Y_UNIT_TEST_SUITE(TGrpcDeviceProviderTest)
         UNIT_ASSERT_UNEQUAL("", socketPath);
 
         {
-            auto deviceProvider =
-                CreateTestGrpcDeviceProvider(logging, socketPath, "nbs");
+            auto deviceProvider = CreateTestGrpcDeviceProvider(
+                logging,
+                "unix://nbs@" + socketPath);
             deviceProvider->Start();
 
             auto future = deviceProvider->ListNVMeDevices();
@@ -34,13 +35,14 @@ Y_UNIT_TEST_SUITE(TGrpcDeviceProviderTest)
             deviceProvider->Stop();
         }
         {
-            auto deviceProvider =
-                CreateTestGrpcDeviceProvider(logging, socketPath, "ydb");
+            auto deviceProvider = CreateTestGrpcDeviceProvider(
+                logging,
+                "unix://ydb@" + socketPath);
             deviceProvider->Start();
 
             auto future = deviceProvider->ListNVMeDevices();
             const auto& devices = future.GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
 
             deviceProvider->Stop();
         }

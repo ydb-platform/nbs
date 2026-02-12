@@ -10,9 +10,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto CreateTestGrpcDeviceProvider(
-    ILoggingServicePtr logging,
-    TString socketPath,
-    TString ownerId) -> ILocalNVMeDeviceProviderPtr;
+auto CreateTestGrpcDeviceProvider(ILoggingServicePtr logging, TStringBuf uri)
+    -> ILocalNVMeDeviceProviderPtr;
 
 }   // namespace NCloud::NBlockStore
