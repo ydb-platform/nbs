@@ -10,6 +10,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/storage/testlib
+    cloud/blockstore/libs/storage/partition/testlib
 )
 
 YQL_LAST_ABI_VERSION()
