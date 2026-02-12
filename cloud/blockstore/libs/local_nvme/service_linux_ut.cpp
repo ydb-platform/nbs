@@ -414,13 +414,13 @@ struct TFixture: public TFixtureBase
 
 struct TFixtureInfra: public TFixtureBase
 {
-    std::shared_ptr<TTestGrpcDeviceProvider> DeviceProvider;
+    std::shared_ptr<ILocalNVMeDeviceProvider> DeviceProvider;
 
     void SetUp(NUnitTest::TTestContext& testContext) override
     {
         TFixtureBase::SetUp(testContext);
 
-        DeviceProvider = std::make_shared<TTestGrpcDeviceProvider>(
+        DeviceProvider = CreateTestGrpcDeviceProvider(
             Logging,
             GetEnv("INFRA_DEVICE_PROVIDER_SOCKET"));
         DeviceProvider->Start();

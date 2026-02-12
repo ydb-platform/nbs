@@ -1,8 +1,10 @@
+#include "device_provider.h"
 #include "test_grpc_device_provider.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/threading/future/future.h>
 
 #include <util/system/env.h>
 
@@ -20,14 +22,14 @@ Y_UNIT_TEST_SUITE(TGrpcDeviceProviderTest)
         const TString socketPath = GetEnv("INFRA_DEVICE_PROVIDER_SOCKET");
         UNIT_ASSERT_UNEQUAL("", socketPath);
 
-        TTestGrpcDeviceProvider provider{logging, socketPath};
-        provider.Start();
+        auto deviceProvider = CreateTestGrpcDeviceProvider(logging, socketPath);
+        deviceProvider->Start();
 
-        auto future = provider.ListNVMeDevices();
+        auto future = deviceProvider->ListNVMeDevices();
         const auto& devices = future.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(4, devices.size());
 
-        provider.Stop();
+        deviceProvider->Stop();
     }
 }
 
