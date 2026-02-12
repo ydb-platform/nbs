@@ -161,6 +161,22 @@ void TMirrorPartitionActor::HandleGetDiskRegistryBasedPartCounters(
         std::move(statActorIds));
 }
 
+void TMirrorPartitionActor::RejectGetDiskRegistryBasedPartCounters(
+    const TEvNonreplPartitionPrivate::
+        TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(E_REJECTED),
+            SelfId(),
+            DiskId,
+            TPartNonreplCountersData{}));
+}
+
 void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
     const TEvNonreplPartitionPrivate::TEvDiskRegistryBasedPartCountersCombined::
         TPtr& ev,
@@ -202,6 +218,22 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
             ExtractPartCounters(ctx)));
 
     StatisticRequestInfo.Reset();
+}
+
+void TMirrorPartitionActor::RejectDiskRegistryBasedPartCountersCombined(
+    const TEvNonreplPartitionPrivate::TEvDiskRegistryBasedPartCountersCombined::
+        TPtr& ev,
+    const TActorContext& ctx)
+{
+     NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(E_REJECTED),
+            SelfId(),
+            DiskId,
+            ExtractPartCounters(ctx)));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

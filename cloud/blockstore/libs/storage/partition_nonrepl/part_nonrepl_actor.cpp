@@ -797,8 +797,10 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
 
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvGetDiskRegistryBasedPartCountersRequest);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            RejectGetDiskRegistryBasedPartCounters);
 
         default:
             if (!HandleRequests(ev)) {

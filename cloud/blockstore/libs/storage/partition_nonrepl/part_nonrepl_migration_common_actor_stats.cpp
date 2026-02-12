@@ -156,6 +156,23 @@ void TNonreplicatedPartitionMigrationCommonActor::
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::
+    RejectGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(E_REJECTED),
+            SelfId(),
+            DiskId,
+            ExtractPartCounters()));
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::
     HandleDiskRegistryBasedPartCountersCombined(
         const TEvNonreplPartitionPrivate::
             TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
@@ -197,6 +214,23 @@ void TNonreplicatedPartitionMigrationCommonActor::
             ExtractPartCounters()));
 
     StatisticRequestInfo.Reset();
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::
+    RejectDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
+        const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(E_REJECTED),
+            SelfId(),
+            DiskId,
+            ExtractPartCounters()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -376,10 +376,14 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvMigrationStateUpdated);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvGetDiskRegistryBasedPartCountersRequest);
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvDiskRegistryBasedPartCountersCombined);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            RejectGetDiskRegistryBasedPartCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            RejectDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse);
 
