@@ -206,6 +206,11 @@ private:
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void RejectGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlocks, TEvService);

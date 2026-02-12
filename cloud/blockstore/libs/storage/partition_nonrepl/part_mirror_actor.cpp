@@ -941,10 +941,14 @@ STFUNC(TMirrorPartitionActor::StateZombie)
 
         IgnoreFunc(TEvPartition::TEvReleaseRange);
 
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvGetDiskRegistryBasedPartCountersRequest);
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvDiskRegistryBasedPartCountersCombined);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            RejectGetDiskRegistryBasedPartCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            RejectDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
