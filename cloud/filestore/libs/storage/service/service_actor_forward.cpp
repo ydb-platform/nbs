@@ -339,22 +339,4 @@ TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
     const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev,
     ui64 entityId);
 
-template void
-TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeXAttrMethod>(
-    const TActorContext& ctx,
-    const TEvService::TGetNodeXAttrMethod::TRequest::TPtr& ev,
-    ui64 entityId);
-
-template void
-TStorageServiceActor::ForwardRequestToShard<TEvService::TSetNodeXAttrMethod>(
-    const TActorContext& ctx,
-    const TEvService::TSetNodeXAttrMethod::TRequest::TPtr& ev,
-    ui64 entityId);
-
-template void
-TStorageServiceActor::ForwardRequestToShard<TEvService::TListNodeXAttrMethod>(
-    const TActorContext& ctx,
-    const TEvService::TListNodeXAttrMethod::TRequest::TPtr& ev,
-    ui64 entityId);
-
 }   // namespace NCloud::NFileStore::NStorage
