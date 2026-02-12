@@ -668,6 +668,7 @@ void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext&
         SelfId().ToString().c_str());
 
     for (auto [_, endpoint]: AgentId2EndpointFuture) {
+        // capture endpoint, so it won't get destroyed with the actor
         endpoint.Subscribe([endpoint](auto...) {
             if (endpoint.HasValue()) {
                 endpoint.GetValue()->Stop();
