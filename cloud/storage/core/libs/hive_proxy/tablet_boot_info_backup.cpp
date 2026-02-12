@@ -221,7 +221,9 @@ void TTabletBootInfoBackup::HandleReadTabletBootInfoBackup(
 
     std::optional<NHiveProxy::NProto::TTabletBootInfo> tabletBootInfo;
     {
-        const auto& backupProto = InitialBackupProto.value_or(BackupProto);
+        // Not using "value_or()" because it copies the value.
+        const auto& backupProto =
+            InitialBackupProto ? *InitialBackupProto : BackupProto;
         const auto it = backupProto.GetData().find(msg->TabletId);
         if (it != backupProto.GetData().end()) {
             tabletBootInfo = it->second;
@@ -297,7 +299,9 @@ void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
     const TActorContext& ctx)
 {
     TVector<TTabletBootInfo> tabletBootInfos;
-    const auto& backupProto = InitialBackupProto.value_or(BackupProto);
+    // Not using "value_or()" because it copies the value.
+    const auto& backupProto =
+        InitialBackupProto ? *InitialBackupProto : BackupProto;
     for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
         tabletBootInfos.emplace_back(
             tabletBootInfo.GetStorageInfo(),

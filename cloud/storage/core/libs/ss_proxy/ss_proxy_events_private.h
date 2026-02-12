@@ -28,7 +28,7 @@ struct TEvSSProxyPrivate
 
     struct TReadPathDescriptionBackupRequest
     {
-        const TString Path;
+        TString Path;
 
         explicit TReadPathDescriptionBackupRequest(TString path)
             : Path(std::move(path))
@@ -57,7 +57,7 @@ struct TEvSSProxyPrivate
     struct TUpdatePathDescriptionBackupRequest
     {
         const TString Path;
-        const NKikimrSchemeOp::TPathDescription PathDescription;
+        NKikimrSchemeOp::TPathDescription PathDescription;
 
         TUpdatePathDescriptionBackupRequest(
                 TString path,
