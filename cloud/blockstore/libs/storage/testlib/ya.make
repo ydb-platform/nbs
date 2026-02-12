@@ -6,6 +6,7 @@ SRCS(
     disk_agent_mock.cpp
     disk_registry_proxy_mock.cpp
     local_nvme_mock.cpp
+    part_client.cpp
     root_kms_key_provider_mock.cpp
     service_client.cpp
     ss_proxy_client.cpp

@@ -1,6 +1,5 @@
 #include "part_client.h"
 
-
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "contrib/ydb/library/actors/interconnect/types.h"
-
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -13,6 +11,7 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/mon.h>
+#include <contrib/ydb/library/actors/interconnect/types.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
