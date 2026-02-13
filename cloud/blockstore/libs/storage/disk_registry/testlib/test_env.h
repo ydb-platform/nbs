@@ -1151,6 +1151,12 @@ public:
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
     }
 
+    auto CreateQueryAgentsInfoRequest(const TVector<NProto::EAgentState>& filterState = {}) {
+        auto request =  std::make_unique<TEvService::TEvQueryAgentsInfoRequest>();
+        request->Record.MutableFilterState()->Add(filterState.begin(), filterState.end());
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
