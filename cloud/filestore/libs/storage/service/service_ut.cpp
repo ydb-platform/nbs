@@ -3578,7 +3578,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.MutableDestroyFilestoreDenyList()->Add("test");
-        config.SetGetNodeAttrBatchEnabled(true);
         TTestEnv env({}, config);
         env.CreateSubDomain("nfs");
 
