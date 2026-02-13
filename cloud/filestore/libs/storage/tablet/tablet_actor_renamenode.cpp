@@ -137,7 +137,8 @@ void TIndexTabletActor::HandleRenameNode(
         profileLogRequest,
         EFileStoreRequest::RenameNode,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
 
     auto onReply = [&] (const NProto::TError& error) {
         FinalizeProfileLogRequestInfo(

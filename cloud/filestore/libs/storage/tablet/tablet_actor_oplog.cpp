@@ -112,7 +112,8 @@ void TIndexTabletActor::ReplayOpLog(
                 profileLogRequest,
                 EFileStoreRequest::RenameNode,
                 request.GetOriginalRequest(),
-                ctx.Now());
+                ctx.Now(),
+                false /* behaveAsShard */);
 
             RegisterRenameNodeInDestinationActor(
                 ctx,

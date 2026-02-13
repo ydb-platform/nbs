@@ -31,7 +31,8 @@ void TIndexTabletActor::HandleWriteData(
         profileLogRequest,
         EFileStoreRequest::WriteData,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
 
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(

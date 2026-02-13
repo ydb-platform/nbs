@@ -4,12 +4,12 @@
 
 #include "tablet_tx.h"
 
-#include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/tablet_counters.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
+#include <cloud/filestore/libs/storage/tablet/model/request_metrics.h>
 
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 
@@ -61,6 +61,59 @@ struct TIndexTabletCounters
 
 using TTabletCountersPtr = std::unique_ptr<NKikimr::TTabletCountersWithTxTypes>;
 TTabletCountersPtr CreateIndexTabletCounters();
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_TABLET_METRICS_REQUESTS_INTERNAL(xxx, ...)                   \
+    xxx(ReadBlob,                                       __VA_ARGS__)           \
+    xxx(WriteBlob,                                      __VA_ARGS__)           \
+    xxx(PatchBlob,                                      __VA_ARGS__)           \
+// FILESTORE_TABLET_METRICS_REQUESTS_INTERNAL
+
+#define FILESTORE_TABLET_METRICS_REQUESTS_PRIVATE(xxx, ...)                    \
+    xxx(DescribeData,                                   __VA_ARGS__)           \
+    xxx(GenerateBlobIds,                                __VA_ARGS__)           \
+    xxx(AddData,                                        __VA_ARGS__)           \
+    xxx(GetStorageStats,                                __VA_ARGS__)           \
+    xxx(GetNodeAttrBatch,                               __VA_ARGS__)           \
+    xxx(RenameNodeInDestination,                        __VA_ARGS__)           \
+    xxx(PrepareUnlinkDirectoryNodeInShard,              __VA_ARGS__)           \
+    xxx(AbortUnlinkDirectoryNodeInShard,                __VA_ARGS__)           \
+// FILESTORE_TABLET_METRICS_REQUESTS_PRIVATE
+
+#define FILESTORE_TABLET_METRICS_REQUESTS_PUBLIC(xxx, ...)                     \
+    xxx(ReadData,                                       __VA_ARGS__)           \
+    xxx(WriteData,                                      __VA_ARGS__)           \
+    xxx(ListNodes,                                      __VA_ARGS__)           \
+    xxx(GetNodeAttr,                                    __VA_ARGS__)           \
+    xxx(GetNodeAttrInShard,                             __VA_ARGS__)           \
+    xxx(CreateHandle,                                   __VA_ARGS__)           \
+    xxx(CreateHandleInShard,                            __VA_ARGS__)           \
+    xxx(DestroyHandle,                                  __VA_ARGS__)           \
+    xxx(CreateNode,                                     __VA_ARGS__)           \
+    xxx(CreateNodeInShard,                              __VA_ARGS__)           \
+    xxx(RenameNode,                                     __VA_ARGS__)           \
+    xxx(UnlinkNode,                                     __VA_ARGS__)           \
+    xxx(UnlinkNodeInShard,                              __VA_ARGS__)           \
+    xxx(StatFileStore,                                  __VA_ARGS__)           \
+    xxx(GetNodeXAttr,                                   __VA_ARGS__)           \
+// FILESTORE_TABLET_METRICS_REQUESTS_PUBLIC
+
+#define FILESTORE_TABLET_METRICS_REQUESTS_BACKGROUND(xxx, ...)                 \
+    xxx(Compaction,                                     __VA_ARGS__)           \
+    xxx(Cleanup,                                        __VA_ARGS__)           \
+    xxx(Flush,                                          __VA_ARGS__)           \
+    xxx(FlushBytes,                                     __VA_ARGS__)           \
+    xxx(TrimBytes,                                      __VA_ARGS__)           \
+    xxx(CollectGarbage,                                 __VA_ARGS__)           \
+// FILESTORE_TABLET_METRICS_REQUESTS_BACKGROUND
+
+#define FILESTORE_TABLET_METRICS_REQUESTS(xxx, ...)                            \
+    FILESTORE_TABLET_METRICS_REQUESTS_INTERNAL(xxx,     __VA_ARGS)             \
+    FILESTORE_TABLET_METRICS_REQUESTS_PRIVATE(xxx,      __VA_ARGS)             \
+    FILESTORE_TABLET_METRICS_REQUESTS_PUBLIC(xxx,       __VA_ARGS)             \
+    FILESTORE_TABLET_METRICS_REQUESTS_BACKGROUND(xxx,   __VA_ARGS)             \
+// FILESTORE_TABLET_METRICS_REQUESTS_BACKGROUND
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -184,149 +237,27 @@ struct TTabletMetrics
     std::atomic<i64> OrphanNodesCount{0};
 
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
-    using TLatHistogram =
-        NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
     TLatHistogram ReadDataPostponed;
     TLatHistogram WriteDataPostponed;
 
-    struct TRequestMetrics
-    {
-        std::atomic<i64> Count = 0;
-        std::atomic<i64> RequestBytes = 0;
-        std::atomic<i64> TimeSumUs = 0;
-        TLatHistogram Time;
+#define FILESTORE_TABLET_METRICS_REQUEST(name, ...)                            \
+    TTabletRequestMetrics name;                                                \
+// FILESTORE_TABLET_METRICS_REQUEST
 
-        ui64 PrevCount = 0;
-        ui64 PrevRequestBytes = 0;
-        ui64 PrevTimeSumUs = 0;
-        TInstant PrevTs;
+    FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_METRICS_REQUEST)
 
-        void Update(ui64 requestCount, ui64 requestBytes, TDuration d)
-        {
-            Count.fetch_add(requestCount, std::memory_order_relaxed);
-            RequestBytes.fetch_add(requestBytes, std::memory_order_relaxed);
-            TimeSumUs.fetch_add(
-                d.MicroSeconds(),
-                std::memory_order_relaxed);
-            Time.Record(d);
-        }
+#undef FILESTORE_TABLET_METRICS_REQUEST
 
-        void UpdatePrev(TInstant now)
-        {
-            PrevCount = Count.load(std::memory_order_relaxed);
-            PrevRequestBytes = RequestBytes.load(std::memory_order_relaxed);
-            PrevTimeSumUs = TimeSumUs.load(std::memory_order_relaxed);
-            PrevTs = now;
-        }
-
-        double RPS(TInstant now) const
-        {
-            return Rate(now, Count, PrevCount);
-        }
-
-        double Throughput(TInstant now) const
-        {
-            return Rate(now, RequestBytes, PrevRequestBytes);
-        }
-
-        double AverageSecondsPerSecond(TInstant now) const
-        {
-            return Rate(now, TimeSumUs, PrevTimeSumUs) * 1e-6;
-        }
-
-        ui64 AverageRequestSize() const
-        {
-            const auto requestCount =
-                Count.load(std::memory_order_relaxed) - PrevCount;
-            if (!requestCount) {
-                return 0;
-            }
-
-            const auto requestBytes =
-                RequestBytes.load(std::memory_order_relaxed)
-                - PrevRequestBytes;
-            return requestBytes / requestCount;
-        }
-
-        TDuration AverageLatency() const
-        {
-            const auto requestCount =
-                Count.load(std::memory_order_relaxed) - PrevCount;
-            if (!requestCount) {
-                return TDuration::Zero();
-            }
-
-            const auto timeSumUs =
-                TimeSumUs.load(std::memory_order_relaxed) - PrevTimeSumUs;
-            return TDuration::MicroSeconds(timeSumUs / requestCount);
-        }
-
-    private:
-        double Rate(
-            TInstant now,
-            const std::atomic<i64>& counter,
-            ui64 prevCounter) const
-        {
-            if (!PrevTs) {
-                return 0;
-            }
-
-            auto micros = (now - PrevTs).MicroSeconds();
-            if (!micros) {
-                return 0;
-            }
-
-            auto cur = counter.load(std::memory_order_relaxed);
-            return (cur - prevCounter) * 1'000'000. / micros;
-        }
-    };
-
-    struct TCompactionMetrics: TRequestMetrics
+    struct TExtraCompactionMetrics
     {
         std::atomic<i64> DudCount{0};
-    };
+    } CompactionExtra;
 
-    struct TListNodesMetrics: TRequestMetrics
+    struct TExtraListNodesMetrics
     {
         std::atomic<i64> RequestedBytesPrecharge{0};
         std::atomic<i64> PrepareAttempts{0};
-    };
-
-    // internal requests
-    TRequestMetrics ReadBlob;
-    TRequestMetrics WriteBlob;
-    TRequestMetrics PatchBlob;
-
-    // private requests
-    TRequestMetrics DescribeData;
-    TRequestMetrics GenerateBlobIds;
-    TRequestMetrics AddData;
-    TRequestMetrics GetStorageStats;
-    TRequestMetrics GetNodeAttrBatch;
-    TRequestMetrics RenameNodeInDestination;
-    TRequestMetrics PrepareUnlinkDirectoryNodeInShard;
-    TRequestMetrics AbortUnlinkDirectoryNodeInShard;
-
-    // public requests
-    TRequestMetrics ReadData;
-    TRequestMetrics WriteData;
-    TListNodesMetrics ListNodes;
-    TRequestMetrics GetNodeAttr;
-    TRequestMetrics CreateHandle;
-    TRequestMetrics DestroyHandle;
-    TRequestMetrics CreateNode;
-    TRequestMetrics RenameNode;
-    TRequestMetrics UnlinkNode;
-    TRequestMetrics StatFileStore;
-    TRequestMetrics GetNodeXAttr;
-
-    // background requests
-    TCompactionMetrics Compaction;
-    TRequestMetrics Cleanup;
-    TRequestMetrics Flush;
-    TRequestMetrics FlushBytes;
-    TRequestMetrics TrimBytes;
-    TRequestMetrics CollectGarbage;
+    } ListNodesExtra;
 
     i64 LastNetworkMetric = 0;
 

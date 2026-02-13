@@ -130,6 +130,15 @@ void TTabletMetrics::Register(
         metrType)                                                              \
 // REGISTER_AGGREGATABLE_SUM
 
+#define REGISTER_AGGREGATABLE_SUM_EXT(name, metrName, metrType)                \
+    RegisterSensor(                                                            \
+        *AggregatableFsRegistry,                                               \
+        metrName,                                                              \
+        name,                                                                  \
+        EAggregationType::AT_SUM,                                              \
+        metrType)                                                              \
+// REGISTER_AGGREGATABLE_SUM_EXT
+
 #define REGISTER_LOCAL(name, metrType)                                         \
     REGISTER(                                                                  \
         FsRegistry,                                                            \
@@ -304,7 +313,7 @@ void TTabletMetrics::Register(
         CompressedBytesWritten,
         EMetricType::MT_DERIVATIVE);
 
-#define REGISTER_REQUEST(name)                                                 \
+#define FILESTORE_TABLET_METRICS_REGISTER_REQUEST(name, ...)                   \
     REGISTER_AGGREGATABLE_SUM(                                                 \
         name.Count,                                                            \
         EMetricType::MT_DERIVATIVE);                                           \
@@ -320,48 +329,25 @@ void TTabletMetrics::Register(
     name.Time.Register(                                                        \
         AggregatableFsRegistry,                                                \
         {CreateLabel("request", #name), CreateLabel("histogram", "Time")});    \
-// REGISTER_REQUEST
+// FILESTORE_TABLET_METRICS_REGISTER_REQUEST
 
-    REGISTER_REQUEST(ReadBlob);
-    REGISTER_REQUEST(WriteBlob);
-    REGISTER_REQUEST(PatchBlob);
+    FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_METRICS_REGISTER_REQUEST)
 
-    REGISTER_REQUEST(DescribeData);
-    REGISTER_REQUEST(GenerateBlobIds);
-    REGISTER_REQUEST(AddData);
-    REGISTER_REQUEST(GetStorageStats);
-    REGISTER_REQUEST(GetNodeAttrBatch);
-    REGISTER_REQUEST(RenameNodeInDestination);
-    REGISTER_REQUEST(PrepareUnlinkDirectoryNodeInShard);
-    REGISTER_REQUEST(AbortUnlinkDirectoryNodeInShard);
+#undef FILESTORE_TABLET_METRICS_REGISTER_REQUEST
 
-    REGISTER_REQUEST(ReadData);
-    REGISTER_REQUEST(WriteData);
-
-    REGISTER_REQUEST(ListNodes);
-    REGISTER_AGGREGATABLE_SUM(
-        ListNodes.RequestedBytesPrecharge,
+    REGISTER_AGGREGATABLE_SUM_EXT(
+        ListNodesExtra.RequestedBytesPrecharge,
+        "ListNodes.RequestedBytesPrecharge",
         EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        ListNodes.PrepareAttempts,
+    REGISTER_AGGREGATABLE_SUM_EXT(
+        ListNodesExtra.PrepareAttempts,
+        "ListNodes.PrepareAttempts",
         EMetricType::MT_DERIVATIVE);
 
-    REGISTER_REQUEST(GetNodeAttr);
-    REGISTER_REQUEST(CreateHandle);
-    REGISTER_REQUEST(DestroyHandle);
-    REGISTER_REQUEST(CreateNode);
-    REGISTER_REQUEST(RenameNode);
-    REGISTER_REQUEST(UnlinkNode);
-    REGISTER_REQUEST(StatFileStore);
-    REGISTER_REQUEST(GetNodeXAttr);
-
-    REGISTER_REQUEST(Compaction);
-    REGISTER_AGGREGATABLE_SUM(Compaction.DudCount, EMetricType::MT_DERIVATIVE);
-    REGISTER_REQUEST(Cleanup);
-    REGISTER_REQUEST(Flush);
-    REGISTER_REQUEST(FlushBytes);
-    REGISTER_REQUEST(TrimBytes);
-    REGISTER_REQUEST(CollectGarbage);
+    REGISTER_AGGREGATABLE_SUM_EXT(
+        CompactionExtra.DudCount,
+        "Compaction.DudCount",
+        EMetricType::MT_DERIVATIVE);
 
     REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
@@ -380,7 +366,6 @@ void TTabletMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(CPUUsageMicros, EMetricType::MT_DERIVATIVE);
 
-#undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER
@@ -402,7 +387,7 @@ void TTabletMetrics::UpdatePerformanceMetrics(
     bool suffer = false;
     auto calcSufferAndLoad = [&] (
         const TRequestPerformanceProfile& rpp,
-        const TRequestMetrics& rm)
+        const TTabletRequestMetrics& rm)
     {
         if (!rpp.RPS) {
             return;

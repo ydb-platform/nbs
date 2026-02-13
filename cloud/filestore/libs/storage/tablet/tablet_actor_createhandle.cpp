@@ -59,12 +59,15 @@ void TIndexTabletActor::HandleCreateHandle(
 
     auto* msg = ev->Get();
 
+    const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
+
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreRequest::CreateHandle,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        behaveAsShard);
 
     auto onReply = [&] (const NProto::TError& error) {
         FinalizeProfileLogRequestInfo(
@@ -77,7 +80,7 @@ void TIndexTabletActor::HandleCreateHandle(
 
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
-        const bool shouldStoreHandles = BehaveAsShard(msg->Record.GetHeaders())
+        const bool shouldStoreHandles = behaveAsShard
             || GetFileSystem().GetShardFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
@@ -527,7 +530,9 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
     }
-    Metrics.CreateHandle.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
+    auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
+        ? Metrics.CreateHandleInShard : Metrics.CreateHandle;
+    requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     CompleteResponse<TEvService::TCreateHandleMethod>(
         response->Record,

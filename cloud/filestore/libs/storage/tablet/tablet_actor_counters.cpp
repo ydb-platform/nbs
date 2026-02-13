@@ -440,36 +440,13 @@ void TIndexTabletActor::UpdateMetrics(
     Metrics.BusyIdleCalc.OnUpdateStats();
     Metrics.UpdatePerformanceMetrics(now, diagConfig, fileSystem);
 
-    Metrics.ReadBlob.UpdatePrev(now);
-    Metrics.WriteBlob.UpdatePrev(now);
-    Metrics.PatchBlob.UpdatePrev(now);
+#define FILESTORE_TABLET_UPDATE_REQUEST_METRICS(name, ...)                     \
+    Metrics.name.UpdatePrev(now);                                              \
+// FILESTORE_TABLET_METRICS_REQUEST
 
-    Metrics.DescribeData.UpdatePrev(now);
-    Metrics.GenerateBlobIds.UpdatePrev(now);
-    Metrics.AddData.UpdatePrev(now);
-    Metrics.GetStorageStats.UpdatePrev(now);
-    Metrics.GetNodeAttrBatch.UpdatePrev(now);
-    Metrics.RenameNodeInDestination.UpdatePrev(now);
-    Metrics.PrepareUnlinkDirectoryNodeInShard.UpdatePrev(now);
-    Metrics.AbortUnlinkDirectoryNodeInShard.UpdatePrev(now);
+    FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_UPDATE_REQUEST_METRICS)
 
-    Metrics.ReadData.UpdatePrev(now);
-    Metrics.WriteData.UpdatePrev(now);
-    Metrics.ListNodes.UpdatePrev(now);
-    Metrics.GetNodeAttr.UpdatePrev(now);
-    Metrics.CreateHandle.UpdatePrev(now);
-    Metrics.DestroyHandle.UpdatePrev(now);
-    Metrics.CreateNode.UpdatePrev(now);
-    Metrics.RenameNode.UpdatePrev(now);
-    Metrics.UnlinkNode.UpdatePrev(now);
-    Metrics.StatFileStore.UpdatePrev(now);
-    Metrics.GetNodeXAttr.UpdatePrev(now);
-
-    Metrics.Cleanup.UpdatePrev(now);
-    Metrics.Flush.UpdatePrev(now);
-    Metrics.FlushBytes.UpdatePrev(now);
-    Metrics.TrimBytes.UpdatePrev(now);
-    Metrics.CollectGarbage.UpdatePrev(now);
+#undef FILESTORE_TABLET_UPDATE_REQUEST_METRICS
 }
 
 ////////////////////////////////////////////////////////////////////////////////

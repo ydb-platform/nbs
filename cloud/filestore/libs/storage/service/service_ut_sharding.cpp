@@ -5118,6 +5118,43 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsConfig.FsId, nodeId1, handle1);
         service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
         service.DestroyHandle(headers, fsConfig.FsId, nodeId3, handle3);
+
+        service.GetNodeAttr(headers, fsConfig.FsId, dir1_1Id, "file1");
+        service.UnlinkNode(headers, dir1_1Id, "file1", false);
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+        auto counters = env.GetRuntime().GetAppData().Counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "storage")
+            ->FindSubgroup("type", "hdd");
+        // counters->OutputPlainText(Cerr);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("CreateHandle.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("CreateHandleInShard.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("CreateNode.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            counters->GetCounter("CreateNodeInShard.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("GetNodeAttr.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("GetNodeAttrInShard.Count")->GetAtomic());
+
+        // TODO(#2674) - fix, UnlinkNode.Count and UnlinkNodeInShard.Count
+        // should be both equal to 1
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("UnlinkNode.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            counters->GetCounter("UnlinkNodeInShard.Count")->GetAtomic());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(

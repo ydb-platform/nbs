@@ -488,21 +488,24 @@ void TIndexTabletActor::HandleCreateNode(
 {
     auto* msg = ev->Get();
 
+    const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
+
     auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
         ev,
         ctx,
         ValidateRequest,
-        !BehaveAsShard(msg->Record.GetHeaders()) /* validateSession */);
+        !behaveAsShard /* validateSession */);
 
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreRequest::CreateNode,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        behaveAsShard);
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
-    if (!BehaveAsShard(msg->Record.GetHeaders())) {
+    if (!behaveAsShard) {
         if (!session) {
             return;
         }
@@ -940,7 +943,9 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         args.RequestInfo->CallContext,
         ctx);
 
-    Metrics.CreateNode.Update(
+    auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
+        ? Metrics.CreateNodeInShard : Metrics.CreateNode;
+    requestMetrics.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
@@ -990,7 +995,9 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
-            Metrics.CreateNode.Update(
+            auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
+                ? Metrics.CreateNodeInShard : Metrics.CreateNode;
+            requestMetrics.Update(
                 1,
                 0,
                 ctx.Now() - msg->RequestInfo->StartedTs);
@@ -1019,7 +1026,9 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
-            Metrics.CreateHandle.Update(
+            auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
+                ? Metrics.CreateHandleInShard : Metrics.CreateHandle;
+            requestMetrics.Update(
                 1,
                 0,
                 ctx.Now() - msg->RequestInfo->StartedTs);
