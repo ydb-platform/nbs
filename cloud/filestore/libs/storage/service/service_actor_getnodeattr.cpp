@@ -119,6 +119,7 @@ void TGetNodeAttrActor::GetNodeAttrInShard(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
     request->Record = GetNodeAttrRequest;
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     request->Record.SetFileSystemId(
         LeaderResponse.GetNode().GetShardFileSystemId());
     request->Record.SetNodeId(RootNodeId);
