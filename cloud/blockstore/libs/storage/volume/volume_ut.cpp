@@ -3,7 +3,9 @@
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/fresh_blocks_writer/fresh_blocks_writer_actor.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
+#include <cloud/blockstore/libs/storage/partition/part_actor.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
@@ -10849,6 +10851,79 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinishedRdma)
     {
         DoShouldReceiveDeviceOperationStartedAndFinished(true);
+    }
+
+    Y_UNIT_TEST(ShouldKillWrappersOnPartitionDeath)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshBlocksWriterEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        NActors::TActorId freshBlocksWriterActorId;
+
+        NActors::TActorId partActorId;
+
+        runtime->SetRegistrationObserverFunc(
+            [&](TTestActorRuntimeBase& runtime,
+                const TActorId& parentId,
+                const TActorId& actorId)
+            {
+                Y_UNUSED(parentId);
+                auto* actor = runtime.FindActor(actorId);
+                if (dynamic_cast<NFreshBlocksWriter::TFreshBlocksWriterActor*>(
+                        actor))
+                {
+                    freshBlocksWriterActorId = actorId;
+                } else if (dynamic_cast<TPartitionActor*>(actor)) {
+                    partActorId = actorId;
+                }
+            });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        const auto partitionTabletId = NKikimr::MakeTabletID(0, HiveId, 2);
+
+        auto actorId = runtime->AllocateEdgeActor(0);
+        // DescribeBlocks should start partitions and return OK
+        volume.SendDescribeBlocksRequest(
+            TBlockRange64::WithLength(0, 1024),
+            TString());
+        auto describeBlockResponse = volume.RecvDescribeBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, describeBlockResponse->GetStatus());
+
+        UNIT_ASSERT(freshBlocksWriterActorId);
+
+        THashSet<TActorId> deadActors;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvents::TEvPoisonTaken::EventType) {
+                    deadActors.emplace(event->Sender);
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto firstFreshBlocksWriterActorId = freshBlocksWriterActorId;
+
+        runtime->SendToPipe(
+            partitionTabletId,
+            actorId,
+            new TEvents::TEvPoisonPill(),
+            0,
+            GetPipeConfigWithRetries());
+
+        Cerr << "SendToPipe: " << actorId << Endl;
+
+        TAutoPtr<IEventHandle> handle;
+        runtime->GrabEdgeEvent<TEvents::TEvPoisonTaken>(
+            handle,
+            TDuration::Seconds(1));
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(deadActors.contains(firstFreshBlocksWriterActorId));
     }
 }
 
