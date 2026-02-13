@@ -179,6 +179,8 @@ private:
     bool IsTabletAcquired = false;
     bool VolumeSessionRestartRequired = false;
     bool IsVolumeRestarting = false;
+    bool GentlePreemptionInProgress = false;
+    bool UseGentlePreemption = false;
 
 public:
     TMountRequestActor(
@@ -280,6 +282,8 @@ TMountRequestActor::TMountRequestActor(
     //} else if (Params.BindingType == TVolumeInfo::LOCAL) {
     //    MountMode = NProto::VOLUME_MOUNT_LOCAL;
     }
+    UseGentlePreemption = Config->GetGentleBalancerPreemptionEnabled() &&
+                          Params.PreemptionSource == NProto::SOURCE_BALANCER;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -694,7 +698,17 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         const bool mayStopVolume = Params.IsLocalMounter || VolumeStarted;
 
         if (mayStopVolume && MountMode == NProto::VOLUME_MOUNT_REMOTE) {
-            RequestVolumeStop(ctx);
+            if (UseGentlePreemption) {
+                LOG_INFO(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "%s Unlocking volume instead of requesting stop",
+                    LogTitle.GetWithTime().c_str());
+                GentlePreemptionInProgress = true;
+                UnlockVolume(ctx);
+            } else {
+                RequestVolumeStop(ctx);
+            }
             return;
         }
     } else if (VolumeStarted || error.GetCode() == E_BS_MOUNT_CONFLICT) {
@@ -765,9 +779,16 @@ void TMountRequestActor::HandleUnlockTabletResponse(
         "%s Tablet lock has been released",
         LogTitle.GetWithTime().c_str());
 
-    IsTabletAcquired = true;
+    if (GentlePreemptionInProgress) {
+        IsTabletAcquired = false;
+        VolumeSessionRestartRequired = true;
+        WaitForVolume(ctx, Config->GetLocalStartAddClientTimeout());
+    } else {
+        IsTabletAcquired = true;
 
-    AddClient(ctx, Config->GetLocalStartAddClientTimeout());
+        AddClient(ctx, Config->GetLocalStartAddClientTimeout());
+    }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -796,6 +817,15 @@ void TMountRequestActor::HandleStartVolumeResponse(
     } else {
         if (mountMode == NProto::VOLUME_MOUNT_LOCAL) {
             VolumeSessionRestartRequired = true;
+            if (GentlePreemptionInProgress && Error.GetCode() == E_REJECTED) {
+                LOG_INFO(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
+                    "%s Ignoring E_REJECTED from local tablet demotion",
+                    LogTitle.GetWithTime().c_str());
+                Error = {};
+                return;
+            }
             NotifyAndDie(ctx);
             return;
         }
