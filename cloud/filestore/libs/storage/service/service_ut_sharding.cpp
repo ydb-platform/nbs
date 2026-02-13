@@ -5146,14 +5146,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             counters->GetCounter("GetNodeAttrInShard.Count")->GetAtomic());
-
-        // TODO(#2674) - fix, UnlinkNode.Count and UnlinkNodeInShard.Count
-        // should be both equal to 1
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            1,
             counters->GetCounter("UnlinkNode.Count")->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            1,
             counters->GetCounter("UnlinkNodeInShard.Count")->GetAtomic());
     }
 
