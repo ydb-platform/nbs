@@ -772,6 +772,10 @@ private:
         const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void RejectGetPartCountersRequest(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleUpdateResourceMetrics(
         const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
         const NActors::TActorContext& ctx);
