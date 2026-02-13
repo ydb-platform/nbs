@@ -1419,4 +1419,7 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // Execute separate compaction transaction for each range of the batch.
+    optional bool SplitTxInBatchCompactionEnabled = 481;
 }

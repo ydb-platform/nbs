@@ -209,6 +209,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ForcedCompactionRangeCountPerRun,       ui32,   1                     )\
     xxx(CompactionCountPerRunChangingPeriod,    TDuration, Seconds(60)        )\
     xxx(BatchCompactionEnabled,                 bool,   false                 )\
+    xxx(SplitTxInBatchCompactionEnabled,        bool,   false                 )\
     xxx(BlobPatchingEnabled,                    bool,   false                 )\
     /* If threshold is not 0, use it */                                        \
     xxx(MaxDiffPercentageForBlobPatching,       ui32,   0                     )\
@@ -689,6 +690,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(FreshChannelWriteRequests)                                             \
     xxx(MixedIndexCacheV1)                                                     \
     xxx(BatchCompaction)                                                       \
+    xxx(SplitTxInBatchCompactionEnabled)                                       \
     xxx(BlobPatching)                                                          \
     xxx(UseRdma)                                                               \
     xxx(ChangeThrottlingPolicy)                                                \

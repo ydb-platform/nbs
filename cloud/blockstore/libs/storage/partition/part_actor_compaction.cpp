@@ -229,35 +229,58 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     // TODO:_ take desesion according to featureflag
+    const bool splitTxInBatchCompactionEnabledForDisk =
+        Config->IsSplitTxInBatchCompactionFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    const bool splitTxInBatchCompactionEnabled =
+        Config->GetSplitTxInBatchCompactionEnabled() ||
+        splitTxInBatchCompactionEnabledForDisk;
 
-    AwaitedCompactionTxCall = Ranges.size();
-
-    for (ui32 i = 0; i < Ranges.size(); ++i) {
-        auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
-            CommitId,
-            i, // RangeCompactionIndex
-            CompactionOptions,
-            TVector<std::pair<ui32, TBlockRange32>>{std::move(Ranges[i])});
-
-        if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+    auto forkTraces = [](TEvPartitionPrivate::TEvCompactionTxRequest& request)
+    {
+        // TODO:_ is it ok to fork just once?
+        if (!RequestInfo->CallContext->LWOrbit.Fork(
+                request->CallContext->LWOrbit))
+        {
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
                 "TEvPartitionPrivate::TEvCompactionTxRequest",
                 RequestInfo->CallContext->RequestId);
         }
+
         request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
-
         ForkedCompactionTxCallContexts.emplace_back(request->CallContext);
+    };
 
-        NCloud::Send(
-            ctx,
-            Tablet,
-            std::move(request),
-            i);
+    if (splitTxInBatchCompactionEnabled) {
+        AwaitedCompactionTxCall = Ranges.size();
+
+        for (ui32 i = 0; i < Ranges.size(); ++i) {
+            auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
+                CommitId,
+                i, // RangeCompactionIndex
+                CompactionOptions,
+                TVector<std::pair<ui32, TBlockRange32>>{std::move(Ranges[i])});
+
+            forkTraces(request);
+            NCloud::Send(ctx, Tablet, std::move(request), i /* Cookie */);
+        }
+    } else {
+        AwaitedCompactionTxCall = 1;
+
+        auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
+            CommitId,
+            0, // RangeCompactionIndex
+            CompactionOptions,
+            std::move(Ranges));
+
+        forkTraces(request);
+        NCloud::Send(ctx, Tablet, std::move(request));
     }
 
-    Ranges.clear();
 }
 
 void TCompactionActor::ProcessRequests(const TActorContext& ctx)
@@ -897,6 +920,9 @@ void TCompactionActor::HandleCompactionTxResponse(
     for (auto context: ForkedReadCallContexts) {
         RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
     }
+
+    Ranges.clear();
+    ForkedReadCallContexts.Clear();
 
     ProcessRequests(ctx);
 }
