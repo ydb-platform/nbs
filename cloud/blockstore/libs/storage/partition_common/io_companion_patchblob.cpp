@@ -413,21 +413,31 @@ void TIOCompanion::HandlePatchBlobCompleted(
     }
 
     if (patchedGroup == Max<ui32>()) {
-        Y_DEBUG_ABORT_UNLESS(0, "HandlePatchBlobCompleted: invalid blob id received");
+        Y_DEBUG_ABORT_UNLESS(
+            0,
+            "HandlePatchBlobCompleted: invalid blob id received");
     } else {
-        Client.UpdateWriteThroughput(
-            ctx.Now(),
-            patchedChannel,
-            patchedGroup,
-            msg->PatchedBlobId.BlobSize());
+        ResourceMetricsQueue->Push(
+            NPartition::TUpdateWriteThroughput(
+                ctx.Now(),
+                patchedChannel,
+                patchedGroup,
+                msg->PatchedBlobId.BlobSize()));
     }
-    Client.UpdateNetworkStat(ctx.Now(), msg->PatchedBlobId.BlobSize());
+    ResourceMetricsQueue->Push(
+        NPartition::TUpdateNetworkStat(
+            ctx.Now(),
+            msg->PatchedBlobId.BlobSize()));
 
-    Client.GetPartCounters().RequestCounters.PatchBlob.AddRequest(
-        msg->RequestTime.MicroSeconds(),
-        msg->PatchedBlobId.BlobSize(),
-        1,
-        ChannelsState.GetChannelDataKind(patchedChannel));
+    PartCounters->Access(
+        [&](auto& counters)
+        {
+            counters->RequestCounters.PatchBlob.AddRequest(
+                msg->RequestTime.MicroSeconds(),
+                msg->PatchedBlobId.BlobSize(),
+                1,
+                ChannelsState.GetChannelDataKind(patchedChannel));
+        });
 
     ChannelsState.CompleteIORequest(patchedChannel);
 

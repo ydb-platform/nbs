@@ -26,6 +26,8 @@
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
@@ -157,6 +159,9 @@ private:
 
     TPartitionDiskCountersPtr PartCounters;
 
+    std::shared_ptr<TThreadSafePartCounters> IoCompanionCounters =
+        std::make_shared<TThreadSafePartCounters>();
+
     ui64 SysCPUConsumption = 0;
     ui64 UserCPUConsumption = 0;
 
@@ -172,6 +177,12 @@ private:
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
+
+    std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue =
+        std::make_shared<TResourceMetricsQueue>();
+
+    std::shared_ptr<TGroupDowntimes> GroupDowntimes =
+        std::make_shared<TGroupDowntimes>();
 
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
@@ -414,6 +425,12 @@ private:
 
     void UpdateStorageStat(i64 value);
     void UpdateCPUUsageStat(TInstant now, ui64 value);
+
+    void UpdateResourceMetrics(TUpdateWriteThroughput& writeThroughput);
+    void UpdateResourceMetrics(TUpdateReadThroughput& readThroughput);
+    void UpdateResourceMetrics(TUpdateNetworkStat& networkStat);
+    void UpdateResourceMetrics(TUpdateStorageStat& storageStat);
+    void UpdateResourceMetrics(TUpdateCPUUsageStat& cpuUsageStat);
 
     void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
     void UpdateYellowState(const NActors::TActorContext& ctx);
@@ -751,6 +768,10 @@ private:
 
     void HandleGetPartCountersRequest(
         const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateResourceMetrics(
+        const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

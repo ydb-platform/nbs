@@ -263,7 +263,10 @@ void TPartitionActor::CompleteLoadState(
         BSGroupOperationId,
         *WriteBlobCompanionClient,
         *State,
-        LogTitle);
+        LogTitle,
+        ResourceMetricsQueue,
+        GroupDowntimes,
+        IoCompanionCounters);
 
     MapBaseDiskIdToTabletId(ctx);
 

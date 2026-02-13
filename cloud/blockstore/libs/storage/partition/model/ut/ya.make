@@ -12,6 +12,7 @@ SRCS(
     compaction_map_load_state_ut.cpp
     fresh_blob_ut.cpp
     garbage_queue_ut.cpp
+    group_downtimes_ut.cpp
     mixed_index_cache_ut.cpp
 )
 

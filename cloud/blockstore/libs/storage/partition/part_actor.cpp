@@ -135,6 +135,11 @@ void TPartitionActor::Activate(const TActorContext& ctx)
 
     State->FinishLoadState();
 
+    ctx.Schedule(
+        Config->GetResourceMetricsUpdateInterval(),
+        std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
+            .release());
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -201,6 +206,9 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
         PartCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions());
+        IoCompanionCounters->Swap(CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            DiagnosticsConfig->GetHistogramCounterOptions()));
     }
 }
 
@@ -530,6 +538,44 @@ void TPartitionActor::UpdateCPUUsageStat(TInstant now, ui64 execCylces)
     const auto duration = CyclesToDurationSafe(execCylces);
     UserCPUConsumption += duration.MicroSeconds();
     GetResourceMetrics()->CPU.Increment(duration.MicroSeconds(), now);
+}
+
+void TPartitionActor::UpdateResourceMetrics(
+    TUpdateWriteThroughput& writeThroughput)
+{
+    UpdateWriteThroughput(
+        writeThroughput.Now,
+        writeThroughput.Channel,
+        writeThroughput.Group,
+        writeThroughput.Value);
+}
+
+void TPartitionActor::UpdateResourceMetrics(
+    TUpdateReadThroughput& readThroughput)
+{
+    UpdateReadThroughput(
+        readThroughput.Now,
+        readThroughput.Channel,
+        readThroughput.Group,
+        readThroughput.Value,
+        readThroughput.IsOverlayDisk);
+}
+
+void TPartitionActor::UpdateResourceMetrics(TUpdateNetworkStat& networkStat)
+{
+    UpdateNetworkStat(
+        networkStat.Now,
+        networkStat.Value);
+}
+
+void TPartitionActor::UpdateResourceMetrics(TUpdateStorageStat& storageStat)
+{
+    UpdateStorageStat(storageStat.Value);
+}
+
+void TPartitionActor::UpdateResourceMetrics(TUpdateCPUUsageStat& cpuUsageStat)
+{
+    UpdateCPUUsageStat(cpuUsageStat.Now, cpuUsageStat.Value);
 }
 
 bool TPartitionActor::InitReadWriteBlockRange(
@@ -1022,6 +1068,7 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
+        HFunc(TEvPartitionPrivate::TEvUpdateResourceMetrics, HandleUpdateResourceMetrics);
         HFunc(TEvPartitionPrivate::TEvUpdateYellowState, HandleUpdateYellowState);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
         HFunc(TEvPartitionPrivate::TEvProcessWriteQueue, HandleProcessWriteQueue);
@@ -1098,6 +1145,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateCounters);
+        IgnoreFunc(TEvPartitionPrivate::TEvUpdateResourceMetrics);
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
@@ -1217,6 +1265,27 @@ NProto::TError VerifyBlockChecksum(
     }
 
     return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::HandleUpdateResourceMetrics(
+    const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    auto updates = ResourceMetricsQueue->PopAll();
+    for (auto& update : updates) {
+        std::visit([&] (auto&& arg) {
+            UpdateResourceMetrics(arg);
+        }, update);
+    }
+
+    // Schedule the next update
+    ctx.Schedule(
+        Config->GetResourceMetricsUpdateInterval(),
+        std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
+            .release());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

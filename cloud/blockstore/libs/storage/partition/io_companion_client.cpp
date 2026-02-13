@@ -4,32 +4,6 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
-void TIOCompanionClient::UpdateReadThroughput(
-    const TInstant& now,
-    const NKikimr::NMetrics::TChannel& channel,
-    const NKikimr::NMetrics::TGroupId& group,
-    ui64 value,
-    bool isOverlayDisk)
-{
-    Owner.UpdateReadThroughput(now, channel, group, value, isOverlayDisk);
-}
-
-void TIOCompanionClient::UpdateWriteThroughput(
-    const TInstant& now,
-    const NKikimr::NMetrics::TChannel& channel,
-    const NKikimr::NMetrics::TGroupId& group,
-    ui64 value)
-{
-    Owner.UpdateWriteThroughput(now, channel, group, value);
-}
-
-void TIOCompanionClient::UpdateNetworkStat(
-    const TInstant& now,
-    ui64 value)
-{
-    Owner.UpdateNetworkStat(now, value);
-}
-
 void TIOCompanionClient::ScheduleYellowStateUpdate(
     const NActors::TActorContext& ctx)
 {
@@ -54,21 +28,6 @@ void TIOCompanionClient::UpdateChannelPermissions(
     EChannelPermissions permissions)
 {
     Owner.UpdateChannelPermissions(ctx, channel, permissions);
-}
-
-void TIOCompanionClient::RegisterSuccess(TInstant now, ui32 groupId)
-{
-    Owner.State->RegisterSuccess(now, groupId);
-}
-
-void TIOCompanionClient::RegisterDowntime(TInstant now, ui32 groupId)
-{
-    Owner.State->RegisterDowntime(now, groupId);
-}
-
-TPartitionDiskCounters& TIOCompanionClient::GetPartCounters()
-{
-    return *Owner.PartCounters;
 }
 
 // IMortalActor implements

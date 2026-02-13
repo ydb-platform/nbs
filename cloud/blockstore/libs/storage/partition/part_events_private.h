@@ -807,6 +807,14 @@ struct TEvPartitionPrivate
     };
 
     //
+    // UpdateResourceMetrics
+    //
+
+    struct TUpdateResourceMetrics
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -835,6 +843,7 @@ struct TEvPartitionPrivate
         EvAddConfirmedBlobsCompleted,
         EvConfirmBlobsCompleted,
         EvLoadCompactionMapChunkRequest,
+        EvUpdateResourceMetrics,
 
         EvEnd
     };
@@ -863,6 +872,8 @@ struct TEvPartitionPrivate
     using TEvGetChangedBlocksCompleted = TResponseEvent<TOperationCompleted, EvGetChangedBlocksCompleted>;
     using TEvAddConfirmedBlobsCompleted = TResponseEvent<TOperationCompleted, EvAddConfirmedBlobsCompleted>;
     using TEvConfirmBlobsCompleted = TResponseEvent<TConfirmBlobsCompleted, EvConfirmBlobsCompleted>;
+    using TEvUpdateResourceMetrics =
+        TResponseEvent<TUpdateResourceMetrics, EvUpdateResourceMetrics>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

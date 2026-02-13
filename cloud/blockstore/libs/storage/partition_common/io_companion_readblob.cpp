@@ -104,18 +104,20 @@ void TIOCompanion::HandleReadBlobCompleted(
     const ui32 channel = msg->BlobId.Channel();
     const ui32 groupId = msg->GroupId;
     const bool isOverlayDisk = blobTabletId != TabletID;
-    Client.UpdateNetworkStat(ctx.Now(), msg->BytesCount);
+    ResourceMetricsQueue->Push(
+        NPartition::TUpdateNetworkStat(ctx.Now(), msg->BytesCount));
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleReadBlobCompleted: invalid blob id received");
     } else {
-        Client.UpdateReadThroughput(
-            ctx.Now(),
-            channel,
-            groupId,
-            msg->BytesCount,
-            isOverlayDisk);
+        ResourceMetricsQueue->Push(
+            NPartition::TUpdateReadThroughput(
+                ctx.Now(),
+                channel,
+                groupId,
+                msg->BytesCount,
+                isOverlayDisk));
     }
 
     if (isOverlayDisk) {
@@ -123,20 +125,28 @@ void TIOCompanion::HandleReadBlobCompleted(
         // TODO(svartmetal): verify that |blobTabletId| corresponds to base
         // disk partition tablet.
 
-        Client.GetPartCounters().RequestCounters.ReadBlob.AddRequest(
-            msg->RequestTime.MicroSeconds(),
-            msg->BytesCount,
-            1,
-            EChannelDataKind::External);
+        PartCounters->Access(
+            [&](auto& counters)
+            {
+                counters->RequestCounters.ReadBlob.AddRequest(
+                    msg->RequestTime.MicroSeconds(),
+                    msg->BytesCount,
+                    1,
+                    EChannelDataKind::External);
+            });
 
         return;
     }
 
-    Client.GetPartCounters().RequestCounters.ReadBlob.AddRequest(
-        msg->RequestTime.MicroSeconds(),
-        msg->BytesCount,
-        1,
-        ChannelsState.GetChannelDataKind(channel));
+    PartCounters->Access(
+        [&](auto& counters)
+        {
+            counters->RequestCounters.ReadBlob.AddRequest(
+                msg->RequestTime.MicroSeconds(),
+                msg->BytesCount,
+                1,
+                ChannelsState.GetChannelDataKind(channel));
+        });
 
     ChannelsState.CompleteIORequest(channel);
 
@@ -164,7 +174,9 @@ void TIOCompanion::HandleReadBlobCompleted(
         }
 
         if (msg->DeadlineSeen) {
-            Client.GetPartCounters().Simple.ReadBlobDeadlineCount.Increment(1);
+            PartCounters->Access(
+                [](auto& counters)
+                { counters->Simple.ReadBlobDeadlineCount.Increment(1); });
         }
 
         if (++ReadBlobErrorCount >= Config->GetMaxReadBlobErrorsBeforeSuicide())
@@ -180,7 +192,7 @@ void TIOCompanion::HandleReadBlobCompleted(
             return;
         }
     } else {
-        Client.RegisterSuccess(ctx.Now(), groupId);
+        GroupDowntimes->RegisterSuccess(ctx.Now(), groupId);
     }
 
     ProcessIOQueue(ctx, channel);

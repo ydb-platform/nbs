@@ -1419,4 +1419,7 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // Interval for updating resource metrics (in milliseconds).
+    optional uint32 ResourceMetricsUpdateInterval = 481;
 }

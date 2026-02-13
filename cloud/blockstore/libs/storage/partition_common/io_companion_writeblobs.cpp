@@ -396,9 +396,10 @@ void TIOCompanion::HandleWriteBlob(
             TString out;
             out.ReserveAndResize(BlobCodec->MaxCompressedLength(blobContent));
             const size_t sz = BlobCodec->Compress(blobContent, out.begin());
-            auto& counters = Client.GetPartCounters().Cumulative;
-            counters.UncompressedBytesWritten.Increment(blobContent.size());
-            counters.CompressedBytesWritten.Increment(sz);
+            PartCounters->Access([&](auto& counters) {
+                counters->Cumulative.UncompressedBytesWritten.Increment(blobContent.size());
+                counters->Cumulative.CompressedBytesWritten.Increment(sz);
+            });
         }
     }
 
@@ -459,24 +460,28 @@ void TIOCompanion::HandleWriteBlobCompleted(
 
     ui32 channel = msg->BlobId.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    Client.UpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize());
+    ResourceMetricsQueue->Push(
+        NPartition::TUpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize()));
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleWriteBlobCompleted: invalid blob id received");
     } else {
-        Client.UpdateWriteThroughput(
-            ctx.Now(),
-            channel,
-            groupId,
-            msg->BlobId.BlobSize());
+        ResourceMetricsQueue->Push(
+            NPartition::TUpdateWriteThroughput(
+                ctx.Now(),
+                channel,
+                groupId,
+                msg->BlobId.BlobSize()));
     }
 
-    Client.GetPartCounters().RequestCounters.WriteBlob.AddRequest(
-        msg->RequestTime.MicroSeconds(),
-        msg->BlobId.BlobSize(),
-        1,
-        ChannelsState.GetChannelDataKind(channel));
+    PartCounters->Access([&](auto& counters) {
+        counters->RequestCounters.WriteBlob.AddRequest(
+            msg->RequestTime.MicroSeconds(),
+            msg->BlobId.BlobSize(),
+            1,
+            ChannelsState.GetChannelDataKind(channel));
+    });
 
     ChannelsState.CompleteIORequest(channel);
 
@@ -541,7 +546,7 @@ void TIOCompanion::HandleWriteBlobCompleted(
             return;
         }
     } else {
-        Client.RegisterSuccess(ctx.Now(), groupId);
+        GroupDowntimes->RegisterSuccess(ctx.Now(), groupId);
     }
 
     ProcessIOQueue(ctx, channel);
@@ -559,7 +564,7 @@ void TIOCompanion::HandleLongRunningBlobOperation(
     if (msg.Reason == TEvLongRunningOperation::EReason::LongRunningDetected &&
         msg.FirstNotify)
     {
-        Client.RegisterDowntime(ctx.Now(), msg.GroupId);
+        GroupDowntimes->RegisterDowntime(ctx.Now(), msg.GroupId);
         Actors.MarkLongRunning(ev->Sender, msg.Operation);
     }
 }

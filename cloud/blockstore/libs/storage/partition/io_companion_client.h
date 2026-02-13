@@ -14,21 +14,6 @@ struct TIOCompanionClient: public IIOCompanionClient
         : Owner(owner)
     {}
 
-    void UpdateReadThroughput(
-        const TInstant& now,
-        const NKikimr::NMetrics::TChannel& channel,
-        const NKikimr::NMetrics::TGroupId& group,
-        ui64 value,
-        bool isOverlayDisk) override;
-
-    void UpdateWriteThroughput(
-        const TInstant& now,
-        const NKikimr::NMetrics::TChannel& channel,
-        const NKikimr::NMetrics::TGroupId& group,
-        ui64 value) override;
-
-    void UpdateNetworkStat(const TInstant& now, ui64 value) override;
-
     void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx) override;
 
     void UpdateYellowState(const NActors::TActorContext& ctx) override;
@@ -39,12 +24,6 @@ struct TIOCompanionClient: public IIOCompanionClient
         const NActors::TActorContext& ctx,
         ui32 channel,
         EChannelPermissions permissions) override;
-
-    void RegisterSuccess(TInstant now, ui32 groupId) override;
-
-    void RegisterDowntime(TInstant now, ui32 groupId) override;
-
-    TPartitionDiskCounters& GetPartCounters() override;
 
     // IMortalActor implements
 

@@ -2,7 +2,11 @@
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
+#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
@@ -19,19 +23,6 @@ namespace NCloud::NBlockStore::NStorage {
 class IIOCompanionClient: public IMortalActor
 {
 public:
-    virtual void UpdateWriteThroughput(
-        const TInstant& now,
-        const NKikimr::NMetrics::TChannel& channel,
-        const NKikimr::NMetrics::TGroupId& group,
-        ui64 value) = 0;
-    virtual void UpdateReadThroughput(
-        const TInstant& now,
-        const NKikimr::NMetrics::TChannel& channel,
-        const NKikimr::NMetrics::TGroupId& group,
-        ui64 value,
-        bool isOverlayDisk) = 0;
-    virtual void UpdateNetworkStat(const TInstant& now, ui64 value) = 0;
-
     virtual void ScheduleYellowStateUpdate(
         const NActors::TActorContext& ctx) = 0;
     virtual void UpdateYellowState(const NActors::TActorContext& ctx) = 0;
@@ -41,11 +32,6 @@ public:
         const NActors::TActorContext& ctx,
         ui32 channel,
         EChannelPermissions permissions) = 0;
-
-    virtual void RegisterSuccess(TInstant now, ui32 groupId) = 0;
-    virtual void RegisterDowntime(TInstant now, ui32 groupId) = 0;
-
-    virtual TPartitionDiskCounters& GetPartCounters() = 0;
 
     ~IIOCompanionClient() override = default;
 };
@@ -78,6 +64,10 @@ private:
 
     TRunningActors Actors;
 
+    std::shared_ptr<NPartition::TResourceMetricsQueue> ResourceMetricsQueue;
+    std::shared_ptr<NPartition::TGroupDowntimes> GroupDowntimes;
+    std::shared_ptr<NPartition::TThreadSafePartCounters> PartCounters;
+
 public:
     TIOCompanion(
         TStorageConfigPtr config,
@@ -92,7 +82,10 @@ public:
         ui64& bsGroupOperationId,
         IIOCompanionClient& client,
         TPartitionChannelsState& channelsState,
-        TLogTitle& logTitle);
+        TLogTitle& logTitle,
+        std::shared_ptr<NPartition::TResourceMetricsQueue> resourceMetricsQueue,
+        std::shared_ptr<NPartition::TGroupDowntimes> groupDowntimes,
+        std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters);
 
     void HandleWriteBlob(
         const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
