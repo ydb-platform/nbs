@@ -43,13 +43,15 @@ void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Follower.Link.LeaderDiskId),
+            Follower.Link.LeaderDiskId,
+            true),
         DESCRIBE_KIND_LEADER);
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Follower.Link.FollowerDiskId),
+            Follower.Link.FollowerDiskId,
+            true),
         DESCRIBE_KIND_FOLLOWER);
 }
 
@@ -69,8 +71,8 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
                             << "The size of the leader disk "
                             << Follower.Link.LeaderDiskIdForPrint().Quote()
                             << " is larger than the size of follower disk "
-                            << Follower.Link.FollowerDiskIdForPrint().Quote() << " "
-                            << sourceSize << " > " << targetSize;
+                            << Follower.Link.FollowerDiskIdForPrint().Quote()
+                            << " " << sourceSize << " > " << targetSize;
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,

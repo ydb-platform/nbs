@@ -31,6 +31,7 @@ private:
     const TString Input;
 
     TString DiskId;
+    bool ExactDiskIdMatch = false;
 
 public:
     TDescribeVolumeActionsActor(
@@ -73,6 +74,9 @@ void TDescribeVolumeActionsActor::Bootstrap(const TActorContext& ctx)
     if (input.Has("DiskId")) {
         DiskId = input["DiskId"].GetStringRobust();
     }
+    if (input.Has("ExactDiskIdMatch")) {
+        ExactDiskIdMatch = input["ExactDiskIdMatch"].GetBoolean();
+    }
 
     if (!DiskId) {
         HandleError(ctx, MakeError(E_ARGUMENT, "DiskId should be defined"));
@@ -87,7 +91,8 @@ void TDescribeVolumeActionsActor::DescribeVolume(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
         RequestInfo->CallContext,
-        DiskId);
+        DiskId,
+        ExactDiskIdMatch);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
