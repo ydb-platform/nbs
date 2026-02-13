@@ -1419,4 +1419,8 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // If true, throw error when adding read-only client if a read-write one
+    // already exists
+    optional bool SendErrorOnAddClientConflict = 481;
 }
