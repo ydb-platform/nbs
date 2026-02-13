@@ -741,6 +741,31 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         LocalMountClientId = clientId;
     }
 
+    auto [clientInfoIt, added] =
+        ClientInfosByClientId.try_emplace(clientId, info);
+
+    if (!added) {
+        const bool isNewAccesRO =
+            info.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_READ_ONLY ||
+            info.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_USER_READ_ONLY;
+        const bool isOldAccessRW =
+            clientInfoIt->second.GetVolumeClientInfo().GetVolumeAccessMode() ==
+            NProto::VOLUME_ACCESS_READ_WRITE;
+        if (isNewAccesRO && isOldAccessRW) {
+            if (StorageConfig->GetSendErrorOnAddClientConflict()) {
+                res.Error = MakeError(
+                    E_INVALID_STATE,
+                    "Can not change access mode from RW to RO for existing "
+                    "client");
+            } else {
+                res.Error = MakeError(
+                    S_ALREADY,
+                    "Client already has read-write connection to volume");
+            }
+            return res;
+        }
+    }
+
     auto range = ClientIdsByPipeServerId.equal_range(pipeServerActorId);
     auto it = find_if(
         range.first,
@@ -750,11 +775,7 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         ClientIdsByPipeServerId.emplace(pipeServerActorId, clientId);
     }
 
-    auto [newIt, added] = ClientInfosByClientId.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(clientId),
-        std::forward_as_tuple(info));
-    auto pipeRes = newIt->second.AddPipe(
+    auto pipeRes = clientInfoIt->second.AddPipe(
         pipeServerActorId,
         senderActorId.NodeId(),
         info.GetVolumeAccessMode(),

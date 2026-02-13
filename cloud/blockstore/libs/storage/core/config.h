@@ -768,6 +768,8 @@ public:
     [[nodiscard]] TDuration GetAttachDetachPathRequestTimeout() const;
 
     [[nodiscard]] TDuration GetResourceMetricsUpdateInterval() const;
+
+    [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
 };
 
 ui64 GetAllocationUnit(
