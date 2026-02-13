@@ -446,6 +446,17 @@ private:
     }
 
     template <>
+    NProto::TMmapResponse Execute<TMmapMethod>(
+        NProto::TMmapRequest& request,
+        NProto::TProfileLogRequestInfo& logRequest)
+    {
+        Y_UNUSED(request, logRequest);
+        return TErrorResponse(
+            E_NOT_IMPLEMENTED,
+            "Mmap is not implemented for the local service");
+    }
+
+    template <>
     NProto::TCreateFileStoreResponse Execute<TCreateFileStoreMethod>(
         NProto::TCreateFileStoreRequest& request,
         NProto::TProfileLogRequestInfo& logRequest)
