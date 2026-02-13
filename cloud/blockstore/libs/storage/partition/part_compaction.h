@@ -75,10 +75,7 @@ struct TRangeCompactionInfo
     {}
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO:_ naming ???
-struct TCompactionBlobRequest
+struct TCompactionReadRequest
 {
     NCloud::TPartialBlobId BlobId;
     NActors::TActorId Proxy;
@@ -88,7 +85,7 @@ struct TCompactionBlobRequest
     ui32 GroupId;
     ui32 RangeCompactionIndex;
 
-    TCompactionBlobRequest(
+    TCompactionReadRequest(
         const NCloud::TPartialBlobId& blobId,
         const NActors::TActorId& proxy,
         ui16 blobOffset,
@@ -104,6 +101,13 @@ struct TCompactionBlobRequest
         , GroupId(groupId)
         , RangeCompactionIndex(rangeCompactionIndex)
     {}
+};
+
+struct TCompactionRange {
+    const ui32 RangeIdx;
+    const ui32 RangeCompactionIndex;   // Index of the range in its batch for
+                                       // batch compaction.
+    TBlockRange32 BlockRange;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

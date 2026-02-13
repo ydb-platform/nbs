@@ -7,7 +7,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 void TCommitQueue::Enqueue(TTxPtr tx, ui64 commitId)
 {
     if (Items) {
-        // TODO:_ Is <= instead of < ok?
         Y_ABORT_UNLESS(Items.back().CommitId <= commitId);
     }
     Items.emplace_back(commitId, std::move(tx));

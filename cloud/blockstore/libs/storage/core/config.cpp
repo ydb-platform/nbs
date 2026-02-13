@@ -690,7 +690,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(FreshChannelWriteRequests)                                             \
     xxx(MixedIndexCacheV1)                                                     \
     xxx(BatchCompaction)                                                       \
-    xxx(SplitTxInBatchCompactionEnabled)                                       \
+    xxx(SplitTxInBatchCompaction)                                              \
     xxx(BlobPatching)                                                          \
     xxx(UseRdma)                                                               \
     xxx(ChangeThrottlingPolicy)                                                \

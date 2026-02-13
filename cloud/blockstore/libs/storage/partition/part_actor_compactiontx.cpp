@@ -223,10 +223,10 @@ void CompleteRangeCompaction(
     TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
-    TVector<TCompactionBlobRequest>& requests,
+    TVector<TCompactionReadRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
     ui32 maxDiffPercentageForBlobPatching,
-    ui32 rangeCompactionIndex)
+    ui32 rangeCompactionIndex) // TODO:_ ?
 {
     const EChannelPermissions compactionPermissions =
         EChannelPermission::SystemWritesAllowed;
@@ -570,14 +570,13 @@ void TPartitionActor::CompleteCompaction(
         State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
     }
 
-    // TODO:_ rename ...ForCloud -> ...ForDisk ???
-    const bool blobPatchingEnabledForCloud =
+    const bool blobPatchingEnabledForDisk =
         Config->IsBlobPatchingFeatureEnabled(
             PartitionConfig.GetCloudId(),
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
     const bool blobPatchingEnabled =
-        Config->GetBlobPatchingEnabled() || blobPatchingEnabledForCloud;
+        Config->GetBlobPatchingEnabled() || blobPatchingEnabledForDisk;
 
     const auto mergedBlobThreshold =
         PartitionConfig.GetStorageMediaKind() ==
@@ -586,20 +585,20 @@ void TPartitionActor::CompleteCompaction(
             : Config->GetCompactionMergedBlobThresholdHDD();
 
     TVector<TRangeCompactionInfo> rangeCompactionInfos;
-    TVector<TCompactionBlobRequest> requests;
+    TVector<TCompactionReadRequest> requests;
 
-    for (auto& rangeCompaction: args.RangeCompactions) {
+    for (ui32 i = 0; i < args.RangeCompactions.size(); ++i) {
         CompleteRangeCompaction(
             blobPatchingEnabled,
             mergedBlobThreshold,
             args.CommitId,
             *Info(),
             *State,
-            rangeCompaction,
+            args.RangeCompactions[i],
             requests,
             rangeCompactionInfos,
             Config->GetMaxDiffPercentageForBlobPatching(),
-            args.RangeCompactionIndex + static_cast<ui32>(rangeCompactionInfos.size()));
+            args.RangeCompactionIndex + i);  // TODO:_ ok?
 
         if (rangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(
@@ -615,13 +614,6 @@ void TPartitionActor::CompleteCompaction(
     // TODO:_ or to it in the beginning of the Complete... function?
     TRequestScope timer(*args.RequestInfo);
 
-    // auto response =
-    //     std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>();
-    // auto response =
-    //     std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>(
-    //         MakeError(S_OK));
-    // response->Record.SetRangeCompactionInfos(std::move(rangeCompactionInfos));
-    // response->Record.SetCompactionRequests(std::move(requests));
     auto response =
         std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>(
             std::move(rangeCompactionInfos),

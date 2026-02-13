@@ -18,6 +18,7 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <algorithm>
+#include <memory>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -36,7 +37,7 @@ class TCompactionActor final
     : public TActorBootstrapped<TCompactionActor>
 {
 public:
-    using TRequest = TCompactionBlobRequest;
+    using TRequest = TCompactionReadRequest;
 
     struct TBatchRequest
     {
@@ -85,7 +86,9 @@ private:
     const ui64 CommitId;
     const TCompactionOptions CompactionOptions;
 
+    const bool SplitTxInBatchCompaction = false;
     TVector<std::pair<ui32, TBlockRange32>> Ranges;
+
     TVector<TCallContextPtr> ForkedCompactionTxCallContexts;
     ui32 AwaitedCompactionTxCall = 0;
     using InfoWithIndex = std::pair<TRangeCompactionInfo, ui32>;
@@ -125,6 +128,7 @@ public:
         ECompactionType compactionType,
         ui64 commitId,
         TCompactionOptions CompactionOptions,
+        bool splitTxInBatchCompaction,
         TVector<std::pair<ui32, TBlockRange32>> ranges,
         TChildLogTitle logTitle);
 
@@ -196,6 +200,7 @@ TCompactionActor::TCompactionActor(
         ECompactionType compactionType,
         ui64 commitId,
         TCompactionOptions compactionOptions,
+        bool splitTxInBatchCompaction,
         TVector<std::pair<ui32, TBlockRange32>> ranges,
         TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
@@ -212,6 +217,7 @@ TCompactionActor::TCompactionActor(
     , LogTitle(std::move(logTitle))
     , CommitId(commitId)
     , CompactionOptions(compactionOptions)
+    , SplitTxInBatchCompaction(splitTxInBatchCompaction)
     , Ranges(std::move(ranges))
 {}
 
@@ -219,7 +225,6 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
-    // TODO:_ maybe split into two states?
     Become(&TThis::StateWork);
 
     LWTRACK(
@@ -228,18 +233,38 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
         "Compaction",
         RequestInfo->CallContext->RequestId);
 
-    // TODO:_ take desesion according to featureflag
-    const bool splitTxInBatchCompactionEnabledForDisk =
-        Config->IsSplitTxInBatchCompactionFeatureEnabled(
-            PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId(),
-            PartitionConfig.GetDiskId());
-    const bool splitTxInBatchCompactionEnabled =
-        Config->GetSplitTxInBatchCompactionEnabled() ||
-        splitTxInBatchCompactionEnabledForDisk;
+    // TODO:_ remove it
+    // auto forkTraces =
+    //     [&](std::unique_ptr<TEvPartitionPrivate::TEvCompactionTxRequest>
+    //             request)
+    // {
+    //     if (!RequestInfo->CallContext->LWOrbit.Fork(
+    //             request->CallContext->LWOrbit))
+    //     {
+    //         LWTRACK(
+    //             ForkFailed,
+    //             RequestInfo->CallContext->LWOrbit,
+    //             "TEvPartitionPrivate::TEvCompactionTxRequest",
+    //             RequestInfo->CallContext->RequestId);
+    //     }
 
-    auto forkTraces = [](TEvPartitionPrivate::TEvCompactionTxRequest& request)
+    //     request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
+    //     ForkedCompactionTxCallContexts.emplace_back(request->CallContext);
+    // };
+
+    auto sendRequest =
+        [&](ui32 rangeCompactionIndex,
+            TVector<std::pair<ui32, TBlockRange32>> ranges)
     {
+        // TODO:_ is it ok? Send does not interrupts execution, doesn't it?
+        ++AwaitedCompactionTxCall;
+
+        auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
+            CommitId,
+            rangeCompactionIndex,
+            CompactionOptions,
+            std::move(ranges));
+
         // TODO:_ is it ok to fork just once?
         if (!RequestInfo->CallContext->LWOrbit.Fork(
                 request->CallContext->LWOrbit))
@@ -253,34 +278,20 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
 
         request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
         ForkedCompactionTxCallContexts.emplace_back(request->CallContext);
+
+        // TODO:_ seems we don't need cookie here
+        NCloud::Send(ctx, Tablet, std::move(request));
     };
 
-    if (splitTxInBatchCompactionEnabled) {
-        AwaitedCompactionTxCall = Ranges.size();
-
+    if (SplitTxInBatchCompaction) {
         for (ui32 i = 0; i < Ranges.size(); ++i) {
-            auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
-                CommitId,
-                i, // RangeCompactionIndex
-                CompactionOptions,
-                TVector<std::pair<ui32, TBlockRange32>>{std::move(Ranges[i])});
-
-            forkTraces(request);
-            NCloud::Send(ctx, Tablet, std::move(request), i /* Cookie */);
+            sendRequest(i, TVector<std::pair<ui32, TBlockRange32>>{std::move(Ranges[i])});
         }
     } else {
-        AwaitedCompactionTxCall = 1;
-
-        auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
-            CommitId,
-            0, // RangeCompactionIndex
-            CompactionOptions,
-            std::move(Ranges));
-
-        forkTraces(request);
-        NCloud::Send(ctx, Tablet, std::move(request));
+        sendRequest(0, std::move(Ranges));
     }
 
+    Ranges.clear();
 }
 
 void TCompactionActor::ProcessRequests(const TActorContext& ctx)
@@ -862,7 +873,6 @@ void TCompactionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO:_ style: rearrange methods?
 void TCompactionActor::HandleCompactionTxResponse(
     const TEvPartitionPrivate::TEvCompactionTxResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -871,7 +881,6 @@ void TCompactionActor::HandleCompactionTxResponse(
 
     // TODO:_ exec cycles?
 
-    // TODO:_ ok to hangle error like this?
     if (HandleError(ctx, msg->GetError())) {
         return;
     }
@@ -887,15 +896,14 @@ void TCompactionActor::HandleCompactionTxResponse(
     //     msg->RangeCompactionInfos.end(),
     //     std::back_insert_iterator<TVector<TRangeCompactionInfo>>(RangeCompactionInfos));
     std::move(
-        msg->CompactionRequests.begin(),
-        msg->CompactionRequests.end(),
+        msg->Requests.begin(),
+        msg->Requests.end(),
         std::back_insert_iterator<TVector<TRequest>>(Requests));
 
     if (--AwaitedCompactionTxCall) {
         return;
     }
 
-    // TODO:_ use Sort
     // std::sort(
     //     RangeCompactionInfosWithIndices.begin(),
     //     RangeCompactionInfosWithIndices.end(),
@@ -921,8 +929,7 @@ void TCompactionActor::HandleCompactionTxResponse(
         RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
     }
 
-    Ranges.clear();
-    ForkedReadCallContexts.Clear();
+    ForkedReadCallContexts.clear();
 
     ProcessRequests(ctx);
 }
@@ -1464,6 +1471,15 @@ void TPartitionActor::HandleCompaction(
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
+    const bool splitTxInBatchCompactionEnabledForDisk =
+        Config->IsSplitTxInBatchCompactionFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    const bool splitTxInBatchCompactionEnabled =
+        Config->GetSplitTxInBatchCompactionEnabled() ||
+        splitTxInBatchCompactionEnabledForDisk;
+
     auto actor = NCloud::Register<TCompactionActor>(
         ctx,
         requestInfo,
@@ -1479,6 +1495,7 @@ void TPartitionActor::HandleCompaction(
         compactionType,
         commitId,
         msg->CompactionOptions,
+        splitTxInBatchCompactionEnabled,
         std::move(ranges),
         LogTitle.GetChild(GetCycleCount()));
     LOG_DEBUG(
@@ -1595,5 +1612,3 @@ void TPartitionActor::HandleCompactionCompleted(
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
-
-// TODO:_ upper bould on message size = ??? There could be many requests!
