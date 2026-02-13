@@ -140,11 +140,11 @@ private:
     STFUNC(StateWork);
 
     void HandleReadBlobResponse(
-        const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWriteBlobResponse(
-        const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleAddBlobsResponse(
@@ -291,21 +291,23 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             ++ReadRequestsScheduled;
             readBlobSent = true;
 
-            auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
-                MakeBlobId(TabletId, req.BlobId),
-                req.Proxy,
-                std::move(req.DataBlobOffsets),
-                req.BlobContent.GetGuardedSgList(),
-                req.GroupId,
-                true,           // async
-                readBlobDeadline // deadline
-            );
+            auto request =
+                std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                    MakeBlobId(TabletId, req.BlobId),
+                    req.Proxy,
+                    std::move(req.DataBlobOffsets),
+                    req.BlobContent.GetGuardedSgList(),
+                    req.GroupId,
+                    true,               // async
+                    readBlobDeadline,   // deadline
+                    false               // shouldCalculateChecksums
+                );
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvReadBlobRequest",
+                    "TEvPartitionCommonPrivate::TEvReadBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
             request->CallContext->RequestId =
@@ -335,15 +337,18 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
     for (auto& req: WriteRequests) {
         if (!IsDeletionMarker(req.BlobId)) {
-            auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+            auto request = std::make_unique<
+                TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
-                BuildBlobContent(req));
+                BuildBlobContent(req),
+                0,        // blockSizeForChecksums
+                false);   // async
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvWriteBlobRequest",
+                    "TEvPartitionCommonPrivate::TEvWriteBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
 
@@ -472,7 +477,7 @@ void TCompactionActor::ReplyAndDie(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCompactionActor::HandleReadBlobResponse(
-    const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
@@ -501,7 +506,7 @@ void TCompactionActor::HandleReadBlobResponse(
 }
 
 void TCompactionActor::HandleWriteBlobResponse(
-    const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -564,8 +569,8 @@ STFUNC(TCompactionActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvPartitionPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:

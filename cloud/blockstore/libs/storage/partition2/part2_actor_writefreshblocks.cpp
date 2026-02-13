@@ -106,7 +106,7 @@ private:
     STFUNC(StateWork);
 
     void HandleWriteBlobResponse(
-        const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleInitIndexResponse(
@@ -166,7 +166,7 @@ void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
             LWTRACK(
                 ForkFailed,
                 r.RequestInfo->CallContext->LWOrbit,
-                "TEvPartitionPrivate::TEvWriteBlobRequest",
+                "TEvPartitionCommonPrivate::TEvWriteBlobRequest",
                 r.RequestInfo->CallContext->RequestId);
         }
 
@@ -246,10 +246,11 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         0   // partId
     );
 
-    auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
         CombinedContext,
         blobId,
         std::move(BlobContent),
+        0,  // blockSizeForChecksums
         false);  // async
 
     NCloud::Send(
@@ -355,7 +356,7 @@ void TWriteFreshBlocksActor::Reply(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TWriteFreshBlocksActor::HandleWriteBlobResponse(
-    const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -423,7 +424,7 @@ STFUNC(TWriteFreshBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddFreshBlocksResponse, HandleAddFreshBlocksResponse);
         HFunc(TEvPartitionPrivate::TEvInitIndexResponse, HandleInitIndexResponse);
 
