@@ -4,17 +4,17 @@
 
 #include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 
+#include <cloud/storage/core/libs/common/startable.h>
+
 #include <library/cpp/threading/future/fwd.h>
 
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ILocalNVMeDeviceProvider
+struct ILocalNVMeDeviceProvider: IStartable
 {
-    virtual ~ILocalNVMeDeviceProvider() = default;
-
-    [[nodiscard]] virtual auto ListNVMeDevices() const
+    [[nodiscard]] virtual auto ListNVMeDevices()
         -> NThreading::TFuture<TVector<NProto::TNVMeDevice>> = 0;
 };
 

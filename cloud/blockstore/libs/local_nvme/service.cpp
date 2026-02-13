@@ -23,7 +23,7 @@ public:
     void Stop() final
     {}
 
-    [[nodiscard]] auto ListNVMeDevices() const
+    [[nodiscard]] auto ListNVMeDevices()
         -> TFuture<TResultOrError<TVector<NProto::TNVMeDevice>>> final
     {
         return MakeFuture<TResultOrError<TVector<NProto::TNVMeDevice>>>(

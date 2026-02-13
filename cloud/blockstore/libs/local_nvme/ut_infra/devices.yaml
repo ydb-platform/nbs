@@ -1,0 +1,19 @@
+devices:
+  - pci: 0000:f1:00.0
+    serial: NVME_0
+    owner: nbs
+  - pci: 0000:31:00.0
+    serial: NVME_1
+    owner: nbs
+  - pci: 0000:33:00.0
+    serial: NVME_2
+    owner: nbs
+  - pci: 0000:34:00.0
+    serial: NVME_3
+    owner: nbs
+  - pci: 0000:40:00.0
+    serial: NVME_4
+    owner: ydb
+  - pci: 0000:42:00.0
+    serial: NVME_5
+    owner: ydb

@@ -205,7 +205,7 @@ int main(int argc, const char** argv)
     mods.AddMode(
         "sanitize",
         std::bind_front(&TApp::HandleSanitize, &app),
-        "Sanitize NVMe using Crypto Erace or Block Erase action");
+        "Sanitize NVMe using Crypto Erase or Block Erase action");
     mods.AddMode(
         "reset",
         std::bind_front(&TApp::HandleReset, &app),

@@ -2,8 +2,9 @@ LIBRARY()
 
 SRCS(
     config.cpp
-    service.cpp
     device_provider.cpp
+    generic_inventory_service_client.cpp
+    service.cpp
 )
 
 PEERDIR(
@@ -32,4 +33,5 @@ END()
 
 RECURSE_FOR_TESTS(
     ut
+    ut_infra
 )

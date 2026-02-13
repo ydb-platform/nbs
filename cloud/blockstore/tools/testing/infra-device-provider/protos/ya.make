@@ -1,0 +1,14 @@
+PROTO_LIBRARY()
+
+GRPC()
+SRCS(
+    infra.proto
+)
+
+PEERDIR(
+)
+
+INCLUDE_TAGS(GO_PROTO)
+EXCLUDE_TAGS(JAVA_PROTO)
+
+END()

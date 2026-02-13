@@ -20,7 +20,7 @@ namespace NCloud::NBlockStore {
 
 struct ILocalNVMeService: public IStartable
 {
-    [[nodiscard]] virtual auto ListNVMeDevices() const -> NThreading::TFuture<
+    [[nodiscard]] virtual auto ListNVMeDevices() -> NThreading::TFuture<
         TResultOrError<TVector<NProto::TNVMeDevice>>> = 0;
 
     [[nodiscard]] virtual auto AcquireNVMeDevice(const TString& serialNumber)
