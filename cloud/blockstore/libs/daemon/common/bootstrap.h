@@ -84,6 +84,7 @@ protected:
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
     NRdma::IServerPtr RdmaRequestServer;
     IStartablePtr RdmaTarget;
+    ILocalNVMeDeviceProviderPtr LocalNVMeDeviceProvider;
     ILocalNVMeServicePtr LocalNVMeService;
 
     TProgramShouldContinue ShouldContinue;

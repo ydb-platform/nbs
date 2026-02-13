@@ -41,6 +41,7 @@
 #include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/local_nvme/device_provider.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
@@ -965,6 +966,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
+    START_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     START_COMMON_COMPONENT(LocalNVMeService);
 
     // we need to start scheduler after all other components for 2 reasons:
@@ -1019,6 +1021,7 @@ void TBootstrapBase::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(LocalNVMeService);
+    STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
