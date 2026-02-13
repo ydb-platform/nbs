@@ -13,10 +13,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 /**
  * WriteData request life cycle:
- * Initial -> Pending -> Cached -> (FlushRequested) -> Flushing -> Flushed
- *
- * Status FlushRequested may be skipped — Flush takes as much WriteData requests
- * as possible from |TWriteBackCache::TNodeState::CachedEntries|.
+ * Initial -> Pending -> Unflushed -> Flushed
  *
  * For each NodeId it is guaranteed that there are no requests with out-of-order
  * statuses: if two requests A and B have the same NodeId, and the request A was
@@ -32,20 +29,16 @@ enum class EWriteDataRequestStatus
     // The request will not be processed further.
     Corrupted,
 
-    // Write request is waiting for the conditions:
-    // - enough space in the persistent buffer to store the request;
-    // - no overlapping read requests in progress.
+    // Write request is waiting until there is enough space in the persistent
+    // storage to store the request.
     Pending,
 
-    // Write request has been stored in the persistent buffer
-    // The caller code observes the request as completed
-    Cached,
-
-    // Write request is being flushed
-    Flushing,
+    // Write request has been stored in the persistent storage and is waiting
+    // for flushing
+    Unflushed,
 
     // Write request has been written to the session and can be removed from
-    // the persistent buffer
+    // the persistent storage
     Flushed
 };
 
@@ -89,9 +82,7 @@ struct IWriteBackCacheStats: public IPersistentStorageStats
         EWriteDataRequestStatus status,
         TInstant minTime) = 0;
 
-    virtual void AddReadDataStats(
-        EReadDataRequestCacheStatus status,
-        TDuration pendingDuration) = 0;
+    virtual void AddReadDataStats(EReadDataRequestCacheStatus status) = 0;
 };
 
 using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;
