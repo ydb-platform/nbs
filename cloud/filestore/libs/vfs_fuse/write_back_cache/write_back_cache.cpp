@@ -512,23 +512,12 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-
-        const auto nodeId = entry->GetNodeId();
-        const auto offset = entry->GetOffset();
-        const auto end = entry->GetEnd();
+        const auto nodeId = request->GetNodeId();
+        const auto offset = request->GetOffset();
+        const auto end = NStorage::CalculateByteCount(*request) -
+                         request->GetBufferOffset() + offset;
 
         Y_ABORT_UNLESS(offset < end);
-
-        const auto serializedSize = entry->GetSerializedSize();
-        const auto maxSerializedSize =
-            PersistentStorage->GetMaxSupportedAllocationByteCount();
-
-        Y_ABORT_UNLESS(
-            serializedSize <= maxSerializedSize,
-            "Serialized request size %lu is expected to be <= %lu",
-            serializedSize,
-            maxSerializedSize);
 
         auto unlocker =
             [ptr = weak_from_this(), nodeId, offset, end](const auto&)
@@ -542,33 +531,45 @@ public:
             }
         };
 
-        auto future = entry->GetCachedFuture();
+        auto promise = NewPromise<NProto::TWriteDataResponse>();
+        auto future = promise.GetFuture();
+
         future.Subscribe(std::move(unlocker));
 
-        auto* entryPtr = entry.release();
-
         auto locker =
-            [ptr = weak_from_this(), entry = entryPtr]() mutable
+            [ptr = weak_from_this(), request = std::move(request), promise = std::move(promise)]() mutable
         {
             auto self = ptr.lock();
             // Lock action is invoked immediately or from
             // UnlockRead/UnlockWrite calls that can be made only when
             // TImpl is alive
             Y_ABORT_UNLESS(self);
-            if (self) {
-                if (self->PendingEntries.empty()) {
-                    self->QueuedOperations.ShouldProcessPendingEntries = true;
-                }
-                self->PendingEntries.push_back(
-                    std::unique_ptr<TWriteDataEntry>(entry));
+
+            auto entry = std::make_unique<TWriteDataEntry>(
+                std::move(request),
+                std::move(promise));
+
+            const auto serializedSize = entry->GetSerializedSize();
+            const auto maxSerializedSize =
+                self->PersistentStorage->GetMaxSupportedAllocationByteCount();
+
+            Y_ABORT_UNLESS(
+                serializedSize <= maxSerializedSize,
+                "Serialized request size %lu is expected to be <= %lu",
+                serializedSize,
+                maxSerializedSize);
+
+            entry->SetPending(self.get());
+            self->RegisterWriteDataEntry(entry.get());
+            self->EmptyFlag = false;
+
+            if (self->PendingEntries.empty()) {
+                self->QueuedOperations.ShouldProcessPendingEntries = true;
             }
+            self->PendingEntries.push_back(std::move(entry));
         };
 
         auto guard = Guard(Lock);
-
-        entryPtr->SetPending(this);
-        RegisterWriteDataEntry(entryPtr);
-        EmptyFlag = false;
 
         auto* nodeState = GetOrCreateNodeState(nodeId);
         nodeState->RangeLock.LockWrite(offset, end, std::move(locker));
@@ -1437,12 +1438,13 @@ void TWriteBackCache::SetCachedNodeSize(ui64 nodeId, ui64 size)
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-        std::shared_ptr<NProto::TWriteDataRequest> request)
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        NThreading::TPromise<NProto::TWriteDataResponse> cachedPromise)
     : PendingRequest(std::move(request))
     , ByteCount(
           NStorage::CalculateByteCount(*PendingRequest) -
           PendingRequest->GetBufferOffset())
-    , CachedPromise(NewPromise<NProto::TWriteDataResponse>())
+    , CachedPromise(std::move(cachedPromise))
 {
     Y_ABORT_UNLESS(ByteCount > 0);
 }
