@@ -11,7 +11,7 @@ TThreadSafePartCounters::TThreadSafePartCounters(TPartitionDiskCountersPtr count
 TPartitionDiskCountersPtr TThreadSafePartCounters::Swap(
     TPartitionDiskCountersPtr counters)
 {
-    TGuard<TMutex> guard(Mutex);
+    TGuard guard(Lock);
     auto retCounters = std::move(Counters);
     Counters = std::move(counters);
     return retCounters;

@@ -89,20 +89,22 @@ using TResourceMetricsUpdate = std::variant<
 class TResourceMetricsQueue
 {
 private:
-    TMutex Mutex;
+    TAdaptiveLock Lock;
     TVector<TResourceMetricsUpdate> ResourceMetricsUpdates;
 
 public:
     void Push(const TResourceMetricsUpdate& update)
     {
-        TGuard guard(Mutex);
+        TGuard guard(Lock);
         ResourceMetricsUpdates.push_back(update);
     }
 
     TVector<TResourceMetricsUpdate> PopAll()
     {
-        TGuard guard(Mutex);
-        return std::move(ResourceMetricsUpdates);
+        TGuard guard(Lock);
+        auto retValue = std::move(ResourceMetricsUpdates);
+        ResourceMetricsUpdates.clear();
+        return retValue;
     }
 };
 

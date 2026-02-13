@@ -16,7 +16,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 class TThreadSafePartCounters
 {
 private:
-    mutable TMutex Mutex;
+    TAdaptiveLock Lock;
     TPartitionDiskCountersPtr Counters;
 
 public:
@@ -27,14 +27,14 @@ public:
     template <typename TFunc>
     auto Access(TFunc&& func) const
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard guard(Lock);
         return func(Counters);
     }
 
     template <typename TFunc>
     auto Access(TFunc&& func)
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard guard(Lock);
         return func(Counters);
     }
 

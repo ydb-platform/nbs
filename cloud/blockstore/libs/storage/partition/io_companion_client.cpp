@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TIOCompanionClient::ScheduleYellowStateUpdate(
     const NActors::TActorContext& ctx)
 {

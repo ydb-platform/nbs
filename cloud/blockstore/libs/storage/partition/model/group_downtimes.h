@@ -4,6 +4,7 @@
 
 #include <util/generic/hash.h>
 #include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 #include <util/system/types.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -11,13 +12,13 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 // Thread safe
 class TGroupDowntimes {
 private:
-    TMutex Mutex;
+    TAdaptiveLock Lock;
     THashMap<ui32, TDowntimeHistoryHolder> GroupId2Downtimes;
 
 public:
     auto GetGroupId2Downtimes() const
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard guard(Lock);
 
         return GroupId2Downtimes;
     }
