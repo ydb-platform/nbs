@@ -870,7 +870,13 @@ struct TStatsCalculator
 
     ui64 GetUnflushedQueueRequestCount() const
     {
-        return Queue.size();
+        ui64 res = 0;
+        for (const auto& stats: Queue) {
+            if (!stats.Flushed) {
+                res++;
+            }
+        }
+        return res;
     }
 
     ui64 GetNodeCount() const
@@ -1707,7 +1713,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         const auto zero = TInstant::Zero();
         const auto now = b.Timer->Now();
         const auto t1 = now + TDuration::Seconds(1);
-        const auto t3 = now + TDuration::Seconds(7);
         const auto t4 = now + TDuration::Seconds(15);
         const auto t5 = now + TDuration::Seconds(31);
         const auto t6 = now + TDuration::Seconds(63);
@@ -1723,7 +1728,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Timer->Sleep(TDuration::Seconds(1));
         b.WriteToCacheSync(1, 0, "abc");
 
-        b.CheckPendingWriteDataRequestStats(0, 1, zero);
+        b.CheckPendingWriteDataRequestStats(0, 0, zero);
         b.CheckUnflushedWriteDataRequestStats(1, 0, t1);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1733,7 +1738,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(2, 0, "def");
         b.WriteToCacheSync(2, 1, "xyz");
 
-        b.CheckPendingWriteDataRequestStats(0, 3, zero);
+        b.CheckPendingWriteDataRequestStats(0, 0, zero);
         b.CheckUnflushedWriteDataRequestStats(3, 0, t1);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1744,17 +1749,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(2, 1, "xyz");
         b.Cache.FlushNodeData(2);
 
-        b.CheckPendingWriteDataRequestStats(0, 4, zero);
+        b.CheckPendingWriteDataRequestStats(0, 0, zero);
         b.CheckUnflushedWriteDataRequestStats(4, 0, t1);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
         writeRequests.ProceedAll();
 
-        // WriteData requests for node 2 are flushed but they cannot be removed
-        // from the middle of the queue
-        b.CheckPendingWriteDataRequestStats(0, 4, zero);
+        // WriteData requests for node 2 are flushed
+        b.CheckPendingWriteDataRequestStats(0, 0, zero);
         b.CheckUnflushedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushedWriteDataRequestStats(3, 0, t3);
+        b.CheckFlushedWriteDataRequestStats(0, 3, zero);
 
         // --- T4
 
@@ -1764,9 +1768,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Cache recreation forces the requests stored in the queue to be
         // flushed again
-        b.CheckPendingWriteDataRequestStats(0, 4, zero);
+        b.CheckPendingWriteDataRequestStats(0, 0, zero);
         b.CheckUnflushedWriteDataRequestStats(4, 3, t4);
-        b.CheckFlushedWriteDataRequestStats(0, 0, zero);
+        b.CheckFlushedWriteDataRequestStats(0, 3, zero);
 
         // --- T5
 
@@ -1782,18 +1786,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
 
         // FlushAll should have been triggered by hitting cache capacity
-        b.CheckPendingWriteDataRequestStats(1, count + 4, t5);
+        b.CheckPendingWriteDataRequestStats(1, 0, t5);
         b.CheckUnflushedWriteDataRequestStats(count + 4, 3, t4);
-        b.CheckFlushedWriteDataRequestStats(0, 0, zero);
+        b.CheckFlushedWriteDataRequestStats(0, 3, zero);
 
         // --- T6
 
         b.Timer->Sleep(TDuration::Seconds(32));
         writeRequests.ProceedAll();
 
-        b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
+        b.CheckPendingWriteDataRequestStats(0, 1, zero);
         b.CheckUnflushedWriteDataRequestStats(1, count + 7, t6);
-        b.CheckFlushedWriteDataRequestStats(0, count + 4, zero);
+        b.CheckFlushedWriteDataRequestStats(0, count + 7, zero);
 
         // --- T7
 
@@ -1802,9 +1806,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         writeRequests.ProceedAll();
 
-        b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
+        b.CheckPendingWriteDataRequestStats(0, 1, zero);
         b.CheckUnflushedWriteDataRequestStats(0, count + 8, zero);
-        b.CheckFlushedWriteDataRequestStats(0, count + 5, zero);
+        b.CheckFlushedWriteDataRequestStats(0, count + 8, zero);
 
         b.CheckStatsAreEmpty();
     }

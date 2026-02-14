@@ -86,11 +86,6 @@ private:
     // Only for testing purposes
     friend struct TTestUtilBootstrap;
 
-    struct TCachedWriteDataRequest;
-    struct TGlobalListTag;
-    struct TNodeListTag;
-    class TWriteDataEntry;
-    struct TWriteDataEntryDeserializationStats;
     struct TWriteDataEntryPart;
     struct TNodeState;
     struct TFlushState;

@@ -2,7 +2,10 @@
 
 #include "persistent_storage.h"
 #include "read_write_range_lock.h"
+#include "sequence_id_generator.h"
 #include "write_data_request_builder.h"
+#include "write_data_request.h"
+#include "write_data_request_manager.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -18,6 +21,8 @@
 #include <util/generic/vector.h>
 #include <util/system/mutex.h>
 #include <util/stream/mem.h>
+
+#include <span>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -79,13 +84,6 @@ struct TBufferWriter
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-ui64 SaturationSub(ui64 x, ui64 y)
-{
-    return x > y ? x - y : 0;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,16 +104,10 @@ struct TWriteBackCache::TNodeState
 {
     const ui64 NodeId = 0;
 
-    // Entries from |TImpl::AllEntries| filtered by |NodeId| and appearing in
-    // the same order (RequestId is strictly increasing)
-    TIntrusiveList<TWriteDataEntry, TNodeListTag> AllEntries;
+    TDeque<std::unique_ptr<TPendingWriteDataRequest>> PendingRequests;
+    TDeque<std::unique_ptr<TCachedWriteDataRequest>> UnflushedRequests;
+    TDeque<std::unique_ptr<TCachedWriteDataRequest>> FlushedRequests;
 
-    // Entries from |TImpl::CachedEntries| with statuses Cached and Flushing
-    // filtered by |NodeId| appearing in the same order.
-    // Note: entries with status Flushed reside only in |TImpl::CachedEntries|.
-    // Note: each entry should appear in |AllEntries|, but the order is not
-    // preserved (RequestId is not ordered)
-    TDeque<TWriteBackCache::TWriteDataEntry*> CachedEntries;
     ui64 MaxCachedRequestId = 0;
 
     // Efficient calculation of TWriteDataEntryParts from CachedEntries
@@ -150,10 +142,22 @@ struct TWriteBackCache::TNodeState
         : NodeId(nodeId)
     {}
 
+    ui64 GetMinPendingOrUnflushedSequenceId() const
+    {
+        if (!UnflushedRequests.empty()) {
+            return UnflushedRequests.front()->GetSequenceId();
+        }
+        if (!PendingRequests.empty()) {
+            return PendingRequests.front()->GetSequenceId();
+        }
+        return Max<ui64>();
+    }
+
     bool CanBeDeleted() const
     {
-        if (AllEntries.Empty() && RangeLock.Empty()) {
-            Y_ABORT_UNLESS(CachedEntries.empty());
+        if (PendingRequests.empty() && UnflushedRequests.empty() &&
+            FlushedRequests.empty() && RangeLock.Empty())
+        {
             Y_ABORT_UNLESS(!FlushState.Executing);
             return true;
         }
@@ -162,17 +166,15 @@ struct TWriteBackCache::TNodeState
 
     bool ShouldFlush(ui64 maxFlushAllRequestId) const
     {
-        if (CachedEntries.empty()) {
+        if (UnflushedRequests.empty()) {
             return false;
         }
-
-        Y_ABORT_UNLESS(!AllEntries.Empty());
 
         if (!FlushRequests.empty()) {
             return true;
         }
 
-        const ui64 minRequestId = AllEntries.Front()->GetRequestId();
+        const ui64 minRequestId = UnflushedRequests.front()->GetSequenceId();
         return minRequestId <= maxFlushAllRequestId ||
                minRequestId <= AutomaticFlushRequestId;
     }
@@ -219,16 +221,14 @@ class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
 {
 private:
-    using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
     using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
-
-    friend class TWriteBackCache::TWriteDataEntry;
 
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
     const IWriteBackCacheStatsPtr Stats;
-    const NWriteBackCache::IWriteDataRequestBuilderPtr RequestBuilder;
+    const IWriteDataRequestBuilderPtr RequestBuilder;
+    const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const TFlushConfig FlushConfig;
     const TLog Log;
     const TString LogTag;
@@ -240,19 +240,7 @@ private:
     // All fields below should be protected by this lock
     TMutex Lock;
 
-    // All entries with Pending, Cached and Flushing statuses (but not Flushed).
-    // New entries are appended at the back of this list. Each entry is
-    // assigned a strictly increasing RequestId, so the list preserves the
-    // chronological order of requests (oldest at the front).
-    TIntrusiveList<TWriteDataEntry, TGlobalListTag> AllEntries;
-    ui64 NextRequestId = 1;
-
-    // Entries stored in the persistent queue: entries with statuses
-    // Cached, FlushRequested, Flushing and Flushed (but not Pending).
-    // Each entry in |CachedEntries| has a corresponding entry in
-    // |CachedEntriesPersistentQueue| (1:1 correspondence). The order of entries
-    // may differ from the chronological order in |AllEntries|.
-    TDeque<std::unique_ptr<TWriteDataEntry>> CachedEntries;
+    TWriteDataRequestManager RequestManager;
     IPersistentStoragePtr PersistentStorage;
 
     // WriteData entries and Flush states grouped by nodeId
@@ -265,10 +253,6 @@ private:
     // Node states to be deleted but that are referenced from |NodeStateRefs|.
     // Key: |TNodeState::DeletionId|, Value: NodeId.
     TMap<ui64, ui64> DeletedNodeStates;
-
-    // Waiting queue for the available space in the cache - entries
-    // with Pending status that have acquired write lock.
-    TDeque<std::unique_ptr<TWriteDataEntry>> PendingEntries;
 
     // Optimization: don't iterate over all node states during FlushAll;
     // only consider nodes that have new or changed entries.
@@ -283,11 +267,6 @@ private:
 
     // Operations to execute after completing the main operation
     TQueuedOperations QueuedOperations;
-
-    // Stats processing - entries filtered by status
-    TIntrusiveList<TWriteDataEntry> PendingStatusEntries;
-    TIntrusiveList<TWriteDataEntry> UnflushedStatusEntries;
-    TIntrusiveList<TWriteDataEntry> FlushedStatusEntries;
 
 public:
     TImpl(
@@ -307,6 +286,7 @@ public:
         , Timer(std::move(timer))
         , Stats(std::move(stats))
         , RequestBuilder(std::move(requestBuilder))
+        , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
         , FlushConfig(flushConfig)
         , Log(std::move(log))
         , LogTag(
@@ -322,8 +302,9 @@ public:
             ReportWriteBackCacheCorruptionError(
                 TStringBuilder()
                 << LogTag
-                << " WriteBackCache persistent queue creation failed: "
-                << createPersistentStorageResult.GetError());
+                << " WriteBackCache persistent storage initialization failed: "
+                << createPersistentStorageResult.GetError()
+                << ", FilePath: " << filePath.Quote());
             return;
         }
 
@@ -339,30 +320,29 @@ public:
 
         Stats->ResetNonDerivativeCounters();
 
-        TWriteDataEntryDeserializationStats deserializationStats;
+        RequestManager = TWriteDataRequestManager(
+            SequenceIdGenerator,
+            PersistentStorage,
+            Timer,
+            Stats);
 
-        PersistentStorage->Visit(
-            [&](TStringBuf serializedRequest)
+        auto initStatus = RequestManager.Init(
+            [&](std::unique_ptr<TCachedWriteDataRequest> entry)
             {
-                auto entry = std::make_unique<TWriteDataEntry>(
-                    serializedRequest,
-                    deserializationStats,
-                    this);
-
-                if (entry->IsCorrupted()) {
-                    // This may happen when a buffer was corrupted.
-                    // We should add this entry to a queue like a normal entry
-                    // because there is 1-by-1 correspondence between
-                    // CachedEntriesPersistentQueue and CachedEntries.
-                    CachedEntries.push_back(std::move(entry));
-                } else {
-                    RegisterWriteDataEntry(entry.get());
-                    auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
-                    AddCachedEntry(nodeState, std::move(entry));
-                }
+                auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
+                NodesWithNewEntries.insert(entry->GetNodeId());
+                AddCachedEntry(nodeState, std::move(entry));
             });
 
-        EmptyFlag = AllEntries.Empty();
+        if (!initStatus) {
+            ReportWriteBackCacheCorruptionError(
+                TStringBuilder()
+                << LogTag
+                << " WriteBackCache failed to deserialize requests from the "
+                   "persistent storage, FilePath: "
+                << filePath.Quote());
+            return;
+        }
 
         const auto persistentStorageStats = PersistentStorage->GetStats();
 
@@ -375,18 +355,6 @@ public:
             << persistentStorageStats.RawUsedByteCount
             << ", \"EntryCount\": "
             << persistentStorageStats.EntryCount << "}");
-
-        if (deserializationStats.HasFailed()) {
-            // Each deserialization failure event has been already reported
-            // as a critical error - just write statistics to the log
-            STORAGE_ERROR(
-                LogTag << " WriteBackCache request deserialization failure "
-                << "{\"EntrySizeMismatchCount\": "
-                << deserializationStats.EntrySizeMismatchCount
-                << ", \"ProtobufDeserializationErrorCount\": "
-                << deserializationStats.ProtobufDeserializationErrorCount
-                << "}");
-        }
 
         if (persistentStorageStats.IsCorrupted) {
             ReportWriteBackCacheCorruptionError(
@@ -545,28 +513,15 @@ public:
             // TImpl is alive
             Y_ABORT_UNLESS(self);
 
-            auto entry = std::make_unique<TWriteDataEntry>(
-                std::move(request),
-                std::move(promise));
+            self->NodesWithNewEntries.insert(request->GetNodeId());
 
-            const auto serializedSize = entry->GetSerializedSize();
-            const auto maxSerializedSize =
-                self->PersistentStorage->GetMaxSupportedAllocationByteCount();
+            auto res = self->RequestManager.AddRequest(std::move(request));
+            std::visit([&](auto res)
+            {
+                self->DoAddRequest(std::move(res), std::move(promise));
+            }, std::move(res));
 
-            Y_ABORT_UNLESS(
-                serializedSize <= maxSerializedSize,
-                "Serialized request size %lu is expected to be <= %lu",
-                serializedSize,
-                maxSerializedSize);
-
-            entry->SetPending(self.get());
-            self->RegisterWriteDataEntry(entry.get());
             self->EmptyFlag = false;
-
-            if (self->PendingEntries.empty()) {
-                self->QueuedOperations.ShouldProcessPendingEntries = true;
-            }
-            self->PendingEntries.push_back(std::move(entry));
         };
 
         auto guard = Guard(Lock);
@@ -584,11 +539,16 @@ public:
         auto guard = Guard(Lock);
 
         auto* nodeState = GetNodeStateOrNull(nodeId);
-        if (nodeState == nullptr || nodeState->AllEntries.Empty()) {
+        if (nodeState == nullptr || (nodeState->PendingRequests.empty() &&
+                                     nodeState->UnflushedRequests.empty()))
+        {
             return NThreading::MakeFuture();
         }
 
-        ui64 maxRequestId = nodeState->AllEntries.Back()->GetRequestId();
+        ui64 maxRequestId =
+            nodeState->PendingRequests.empty()
+                ? nodeState->UnflushedRequests.back()->GetSequenceId()
+                : nodeState->PendingRequests.back()->GetSequenceId();
 
         if (!nodeState->FlushRequests.empty() &&
             nodeState->FlushRequests.back().RequestId >= maxRequestId)
@@ -611,11 +571,11 @@ public:
     {
         auto guard = Guard(Lock);
 
-        if (AllEntries.Empty()) {
+        if (!RequestManager.HasPendingOrUnflushedRequests()) {
             return NThreading::MakeFuture();
         }
 
-        ui64 maxRequestId = AllEntries.Back()->GetRequestId();
+        ui64 maxRequestId = RequestManager.GetMaxPendingOrUnflushedSequenceId();
 
         if (!FlushAllRequests.empty() &&
             FlushAllRequests.back().RequestId >= maxRequestId)
@@ -649,7 +609,7 @@ public:
     ui64 AcquireNodeStateRef()
     {
         with_lock (Lock) {
-            ui64 refId = NextRequestId++;
+            ui64 refId = SequenceIdGenerator->Generate();
             NodeStateRefs.insert(refId);
             return refId;
         }
@@ -691,6 +651,26 @@ public:
     }
 
 private:
+    void DoAddRequest(
+        std::unique_ptr<TCachedWriteDataRequest> request,
+        TPromise<NProto::TWriteDataResponse> promise)
+    {
+        auto* nodeState = GetOrCreateNodeState(request->GetNodeId());
+        QueuedOperations.WriteDataCompleted.push_back(std::move(promise));
+        AddCachedEntry(nodeState, std::move(request));
+    }
+
+    void DoAddRequest(
+        std::unique_ptr<TPendingWriteDataRequest> request,
+        TPromise<NProto::TWriteDataResponse> promise)
+    {
+        *request->MutablePromise() = std::move(promise);
+        auto* nodeState =
+            GetOrCreateNodeState(request->GetRequest().GetNodeId());
+        nodeState->PendingRequests.push_back(std::move(request));
+        RequestFlushAllCachedData();
+    }
+
     // Check and enqueue Flush operation for the given node if needed.
     // If the node should be flushed and there is no flush currently executing
     // for the node, mark the node's flush state as executing and add it into
@@ -725,18 +705,6 @@ private:
         }
 
         NodesWithNewCachedEntries.clear();
-    }
-
-    // should be protected by |Lock|
-    void RegisterWriteDataEntry(TWriteDataEntry* entry)
-    {
-        entry->SetRequestId(NextRequestId++);
-        AllEntries.PushBack(entry);
-
-        NodesWithNewEntries.insert(entry->GetNodeId());
-
-        auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
-        nodeState->AllEntries.PushBack(entry);
     }
 
     // should be protected by |Lock|
@@ -797,9 +765,11 @@ private:
         if (NodeStateRefs.empty()) {
             EraseNodeState(nodeState->NodeId);
         } else {
-            nodeState->DeletionId = NextRequestId++;
+            nodeState->DeletionId = SequenceIdGenerator->Generate();
             DeletedNodeStates[nodeState->DeletionId] = nodeState->NodeId;
         }
+
+        EmptyFlag = NodeStates.empty();
     }
 
     // NOLINTNEXTLINE(misc-no-recursion)
@@ -860,37 +830,30 @@ private:
     // should be protected by |Lock|
     void ProcessPendingEntries()
     {
-        while (!PendingEntries.empty()) {
-            auto& entry = PendingEntries.front();
-            auto serializedSize = entry->GetSerializedSize();
-
-            auto allocationResult = PersistentStorage->Alloc(serializedSize);
-
-            Y_ABORT_UNLESS(
-                !HasError(allocationResult),
-                "Failed to allocate memory in the persistent storage: %s",
-                allocationResult.GetError().GetMessage().c_str());
-
-            char* allocationPtr = allocationResult.GetResult();
-            if (allocationPtr == nullptr) {
-                RequestFlushAllCachedData();
+        while (true) {
+            auto entry = RequestManager.TryProcessPendingRequest();
+            if (!entry) {
                 break;
             }
 
-            entry->Serialize({allocationPtr, serializedSize});
-
-            PersistentStorage->Commit();
-
-            entry->MoveRequestBuffer(allocationPtr, QueuedOperations, this);
-
             auto* nodeState = GetNodeState(entry->GetNodeId());
+
+            Y_ABORT_UNLESS(!nodeState->PendingRequests.empty());
+            Y_ABORT_UNLESS(
+                nodeState->PendingRequests.front()->GetSequenceId() ==
+                entry->GetSequenceId());
+
+            QueuedOperations.WriteDataCompleted.push_back(
+                std::move(
+                    *nodeState->PendingRequests.front()->MutablePromise()));
+
+            nodeState->PendingRequests.pop_front();
+
             AddCachedEntry(nodeState, std::move(entry));
 
             // The entry transitioned from Pending to Cached status may be
             // requested for flushing. Recheck Flush condition for the node.
             EnqueueFlushIfNeeded(nodeState);
-
-            PendingEntries.pop_front();
         }
     }
 
@@ -1116,7 +1079,7 @@ private:
         {
             auto guard = Guard(Lock);
 
-            for (auto* entry: nodeState->CachedEntries) {
+            for (const auto& entry: nodeState->UnflushedRequests) {
                 if (!batchBuilder->AddRequest(
                         entry->GetHandle(),
                         entry->GetOffset(),
@@ -1209,29 +1172,16 @@ private:
     }
 
     // should be protected by |Lock|
-    template <class TTag>
     void EnqueueFlushCompletions(
         TDeque<TFlushRequest>& flushRequests,
-        TIntrusiveList<TWriteDataEntry, TTag>& entries)
+        ui64 minRequestId)
     {
-        if (flushRequests.empty()) {
-            return;
-        }
-        if (entries.Empty()) {
-            for (auto& flushRequest: flushRequests) {
-                QueuedOperations.FlushCompleted.push_back(
-                    std::move(flushRequest.Promise));
-            }
-            flushRequests.clear();
-        } else {
-            const ui64 minRequestId = entries.Front()->GetRequestId();
-            while (!flushRequests.empty() &&
-                   flushRequests.front().RequestId < minRequestId)
-            {
-                QueuedOperations.FlushCompleted.push_back(
-                    std::move(flushRequests.front().Promise));
-                flushRequests.pop_front();
-            }
+        while (!flushRequests.empty() &&
+               flushRequests.front().RequestId < minRequestId)
+        {
+            QueuedOperations.FlushCompleted.push_back(
+                std::move(flushRequests.front().Promise));
+            flushRequests.pop_front();
         }
     }
 
@@ -1247,27 +1197,30 @@ private:
         while (nodeState->FlushState.AffectedWriteDataEntriesCount > 0) {
             nodeState->FlushState.AffectedWriteDataEntriesCount--;
 
-            auto* entry = RemoveFrontCachedEntry(nodeState);
-            entry->SetFlushed(this);
+            Y_ABORT_UNLESS(!nodeState->UnflushedRequests.empty());
 
-            nodeState->AllEntries.Remove(entry);
-            AllEntries.Remove(entry);
+            auto request = std::move(nodeState->UnflushedRequests.front());
+            nodeState->UnflushedRequests.pop_front();
+
+            RequestManager.SetFlushed(request.get());
+
+            nodeState->FlushedRequests.push_back(std::move(request));
         }
 
         EnqueueFlushCompletions(
             nodeState->FlushRequests,
-            nodeState->AllEntries);
+            nodeState->GetMinPendingOrUnflushedSequenceId());
 
-        EnqueueFlushCompletions(FlushAllRequests, AllEntries);
-
-        EmptyFlag = AllEntries.Empty();
+        EnqueueFlushCompletions(
+            FlushAllRequests,
+            RequestManager.GetMinPendingOrUnflushedSequenceId());
 
         // Clear flushed entries from the persistent queue
-        while (!CachedEntries.empty() && CachedEntries.front()->IsFlushed()) {
-            auto* entry = CachedEntries.front().get();
-            PersistentStorage->Free(entry->GetAllocationPtr());
-            entry->Complete(this);
-            CachedEntries.pop_front();
+        while (!nodeState->FlushedRequests.empty()) {
+            auto request = std::move(nodeState->FlushedRequests.front());
+            nodeState->FlushedRequests.pop_front();
+            nodeState->CachedEntryIntervalMap.Remove(request.get());
+            RequestManager.Evict(std::move(request));
             QueuedOperations.ShouldProcessPendingEntries = true;
         }
 
@@ -1296,49 +1249,18 @@ private:
     // should be protected by |Lock|
     void AddCachedEntry(
         TNodeState* nodeState,
-        std::unique_ptr<TWriteDataEntry> entry)
+        std::unique_ptr<TCachedWriteDataRequest> entry)
     {
         Y_ABORT_UNLESS(nodeState != nullptr);
         Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
 
         nodeState->CachedEntryIntervalMap.Add(entry.get());
-        nodeState->CachedEntries.push_back(entry.get());
         nodeState->MaxCachedRequestId =
-            Max(nodeState->MaxCachedRequestId, entry->GetRequestId());
+            Max(nodeState->MaxCachedRequestId, entry->GetSequenceId());
         nodeState->CachedNodeSize =
             Max(nodeState->CachedNodeSize, entry->GetEnd());
+        nodeState->UnflushedRequests.push_back(std::move(entry));
         NodesWithNewCachedEntries.insert(nodeState->NodeId);
-        CachedEntries.push_back(std::move(entry));
-    }
-
-    // should be protected by |Lock|
-    static TWriteDataEntry* RemoveFrontCachedEntry(TNodeState* nodeState)
-    {
-        Y_ABORT_UNLESS(nodeState != nullptr);
-        Y_ABORT_UNLESS(!nodeState->CachedEntries.empty());
-
-        auto* entry = nodeState->CachedEntries.front();
-        nodeState->CachedEntries.pop_front();
-        nodeState->CachedEntryIntervalMap.Remove(entry);
-
-        return entry;
-    }
-
-    TIntrusiveList<TWriteDataEntry>& GetEntryListByStatus(
-        EWriteDataRequestStatus status)
-    {
-        switch (status) {
-            case EWriteDataRequestStatus::Pending:
-                return PendingStatusEntries;
-            case EWriteDataRequestStatus::Unflushed:
-                return UnflushedStatusEntries;
-            case EWriteDataRequestStatus::Flushed:
-                return FlushedStatusEntries;
-            default:
-                Y_ABORT(
-                    "Invalid EWriteDataRequestStatus - %d",
-                    static_cast<int>(status));
-        }
     }
 };
 
@@ -1437,184 +1359,8 @@ void TWriteBackCache::SetCachedNodeSize(ui64 nodeId, ui64 size)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-        std::shared_ptr<NProto::TWriteDataRequest> request,
-        NThreading::TPromise<NProto::TWriteDataResponse> cachedPromise)
-    : PendingRequest(std::move(request))
-    , ByteCount(
-          NStorage::CalculateByteCount(*PendingRequest) -
-          PendingRequest->GetBufferOffset())
-    , CachedPromise(std::move(cachedPromise))
-{
-    Y_ABORT_UNLESS(ByteCount > 0);
-}
-
-TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-        TStringBuf serializedRequest,
-        TWriteDataEntryDeserializationStats& deserializationStats,
-        TImpl* impl)
-    : ByteCount(SaturationSub(
-          serializedRequest.size(),
-          sizeof(TCachedWriteDataRequest)))
-{
-    deserializationStats.EntryCount++;
-
-    if (ByteCount == 0) {
-        deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheCorruptionError(Sprintf(
-            "TWriteDataEntry deserialization error: entry size is too small, "
-            "expected: > %lu, actual: %lu",
-            sizeof(TCachedWriteDataRequest),
-            serializedRequest.size()));
-        SetStatus(EWriteDataRequestStatus::Corrupted, impl);
-        return;
-    }
-
-    const auto* allocationPtr =
-        reinterpret_cast<const TCachedWriteDataRequest*>(
-            serializedRequest.data());
-
-    CachedRequest = allocationPtr;
-    SetStatus(EWriteDataRequestStatus::Unflushed, impl);
-}
-
-size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
-{
-    return sizeof(TCachedWriteDataRequest) + GetByteCount();
-}
-
-void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
-{
-    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Initial);
-    Y_ABORT_UNLESS(PendingRequest);
-    SetStatus(EWriteDataRequestStatus::Pending, impl);
-}
-
-void TWriteBackCache::TWriteDataEntry::Serialize(
-    std::span<char> allocation) const
-{
-    Y_ABORT_UNLESS(PendingRequest);
-
-    Y_ABORT_UNLESS(
-        allocation.size() == sizeof(TCachedWriteDataRequest) + ByteCount,
-        "Invalid allocation size, expected: %lu, actual: %lu",
-        sizeof(TCachedWriteDataRequest) + ByteCount,
-        allocation.size());
-
-    auto* cachedRequest =
-        reinterpret_cast<TCachedWriteDataRequest*>(allocation.data());
-
-    cachedRequest->NodeId = PendingRequest->GetNodeId();
-    cachedRequest->Handle = PendingRequest->GetHandle();
-    cachedRequest->Offset = PendingRequest->GetOffset();
-
-    TBufferWriter writer(allocation.subspan(sizeof(TCachedWriteDataRequest)));
-
-    if (PendingRequest->GetIovecs().empty()) {
-        writer.Write(TStringBuf(PendingRequest->GetBuffer())
-                         .Skip(PendingRequest->GetBufferOffset()));
-    } else {
-        for (const auto& iovec: PendingRequest->GetIovecs()) {
-            writer.Write(TStringBuf(
-                reinterpret_cast<const char*>(iovec.GetBase()),
-                iovec.GetLength()));
-        }
-    }
-
-    Y_ABORT_UNLESS(
-        writer.TargetBuffer.empty(),
-        "Buffer is expected to be written completely");
-}
-
-void TWriteBackCache::TWriteDataEntry::MoveRequestBuffer(
-    const void* allocationPtr,
-    TQueuedOperations& pendingOperations,
-    TImpl* impl)
-{
-    Y_ABORT_UNLESS(PendingRequest);
-    Y_ABORT_UNLESS(CachedRequest == nullptr);
-
-    CachedRequest =
-        reinterpret_cast<const TCachedWriteDataRequest*>(allocationPtr);
-    PendingRequest.reset();
-
-    SetStatus(EWriteDataRequestStatus::Unflushed, impl);
-
-    if (CachedPromise.Initialized()) {
-        pendingOperations.WriteDataCompleted.push_back(
-            std::move(CachedPromise));
-    }
-}
-
-void TWriteBackCache::TWriteDataEntry::SetFlushed(TImpl* impl)
-{
-    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Unflushed);
-    SetStatus(EWriteDataRequestStatus::Flushed, impl);
-}
-
-void TWriteBackCache::TWriteDataEntry::Complete(TImpl* impl)
-{
-    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Flushed);
-    SetStatus(EWriteDataRequestStatus::Initial, impl);
-}
-
-auto TWriteBackCache::TWriteDataEntry::GetCachedFuture()
-    -> TFuture<NProto::TWriteDataResponse>
-{
-    Y_ABORT_UNLESS(CachedPromise.Initialized());
-    return CachedPromise.GetFuture();
-}
-
-void TWriteBackCache::TWriteDataEntry::SetStatus(
-    EWriteDataRequestStatus status,
-    TImpl* impl)
-{
-    Y_ABORT_UNLESS(Status != status);
-
-    auto now = impl->Timer->Now();
-
-    if (Status != EWriteDataRequestStatus::Initial &&
-        Status != EWriteDataRequestStatus::Corrupted)
-    {
-        auto& list = impl->GetEntryListByStatus(Status);
-        Y_DEBUG_ABORT_UNLESS(!list.Empty());
-
-        auto prevMinTime = list.Front()->StatusChangeTime;
-        list.Remove(this);
-
-        impl->Stats->WriteDataRequestExitedStatus(
-            Status,
-            now - StatusChangeTime);
-
-        auto minTime =
-            list.Empty() ? TInstant::Zero() : list.Front()->StatusChangeTime;
-
-        if (prevMinTime != minTime) {
-            impl->Stats->WriteDataRequestUpdateMinTime(Status, minTime);
-        }
-    }
-
-    Status = status;
-    StatusChangeTime = now;
-
-    if (Status != EWriteDataRequestStatus::Initial &&
-        Status != EWriteDataRequestStatus::Corrupted)
-    {
-        auto& list = impl->GetEntryListByStatus(Status);
-
-        impl->Stats->WriteDataRequestEnteredStatus(Status);
-
-        if (list.Empty()) {
-            impl->Stats->WriteDataRequestUpdateMinTime(Status, now);
-        }
-
-        list.PushBack(this);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TWriteBackCache::TWriteDataEntryIntervalMap::Add(TWriteDataEntry* entry)
+void TWriteBackCache::TWriteDataEntryIntervalMap::Add(
+    TCachedWriteDataRequest* entry)
 {
     TBase::VisitOverlapping(
         entry->GetOffset(),
@@ -1636,7 +1382,8 @@ void TWriteBackCache::TWriteDataEntryIntervalMap::Add(TWriteDataEntry* entry)
     TBase::Add(entry->GetOffset(), entry->GetEnd(), entry);
 }
 
-void TWriteBackCache::TWriteDataEntryIntervalMap::Remove(TWriteDataEntry* entry)
+void TWriteBackCache::TWriteDataEntryIntervalMap::Remove(
+    TCachedWriteDataRequest* entry)
 {
     TBase::VisitOverlapping(
         entry->GetOffset(),

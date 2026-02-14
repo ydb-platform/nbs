@@ -14,6 +14,7 @@ SRCS(
     write_back_cache_ut.cpp
     write_back_cache_util_ut.cpp
     write_data_request_builder_ut.cpp
+    write_data_request_manager_ut.cpp
 )
 
 PEERDIR(
