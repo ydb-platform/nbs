@@ -1,5 +1,4 @@
 //go:build linux
-// +build linux
 
 /*
 Copyright 2014 The Kubernetes Authors.
@@ -24,15 +23,19 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
 	utilexec "k8s.io/utils/exec"
 	testexec "k8s.io/utils/exec/testing"
+	"k8s.io/utils/ptr"
 )
 
 func TestReadProcMountsFrom(t *testing.T) {
@@ -812,6 +815,64 @@ func TestFormatTimeout(t *testing.T) {
 	mu.Unlock()
 }
 
+// Replicate some types found in "golang.org/x/exp/constraints"
+// to avoid a dependency on that package.
+type Signed interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+
+type Unsigned interface {
+	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
+}
+
+type Integer interface {
+	Signed | Unsigned
+}
+
+// Some platforms define unix.Statfs_t.Flags differently.  Our need here is
+// pretty constrained, so some aggressive type-conversion is OK.
+func mkStatfsFlags[T1 Integer, T2 Integer](orig T1, add T2) T1 {
+	return orig | T1(add)
+}
+
+func TestGetBindMountOptions(t *testing.T) {
+	var testCases = map[string]struct {
+		flags        int32 // smallest size used by any platform we care about
+		mountoptions string
+	}{
+		"ro":            {flags: unix.MS_RDONLY, mountoptions: "ro"},
+		"nodev":         {flags: unix.MS_NODEV, mountoptions: "nodev"},
+		"noexec":        {flags: unix.MS_NOEXEC, mountoptions: "noexec"},
+		"nosuid":        {flags: unix.MS_NOSUID, mountoptions: "nosuid"},
+		"noatime":       {flags: unix.MS_NOATIME, mountoptions: "noatime"},
+		"relatime":      {flags: unix.MS_RELATIME, mountoptions: "relatime"},
+		"nodiratime":    {flags: unix.MS_NODIRATIME, mountoptions: "nodiratime"},
+		"ronodev":       {flags: unix.MS_RDONLY | unix.MS_NODEV, mountoptions: "nodev,ro"},
+		"ronodevnoexec": {flags: unix.MS_RDONLY | unix.MS_NODEV | unix.MS_NOEXEC, mountoptions: "nodev,noexec,ro"},
+	}
+
+	statfsMock := func(path string, buf *unix.Statfs_t) (err error) {
+		*buf = unix.Statfs_t{}
+		buf.Flags = mkStatfsFlags(buf.Flags, testCases[path].flags)
+		return nil
+	}
+
+	testGetBindMountOptionsSingleCase := func(t *testing.T) {
+		path := strings.Split(t.Name(), "/")[1]
+		options, _ := getBindMountOptions(path, statfsMock)
+		sort.Strings(options)
+		optionString := strings.Join(options, ",")
+		mountOptions := testCases[path].mountoptions
+		if optionString != mountOptions {
+			t.Fatalf(`Mountoptions differ. Wanted: %s, returned: %s`, mountOptions, optionString)
+		}
+	}
+
+	for k := range testCases {
+		t.Run(k, testGetBindMountOptionsSingleCase)
+	}
+}
+
 func makeFakeCommandAction(stdout string, err error, cmdFn func()) testexec.FakeCommandAction {
 	c := testexec.FakeCmd{
 		CombinedOutputScript: []testexec.FakeAction{
@@ -825,5 +886,118 @@ func makeFakeCommandAction(stdout string, err error, cmdFn func()) testexec.Fake
 	}
 	return func(cmd string, args ...string) utilexec.Cmd {
 		return testexec.InitFakeCmd(&c, cmd, args...)
+	}
+}
+
+func TestIsLikelyNotMountPoint(t *testing.T) {
+	mounter := Mounter{"fake/path", ptr.To(true), true, true}
+
+	tests := []struct {
+		fileName       string
+		targetLinkName string
+		setUp          func(base, fileName, targetLinkName string) error
+		cleanUp        func(base, fileName, targetLinkName string) error
+		expectedResult bool
+		expectError    bool
+	}{
+		{
+			"Dir",
+			"",
+			func(base, fileName, targetLinkName string) error {
+				return os.Mkdir(filepath.Join(base, fileName), 0o750)
+			},
+			func(base, fileName, targetLinkName string) error {
+				return os.Remove(filepath.Join(base, fileName))
+			},
+			true,
+			false,
+		},
+		{
+			"InvalidDir",
+			"",
+			func(base, fileName, targetLinkName string) error {
+				return nil
+			},
+			func(base, fileName, targetLinkName string) error {
+				return nil
+			},
+			true,
+			true,
+		},
+		{
+			"ValidSymLink",
+			"targetSymLink",
+			func(base, fileName, targetLinkName string) error {
+				targeLinkPath := filepath.Join(base, targetLinkName)
+				if err := os.Mkdir(targeLinkPath, 0o750); err != nil {
+					return err
+				}
+
+				filePath := filepath.Join(base, fileName)
+				if err := os.Symlink(targeLinkPath, filePath); err != nil {
+					return err
+				}
+				return nil
+			},
+			func(base, fileName, targetLinkName string) error {
+				if err := os.Remove(filepath.Join(base, fileName)); err != nil {
+					return err
+				}
+				return os.Remove(filepath.Join(base, targetLinkName))
+			},
+			true,
+			false,
+		},
+		{
+			"InvalidSymLink",
+			"targetSymLink2",
+			func(base, fileName, targetLinkName string) error {
+				targeLinkPath := filepath.Join(base, targetLinkName)
+				if err := os.Mkdir(targeLinkPath, 0o750); err != nil {
+					return err
+				}
+
+				filePath := filepath.Join(base, fileName)
+				if err := os.Symlink(targeLinkPath, filePath); err != nil {
+					return err
+				}
+				return os.Remove(targeLinkPath)
+			},
+			func(base, fileName, targetLinkName string) error {
+				return os.Remove(filepath.Join(base, fileName))
+			},
+			true,
+			true,
+		},
+	}
+
+	for _, test := range tests {
+		// test with absolute and relative path
+		baseList := []string{t.TempDir(), "./"}
+		for _, base := range baseList {
+			if err := test.setUp(base, test.fileName, test.targetLinkName); err != nil {
+				t.Fatalf("unexpected error in setUp(%s, %s): %v", test.fileName, test.targetLinkName, err)
+			}
+
+			filePath := filepath.Join(base, test.fileName)
+			result, err := mounter.IsLikelyNotMountPoint(filePath)
+			if result != test.expectedResult {
+				t.Errorf("Expect result not equal with IsLikelyNotMountPoint(%s) return: %t, expected: %t", filePath, result, test.expectedResult)
+			}
+
+			if base == "./" {
+				if err := test.cleanUp(base, test.fileName, test.targetLinkName); err != nil {
+					t.Fatalf("unexpected error in cleanUp(%s, %s): %v", test.fileName, test.targetLinkName, err)
+				}
+			}
+
+			if (err != nil) != test.expectError {
+				if test.expectError {
+					t.Errorf("Expect error during IsLikelyNotMountPoint(%s)", filePath)
+				} else {
+					t.Errorf("Expect error is nil during IsLikelyNotMountPoint(%s): %v", filePath, err)
+				}
+			}
+		}
 	}
 }
