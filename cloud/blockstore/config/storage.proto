@@ -1419,4 +1419,7 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // Enables separate fresh blocks writer.
+    optional bool FreshBlocksWriterEnabled = 481;
 }

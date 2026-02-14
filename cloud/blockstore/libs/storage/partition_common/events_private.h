@@ -18,6 +18,7 @@ namespace NCloud::NBlockStore::NStorage {
 #define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
     xxx(ReadBlob,                  __VA_ARGS__)                                \
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
+    xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -227,6 +228,23 @@ struct TEvPartitionCommonPrivate
         TVector<TGetPartCountersResponse> PartCounters;
 
         TPartCountersCombined() = default;
+    };
+
+    //
+    // GetFreshChannelsInfo
+    //
+
+    struct TGetFreshChannelsInfoRequest
+    {
+    };
+
+    struct TGetFreshChannelsInfoResponse
+    {
+        NKikimr::TTabletStorageInfoPtr TabletInfo;
+        ui64 ChannelsCount;
+        ui64 Generation;
+
+        ui64 PersistedTrimFreshLogToCommitId;
     };
 
     //

@@ -392,6 +392,13 @@ void TPartitionActor::BeforeDie(const TActorContext& ctx)
     KillActors(ctx);
     ClearWriteQueue(ctx);
     CancelPendingRequests(ctx, PendingRequests);
+
+    if (Poisoner) {
+        NCloud::Reply(
+            ctx,
+            *Poisoner,
+            std::make_unique<TEvents::TEvPoisonTaken>());
+    }
 }
 
 void TPartitionActor::KillActors(const TActorContext& ctx)
@@ -628,6 +635,11 @@ void TPartitionActor::HandlePoisonPill(
         TBlockStoreComponents::PARTITION,
         "%s Stop tablet because of PoisonPill request",
         LogTitle.GetWithTime().c_str());
+
+    Poisoner = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
 
     Suicide(ctx);
 }
@@ -1199,6 +1211,24 @@ NProto::TError VerifyBlockChecksum(
     }
 
     return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::HandleGetFreshChannelsInfo(
+    const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<
+        TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+
+    response->TabletInfo = Info();
+    response->ChannelsCount = State->GetChannelCount();
+    response->Generation = Executor()->Generation();
+    response->PersistedTrimFreshLogToCommitId =
+        State->GetMeta().GetTrimFreshLogToCommitId();
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

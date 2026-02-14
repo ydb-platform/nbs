@@ -765,6 +765,8 @@ public:
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
 
     [[nodiscard]] TDuration GetAttachDetachPathRequestTimeout() const;
+    
+    [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 };
 
 ui64 GetAllocationUnit(
