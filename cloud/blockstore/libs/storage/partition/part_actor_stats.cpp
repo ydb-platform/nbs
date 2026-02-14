@@ -213,4 +213,15 @@ void TPartitionActor::HandleGetPartCountersRequest(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TPartitionActor::RejectGetPartCountersRequest(
+    const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            MakeError(EWellKnownResultCodes::E_REJECTED)));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

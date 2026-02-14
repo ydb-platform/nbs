@@ -1083,7 +1083,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
-        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersRequest);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            RejectGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);

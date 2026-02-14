@@ -68,4 +68,20 @@ void TNonreplicatedPartitionRdmaActor::
             ExtractPartCounters()));
 }
 
+void TNonreplicatedPartitionRdmaActor::RejectGetDiskRegistryBasedPartCounters(
+    const TEvNonreplPartitionPrivate::
+        TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(E_REJECTED),
+            SelfId(),
+            PartConfig->GetName(),
+            ExtractPartCounters()));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

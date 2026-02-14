@@ -257,12 +257,23 @@ private:
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
     void HandleGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectDiskRegistryBasedPartCountersCombined(
         const TEvNonreplPartitionPrivate::
             TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
