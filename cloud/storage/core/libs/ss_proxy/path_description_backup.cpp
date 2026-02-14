@@ -69,6 +69,11 @@ void TPathDescriptionBackup::ScheduleBackup(const TActorContext& ctx)
 
 NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
 {
+    if (!BackupProtoHasChanged) {
+        return MakeError(S_FALSE, "backup file is not changed");
+    }
+    BackupProtoHasChanged = false;
+
     NProto::TError error;
 
     try {
@@ -94,6 +99,9 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: backup completed");
     } else {
+        // We should retry the backup in case of failure.
+        BackupProtoHasChanged = true;
+
         ReportBackupPathDescriptionsFailure();
 
         LOG_ERROR_S(ctx, LogComponent,
@@ -165,6 +173,8 @@ void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
 {
     auto* msg = ev->Get();
     auto& data = *BackupProto.MutableData();
+
+    BackupProtoHasChanged = true;
     data[msg->Path] = std::move(msg->PathDescription);
 
     LOG_DEBUG_S(ctx, LogComponent,
