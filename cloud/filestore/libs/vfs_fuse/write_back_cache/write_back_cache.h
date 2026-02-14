@@ -25,6 +25,27 @@ using IWriteBackCacheStatsPtr =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCacheArgs
+{
+    IFileStorePtr Session;
+    ISchedulerPtr Scheduler;
+    ITimerPtr Timer;
+    NWriteBackCache::IWriteBackCacheStatsPtr Stats;
+    TLog Log;
+    TString FileSystemId;
+    TString ClientId;
+    TString FilePath;
+    ui64 CapacityBytes = 0;
+    TDuration AutomaticFlushPeriod = TDuration::Zero();
+    TDuration FlushRetryPeriod = TDuration::Zero();
+    ui32 FlushMaxWriteRequestSize = 0;
+    ui32 FlushMaxWriteRequestsCount = 0;
+    ui32 FlushMaxSumWriteRequestsSize = 0;
+    bool ZeroCopyWriteEnabled = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBackCache final
 {
 private:
@@ -34,25 +55,9 @@ private:
 
 public:
     TWriteBackCache();
-
-    TWriteBackCache(
-        IFileStorePtr session,
-        ISchedulerPtr scheduler,
-        ITimerPtr timer,
-        NWriteBackCache::IWriteBackCacheStatsPtr stats,
-        TLog log,
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& filePath,
-        ui64 capacityBytes,
-        TDuration automaticFlushPeriod,
-        TDuration flushRetryPeriod,
-        ui32 maxWriteRequestSize,
-        ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled);
-
     ~TWriteBackCache();
+
+    explicit TWriteBackCache(TWriteBackCacheArgs args);
 
     explicit operator bool() const
     {
@@ -77,27 +82,7 @@ public:
     ui64 AcquireNodeStateRef();
     void ReleaseNodeStateRef(ui64 refId);
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
-
-    struct TPersistentQueueStats;
-
-private:
-    // Only for testing purposes
-    friend struct TTestUtilBootstrap;
-
-    struct TCachedWriteDataRequest;
-    struct TGlobalListTag;
-    struct TNodeListTag;
-    class TWriteDataEntry;
-    struct TWriteDataEntryDeserializationStats;
-    struct TWriteDataEntryPart;
-    struct TNodeState;
-    struct TFlushState;
-    class TUtil;
-    struct TQueuedOperations;
-    class TContiguousWriteDataEntryPartsReader;
-    class TWriteDataEntryIntervalMap;
+    ui64 GetCachedDataEndOffset(ui64 nodeId) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse
