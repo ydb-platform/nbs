@@ -387,36 +387,46 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
         EFileStoreSystemRequest::RenameNodeInDestination,
         msg->Record,
         ctx.Now());
+    auto onReply = [&] (const NProto::TError& error) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
+    };
 
-    // TODO(#2674): DupCache
-    // DupCache is necessary not only to implement the non-idempotent checks
-    // but to prevent the following race:
-    // 1. source directory shard sends RenameNodeInDestinationRequest
-    // 2. the request is successfully processed
-    // 3. network connectivity breaks, source directory shard gets E_REJECTED
-    // 4. meanwhile <NewParentNodeId, NewChildName> pair gets unlinked in the
-    //  destination shard and then a completely new file is created under the
-    //  same name in NewParentId
-    // 5. source directory shard retries the RenameNodeInDestinationRequest
-    //  leading to the deletion of the file created in p.4 and the
-    //  <NewParentNodeId, NewChildName> now points to the file unlinked in p.4
-    //  So both the new and the old file are now deleted plus we have a NodeRef
-    //  pointing to a deleted file
-    //
-    //  A more reliable way to prevent such a race is to lock the affected
-    //  NodeRef in destination shard and unlock it after
-    //  CommitRenameNodeInSource
-    /*
-    const auto requestId = GetRequestId(msg->Record);
-    if (const auto* e = session->LookupDupEntry(requestId)) {
-        auto response = std::make_unique<TMethod::TResponse>();
-        if (GetDupCacheEntry(e, response->Record)) {
-            return NCloud::Reply(ctx, *ev, std::move(response));
-        }
+    const ui64 clientTabletId =
+        msg->Record.GetHeaders().GetInternal().GetClientTabletId();
+    const ui64 requestId = msg->Record.GetHeaders().GetRequestId();
 
-        session->DropDupEntry(requestId);
+    if (!clientTabletId || !requestId) {
+        auto error = MakeError(E_ARGUMENT, TStringBuilder() << "both "
+            << " ClientTabletId and RequestId should be nonzero: "
+            << clientTabletId << ", " << requestId);
+        auto response = std::make_unique<TMethod::TResponse>(error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
+        return;
     }
-    */
+
+    if (const auto* e = LookupResponseLogEntry(clientTabletId, requestId)) {
+        auto response = std::make_unique<TMethod::TResponse>();
+        if (e->HasRenameNodeInDestinationResponse()) {
+            response->Record = e->GetRenameNodeInDestinationResponse();
+        } else {
+            auto message = ReportInvalidResponseLogEntry(TStringBuilder()
+                << TMethod::Name << ": " << msg->Record.ShortUtf8DebugString()
+                << ", entry: " << e->ShortUtf8DebugString());
+            *response->Record.MutableError() = MakeError(
+                E_INVALID_STATE,
+                message);
+        }
+        auto error = response->GetError();
+        NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
+        return;
+    }
 
     const bool locked = TryLockNodeRef({
         msg->Record.GetNewParentId(),
@@ -428,12 +438,7 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
             << " is locked for RenameNodeInDestination");
         auto response = std::make_unique<TMethod::TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
-        FinalizeProfileLogRequestInfo(
-            std::move(profileLogRequest),
-            ctx.Now(),
-            GetFileSystemId(),
-            error,
-            ProfileLog);
+        onReply(error);
         return;
     }
 
@@ -493,9 +498,6 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 {
     Y_UNUSED(ctx);
 
-    // TODO(#2674): DupCache
-    // FILESTORE_VALIDATE_DUPTX_SESSION(RenameNode, args);
-
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
@@ -539,7 +541,7 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
                     && args.NewChildRef->ShardNodeName
                     == args.Request.GetSourceNodeShardNodeName())
             {
-                // just an extra precaution for the case of DupCache-related
+                // just an extra precaution for the case of ResponseLog-related
                 // bugs
                 args.Error = MakeError(S_ALREADY);
             } else {
@@ -712,15 +714,13 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
         return;
     }
 
-    // TODO(#2674): DupCache
-    /*
-    AddDupCacheEntry(
-        db,
-        session,
-        args.RequestId,
-        NProto::TRenameNodeResponse{},
-        Config->GetDupCacheEntryCount());
-        */
+    args.ResponseLogEntry.SetClientTabletId(
+        args.Request.GetHeaders().GetInternal().GetClientTabletId());
+    args.ResponseLogEntry.SetRequestId(
+        args.Request.GetHeaders().GetRequestId());
+    *args.ResponseLogEntry.MutableRenameNodeInDestinationResponse() =
+        args.Response;
+    WriteResponseLogEntry(db, args.ResponseLogEntry);
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -772,7 +772,18 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
 
+    //
+    // It's ok to unlock node ref & commit response log entry here because all
+    // externally visible effects of this operation have been applied and
+    // committed. We may still need to unlink the old dst node in its shard but
+    // the unlink actor will either complete its job by retrying all retriable
+    // errors or fail because of a non-retriable error (can happen only because
+    // of bugs in the code) or fail because of tablet restart (but in this case
+    // the tablet will recreate the unlink actor after restart).
+    //
+
     UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
+    CommitResponseLogEntry(std::move(args.ResponseLogEntry));
 
     InvalidateNodeCaches(args.NewParentNodeId);
     if (args.NewChildRef) {
@@ -806,8 +817,6 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 
             return;
         }
-
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         // TODO(#1350): support session events for external nodes
     }

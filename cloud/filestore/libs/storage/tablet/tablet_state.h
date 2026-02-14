@@ -850,6 +850,26 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
         ui64 requestId);
 
     //
+    // ResponseLog
+    //
+
+public:
+    const NProto::TResponseLogEntry* LookupResponseLogEntry(
+        ui64 clientTabletId,
+        ui64 requestId) const;
+
+    void WriteResponseLogEntry(
+        TIndexTabletDatabase& db,
+        const NProto::TResponseLogEntry& e);
+
+    void CommitResponseLogEntry(NProto::TResponseLogEntry e);
+
+    void DeleteResponseLogEntry(
+        TIndexTabletDatabase& db,
+        ui64 clientTabletId,
+        ui64 requestId);
+
+    //
     // Writes
     //
 

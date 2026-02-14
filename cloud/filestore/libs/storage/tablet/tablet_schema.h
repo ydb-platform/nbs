@@ -562,6 +562,23 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    struct ResponseLog: TTableSchema<28>
+    {
+        struct ClientTabletId   : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct RequestId        : Column<2, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct Proto            : ProtoColumn<3, NProto::TResponseLogEntry> {};
+
+        using TKey = TableKey<ClientTabletId, RequestId>;
+
+        using TColumns = TableColumns<
+            ClientTabletId,
+            RequestId,
+            Proto
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -589,7 +606,8 @@ struct TIndexTabletSchema
         SessionHistory,
         OpLog,
         LargeDeletionMarkers,
-        OrphanNodes
+        OrphanNodes,
+        ResponseLog
     >;
 
     using TSettings = SchemaSettings<

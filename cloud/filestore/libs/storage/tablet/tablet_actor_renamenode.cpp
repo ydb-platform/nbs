@@ -689,6 +689,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
             ctx,
             args.RequestInfo,
             MakeRenameNodeInDestinationRequest(
+                0 /* tabletId, unneeded */,
+                0 /* requestId, unneeded */,
                 args.Request,
                 args.ChildRef->ShardId,
                 args.ChildRef->ShardNodeName,
@@ -710,6 +712,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 ctx,
                 args.RequestInfo,
                 MakeRenameNodeInDestinationRequest(
+                    0 /* tabletId, unneeded */,
+                    0 /* requestId, unneeded */,
                     args.Request,
                     args.ChildRef->ShardId,
                     args.ChildRef->ShardNodeName,

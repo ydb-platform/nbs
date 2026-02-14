@@ -549,6 +549,18 @@ public:
     void DeleteOpLogEntry(ui64 entryId);
     bool ReadOpLogEntry(ui64 entryId, TMaybe<NProto::TOpLogEntry>& entry);
     bool ReadOpLog(TVector<NProto::TOpLogEntry>& opLog);
+
+    //
+    // ResponseLog
+    //
+
+    void WriteResponseLogEntry(const NProto::TResponseLogEntry& entry);
+    void DeleteResponseLogEntry(ui64 clientTabletId, ui64 requestId);
+    bool ReadResponseLogEntry(
+        ui64 clientTabletId,
+        ui64 requestId,
+        TMaybe<NProto::TResponseLogEntry>& entry);
+    bool ReadResponseLog(TVector<NProto::TResponseLogEntry>& responseLog);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

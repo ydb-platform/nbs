@@ -107,6 +107,8 @@ private:
 
     THeaders Headers;
 
+    ui64 AutoRequestId = 0;
+
 public:
     TIndexTabletClient(
             NKikimr::TTestActorRuntime& runtime,
@@ -378,6 +380,10 @@ public:
     {
         using TRequestEvent = TEvIndexTablet::TEvRenameNodeInDestinationRequest;
         auto request = CreateSessionRequest<TRequestEvent>();
+        auto& headers = *request->Record.MutableHeaders();
+        // just has to be nonzero
+        headers.MutableInternal()->SetClientTabletId(1);
+        headers.SetRequestId(++AutoRequestId);
         request->Record.SetNewParentId(newParent);
         request->Record.SetNewName(newName);
         request->Record.SetSourceNodeShardId(sourceNodeShardId);
