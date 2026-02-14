@@ -240,6 +240,7 @@ void TStorageServiceActor::HandleGetNodeAttr(
         ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
             ctx,
             ev,
+            false /* forceBehaveAsShard */,
             msg->Record.GetNodeId());
         return;
     }

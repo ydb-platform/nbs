@@ -203,6 +203,7 @@ template <typename TMethod>
 void TStorageServiceActor::ForwardRequestToShard(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
     ui64 entityId)
 {
     auto* msg = ev->Get();
@@ -225,6 +226,11 @@ void TStorageServiceActor::ForwardRequestToShard(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
     const NProto::TFileStore& filestore = session->FileStore;
+
+    if (!forceBehaveAsShard) {
+        msg->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(
+            filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
+    }
 
     const ui32 shardNo = ExtractShardNoSafe(filestore, entityId);
     auto [fsId, error] = SelectShard(
@@ -293,6 +299,7 @@ void TStorageServiceActor::ForwardRequestToShard(
         ForwardRequestToShard<ns::T##name##Method>(                            \
             ctx,                                                               \
             ev,                                                                \
+            false /* forceBehaveAsShard */,                                    \
             ev->Get()->Record.GetNodeId());                                    \
     }                                                                          \
 
@@ -310,6 +317,7 @@ void TStorageServiceActor::ForwardRequestToShard(
         ForwardRequestToShard<ns::T##name##Method>(                            \
             ctx,                                                               \
             ev,                                                                \
+            false /* forceBehaveAsShard */,                                    \
             ev->Get()->Record.GetHandle());                                    \
     }                                                                          \
 
@@ -331,12 +339,14 @@ template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TCreateHandleMethod>(
     const TActorContext& ctx,
     const TEvService::TCreateHandleMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
     ui64 entityId);
 
 template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
     const TActorContext& ctx,
     const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
     ui64 entityId);
 
 }   // namespace NCloud::NFileStore::NStorage
