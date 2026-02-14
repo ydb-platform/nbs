@@ -1212,6 +1212,7 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+        IgnoreFunc(TEvents::TEvWakeup);
 
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInShard,
