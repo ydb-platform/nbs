@@ -1162,9 +1162,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             const auto& entry = *opLogEntryResponse->OpLogEntry;
             const auto& dstRequest = entry.GetRenameNodeInDestinationRequest();
             UNIT_ASSERT_VALUES_EQUAL(
-                renameNodeRequest->Record.GetHeaders().ShortUtf8DebugString(),
-                dstRequest.GetHeaders().ShortUtf8DebugString());
-            UNIT_ASSERT_VALUES_EQUAL(
                 renameNodeRequest->Record.GetNewParentId(),
                 dstRequest.GetNewParentId());
             UNIT_ASSERT_VALUES_EQUAL(

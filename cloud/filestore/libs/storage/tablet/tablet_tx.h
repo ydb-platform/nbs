@@ -1180,6 +1180,7 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
+        NProto::TResponseLogEntry ResponseLogEntry;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
 
         TString ShardIdForUnlink;
@@ -1233,6 +1234,7 @@ struct TTxIndexTablet
             NewChildRef.Clear();
 
             OpLogEntry.Clear();
+            ResponseLogEntry.Clear();
 
             Response.Clear();
 

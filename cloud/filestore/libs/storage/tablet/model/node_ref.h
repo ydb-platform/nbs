@@ -13,12 +13,12 @@ struct TNodeRefKey
     ui64 ParentNodeId;
     TString Name;
 
-    TNodeRefKey(ui64 parentNodeId, const TString& name)
+    TNodeRefKey(ui64 parentNodeId, TString name)
         : ParentNodeId(parentNodeId)
-        , Name(name)
+        , Name(std::move(name))
     {}
 
-    size_t GetHash() const
+    [[nodiscard]] size_t GetHash() const
     {
         return MultiHash(ParentNodeId, Name);
     }

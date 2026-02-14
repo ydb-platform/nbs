@@ -23,6 +23,7 @@ SRCS(
     fresh_bytes.cpp
     garbage_queue.cpp
     group_by.cpp
+    internal_request_id.cpp
     large_blocks.cpp
     mixed_blocks.cpp
     node_index_cache.cpp

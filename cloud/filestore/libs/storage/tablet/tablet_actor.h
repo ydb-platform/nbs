@@ -94,6 +94,8 @@ void BuildBackendInfo(
 
 NProtoPrivate::TRenameNodeInDestinationRequest
 MakeRenameNodeInDestinationRequest(
+    ui64 tabletId,
+    ui64 commitId,
     NProto::TRenameNodeRequest originalRequest,
     TString sourceNodeShardId,
     TString sourceNodeShardNodeName,
