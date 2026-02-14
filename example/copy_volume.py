@@ -1,3 +1,4 @@
+import time
 import json
 import subprocess as sp
 import optparse
@@ -22,6 +23,23 @@ def exec(cmd):
     return stdout.decode('utf-8')
 
 
+def execAction(action, input):
+    cmd = [
+        './blockstore-client.sh',
+        'ExecuteAction',
+        '--action={}'.format(action),
+        '--input-bytes={}'.format(json.dumps(input))
+    ]
+    print(cmd)
+    allLines = exec(cmd)
+    for line in allLines.split('\n'):
+        try:
+            return json.loads(line)
+        except Exception as e:
+            continue
+    raise Exception('Failed to execute action {}' + action)
+
+
 def translate_media_kind(media_kind):
     if media_kind == 1:
         return 'ssd'
@@ -43,19 +61,7 @@ def translate_media_kind(media_kind):
 
 def describe_disk(opts):
     input = {"DiskId": opts.disk_id, "ExactDiskIdMatch": False}
-    cmd = [
-        './blockstore-client.sh', 'executeaction',
-        '--action=describevolume',
-        '--input-bytes={}'.format(json.dumps(input))
-    ]
-    print(cmd)
-    allLines = exec(cmd)
-    for line in allLines.split('\n'):
-        try:
-            return json.loads(line)
-        except Exception as e:
-            continue
-    raise Exception('Failed to find disk ' + opts.disk_id)
+    return execAction('DescribeVolume', input)
 
 
 def get_disk_info(described_disk):
@@ -104,7 +110,7 @@ def make_copy_info(volume, opts):
     return copy
 
 
-def copy_disk(src, dst):
+def copy_disk(src, dst, opts):
     tags = "source-disk-id={}".format(src["diskId"])
     create_cmd = [
         './blockstore-client.sh',
@@ -121,7 +127,8 @@ def copy_disk(src, dst):
         '--tags={}'.format(tags)
     ]
     print(create_cmd)
-    exec(create_cmd)
+    if opts.apply:
+        exec(create_cmd)
 
     link_cmd = [
         './blockstore-client.sh',
@@ -130,7 +137,21 @@ def copy_disk(src, dst):
         '--follower-disk-id={}'.format(dst["diskId"])
     ]
     print(link_cmd)
-    exec(link_cmd)
+    if opts.apply:
+        exec(link_cmd)
+
+
+def get_link_status(src, dst):
+    input = {"LeaderDiskId": src["diskId"], "FollowerDiskId": dst["diskId"]}
+    while True:
+        status = execAction('GetLinkStatus', input)
+        print(status)
+
+        if status["Status"] == "LINK_STATUS_COMPLETED" \
+                or status["Status"] == "LINK_STATUS_ERROR" \
+                or status["Status"] == "LINK_STATUS_NOT_FOUND":
+            break
+        time.sleep(2)
 
 
 def main(opts):
@@ -140,8 +161,8 @@ def main(opts):
     dst = make_copy_info(src, opts)
     print(src)
     print(dst)
-    if opts.apply:
-        copy_disk(src, dst)
+    copy_disk(src, dst, opts)
+    get_link_status(src, dst)
 
 
 if __name__ == '__main__':
