@@ -109,10 +109,13 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Volume started. MountSeqNumber: %lu, load time: %s, start "
+            "%s Volume started. MountSeqNumber: %lu, ReadWriteAccessClientId: "
+            "%s, LocalMountClientId: %s,load time: %s, start "
             "time: %s",
             LogTitle.GetWithTime().c_str(),
             State->GetMountSeqNumber(),
+            State->GetReadWriteAccessClientId().c_str(),
+            State->GetLocalMountClientId().c_str(),
             FormatDuration(GetLoadTime()).c_str(),
             FormatDuration(GetStartTime()).c_str());
     }
