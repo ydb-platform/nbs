@@ -269,7 +269,8 @@ bool TInMemoryIndexState::ReadNodeRefs(
     TString* next,
     ui32* skippedRefs,
     bool noAutoPrecharge,
-    NProto::EListNodesSizeMode sizeMode)
+    NProto::EListNodesSizeMode sizeMode,
+    ui32 maxRows)
 {
     Y_UNUSED(noAutoPrecharge);  // Not applicable to in-memory cache
     if (!NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId)) {
@@ -277,6 +278,10 @@ bool TInMemoryIndexState::ReadNodeRefs(
     }
 
     auto it = NodeRefs.lower_bound(TNodeRefsKey(nodeId, cookie));
+
+    if (maxRows == 0) {
+        maxRows = Max<ui32>();
+    }
 
     ui32 bytes = 0;
     ui32 skipped = 0;
@@ -303,13 +308,14 @@ bool TInMemoryIndexState::ReadNodeRefs(
             } else {
                 bytes += ref.Name.size();
             }
+            --maxRows;
         } else {
             ++skipped;
         }
 
         ++it;
 
-        if (maxBytes && bytes >= maxBytes) {
+        if (maxBytes && bytes >= maxBytes || maxRows == 0) {
             break;
         }
     }

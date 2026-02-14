@@ -598,7 +598,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     nullptr,
                     nullptr,
                     false,
-                    NProto::LNSM_NAME_ONLY));
+                    NProto::LNSM_NAME_ONLY,
+                    Max<ui32>()));
                 UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
             });
 
@@ -615,7 +616,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     nullptr,
                     nullptr,
                     true,
-                    NProto::LNSM_NAME_ONLY));
+                    NProto::LNSM_NAME_ONLY,
+                    Max<ui32>()));
                 UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
             });
     }

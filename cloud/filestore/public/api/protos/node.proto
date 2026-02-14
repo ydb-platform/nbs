@@ -337,6 +337,9 @@ message TListNodesRequest
 
     // Mode for calculating byte size when applying MaxBytes limit.
     EListNodesSizeMode ListNodesSizeMode = 7;
+
+    // Optional limit for response nodes count.
+    uint32 MaxRows = 8;
 }
 
 message TListNodesResponse
