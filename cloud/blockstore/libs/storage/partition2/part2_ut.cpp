@@ -768,21 +768,22 @@ public:
         return std::make_unique<TEvVolume::TEvGetUsedBlocksRequest>();
     }
 
-    std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest> CreateReadBlobRequest(
+    std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest> CreateReadBlobRequest(
         const NKikimr::TLogoBlobID& blobId,
         const ui32 bSGroupId,
         const TVector<ui16>& blobOffsets,
         TGuardedSgList sglist)
     {
         auto request =
-            std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
                 blobId,
                 MakeBlobStorageProxyID(bSGroupId),
                 blobOffsets,
                 std::move(sglist),
                 bSGroupId,
-                false,          // async
-                TInstant::Max() // deadline
+                false,             // async
+                TInstant::Max(),   // deadline
+                false              // shouldCalculateChecksums
             );
         return request;
     }
@@ -872,6 +873,8 @@ public:
 
 #define BLOCKSTORE_PARTITION2_COMMON_REQUESTS_PRIVATE(xxx, ...)                \
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
+    xxx(WriteBlob,                 __VA_ARGS__)                                \
+    xxx(ReadBlob,                  __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION2_COMMON_REQUESTS_PRIVATE
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
@@ -3128,8 +3131,12 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvPartitionPrivate::EvWriteBlobResponse) {
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobResponse)
+                {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -7620,9 +7627,9 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvReadBlobRequest: {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
                         auto response = std::make_unique<
-                            TEvPartitionPrivate::TEvReadBlobResponse>(
+                            TEvPartitionCommonPrivate::TEvReadBlobResponse>(
                             MakeError(E_IO, "Simulated blob read failure"));
 
                         runtime->Send(

@@ -25,8 +25,8 @@ namespace {
 class TReadBlobActor final
     : public TActorBootstrapped<TReadBlobActor>
 {
-    using TRequest = TEvPartitionPrivate::TEvReadBlobRequest;
-    using TResponse = TEvPartitionPrivate::TEvReadBlobResponse;
+    using TRequest = TEvPartitionCommonPrivate::TEvReadBlobRequest;
+    using TResponse = TEvPartitionCommonPrivate::TEvReadBlobResponse;
 
 private:
     const TRequestInfoPtr RequestInfo;
@@ -333,7 +333,7 @@ void TReadBlobActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvReadBlobResponse>(
+    auto response = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobResponse>(
         MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
@@ -365,17 +365,9 @@ void TPartitionActor::HandleReadBlob(
     const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-}
-
-void TPartitionActor::HandleReadBlob(
-    const TEvPartitionPrivate::TEvReadBlobRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
     auto msg = ev->Release();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TReadBlobMethod>(
+    auto requestInfo = CreateRequestInfo<TEvPartitionCommonPrivate::TReadBlobMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -396,7 +388,7 @@ void TPartitionActor::HandleReadBlob(
         TabletID(),
         State->GetBlockSize(),
         StorageAccessMode,
-        std::unique_ptr<TEvPartitionPrivate::TEvReadBlobRequest>(msg.Release()),
+        std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest>(msg.Release()),
         DiagnosticsConfig->GetPassTraceIdToBlobstorage());
 
     if (blob.TabletID() != TabletID()) {

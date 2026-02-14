@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     fresh_blocks_companion_client.cpp
+    io_companion_client.cpp
     part.cpp
     part_actor.cpp
     part_actor_addblobs.cpp
@@ -32,15 +33,12 @@ SRCS(
     part_actor_monitoring_describe.cpp
     part_actor_monitoring_garbage.cpp
     part_actor_monitoring_view.cpp
-    part_actor_patchblob.cpp
-    part_actor_readblob.cpp
     part_actor_readblocks.cpp
     part_actor_scan_disk.cpp
     part_actor_statpartition.cpp
     part_actor_stats.cpp
     part_actor_trimfreshlog.cpp
     part_actor_waitready.cpp
-    part_actor_writeblob.cpp
     part_actor_writeblocks.cpp
     part_actor_writefreshblocks.cpp
     part_actor_writemergedblocks.cpp

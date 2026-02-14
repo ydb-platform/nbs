@@ -1056,17 +1056,7 @@ public:
     // Stats
     //
 
-private:
-    THashMap<ui32, TDowntimeHistoryHolder> GroupId2Downtimes;
-
 public:
-    const auto& GetGroupId2Downtimes() const
-    {
-        return GroupId2Downtimes;
-    }
-
-    void RegisterDowntime(TInstant now, ui32 groupId);
-    void RegisterSuccess(TInstant now, ui32 groupId);
 
     const NProto::TPartitionStats& GetStats() const
     {

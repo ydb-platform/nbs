@@ -12,6 +12,10 @@ SRCS(
     drain_actor_companion.cpp
     fresh_blocks_companion_initfreshblocks.cpp
     fresh_blocks_companion.cpp
+    io_companion_patchblob.cpp
+    io_companion_readblob.cpp
+    io_companion_writeblob.cpp
+    io_companion.cpp
     long_running_operation_companion.cpp
     part_channels_state.cpp
     part_fresh_blocks_state.cpp

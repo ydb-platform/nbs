@@ -37,7 +37,8 @@ void DumpDownGroups(
     TInstant now,
     const TPartitionState& state,
     const TTabletStorageInfo& storage,
-    const TDiagnosticsConfig& config)
+    const TDiagnosticsConfig& config,
+    const TGroupDowntimes& groupDowntimes)
 {
     HTML(out)
     {
@@ -103,7 +104,9 @@ void DumpDownGroups(
                 }
             };
 
-            for (const auto& [groupId, history]: state.GetGroupId2Downtimes()) {
+            for (const auto& [groupId, history]:
+                 groupDowntimes.GetGroupId2Downtimes())
+            {
                 addGroupRow(groupId, history.RecentEvents(now));
             }
         }
@@ -661,7 +664,8 @@ void TPartitionActor::HandleHttpInfo_Default(
                         ctx.Now(),
                         *State,
                         *Info(),
-                        *DiagnosticsConfig);
+                        *DiagnosticsConfig,
+                        *GroupDowntimes);
 
                     TAG(TH3) {
                         BuildMenuButton(out, "reassign-all");

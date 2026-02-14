@@ -331,7 +331,7 @@ private:
         const TActorContext& ctx);
 
     void HandleReadBlobResponse(
-        const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -534,21 +534,23 @@ void TReadBlocksActor::ReadBlocks(
 
         RequestsScheduled += batch.Requests.size();
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvReadBlobRequest>(
-            batch.BlobId,
-            batch.Proxy,
-            std::move(batch.BlobOffsets),
-            ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-            batch.GroupId,
-            false,          // async
-            TInstant::Max() // deadline
-        );
+        auto request =
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                batch.BlobId,
+                batch.Proxy,
+                std::move(batch.BlobOffsets),
+                ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
+                batch.GroupId,
+                false,             // async
+                TInstant::Max(),   // deadline
+                false              // shouldCalculateChecksums
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
-                "TEvPartitionPrivate::TEvReadBlobRequest",
+                "TEvPartitionCommonPrivate::TEvReadBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
         request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
@@ -673,7 +675,7 @@ void TReadBlocksActor::HandleDescribeBlocksResponse(
 }
 
 void TReadBlocksActor::HandleReadBlobResponse(
-    const TEvPartitionPrivate::TEvReadBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -736,7 +738,7 @@ STFUNC(TReadBlocksActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvVolume::TEvDescribeBlocksResponse, HandleDescribeBlocksResponse);
-        HFunc(TEvPartitionPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
 
         default:
             HandleUnexpectedEvent(

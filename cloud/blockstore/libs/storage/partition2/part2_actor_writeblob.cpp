@@ -26,8 +26,8 @@ namespace {
 class TWriteBlobActor final
     : public TActorBootstrapped<TWriteBlobActor>
 {
-    using TRequest = TEvPartitionPrivate::TEvWriteBlobRequest;
-    using TResponse = TEvPartitionPrivate::TEvWriteBlobResponse;
+    using TRequest = TEvPartitionCommonPrivate::TEvWriteBlobRequest;
+    using TResponse = TEvPartitionCommonPrivate::TEvWriteBlobResponse;
 
 private:
     const TActorId TabletActorId;
@@ -248,7 +248,7 @@ void TWriteBlobActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>(
+    auto response = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobResponse>(
         MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
@@ -296,12 +296,12 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::HandleWriteBlob(
-    const TEvPartitionPrivate::TEvWriteBlobRequest::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TWriteBlobMethod>(
+    auto requestInfo = CreateRequestInfo<TEvPartitionCommonPrivate::TReadBlobMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -324,7 +324,7 @@ void TPartitionActor::HandleWriteBlob(
             SelfId(),
             requestInfo,
             TabletID(),
-            std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
+            std::unique_ptr<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                 msg.Release()),
             groupId,
             DiagnosticsConfig->GetPassTraceIdToBlobstorage()));
