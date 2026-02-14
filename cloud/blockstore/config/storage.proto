@@ -1419,4 +1419,8 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // If true, preemption with source == balancer will
+    // use gentle remount mechanism (avoids directly killing tablet)
+    optional bool GentleBalancerPreemptionEnabled = 481;
 }
