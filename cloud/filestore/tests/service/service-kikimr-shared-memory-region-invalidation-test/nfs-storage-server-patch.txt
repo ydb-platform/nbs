@@ -1,0 +1,5 @@
+ServerConfig{
+    SharedMemoryTransportEnabled: true
+    SharedMemoryBasePath: "/tmp"
+    SharedMemoryRegionTimeout: 5_000
+}

@@ -1580,7 +1580,8 @@ private:
         if constexpr (requires { ctx.State; }) { // Implemented only for TFileStoreContext
             if (Config->GetSharedMemoryTransportEnabled()) {
                 ctx.State = std::make_shared<TServerState>(
-                    Config->GetSharedMemoryBasePath());
+                    Config->GetSharedMemoryBasePath(),
+                    Config->GetSharedMemoryRegionTimeout());
 
                 ctx.ServerStats = std::make_shared<TServerStats>(counters);
             }
@@ -1595,6 +1596,11 @@ private:
                 "State and Stats should be initialized upon TServer::Refresh "
                 "call");
             AppCtx.ServerStats->Update(AppCtx.State->GetStateStats());
+            const auto error = AppCtx.State->InvalidateTimedOutRegions();
+            if (HasError(error)) {
+                ReportInvalidateTimedOutRegionsError(
+                    FormatError(error));
+            }
         }
 
         ScheduleRefresh();

@@ -62,6 +62,11 @@ message TServerConfig
     // of gRPC messages.
     optional bool SharedMemoryTransportEnabled = 21;
     optional string SharedMemoryBasePath = 22;
+
+    // Timeout for shared memory regions inactivity (in milliseconds).
+    // Regions that have not been pinged within this timeout will be
+    // invalidated and unmapped.
+    optional uint32 SharedMemoryRegionTimeout = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
