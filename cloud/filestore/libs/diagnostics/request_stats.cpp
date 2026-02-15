@@ -47,8 +47,14 @@ TRequestCountersPtr MakeRequestCounters(
     ITimerPtr timer,
     TDynamicCounters& counters,
     TRequestCounters::EOptions options,
-    EHistogramCounterOptions histogramCounterOptions)
+    EHistogramCounterOptions histogramCounterOptions,
+    bool useStripedRequestCounters,
+    ui32 stripedRequestCountersStripeCount)
 {
+    if (useStripedRequestCounters) {
+        options |= TRequestCounters::EOption::UseStripedAccumulators;
+    }
+
     auto requestCounters = std::make_shared<TRequestCounters>(
         std::move(timer),
         FileStoreRequestCount,
@@ -65,7 +71,8 @@ TRequestCountersPtr MakeRequestCounters(
         },
         options,
         histogramCounterOptions,
-        TVector<TSizeInterval>{}
+        TVector<TSizeInterval>{},
+        stripedRequestCountersStripeCount
     );
     requestCounters->Register(counters);
     return requestCounters;
@@ -168,24 +175,32 @@ public:
             ITimerPtr timer,
             TDuration executionTimeThreshold,
             TDuration totalTimeThreshold,
-            EHistogramCounterOptions histogramCounterOptions)
+            EHistogramCounterOptions histogramCounterOptions,
+            bool useStripedRequestCounters,
+            ui32 stripedRequestCountersStripeCount)
         : TRequestLogger(executionTimeThreshold, totalTimeThreshold)
         , RootCounters(std::move(counters))
         , TotalCounters(MakeRequestCounters(
             timer,
             *RootCounters,
             REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+            histogramCounterOptions,
+            useStripedRequestCounters,
+            stripedRequestCountersStripeCount))
         , SsdCounters(MakeRequestCounters(
             timer,
             *RootCounters->GetSubgroup("type", "ssd"),
             REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+            histogramCounterOptions,
+            useStripedRequestCounters,
+            stripedRequestCountersStripeCount))
         , HddCounters(MakeRequestCounters(
             timer,
             *RootCounters->GetSubgroup("type", "hdd"),
             REQUEST_COUNTERS_OPTIONS,
-            histogramCounterOptions))
+            histogramCounterOptions,
+            useStripedRequestCounters,
+            stripedRequestCountersStripeCount))
     {
         auto revisionGroup =
             RootCounters->GetSubgroup("revision", GetFullVersionString());
@@ -444,7 +459,9 @@ public:
             IPostponeTimePredictorPtr predictor,
             TDuration executionTimeThreshold,
             TDuration totalTimeThreshold,
-            EHistogramCounterOptions histogramCounterOptions)
+            EHistogramCounterOptions histogramCounterOptions,
+            bool useStripedRequestCounters,
+            ui32 stripedRequestCountersStripeCount)
         : TRequestLogger{executionTimeThreshold, totalTimeThreshold}
         , FileSystemId{std::move(fileSystemId)}
         , ClientId{std::move(clientId)}
@@ -455,7 +472,9 @@ public:
             *counters,
             REQUEST_COUNTERS_OPTIONS
                 | TRequestCounters::EOption::LazyRequestInitialization,
-            histogramCounterOptions)}
+            histogramCounterOptions,
+            useStripedRequestCounters,
+            stripedRequestCountersStripeCount)}
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
     {}
@@ -737,7 +756,9 @@ public:
             Timer,
             DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
             DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            DiagnosticsConfig->GetHistogramCounterOptions(),
+            DiagnosticsConfig->GetUseStripedRequestCounters(),
+            DiagnosticsConfig->GetStripedRequestCountersStripeCount());
     }
 
     IRequestStatsPtr GetFileSystemStats(
@@ -771,7 +792,9 @@ public:
                 DiagnosticsConfig->GetPostponeTimePredictorMaxTime(),
                 DiagnosticsConfig->GetSlowExecutionTimeRequestThreshold(),
                 DiagnosticsConfig->GetSlowTotalTimeRequestThreshold(),
-                DiagnosticsConfig->GetHistogramCounterOptions());
+                DiagnosticsConfig->GetHistogramCounterOptions(),
+                DiagnosticsConfig->GetUseStripedRequestCounters(),
+                DiagnosticsConfig->GetStripedRequestCountersStripeCount());
             it = StatsMap.emplace(
                 key,
                 TFileSystemStatsHolder{std::move(counters), stats}).first;
@@ -880,7 +903,9 @@ private:
         TMaybe<TDuration> delayMaxTime,
         TDuration executionTimeThreshold,
         TDuration totalTimeThreshold,
-        EHistogramCounterOptions histogramCounterOptions) const
+        EHistogramCounterOptions histogramCounterOptions,
+        bool useStripedRequestCounters,
+        ui32 stripedRequestCountersStripeCount) const
     {
         Y_UNUSED(delayWindowInterval);
         Y_UNUSED(delayWindowPercentage);
@@ -903,7 +928,9 @@ private:
             std::move(predictor),
             executionTimeThreshold,
             totalTimeThreshold,
-            histogramCounterOptions);
+            histogramCounterOptions,
+            useStripedRequestCounters,
+            stripedRequestCountersStripeCount);
     }
 };
 

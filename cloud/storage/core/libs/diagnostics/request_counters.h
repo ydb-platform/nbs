@@ -37,6 +37,7 @@ public:
         AddSpecialCounters          = (1 << 3),
         LazyRequestInitialization   = (1 << 4),
         OnlyStartEndpointRequests   = (1 << 5),
+        UseStripedAccumulators      = (1 << 6),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -68,7 +69,8 @@ public:
         std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses);
+        const TVector<TSizeInterval>& executionTimeSizeClasses,
+        ui32 stripeCount = 64);
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);

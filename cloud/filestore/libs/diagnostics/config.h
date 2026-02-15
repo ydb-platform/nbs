@@ -135,6 +135,8 @@ public:
     bool GetReportHistogramAsSingleCounter() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
     bool GetUseMsUnitsForTimeHistogram() const;
+    bool GetUseStripedRequestCounters() const;
+    ui32 GetStripedRequestCountersStripeCount() const;
 
     TFileSystemPerformanceProfile GetHDDFileSystemPerformanceProfile() const;
     TFileSystemPerformanceProfile GetSSDFileSystemPerformanceProfile() const;

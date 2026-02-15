@@ -154,4 +154,10 @@ message TDiagnosticsConfig
 
     // Dump lwtrace tracks every DumpTracksInterval ms.
     optional uint32 DumpTracksInterval = 32;
+
+    // Use striped accumulators in request counters to reduce hot-path contention.
+    optional bool UseStripedRequestCounters = 33;
+
+    // Number of striped accumulators (rounded up to power of two).
+    optional uint32 StripedRequestCountersStripeCount = 34;
 }

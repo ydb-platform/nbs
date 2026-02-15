@@ -40,6 +40,8 @@ namespace {
     xxx(ReportHistogramAsMultipleCounters,  bool,            true             )\
     xxx(ReportHistogramAsSingleCounter,     bool,            false            )\
     xxx(UseMsUnitsForTimeHistogram,         bool,            false            )\
+    xxx(UseStripedRequestCounters,          bool,            false            )\
+    xxx(StripedRequestCountersStripeCount,  ui32,            64               )\
                                                                                \
     xxx(HDDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\
     xxx(SSDFileSystemPerformanceProfile,    TFileSystemPerformanceProfile, {} )\

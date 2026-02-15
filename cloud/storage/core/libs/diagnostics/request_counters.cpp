@@ -15,11 +15,14 @@
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/algorithm.h>
+#include <util/generic/hash.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
+#include <util/system/thread.h>
 
 #include <utility>
+#include <algorithm>
 
 namespace NCloud {
 
@@ -92,6 +95,17 @@ struct THistBase
             "Bucket",
             value);
         size_t index = std::distance(TDerived::Buckets.begin(), it);
+        Counters[index]->Add(count);
+    }
+
+    void IncrementBucket(size_t index, ui64 count)
+    {
+        if (!count) {
+            return;
+        }
+
+        STORAGE_VERIFY(index < Counters.size(), "BucketIndex", index);
+        Hist->Collect(TDerived::Buckets[index], count);
         Counters[index]->Add(count);
     }
 
@@ -192,6 +206,13 @@ public:
             *TimeHistPtr);
     }
 
+    void IncrementBucket(size_t index, ui64 count)
+    {
+        std::visit(
+            [&](auto& timeHist) { timeHist.IncrementBucket(index, count); },
+            *TimeHistPtr);
+    }
+
     template <typename... Args>
     void Register(Args&&... args)
     {
@@ -240,6 +261,7 @@ struct TSizeHist
     : public THistBase<TKbSizeBuckets>
 {
     using THistBase::THistBase;
+    using THistBase::IncrementBucket;
 
     void Increment(double requestBytes, ui64 count = 1)
     {
@@ -307,6 +329,29 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+template <size_t N>
+size_t GetBucketIndex(const std::array<double, N>& buckets, double value)
+{
+    const auto it = LowerBound(buckets.begin(), buckets.end(), value);
+    STORAGE_VERIFY(it != buckets.end(), "BucketValue", value);
+    return std::distance(buckets.begin(), it);
+}
+
+ui32 NormalizeStripeCount(ui32 stripeCount)
+{
+    if (stripeCount < 2) {
+        return 2;
+    }
+    if (!IsPowerOf2(stripeCount)) {
+        return FastClp2(stripeCount);
+    }
+    return stripeCount;
+}
+
+}   // namespace
 
 struct TRequestCounters::TSpecialCounters
 {
@@ -437,13 +482,130 @@ struct TRequestCounters::TStatCounters
     TMaxPerSecondCalculator<DEFAULT_BUCKET_COUNT> MaxCountCalc;
     TMaxPerSecondCalculator<DEFAULT_BUCKET_COUNT> MaxRequestBytesCalc;
 
+    struct alignas(64) TStripe
+    {
+        TMutex Lock;
+
+        i64 InProgressDelta = 0;
+        i64 InProgressBytesDelta = 0;
+        i64 PostponedQueueSizeDelta = 0;
+        i64 PostponedQueueSizeGrpcDelta = 0;
+        i64 InProgressPeak = 0;
+        i64 InProgressBytesPeak = 0;
+        i64 PostponedQueueSizePeak = 0;
+        i64 PostponedQueueSizeGrpcPeak = 0;
+
+        ui64 Count = 0;
+        ui64 Errors = 0;
+        ui64 ErrorsAborted = 0;
+        ui64 ErrorsFatal = 0;
+        ui64 ErrorsRetriable = 0;
+        ui64 ErrorsThrottling = 0;
+        ui64 ErrorsWriteRejectedByCheckpoint = 0;
+        ui64 ErrorsSession = 0;
+        ui64 ErrorsSilent = 0;
+        ui64 Retries = 0;
+
+        ui64 TimeMicros = 0;
+        ui64 RequestBytes = 0;
+        ui64 UnalignedCount = 0;
+        ui64 PostponedCount = 0;
+        ui64 PostponedCountGrpc = 0;
+        ui64 FastPathHits = 0;
+
+        ui64 MaxTimeMicros = 0;
+        ui64 MaxTotalTimeMicros = 0;
+        ui64 MaxSize = 0;
+        ui64 MaxCount = 0;
+        ui64 MaxRequestBytes = 0;
+
+        static constexpr size_t TIME_BUCKETS_COUNT =
+            TRequestUsTimeBuckets::BUCKETS_COUNT;
+        static constexpr size_t SIZE_BUCKETS_COUNT = TKbSizeBuckets::BUCKETS_COUNT;
+
+        std::array<ui64, TIME_BUCKETS_COUNT> TimeBuckets = {};
+        std::array<ui64, TIME_BUCKETS_COUNT> TimeBucketsUnaligned = {};
+        std::array<ui64, TIME_BUCKETS_COUNT> ExecutionTimeBuckets = {};
+        std::array<ui64, TIME_BUCKETS_COUNT> ExecutionTimeBucketsUnaligned = {};
+        std::array<ui64, TIME_BUCKETS_COUNT> RequestCompletionTimeBuckets = {};
+        std::array<ui64, TIME_BUCKETS_COUNT> PostponedTimeBuckets = {};
+        std::array<ui64, SIZE_BUCKETS_COUNT> SizeBuckets = {};
+        TVector<std::array<ui64, TIME_BUCKETS_COUNT>> ExecutionTimeSizeClassBuckets;
+
+        explicit TStripe(size_t sizeClassCount = 0)
+            : ExecutionTimeSizeClassBuckets(sizeClassCount)
+        {}
+    };
+
+    struct TStripeAggregate
+    {
+        i64 InProgressDelta = 0;
+        i64 InProgressBytesDelta = 0;
+        i64 PostponedQueueSizeDelta = 0;
+        i64 PostponedQueueSizeGrpcDelta = 0;
+        i64 InProgressPeak = 0;
+        i64 InProgressBytesPeak = 0;
+        i64 PostponedQueueSizePeak = 0;
+        i64 PostponedQueueSizeGrpcPeak = 0;
+
+        ui64 Count = 0;
+        ui64 Errors = 0;
+        ui64 ErrorsAborted = 0;
+        ui64 ErrorsFatal = 0;
+        ui64 ErrorsRetriable = 0;
+        ui64 ErrorsThrottling = 0;
+        ui64 ErrorsWriteRejectedByCheckpoint = 0;
+        ui64 ErrorsSession = 0;
+        ui64 ErrorsSilent = 0;
+        ui64 Retries = 0;
+
+        ui64 TimeMicros = 0;
+        ui64 RequestBytes = 0;
+        ui64 UnalignedCount = 0;
+        ui64 PostponedCount = 0;
+        ui64 PostponedCountGrpc = 0;
+        ui64 FastPathHits = 0;
+
+        ui64 MaxTimeMicros = 0;
+        ui64 MaxTotalTimeMicros = 0;
+        ui64 MaxSize = 0;
+        ui64 MaxCount = 0;
+        ui64 MaxRequestBytes = 0;
+
+        std::array<ui64, TStripe::TIME_BUCKETS_COUNT> TimeBuckets = {};
+        std::array<ui64, TStripe::TIME_BUCKETS_COUNT> TimeBucketsUnaligned = {};
+        std::array<ui64, TStripe::TIME_BUCKETS_COUNT> ExecutionTimeBuckets = {};
+        std::array<ui64, TStripe::TIME_BUCKETS_COUNT> ExecutionTimeBucketsUnaligned = {};
+        std::array<ui64, TStripe::TIME_BUCKETS_COUNT> RequestCompletionTimeBuckets = {};
+        std::array<ui64, TStripe::TIME_BUCKETS_COUNT> PostponedTimeBuckets = {};
+        std::array<ui64, TStripe::SIZE_BUCKETS_COUNT> SizeBuckets = {};
+        TVector<std::array<ui64, TStripe::TIME_BUCKETS_COUNT>> ExecutionTimeSizeClassBuckets;
+
+        explicit TStripeAggregate(size_t sizeClassCount = 0)
+            : ExecutionTimeSizeClassBuckets(sizeClassCount)
+        {}
+    };
+
+    bool UseStripedAccumulators = false;
+    bool UseMsUnitsForTimeHistograms = false;
+    ui32 StripeMask = 0;
+    TVector<std::unique_ptr<TStripe>> Stripes;
+    TVector<TSizeInterval> SizeClassIntervals;
+
+    i64 CurrentInProgress = 0;
+    i64 CurrentInProgressBytes = 0;
+    i64 CurrentPostponedQueueSize = 0;
+    i64 CurrentPostponedQueueSizeGrpc = 0;
+
     TMutex FullInitLock;
     TAtomic FullyInitialized = false;
 
     explicit TStatCounters(
         ITimerPtr timer,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses,
+        bool useStripedAccumulators,
+        ui32 stripeCount)
         : SizeHist("Size", histogramCounterOptions)
         , SizePercentiles(SizeHist)
         , TimeHist("Time", histogramCounterOptions)
@@ -467,8 +629,23 @@ struct TRequestCounters::TStatCounters
         , MaxPostponedQueueSizeGrpcCalc(timer)
         , MaxCountCalc(timer)
         , MaxRequestBytesCalc(timer)
+        , UseStripedAccumulators(useStripedAccumulators)
+        , UseMsUnitsForTimeHistograms(
+              histogramCounterOptions &
+              EHistogramCounterOption::UseMsUnitsForTimeHistogram)
     {
+        if (UseStripedAccumulators) {
+            const auto normalizedStripeCount = NormalizeStripeCount(stripeCount);
+            StripeMask = normalizedStripeCount - 1;
+            Stripes.reserve(normalizedStripeCount);
+            for (ui32 i = 0; i < normalizedStripeCount; ++i) {
+                Stripes.emplace_back(
+                    std::make_unique<TStripe>(executionTimeSizeClasses.size()));
+            }
+        }
+
         for (auto [start, end]: executionTimeSizeClasses) {
+            SizeClassIntervals.emplace_back(start, end);
             ExecutionTimeSizeClasses.Add(
                 start,
                 end,
@@ -605,8 +782,261 @@ struct TRequestCounters::TStatCounters
         AtomicSet(FullyInitialized, true);
     }
 
+    TStripe& AccessStripe()
+    {
+        const auto tid = static_cast<ui64>(TThread::CurrentThreadId());
+        return *Stripes[THash<ui64>()(tid) & StripeMask];
+    }
+
+    size_t TimeBucketIndex(TDuration duration) const
+    {
+        const auto value = duration.MicroSeconds();
+        if (UseMsUnitsForTimeHistograms) {
+            return GetBucketIndex(
+                TRequestMsTimeBuckets::Buckets,
+                value / 1000.0);
+        }
+        return GetBucketIndex(TRequestUsTimeBuckets::Buckets, value);
+    }
+
+    size_t SizeBucketIndex(ui64 requestBytes) const
+    {
+        return GetBucketIndex(
+            TKbSizeBuckets::Buckets,
+            requestBytes / 1024.0);
+    }
+
+    size_t SizeClassIndex(ui64 requestBytes) const
+    {
+        for (size_t i = 0; i < SizeClassIntervals.size(); ++i) {
+            const auto& [begin, end] = SizeClassIntervals[i];
+            if (begin <= requestBytes && requestBytes < end) {
+                return i;
+            }
+        }
+        return SizeClassIntervals.size();
+    }
+
+    void PublishStripedStats()
+    {
+        TStripeAggregate aggregate(SizeClassIntervals.size());
+
+        for (auto& stripePtr: Stripes) {
+            auto& stripe = *stripePtr;
+            auto g = Guard(stripe.Lock);
+            aggregate.InProgressDelta += stripe.InProgressDelta;
+            aggregate.InProgressBytesDelta += stripe.InProgressBytesDelta;
+            aggregate.PostponedQueueSizeDelta += stripe.PostponedQueueSizeDelta;
+            aggregate.PostponedQueueSizeGrpcDelta +=
+                stripe.PostponedQueueSizeGrpcDelta;
+            aggregate.InProgressPeak += stripe.InProgressPeak;
+            aggregate.InProgressBytesPeak += stripe.InProgressBytesPeak;
+            aggregate.PostponedQueueSizePeak += stripe.PostponedQueueSizePeak;
+            aggregate.PostponedQueueSizeGrpcPeak +=
+                stripe.PostponedQueueSizeGrpcPeak;
+
+            aggregate.Count += stripe.Count;
+            aggregate.Errors += stripe.Errors;
+            aggregate.ErrorsAborted += stripe.ErrorsAborted;
+            aggregate.ErrorsFatal += stripe.ErrorsFatal;
+            aggregate.ErrorsRetriable += stripe.ErrorsRetriable;
+            aggregate.ErrorsThrottling += stripe.ErrorsThrottling;
+            aggregate.ErrorsWriteRejectedByCheckpoint +=
+                stripe.ErrorsWriteRejectedByCheckpoint;
+            aggregate.ErrorsSession += stripe.ErrorsSession;
+            aggregate.ErrorsSilent += stripe.ErrorsSilent;
+            aggregate.Retries += stripe.Retries;
+
+            aggregate.TimeMicros += stripe.TimeMicros;
+            aggregate.RequestBytes += stripe.RequestBytes;
+            aggregate.UnalignedCount += stripe.UnalignedCount;
+            aggregate.PostponedCount += stripe.PostponedCount;
+            aggregate.PostponedCountGrpc += stripe.PostponedCountGrpc;
+            aggregate.FastPathHits += stripe.FastPathHits;
+
+            aggregate.MaxTimeMicros =
+                Max(aggregate.MaxTimeMicros, stripe.MaxTimeMicros);
+            aggregate.MaxTotalTimeMicros =
+                Max(aggregate.MaxTotalTimeMicros, stripe.MaxTotalTimeMicros);
+            aggregate.MaxSize = Max(aggregate.MaxSize, stripe.MaxSize);
+            aggregate.MaxCount += stripe.MaxCount;
+            aggregate.MaxRequestBytes += stripe.MaxRequestBytes;
+
+            for (size_t i = 0; i < aggregate.TimeBuckets.size(); ++i) {
+                aggregate.TimeBuckets[i] += stripe.TimeBuckets[i];
+                aggregate.TimeBucketsUnaligned[i] += stripe.TimeBucketsUnaligned[i];
+                aggregate.ExecutionTimeBuckets[i] += stripe.ExecutionTimeBuckets[i];
+                aggregate.ExecutionTimeBucketsUnaligned[i] +=
+                    stripe.ExecutionTimeBucketsUnaligned[i];
+                aggregate.RequestCompletionTimeBuckets[i] +=
+                    stripe.RequestCompletionTimeBuckets[i];
+                aggregate.PostponedTimeBuckets[i] += stripe.PostponedTimeBuckets[i];
+                stripe.TimeBuckets[i] = 0;
+                stripe.TimeBucketsUnaligned[i] = 0;
+                stripe.ExecutionTimeBuckets[i] = 0;
+                stripe.ExecutionTimeBucketsUnaligned[i] = 0;
+                stripe.RequestCompletionTimeBuckets[i] = 0;
+                stripe.PostponedTimeBuckets[i] = 0;
+            }
+
+            for (size_t i = 0; i < aggregate.SizeBuckets.size(); ++i) {
+                aggregate.SizeBuckets[i] += stripe.SizeBuckets[i];
+                stripe.SizeBuckets[i] = 0;
+            }
+
+            for (size_t i = 0; i < aggregate.ExecutionTimeSizeClassBuckets.size(); ++i) {
+                for (size_t j = 0;
+                     j < aggregate.ExecutionTimeSizeClassBuckets[i].size();
+                     ++j)
+                {
+                    aggregate.ExecutionTimeSizeClassBuckets[i][j] +=
+                        stripe.ExecutionTimeSizeClassBuckets[i][j];
+                    stripe.ExecutionTimeSizeClassBuckets[i][j] = 0;
+                }
+            }
+
+            stripe.InProgressDelta = 0;
+            stripe.InProgressBytesDelta = 0;
+            stripe.PostponedQueueSizeDelta = 0;
+            stripe.PostponedQueueSizeGrpcDelta = 0;
+            stripe.InProgressPeak = 0;
+            stripe.InProgressBytesPeak = 0;
+            stripe.PostponedQueueSizePeak = 0;
+            stripe.PostponedQueueSizeGrpcPeak = 0;
+            stripe.Count = 0;
+            stripe.Errors = 0;
+            stripe.ErrorsAborted = 0;
+            stripe.ErrorsFatal = 0;
+            stripe.ErrorsRetriable = 0;
+            stripe.ErrorsThrottling = 0;
+            stripe.ErrorsWriteRejectedByCheckpoint = 0;
+            stripe.ErrorsSession = 0;
+            stripe.ErrorsSilent = 0;
+            stripe.Retries = 0;
+            stripe.TimeMicros = 0;
+            stripe.RequestBytes = 0;
+            stripe.UnalignedCount = 0;
+            stripe.PostponedCount = 0;
+            stripe.PostponedCountGrpc = 0;
+            stripe.FastPathHits = 0;
+            stripe.MaxTimeMicros = 0;
+            stripe.MaxTotalTimeMicros = 0;
+            stripe.MaxSize = 0;
+            stripe.MaxCount = 0;
+            stripe.MaxRequestBytes = 0;
+        }
+
+        const auto currentInProgressBefore = CurrentInProgress;
+        const auto currentInProgressBytesBefore = CurrentInProgressBytes;
+        const auto currentPostponedQueueSizeBefore = CurrentPostponedQueueSize;
+        const auto currentPostponedQueueSizeGrpcBefore =
+            CurrentPostponedQueueSizeGrpc;
+
+        CurrentInProgress += aggregate.InProgressDelta;
+        CurrentInProgressBytes += aggregate.InProgressBytesDelta;
+        CurrentPostponedQueueSize += aggregate.PostponedQueueSizeDelta;
+        CurrentPostponedQueueSizeGrpc += aggregate.PostponedQueueSizeGrpcDelta;
+
+        InProgress->Set(std::max<i64>(CurrentInProgress, 0));
+        MaxInProgressCalc.Add(std::max<i64>(
+            currentInProgressBefore + aggregate.InProgressPeak,
+            std::max<i64>(currentInProgressBefore, 0)));
+        if (IsReadWriteRequest) {
+            InProgressBytes->Set(std::max<i64>(CurrentInProgressBytes, 0));
+            MaxInProgressBytesCalc.Add(std::max<i64>(
+                currentInProgressBytesBefore + aggregate.InProgressBytesPeak,
+                std::max<i64>(currentInProgressBytesBefore, 0)));
+        }
+
+        Count->Add(aggregate.Count);
+        Errors->Add(aggregate.Errors);
+        ErrorsAborted->Add(aggregate.ErrorsAborted);
+        ErrorsFatal->Add(aggregate.ErrorsFatal);
+        ErrorsRetriable->Add(aggregate.ErrorsRetriable);
+        ErrorsThrottling->Add(aggregate.ErrorsThrottling);
+        ErrorsWriteRejectdByCheckpoint->Add(
+            aggregate.ErrorsWriteRejectedByCheckpoint);
+        ErrorsSession->Add(aggregate.ErrorsSession);
+        Retries->Add(aggregate.Retries);
+        Time->Add(aggregate.TimeMicros);
+
+        MaxTimeCalc.Add(aggregate.MaxTimeMicros);
+        MaxTotalTimeCalc.Add(aggregate.MaxTotalTimeMicros);
+
+        for (size_t i = 0; i < aggregate.TimeBuckets.size(); ++i) {
+            TimeHist.IncrementBucket(i, aggregate.TimeBuckets[i]);
+            RequestCompletionTimeHist.IncrementBucket(
+                i,
+                aggregate.RequestCompletionTimeBuckets[i]);
+        }
+
+        if (IsReadWriteRequest) {
+            MaxCountCalc.Add(aggregate.MaxCount);
+            RequestBytes->Add(aggregate.RequestBytes);
+            MaxRequestBytesCalc.Add(aggregate.MaxRequestBytes);
+            MaxSizeCalc.Add(aggregate.MaxSize);
+
+            UnalignedCount->Add(aggregate.UnalignedCount);
+            ErrorsSilent->Add(aggregate.ErrorsSilent);
+            PostponedCount->Add(aggregate.PostponedCount);
+            PostponedCountGrpc->Add(aggregate.PostponedCountGrpc);
+            FastPathHits->Add(aggregate.FastPathHits);
+            PostponedQueueSize->Set(std::max<i64>(CurrentPostponedQueueSize, 0));
+            PostponedQueueSizeGrpc->Set(
+                std::max<i64>(CurrentPostponedQueueSizeGrpc, 0));
+            MaxPostponedQueueSizeCalc.Add(
+                std::max<i64>(
+                    currentPostponedQueueSizeBefore
+                        + aggregate.PostponedQueueSizePeak,
+                    std::max<i64>(currentPostponedQueueSizeBefore, 0)));
+            MaxPostponedQueueSizeGrpcCalc.Add(
+                std::max<i64>(
+                    currentPostponedQueueSizeGrpcBefore
+                        + aggregate.PostponedQueueSizeGrpcPeak,
+                    std::max<i64>(currentPostponedQueueSizeGrpcBefore, 0)));
+
+            for (size_t i = 0; i < aggregate.SizeBuckets.size(); ++i) {
+                SizeHist.IncrementBucket(i, aggregate.SizeBuckets[i]);
+            }
+            for (size_t i = 0; i < aggregate.ExecutionTimeBuckets.size(); ++i) {
+                ExecutionTimeHist.IncrementBucket(i, aggregate.ExecutionTimeBuckets[i]);
+                ExecutionTimeHistUnaligned.IncrementBucket(
+                    i,
+                    aggregate.ExecutionTimeBucketsUnaligned[i]);
+                TimeHistUnaligned.IncrementBucket(i, aggregate.TimeBucketsUnaligned[i]);
+                PostponedTimeHist.IncrementBucket(i, aggregate.PostponedTimeBuckets[i]);
+            }
+
+            size_t index = 0;
+            for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                for (size_t i = 0; i < aggregate.ExecutionTimeSizeClassBuckets[index].size(); ++i) {
+                    sizeClass.Value->ExecutionTimeHist.IncrementBucket(
+                        i,
+                        aggregate.ExecutionTimeSizeClassBuckets[index][i]);
+                }
+                ++index;
+            }
+        }
+    }
+
     void Started(ui64 requestBytes)
     {
+        if (UseStripedAccumulators) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            ++stripe.InProgressDelta;
+            stripe.InProgressPeak = Max(
+                stripe.InProgressPeak,
+                stripe.InProgressDelta);
+            if (IsReadWriteRequest) {
+                stripe.InProgressBytesDelta += requestBytes;
+                stripe.InProgressBytesPeak = Max(
+                    stripe.InProgressBytesPeak,
+                    stripe.InProgressBytesDelta);
+            }
+            return;
+        }
+
         MaxInProgressCalc.Add(InProgress->Inc());
 
         if (IsReadWriteRequest) {
@@ -616,6 +1046,16 @@ struct TRequestCounters::TStatCounters
 
     void Completed(ui64 requestBytes)
     {
+        if (UseStripedAccumulators) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            --stripe.InProgressDelta;
+            if (IsReadWriteRequest) {
+                stripe.InProgressBytesDelta -= requestBytes;
+            }
+            return;
+        }
+
         InProgress->Dec();
 
         if (IsReadWriteRequest) {
@@ -635,6 +1075,92 @@ struct TRequestCounters::TStatCounters
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
                 || !IsReadWriteRequest);
+
+        const auto time = requestTime - requestCompletionTime;
+        const auto execTime = time - postponedTime;
+
+        if (UseStripedAccumulators) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+
+            if (failed) {
+                ++stripe.Errors;
+            } else {
+                ++stripe.Count;
+            }
+
+            switch (errorKind) {
+                case EDiagnosticsErrorKind::Success:
+                    break;
+                case EDiagnosticsErrorKind::ErrorAborted:
+                    ++stripe.ErrorsAborted;
+                    break;
+                case EDiagnosticsErrorKind::ErrorFatal:
+                    ++stripe.ErrorsFatal;
+                    break;
+                case EDiagnosticsErrorKind::ErrorRetriable:
+                    ++stripe.ErrorsRetriable;
+                    break;
+                case EDiagnosticsErrorKind::ErrorThrottling:
+                    ++stripe.ErrorsThrottling;
+                    break;
+                case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint:
+                    ++stripe.ErrorsWriteRejectedByCheckpoint;
+                    break;
+                case EDiagnosticsErrorKind::ErrorSession:
+                    ++stripe.ErrorsSession;
+                    break;
+                case EDiagnosticsErrorKind::ErrorSilent:
+                    if (IsReadWriteRequest) {
+                        ++stripe.ErrorsSilent;
+                    }
+                    break;
+                case EDiagnosticsErrorKind::Max:
+                    Y_DEBUG_ABORT_UNLESS(false);
+                    return;
+            }
+
+            const ui64 timeMicros = time.MicroSeconds();
+            stripe.TimeMicros += timeMicros;
+            stripe.TimeBuckets[TimeBucketIndex(time)]++;
+
+            if (requestCompletionTime != TDuration::Zero()) {
+                stripe.RequestCompletionTimeBuckets[
+                    TimeBucketIndex(requestCompletionTime)]++;
+            }
+
+            if (calcMaxTime == ECalcMaxTime::ENABLE) {
+                stripe.MaxTimeMicros = Max(stripe.MaxTimeMicros, execTime.MicroSeconds());
+            }
+            stripe.MaxTotalTimeMicros = Max(
+                stripe.MaxTotalTimeMicros,
+                requestTime.MicroSeconds());
+
+            if (IsReadWriteRequest) {
+                ++stripe.MaxCount;
+                stripe.RequestBytes += requestBytes;
+                stripe.MaxRequestBytes += requestBytes;
+
+                stripe.SizeBuckets[SizeBucketIndex(requestBytes)]++;
+                stripe.MaxSize = Max(stripe.MaxSize, requestBytes);
+
+                const auto execBucketIndex = TimeBucketIndex(execTime);
+                stripe.ExecutionTimeBuckets[execBucketIndex]++;
+                stripe.PostponedTimeBuckets[TimeBucketIndex(postponedTime)]++;
+
+                if (unaligned) {
+                    ++stripe.UnalignedCount;
+                    stripe.TimeBucketsUnaligned[TimeBucketIndex(time)]++;
+                    stripe.ExecutionTimeBucketsUnaligned[execBucketIndex]++;
+                }
+
+                if (const auto idx = SizeClassIndex(requestBytes); idx < stripe.ExecutionTimeSizeClassBuckets.size()) {
+                    stripe.ExecutionTimeSizeClassBuckets[idx][execBucketIndex]++;
+                }
+            }
+
+            return;
+        }
 
         if (failed) {
             Errors->Inc();
@@ -672,9 +1198,6 @@ struct TRequestCounters::TStatCounters
                 Y_DEBUG_ABORT_UNLESS(false);
                 return;
         }
-
-        const auto time = requestTime - requestCompletionTime;
-        const auto execTime = time - postponedTime;
 
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(execTime.MicroSeconds());
@@ -724,6 +1247,45 @@ struct TRequestCounters::TStatCounters
         std::span<TSizeBucket> sizeHist,
         bool unaligned)
     {
+        if (UseStripedAccumulators) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+
+            stripe.Count += requestCount;
+            stripe.Errors += errors;
+
+            for (auto [dt, count]: timeHist) {
+                stripe.TimeMicros += dt.MicroSeconds() * count;
+                stripe.TimeBuckets[TimeBucketIndex(dt)] += count;
+                stripe.MaxTimeMicros = Max(stripe.MaxTimeMicros, dt.MicroSeconds());
+            }
+
+            if (IsReadWriteRequest) {
+                stripe.MaxCount += requestCount;
+                stripe.RequestBytes += bytes;
+                stripe.MaxRequestBytes += bytes;
+
+                for (auto [size, count]: sizeHist) {
+                    stripe.SizeBuckets[SizeBucketIndex(size)] += count;
+                    stripe.MaxSize = Max(stripe.MaxSize, size);
+                }
+
+                if (unaligned) {
+                    stripe.UnalignedCount += requestCount + errors;
+                }
+
+                for (auto [dt, count]: timeHist) {
+                    const auto timeBucket = TimeBucketIndex(dt);
+                    stripe.ExecutionTimeBuckets[timeBucket] += count;
+                    if (unaligned) {
+                        stripe.TimeBucketsUnaligned[timeBucket] += count;
+                        stripe.ExecutionTimeBucketsUnaligned[timeBucket] += count;
+                    }
+                }
+            }
+            return;
+        }
+
         Count->Add(requestCount);
         Errors->Add(errors);
 
@@ -761,6 +1323,37 @@ struct TRequestCounters::TStatCounters
 
     void AddRetryStats(EDiagnosticsErrorKind errorKind)
     {
+        if (UseStripedAccumulators) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+
+            switch (errorKind) {
+                case EDiagnosticsErrorKind::ErrorRetriable:
+                    ++stripe.ErrorsRetriable;
+                    break;
+                case EDiagnosticsErrorKind::ErrorThrottling:
+                    ++stripe.ErrorsThrottling;
+                    break;
+                case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint:
+                    ++stripe.ErrorsWriteRejectedByCheckpoint;
+                    break;
+                case EDiagnosticsErrorKind::ErrorSession:
+                    ++stripe.ErrorsSession;
+                    break;
+                case EDiagnosticsErrorKind::Success:
+                case EDiagnosticsErrorKind::ErrorAborted:
+                case EDiagnosticsErrorKind::ErrorFatal:
+                case EDiagnosticsErrorKind::ErrorSilent:
+                case EDiagnosticsErrorKind::Max:
+                    Y_DEBUG_ABORT_UNLESS(false);
+                    return;
+            }
+
+            ++stripe.Errors;
+            ++stripe.Retries;
+            return;
+        }
+
         switch (errorKind) {
             case EDiagnosticsErrorKind::ErrorRetriable:
                 ErrorsRetriable->Inc();
@@ -791,6 +1384,17 @@ struct TRequestCounters::TStatCounters
 
     void RequestPostponed()
     {
+        if (UseStripedAccumulators && IsReadWriteRequest) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            ++stripe.PostponedCount;
+            ++stripe.PostponedQueueSizeDelta;
+            stripe.PostponedQueueSizePeak = Max(
+                stripe.PostponedQueueSizePeak,
+                stripe.PostponedQueueSizeDelta);
+            return;
+        }
+
         if (IsReadWriteRequest) {
             PostponedCount->Inc();
             MaxPostponedQueueSizeCalc.Add(PostponedQueueSize->Inc());
@@ -799,6 +1403,17 @@ struct TRequestCounters::TStatCounters
 
     void RequestPostponedServer()
     {
+        if (UseStripedAccumulators && IsReadWriteRequest) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            ++stripe.PostponedCountGrpc;
+            ++stripe.PostponedQueueSizeGrpcDelta;
+            stripe.PostponedQueueSizeGrpcPeak = Max(
+                stripe.PostponedQueueSizeGrpcPeak,
+                stripe.PostponedQueueSizeGrpcDelta);
+            return;
+        }
+
         if (IsReadWriteRequest) {
             PostponedCountGrpc->Inc();
             MaxPostponedQueueSizeGrpcCalc.Add(PostponedQueueSizeGrpc->Inc());
@@ -807,6 +1422,13 @@ struct TRequestCounters::TStatCounters
 
     void RequestFastPathHit()
     {
+        if (UseStripedAccumulators && IsReadWriteRequest) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            ++stripe.FastPathHits;
+            return;
+        }
+
         if (IsReadWriteRequest) {
             FastPathHits->Inc();
         }
@@ -814,6 +1436,13 @@ struct TRequestCounters::TStatCounters
 
     void RequestAdvanced()
     {
+        if (UseStripedAccumulators && IsReadWriteRequest) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            --stripe.PostponedQueueSizeDelta;
+            return;
+        }
+
         if (IsReadWriteRequest) {
             PostponedQueueSize->Dec();
         }
@@ -821,6 +1450,13 @@ struct TRequestCounters::TStatCounters
 
     void RequestAdvancedServer()
     {
+        if (UseStripedAccumulators && IsReadWriteRequest) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            --stripe.PostponedQueueSizeGrpcDelta;
+            return;
+        }
+
         if (IsReadWriteRequest) {
             PostponedQueueSizeGrpc->Dec();
         }
@@ -831,6 +1467,20 @@ struct TRequestCounters::TStatCounters
         TDuration totalTime,
         ECalcMaxTime calcMaxTime)
     {
+        if (UseStripedAccumulators) {
+            auto& stripe = AccessStripe();
+            auto g = Guard(stripe.Lock);
+            if (calcMaxTime == ECalcMaxTime::ENABLE) {
+                stripe.MaxTimeMicros = Max(
+                    stripe.MaxTimeMicros,
+                    executionTime.MicroSeconds());
+            }
+            stripe.MaxTotalTimeMicros = Max(
+                stripe.MaxTotalTimeMicros,
+                totalTime.MicroSeconds());
+            return;
+        }
+
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(executionTime.MicroSeconds());
         }
@@ -839,6 +1489,10 @@ struct TRequestCounters::TStatCounters
 
     void UpdateStats(bool updatePercentiles)
     {
+        if (UseStripedAccumulators) {
+            PublishStripedStats();
+        }
+
         *MaxInProgress = MaxInProgressCalc.NextValue();
         *MaxTime = MaxTimeCalc.NextValue();
         *MaxTotalTime = MaxTotalTimeCalc.NextValue();
@@ -878,7 +1532,8 @@ TRequestCounters::TRequestCounters(
         std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses,
+        ui32 stripeCount)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , IsStartEndpointRequestType(std::move(isStartEndpointRequestType))
@@ -893,7 +1548,9 @@ TRequestCounters::TRequestCounters(
         CountersByRequest.emplace_back(
             timer,
             histogramCounterOptions,
-            executionTimeSizeClasses);
+            executionTimeSizeClasses,
+            Options & EOption::UseStripedAccumulators,
+            stripeCount);
     }
 }
 
