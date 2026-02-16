@@ -167,7 +167,7 @@ void fuse_free_req(fuse_req_t req)
         ctr = --req->ctr;
         pthread_mutex_unlock(&se->interrupts_lock);
         break;
-    default:
+    case FUSE_REQ_LIST_NONE:
         ctr = --req->ctr;
         break;
     }
@@ -1675,10 +1675,10 @@ static int find_interrupted_in_queue(struct fuse_session *se,
             curr->interrupted = 1;
             func = curr->u.ni.func;
             data = curr->u.ni.data;
-            pthread_mutex_unlock(&curr->lock);
             if (func) {
                 func(curr, data);
             }
+            pthread_mutex_unlock(&curr->lock);
 
             pthread_mutex_lock(&se->req_queue_locks[queue_index]);
             ctr = --curr->ctr;
@@ -1779,7 +1779,6 @@ static struct fuse_req *check_interrupt(struct fuse_session *se,
             req->interrupted = 1;
             pthread_mutex_unlock(&req->lock);
             list_del_req(curr);
-            curr->list_kind = FUSE_REQ_LIST_NONE;
             if (se->interrupts.next == &se->interrupts) {
                 atomic_store_explicit(&se->has_pending_interrupts, false,
                                       memory_order_release);
@@ -2399,16 +2398,13 @@ const struct fuse_ctx *fuse_req_ctx(fuse_req_t req)
 void fuse_req_interrupt_func(fuse_req_t req, fuse_interrupt_func_t func,
                              void *data)
 {
-    int interrupted;
-
     pthread_mutex_lock(&req->lock);
     req->u.ni.func = func;
     req->u.ni.data = data;
-    interrupted = req->interrupted;
-    pthread_mutex_unlock(&req->lock);
-    if (interrupted && func) {
+    if (req->interrupted && func) {
         func(req, data);
     }
+    pthread_mutex_unlock(&req->lock);
 }
 
 int fuse_req_interrupted(fuse_req_t req)
