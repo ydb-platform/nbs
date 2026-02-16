@@ -1242,15 +1242,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     Device("dev-11", "uuid-11.1", "rack-11", 10_GB),
                     Device("dev-21", "uuid-11.2", "rack-11", 10_GB),
                 }),
-                CreateAgentConfig(
-                    "agent-4",
-                    {
-                        Device("dev-12", "uuid-12.1", "rack-12", 10_GB),
-                        Device("dev-22", "uuid-12.2", "rack-12", 10_GB),
+            CreateAgentConfig(
+                "agent-4",
+                {
+                    Device("dev-12", "uuid-12.1", "rack-12", 10_GB),
+                    Device("dev-22", "uuid-12.2", "rack-12", 10_GB),
                 })};
 
-        SetUpRuntime(
-            TTestRuntimeBuilder().WithAgents(agents).Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents(agents).Build());
 
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, agents));
@@ -1267,11 +1266,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             "agent-2",
             NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
 
-        auto queryAgentsInfo = [&](TVector<NProto::EAgentState> filter) {
+        auto queryAgentsInfo = [&](TVector<NProto::EAgentState> filter)
+        {
             ui32 online = 0, warning = 0, unavailable = 0;
             auto agentsInfo = DiskRegistry->QueryAgentsInfo(filter);
 
-            for(auto& agentInfo : agentsInfo->Record.GetAgents()) {
+            for (auto& agentInfo: agentsInfo->Record.GetAgents()) {
                 switch (agentInfo.GetState()) {
                     case NProto::EAgentState::AGENT_STATE_ONLINE:
                         online += 1;
@@ -1292,12 +1292,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         ui32 online = 0;
         ui32 warning = 0;
         ui32 unavailable = 0;
-        std::tie(online, warning, unavailable) = queryAgentsInfo({NProto::EAgentState::AGENT_STATE_ONLINE});
+        std::tie(online, warning, unavailable) =
+            queryAgentsInfo({NProto::EAgentState::AGENT_STATE_ONLINE});
         UNIT_ASSERT_EQUAL(online, 2);
         UNIT_ASSERT_EQUAL(warning, 0);
         UNIT_ASSERT_EQUAL(unavailable, 0);
 
-        std::tie(online, warning, unavailable) = queryAgentsInfo({NProto::EAgentState::AGENT_STATE_WARNING, NProto::EAgentState::AGENT_STATE_UNAVAILABLE});
+        std::tie(online, warning, unavailable) = queryAgentsInfo(
+            {NProto::EAgentState::AGENT_STATE_WARNING,
+             NProto::EAgentState::AGENT_STATE_UNAVAILABLE});
         UNIT_ASSERT_EQUAL(online, 0);
         UNIT_ASSERT_EQUAL(warning, 1);
         UNIT_ASSERT_EQUAL(unavailable, 1);
