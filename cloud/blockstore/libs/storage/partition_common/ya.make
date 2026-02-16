@@ -11,6 +11,7 @@ SRCS(
     commit_ids_state.cpp
     drain_actor_companion.cpp
     fresh_blocks_companion_initfreshblocks.cpp
+    fresh_blocks_companion_writefreshblocks.cpp
     fresh_blocks_companion.cpp
     io_companion_patchblob.cpp
     io_companion_readblob.cpp

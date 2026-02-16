@@ -311,7 +311,44 @@ void TPartitionActor::HandleWriteBlocksCompleted(
 {
     auto* msg = ev->Get();
 
-    ui64 commitId = msg->CommitId;
+    HandleWriteBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        {
+            .CollectGarbageBarrierAcquired = msg->CollectGarbageBarrierAcquired,
+            .AddingUnconfirmedBlobsRequested =
+                msg->AddingUnconfirmedBlobsRequested,
+            .FreshBlocksRequest = false,
+            .BlobsToConfirm = std::move(msg->BlobsToConfirm),
+        });
+}
+
+void TPartitionActor::HandleWriteFreshBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    HandleWriteBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        {
+            .FreshBlocksRequest = true,
+        });
+}
+
+void TPartitionActor::HandleWriteBlocksCompletedImpl(
+    const NActors::TActorContext& ctx,
+    NActors::TActorId sender,
+    NProto::TError error,
+    const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+    TWriteBlocksCompleted writeBlocksCompleted)
+{
+    ui64 commitId = opCompleted.CommitId;
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -319,26 +356,26 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         LogTitle.GetWithTime().c_str(),
         commitId);
 
-    UpdateStats(msg->Stats);
+    UpdateStats(opCompleted.Stats);
 
-    ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
+    ui64 blocksCount = opCompleted.Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
+    UpdateCPUUsageStat(ctx.Now(), opCompleted.ExecCycles);
 
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     const auto requestCount =
-        msg->Stats.GetUserWriteCounters().GetRequestsCount();
+        opCompleted.Stats.GetUserWriteCounters().GetRequestsCount();
     PartCounters->RequestCounters.WriteBlocks.AddRequest(
         time,
         requestBytes,
         requestCount
     );
 
-    if (msg->AffectedBlockInfos) {
+    if (opCompleted.AffectedBlockInfos) {
         IProfileLog::TReadWriteRequestBlockInfos request;
         request.RequestType = EBlockStoreRequest::WriteBlocks;
-        request.BlockInfos = std::move(msg->AffectedBlockInfos);
+        request.BlockInfos = std::move(opCompleted.AffectedBlockInfos);
         request.CommitId = commitId;
 
         IProfileLog::TRecord record;
@@ -349,8 +386,8 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         ProfileLog->Write(std::move(record));
     }
 
-    if (msg->AddingUnconfirmedBlobsRequested) {
-        if (HasError(msg->GetError())) {
+    if (writeBlocksCompleted.AddingUnconfirmedBlobsRequested) {
+        if (HasError(error)) {
             // blobs are obsolete, delete them directly
             auto request = std::make_unique<
                 TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsRequest>(
@@ -360,14 +397,14 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         } else {
             // blobs are confirmed, but AddBlobs request will be executed
             // (for this commit) later
-            State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
+            State->BlobsConfirmed(commitId, std::move(writeBlocksCompleted.BlobsToConfirm));
         }
         STORAGE_VERIFY(
-            msg->CollectGarbageBarrierAcquired,
+            writeBlocksCompleted.CollectGarbageBarrierAcquired,
             TWellKnownEntityTypes::TABLET,
             TabletID());
         STORAGE_VERIFY(
-            !msg->TrimFreshLogBarrierAcquired,
+            !writeBlocksCompleted.FreshBlocksRequest,
             TWellKnownEntityTypes::TABLET,
             TabletID());
         // commit & garbage queue barriers will be released when confirmed
@@ -381,18 +418,24 @@ void TPartitionActor::HandleWriteBlocksCompleted(
             commitId);
 
         State->AccessCommitQueue().ReleaseBarrier(commitId);
-        if (msg->CollectGarbageBarrierAcquired) {
+        if (writeBlocksCompleted.CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
         }
 
-        if (msg->TrimFreshLogBarrierAcquired && HasError(msg->GetError())) {
-            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
+
+        if (writeBlocksCompleted.FreshBlocksRequest) {
+            FreshBlocksCompanion->WriteFreshBlocksCompleted(
+                ctx,
+                error,
                 commitId,
-                blocksCount);
+                blocksCount,
+                sender);
         }
     }
 
-    Actors.Erase(ev->Sender);
+    if (!writeBlocksCompleted.FreshBlocksRequest) {
+        Actors.Erase(sender);
+    }
 
     if (Executor()->GetStats().IsAnyChannelYellowMove) {
         ScheduleYellowStateUpdate(ctx);

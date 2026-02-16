@@ -237,9 +237,11 @@ void TPartitionActor::CompleteLoadState(
     CreateFreshBlocksCompanionClient();
 
     FreshBlocksCompanion = std::make_unique<TFreshBlocksCompanion>(
+        Config,
         StorageAccessMode,
         partitionConfig,
         Info(),
+        BlockDigestGenerator,
         *FreshBlocksCompanionClient,
         *State,   // channelsState
         *State,   // freshBlobState
