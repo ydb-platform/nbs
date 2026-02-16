@@ -37,7 +37,7 @@ TStringBuf SerializeWriteDataRequest(
     return data;
 }
 
-std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInThePersistentStorage(
+std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInPersistentStorage(
     ui64 sequenceId,
     TInstant time,
     const NProto::TWriteDataRequest& request,
@@ -195,7 +195,7 @@ auto TWriteDataRequestManager::AddRequest(
     const auto now = Timer->Now();
 
     if (PendingRequests.Empty()) {
-        auto cachedRequest = TryStoreRequestInThePersistentStorage(
+        auto cachedRequest = TryStoreRequestInPersistentStorage(
             sequenceId,
             now,
             *request,
@@ -225,7 +225,7 @@ auto TWriteDataRequestManager::TryProcessPendingRequest()
 
     auto* pendingRequest = PendingRequests.Front();
 
-    auto cachedRequest = TryStoreRequestInThePersistentStorage(
+    auto cachedRequest = TryStoreRequestInPersistentStorage(
         pendingRequest->GetSequenceId(),
         Timer->Now(),
         pendingRequest->GetRequest(),
