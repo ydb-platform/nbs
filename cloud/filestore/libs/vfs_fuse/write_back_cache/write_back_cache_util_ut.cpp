@@ -265,9 +265,9 @@ struct TTestUtilBootstrap
 using TWriteDataEntry = TTestUtilBootstrap::TWriteDataEntry;
 using TWriteDataEntryPart = TTestUtilBootstrap::TWriteDataEntryPart;
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
 
 IOutputStream& operator<<(
     IOutputStream& out,
@@ -298,6 +298,8 @@ IOutputStream& operator<<(
 }
 
 }   // namespace NWriteBackCache
+
+////////////////////////////////////////////////////////////////////////////////
 
 IOutputStream& operator<<(
     IOutputStream& out,
