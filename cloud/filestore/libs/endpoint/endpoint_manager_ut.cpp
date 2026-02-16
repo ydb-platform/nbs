@@ -17,6 +17,9 @@
 #include <util/system/sysstat.h>
 #include <util/folder/tempdir.h>
 
+#include <atomic>
+#include <thread>
+
 namespace NCloud::NFileStore::NServer {
 
 using namespace NThreading;
@@ -42,8 +45,10 @@ struct TTestEndpoint:
 
     TPromise<NProto::TError> Start = NewPromise<NProto::TError>();
     TPromise<void> Stop = NewPromise();
+    std::atomic<ui32> StopCalls = 0;
+    std::atomic<ui32> SuspendCalls = 0;
 
-    bool Ready = true;
+    std::atomic<bool> Ready = true;
 
     TTestEndpoint(const NProto::TEndpointConfig& config, bool ready = true)
         : Config(config)
@@ -63,7 +68,7 @@ struct TTestEndpoint:
 
     TFuture<NProto::TError> StartAsync() override
     {
-        if (!Ready) {
+        if (!Ready.load()) {
             return Start;
         }
 
@@ -72,7 +77,9 @@ struct TTestEndpoint:
 
     TFuture<void> StopAsync() override
     {
-        if (!Ready) {
+        ++StopCalls;
+
+        if (!Ready.load()) {
             return Stop;
         }
 
@@ -81,7 +88,9 @@ struct TTestEndpoint:
 
     TFuture<void> SuspendAsync() override
     {
-        if (!Ready) {
+        ++SuspendCalls;
+
+        if (!Ready.load()) {
             return Stop;
         }
 
@@ -137,6 +146,20 @@ NProto::TKickEndpointResponse KickEndpoint(IEndpointManager& service, ui32 keyri
         std::move(request));
 
      return future.GetValue(WaitTimeout);
+}
+
+NProto::TStartEndpointResponse StartEndpoint(
+    IEndpointManager& service,
+    const NProto::TEndpointConfig& config)
+{
+    auto request = std::make_shared<NProto::TStartEndpointRequest>();
+    *request->MutableEndpoint() = config;
+
+    auto future = service.StartEndpoint(
+        MakeIntrusive<TCallContext>(),
+        std::move(request));
+
+    return future.GetValue(WaitTimeout);
 }
 
 }   // namespace
@@ -513,6 +536,232 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         service->RestoreEndpoints().GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(1, listener->Endpoints.size());
         UNIT_ASSERT(unixSocketPath.Parent().Exists());
+    }
+
+    Y_UNIT_TEST(ShouldWaitStopAndSkipSuspendWhileDraining)
+    {
+        TString id = "id";
+        TString unixSocket = "testSocket";
+
+        NProto::TEndpointConfig config;
+        config.SetFileSystemId(id);
+        config.SetSocketPath(unixSocket);
+        config.SetClientId("client");
+
+        const TString dirPath = "./" + CreateGuidAsString();
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        TTempDir endpointDir(dirPath);
+
+        auto endpoint = std::make_shared<TTestEndpoint>(config, false);
+        endpoint->Start.SetValue(NProto::TError{});
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
+
+        auto service = CreateEndpointManager(
+            CreateLoggingService("console"),
+            endpointStorage,
+            listener,
+            MODE0660);
+        service->Start();
+
+        Y_DEFER
+        {
+            if (!endpoint->Stop.HasValue()) {
+                endpoint->Stop.SetValue();
+            }
+            UNIT_ASSERT_NO_EXCEPTION(service->Stop());
+        };
+
+        auto startResponse = StartEndpoint(*service, config);
+        UNIT_ASSERT_C(
+            !HasError(startResponse),
+            startResponse.ShortDebugString());
+        UNIT_ASSERT_VALUES_EQUAL(1, listener->Endpoints.size());
+
+        auto stopRequest = std::make_shared<NProto::TStopEndpointRequest>();
+        stopRequest->SetSocketPath(unixSocket);
+        auto stopFuture = service->StopEndpoint(
+            MakeIntrusive<TCallContext>(),
+            std::move(stopRequest));
+        UNIT_ASSERT(!stopFuture.HasValue());
+
+        auto drainDone = NewPromise<void>();
+        std::thread drainThread(
+            [&]
+            {
+                service->Drain();
+                drainDone.SetValue();
+            });
+
+        UNIT_ASSERT(!drainDone.GetFuture().Wait(TDuration::MilliSeconds(100)));
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoint->SuspendCalls.load());
+
+        endpoint->Stop.SetValue();
+
+        UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
+        auto stopResponse = stopFuture.GetValue();
+        UNIT_ASSERT_C(!HasError(stopResponse), stopResponse.ShortDebugString());
+        UNIT_ASSERT(drainDone.GetFuture().Wait(WaitTimeout));
+
+        drainThread.join();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoint->SuspendCalls.load());
+    }
+
+    Y_UNIT_TEST(ShouldSuspendEndpointIfStartCompletesDuringDrain)
+    {
+        TString id = "id";
+        TString unixSocket = "testSocket";
+
+        NProto::TEndpointConfig config;
+        config.SetFileSystemId(id);
+        config.SetSocketPath(unixSocket);
+        config.SetClientId("client");
+
+        const TString dirPath = "./" + CreateGuidAsString();
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        TTempDir endpointDir(dirPath);
+
+        auto endpoint = std::make_shared<TTestEndpoint>(config, false);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
+
+        auto service = CreateEndpointManager(
+            CreateLoggingService("console"),
+            endpointStorage,
+            listener,
+            MODE0660);
+        service->Start();
+
+        Y_DEFER
+        {
+            if (!endpoint->Start.HasValue()) {
+                endpoint->Start.SetValue({});
+            }
+            if (!endpoint->Stop.HasValue()) {
+                endpoint->Stop.SetValue();
+            }
+            UNIT_ASSERT_NO_EXCEPTION(service->Stop());
+        };
+
+        auto startRequest = std::make_shared<NProto::TStartEndpointRequest>();
+        *startRequest->MutableEndpoint() = config;
+        auto startFuture = service->StartEndpoint(
+            MakeIntrusive<TCallContext>(),
+            std::move(startRequest));
+        UNIT_ASSERT(!startFuture.HasValue());
+
+        auto drainDone = NewPromise<void>();
+        std::thread drainThread(
+            [&]
+            {
+                service->Drain();
+                drainDone.SetValue();
+            });
+
+        UNIT_ASSERT(!drainDone.GetFuture().Wait(TDuration::MilliSeconds(100)));
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoint->SuspendCalls.load());
+
+        endpoint->Ready.store(true);
+        endpoint->Start.SetValue({});
+
+        UNIT_ASSERT(startFuture.Wait(WaitTimeout));
+        auto startResponse = startFuture.GetValue();
+        UNIT_ASSERT_C(
+            !HasError(startResponse),
+            startResponse.ShortDebugString());
+
+        UNIT_ASSERT(drainDone.GetFuture().Wait(WaitTimeout));
+        drainThread.join();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, endpoint->SuspendCalls.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotSuspendEndpointIfStartFailsDuringDrain)
+    {
+        TString id = "id";
+        TString unixSocket = "testSocket";
+
+        NProto::TEndpointConfig config;
+        config.SetFileSystemId(id);
+        config.SetSocketPath(unixSocket);
+        config.SetClientId("client");
+
+        const TString dirPath = "./" + CreateGuidAsString();
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        TTempDir endpointDir(dirPath);
+
+        auto endpoint = std::make_shared<TTestEndpoint>(config, false);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
+
+        auto service = CreateEndpointManager(
+            CreateLoggingService("console"),
+            endpointStorage,
+            listener,
+            MODE0660);
+        service->Start();
+
+        Y_DEFER
+        {
+            if (!endpoint->Start.HasValue()) {
+                NProto::TError error;
+                error.SetCode(E_FAIL);
+                error.SetMessage("start failed");
+                endpoint->Start.SetValue(error);
+            }
+            if (!endpoint->Stop.HasValue()) {
+                endpoint->Stop.SetValue();
+            }
+            UNIT_ASSERT_NO_EXCEPTION(service->Stop());
+        };
+
+        auto startRequest = std::make_shared<NProto::TStartEndpointRequest>();
+        *startRequest->MutableEndpoint() = config;
+        auto startFuture = service->StartEndpoint(
+            MakeIntrusive<TCallContext>(),
+            std::move(startRequest));
+        UNIT_ASSERT(!startFuture.HasValue());
+
+        auto drainDone = NewPromise<void>();
+        std::thread drainThread(
+            [&]
+            {
+                service->Drain();
+                drainDone.SetValue();
+            });
+
+        UNIT_ASSERT(!drainDone.GetFuture().Wait(TDuration::MilliSeconds(100)));
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoint->SuspendCalls.load());
+
+        NProto::TError error;
+        error.SetCode(E_FAIL);
+        error.SetMessage("start failed");
+        endpoint->Start.SetValue(error);
+
+        UNIT_ASSERT(startFuture.Wait(WaitTimeout));
+        auto startResponse = startFuture.GetValue();
+        UNIT_ASSERT(HasError(startResponse));
+
+        UNIT_ASSERT(drainDone.GetFuture().Wait(WaitTimeout));
+        drainThread.join();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoint->SuspendCalls.load());
     }
 }
 
