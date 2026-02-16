@@ -688,7 +688,7 @@ void TVolumeActor::HandleUpdateCounters(
 
 void TVolumeActor::HandleGetServiceStatistics(
     const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     if (StatisticRequestInfo) {
         NCloud::Reply(
@@ -729,7 +729,7 @@ void TVolumeActor::HandleGetServiceStatistics(
 
 void TVolumeActor::RejectGetServiceStatistics(
     const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     NCloud::Reply(
         ctx,

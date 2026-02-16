@@ -595,7 +595,7 @@ void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
 }
 
 void TVolumeActor::DoSendPartStatsToService(
-    const NActors::TActorContext& ctx,
+    const TActorContext& ctx,
     const TString& diskId)
 {
     auto partCounters = GetPartCounters(diskId);
