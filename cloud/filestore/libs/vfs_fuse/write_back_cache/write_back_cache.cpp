@@ -150,7 +150,20 @@ struct TWriteBackCache::TNodeState
         if (!PendingRequests.empty()) {
             return PendingRequests.front()->GetSequenceId();
         }
+        // Returning Max<ui64>() simplifies the logic of
+        // EnqueueFlushCompletions()
         return Max<ui64>();
+    }
+
+    ui64 GetMaxPendingOrUnflushedSequenceId() const
+    {
+        if (!PendingRequests.empty()) {
+            return PendingRequests.back()->GetSequenceId();
+        }
+        if (!UnflushedRequests.empty()) {
+            return UnflushedRequests.back()->GetSequenceId();
+        }
+        return 0;
     }
 
     bool CanBeDeleted() const
@@ -545,10 +558,7 @@ public:
             return NThreading::MakeFuture();
         }
 
-        ui64 maxRequestId =
-            nodeState->PendingRequests.empty()
-                ? nodeState->UnflushedRequests.back()->GetSequenceId()
-                : nodeState->PendingRequests.back()->GetSequenceId();
+        ui64 maxRequestId = nodeState->GetMaxPendingOrUnflushedSequenceId();
 
         if (!nodeState->FlushRequests.empty() &&
             nodeState->FlushRequests.back().RequestId >= maxRequestId)
@@ -609,7 +619,7 @@ public:
     ui64 AcquireNodeStateRef()
     {
         with_lock (Lock) {
-            ui64 refId = SequenceIdGenerator->Generate();
+            ui64 refId = SequenceIdGenerator->GenerateId();
             NodeStateRefs.insert(refId);
             return refId;
         }
@@ -664,7 +674,7 @@ private:
         std::unique_ptr<TPendingWriteDataRequest> request,
         TPromise<NProto::TWriteDataResponse> promise)
     {
-        *request->MutablePromise() = std::move(promise);
+        request->AccessPromise() = std::move(promise);
         auto* nodeState =
             GetOrCreateNodeState(request->GetRequest().GetNodeId());
         nodeState->PendingRequests.push_back(std::move(request));
@@ -765,7 +775,7 @@ private:
         if (NodeStateRefs.empty()) {
             EraseNodeState(nodeState->NodeId);
         } else {
-            nodeState->DeletionId = SequenceIdGenerator->Generate();
+            nodeState->DeletionId = SequenceIdGenerator->GenerateId();
             DeletedNodeStates[nodeState->DeletionId] = nodeState->NodeId;
         }
 
@@ -844,8 +854,7 @@ private:
                 entry->GetSequenceId());
 
             QueuedOperations.WriteDataCompleted.push_back(
-                std::move(
-                    *nodeState->PendingRequests.front()->MutablePromise()));
+                std::move(nodeState->PendingRequests.front()->AccessPromise()));
 
             nodeState->PendingRequests.pop_front();
 

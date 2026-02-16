@@ -51,7 +51,7 @@ struct TBootstrap
             TOverloaded(
                 [this](std::unique_ptr<TPendingWriteDataRequest> request)
                 {
-                    auto future = request->MutablePromise()->GetFuture();
+                    auto future = request->AccessPromise().GetFuture();
                     PendingRequests[request->GetSequenceId()] =
                         std::move(request);
                     return future.IgnoreResult();
@@ -90,9 +90,8 @@ struct TBootstrap
                 return false;
             }
 
-            PendingRequests[request->GetSequenceId()]
-                ->MutablePromise()
-                ->SetValue({});
+            PendingRequests[request->GetSequenceId()]->AccessPromise().SetValue(
+                {});
             PendingRequests.erase(request->GetSequenceId());
             CachedRequests[request->GetSequenceId()] = std::move(request);
         }

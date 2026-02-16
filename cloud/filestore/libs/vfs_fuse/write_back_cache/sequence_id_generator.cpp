@@ -4,11 +4,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSequenceIdGenerator::TSequenceIdGenerator(ui64 initial)
-    : CurrentId(initial)
-{}
-
-ui64 TSequenceIdGenerator::Generate()
+ui64 TSequenceIdGenerator::GenerateId()
 {
     return CurrentId++;
 }

@@ -2,7 +2,7 @@
 
 #include <cloud/filestore/libs/storage/core/helpers.h>
 
-#include <span>
+#include <util/stream/mem.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -10,30 +10,34 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBufferWriter
+TStringBuf SerializeWriteDataRequest(
+    const NProto::TWriteDataRequest& request,
+    TMemoryOutput& memoryOutput)
 {
-    std::span<char> TargetBuffer;
+    TSerializedWriteDataRequestHeader header{
+        .NodeId = request.GetNodeId(),
+        .Handle = request.GetHandle(),
+        .Offset = request.GetOffset()};
 
-    explicit TBufferWriter(std::span<char> targetBuffer)
-        : TargetBuffer(targetBuffer)
-    {}
+    memoryOutput.Write(&header, sizeof(header));
 
-    void Write(TStringBuf buffer)
-    {
-        Y_ABORT_UNLESS(
-            buffer.size() <= TargetBuffer.size(),
-            "Not enough space in the buffer to write %lu bytes, remaining: %lu",
-            buffer.size(),
-            TargetBuffer.size());
+    auto data = TStringBuf(memoryOutput.Buf(), memoryOutput.Avail());
 
-        buffer.copy(TargetBuffer.data(), buffer.size());
-        TargetBuffer = TargetBuffer.subspan(buffer.size());
+    if (request.GetIovecs().empty()) {
+        memoryOutput.Write(
+            TStringBuf(request.GetBuffer()).Skip(request.GetBufferOffset()));
+    } else {
+        for (const auto& iovec: request.GetIovecs()) {
+            memoryOutput.Write(TStringBuf(
+                reinterpret_cast<const char*>(iovec.GetBase()),
+                iovec.GetLength()));
+        }
     }
-};
 
-////////////////////////////////////////////////////////////////////////////////
+    return data;
+}
 
-std::unique_ptr<TCachedWriteDataRequest> TrySerialize(
+std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInThePersistentStorage(
     ui64 sequenceId,
     TInstant time,
     const NProto::TWriteDataRequest& request,
@@ -42,8 +46,10 @@ std::unique_ptr<TCachedWriteDataRequest> TrySerialize(
     const ui64 byteCount =
         NStorage::CalculateByteCount(request) - request.GetBufferOffset();
 
-    auto allocationResult =
-        storage.Alloc(sizeof(TSerializedWriteDataRequest) + byteCount);
+    const ui64 allocationSize =
+        sizeof(TSerializedWriteDataRequestHeader) + byteCount;
+
+    auto allocationResult = storage.Alloc(allocationSize);
 
     Y_ABORT_UNLESS(
         !HasError(allocationResult),
@@ -55,29 +61,12 @@ std::unique_ptr<TCachedWriteDataRequest> TrySerialize(
         return nullptr;
     }
 
-    auto* serializedRequest =
-        reinterpret_cast<TSerializedWriteDataRequest*>(allocationPtr);
+    TMemoryOutput memoryOutput(allocationPtr, allocationSize);
 
-    serializedRequest->NodeId = request.GetNodeId();
-    serializedRequest->Handle = request.GetHandle();
-    serializedRequest->Offset = request.GetOffset();
-
-    TBufferWriter writer(
-        {allocationPtr + sizeof(TSerializedWriteDataRequest), byteCount});
-
-    if (request.GetIovecs().empty()) {
-        writer.Write(
-            TStringBuf(request.GetBuffer()).Skip(request.GetBufferOffset()));
-    } else {
-        for (const auto& iovec: request.GetIovecs()) {
-            writer.Write(TStringBuf(
-                reinterpret_cast<const char*>(iovec.GetBase()),
-                iovec.GetLength()));
-        }
-    }
+    auto data = SerializeWriteDataRequest(request, memoryOutput);
 
     Y_ABORT_UNLESS(
-        writer.TargetBuffer.empty(),
+        memoryOutput.Exhausted(),
         "Buffer is expected to be written completely");
 
     storage.Commit();
@@ -85,26 +74,27 @@ std::unique_ptr<TCachedWriteDataRequest> TrySerialize(
     return std::make_unique<TCachedWriteDataRequest>(
         sequenceId,
         time,
-        byteCount,
-        serializedRequest);
+        allocationPtr,
+        data);
 }
 
-std::unique_ptr<TCachedWriteDataRequest>
-TryDeserialize(ui64 sequenceId, TInstant time, TStringBuf allocation)
+std::unique_ptr<TCachedWriteDataRequest> DeserializeWriteDataRequest(
+    ui64 sequenceId,
+    TInstant time,
+    TStringBuf allocation)
 {
-    if (allocation.size() <= sizeof(TSerializedWriteDataRequest)) {
+    if (allocation.size() <= sizeof(TSerializedWriteDataRequestHeader)) {
         return nullptr;
     }
 
-    const ui64 byteCount =
-        allocation.size() - sizeof(TSerializedWriteDataRequest);
+    auto data = TStringBuf(
+        allocation.SubStr(sizeof(TSerializedWriteDataRequestHeader)));
 
     return std::make_unique<TCachedWriteDataRequest>(
         sequenceId,
         time,
-        byteCount,
-        reinterpret_cast<const TSerializedWriteDataRequest*>(
-            allocation.data()));
+        allocation.data(),
+        data);
 }
 
 }   // namespace
@@ -131,8 +121,8 @@ bool TWriteDataRequestManager::Init(const TCachedRequestVisitor& visitor)
     PersistentStorage->Visit(
         [this, &success, &loadedRequests](const TStringBuf allocation)
         {
-            auto request = TryDeserialize(
-                SequenceIdGenerator->Generate(),
+            auto request = DeserializeWriteDataRequest(
+                SequenceIdGenerator->GenerateId(),
                 Timer->Now(),
                 allocation);
 
@@ -201,12 +191,15 @@ ui64 TWriteDataRequestManager::GetMaxUnflushedSequenceId() const
 auto TWriteDataRequestManager::AddRequest(
     std::shared_ptr<NProto::TWriteDataRequest> request) -> TAddRequestResult
 {
-    const ui64 sequenceId = SequenceIdGenerator->Generate();
+    const ui64 sequenceId = SequenceIdGenerator->GenerateId();
     const auto now = Timer->Now();
 
     if (PendingRequests.Empty()) {
-        auto cachedRequest =
-            TrySerialize(sequenceId, now, *request, *PersistentStorage);
+        auto cachedRequest = TryStoreRequestInThePersistentStorage(
+            sequenceId,
+            now,
+            *request,
+            *PersistentStorage);
 
         if (cachedRequest) {
             UnflushedRequestsPushBack(cachedRequest.get());
@@ -232,7 +225,7 @@ auto TWriteDataRequestManager::TryProcessPendingRequest()
 
     auto* pendingRequest = PendingRequests.Front();
 
-    auto cachedRequest = TrySerialize(
+    auto cachedRequest = TryStoreRequestInThePersistentStorage(
         pendingRequest->GetSequenceId(),
         Timer->Now(),
         pendingRequest->GetRequest(),

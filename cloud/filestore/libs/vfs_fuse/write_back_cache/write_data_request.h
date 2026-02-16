@@ -63,9 +63,9 @@ public:
         return *Request;
     }
 
-    NThreading::TPromise<NProto::TWriteDataResponse>* MutablePromise()
+    NThreading::TPromise<NProto::TWriteDataResponse>& AccessPromise()
     {
-        return &Promise;
+        return Promise;
     }
 };
 
@@ -73,21 +73,11 @@ public:
 
 // It is not guaranteed that the allocation is properly aligned
 // Y_PACKED is used to generate instructions for unaligned access
-struct Y_PACKED TSerializedWriteDataRequest
+struct Y_PACKED TSerializedWriteDataRequestHeader
 {
     ui64 NodeId = 0;
     ui64 Handle = 0;
     ui64 Offset = 0;
-
-    // Data goes right after the header, |byteCount| bytes
-    // The validity is ensured by code logic
-    TStringBuf GetBuffer(ui64 byteCount) const
-    {
-        return {
-            reinterpret_cast<const char*>(this) +
-                sizeof(TSerializedWriteDataRequest),
-            byteCount};
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,63 +86,64 @@ class TCachedWriteDataRequest
     : public TWriteDataRequestBase<TCachedWriteDataRequest>
 {
 private:
-    // ByteCount is not serialized to the persistent storage as it is calculated
-    // implicitly from the allocation size
-    const ui64 ByteCount;
+    // WriteData request header serialized to the persistent storage
+    const TSerializedWriteDataRequestHeader* SerializedHeader;
 
-    // WriteData request serialized to the persistent storage
-    const TSerializedWriteDataRequest* SerializedData;
+    // WriteData request body referenced in the persistent storage
+    const TStringBuf SerializedData;
 
 public:
     TCachedWriteDataRequest(
         ui64 sequenceId,
         TInstant time,
-        ui64 byteCount,
-        const TSerializedWriteDataRequest* serializedData)
+        const void* allocationPtr,
+        TStringBuf serializedData)
         : TWriteDataRequestBase(sequenceId, time)
-        , ByteCount(byteCount)
+        , SerializedHeader(
+              reinterpret_cast<const TSerializedWriteDataRequestHeader*>(
+                  allocationPtr))
         , SerializedData(serializedData)
     {}
 
     const void* GetAllocationPtr() const
     {
-        return SerializedData;
+        return SerializedHeader;
     }
 
     ui64 GetNodeId() const
     {
-        return SerializedData->NodeId;
+        return SerializedHeader->NodeId;
     }
 
     ui64 GetHandle() const
     {
-        return SerializedData->Handle;
+        return SerializedHeader->Handle;
     }
 
     ui64 GetOffset() const
     {
-        return SerializedData->Offset;
+        return SerializedHeader->Offset;
     }
 
     ui64 GetByteCount() const
     {
-        return ByteCount;
+        return SerializedData.size();
     }
 
     ui64 GetEnd() const
     {
-        return SerializedData->Offset + ByteCount;
+        return SerializedHeader->Offset + SerializedData.size();
     }
 
     TStringBuf GetBuffer() const
     {
-        return SerializedData->GetBuffer(ByteCount);
+        return SerializedData;
     }
 
     TStringBuf GetBuffer(ui64 offset, ui64 byteCount) const
     {
-        return SerializedData->GetBuffer(ByteCount).SubStr(
-            offset - SerializedData->Offset,
+        return SerializedData.SubStr(
+            offset - SerializedHeader->Offset,
             byteCount);
     }
 };
