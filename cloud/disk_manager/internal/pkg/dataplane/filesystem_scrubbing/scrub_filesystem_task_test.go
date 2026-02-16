@@ -118,7 +118,11 @@ func (f *fixture) prepareFilesystem(t *testing.T, filesystemID string) {
 }
 
 func (f *fixture) cleanupFilesystem(t *testing.T, filesystemID string) {
-	err := f.client.Delete(f.ctx, filesystemID, true)
+	// We interrupt the scrubbing which creates a session at random time.
+	// The session be created but the session creation can be cancelled before
+	// the session id is received, so it won't be destroyed.
+	// We need to force-delete the filesystem to ignore dangling sessions.
+	err := f.client.Delete(f.ctx, filesystemID, true /*force*/)
 	require.NoError(t, err)
 }
 
@@ -221,7 +225,7 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 	}
 
 	root := nfs_testing.HomogeneousDirectoryTree(layers)
-	fsModel := f.fillFilesystem(t, filesystemID, root, true)
+	fsModel := f.fillFilesystem(t, filesystemID, root, true /* parallel */)
 	defer fsModel.Close()
 
 	execCtx := tasks_mocks.NewExecutionContextMock()
