@@ -765,6 +765,10 @@ public:
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
 
     [[nodiscard]] TDuration GetAttachDetachPathRequestTimeout() const;
+
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableToOnlineDelay() const;
+    [[nodiscard]] TDuration GetAgentBackFromUnavailableCheckInterval() const;
+    [[nodiscard]] ui32 GetMaxAgentsRestoredPerTransaction() const;
 };
 
 ui64 GetAllocationUnit(

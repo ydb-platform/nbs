@@ -783,6 +783,10 @@ struct TEvDiskRegistryPrivate
     {
     };
 
+    struct TDiskRegistryRestoreAgentsToOnline
+    {
+    };
+
     //
     // DetachPathsOperationCompleted
     //
@@ -813,6 +817,8 @@ struct TEvDiskRegistryPrivate
 
         EvDetachPathsOperationCompleted,
 
+        EvDiskRegistryRestoreAgentsToOnline,
+
         EvEnd
     };
 
@@ -839,6 +845,10 @@ struct TEvDiskRegistryPrivate
     using TEvDetachPathsOperationCompleted = TResponseEvent<
         TDetachPathsOperationCompleted,
         EvDetachPathsOperationCompleted>;
+
+    using TEvDiskRegistryRestoreAgentsToOnline = TRequestEvent<
+        TDiskRegistryRestoreAgentsToOnline,
+        EvDiskRegistryRestoreAgentsToOnline>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

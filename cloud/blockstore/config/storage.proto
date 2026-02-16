@@ -1419,4 +1419,14 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // Delay before changing Disk Agent from "back from unavailable" to online
+    // (time that must pass since the last status change).
+    optional uint32 AgentBackFromUnavailableToOnlineDelay = 481;
+
+    // Interval for checking disk agents with status "back from unavailable".
+    optional uint32 AgentBackFromUnavailableCheckInterval = 482;
+
+    // Maximum number of disk agents to restore to online per transaction.
+    optional uint32 MaxAgentsRestoredPerTransaction = 483;
 }
