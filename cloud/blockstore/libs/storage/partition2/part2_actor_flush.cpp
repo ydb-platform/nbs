@@ -72,7 +72,7 @@ private:
     STFUNC(StateWork);
 
     void HandleWriteBlobResponse(
-        const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleAddBlobsResponse(
@@ -142,9 +142,10 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
         BlockCount += req.Blocks.size();
 
         auto request =
-            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+            std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
                 req.BlobContent.GetGuardedSgList(),
+                0,      // blockSizeForChecksums
                 true,   // async
                 BlobStorageAsyncRequestTimeout
                     ? ctx.Now() + BlobStorageAsyncRequestTimeout
@@ -155,7 +156,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
-                "TEvPartitionPrivate::TEvWriteBlobRequest",
+                "TEvPartitionCommonPrivate::TEvWriteBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
         request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
@@ -244,7 +245,7 @@ void TFlushActor::ReplyAndDie(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TFlushActor::HandleWriteBlobResponse(
-    const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
@@ -301,7 +302,7 @@ STFUNC(TFlushActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:

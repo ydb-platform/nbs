@@ -227,11 +227,11 @@ private:
         const TActorContext& ctx);
 
     void HandleWriteBlobResponse(
-        const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePatchBlobResponse(
-        const TEvPartitionPrivate::TEvPatchBlobResponse::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvPatchBlobResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleAddBlobsResponse(
@@ -541,7 +541,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
             MakeDiffs(rc);
 
             auto request =
-                std::make_unique<TEvPartitionPrivate::TEvPatchBlobRequest>(
+                std::make_unique<TEvPartitionCommonPrivate::TEvPatchBlobRequest>(
                     rc.OriginalBlobId,
                     rc.DataBlobId,
                     std::move(rc.Diffs),
@@ -553,7 +553,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvPatchBlobRequest",
+                    "TEvPartitionCommonPrivate::TEvPatchBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
 
@@ -565,7 +565,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 std::move(request));
         } else {
             auto request =
-                std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                     rc.DataBlobId,
                     rc.BlobContent.GetGuardedSgList(),
                     0,           // blockSizeForChecksums
@@ -576,7 +576,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvWriteBlobRequest",
+                    "TEvPartitionCommonPrivate::TEvWriteBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
             request->CallContext->RequestId =
@@ -952,14 +952,14 @@ void TCompactionActor::HandleWriteOrPatchBlobResponse(
 }
 
 void TCompactionActor::HandleWriteBlobResponse(
-    const TEvPartitionPrivate::TEvWriteBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvWriteBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     HandleWriteOrPatchBlobResponse(*ev, ctx);
 }
 
 void TCompactionActor::HandlePatchBlobResponse(
-    const TEvPartitionPrivate::TEvPatchBlobResponse::TPtr& ev,
+    const TEvPartitionCommonPrivate::TEvPatchBlobResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     HandleWriteOrPatchBlobResponse(*ev, ctx);
@@ -1002,8 +1002,10 @@ STFUNC(TCompactionActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
-        HFunc(TEvPartitionPrivate::TEvPatchBlobResponse, HandlePatchBlobResponse);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
+        HFunc(TEvPartitionCommonPrivate::TEvPatchBlobResponse, HandlePatchBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:

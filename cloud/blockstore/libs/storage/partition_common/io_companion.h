@@ -1,0 +1,129 @@
+#pragma once
+
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
+#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
+
+#include <cloud/storage/core/libs/actors/mortal_actor.h>
+
+#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class IIOCompanionClient: public IMortalActor
+{
+public:
+    virtual void ScheduleYellowStateUpdate(
+        const NActors::TActorContext& ctx) = 0;
+    virtual void UpdateYellowState(const NActors::TActorContext& ctx) = 0;
+    virtual void ReassignChannelsIfNeeded(
+        const NActors::TActorContext& ctx) = 0;
+    virtual void UpdateChannelPermissions(
+        const NActors::TActorContext& ctx,
+        ui32 channel,
+        EChannelPermissions permissions) = 0;
+
+    ~IIOCompanionClient() override = default;
+};
+
+class TIOCompanion
+{
+private:
+    const TStorageConfigPtr Config;
+    const NProto::TPartitionConfig& PartitionConfig;
+    const NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
+    const ui64 TabletID;
+    const NBlockCodecs::ICodec* BlobCodec;
+    const NActors::TActorId VolumeActorId;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const EStorageAccessMode StorageAccessMode;
+
+    TBSGroupOperationTimeTracker& BSGroupOperationTimeTracker;
+
+    ui64& BSGroupOperationId;
+
+    IIOCompanionClient& Client;
+
+    TPartitionChannelsState& ChannelsState;
+
+    ui32 WriteBlobErrorCount = 0;
+
+    ui32 ReadBlobErrorCount = 0;
+
+    TLogTitle& LogTitle;
+
+    TRunningActors Actors;
+
+    std::shared_ptr<NPartition::TResourceMetricsQueue> ResourceMetricsQueue;
+    std::shared_ptr<NPartition::TGroupDowntimes> GroupDowntimes;
+    std::shared_ptr<NPartition::TThreadSafePartCounters> PartCounters;
+
+public:
+    TIOCompanion(
+        TStorageConfigPtr config,
+        const NProto::TPartitionConfig& partitionConfig,
+        NKikimr::TTabletStorageInfo* tabletStorageInfo,
+        ui64 tabletID,
+        const NBlockCodecs::ICodec* blobCodec,
+        const NActors::TActorId& volumeActorId,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        EStorageAccessMode storageAccessMode,
+        TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
+        ui64& bsGroupOperationId,
+        IIOCompanionClient& client,
+        TPartitionChannelsState& channelsState,
+        TLogTitle& logTitle,
+        std::shared_ptr<NPartition::TResourceMetricsQueue> resourceMetricsQueue,
+        std::shared_ptr<NPartition::TGroupDowntimes> groupDowntimes,
+        std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters);
+
+    void HandleWriteBlob(
+        const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWriteBlobCompleted(
+        const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLongRunningBlobOperation(
+        const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReadBlob(
+        const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReadBlobCompleted(
+        const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePatchBlob(
+        const TEvPartitionCommonPrivate::TEvPatchBlobRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePatchBlobCompleted(
+        const TEvPartitionCommonPrivate::TEvPatchBlobCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
+
+    void KillActors(const NActors::TActorContext& ctx);
+
+private:
+    auto Info()
+    {
+        return TabletStorageInfo;
+    }
+};
+
+}   // namespace NCloud::NBlockStore::NStorage

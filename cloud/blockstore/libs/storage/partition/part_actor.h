@@ -26,9 +26,12 @@
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/io_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -59,6 +62,8 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TFreshBlocksCompanionClient;
+
+struct TIOCompanionClient;
 
 ////////////////////////////////////////////////////////////////////////////////
 class TPartitionActor final
@@ -111,6 +116,8 @@ class TPartitionActor final
 
     friend TFreshBlocksCompanionClient;
 
+    friend TIOCompanionClient;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -152,6 +159,9 @@ private:
 
     TPartitionDiskCountersPtr PartCounters;
 
+    std::shared_ptr<TThreadSafePartCounters> IoCompanionCounters =
+        std::make_shared<TThreadSafePartCounters>();
+
     ui64 SysCPUConsumption = 0;
     ui64 UserCPUConsumption = 0;
 
@@ -168,9 +178,17 @@ private:
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
 
-    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
+    std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue =
+        std::make_shared<TResourceMetricsQueue>();
 
+    std::shared_ptr<TGroupDowntimes> GroupDowntimes =
+        std::make_shared<TGroupDowntimes>();
+
+    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
+
+    std::unique_ptr<TIOCompanionClient> IOCompanionClient;
+    std::unique_ptr<TIOCompanion> IOCompanion;
 
 public:
     TPartitionActor(
@@ -347,7 +365,6 @@ private:
         TBlockRange32 writeRange,
         ui64 commitId);
 
-    void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
     void ClearWriteQueue(const NActors::TActorContext& ctx);
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
     void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
@@ -408,6 +425,12 @@ private:
 
     void UpdateStorageStat(i64 value);
     void UpdateCPUUsageStat(TInstant now, ui64 value);
+
+    void UpdateResourceMetrics(TUpdateWriteThroughput& writeThroughput);
+    void UpdateResourceMetrics(TUpdateReadThroughput& readThroughput);
+    void UpdateResourceMetrics(TUpdateNetworkStat& networkStat);
+    void UpdateResourceMetrics(TUpdateStorageStat& storageStat);
+    void UpdateResourceMetrics(TUpdateCPUUsageStat& cpuUsageStat);
 
     void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
     void UpdateYellowState(const NActors::TActorContext& ctx);
@@ -489,6 +512,8 @@ private:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
 
     void CreateFreshBlocksCompanionClient();
+
+    void CreateIOCompanionClient();
 
 private:
     STFUNC(StateBoot);
@@ -645,12 +670,8 @@ private:
         const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWriteBlobCompleted(
-        const TEvPartitionPrivate::TEvWriteBlobCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandlePatchBlobCompleted(
-        const TEvPartitionPrivate::TEvPatchBlobCompleted::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvPatchBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadBlocksCompleted(
@@ -709,10 +730,6 @@ private:
         const TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleLongRunningBlobOperation(
-        const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleDescribeBlocksCompleted(
         const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -751,6 +768,10 @@ private:
 
     void HandleGetPartCountersRequest(
         const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateResourceMetrics(
+        const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

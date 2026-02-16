@@ -5,6 +5,7 @@
 
 // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -64,8 +65,9 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
 
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvWriteBlobResponse: {
-                        auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
+                        auto* msg = event->Get<
+                            TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         auto& e = const_cast<NProto::TError&>(msg->Error);
                         e.SetCode(E_REJECTED);
                         break;
@@ -105,8 +107,9 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
 
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvWriteBlobResponse: {
-                        auto* msg = event->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
+                        auto* msg = event->Get<
+                            TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         auto& e = const_cast<NProto::TError&>(msg->Error);
                         e.SetCode(E_REJECTED);
                         break;
