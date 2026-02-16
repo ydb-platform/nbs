@@ -30,6 +30,7 @@ SRCS(
     service_actor_actions_get_partition_info.cpp
     service_actor_actions_get_storage_config.cpp
     service_actor_actions_kill_tablet.cpp
+    service_actor_actions_get_link_status.cpp
     service_actor_actions_local_nvme.cpp
     service_actor_actions_mark_replacement_device.cpp
     service_actor_actions_migration_disk_registry_device.cpp

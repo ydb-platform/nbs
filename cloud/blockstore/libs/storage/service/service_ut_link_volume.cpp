@@ -163,6 +163,60 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             "Follower notification count must be 2 (one for volume proxy and "
             "one for volume)");
     }
+
+    Y_UNIT_TEST(ShouldGetLinkStatus)
+    {
+        TTestEnv env(1, 1, 4);
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        auto getLinkStatus = [&]() -> NProto::TGetLinkStatusResponse
+        {
+            NProto::TGetLinkStatusRequest request;
+            request.SetLeaderDiskId("vol-1");
+            request.SetFollowerDiskId("vol-2");
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("GetLinkStatus", buf);
+            NProto::TGetLinkStatusResponse proto;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                true,
+                google::protobuf::util::JsonStringToMessage(
+                    response->Record.GetOutput(),
+                    &proto)
+                    .ok(),
+                response->Record.GetOutput());
+            return proto;
+        };
+
+        //  Create volumes
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+
+        // Link not created yet.
+        auto linkStatus = getLinkStatus();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+
+        //  Create link
+        service.SendCreateVolumeLinkRequest("vol-1", "vol-2");
+        auto response = service.RecvCreateVolumeLinkResponse();
+        UNIT_ASSERT_EQUAL_C(
+            S_OK,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+
+        // Link in preparing state.
+        linkStatus = getLinkStatus();
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_PREPARING,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
