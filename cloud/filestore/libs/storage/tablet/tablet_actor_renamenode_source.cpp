@@ -628,6 +628,8 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    // TODO(#2674): send ResponseLogEntry deletion request
 }
 
 ////////////////////////////////////////////////////////////////////////////////

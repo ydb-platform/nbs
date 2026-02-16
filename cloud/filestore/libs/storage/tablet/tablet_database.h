@@ -554,13 +554,14 @@ public:
     // ResponseLog
     //
 
-    void WriteResponseLogEntry(const NProto::TResponseLogEntry& entry);
+    void WriteResponseLogEntry(const NProtoPrivate::TResponseLogEntry& entry);
     void DeleteResponseLogEntry(ui64 clientTabletId, ui64 requestId);
     bool ReadResponseLogEntry(
         ui64 clientTabletId,
         ui64 requestId,
-        TMaybe<NProto::TResponseLogEntry>& entry);
-    bool ReadResponseLog(TVector<NProto::TResponseLogEntry>& responseLog);
+        TMaybe<NProtoPrivate::TResponseLogEntry>& entry);
+    bool ReadResponseLog(
+        TVector<NProtoPrivate::TResponseLogEntry>& responseLog);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

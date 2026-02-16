@@ -238,15 +238,3 @@ message TOpLogEntry
         NProtoPrivate.TAbortUnlinkDirectoryNodeInShardRequest AbortUnlinkDirectoryNodeInShardRequest = 105;
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-message TResponseLogEntry
-{
-    uint64 ClientTabletId = 1;
-    uint64 RequestId = 2;
-
-    oneof Response {
-        NProtoPrivate.TRenameNodeInDestinationResponse RenameNodeInDestinationResponse = 101;
-    }
-}

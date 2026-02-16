@@ -376,14 +376,16 @@ public:
         const TString& newName,
         const TString& sourceNodeShardId,
         const TString& sourceNodeShardNodeName,
-        ui32 flags = 0)
+        ui32 flags = 0,
+        ui64 clientTabletId = 1,
+        ui64 requestId = 0)
     {
         using TRequestEvent = TEvIndexTablet::TEvRenameNodeInDestinationRequest;
         auto request = CreateSessionRequest<TRequestEvent>();
         auto& headers = *request->Record.MutableHeaders();
         // just has to be nonzero
-        headers.MutableInternal()->SetClientTabletId(1);
-        headers.SetRequestId(++AutoRequestId);
+        headers.MutableInternal()->SetClientTabletId(clientTabletId);
+        headers.SetRequestId(requestId ? requestId : ++AutoRequestId);
         request->Record.SetNewParentId(newParent);
         request->Record.SetNewName(newName);
         request->Record.SetSourceNodeShardId(sourceNodeShardId);
@@ -587,6 +589,37 @@ public:
             std::move(subRequest),
             std::move(subResponse),
             opLogEntryId);
+    }
+
+    auto CreateDeleteResponseLogEntryRequest(
+        ui64 clientTabletId,
+        ui64 requestId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvDeleteResponseLogEntryRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetClientTabletId(clientTabletId);
+        request->Record.SetRequestId(requestId);
+        return request;
+    }
+
+    auto CreateGetResponseLogEntryRequest(
+        ui64 clientTabletId,
+        ui64 requestId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvGetResponseLogEntryRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetClientTabletId(clientTabletId);
+        request->Record.SetRequestId(requestId);
+        return request;
+    }
+
+    auto CreateWriteResponseLogEntryRequest(
+        NProtoPrivate::TResponseLogEntry entry)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvWriteResponseLogEntryRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        *request->Record.MutableEntry() = std::move(entry);
+        return request;
     }
 
     auto CreateCompleteUnlinkNodeRequest(

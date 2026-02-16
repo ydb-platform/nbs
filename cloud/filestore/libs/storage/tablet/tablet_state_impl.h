@@ -70,7 +70,7 @@ struct TIndexTabletState::TImpl
     THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
     THashMap<
         TInternalRequestId,
-        NProto::TResponseLogEntry,
+        NProtoPrivate::TResponseLogEntry,
         TInternalRequestIdHash> InternalResponses;
 
     TCheckpointStore Checkpoints;

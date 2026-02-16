@@ -95,6 +95,7 @@ void TIndexTabletState::LoadState(
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
     const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TVector<ui64>& orphanNodeIds,
+    const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
     Generation = generation;
@@ -169,6 +170,10 @@ void TIndexTabletState::LoadState(
     }
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
+
+    for (const auto& entry: responseLog) {
+        CommitResponseLogEntry(entry);
+    }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     Impl->ShardBalancer = CreateShardBalancer(
@@ -265,7 +270,8 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const NProto::TResponseLogEntry* TIndexTabletState::LookupResponseLogEntry(
+const NProtoPrivate::TResponseLogEntry*
+TIndexTabletState::LookupResponseLogEntry(
     ui64 clientTabletId,
     ui64 requestId) const
 {
@@ -275,7 +281,7 @@ const NProto::TResponseLogEntry* TIndexTabletState::LookupResponseLogEntry(
 
 void TIndexTabletState::WriteResponseLogEntry(
     TIndexTabletDatabase& db,
-    const NProto::TResponseLogEntry& e)
+    const NProtoPrivate::TResponseLogEntry& e)
 {
     db.WriteResponseLogEntry(e);
 
@@ -294,7 +300,8 @@ void TIndexTabletState::WriteResponseLogEntry(
     }
 }
 
-void TIndexTabletState::CommitResponseLogEntry(NProto::TResponseLogEntry e)
+void TIndexTabletState::CommitResponseLogEntry(
+    NProtoPrivate::TResponseLogEntry e)
 {
     const TInternalRequestId reqId(e.GetClientTabletId(), e.GetRequestId());
     auto& incompleteEntry = Impl->InternalResponses[reqId];

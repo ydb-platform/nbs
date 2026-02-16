@@ -2072,7 +2072,7 @@ bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 // ResponseLog
 
 void TIndexTabletDatabase::WriteResponseLogEntry(
-    const NProto::TResponseLogEntry& entry)
+    const NProtoPrivate::TResponseLogEntry& entry)
 {
     using TTable = TIndexTabletSchema::ResponseLog;
 
@@ -2095,7 +2095,7 @@ void TIndexTabletDatabase::DeleteResponseLogEntry(
 bool TIndexTabletDatabase::ReadResponseLogEntry(
     ui64 clientTabletId,
     ui64 requestId,
-    TMaybe<NProto::TResponseLogEntry>& entry)
+    TMaybe<NProtoPrivate::TResponseLogEntry>& entry)
 {
     using TTable = TIndexTabletSchema::ResponseLog;
 
@@ -2115,7 +2115,7 @@ bool TIndexTabletDatabase::ReadResponseLogEntry(
 }
 
 bool TIndexTabletDatabase::ReadResponseLog(
-    TVector<NProto::TResponseLogEntry>& responseLog)
+    TVector<NProtoPrivate::TResponseLogEntry>& responseLog)
 {
     using TTable = TIndexTabletSchema::ResponseLog;
 

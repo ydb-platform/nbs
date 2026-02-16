@@ -713,7 +713,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             TString oldTargetNodeShardId,
             TString oldTargetNodeShardNodeName)
         {
-            NProto::TResponseLogEntry e;
+            NProtoPrivate::TResponseLogEntry e;
             e.SetClientTabletId(clientTabletId);
             e.SetRequestId(requestId);
             auto* r = e.MutableRenameNodeInDestinationResponse();
@@ -730,7 +730,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TVector<NProto::TResponseLogEntry> entries;
+            TVector<NProtoPrivate::TResponseLogEntry> entries;
             UNIT_ASSERT(db.ReadResponseLog(entries));
             UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
             UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetClientTabletId());
@@ -755,7 +755,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TVector<NProto::TResponseLogEntry> entries;
+            TVector<NProtoPrivate::TResponseLogEntry> entries;
             UNIT_ASSERT(db.ReadResponseLog(entries));
             UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
             UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetClientTabletId());
@@ -771,7 +771,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TMaybe<NProto::TResponseLogEntry> entry;
+            TMaybe<NProtoPrivate::TResponseLogEntry> entry;
             UNIT_ASSERT(db.ReadResponseLogEntry(100, 10, entry));
             UNIT_ASSERT_VALUES_EQUAL(100, entry->GetClientTabletId());
             UNIT_ASSERT_VALUES_EQUAL(10, entry->GetRequestId());

@@ -564,9 +564,10 @@ struct TIndexTabletSchema
 
     struct ResponseLog: TTableSchema<28>
     {
+        using TEntryType = NProtoPrivate::TResponseLogEntry;
         struct ClientTabletId   : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
         struct RequestId        : Column<2, NKikimr::NScheme::NTypeIds::Uint64> {};
-        struct Proto            : ProtoColumn<3, NProto::TResponseLogEntry> {};
+        struct Proto            : ProtoColumn<3, TEntryType> {};
 
         using TKey = TableKey<ClientTabletId, RequestId>;
 
