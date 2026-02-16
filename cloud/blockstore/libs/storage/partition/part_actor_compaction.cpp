@@ -87,12 +87,10 @@ private:
     const TCompactionOptions CompactionOptions;
 
     const bool SplitTxInBatchCompaction = false;
-    TVector<std::pair<ui32, TBlockRange32>> Ranges;
+    TVector<TCompactionRange> Ranges;
 
     TVector<TCallContextPtr> ForkedCompactionTxCallContexts;
     ui32 AwaitedCompactionTxCall = 0;
-    using InfoWithIndex = std::pair<TRangeCompactionInfo, ui32>;
-    TVector<InfoWithIndex> RangeCompactionInfosWithIndices;  // TODO:_ do it normally
 
     TVector<TRangeCompactionInfo> RangeCompactionInfos;
     TVector<TRequest> Requests;
@@ -129,7 +127,7 @@ public:
         ui64 commitId,
         TCompactionOptions CompactionOptions,
         bool splitTxInBatchCompaction,
-        TVector<std::pair<ui32, TBlockRange32>> ranges,
+        TVector<TCompactionRange> ranges,
         TChildLogTitle logTitle);
 
     void Bootstrap(const TActorContext& ctx);
@@ -201,7 +199,7 @@ TCompactionActor::TCompactionActor(
         ui64 commitId,
         TCompactionOptions compactionOptions,
         bool splitTxInBatchCompaction,
-        TVector<std::pair<ui32, TBlockRange32>> ranges,
+        TVector<TCompactionRange> ranges,
         TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -233,30 +231,10 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
         "Compaction",
         RequestInfo->CallContext->RequestId);
 
-    // TODO:_ remove it
-    // auto forkTraces =
-    //     [&](std::unique_ptr<TEvPartitionPrivate::TEvCompactionTxRequest>
-    //             request)
-    // {
-    //     if (!RequestInfo->CallContext->LWOrbit.Fork(
-    //             request->CallContext->LWOrbit))
-    //     {
-    //         LWTRACK(
-    //             ForkFailed,
-    //             RequestInfo->CallContext->LWOrbit,
-    //             "TEvPartitionPrivate::TEvCompactionTxRequest",
-    //             RequestInfo->CallContext->RequestId);
-    //     }
-
-    //     request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
-    //     ForkedCompactionTxCallContexts.emplace_back(request->CallContext);
-    // };
-
     auto sendRequest =
         [&](ui32 rangeCompactionIndex,
-            TVector<std::pair<ui32, TBlockRange32>> ranges)
+            TVector<TCompactionRange> ranges)
     {
-        // TODO:_ is it ok? Send does not interrupts execution, doesn't it?
         ++AwaitedCompactionTxCall;
 
         auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionTxRequest>(
@@ -265,7 +243,6 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
             CompactionOptions,
             std::move(ranges));
 
-        // TODO:_ is it ok to fork just once?
         if (!RequestInfo->CallContext->LWOrbit.Fork(
                 request->CallContext->LWOrbit))
         {
@@ -279,13 +256,12 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
         request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
         ForkedCompactionTxCallContexts.emplace_back(request->CallContext);
 
-        // TODO:_ seems we don't need cookie here
         NCloud::Send(ctx, Tablet, std::move(request));
     };
 
     if (SplitTxInBatchCompaction) {
         for (ui32 i = 0; i < Ranges.size(); ++i) {
-            sendRequest(i, TVector<std::pair<ui32, TBlockRange32>>{std::move(Ranges[i])});
+            sendRequest(i, TVector<TCompactionRange>{std::move(Ranges[i])});
         }
     } else {
         sendRequest(0, std::move(Ranges));
@@ -387,6 +363,16 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
         [makeTie](const TRequest* l, const TRequest* r)
         { return makeTie(l) < makeTie(r); });
 
+    TVector<TRangeCompactionInfo*> infos(Reserve(RangeCompactionInfos.size()));
+    for (auto& info: RangeCompactionInfos) {
+        infos.push_back(&info);
+    }
+
+    Sort(
+        infos,
+        [](const TRangeCompactionInfo* l, const TRangeCompactionInfo* r)
+        { return l->RangeCompactionIndex < r->RangeCompactionIndex; });
+
     TBatchRequest current;
     ui32 currentRangeCompactionIndex = 0;
     for (auto* r: requests) {
@@ -413,7 +399,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             current.Proxy = r->Proxy;
             currentRangeCompactionIndex = r->RangeCompactionIndex;
             current.RangeCompactionInfo =
-                &RangeCompactionInfos[r->RangeCompactionIndex];
+                infos[r->RangeCompactionIndex];
         }
 
         if (current.BlobId == current.RangeCompactionInfo->OriginalBlobId) {
@@ -885,16 +871,11 @@ void TCompactionActor::HandleCompactionTxResponse(
         return;
     }
 
-    ui32 batchIndex = ev->Cookie;
-    for (ui32 i = 0; i < msg->RangeCompactionInfos.size(); ++i) {
-        RangeCompactionInfosWithIndices.emplace_back(
-            std::move(msg->RangeCompactionInfos[i]),
-            batchIndex + i);
-    }
-    // std::move(
-    //     msg->RangeCompactionInfos.begin(),
-    //     msg->RangeCompactionInfos.end(),
-    //     std::back_insert_iterator<TVector<TRangeCompactionInfo>>(RangeCompactionInfos));
+    std::move(
+        msg->RangeCompactionInfos.begin(),
+        msg->RangeCompactionInfos.end(),
+        std::back_insert_iterator<TVector<TRangeCompactionInfo>>(
+            RangeCompactionInfos));
     std::move(
         msg->Requests.begin(),
         msg->Requests.end(),
@@ -904,24 +885,22 @@ void TCompactionActor::HandleCompactionTxResponse(
         return;
     }
 
-    // std::sort(
-    //     RangeCompactionInfosWithIndices.begin(),
-    //     RangeCompactionInfosWithIndices.end(),
-    //     [](const InfoWithIndex& l, const InfoWithIndex& r)
-    //     { return l.sedond < r.second; });
-    TVector<InfoWithIndex*> infos;
-    for (auto& info: RangeCompactionInfosWithIndices) {
-        infos.push_back(&info);
-    }
-    Sort(
-        infos,
-        [](const InfoWithIndex* l, const InfoWithIndex* r)
-        { return l->second < r->second; });
+    // TODO:_ remove
+    // TVector<TRangeCompactionInfo*> infos;
+    // infos.Reserve(RangeCompactionInfos.size())
+    // for (auto& info: RangeCompactionInfos) {
+    //     infos.push_back(&info);
+    // }
+    // Sort(
+    //     RangeCompactionInfos,
+    //     [](const TRangeCompactionInfo& l, const TRangeCompactionInfo& r)
+    //     { return l->RangeCompactionIndex < r->RangeCompactionIndex; });
 
-    for (ui32 i = 0; i < infos.size(); ++i) {
-        RangeCompactionInfos.push_back(
-            std::move(infos[i]->first));
-    }
+    // TODO:_ remove
+    // for (ui32 i = 0; i < infos.size(); ++i) {
+    //     RangeCompactionInfos.push_back(
+    //         std::move(infos[i]->first));
+    // }
 
     // TODO:_ exec cycles
 
@@ -1437,8 +1416,9 @@ void TPartitionActor::HandleCompaction(
         return;
     }
 
-    TVector<std::pair<ui32, TBlockRange32>> ranges(Reserve(tops.size()));
-    for (const auto& x: tops) {
+    TVector<TCompactionRange> ranges(Reserve(tops.size()));
+    for (ui32 i = 0; i < tops.size(); ++i) {
+        const auto& x = tops[i];
         const ui32 rangeIdx = cm.GetRangeIndex(x.BlockIndex);
 
         const auto blockRange = TBlockRange32::MakeClosedIntervalWithLimit(
@@ -1462,7 +1442,7 @@ void TPartitionActor::HandleCompaction(
             x.Stat.ReadRequestBlockCount,
             x.Stat.CompactionScore.Score);
 
-        ranges.emplace_back(rangeIdx, blockRange);
+        ranges.emplace_back(rangeIdx, blockRange, i);
     }
 
     State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);

@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "part_compaction.h"
 #include "part_events_private.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
@@ -354,8 +355,7 @@ struct TTxPartition
 
     struct TRangeCompaction
     {
-        const ui32 RangeIdx;
-        const TBlockRange32 BlockRange;
+        const TCompactionRange Range;
 
         struct TBlockMark
         {
@@ -372,10 +372,9 @@ struct TTxPartition
         ui32 BlocksSkipped = 0;
         bool ChecksumsEnabled = false;
 
-        TRangeCompaction(ui32 rangeIdx, const TBlockRange32& blockRange)
-            : RangeIdx(rangeIdx)
-            , BlockRange(blockRange)
-            , BlockMarks(blockRange.Size())
+        TRangeCompaction(const TCompactionRange& range)
+            : Range(range)
+            , BlockMarks(range.BlockRange.Size())
         {}
 
         void Clear()
@@ -390,8 +389,8 @@ struct TTxPartition
 
         TBlockMark& GetBlockMark(ui32 blockIndex)
         {
-            Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
-            return BlockMarks[blockIndex - BlockRange.Start];
+            Y_DEBUG_ABORT_UNLESS(Range.BlockRange.Contains(blockIndex));
+            return BlockMarks[blockIndex - Range.BlockRange.Start];
         }
 
         void MarkBlock(
@@ -437,7 +436,6 @@ struct TTxPartition
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 CommitId;
-        const ui32 RangeCompactionIndex;
         const TCompactionOptions CompactionOptions;
 
         TVector<TRangeCompaction> RangeCompactions;
@@ -445,17 +443,15 @@ struct TTxPartition
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
-                ui32 rangeCompactionIndex,
                 TCompactionOptions compactionOptions,
-                const TVector<std::pair<ui32, TBlockRange32>>& ranges)
+                const TVector<TCompactionRange>& ranges)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
-            , RangeCompactionIndex(rangeCompactionIndex)
             , CompactionOptions(compactionOptions)
         {
             RangeCompactions.reserve(ranges.size());
             for (const auto& range: ranges) {
-                RangeCompactions.emplace_back(range.first, range.second);
+                RangeCompactions.emplace_back(range);
             }
         }
 

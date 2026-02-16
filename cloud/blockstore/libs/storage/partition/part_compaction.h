@@ -34,6 +34,7 @@ struct TRangeCompactionInfo
     const ui32 BlocksSkippedByCompaction;
     const TVector<ui32> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
+    const ui32 RangeCompactionIndex;
 
     TGuardedBuffer<TBlockBuffer> BlobContent;
     TVector<ui32> ZeroBlocks;
@@ -54,6 +55,7 @@ struct TRangeCompactionInfo
         ui32 blocksSkippedByCompaction,
         TVector<ui32> blockChecksums,
         EChannelDataKind channelDataKind,
+        ui32 rangeCompactionIndex,
         TBlockBuffer blobContent,
         TVector<ui32> zeroBlocks,
         TAffectedBlobs affectedBlobs,
@@ -68,6 +70,7 @@ struct TRangeCompactionInfo
         , BlocksSkippedByCompaction(blocksSkippedByCompaction)
         , BlockChecksums(std::move(blockChecksums))
         , ChannelDataKind(channelDataKind)
+        , RangeCompactionIndex(rangeCompactionIndex)
         , BlobContent(std::move(blobContent))
         , ZeroBlocks(std::move(zeroBlocks))
         , AffectedBlobs(std::move(affectedBlobs))
@@ -105,9 +108,18 @@ struct TCompactionReadRequest
 
 struct TCompactionRange {
     const ui32 RangeIdx;
+    TBlockRange32 BlockRange;
     const ui32 RangeCompactionIndex;   // Index of the range in its batch for
                                        // batch compaction.
-    TBlockRange32 BlockRange;
+
+    TCompactionRange(
+        ui32 rangeIdx,
+        TBlockRange32 blockRange,
+        ui32 rangeCompactionIndex)
+        : RangeIdx(rangeIdx)
+        , BlockRange(blockRange)
+        , RangeCompactionIndex(rangeCompactionIndex)
+    {}
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

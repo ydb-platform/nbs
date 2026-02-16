@@ -470,9 +470,8 @@ struct TEvPartitionPrivate
         const ui64 CommitId;
         const ui32 RangeCompactionIndex;
         const TCompactionOptions CompactionOptions;
-        TVector<std::pair<ui32, TBlockRange32>> Ranges; // TODO:_ use using?
-
-        // TVector<TCompactionRange>  Rangesaaa;
+        TVector<TCompactionRange> Ranges;
+        // TVector<std::pair<ui32, TBlockRange32>> Ranges; // TODO:_ use using?
 
         TCompactionTxRequest() = default; // TODO:_ do we need it?
 
@@ -480,7 +479,7 @@ struct TEvPartitionPrivate
             ui64 commitId,
             ui32 rangeCompactionIndex,
             TCompactionOptions compactionOptions,
-            TVector<std::pair<ui32, TBlockRange32>> ranges)
+            TVector<TCompactionRange> ranges)
             : CommitId(commitId)
             , RangeCompactionIndex(rangeCompactionIndex)
             , CompactionOptions(compactionOptions)

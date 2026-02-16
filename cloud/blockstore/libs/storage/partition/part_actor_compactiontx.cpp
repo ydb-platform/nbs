@@ -86,13 +86,13 @@ void PrepareRangeCompaction(
     const TString& logTitle)
 {
     TCompactionBlockVisitor visitor(args, commitId);
-    state.FindFreshBlocks(visitor, args.BlockRange, commitId);
+    state.FindFreshBlocks(visitor, args.Range.BlockRange, commitId);
     visitor.KeepTrackOfAffectedBlocks = true;
-    ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);
+    ready &= state.FindMixedBlocksForCompaction(db, visitor, args.Range.RangeIdx);
     visitor.KeepTrackOfAffectedBlocks = false;
     ready &= db.FindMergedBlocks(
         visitor,
-        args.BlockRange,
+        args.Range.BlockRange,
         true,   // precharge
         state.GetMaxBlocksInBlob(),
         commitId);
@@ -193,7 +193,7 @@ void PrepareRangeCompaction(
     const ui32 checksumBoundary =
         config.GetDiskPrefixLengthWithBlockChecksumsInBlobs()
         / state.GetBlockSize();
-    args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
+    args.ChecksumsEnabled = args.Range.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
         if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
@@ -225,8 +225,7 @@ void CompleteRangeCompaction(
     TTxPartition::TRangeCompaction& args,
     TVector<TCompactionReadRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
-    ui32 maxDiffPercentageForBlobPatching,
-    ui32 rangeCompactionIndex) // TODO:_ ?
+    ui32 maxDiffPercentageForBlobPatching)
 {
     const EChannelPermissions compactionPermissions =
         EChannelPermission::SystemWritesAllowed;
@@ -264,7 +263,7 @@ void CompleteRangeCompaction(
             }
         }
 
-        const auto blobSize = (args.BlockRange.Size() - skipped) * state.GetBlockSize();
+        const auto blobSize = (args.Range.BlockRange.Size() - skipped) * state.GetBlockSize();
         if (blobSize < mergedBlobThreshold) {
             channelDataKind = EChannelDataKind::Mixed;
         }
@@ -273,7 +272,7 @@ void CompleteRangeCompaction(
             compactionPermissions,
             commitId,
             blobSize,
-            rangeCompactionIndex);
+            args.Range.RangeCompactionIndex);
     }
 
     if (zeroBlocksCount) {
@@ -288,7 +287,7 @@ void CompleteRangeCompaction(
             compactionPermissions,
             commitId,
             0,
-            rangeCompactionIndex);
+            args.Range.RangeCompactionIndex);
     }
 
     // now build the blob content for all blocks to be written
@@ -296,7 +295,7 @@ void CompleteRangeCompaction(
     TVector<ui32> blockChecksums;
     TVector<ui32> zeroBlocks;
 
-    ui32 blockIndex = args.BlockRange.Start;
+    ui32 blockIndex = args.Range.BlockRange.Start;
     TPartialBlobId patchingCandidate;
     ui32 patchingCandidateChangedBlockCount = 0;
     for (auto& mark: args.BlockMarks) {
@@ -310,7 +309,7 @@ void CompleteRangeCompaction(
                     blockIndex,
                     blobContent.GetBlocksCount(),
                     0,
-                    rangeCompactionIndex);
+                    args.Range.RangeCompactionIndex);
 
                 // fresh block will be written
                 blobContent.AddBlock({
@@ -324,7 +323,7 @@ void CompleteRangeCompaction(
                 }
 
                 if (zeroBlobId) {
-                    zeroBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
+                    zeroBlobSkipMask.Set(blockIndex - args.Range.BlockRange.Start);
                 }
             } else if (!IsDeletionMarker(mark.BlobId)) {
                 const auto proxy = tabletStorageInfo.BSProxyIDForChannel(
@@ -340,7 +339,7 @@ void CompleteRangeCompaction(
                     tabletStorageInfo.GroupFor(
                         mark.BlobId.Channel(),
                         mark.BlobId.Generation()),
-                    rangeCompactionIndex);
+                    args.Range.RangeCompactionIndex);
 
                 // we will read this block later
                 blobContent.AddBlock(state.GetBlockSize(), char(0));
@@ -364,7 +363,7 @@ void CompleteRangeCompaction(
                 }
 
                 if (zeroBlobId) {
-                    zeroBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
+                    zeroBlobSkipMask.Set(blockIndex - args.Range.BlockRange.Start);
                 }
 
                 if (blobPatchingEnabled) {
@@ -378,15 +377,15 @@ void CompleteRangeCompaction(
                     }
                 }
             } else {
-                dataBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
+                dataBlobSkipMask.Set(blockIndex - args.Range.BlockRange.Start);
                 zeroBlocks.push_back(blockIndex);
             }
         } else {
             if (dataBlobId) {
-                dataBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
+                dataBlobSkipMask.Set(blockIndex - args.Range.BlockRange.Start);
             }
             if (zeroBlobId) {
-                zeroBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
+                zeroBlobSkipMask.Set(blockIndex - args.Range.BlockRange.Start);
             }
         }
 
@@ -447,7 +446,7 @@ void CompleteRangeCompaction(
     }
 
     rangeCompactionInfos.emplace_back(
-        args.BlockRange,
+        args.Range.BlockRange,
         patchingCandidate,
         dataBlobId,
         dataBlobSkipMask,
@@ -457,13 +456,14 @@ void CompleteRangeCompaction(
         args.BlocksSkipped,
         std::move(blockChecksums),
         channelDataKind,
+        args.Range.RangeCompactionIndex,
         std::move(blobContent),
         std::move(zeroBlocks),
         std::move(args.AffectedBlobs),
         std::move(args.AffectedBlocks));
 
     if (!dataBlobId && !zeroBlobId) {
-        const auto rangeDescr = DescribeRange(args.BlockRange);
+        const auto rangeDescr = DescribeRange(args.Range.BlockRange);
         Y_ABORT("No blocks in compacted range: %s", rangeDescr.c_str());
     }
     Y_ABORT_UNLESS(requests.size() - initialRequestsSize == dataBlocksCount);
@@ -497,7 +497,6 @@ void TPartitionActor::HandleCompactionTx(
     auto tx = CreateTx<TCompaction>(
         requestInfo,
         msg->CommitId,
-        msg->RangeCompactionIndex,
         msg->CompactionOptions,
         std::move(msg->Ranges));
 
@@ -567,7 +566,7 @@ void TPartitionActor::CompleteCompaction(
     RemoveTransaction(*args.RequestInfo);
 
     for (auto& rangeCompaction: args.RangeCompactions) {
-        State->RaiseRangeTemperature(rangeCompaction.RangeIdx);
+        State->RaiseRangeTemperature(rangeCompaction.Range.RangeIdx);
     }
 
     const bool blobPatchingEnabledForDisk =
@@ -597,8 +596,7 @@ void TPartitionActor::CompleteCompaction(
             args.RangeCompactions[i],
             requests,
             rangeCompactionInfos,
-            Config->GetMaxDiffPercentageForBlobPatching(),
-            args.RangeCompactionIndex + i);  // TODO:_ ok?
+            Config->GetMaxDiffPercentageForBlobPatching());
 
         if (rangeCompactionInfos.back().OriginalBlobId) {
             LOG_DEBUG(
