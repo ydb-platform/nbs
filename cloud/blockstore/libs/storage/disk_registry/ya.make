@@ -44,6 +44,7 @@ SRCS(
     disk_registry_actor_replace_devices.cpp
     disk_registry_actor_replace.cpp
     disk_registry_actor_restore_state.cpp
+    disk_registry_actor_restore_agents_to_online.cpp
     disk_registry_actor_resume_device.cpp
     disk_registry_actor_secure_erase.cpp
     disk_registry_actor_set_user_id.cpp

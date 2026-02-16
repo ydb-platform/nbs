@@ -94,6 +94,8 @@ private:
     THashSet<TString> SecureEraseInProgressPerPool;
     bool StartMigrationInProgress = false;
 
+    ui32 RestoreAgentsToOnlineIterations = 1;
+
     TVector<TString> DisksBeingDestroyed;
     TVector<TDiskNotification> DisksBeingNotified;
     TVector<NProto::TUserNotification> UserNotificationsBeingProcessed;
@@ -338,6 +340,8 @@ private:
         TRequestInfoPtr requestInfo,
         NProto::TAction_EType actionType);
 
+    void ProcessRestoreAgentsToOnline(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -533,6 +537,10 @@ private:
     void HandleDetachPathsOperationCompleted(
         const TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted::
             TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRestoreAgentsToOnline(
+        const TEvDiskRegistryPrivate::TEvDiskRegistryRestoreAgentsToOnline::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)

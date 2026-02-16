@@ -84,6 +84,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(ReleaseShadowDiskError)                                                \
     xxx(WrongCellIdInDescribeVolume)                                           \
     xxx(TrimFreshLogTimeout)                                                   \
+    xxx(RestoreAgentsToOnlineFailed)                                           \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
