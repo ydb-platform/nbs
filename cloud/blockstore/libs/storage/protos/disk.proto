@@ -1924,3 +1924,16 @@ message TAttachPathsResponse
     // List of attached devices.
     repeated TDeviceConfig AttachedDevices = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// TEnsureDiskRegistryStateIntegrityRequest request/response.
+
+message TEnsureDiskRegistryStateIntegrityRequest
+{
+}
+
+message TEnsureDiskRegistryStateIntegrityResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
