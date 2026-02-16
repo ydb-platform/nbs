@@ -267,6 +267,8 @@ using TWriteDataEntryPart = TTestUtilBootstrap::TWriteDataEntryPart;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace NWriteBackCache {
+
 IOutputStream& operator<<(
     IOutputStream& out,
     const TWriteDataEntry& e)
@@ -290,17 +292,12 @@ IOutputStream& operator<<(
     IOutputStream& out,
     const TDeque<TWriteDataEntry*>& values)
 {
-    out << "[";
-    for (size_t i = 0; i != values.size();) {
-        out << values[i];
-        i++;
-        if (i != values.size()) {
-            out << ", ";
-        }
-    }
-    out << "]";
-    return out;
+    return PrintValues(
+        out,
+        TVector<TWriteDataEntry*>(values.begin(), values.end()));
 }
+
+}   // namespace NWriteBackCache
 
 IOutputStream& operator<<(
     IOutputStream& out,
