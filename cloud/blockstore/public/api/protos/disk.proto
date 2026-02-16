@@ -244,8 +244,9 @@ message TQueryAgentsInfoRequest
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Optional field to select agents with specific state.
-    repeated EAgentState FilterState = 2;
+    // Filter out agents whose states are not in this list.
+    // An empty list means that there is no filter.
+    repeated EAgentState FilterStates = 2;
 }
 
 message TQueryAgentsInfoResponse

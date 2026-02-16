@@ -1153,7 +1153,7 @@ public:
 
     auto CreateQueryAgentsInfoRequest(const TVector<NProto::EAgentState>& filterState = {}) {
         auto request =  std::make_unique<TEvService::TEvQueryAgentsInfoRequest>();
-        request->Record.MutableFilterState()->Add(filterState.begin(), filterState.end());
+        request->Record.MutableFilterStates()->Add(filterStates.begin(), filterStates.end());
         return request;
     }
 

@@ -2,8 +2,6 @@
 
 #include <cloud/blockstore/libs/common/safe_debug_print.h>
 
-#include <algorithm>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -29,12 +27,13 @@ void TDiskRegistryActor::HandleQueryAgentsInfo(
     auto response = std::make_unique<TEvService::TEvQueryAgentsInfoResponse>(
         MakeError(S_OK));
 
-    const auto& filterState = msg->Record.GetFilterState();
+    const auto& filterStates = msg->Record.GetFilterStates();
     for (auto& agentInfo: State->QueryAgentsInfo()) {
-        if(filterState.size() > 0) {
-            if(std::ranges::find(filterState, agentInfo.GetState()) == filterState.end()) {
-                continue;
-            }
+        if (filterStates.size() > 0 &&
+            std::ranges::find(filterStates, agentInfo.GetState()) ==
+                filterStates.end())
+        {
+            continue;
         }
 
         *response->Record.AddAgents() = std::move(agentInfo);
