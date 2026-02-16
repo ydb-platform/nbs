@@ -19,6 +19,9 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/folder/path.h>
+#include <util/system/fstat.h>
+
 namespace NCloud::NStorage {
 
 using namespace NActors;
@@ -1160,6 +1163,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         auto sender = runtime.AllocateEdgeActor();
         // No actual changes in backup has been made.
         env.SendBackupTabletBootInfos(sender, S_FALSE);
+        UNIT_ASSERT(!TFsPath(backupFilePath).Exists());
 
         TTabletStorageInfoPtr expected = CreateTestTabletInfo(
             FakeTablet2,
@@ -1173,8 +1177,13 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         // Backup has been made.
         env.SendBackupTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT(TFsPath(backupFilePath).Exists());
+        TFileStat backupStat(backupFilePath);
         // No changes again.
         env.SendBackupTabletBootInfos(sender, S_FALSE);
+        TFileStat backupStat2(backupFilePath);
+        UNIT_ASSERT_VALUES_EQUAL(backupStat.MTime, backupStat2.MTime);
+        UNIT_ASSERT_VALUES_EQUAL(backupStat.MTimeNSec, backupStat2.MTimeNSec);
     }
 
     Y_UNIT_TEST(InitialBackup)

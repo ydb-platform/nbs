@@ -57,14 +57,18 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
         InitialBackupProto.reset();
     }
 
-    if (!ReadOnlyMode) {
+    if (ReadOnlyMode) {
+        if (InitialBackupProto) {
+            BackupProto = std::move(*InitialBackupProto);
+            InitialBackupProto.reset();
+        }
+    } else {
         ScheduleBackup(ctx);
-    } else if (InitialBackupProto) {
-        BackupProto = std::move(*InitialBackupProto);
-        InitialBackupProto.reset();
     }
 
-    LOG_INFO_S(ctx, LogComponent,
+    LOG_INFO_S(
+        ctx,
+        LogComponent,
         "TabletBootInfoBackup: started with ReadOnlyMode=" << ReadOnlyMode);
 }
 
@@ -258,7 +262,7 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    Y_DEBUG_ABORT_UNLESS(msg->StorageInfo);
+    Y_ABORT_UNLESS(msg->StorageInfo);
 
     NHiveProxy::NProto::TTabletBootInfo tabletBootInfo;
     NKikimr::TabletStorageInfoToProto(
