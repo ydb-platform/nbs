@@ -48,7 +48,9 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
     InitialBackupProto.emplace();
 
     // Load backup even if in read-only mode to warm up BS group connections.
-    if (!LoadFromBinaryFormat(ctx) && !LoadFromTextFormat(ctx)) {
+    if (!LoadFromBinaryFormat(ctx, *InitialBackupProto) &&
+        !LoadFromTextFormat(ctx, *InitialBackupProto))
+    {
         LOG_WARN_S(
             ctx,
             LogComponent,
@@ -142,7 +144,9 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
     return error;
 }
 
-bool TTabletBootInfoBackup::LoadFromTextFormat(const TActorContext& ctx)
+bool TTabletBootInfoBackup::LoadFromTextFormat(
+    const TActorContext& ctx,
+    NHiveProxy::NProto::TTabletBootInfoBackup& backupProto)
 {
     LOG_INFO_S(
         ctx,
@@ -151,7 +155,7 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(const TActorContext& ctx)
             << BackupFilePath.GetPath().Quote());
     try {
         TInstant start = TInstant::Now();
-        MergeFromTextFormat(BackupFilePath, *InitialBackupProto);
+        MergeFromTextFormat(BackupFilePath, backupProto);
 
         LOG_INFO_S(
             ctx,
@@ -160,7 +164,7 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(const TActorContext& ctx)
                 << FormatDuration(TInstant::Now() - start));
         return true;
     } catch (...) {
-        InitialBackupProto.emplace();
+        backupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
         LOG_WARN_S(
             ctx,
             LogComponent,
@@ -170,7 +174,9 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(const TActorContext& ctx)
     return false;
 }
 
-bool TTabletBootInfoBackup::LoadFromBinaryFormat(const TActorContext& ctx)
+bool TTabletBootInfoBackup::LoadFromBinaryFormat(
+    const TActorContext& ctx,
+    NHiveProxy::NProto::TTabletBootInfoBackup& backupProto)
 {
     LOG_INFO_S(
         ctx,
@@ -181,8 +187,7 @@ bool TTabletBootInfoBackup::LoadFromBinaryFormat(const TActorContext& ctx)
         TInstant start = TInstant::Now();
         TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
         TUnbufferedFileInput input(file);
-        const bool success =
-            InitialBackupProto->MergeFromString(input.ReadAll());
+        const bool success = backupProto.MergeFromString(input.ReadAll());
 
         LOG_WARN_S(
             ctx,
@@ -193,7 +198,7 @@ bool TTabletBootInfoBackup::LoadFromBinaryFormat(const TActorContext& ctx)
 
         return success;
     } catch (...) {
-        InitialBackupProto.emplace();
+        backupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
         LOG_WARN_S(
             ctx,
             LogComponent,
