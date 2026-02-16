@@ -31,7 +31,7 @@ void TServiceStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            0,  // cookie
+            0,            // cookie
             &ctx.SelfID   // forwardOnNondelivery
         );
 
@@ -95,7 +95,8 @@ void TServiceStatisticsCollectorActor::HandleGetServiceStatisticsUndelivery(
 {
     Y_UNUSED(ev);
 
-    LastError = MakeError(E_REJECTED, "GetServiceStatisticsRequest undelivered");
+    LastError =
+        MakeError(E_REJECTED, "GetServiceStatisticsRequest undelivered");
 
     ++ResponsesCount;
     if (ResponsesCount == VolumeActorIds.size()) {
