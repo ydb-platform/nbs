@@ -278,6 +278,7 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		false,
 	)
 
+	expectedError := fmt.Errorf("some error")
 	err = traverser.Traverse(
 		fixture.ctx,
 		func(
@@ -286,8 +287,9 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 			_ nfs.Session,
 			_ nfs.Client,
 		) error {
-			return fmt.Errorf("some error")
+			return expectedError
 		},
 	)
 	require.Error(t, err)
+	require.ErrorIs(t, err, expectedError)
 }
