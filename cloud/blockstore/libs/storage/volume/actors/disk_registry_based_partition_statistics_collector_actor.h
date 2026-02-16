@@ -23,6 +23,8 @@ private:
 
     NProto::TError LastError;
 
+    size_t ResponsesCount = 0;
+
 public:
     TDiskRegistryBasedPartitionStatisticsCollectorActor(
         const NActors::TActorId& owner,
@@ -44,6 +46,11 @@ private:
         TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCountersUndelivery(
+        TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const TActorContext& ctx)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
