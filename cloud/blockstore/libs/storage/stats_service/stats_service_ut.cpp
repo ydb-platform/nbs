@@ -1752,34 +1752,27 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 EPublishingPolicy::DiskRegistryBased,
                 EHistogramCounterOption::ReportMultipleCounters)));
 
-        runtime.SetEventFilter(
-            [&](auto&, TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvStatsService::EvGetServiceStatisticsRequest: {
-                        auto response = std::make_unique<
+        TAutoPtr<IEventHandle> handle;
+        runtime.GrabEdgeEventRethrow<TEvStatsService::TEvGetServiceStatisticsRequest>(
+            handle,
+            WaitTimeout);
+
+        auto response = std::make_unique<
                             TEvStatsService::TEvGetServiceStatisticsResponse>();
 
-                        response->PartsCounters.push_back(
-                            std::move(partCounters));
-                        response->VolumeCounters.emplace(
-                            std::move(selfCounters));
+        response->PartsCounters.push_back(
+            std::move(partCounters));
+        response->VolumeCounters.emplace(
+            std::move(selfCounters));
 
-                        runtime.Send(
-                            new IEventHandle(
-                                event->Sender,
-                                MakeStorageStatsServiceId(),
-                                response.release(),
-                                0,   // flags
-                                0),
-                            0);
-
-                        break;
-                    }
-                }
-
-                return false;
-            });
+        runtime.Send(
+            new IEventHandle(
+                handle->Sender,
+                MakeStorageStatsServiceId(),
+                response.release(),
+                0,   // flags
+                0),
+            0);
 
         auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
         runtime.Send(
@@ -1791,9 +1784,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 0),
             0);
 
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
-        runtime.DispatchEvents(options);
+        runtime.DispatchEvents({}, 10ms);
 
         {
             ui64 actual = *runtime.GetAppData(0)
