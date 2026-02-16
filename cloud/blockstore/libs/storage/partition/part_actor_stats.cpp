@@ -227,7 +227,7 @@ void TPartitionActor::RejectGetPartCountersRequest(
         ctx,
         *ev,
         std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
-            MakeError(EWellKnownResultCodes::E_REJECTED)));
+            MakeError(E_REJECTED)));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
