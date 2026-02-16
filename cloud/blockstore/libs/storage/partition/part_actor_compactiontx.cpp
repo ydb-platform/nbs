@@ -609,16 +609,12 @@ void TPartitionActor::CompleteCompaction(
         }
     }
 
-    // TODO:_ or to it in the beginning of the Complete... function?
     TRequestScope timer(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvPartitionPrivate::TEvCompactionTxResponse>(
             std::move(rangeCompactionInfos),
             std::move(requests));
-
-    // TODO:_ ExecCycles?
-    // response->ExecCycles = args.RequestInfo->GetExecCycles();
 
     LWTRACK(
         ResponseSent_Partition,

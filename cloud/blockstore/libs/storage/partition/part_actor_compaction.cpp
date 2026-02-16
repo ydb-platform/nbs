@@ -272,9 +272,6 @@ void TCompactionActor::Bootstrap(const TActorContext& ctx)
 
 void TCompactionActor::ProcessRequests(const TActorContext& ctx)
 {
-    // TODO:_ TRequestScope timer(*RequestInfo) here?
-    // TODO:_ lwtrack here?
-
     if (Requests) {
         ReadBlocks(ctx);
 
@@ -865,8 +862,6 @@ void TCompactionActor::HandleCompactionTxResponse(
 {
     auto* msg = ev->Get();
 
-    // TODO:_ exec cycles?
-
     if (HandleError(ctx, msg->GetError())) {
         return;
     }
@@ -884,25 +879,6 @@ void TCompactionActor::HandleCompactionTxResponse(
     if (--AwaitedCompactionTxCall) {
         return;
     }
-
-    // TODO:_ remove
-    // TVector<TRangeCompactionInfo*> infos;
-    // infos.Reserve(RangeCompactionInfos.size())
-    // for (auto& info: RangeCompactionInfos) {
-    //     infos.push_back(&info);
-    // }
-    // Sort(
-    //     RangeCompactionInfos,
-    //     [](const TRangeCompactionInfo& l, const TRangeCompactionInfo& r)
-    //     { return l->RangeCompactionIndex < r->RangeCompactionIndex; });
-
-    // TODO:_ remove
-    // for (ui32 i = 0; i < infos.size(); ++i) {
-    //     RangeCompactionInfos.push_back(
-    //         std::move(infos[i]->first));
-    // }
-
-    // TODO:_ exec cycles
 
     for (auto context: ForkedReadCallContexts) {
         RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);

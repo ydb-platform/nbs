@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/storage/model/channel_data_kind.h>  // TODO:_ ???
+#include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition/model/affected.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
 
@@ -10,8 +10,8 @@
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/protos/blobstorage.pb.h>  // TODO:_ ???
-#include <contrib/ydb/library/actors/core/actorid.h>  // TODO:_ ???
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/array_ref.h>
 #include <util/generic/ptr.h>
