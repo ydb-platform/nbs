@@ -41,8 +41,7 @@ void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
 }
 
-void TPartitionStatisticsCollectorActor::ReplyAndDie(
-    const TActorContext& ctx)
+void TPartitionStatisticsCollectorActor::ReplyAndDie(const TActorContext& ctx)
 {
     NCloud::Send(
         ctx,
@@ -84,7 +83,6 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
 {
     auto* record = ev->Get();
 
-
     if (HasError(record->Error)) {
         LastError = record->Error;
     } else {
@@ -92,7 +90,7 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
     }
 
     ++ResponsesCount;
-    if (ResponsesCount == Partitions.size())
+    if (ResponsesCount == Partitions.size()) {
         ReplyAndDie(ctx);
     }
 }

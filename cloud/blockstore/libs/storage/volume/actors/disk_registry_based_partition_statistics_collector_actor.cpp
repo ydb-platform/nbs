@@ -108,7 +108,9 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
 {
     Y_UNUSED(ev);
 
-    LastError = MakeError(E_REJECTED, "GetDiskRegistryBasedPartCountersRequest undelivered");
+    LastError = MakeError(
+        E_REJECTED,
+        "GetDiskRegistryBasedPartCountersRequest undelivered");
 
     ++ResponsesCount;
 

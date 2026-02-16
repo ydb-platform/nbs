@@ -1752,28 +1752,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 EPublishingPolicy::DiskRegistryBased,
                 EHistogramCounterOption::ReportMultipleCounters)));
 
-        TAutoPtr<IEventHandle> handle;
-        runtime.GrabEdgeEventRethrow<TEvStatsService::TEvGetServiceStatisticsRequest>(
-            handle,
-            WaitTimeout);
-
-        auto response = std::make_unique<
-                            TEvStatsService::TEvGetServiceStatisticsResponse>();
-
-        response->PartsCounters.push_back(
-            std::move(partCounters));
-        response->VolumeCounters.emplace(
-            std::move(selfCounters));
-
-        runtime.Send(
-            new IEventHandle(
-                handle->Sender,
-                MakeStorageStatsServiceId(),
-                response.release(),
-                0,   // flags
-                0),
-            0);
-
         auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
         runtime.Send(
             new IEventHandle(
@@ -1784,7 +1762,30 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 0),
             0);
 
-        runtime.DispatchEvents({}, 10ms);
+        TAutoPtr<IEventHandle> handle;
+        runtime.GrabEdgeEventRethrow<
+            TEvStatsService::TEvGetServiceStatisticsRequest>(
+            handle,
+            TDuration::Seconds(5));
+
+        UNIT_ASSERT(handle);
+
+        auto response = std::make_unique<
+            TEvStatsService::TEvGetServiceStatisticsResponse>();
+
+        response->PartsCounters.push_back(std::move(partCounters));
+        response->VolumeCounters.emplace(std::move(selfCounters));
+
+        runtime.Send(
+            new IEventHandle(
+                handle->Sender,
+                MakeStorageStatsServiceId(),
+                response.release(),
+                0,   // flags
+                0),
+            0);
+
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
 
         {
             ui64 actual = *runtime.GetAppData(0)
