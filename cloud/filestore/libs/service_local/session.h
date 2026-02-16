@@ -17,6 +17,7 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
+#include <util/system/file_lock.h>
 #include <util/system/rwlock.h>
 #include <util/system/tempfile.h>
 
@@ -70,6 +71,8 @@ private:
 
     TLocalIndex Index;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
+
+    THolder<TFileLock> SessionFileLock;
 public:
     TSession(
              const TString& fileSystemId,
@@ -82,7 +85,8 @@ public:
              ui32 nodeCleanupBatchSize,
              bool snapshotsDirEnabled,
              const TDuration& snapshotsDirRefreshInterval,
-             ILoggingServicePtr logging)
+             ILoggingServicePtr logging,
+             THolder<TFileLock> sessionFileLock = nullptr)
         : RootPath(root.RealPath())
         , StatePath(statePath.RealPath())
         , ClientId(std::move(clientId))
@@ -101,6 +105,7 @@ public:
               snapshotsDirEnabled,
               snapshotsDirRefreshInterval,
               Log)
+        , SessionFileLock(std::move(sessionFileLock))
     {}
 
     void Init(bool restoreClientSession)
@@ -132,7 +137,6 @@ public:
             ", MaxHandleCount=" << MaxHandleCount <<
             ", OpenNodeByHandleEnabled=" << OpenNodeByHandleEnabled
         );
-
 
         HandleTable = std::make_unique<THandleTable>(
             handlesPath.GetPath(),

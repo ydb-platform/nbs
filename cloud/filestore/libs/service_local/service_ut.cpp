@@ -380,6 +380,12 @@ struct TTestBootstrap
         AIOService->Stop();
     }
 
+    void StopFileStore()
+    {
+        Store->Stop();
+        Store.reset();
+    }
+
     std::optional<TFsPath> GetFsStateDir(const TString& id)
     {
         TVector<TFsPath> dirs;
@@ -1248,6 +1254,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             bootstrap.UnlinkNode(dirNodes.back(), "deletedDir", true);
         }
 
+        bootstrap.StopFileStore();
+
         TTestBootstrap other(bootstrap.Cwd);
 
         auto id = other.CreateSession("fs", "client", "", false, 0, true)
@@ -1318,6 +1326,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
                 bootstrap.DestroyHandle(handles[i]);
             }
         }
+
+        bootstrap.StopFileStore();
 
         TTestBootstrap other(bootstrap.Cwd);
 
@@ -1895,6 +1905,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto response = bootstrap.CreateSession("fs", "client", "", true);
         UNIT_ASSERT_VALUES_EQUAL(response.GetSession().GetSessionState(), state);
 
+        bootstrap.StopFileStore();
+
         TTestBootstrap other(bootstrap.Cwd);
 
         auto otherResponse =
@@ -2393,6 +2405,28 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
                 response.GetFileStore().GetFeatures().GetEntryTimeout(),
                 defaultTimeout);
         }
+    }
+
+    Y_UNIT_TEST(ShouldFailToLockSessionStateTwice)
+    {
+        TTestBootstrap bootstrap("fs", "client");
+        TTestBootstrap other(bootstrap.Cwd);
+
+        // Here we have to create and wait for request manually because
+        // we need to get resulting error code
+        auto request =
+            other
+                .CreateCreateSessionRequest("fs", "client", "", false, 0, true);
+        TCallContextPtr ctx = MakeIntrusive<TCallContext>("fs");
+        auto future = other.Store->CreateSession(ctx, std::move(request));
+        future.Wait();
+        auto response = future.GetValue();
+
+        // Creation of the second session with the same state should fail
+        UNIT_ASSERT(HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(E_FAIL),
+            response.GetError().GetCode());
     }
 };
 
