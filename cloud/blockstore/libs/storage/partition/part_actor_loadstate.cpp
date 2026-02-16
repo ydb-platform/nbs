@@ -261,7 +261,7 @@ void TPartitionActor::CompleteLoadState(
         StorageAccessMode,
         BSGroupOperationTimeTracker,
         BSGroupOperationId,
-        *WriteBlobCompanionClient,
+        *IOCompanionClient,
         *State,
         LogTitle,
         ResourceMetricsQueue,

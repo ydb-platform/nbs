@@ -89,22 +89,19 @@ using TResourceMetricsUpdate = std::variant<
 class TResourceMetricsQueue
 {
 private:
-    TAdaptiveLock Lock;
-    TVector<TResourceMetricsUpdate> ResourceMetricsUpdates;
+    TLockFreeStack<TResourceMetricsUpdate> ResourceMetricsUpdates;
 
 public:
-    void Push(const TResourceMetricsUpdate& update)
+    void Push(TResourceMetricsUpdate update)
     {
-        TGuard guard(Lock);
-        ResourceMetricsUpdates.push_back(update);
+        ResourceMetricsUpdates.Enqueue(update);
     }
 
     TVector<TResourceMetricsUpdate> PopAll()
     {
-        TGuard guard(Lock);
-        auto retValue = std::move(ResourceMetricsUpdates);
-        ResourceMetricsUpdates.clear();
-        return retValue;
+        TVector<TResourceMetricsUpdate> resCollection;
+        ResourceMetricsUpdates.DequeueAll(&resCollection);
+        return resCollection;
     }
 };
 

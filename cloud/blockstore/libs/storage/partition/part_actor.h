@@ -187,7 +187,7 @@ private:
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
-    std::unique_ptr<TIOCompanionClient> WriteBlobCompanionClient;
+    std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
 public:

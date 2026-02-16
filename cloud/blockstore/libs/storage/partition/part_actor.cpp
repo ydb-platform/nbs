@@ -965,7 +965,7 @@ void TPartitionActor::CreateFreshBlocksCompanionClient()
 
 void TPartitionActor::CreateIOCompanionClient()
 {
-    WriteBlobCompanionClient = std::make_unique<TIOCompanionClient>(*this);
+    IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1275,7 +1275,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
 {
     Y_UNUSED(ev);
     auto updates = ResourceMetricsQueue->PopAll();
-    for (auto& update : updates) {
+    for (auto& update: updates) {
         std::visit([&] (auto&& arg) {
             UpdateResourceMetrics(arg);
         }, update);

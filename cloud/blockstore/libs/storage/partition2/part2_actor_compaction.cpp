@@ -342,7 +342,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobId,
                 BuildBlobContent(req),
                 0,        // blockSizeForChecksums
-                false);   // async
+                true);   // async
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
