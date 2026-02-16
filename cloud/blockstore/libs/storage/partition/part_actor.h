@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "part_compaction.h"
 #include "part_counters.h"
 #include "part_events_private.h"
 #include "part_state.h"

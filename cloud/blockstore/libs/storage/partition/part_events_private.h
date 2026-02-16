@@ -1,5 +1,6 @@
 #pragma once
 
+#include "part_compaction.h"
 #include "public.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
@@ -11,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/partition/model/affected.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
@@ -115,31 +117,6 @@ struct TWriteFreshBlocksRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAffectedBlob
-{
-    TVector<ui16> Offsets;
-    TMaybe<TBlockMask> BlockMask;
-    TVector<ui32> AffectedBlockIndices;
-
-    // Filled only if a flag is set. BlobMeta is needed only to do some extra
-    // consistency checks.
-    TMaybe<NProto::TBlobMeta> BlobMeta;
-};
-
-using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TAffectedBlock
-{
-    ui32 BlockIndex = 0;
-    ui64 CommitId = 0;
-};
-
-using TAffectedBlocks = TVector<TAffectedBlock>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TBlobCompactionInfo
 {
     const ui32 BlobsSkippedByCompaction = 0;
@@ -169,6 +146,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(AddFreshBlocks,            __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
     xxx(Compaction,                __VA_ARGS__)                                \
+    xxx(CompactionTx,              __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
     xxx(ScanDiskBatch,             __VA_ARGS__)                                \
@@ -481,6 +459,46 @@ struct TEvPartitionPrivate
 
     struct TCompactionResponse
     {
+    };
+
+    //
+    // CompactionTx
+    //
+
+    struct TCompactionTxRequest
+    {
+        const ui64 CommitId;
+        const ui32 RangeCompactionIndex;
+        const TCompactionOptions CompactionOptions;
+        TVector<TCompactionRange> Ranges;
+
+        TCompactionTxRequest() = default;
+
+        TCompactionTxRequest(
+            ui64 commitId,
+            ui32 rangeCompactionIndex,
+            TCompactionOptions compactionOptions,
+            TVector<TCompactionRange> ranges)
+            : CommitId(commitId)
+            , RangeCompactionIndex(rangeCompactionIndex)
+            , CompactionOptions(compactionOptions)
+            , Ranges(std::move(ranges))
+        {}
+    };
+
+    struct TCompactionTxResponse
+    {
+        TVector<TRangeCompactionInfo> RangeCompactionInfos;
+        TVector<TCompactionReadRequest> Requests;
+
+        TCompactionTxResponse() = default;
+
+        TCompactionTxResponse(
+            TVector<TRangeCompactionInfo> rangeCompactionInfos,
+            TVector<TCompactionReadRequest> requests)
+            : RangeCompactionInfos(std::move(rangeCompactionInfos))
+            , Requests(std::move(requests))
+        {}
     };
 
     //

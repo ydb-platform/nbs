@@ -14,6 +14,7 @@ SRCS(
     part_actor_cleanup.cpp
     part_actor_collectgarbage.cpp
     part_actor_compaction.cpp
+    part_actor_compactiontx.cpp
     part_actor_compactrange.cpp
     part_actor_confirmblobs.cpp
     part_actor_deletegarbage.cpp
