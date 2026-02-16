@@ -100,7 +100,7 @@ public:
     TVector<TResourceMetricsUpdate> PopAll()
     {
         TVector<TResourceMetricsUpdate> resCollection;
-        ResourceMetricsUpdates.DequeueAll(&resCollection);
+        ResourceMetricsUpdates.DequeueAllSingleConsumer(&resCollection);
         return resCollection;
     }
 };
