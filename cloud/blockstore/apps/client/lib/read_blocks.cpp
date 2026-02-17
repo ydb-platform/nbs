@@ -388,7 +388,7 @@ protected:
             }
         }
 
-        UnmountVolume(*Session);
+        // UnmountVolume(*Session);
 
         if (ShouldContinue.GetReturnCode()) {
             return false;

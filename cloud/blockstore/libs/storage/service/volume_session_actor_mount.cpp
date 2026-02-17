@@ -1121,6 +1121,11 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     }
 
     if (shouldReply) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            ">>> TVolumeSessionActor::HandleInternalMountVolume() - immediate "
+            "reply");
         SendInternalMountVolumeResponse(
             ctx,
             requestInfo,

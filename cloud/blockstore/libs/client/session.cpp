@@ -138,6 +138,11 @@ public:
         TClientAppConfigPtr config,
         const TSessionConfig& sessionConfig);
 
+    ~TSession() override
+    {
+        STORAGE_ERROR(">>> Session Destroy " << SessionConfig.DiskId);
+    }
+
     ui32 GetMaxTransfer() const override;
 
     TFuture<NProto::TMountVolumeResponse> MountVolume(
@@ -262,7 +267,9 @@ TSession::TSession(
     , Config(std::move(config))
     , SessionConfig(sessionConfig)
     , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
-{}
+{
+    STORAGE_ERROR(">>> Session Create " << SessionConfig.DiskId);
+}
 
 ui32 TSession::GetMaxTransfer() const
 {
@@ -279,6 +286,7 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
     std::shared_ptr<NProto::TMountVolumeRequest> request;
     TFuture<NProto::TMountVolumeResponse> response;
 
+    STORAGE_ERROR(">>> Session MountVolume " << SessionConfig.DiskId);
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::MountInProgress) {
             auto weak_ptr = weak_from_this();
@@ -518,7 +526,7 @@ void TSession::SendMountRequest(
     if (!callContext->RequestId) {
         callContext->RequestId = requestId;
     }
-
+    STORAGE_ERROR(">>> Session SendMountRequest " << SessionConfig.DiskId);
     bool readWrite = IsReadWriteMode(request->GetVolumeAccessMode());
     bool mountLocal = (request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL);
 
@@ -585,7 +593,7 @@ void TSession::ProcessMountResponse(
     NProto::TMountVolumeResponse response)
 {
     TPromise<NProto::TMountVolumeResponse> promise;
-
+    STORAGE_ERROR(">>> Session ProcessMountResponse " << SessionConfig.DiskId);
     with_lock (SessionInfo.MountLock) {
         if (!HasError(response) && SessionInfo.BlockSize != 0) {
             const auto& info = response.GetVolume();
@@ -663,6 +671,9 @@ void TSession::ProcessUnmountResponse(
 {
     TPromise<NProto::TUnmountVolumeResponse> promise;
 
+    STORAGE_ERROR(
+        ">>> Session ProcessUnmountResponse " << SessionConfig.DiskId);
+
     with_lock (SessionInfo.MountLock) {
         promise = SessionInfo.UnmountResponse;
 
@@ -695,6 +706,7 @@ void TSession::ProcessUnmountResponse(
 
 void TSession::ForceVolumeRemount(const TString& sessionId)
 {
+    STORAGE_ERROR(">>> Session ForceVolumeRemount " << SessionConfig.DiskId);
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::MountCompleted) {
             if (SessionInfo.SessionId == sessionId) {
@@ -766,6 +778,8 @@ void TSession::ScheduleVolumeRemount(
     }
     SessionInfo.RemountTime = TInstant::Now() + SessionInfo.RemountPeriod;
 
+    STORAGE_ERROR(">>> Session ScheduleVolumeRemount " << SessionConfig.DiskId);
+
     auto weak_ptr = weak_from_this();
 
     Scheduler->Schedule(
@@ -780,6 +794,8 @@ void TSession::ScheduleVolumeRemount(
 void TSession::RemountVolume(ui64 epoch)
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
+
+    STORAGE_ERROR(">>> Session RemountVolume " << SessionConfig.DiskId);
 
     with_lock (SessionInfo.MountLock) {
         if (epoch == SessionInfo.RemountTimerEpoch &&
@@ -821,12 +837,15 @@ void TSession::RemountVolume(ui64 epoch)
             << " submit request (remount by timer)");
 
         auto weak_ptr = weak_from_this();
+
         Client->MountVolume(std::move(callContext), std::move(request))
-            .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
-                if (auto p = weak_ptr.lock()) {
-                    p->ProcessMountResponse(requestId, future.GetValue());
-                }
-            });
+            .Subscribe(
+                [=, weak_ptr = std::move(weak_ptr)](const auto& future)
+                {
+                    if (auto p = weak_ptr.lock()) {
+                        p->ProcessMountResponse(requestId, future.GetValue());
+                    }
+                });
     }
 }
 

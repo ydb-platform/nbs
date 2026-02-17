@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
@@ -31,6 +32,9 @@ using namespace NMonitoring;
 using namespace NCloud::NStorage::NUserStats;
 
 namespace {
+
+auto Logging = CreateLoggingService("console");
+auto Log = Logging->CreateLog(">>>>>>");
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -183,8 +187,14 @@ struct TVolumeInfoBase
         , HasStorageConfigPatchCounter(
             volumeGroup->GetCounter("HasStorageConfigPatch"))
     {
+        STORAGE_ERROR(">>> TVolumeInfoBase Create " << Volume.GetDiskId());
         BusyIdleCalc.Register(volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
+    }
+
+    ~TVolumeInfoBase()
+    {
+        STORAGE_ERROR(">>> TVolumeInfoBase Destroy " << Volume.GetDiskId());
     }
 };
 
@@ -283,7 +293,16 @@ public:
               GetRequestCountersOptions(*VolumeBase),
               histogramCounterOptions,
               executionTimeSizeClasses))
-    {}
+    {
+        STORAGE_ERROR(
+            ">>> TVolumeInfo Create " << VolumeBase->Volume.GetDiskId());
+    }
+
+    ~TVolumeInfo()
+    {
+        STORAGE_ERROR(
+            ">>> TVolumeInfo Destroy " << VolumeBase->Volume.GetDiskId());
+    }
 
     const NProto::TVolume& GetInfo() const override
     {
@@ -510,6 +529,7 @@ public:
         const TRealInstanceId& realInstanceId)
     {
         bool inserted = false;
+        STORAGE_ERROR(">>> VolumeStats MountVolume " << volume.GetDiskId());
 
         volume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
 
@@ -566,6 +586,9 @@ public:
     {
         Y_UNUSED(clientId);
         Y_UNUSED(diskId);
+        STORAGE_ERROR(
+            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> VolumeStats UnmountVolume "
+            << diskId);
     }
 
     void AlterVolumeImpl(
@@ -584,6 +607,8 @@ public:
         {
             return;
         }
+
+        STORAGE_ERROR(">>> VolumeStats AlterVolume " << diskId);
 
         volumeConfig.SetCloudId(cloudId);
         volumeConfig.SetFolderId(folderId);
@@ -658,6 +683,8 @@ public:
 
     bool TrimInstance(TInstant now, TVolumeMap& infos)
     {
+        STORAGE_ERROR(">>> VolumeStats TrimInstance");
+
         std::erase_if(infos, [this, now] (const auto& item){
             const TVolumeInfo& info = *item.second;
             if (info.InactivityTimeout &&
@@ -680,6 +707,8 @@ public:
 
     void TrimVolumes() override
     {
+        STORAGE_ERROR(">>> VolumeStats TrimVolumes");
+
         TWriteGuard guard(Lock);
 
         const auto now = Timer->Now();
@@ -724,6 +753,10 @@ public:
 
             for (auto& [key, instance]: holder.VolumeInfos) {
                 instance->RequestCounters.UpdateStats(updateIntervalFinished);
+                STORAGE_ERROR(
+                    ">>> HasDowntime["
+                    << instance->VolumeBase->Volume.GetDiskId()
+                    << "] = " << hasDowntime);
                 if (updateIntervalFinished) {
                     Y_DEBUG_ABORT_UNLESS(instance->HasDowntimeCounter);
                     if (instance->HasDowntimeCounter) {
@@ -772,6 +805,7 @@ public:
             CriticalSufferCounters->PublishCounters();
         }
 
+        STORAGE_ERROR(">>> DownDisks = " << totalDownDisks);
         if (updateIntervalFinished) {
             if (TotalDownDisksCounter) {
                 *TotalDownDisksCounter = totalDownDisks;
@@ -834,6 +868,8 @@ public:
 private:
     TVolumeInfoHolder RegisterVolume(NProto::TVolume volume)
     {
+        STORAGE_ERROR(">>> VolumeStats RegisterVolume " << volume.GetDiskId());
+
         if (!Counters) {
             InitCounters();
         }
@@ -860,6 +896,11 @@ private:
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
+        STORAGE_ERROR(
+            ">>> VolumeStats RegisterInstance "
+            << volumeBase->Volume.GetDiskId() << " "
+            << realInstanceId.GetInstanceId());
+
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
             Timer,
@@ -905,6 +946,11 @@ private:
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
+        STORAGE_ERROR(
+            ">>> VolumeStats UnregisterInstance "
+            << volumeBase->Volume.GetDiskId() << " "
+            << realInstanceId.GetInstanceId());
+
         if (!Counters) {
             InitCounters();
         }
@@ -922,6 +968,10 @@ private:
 
     void UnregisterVolume(TVolumeBasePtr volumeBase)
     {
+        STORAGE_ERROR(
+            ">>> VolumeStats UnregisterVolume "
+            << volumeBase->Volume.GetDiskId());
+
         if (!Counters) {
             InitCounters();
         }

@@ -18,6 +18,9 @@ using namespace NBD;
 
 namespace {
 
+auto Logging = CreateLoggingService("console");
+auto Log = Logging->CreateLog(">>>>>>");
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNbdEndpointListener final
@@ -65,6 +68,7 @@ public:
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
 
+        STORAGE_ERROR(">>> TNbdEndpointListener StartEndpoint");
         auto requestFactory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
             Logging,

@@ -20,3 +20,8 @@ selector_config:
   config:
     blockstore_config: !inherit
       volume_preemption_type: PREEMPTION_NONE
+- description: YDBOPS-12873
+  selector: {}
+  config:
+    feature_flags: !inherit
+      enable_node_broker_delta_protocol: true

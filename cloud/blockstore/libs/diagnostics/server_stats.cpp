@@ -27,6 +27,9 @@ LWTRACE_USING(BLOCKSTORE_SERVER_PROVIDER);
 
 namespace {
 
+auto Logging = CreateLoggingService("console");
+auto Log = Logging->CreateLog(">>>>>>");
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TString Capitalize(TString str)
@@ -249,6 +252,7 @@ bool TServerStats::MountVolume(
     const TString& clientId,
     const TString& instanceId)
 {
+    STORAGE_ERROR(">>> ServerStats MountVolume " << volume.GetDiskId());
     return VolumeStats->MountVolume(volume, clientId, instanceId);
 }
 
@@ -256,6 +260,7 @@ void TServerStats::UnmountVolume(
     const TString& diskId,
     const TString& clientId)
 {
+    STORAGE_ERROR(">>> ServerStats UnmountVolume " << diskId);
     VolumeStats->UnmountVolume(diskId, clientId);
 }
 
@@ -264,6 +269,7 @@ void TServerStats::AlterVolume(
     const TString& cloudId,
     const TString& folderId)
 {
+    STORAGE_ERROR(">>> ServerStats AlterVolume " << diskId);
     VolumeStats->AlterVolume(diskId, cloudId, folderId);
 }
 

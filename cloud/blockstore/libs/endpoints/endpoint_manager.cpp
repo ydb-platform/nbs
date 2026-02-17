@@ -709,6 +709,7 @@ private:
     template <typename T>
     void RemoveSession(TCallContextPtr ctx, const T& request)
     {
+        STORAGE_ERROR(">>> TEndpointManager::RemoveSession");
         auto future = SessionManager->RemoveSession(
             std::move(ctx),
             request.GetUnixSocketPath(),
@@ -745,6 +746,7 @@ private:
     TPromise<typename TMethod::TResponse> AddProcessingSocket(
         const typename TMethod::TRequest& request)
     {
+        STORAGE_ERROR(">>> TEndpointManager::AddProcessingSocket");
         auto promise = NewPromise<typename TMethod::TResponse>();
         const auto& socketPath = request.GetUnixSocketPath();
 
@@ -862,6 +864,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStartEndpointRequest> request)
 {
+    STORAGE_INFO(">>> TEndpointManager::DoStartEndpoint");
     auto socketPath = request->GetUnixSocketPath();
     if (IsEndpointRestoring(socketPath)) {
         return TErrorResponse(E_REJECTED, "endpoint is restoring now");
@@ -888,6 +891,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
     std::shared_ptr<NProto::TStartEndpointRequest> request,
     bool restoring)
 {
+    STORAGE_INFO(">>> TEndpointManager::StartEndpointImpl");
     const auto& socketPath = request->GetUnixSocketPath();
 
     auto it = Endpoints.find(socketPath);
@@ -1116,6 +1120,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
+    STORAGE_ERROR(">>> TEndpointManager::DoStopEndpoint");
     auto socketPath = request->GetUnixSocketPath();
     if (IsEndpointRestoring(socketPath)) {
         return TErrorResponse(E_REJECTED, "endpoint is restoring now");
@@ -1427,6 +1432,7 @@ void TEndpointManager::ProcessException(
 void TEndpointManager::DoProcessException(
     std::shared_ptr<TExceptionContext> context)
 {
+    STORAGE_ERROR(">>> TEndpointManager::DoProcessException");
     auto endpoint = context->Endpoint.lock();
     if (!endpoint) {
         STORAGE_WARN("endpoint is down, cancel restart");

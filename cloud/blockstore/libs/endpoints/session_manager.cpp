@@ -40,6 +40,9 @@ using namespace NThreading;
 
 namespace {
 
+auto Logging = CreateLoggingService("console");
+auto Log = Logging->CreateLog(">>>>>>");
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TEndpoint
@@ -82,6 +85,7 @@ public:
 
     NProto::TError Start(TCallContextPtr callContext, NProto::THeaders headers)
     {
+        STORAGE_ERROR(">>> Start Endpoint");
         DataClient->Start();
 
         headers.SetClientId(ClientId);
@@ -99,6 +103,7 @@ public:
 
     NProto::TError Stop(TCallContextPtr callContext, NProto::THeaders headers)
     {
+        STORAGE_ERROR(">>> Stop Endpoint");
         headers.SetClientId(ClientId);
         auto future = Session->UnmountVolume(std::move(callContext), headers);
         const auto& response = Executor.WaitFor(future);
@@ -114,6 +119,7 @@ public:
         ui64 mountSeqNumber,
         NProto::THeaders headers)
     {
+        STORAGE_ERROR(">>> Alter Endpoint");
         headers.SetClientId(ClientId);
         auto future = Session->MountVolume(
             accessMode,
@@ -227,7 +233,14 @@ public:
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
         , BlockSize(blockSize)
-    {}
+    {
+        STORAGE_ERROR(">>> StorageDataClient Create");
+    }
+
+    ~TStorageDataClient()
+    {
+        STORAGE_ERROR(">>> StorageDataClient Destroy");
+    }
 
     void Start() override
     {}
@@ -262,6 +275,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
     {
+        STORAGE_ERROR(">>> StorageDataClient MountVolume");
         const TString instanceId = request->GetInstanceId();
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
         auto future = Service->MountVolume(
@@ -292,6 +306,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TUnmountVolumeRequest> request) override
     {
+        STORAGE_ERROR(">>> StorageDataClient UnmountVolume");
         auto diskId = request->GetDiskId();
 
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
@@ -523,6 +538,7 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
     NProto::TStartEndpointRequest request)
 {
+    STORAGE_ERROR(">>> SessionManager CreateSession " << request.GetDiskId());
     auto describeResponse = DescribeVolume(
         callContext,
         request.GetDiskId(),
@@ -574,6 +590,7 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
     const TString& diskId,
     const NProto::THeaders& headers)
 {
+    STORAGE_ERROR(">>> SessionManager DescribeVolume " << diskId);
     auto cellDescribeFuture = CellManager->DescribeVolume(
         std::move(callContext),
         diskId,
@@ -611,9 +628,10 @@ NProto::TError TSessionManager::RemoveSessionImpl(
             TWellKnownEntityTypes::ENDPOINT,
             socketPath);
         endpoint = std::move(it->second);
+        STORAGE_ERROR(
+            ">>> SessionManager RemoveSession " << endpoint->GetDiskId());
         Endpoints.erase(it);
     }
-
     auto error = endpoint->Stop(std::move(callContext), headers);
 
     endpoint.reset();
@@ -671,7 +689,7 @@ NProto::TError TSessionManager::AlterSessionImpl(
         }
         endpoint = it->second;
     }
-
+    STORAGE_ERROR(">>> SessionManager AlterSession " << endpoint->GetDiskId());
     return endpoint->Alter(
         std::move(callContext),
         accessMode,
@@ -753,6 +771,8 @@ void TSessionManager::SwitchSession(
     const TString& diskId,
     const TString& newDiskId)
 {
+    STORAGE_ERROR(
+        ">>> SessionManager SwitchSession " << diskId << " -> " << newDiskId);
     bool endpointFound = false;
     with_lock (EndpointLock) {
         for (const auto& [socketPath, endpoint]: Endpoints) {
@@ -839,6 +859,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const NProto::TVolume& volume,
     const TString& cellId)
 {
+    STORAGE_ERROR(">>> SessionManager CreateEndpoint " << volume.GetDiskId());
+
     const auto& clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
 
@@ -935,6 +957,9 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             CreateCrcDigestCalculator());
     }
 
+    STORAGE_ERROR(
+        ">>> SessionManager CreateEndpoint > CreateSession "
+        << volume.GetDiskId());
     auto session = NClient::CreateSession(
         Timer,
         Scheduler,
@@ -1114,6 +1139,9 @@ void TSessionManager::StopEndpointImpl(
     TCallContextPtr callContext,
     TEndpointPtr oldEndpoint)
 {
+    STORAGE_ERROR(
+        ">>> SessionManager StopEndpoint " << oldEndpoint->GetDiskId());
+
     auto error = oldEndpoint->Stop(
         std::move(callContext),
         oldEndpoint->GetStartRequest().GetHeaders());
