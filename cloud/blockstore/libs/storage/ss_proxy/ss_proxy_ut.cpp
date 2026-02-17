@@ -448,6 +448,28 @@ void DestroyVolume(
     ModifyVolume(runtime, EOpType::Destroy, diskId);
 }
 
+std::unique_ptr<TEvSSProxy::TEvBackupPathDescriptionsResponse>
+BackupPathDescriptions(
+    TTestActorRuntime& runtime,
+    TDuration simTimeout = TDuration::Seconds(5))
+{
+    TActorId sender = runtime.AllocateEdgeActor();
+    Send(
+        runtime,
+        MakeSSProxyServiceId(),
+        sender,
+        std::make_unique<TEvSSProxy::TEvBackupPathDescriptionsRequest>());
+
+    TAutoPtr<IEventHandle> handle;
+    runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
+        handle,
+        simTimeout);
+    UNIT_ASSERT(handle);
+    return std::unique_ptr<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
+        handle->Release<TEvSSProxy::TEvBackupPathDescriptionsResponse>()
+            .Release());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -733,19 +755,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime.AdvanceCurrentTime(TDuration::Seconds(15));
             runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
 
-            TActorId sender = runtime.AllocateEdgeActor();
-
-            Send(
-                runtime,
-                MakeSSProxyServiceId(),
-                sender,
-                std::make_unique<TEvSSProxy::TEvBackupPathDescriptionsRequest>());
-
-            TAutoPtr<IEventHandle> handle;
-            auto response =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
-                    handle);
-            UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+            auto response = BackupPathDescriptions(runtime);
+            UNIT_ASSERT_C(
+                Succeeded(response.get()),
+                GetErrorReason(response.get()));
         }
 
         configProto.SetSSProxyFallbackMode(true);
@@ -764,6 +777,42 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 DescribeVolumeAndReturnPath(runtime, "new-volume"));
             DescribeVolumeWithFailure(runtime, "unexisting");
         }
+    }
+
+    Y_UNIT_TEST(BackupTabletBootInfosReturnCode)
+    {
+        TString backupFilePath =
+            "BackupTabletBootInfosReturnCode.path_description_backup";
+
+        NProto::TStorageServiceConfig configProto;
+        configProto.SetPathDescriptionBackupFilePath(backupFilePath);
+
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateTestStorageConfig(configProto);
+        SetupTestEnv(env, config);
+
+        auto response = BackupPathDescriptions(runtime);
+        // No actual changes in backup has been made.
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, response->GetStatus());
+
+        CreateVolumeViaModifySchemeDeprecated(runtime, config, "old-volume");
+        CreateVolumeViaModifyScheme(runtime, config, "new-volume");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/local/nbs/old-volume",
+            DescribeVolumeAndReturnPath(runtime, "old-volume"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/local/nbs/_17A/new-volume",
+            DescribeVolumeAndReturnPath(runtime, "new-volume"));
+
+        response = BackupPathDescriptions(runtime);
+        // Backup has been made.
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        response = BackupPathDescriptions(runtime);
+        // No changes again.
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldFailDescribeVolumeIfPathDoesNotExist)

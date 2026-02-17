@@ -1419,4 +1419,11 @@ message TStorageServiceConfig
 
     // Timeout for attach/detach path requests (in milliseconds).
     optional uint32 AttachDetachPathRequestTimeout = 480;
+
+    // Interval for updating resource metrics (in milliseconds).
+    optional uint32 ResourceMetricsUpdateInterval = 481;
+
+    // Periodically checks disk registry state consistency with local db.
+    // If equals zero check is disabled.
+    optional uint32 EnsureDiskRegistryStateIntegrityInterval = 482;
 }

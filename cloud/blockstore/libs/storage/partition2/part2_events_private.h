@@ -34,8 +34,6 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(xxx, ...)                       \
-    xxx(ReadBlob,               __VA_ARGS__)                                   \
-    xxx(WriteBlob,              __VA_ARGS__)                                   \
     xxx(AddBlobs,               __VA_ARGS__)                                   \
     xxx(AddFreshBlocks,         __VA_ARGS__)                                   \
     xxx(Flush,                  __VA_ARGS__)                                   \

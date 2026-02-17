@@ -529,7 +529,7 @@ class KiKiMR(kikimr_cluster_interface.KiKiMRClusterInterface):
         self._bs_config_invoke(request)
 
     def _bs_config_invoke(self, request):
-        timeout = yatest_common.plain_or_under_sanitizer(120, 240)
+        timeout = yatest_common.plain_or_under_sanitizer(480, 960)
         sleep = 5
         retries, success = timeout / sleep, False
         while retries > 0 and not success:

@@ -481,6 +481,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RemoteMountOnly,                           bool,      false           )\
     xxx(MaxLocalVolumes,                           ui32,      100             )\
                                                                                \
+    xxx(EnsureDiskRegistryStateIntegrityInterval,  TDuration, Seconds(0)      )\
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
     xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
     xxx(DiskRegistryCleanupConfigOnRemoveHost,     bool,      false           )\
@@ -665,6 +666,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
+    xxx(ResourceMetricsUpdateInterval,        TDuration,   Seconds(1)         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

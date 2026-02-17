@@ -140,6 +140,12 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
         true   // forceAll
     );
 
+    auto ioCounters = IoCompanionCounters->Swap(CreatePartitionDiskCounters(
+        EPublishingPolicy::Repl,
+        DiagnosticsConfig->GetHistogramCounterOptions()));
+
+    PartCounters->AggregateWith(*ioCounters);
+
     TPartitionStatisticsCounters counters(
         sysCpuConsumption - SysCPUConsumption,
         UserCPUConsumption,

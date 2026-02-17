@@ -45,6 +45,9 @@ constexpr TDuration Seconds(int s)
                                                                                \
     xxx(SharedMemoryTransportEnabled, bool,                     false         )\
     xxx(SharedMemoryBasePath,         TString,                  "/dev/shm"    )\
+    xxx(SharedMemoryRegionTimeout,                                             \
+        TDuration,                                                             \
+        TDuration::Max())                                                      \
 // FILESTORE_SERVER_CONFIG
 
 #define FILESTORE_SERVER_DECLARE_CONFIG(name, type, value)                     \

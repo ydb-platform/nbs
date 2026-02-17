@@ -18,8 +18,11 @@ SRCS(
     compaction_map_load_state.cpp
     fresh_blob.cpp
     garbage_queue.cpp
+    group_downtimes.cpp
     mixed_index_cache.cpp
     operation_status.cpp
+    part_counters_wrapper.cpp
+    resource_metrics_updates_queue.cpp
 )
 
 PEERDIR(

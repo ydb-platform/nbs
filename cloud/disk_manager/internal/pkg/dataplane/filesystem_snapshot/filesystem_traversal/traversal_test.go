@@ -236,3 +236,60 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 	)
 	require.ElementsMatch(t, expectedNodeNames, actualNodeNames)
 }
+
+func TestTraversalShouldCloseSessionOnError(t *testing.T) {
+	fixture := newFixture(t)
+	defer fixture.close(t)
+
+	filesystemID := t.Name()
+	fixture.prepareFilesystem(t, filesystemID)
+	// If sessions are not closed properly, filesystem deletion will fail.
+	defer fixture.cleanupFilesystem(t, filesystemID)
+
+	session, err := fixture.client.CreateSession(
+		fixture.ctx,
+		filesystemID,
+		"",
+		false,
+	)
+	require.NoError(t, err)
+	defer fixture.client.DestroySession(fixture.ctx, session)
+	rootDir := nfs_testing.Root(nfs_testing.Dir("Some"))
+	fsModel := nfs_testing.NewFileSystemModel(
+		t,
+		fixture.ctx,
+		fixture.client,
+		session,
+		rootDir,
+	)
+	fsModel.CreateAllNodesRecursively()
+
+	traverser := NewFilesystemTraverser(
+		fmt.Sprintf("snapshot_%v", filesystemID),
+		filesystemID,
+		"",
+		fixture.client,
+		fixture.storage,
+		func(ctx context.Context) error {
+			return nil
+		},
+		10,
+		10,
+		false,
+	)
+
+	expectedError := fmt.Errorf("some error")
+	err = traverser.Traverse(
+		fixture.ctx,
+		func(
+			ctx context.Context,
+			nodes []nfs.Node,
+			_ nfs.Session,
+			_ nfs.Client,
+		) error {
+			return expectedError
+		},
+	)
+	require.Error(t, err)
+	require.ErrorIs(t, err, expectedError)
+}

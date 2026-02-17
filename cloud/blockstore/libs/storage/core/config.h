@@ -492,6 +492,7 @@ public:
     bool GetRemoteMountOnly() const;
     ui32 GetMaxLocalVolumes() const;
 
+    [[nodiscard]] TDuration GetEnsureDiskRegistryStateIntegrityInterval() const;
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
     bool GetDiskRegistryAlwaysAllocatesLocalDisks() const;
     bool GetDiskRegistryCleanupConfigOnRemoveHost() const;
@@ -765,6 +766,8 @@ public:
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
 
     [[nodiscard]] TDuration GetAttachDetachPathRequestTimeout() const;
+
+    [[nodiscard]] TDuration GetResourceMetricsUpdateInterval() const;
 };
 
 ui64 GetAllocationUnit(

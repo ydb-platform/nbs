@@ -73,6 +73,11 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
 {
     Y_DEBUG_ABORT_UNLESS(!ReadOnlyMode);
 
+    if (!BackupProtoHasChanged) {
+        return MakeError(S_FALSE, "backup file is not changed");
+    }
+    BackupProtoHasChanged = false;
+
     NProto::TError error;
 
     try {
@@ -105,6 +110,9 @@ NProto::TError TPathDescriptionBackup::Backup(const TActorContext& ctx)
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: backup completed");
     } else {
+        // We should retry the backup in case of failure.
+        BackupProtoHasChanged = true;
+
         ReportBackupPathDescriptionsFailure(
             {{"BackupFilePath", BackupFilePath.GetPath()}});
 
@@ -240,25 +248,22 @@ void TPathDescriptionBackup::HandleReadPathDescriptionBackup(
 
     auto* msg = ev->Get();
 
-    bool found = false;
-    NKikimrSchemeOp::TPathDescription pathDescription;
-
+    std::optional<NKikimrSchemeOp::TPathDescription> pathDescription;
     {
-        auto it = BackupProto.GetData().find(msg->Path);
+        const auto it = BackupProto.GetData().find(msg->Path);
         if (it != BackupProto.GetData().end()) {
-            found = true;
             pathDescription = it->second;
         }
     }
 
     std::unique_ptr<TResponse> response;
 
-    if (found) {
+    if (pathDescription) {
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: found data for path " << msg->Path);
 
         response =
-            std::make_unique<TResponse>(msg->Path, std::move(pathDescription));
+            std::make_unique<TResponse>(msg->Path, std::move(*pathDescription));
     } else {
         LOG_DEBUG_S(ctx, LogComponent,
             "PathDescriptionBackup: no data for path " << msg->Path);
@@ -275,6 +280,7 @@ void TPathDescriptionBackup::HandleUpdatePathDescriptionBackup(
     auto* msg = ev->Get();
     auto& data = *BackupProto.MutableData();
 
+    BackupProtoHasChanged = true;
     data[msg->Path].Swap(&msg->PathDescription);
 
     LOG_DEBUG_S(ctx, LogComponent,

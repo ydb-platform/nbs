@@ -211,6 +211,8 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ReplaceBrokenDevicesAfterRestart(ctx);
 
+    ScheduleEnsureDiskRegistryStateIntegrity(ctx);
+
     if (auto orphanDevices = State->FindOrphanDevices()) {
         LOG_INFO(
             ctx,

@@ -24,6 +24,17 @@ enum ELinkAction
     LINK_ACTION_COMPLETED = 2;
 };
 
+enum ELinkStatus
+{
+    LINK_STATUS_NONE = 0;
+    LINK_STATUS_NOT_FOUND = 1;               // Link not found.
+    LINK_STATUS_PREPARING = 2;               // Data transferring in progress.
+    LINK_STATUS_LEADERSHIP_TRANSFERRING = 3; // Leadership transferring to follower.
+    LINK_STATUS_LEADERSHIP_TRANSFERRED = 4;  // Leadership transferred to follower.
+    LINK_STATUS_COMPLETED = 5;               // Leader volume destroyed.
+    LINK_STATUS_ERROR = 6;                   // Link in Error state.
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 // Volume client info.
 
@@ -874,6 +885,48 @@ message TUpdateLinkOnFollowerResponse
 
     // Request traces. Deprecated. Use Headers.Trace.
     NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+message TGetLinkStatusRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Query volume.
+    string DiskId = 2;
+
+    // Leader volume.
+    string LeaderDiskId = 3;
+
+    // Leader volume shard.
+    string LeaderShardId = 4;
+
+    // Follower volume.
+    string FollowerDiskId = 5;
+
+    // Follower volume shard.
+    string FollowerShardId = 6;
+}
+
+message TGetLinkStatusResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Link status.
+    ELinkStatus Status = 2;
+
+    // Migrated bytes.
+    uint64 MigratedBytes = 3;
+
+    // Error message when link in error state.
+    string ErrorMessage = 4;
+
+    // Request traces. Deprecated. Use Headers.Trace.
+    NCloud.NProto.TTraceInfo DeprecatedTrace = 999;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

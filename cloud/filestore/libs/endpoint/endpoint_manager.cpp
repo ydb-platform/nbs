@@ -166,9 +166,23 @@ private:
     {
         DrainingStarted = true;
 
+        TVector<TFuture<NProto::TStartEndpointResponse>> startingFutures;
+        startingFutures.reserve(StartingSockets.size());
+        for (const auto& [_, endpoint]: StartingSockets) {
+            startingFutures.push_back(endpoint.Result);
+        }
+
+        for (const auto& future: startingFutures) {
+            Executor->WaitFor(future);
+        }
+
         TVector<TFuture<void>> futures;
-        for (auto&& [_, endpoint]: Endpoints) {
-            futures.push_back(endpoint.Endpoint->SuspendAsync());
+        for (auto&& [socketPath, endpoint]: Endpoints) {
+            if (const auto* stopping = StoppingSockets.FindPtr(socketPath)) {
+                futures.push_back(stopping->Result.IgnoreResult());
+            } else {
+                futures.push_back(endpoint.Endpoint->SuspendAsync());
+            }
         }
 
         return WaitAll(futures);
