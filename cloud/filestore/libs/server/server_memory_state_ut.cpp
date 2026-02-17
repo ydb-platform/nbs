@@ -266,7 +266,8 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
 
         Sleep(TDuration::Seconds(2));
 
-        state.InvalidateTimedOutRegions();
+        auto error = state.InvalidateTimedOutRegions();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL(0u, state.ListMmapRegions().size());
     }
 
