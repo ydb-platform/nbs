@@ -46,6 +46,8 @@ struct IVolumeInfo
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,

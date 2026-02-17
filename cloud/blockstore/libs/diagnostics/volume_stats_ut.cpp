@@ -172,7 +172,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 type,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,
@@ -188,7 +190,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 type,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,
@@ -469,7 +473,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 errorKind,
                 NCloud::NProto::EF_NONE,
@@ -568,7 +574,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 errorKind,
                 errorFlags,
@@ -807,7 +815,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             now - Min(now, durationInCycles),
-            {},
+            TDuration::Zero(),  // postponedTime
+            TDuration::Zero(),  // backoffTime
+            TDuration::Zero(),  // shapingTime
             1_MB,
             {},
             NCloud::NProto::EF_NONE,
@@ -866,7 +876,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 now - Min(now, fastRequestCyclesCount),
-                {},
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1_MB,
                 {},
                 NCloud::NProto::EF_NONE,
@@ -898,7 +910,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 now - Min(now, slowRequestCyclesCount),
-                {},
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1_MB,
                 {},
                 NCloud::NProto::EF_NONE,
@@ -979,6 +993,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
             postponeDuration,
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
             1024,
             {},
             NCloud::NProto::EF_NONE,
@@ -1004,6 +1020,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
             postponeDuration,
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
             1024,
             {},
             NCloud::NProto::EF_NONE,
@@ -1071,7 +1089,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volumeInfo->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
-            TDuration(),
+            TDuration::Zero(),   // postponedTime
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
             1024,
             {},
             NCloud::NProto::EF_NONE,
@@ -1332,7 +1352,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 type,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),   // postponedTime
+                TDuration::Zero(),   // backoffTime
+                TDuration::Zero(),   // shapingTime
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,

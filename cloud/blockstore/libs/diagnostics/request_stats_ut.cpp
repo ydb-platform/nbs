@@ -23,6 +23,8 @@ struct TRequest
     size_t RequestBytes;
     TDuration RequestTime;
     TDuration PostponedTime;
+    TDuration BackoffTime;
+    TDuration ShapingTime;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,6 +50,8 @@ void AddRequestStats(
             requestType,
             requestStarted - DurationToCyclesSafe(request.RequestTime),
             request.PostponedTime,
+            request.BackoffTime,
+            request.ShapingTime,
             request.RequestBytes,
             EDiagnosticsErrorKind::Success,
             NCloud::NProto::EF_NONE,
@@ -128,7 +132,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                {{.RequestBytes = 1_MB,
+                  .RequestTime = TDuration::MilliSeconds(100)}},
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL);
 
@@ -146,7 +151,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_HDD,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                {{.RequestBytes = 1_MB,
+                  .RequestTime = TDuration::MilliSeconds(100)}},
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL);
 
@@ -164,7 +170,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                {{.RequestBytes = 1_MB,
+                  .RequestTime = TDuration::MilliSeconds(100)}},
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL);
 
@@ -182,7 +189,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                {{.RequestBytes = 1_MB,
+                  .RequestTime = TDuration::MilliSeconds(100)}},
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL);
 
@@ -200,7 +208,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                {{.RequestBytes = 1_MB,
+                  .RequestTime = TDuration::MilliSeconds(100)}},
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL);
 
@@ -218,7 +227,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                {{.RequestBytes = 1_MB,
+                  .RequestTime = TDuration::MilliSeconds(100)}},
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL);
 
@@ -272,7 +282,11 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_DEFAULT,
                 EBlockStoreRequest::WriteBlocks,
-                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}},
+                {{.RequestBytes = 1_MB,
+                  .RequestTime = TDuration::MilliSeconds(100),
+                  .PostponedTime = TDuration::Zero(),
+                  .BackoffTime = TDuration::Zero(),
+                  .ShapingTime = TDuration::Zero()}},
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL);
 
@@ -361,11 +375,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
-            {
-                {1_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
-                {1_MB, TDuration::MilliSeconds(200), TDuration::Zero()},
-                {1_MB, TDuration::MilliSeconds(300), TDuration::Zero()},
-            },
+            {{.RequestBytes = 1_MB,
+              .RequestTime = TDuration::MilliSeconds(100)},
+             {.RequestBytes = 1_MB,
+              .RequestTime = TDuration::MilliSeconds(200)},
+             {.RequestBytes = 1_MB,
+              .RequestTime = TDuration::MilliSeconds(300)}},
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
 
@@ -374,9 +389,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_HDD,
             EBlockStoreRequest::WriteBlocks,
             {
-                {1_MB, TDuration::MilliSeconds(400), TDuration::Zero()},
-                {1_MB, TDuration::MilliSeconds(500), TDuration::Zero()},
-                {1_MB, TDuration::MilliSeconds(600), TDuration::Zero()},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(400)},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(500)},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(600)},
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -386,9 +404,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             EBlockStoreRequest::WriteBlocks,
             {
-                {1_MB, TDuration::MilliSeconds(10), TDuration::Zero()},
-                {1_MB, TDuration::MilliSeconds(20), TDuration::Zero()},
-                {1_MB, TDuration::MilliSeconds(30), TDuration::Zero()},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(10)},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(20)},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(30)},
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -476,15 +497,15 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
             {
-                {1_MB,
-                 TDuration::MilliSeconds(100),
-                 TDuration::MilliSeconds(50)},   // 50 ms
-                {1_MB,
-                 TDuration::MilliSeconds(200),
-                 TDuration::MilliSeconds(100)},   // 100 ms
-                {1_MB,
-                 TDuration::MilliSeconds(300),
-                 TDuration::MilliSeconds(100)},   // 200 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(100),
+                 .PostponedTime = TDuration::MilliSeconds(50)},   // 50 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(200),
+                 .PostponedTime = TDuration::MilliSeconds(100)},   // 100 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(300),
+                 .PostponedTime = TDuration::MilliSeconds(100)},   // 200 ms
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -494,15 +515,15 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_HDD,
             EBlockStoreRequest::WriteBlocks,
             {
-                {1_MB,
-                 TDuration::MilliSeconds(400),
-                 TDuration::MilliSeconds(100)},   // 300 ms
-                {1_MB,
-                 TDuration::MilliSeconds(500),
-                 TDuration::MilliSeconds(100)},   // 400 ms
-                {1_MB,
-                 TDuration::MilliSeconds(600),
-                 TDuration::MilliSeconds(250)},   // 350 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(400),
+                 .PostponedTime = TDuration::MilliSeconds(100)},   // 300 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(500),
+                 .PostponedTime = TDuration::MilliSeconds(100)},   // 400 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(600),
+                 .PostponedTime = TDuration::MilliSeconds(250)},   // 350 ms
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -512,15 +533,15 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             EBlockStoreRequest::WriteBlocks,
             {
-                {1_MB,
-                 TDuration::MilliSeconds(10),
-                 TDuration::MilliSeconds(0)},   // 10 ms
-                {1_MB,
-                 TDuration::MilliSeconds(20),
-                 TDuration::MilliSeconds(11)},   // 9 ms
-                {1_MB,
-                 TDuration::MilliSeconds(30),
-                 TDuration::MilliSeconds(22)},   // 8 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(10),
+                 .PostponedTime = TDuration::MilliSeconds(0)},   // 10 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(20),
+                 .PostponedTime = TDuration::MilliSeconds(11)},   // 9 ms
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(30),
+                 .PostponedTime = TDuration::MilliSeconds(22)},   // 8 ms
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -611,9 +632,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
             {
-                {1_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
-                {2_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
-                {3_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 2_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 3_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -623,9 +647,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_HDD,
             EBlockStoreRequest::WriteBlocks,
             {
-                {4_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
-                {5_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
-                {6_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {.RequestBytes = 4_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 5_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 6_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -635,9 +662,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             EBlockStoreRequest::WriteBlocks,
             {
-                {7_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
-                {8_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
-                {9_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {.RequestBytes = 7_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 8_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 9_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
             },
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
@@ -729,7 +759,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 EBlockStoreRequest::WriteBlocks,
                 requestStarted -
                     DurationToCyclesSafe(TDuration::MilliSeconds(100)),
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1_MB,
                 EDiagnosticsErrorKind::ErrorSilent,
                 NCloud::NProto::EF_SILENT,   // a stub at the moment
@@ -784,7 +816,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                     EBlockStoreRequest::WriteBlocks,
                     requestStarted -
                         DurationToCyclesSafe(TDuration::MilliSeconds(100)),
-                    TDuration::Zero(),
+                    TDuration::Zero(),  // postponedTime
+                    TDuration::Zero(),  // backoffTime
+                    TDuration::Zero(),  // shapingTime
                     1_MB,
                     EDiagnosticsErrorKind::ErrorSilent,
                     NCloud::NProto::EF_HW_PROBLEMS_DETECTED,

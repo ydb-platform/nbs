@@ -627,11 +627,15 @@ struct TRequestCounters::TStatCounters
         TDuration requestTime,
         TDuration requestCompletionTime,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         bool unaligned,
         ECalcMaxTime calcMaxTime)
     {
+        Y_UNUSED(shapingTime);
+
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
                 || !IsReadWriteRequest);
@@ -674,7 +678,7 @@ struct TRequestCounters::TStatCounters
         }
 
         const auto time = requestTime - requestCompletionTime;
-        const auto execTime = time - postponedTime;
+        const auto execTime = time - postponedTime - backoffTime;
 
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(execTime.MicroSeconds());
@@ -957,6 +961,8 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     TRequestType requestType,
     ui64 requestStarted,
     TDuration postponedTime,
+    TDuration backoffTime,
+    TDuration shapingTime,
     ui64 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
@@ -978,6 +984,8 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
         requestTime,
         requestCompletionTime,
         postponedTime,
+        backoffTime,
+        shapingTime,
         requestBytes,
         errorKind,
         errorFlags,
@@ -1131,6 +1139,8 @@ void TRequestCounters::RequestCompletedImpl(
     TDuration requestTime,
     TDuration requestCompletionTime,
     TDuration postponedTime,
+    TDuration backoffTime,
+    TDuration shapingTime,
     ui64 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
@@ -1148,6 +1158,8 @@ void TRequestCounters::RequestCompletedImpl(
             requestTime,
             requestCompletionTime,
             postponedTime,
+            backoffTime,
+            shapingTime,
             requestBytes,
             errorKind,
             unaligned,
@@ -1159,6 +1171,8 @@ void TRequestCounters::RequestCompletedImpl(
         requestTime,
         requestCompletionTime,
         postponedTime,
+        backoffTime,
+        shapingTime,
         requestBytes,
         errorKind,
         errorFlags,
