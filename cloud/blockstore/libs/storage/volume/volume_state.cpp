@@ -745,13 +745,13 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         ClientInfosByClientId.try_emplace(clientId, info);
 
     if (!added) {
-        const bool isNewAccesRO =
+        const bool isNewAccessRO =
             info.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_READ_ONLY ||
             info.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_USER_READ_ONLY;
         const bool isOldAccessRW =
             clientInfoIt->second.GetVolumeClientInfo().GetVolumeAccessMode() ==
             NProto::VOLUME_ACCESS_READ_WRITE;
-        if (isNewAccesRO && isOldAccessRW) {
+        if (isNewAccessRO && isOldAccessRW) {
             if (StorageConfig->GetSendErrorOnAddClientConflict()) {
                 res.Error = MakeError(
                     E_INVALID_STATE,

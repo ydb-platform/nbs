@@ -2465,6 +2465,51 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_C(!HasError(res.Error), res.Error);
         UNIT_ASSERT(!res.VolumeClientMigrationInProgress);
     }
+
+    Y_UNIT_TEST(ShouldNotAllowAddSameClientIfItAlreadyHasReadWriteAccess)
+    {
+        NProto::TStorageServiceConfig config;
+
+        {
+            config.SetSendErrorOnAddClientConflict(false);
+            auto volumeState = CreateVolumeState(config, {});
+            auto clientId = CreateGuidAsString();
+
+            auto info = CreateVolumeClientInfo(
+                clientId,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
+            auto res = volumeState.AddClient(info, CreateActor(1));
+            UNIT_ASSERT_VALUES_EQUAL(res.Error.GetCode(), S_OK);
+
+            info = CreateVolumeClientInfo(
+                clientId,
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                NProto::VOLUME_MOUNT_REMOTE);
+            res = volumeState.AddClient(info, CreateActor(2));
+            UNIT_ASSERT_VALUES_EQUAL(res.Error.GetCode(), S_ALREADY);
+        }
+
+        {
+            config.SetSendErrorOnAddClientConflict(true);
+            auto volumeState = CreateVolumeState(config, {});
+            auto clientId = CreateGuidAsString();
+
+            auto info = CreateVolumeClientInfo(
+                clientId,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
+            auto res = volumeState.AddClient(info, CreateActor(1));
+            UNIT_ASSERT_VALUES_EQUAL(res.Error.GetCode(), S_OK);
+
+            info = CreateVolumeClientInfo(
+                clientId,
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                NProto::VOLUME_MOUNT_REMOTE);
+            res = volumeState.AddClient(info, CreateActor(2));
+            UNIT_ASSERT_VALUES_EQUAL(res.Error.GetCode(), E_INVALID_STATE);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
