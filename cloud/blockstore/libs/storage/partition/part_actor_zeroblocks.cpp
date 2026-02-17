@@ -333,8 +333,8 @@ void TPartitionActor::HandleZeroBlocks(
         requests.emplace_back(
             blobId,
             range,
-            TBlockMask(),   // skipMask
-            TVector<ui32>() /* checksums */);
+            TBlockMask(),       // skipMask
+            TVector<ui32>());   // checksums
     }
 
     Y_ABORT_UNLESS(requests);

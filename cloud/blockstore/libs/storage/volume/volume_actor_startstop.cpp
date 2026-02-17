@@ -1086,7 +1086,11 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "creating fresh blocks writer");
+        "%s Creating fresh blocks writer. Partition index: %lu. Partition "
+        "tablet id: %lu",
+        LogTitle.GetWithTime().c_str(),
+        partitionIndex,
+        partTabletId);
 
     auto actorId =
         NCloud::Register<NFreshBlocksWriter::TFreshBlocksWriterActor>(

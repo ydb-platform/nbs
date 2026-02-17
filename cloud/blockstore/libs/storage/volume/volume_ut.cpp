@@ -10914,8 +10914,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             0,
             GetPipeConfigWithRetries());
 
-        Cerr << "SendToPipe: " << actorId << Endl;
-
         TAutoPtr<IEventHandle> handle;
         runtime->GrabEdgeEvent<TEvents::TEvPoisonTaken>(
             handle,
