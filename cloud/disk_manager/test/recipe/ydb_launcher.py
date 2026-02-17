@@ -19,6 +19,7 @@ class YDBLauncher:
             erasure=None,
             static_pdisk_size=64 * 2**30,
             dynamic_storage_pools=dynamic_storage_pools,
+            use_in_memory_pdisks=True,
             enable_public_api_external_blobs=True)
 
         self.__cluster = kikimr_cluster_factory(configurator=self.__configurator)
