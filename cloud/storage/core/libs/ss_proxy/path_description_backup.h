@@ -34,6 +34,8 @@ private:
     NSSProxy::NProto::TPathDescriptionBackup BackupProto;
     const TFsPath TmpBackupFilePath;
 
+    bool BackupProtoHasChanged = false;
+
 public:
     TPathDescriptionBackup(
         int logComponent,

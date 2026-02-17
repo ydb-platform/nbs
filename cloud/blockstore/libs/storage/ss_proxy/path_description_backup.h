@@ -26,13 +26,15 @@ class TPathDescriptionBackup final
     : public NActors::TActorBootstrapped<TPathDescriptionBackup>
 {
 private:
-    int LogComponent;
+    const int LogComponent;
     const TFsPath BackupFilePath;
     const bool UseBinaryFormat = false;
     const bool ReadOnlyMode = false;
 
     NCloud::NStorage::NSSProxy::NProto::TPathDescriptionBackup BackupProto;
     const TFsPath TmpBackupFilePath;
+
+    bool BackupProtoHasChanged = false;
 
 public:
     TPathDescriptionBackup(
