@@ -147,7 +147,7 @@ struct TConfigs {
     TDiagnosticsConfigPtr DiagnosticsConfig;
 };
 
-struct TMyTestEnv
+struct TTestEnv
 {
     std::shared_ptr<TConfigs> Configs;
     NProto::TPartitionConfig PartitionConfig;
@@ -186,7 +186,7 @@ void InitLogSettings(TTestActorRuntime& runtime)
     runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
 }
 
-TMyTestEnv PrepareTestActorRuntime(
+TTestEnv PrepareTestActorRuntime(
     NProto::TStorageServiceConfig config = DefaultConfig(),
     ui32 blockCount = 1024,
     TMaybe<ui32> channelsCount = {},
@@ -257,7 +257,7 @@ TMyTestEnv PrepareTestActorRuntime(
     auto bootstrapper = CreateTestBootstrapper(*runtime, tabletInfo.release(), createFunc);
     runtime->EnableScheduleForActor(bootstrapper);
 
-    auto testEnv = TMyTestEnv{
+    auto testEnv = TTestEnv{
         std::move(configs),
         partConfig,
         std::move(runtime),
