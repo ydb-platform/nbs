@@ -17,6 +17,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 GetTxIdFromOperationType(
+    const NKikimrTxUserProxy::TEvProposeTransactionStatus& record,
+    NKikimrSchemeOp::EOperationType opType)
+{
+    ui64 txId = record.GetTxId();
+
+    switch (opType) {
+        case NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume:
+            txId = record.GetPathCreateTxId();
+            break;
+        case NKikimrSchemeOp::ESchemeOpDropBlockStoreVolume:
+            txId = record.GetPathDropTxId();
+            break;
+        default:
+            break;
+    }
+    return txId;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TModifySchemeActor final
     : public TActorBootstrapped<TModifySchemeActor>
 {
@@ -105,16 +126,7 @@ void TModifySchemeActor::HandleStatus(
                 break;
             }
 
-            switch (ModifyScheme.GetOperationType()) {
-                case NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume:
-                    TxId = ev->Get()->Record.GetPathCreateTxId();
-                    break;
-                case NKikimrSchemeOp::ESchemeOpDropBlockStoreVolume:
-                    TxId = ev->Get()->Record.GetPathDropTxId();
-                    break;
-                default:
-                    break;
-            }
+            TxId = GetTxIdFromOperationType(record, ModifyScheme.GetOperationType());
             [[fallthrough]];
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecInProgress:
             LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
@@ -122,11 +134,11 @@ void TModifySchemeActor::HandleStatus(
                 NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
                 TxId);
 
-            if (TxId == 0) {
+            if (UseSchemeCache && TxId == 0) {
                 ReplyAndDie(
                     ctx,
                     MakeError(
-                        MAKE_SCHEMESHARD_ERROR(SchemeShardStatus),
+                        E_REJECTED,
                         (TStringBuilder()
                          << NKikimrSchemeOp::EOperationType_Name(
                                 ModifyScheme.GetOperationType())
