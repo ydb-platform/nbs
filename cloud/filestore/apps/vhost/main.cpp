@@ -14,6 +14,8 @@ int main(int argc, char** argv)
 
     auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
     moduleFactories->CreateTicketParser = NKikimr::CreateTicketParser;
+    moduleFactories->SchemeOperationFactory.reset(
+        NKikimr::NSchemeShard::DefaultOperationFactory());
 
     auto vhostFactories = std::make_shared<NDaemon::TVhostModuleFactories>();
     vhostFactories->LoopFactory = NFuse::CreateFuseLoopFactory;
