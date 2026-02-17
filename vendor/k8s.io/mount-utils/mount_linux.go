@@ -399,11 +399,13 @@ func AddSystemdScopeSensitive(systemdRunPath, mountName, command string, args []
 // If the mounter has safe "not mounted" behavior, no error will be returned when the target is not a mount point.
 func (mounter *Mounter) Unmount(target string) error {
 	klog.V(4).Infof("Unmounting %s", target)
-	command := exec.Command("umount", target)
+	command := exec.Command("umount", "-v", target)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return checkUmountError(target, command, output, err, mounter.withSafeNotMountedBehavior)
 	}
+
+	klog.V(4).Infof("Umount output: %s", string(output))
 	return nil
 }
 
