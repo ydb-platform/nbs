@@ -241,12 +241,18 @@ message TAgentInfo {
 
 message TQueryAgentsInfoRequest
 {
+    message TAgentFilter
+    {
+        // Filter out agents whose states are not in this list.
+        // An empty list means that there is no filter.
+        repeated EAgentState States = 1;
+    }
+
     // Optional request headers.
     THeaders Headers = 1;
 
-    // Filter out agents whose states are not in this list.
-    // An empty list means that there is no filter.
-    repeated EAgentState FilterStates = 2;
+    // Exclude agents with properties that do not match the filter.
+    TAgentFilter Filter = 2;
 }
 
 message TQueryAgentsInfoResponse

@@ -1151,9 +1151,12 @@ public:
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
     }
 
-    auto CreateQueryAgentsInfoRequest(const TVector<NProto::EAgentState>& filterState = {}) {
-        auto request =  std::make_unique<TEvService::TEvQueryAgentsInfoRequest>();
-        request->Record.MutableFilterStates()->Add(filterStates.begin(), filterStates.end());
+    auto CreateQueryAgentsInfoRequest(
+        const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter)
+    {
+        auto request =
+            std::make_unique<TEvService::TEvQueryAgentsInfoRequest>();
+        request->Record.MutableFilter()->CopyFrom(filter);
         return request;
     }
 

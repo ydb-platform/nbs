@@ -8112,10 +8112,22 @@ NProto::EVolumeIOMode TDiskRegistryState::GetIoMode(
     return NProto::VOLUME_IO_OK;
 }
 
-TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
+TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo(
+    const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter) const
 {
+    auto filterContainsState = [&](const NProto::TAgentConfig& agent)
+    {
+        return filter.GetStates().size() == 0 ||
+               std::ranges::find(filter.GetStates(), agent.GetState()) !=
+                   filter.GetStates().end();
+    };
+
     TVector<NProto::TAgentInfo> ret;
     for (const auto& agent: AgentList.GetAgents()) {
+        if (!filterContainsState(agent)) {
+            continue;
+        }
+
         TMap<TString, NProto::TDeviceInfo> deviceMap;
         for (const auto& device: agent.GetDevices()) {
             const bool dirty = IsDirtyDevice(device.GetDeviceUUID());
