@@ -892,6 +892,7 @@ public:
         const NActors::TActorId& pipeServer,
         TInstant inactivityDeadline);
     void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
+    void RemovePipeServer(const NActors::TActorId& pipeServer);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
