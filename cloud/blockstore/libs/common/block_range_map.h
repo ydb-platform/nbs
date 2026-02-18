@@ -69,10 +69,14 @@ public:
     {
         auto it = RangeByKey.find(key);
         if (it != RangeByKey.end()) {
-            TItem result{
-                .Key = it->second->Key,
-                .Range = it->second->Range,
-                .Value = std::move(it->second->Value)};
+            // Since TSet stores constant values, it is necessary to remove
+            // the constancy for the std::move(item.Value). This is safe, as the
+            // element will be removed from the set immediately with iterator.
+            TItem& item = const_cast<TItem&>(*it->second);
+            auto result = std::make_optional<TItem>(TItem{
+                .Key = item.Key,
+                .Range = item.Range,
+                .Value = std::move(item.Value)});
             Ranges.erase(it->second);
             RangeByKey.erase(it);
             return result;
