@@ -451,6 +451,110 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFillBackoffTimeHistorgram)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCounters();
+        requestCounters.Register(*monitoring->GetCounters());
+
+        auto writeBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        auto readBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+
+        AddRequestStats(
+            requestCounters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(200),
+                 .PostponedTime = TDuration::MilliSeconds(100),
+                 .BackoffTime = TDuration::MilliSeconds(50)},
+            });
+
+        requestCounters.UpdateStats(true);
+
+        // Check the percentiles for BackoffTime
+        {
+            auto percentiles =
+                writeBlocks->GetSubgroup("percentiles", "BackoffTime")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(50000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(35000, p50->Val());
+        }
+
+        // Check the percentiles for ThrottlerDelay
+        {
+            auto percentiles =
+                writeBlocks->GetSubgroup("percentiles", "ThrottlerDelay")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(100000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(75000, p50->Val());
+        }
+
+        // Check the histogram for BackoffTime
+        {
+            auto histGroup =
+                writeBlocks->GetSubgroup("histogram", "BackoffTime")
+                    ->GetSubgroup("units", "usec");
+
+            TMap<TString, uint64_t> expectedValues;
+            for (const auto& name: TRequestUsTimeBuckets::MakeNames()) {
+                expectedValues[name] = 0;
+            }
+            expectedValues["50000"] = 1;
+
+            for (const auto& [name, value]: expectedValues) {
+                auto counter = histGroup->FindCounter(name);
+                UNIT_ASSERT_C(
+                    counter,
+                    "Counter " + name.Quote() + " not found");
+                UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+            }
+        }
+
+        // Check the histogram for ThrottlerDelay
+        {
+            auto histGroup =
+                writeBlocks->GetSubgroup("histogram", "ThrottlerDelay")
+                    ->GetSubgroup("units", "usec");
+
+            TMap<TString, uint64_t> expectedValues;
+            for (const auto& name: TRequestUsTimeBuckets::MakeNames()) {
+                expectedValues[name] = 0;
+            }
+            expectedValues["100000"] = 1;
+
+            for (const auto& [name, value]: expectedValues) {
+                auto counter = histGroup->FindCounter(name);
+                UNIT_ASSERT_C(
+                    counter,
+                    "Counter " + name.Quote() + " not found");
+                UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+            }
+        }
+
+        // Percentiles for BackoffTime for read blocks should be empty
+        {
+            auto percentiles =
+                readBlocks->GetSubgroup("percentiles", "BackoffTime")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(0, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, p50->Val());
+        }
+    }
+
     Y_UNIT_TEST(ShouldFillSizePercentiles)
     {
         auto monitoring = CreateMonitoringServiceStub();
