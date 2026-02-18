@@ -2261,9 +2261,6 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     if (!skippedRefs) {
         skippedRefs = &skipped;
     }
-    if (maxRows == 0) {
-        maxRows = Max<ui32>();
-    }
     auto result = TIndexTabletDatabase::ReadNodeRefs(
         nodeId,
         commitId,
