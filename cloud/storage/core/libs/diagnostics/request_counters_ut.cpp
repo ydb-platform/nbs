@@ -27,6 +27,8 @@ struct TRequest
     size_t RequestBytes = 0;
     TDuration RequestTime;
     TDuration PostponedTime;
+    TDuration BackoffTime;
+    TDuration ShapingTime;
     bool Aligned = false;
     ui64 RequestCompletionTime = 0;
 };
@@ -54,6 +56,8 @@ void AddRequestStats(
             requestType,
             realRequestStarted,
             request.PostponedTime,
+            request.BackoffTime,
+            request.ShapingTime,
             request.RequestBytes,
             EDiagnosticsErrorKind::Success,
             NCloud::NProto::EF_NONE,
@@ -180,7 +184,9 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         requestCounters.RequestCompleted(
             WriteRequestType,
             started,
-            TDuration::Zero(),
+            TDuration::Zero(),   // postponedTime
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
             1_MB,
             EDiagnosticsErrorKind::Success,
             NCloud::NProto::EF_NONE,
@@ -305,9 +311,14 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             ->GetCounters()
             ->GetSubgroup("request", "ReadBlocks");
 
-        AddRequestStats(requestCounters, ReadRequestType, {
-            { 1_MB, TDuration::MilliSeconds(101), TDuration::MilliSeconds(50) },
-        });
+        AddRequestStats(
+            requestCounters,
+            ReadRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(101),
+                 .PostponedTime = TDuration::MilliSeconds(50)},
+            });
 
         requestCounters.UpdateStats(true);
 
@@ -372,10 +383,15 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             ->GetCounters()
             ->GetSubgroup("request", "ReadBlocks");
 
-        AddRequestStats(requestCounters, ReadRequestType, {
-            { 1_MB, TDuration::MilliSeconds(106), TDuration::MilliSeconds(50),
-                false, DurationToCyclesSafe(TDuration::MilliSeconds(45)) }
-        });
+        AddRequestStats(
+            requestCounters,
+            ReadRequestType,
+            {{.RequestBytes = 1_MB,
+              .RequestTime = TDuration::MilliSeconds(106),
+              .PostponedTime = TDuration::MilliSeconds(50),
+              .Aligned = false,
+              .RequestCompletionTime =
+                  DurationToCyclesSafe(TDuration::MilliSeconds(45))}});
 
         requestCounters.UpdateStats(true);
 
@@ -435,6 +451,110 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFillBackoffTimeHistorgram)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCounters();
+        requestCounters.Register(*monitoring->GetCounters());
+
+        auto writeBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        auto readBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+
+        AddRequestStats(
+            requestCounters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(200),
+                 .PostponedTime = TDuration::MilliSeconds(100),
+                 .BackoffTime = TDuration::MilliSeconds(50)},
+            });
+
+        requestCounters.UpdateStats(true);
+
+        // Check the percentiles for BackoffTime
+        {
+            auto percentiles =
+                writeBlocks->GetSubgroup("percentiles", "BackoffTime")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(50000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(35000, p50->Val());
+        }
+
+        // Check the percentiles for ThrottlerDelay
+        {
+            auto percentiles =
+                writeBlocks->GetSubgroup("percentiles", "ThrottlerDelay")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(100000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(75000, p50->Val());
+        }
+
+        // Check the histogram for BackoffTime
+        {
+            auto histGroup =
+                writeBlocks->GetSubgroup("histogram", "BackoffTime")
+                    ->GetSubgroup("units", "usec");
+
+            TMap<TString, uint64_t> expectedValues;
+            for (const auto& name: TRequestUsTimeBuckets::MakeNames()) {
+                expectedValues[name] = 0;
+            }
+            expectedValues["50000"] = 1;
+
+            for (const auto& [name, value]: expectedValues) {
+                auto counter = histGroup->FindCounter(name);
+                UNIT_ASSERT_C(
+                    counter,
+                    "Counter " + name.Quote() + " not found");
+                UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+            }
+        }
+
+        // Check the histogram for ThrottlerDelay
+        {
+            auto histGroup =
+                writeBlocks->GetSubgroup("histogram", "ThrottlerDelay")
+                    ->GetSubgroup("units", "usec");
+
+            TMap<TString, uint64_t> expectedValues;
+            for (const auto& name: TRequestUsTimeBuckets::MakeNames()) {
+                expectedValues[name] = 0;
+            }
+            expectedValues["100000"] = 1;
+
+            for (const auto& [name, value]: expectedValues) {
+                auto counter = histGroup->FindCounter(name);
+                UNIT_ASSERT_C(
+                    counter,
+                    "Counter " + name.Quote() + " not found");
+                UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+            }
+        }
+
+        // Percentiles for BackoffTime for read blocks should be empty
+        {
+            auto percentiles =
+                readBlocks->GetSubgroup("percentiles", "BackoffTime")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(0, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, p50->Val());
+        }
+    }
+
     Y_UNIT_TEST(ShouldFillSizePercentiles)
     {
         auto monitoring = CreateMonitoringServiceStub();
@@ -446,11 +566,23 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             ->GetCounters()
             ->GetSubgroup("request", "WriteBlocks");
 
-        AddRequestStats(requestCounters, WriteRequestType, {
-            { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 2_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 3_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+        AddRequestStats(
+            requestCounters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(100),
+                 .BackoffTime = TDuration::Zero(),
+                 .ShapingTime = TDuration::Zero()},
+                {.RequestBytes = 2_MB,
+                 .RequestTime = TDuration::MilliSeconds(100),
+                 .BackoffTime = TDuration::Zero(),
+                 .ShapingTime = TDuration::Zero()},
+                {.RequestBytes = 3_MB,
+                 .RequestTime = TDuration::MilliSeconds(100),
+                 .BackoffTime = TDuration::Zero(),
+                 .ShapingTime = TDuration::Zero()},
+            });
 
         requestCounters.UpdateStats(true);
 
@@ -481,8 +613,11 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
             requestCounters.RequestCompleted(
                 WriteRequestType,
-                requestStarted - DurationToCyclesSafe(TDuration::MilliSeconds(201)),
-                TDuration::MilliSeconds(100),
+                requestStarted -
+                    DurationToCyclesSafe(TDuration::MilliSeconds(201)),
+                TDuration::MilliSeconds(100),   // postponedTime
+                TDuration::Zero(),              // backoffTime
+                TDuration::Zero(),              // shapingTime
                 1_MB,
                 errorKind,
                 NCloud::NProto::EF_NONE,
@@ -548,8 +683,11 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
             requestCounters.RequestCompleted(
                 requestType,
-                requestStarted - DurationToCyclesSafe(TDuration::MilliSeconds(201)),
-                TDuration::MilliSeconds(100),
+                requestStarted -
+                    DurationToCyclesSafe(TDuration::MilliSeconds(201)),
+                TDuration::MilliSeconds(100),   // postponedTime
+                TDuration::Zero(),              // backoffTime
+                TDuration::Zero(),              // shapingTime
                 1_MB,
                 errorKind,
                 errorFlags,
@@ -609,11 +747,17 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         subscriber->Register(*monitoring->GetCounters()->GetSubgroup("subscribers", "s"));
         counters->Subscribe(subscriber);
 
-        AddRequestStats(*counters, WriteRequestType, {
-            { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 2_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 3_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 2_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 3_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+            });
 
         counters->UpdateStats();
 
@@ -651,11 +795,17 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         innerSubscriber->Register(*monitoring->GetCounters()->GetSubgroup("subscribers", "inner"));
         outerSubscriber->Subscribe(innerSubscriber);
 
-        AddRequestStats(*counters, WriteRequestType, {
-            { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 2_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 3_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 2_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+                {.RequestBytes = 3_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+            });
 
         {
             counters->UpdateStats();
@@ -698,12 +848,19 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
              .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
-        AddRequestStats(*counters, WriteRequestType, {
-            { 1_KB, TDuration::Minutes(1), TDuration::Zero() },
-            { 1_MB, TDuration::Minutes(1), TDuration::Zero() },
-            { 1_KB, TDuration::Minutes(1), TDuration::Zero(), true },
-            { 1_MB, TDuration::Minutes(1), TDuration::Zero(), true },
-        });
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Minutes(1)},
+                {.RequestBytes = 1_MB, .RequestTime = TDuration::Minutes(1)},
+                {.RequestBytes = 1_KB,
+                 .RequestTime = TDuration::Minutes(1),
+                 .Aligned = true},
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::Minutes(1),
+                 .Aligned = true},
+            });
 
         counters->UpdateStats();
         {
@@ -733,12 +890,12 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             *counters,
             WriteRequestType,
             {
-                {1_KB, TDuration::Seconds(8), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(20), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(30), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(37), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(50), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(100), TDuration::Zero()},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(8)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(20)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(30)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(37)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(50)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(100)},
             });
 
         counters->UpdateStats();
@@ -816,12 +973,12 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             *counters,
             WriteRequestType,
             {
-                {1_KB, TDuration::Seconds(8), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(20), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(30), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(37), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(50), TDuration::Zero()},
-                {1_KB, TDuration::Seconds(100), TDuration::Zero()},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(8)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(20)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(30)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(37)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(50)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(100)},
             });
 
         const TMap<size_t, uint64_t> expectedHistogramValues = {
@@ -897,14 +1054,17 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
              .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
-        AddRequestStats(*counters, WriteRequestType, {
-            { 1_KB, TDuration::Seconds(8), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(20), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(30), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(37), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(50), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(100), TDuration::Zero() },
-        });
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(8)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(20)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(30)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(37)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(50)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(100)},
+            });
 
         TMap<TString, uint64_t> expectedHistogramValues;
         for (const auto& bucketName : TRequestUsTimeBuckets::MakeNames()) {
@@ -938,14 +1098,17 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
              .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
-        AddRequestStats(*counters, WriteRequestType, {
-            { 1_KB, TDuration::Seconds(8), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(20), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(30), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(37), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(50), TDuration::Zero() },
-            { 1_KB, TDuration::Seconds(100), TDuration::Zero() },
-        });
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(8)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(20)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(30)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(37)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(50)},
+                {.RequestBytes = 1_KB, .RequestTime = TDuration::Seconds(100)},
+            });
 
         const TMap<size_t, uint64_t> expectedHistogramValues = {
             { 22, 1 }, // 10000ms
@@ -980,14 +1143,23 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
              .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
-        AddRequestStats(*counters, WriteRequestType, {
-            { 1_KB, TDuration::MilliSeconds(800), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(1500), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(2000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(8000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(36000), TDuration::Zero() },
-            { 1_KB, TDuration::MilliSeconds(100000), TDuration::Zero() },
-        });
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_KB,
+                 .RequestTime = TDuration::MilliSeconds(800)},
+                {.RequestBytes = 1_KB,
+                 .RequestTime = TDuration::MilliSeconds(1500)},
+                {.RequestBytes = 1_KB,
+                 .RequestTime = TDuration::MilliSeconds(2000)},
+                {.RequestBytes = 1_KB,
+                 .RequestTime = TDuration::MilliSeconds(8000)},
+                {.RequestBytes = 1_KB,
+                 .RequestTime = TDuration::MilliSeconds(36000)},
+                {.RequestBytes = 1_KB,
+                 .RequestTime = TDuration::MilliSeconds(100000)},
+            });
 
         auto counter = monitoring
             ->GetCounters()
@@ -1017,7 +1189,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             *counters,
             WriteRequestType,
             {
-                {8_GB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {.RequestBytes = 8_GB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
             });
 
         counters->UpdateStats();
@@ -1046,12 +1219,18 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
                 *requestCounters,
                 WriteRequestType,
                 {
-                    {size, TDuration::Seconds(8), TDuration::Zero()},
-                    {size, TDuration::Seconds(20), TDuration::Zero()},
-                    {size, TDuration::Seconds(30), TDuration::Zero()},
-                    {size, TDuration::Seconds(37), TDuration::Zero()},
-                    {size, TDuration::Seconds(50), TDuration::Zero()},
-                    {size, TDuration::Seconds(100), TDuration::Zero()},
+                    {.RequestBytes = size,
+                     .RequestTime = TDuration::Seconds(8)},
+                    {.RequestBytes = size,
+                     .RequestTime = TDuration::Seconds(20)},
+                    {.RequestBytes = size,
+                     .RequestTime = TDuration::Seconds(30)},
+                    {.RequestBytes = size,
+                     .RequestTime = TDuration::Seconds(37)},
+                    {.RequestBytes = size,
+                     .RequestTime = TDuration::Seconds(50)},
+                    {.RequestBytes = size,
+                     .RequestTime = TDuration::Seconds(100)},
                 });
         };
 

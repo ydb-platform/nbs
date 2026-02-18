@@ -312,6 +312,8 @@ public:
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
@@ -322,8 +324,9 @@ public:
         VolumeBase->PerfCalc.OnRequestCompleted(
             TranslateLocalRequestType(requestType),
             requestStarted,
-            GetCycleCount(),
-            DurationToCyclesSafe(postponedTime),
+            GetCycleCount(),   // requestCompleted
+            DurationToCyclesSafe(
+                postponedTime + backoffTime + shapingTime),   // waitTime
             requestBytes);
         VolumeBase->PostponeTimePredictor->Register(postponedTime);
         VolumeBase->DowntimeCalculator.RequestCompleted(
@@ -342,6 +345,8 @@ public:
                 TranslateLocalRequestType(requestType)),
             requestStarted,
             postponedTime,
+            backoffTime,
+            shapingTime,
             requestBytes,
             errorKind,
             errorFlags,

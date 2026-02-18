@@ -112,7 +112,7 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
     EBlockStoreRequest requestType,
     ui64 requestStarted,
     ui64 requestCompleted,
-    ui64 postponedTime,
+    ui64 waitTime,
     ui32 requestBytes)
 {
     bool isRead = IsReadRequest(requestType);
@@ -130,8 +130,8 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
         }
         auto requestTime = requestCompleted - requestStarted;
         auto execTime = 0;
-        if (requestTime > postponedTime) {
-            execTime = requestTime - postponedTime;
+        if (requestTime > waitTime) {
+            execTime = requestTime - waitTime;
         }
         AtomicAdd(CurrentScore, CyclesToDurationSafe(execTime).MicroSeconds());
     }

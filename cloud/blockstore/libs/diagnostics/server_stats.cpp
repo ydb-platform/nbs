@@ -404,7 +404,6 @@ void TServerStats::RequestCompleted(
     const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
     const auto predictedTime = callContext.GetPossiblePostponeDuration();
     const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
-    const auto waitTime = postponedTime + backoffTime;
     const auto errorFlags = error.GetFlags();
     auto errorKind = GetDiagnosticsErrorKind(error);
 
@@ -432,7 +431,9 @@ void TServerStats::RequestCompleted(
         req.MediaKind,
         req.RequestType,
         started,
-        waitTime,
+        postponedTime,
+        backoffTime,
+        TDuration::Zero(),  // shapingTime
         req.RequestBytes,
         errorKind,
         errorFlags,
@@ -451,7 +452,9 @@ void TServerStats::RequestCompleted(
         req.VolumeInfo->RequestCompleted(
             req.RequestType,
             started,
-            waitTime,
+            postponedTime,
+            backoffTime,
+            TDuration::Zero(),  // shapingTime
             req.RequestBytes,
             errorKind,
             errorFlags,
@@ -472,7 +475,7 @@ void TServerStats::RequestCompleted(
                 record.Request = IProfileLog::TReadWriteRequest{
                     req.RequestType,
                     requestTime,
-                    waitTime,
+                    postponedTime,
                     {
                         TBlockRange64::WithLength(
                             req.StartIndex,
@@ -504,7 +507,7 @@ void TServerStats::RequestCompleted(
         }
     }
 
-    auto execTime = requestTime - waitTime;
+    auto execTime = requestTime - postponedTime - backoffTime;
 
     LWTRACK(
         RequestCompleted,
