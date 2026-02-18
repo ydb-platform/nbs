@@ -1426,4 +1426,8 @@ message TStorageServiceConfig
     // Periodically checks disk registry state consistency with local db.
     // If equals zero check is disabled.
     optional uint32 EnsureDiskRegistryStateIntegrityInterval = 482;
+
+    // If true, throw error when adding read-only client if a read-write one
+    // already exists
+    optional bool SendErrorOnAddClientConflict = 483;
 }
