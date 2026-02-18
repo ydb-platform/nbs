@@ -282,18 +282,6 @@ void TPartitionActor::HandleZeroBlocks(
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
-
-    LOG_TRACE(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "%s Start zero blocks @%lu (range: %s)",
-        LogTitle.GetWithTime().c_str(),
-        commitId,
-        DescribeRange(writeRange).c_str());
-
-    State->AccessCommitQueue().AcquireBarrier(commitId);
-
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
     const auto writeBlobThreshold =
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
@@ -305,6 +293,18 @@ void TPartitionActor::HandleZeroBlocks(
             ConvertRangeSafe(writeRange),
             commitId);
     } else {
+        ++WriteAndZeroRequestsInProgress;
+
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Start zero blocks @%lu (range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            commitId,
+            DescribeRange(writeRange).c_str());
+
+        State->AccessCommitQueue().AcquireBarrier(commitId);
+
         // large writes could skip FreshBlocks table completely
         TVector<TAddMergedBlob> requests(
             Reserve(1 + writeRange.Size() / State->GetMaxBlocksInBlob()));

@@ -13647,6 +13647,39 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         checkFreshBlocksCount(0);
     }
 
+    Y_UNIT_TEST(ShouldRejectSmallZerosAfterReachingFreshByteCountHardLimit)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshByteCountHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+
+        partition.SendZeroBlocksRequest(0);
+        auto response = partition.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
+
+        partition.Flush();
+
+        partition.SendZeroBlocksRequest(0);
+        response = partition.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

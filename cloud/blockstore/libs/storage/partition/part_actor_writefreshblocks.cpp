@@ -868,6 +868,18 @@ void TPartitionActor::ZeroFreshBlocks(
         return;
     }
 
+    ++WriteAndZeroRequestsInProgress;
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start zero blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
+        commitId,
+        DescribeRange(writeRange).c_str());
+
+    State->AccessCommitQueue().AcquireBarrier(commitId);
+
     const bool freshChannelZeroRequestsEnabled =
         Config->GetFreshChannelZeroRequestsEnabled();
 
