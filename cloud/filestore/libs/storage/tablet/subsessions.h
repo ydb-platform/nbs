@@ -64,11 +64,10 @@ public:
         const NActors::TActorId& pipeServer,
         ui32 tabletGeneration);
 
-    ui32 DeleteSubSession(const NActors::TActorId& owner);
     ui32 DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer);
-    ui32 DeleteSubSession(ui64 sessionSeqNo);
+    std::optional<TSubSession> DeleteSubSession(ui64 sessionSeqNo);
 
-    TVector<NActors::TActorId> GetSubSessions() const;
+    TVector<NActors::TActorId> GetSubSessionsOwner() const;
     TVector<NActors::TActorId> GetSubSessionsPipeServer() const;
     TVector<TSubSession> GetAllSubSessions() const;
 
