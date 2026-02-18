@@ -248,13 +248,6 @@ public:
         return result;
     }
 
-    ui32 DeleteSubSession(const NActors::TActorId& owner)
-    {
-        auto result = SubSessions.DeleteSubSession(owner);
-        UpdateSeqNo();
-        return result;
-    }
-
     ui32 DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer)
     {
         auto result = SubSessions.DeleteSubSessionByPipeServer(pipeServer);
@@ -262,7 +255,7 @@ public:
         return result;
     }
 
-    ui32 DeleteSubSession(ui64 sessionSeqNo)
+    std::optional<TSubSession> DeleteSubSession(ui64 sessionSeqNo)
     {
         auto result = SubSessions.DeleteSubSession(sessionSeqNo);
         UpdateSeqNo();
@@ -271,12 +264,22 @@ public:
 
     TVector<NActors::TActorId> GetSubSessions() const
     {
-        return SubSessions.GetSubSessions();
+        return SubSessions.GetSubSessionsOwner();
     }
 
     TVector<NActors::TActorId> GetSubSessionsPipeServer() const
     {
         return SubSessions.GetSubSessionsPipeServer();
+    }
+
+    std::optional<TSubSession> GetSubSessionBySeqNo(ui64 seqNo) const
+    {
+        return SubSessions.GetSubSessionBySeqNo(seqNo);
+    }
+
+    bool ReadyToDestroy(ui64 seqNo) const
+    {
+        return SubSessions.ReadyToDestroy(seqNo);
     }
 
     ui64 GenerateDupCacheEntryId()
