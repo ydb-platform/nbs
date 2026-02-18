@@ -63,6 +63,8 @@ class TGenericInventoryServiceClient
         {
             auto future = Promise.GetFuture();
 
+            ClientContext.set_wait_for_ready(true);
+
             Reader = TServiceTraits::AsyncListDevices(
                 service,
                 ClientContext,
