@@ -194,19 +194,16 @@ public:
         const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) override
     {
-        auto req = std::make_unique<iocb>();
+        static_assert(sizeof(TArrayRef<char>) == sizeof(iovec));
 
-        TVector<iovec> iov(buffers.size());
-        for (ui32 i = 0; i < buffers.size(); ++i) {
-            iov[i].iov_base = static_cast<void*>(buffers[i].data());
-            iov[i].iov_len = buffers[i].size();
-        }
+        auto req = std::make_unique<iocb>();
 
         io_prep_preadv(
             req.get(),
             file,
-            iov.data(),
-            iov.size(),
+            // TArrayRef has the same layout as iovec
+            std::bit_cast<iovec*>(buffers.data()),
+            static_cast<int>(buffers.size()),
             offset);
 
         req->data = completion;
@@ -240,20 +237,16 @@ public:
         const TVector<TArrayRef<const char>>& buffers,
         TFileIOCompletion* completion) override
     {
-        auto req = std::make_unique<iocb>();
+        static_assert(sizeof(TArrayRef<const char>) == sizeof(iovec));
 
-        TVector<iovec> iov(buffers.size());
-        for (ui32 i = 0; i < buffers.size(); ++i) {
-            iov[i].iov_base =
-                static_cast<void*>(const_cast<char*>(buffers[i].data()));
-            iov[i].iov_len = buffers[i].size();
-        }
+        auto req = std::make_unique<iocb>();
 
         io_prep_pwritev(
             req.get(),
             file,
-            iov.data(),
-            iov.size(),
+            // TArrayRef has the same layout as iovec
+            std::bit_cast<iovec*>(buffers.data()),
+            static_cast<int>(buffers.size()),
             offset);
 
         req->data = completion;
