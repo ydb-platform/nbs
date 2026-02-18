@@ -2016,7 +2016,8 @@ void TIndexTabletDatabase::WriteOpLogEntry(const NProto::TOpLogEntry& entry)
         .Update(NIceDb::TUpdate<TTable::Proto>(entry));
 }
 
-void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId) {
+void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId)
+{
     using TTable = TIndexTabletSchema::OpLog;
 
     Table<TTable>()
@@ -2058,6 +2059,75 @@ bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 
     while (it.IsValid()) {
         opLog.emplace_back(it.template GetValue<TTable::Proto>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ResponseLog
+
+void TIndexTabletDatabase::WriteResponseLogEntry(
+    const NProtoPrivate::TResponseLogEntry& entry)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    Table<TTable>()
+        .Key(entry.GetClientTabletId(), entry.GetRequestId())
+        .Update(NIceDb::TUpdate<TTable::Proto>(entry));
+}
+
+void TIndexTabletDatabase::DeleteResponseLogEntry(
+    ui64 clientTabletId,
+    ui64 requestId)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    Table<TTable>()
+        .Key(clientTabletId, requestId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadResponseLogEntry(
+    ui64 clientTabletId,
+    ui64 requestId,
+    TMaybe<NProtoPrivate::TResponseLogEntry>& entry)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    auto it = Table<TTable>()
+        .Key(clientTabletId, requestId)
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    if (it.IsValid()) {
+        entry = it.GetValue<TTable::Proto>();
+    }
+
+    return true;
+}
+
+bool TIndexTabletDatabase::ReadResponseLog(
+    TVector<NProtoPrivate::TResponseLogEntry>& responseLog)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        responseLog.emplace_back(it.template GetValue<TTable::Proto>());
 
         if (!it.Next()) {
             return false;   // not ready

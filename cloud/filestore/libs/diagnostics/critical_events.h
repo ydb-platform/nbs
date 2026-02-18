@@ -48,7 +48,8 @@ namespace NCloud::NFileStore{
     xxx(IsNotDirectory)                                                        \
     xxx(TryingToUseTwoBytesShardNoWithObsoleteHandles)                         \
     xxx(CounterIsNegative)                                                     \
-    xxx(InvalidateTimedOutRegionsError)                                         \
+    xxx(InvalidResponseLogEntry)                                               \
+    xxx(InvalidateTimedOutRegionsError)                                        \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

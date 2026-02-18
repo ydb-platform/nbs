@@ -12,6 +12,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/fresh_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/fresh_bytes.h>
 #include <cloud/filestore/libs/storage/tablet/model/garbage_queue.h>
+#include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/large_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
@@ -67,6 +68,10 @@ struct TIndexTabletState::TImpl
     TSet<ui64> OrphanNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
     THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
+    THashMap<
+        TInternalRequestId,
+        NProtoPrivate::TResponseLogEntry,
+        TInternalRequestIdHash> InternalResponses;
 
     TCheckpointStore Checkpoints;
     TChannels Channels;
@@ -77,7 +82,7 @@ struct TIndexTabletState::TImpl
 
     IShardBalancerPtr ShardBalancer;
 
-    TImpl(const TFileStoreAllocRegistry& registry)
+    explicit TImpl(const TFileStoreAllocRegistry& registry)
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))
         , FreshBlocks(registry.GetAllocator(EAllocatorTag::FreshBlocks))
         , MixedBlocks(registry.GetAllocator(EAllocatorTag::BlobMetaMap))

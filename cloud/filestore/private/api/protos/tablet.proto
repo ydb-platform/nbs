@@ -991,6 +991,97 @@ message TAbortUnlinkDirectoryNodeInShardResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ResponseLogEntry ops
+
+message TResponseLogEntry
+{
+    uint64 ClientTabletId = 1;
+    uint64 RequestId = 2;
+
+    oneof Response {
+        TRenameNodeInDestinationResponse RenameNodeInDestinationResponse = 101;
+    }
+}
+
+message TDeleteResponseLogEntryRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem (shard) identifier.
+    string FileSystemId = 2;
+
+    // Client tablet (the tablet that issued the original request) identifier.
+    uint64 ClientTabletId = 3;
+
+    // Request id of that request.
+    uint64 RequestId = 4;
+}
+
+message TDeleteResponseLogEntryResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+message TGetResponseLogEntryRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem (shard) identifier.
+    string FileSystemId = 2;
+
+    // Client tablet (the tablet that issued the original request) identifier.
+    uint64 ClientTabletId = 3;
+
+    // Request id of that request.
+    uint64 RequestId = 4;
+}
+
+message TGetResponseLogEntryResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // The entry.
+    TResponseLogEntry Entry = 2;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+message TWriteResponseLogEntryRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem (shard) identifier.
+    string FileSystemId = 2;
+
+    // Client tablet (the tablet that issued the original request) identifier.
+    uint64 ClientTabletId = 3;
+
+    // Request id of that request.
+    uint64 RequestId = 4;
+
+    // The entry.
+    TResponseLogEntry Entry = 5;
+}
+
+message TWriteResponseLogEntryResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // UnlinkNodeInShard request
 
 message TUnlinkNodeInShardRequest
@@ -1029,7 +1120,6 @@ message TReadNodeRefsRequest
     // Limit on the number of entries within the response.
     uint32 Limit = 4;
 }
-
 
 message TReadNodeRefsResponse
 {

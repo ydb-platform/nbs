@@ -46,6 +46,10 @@ message THeaders
 
         // IAM auth token.
         bytes AuthToken = 3;
+
+        // If this request is sent from another tablet, that tablet can put its
+        // TabletId into this field.
+        uint64 ClientTabletId = 4;
     }
 
     // Internal header, should not be used outside.

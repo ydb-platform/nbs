@@ -1004,6 +1004,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         TVector<TString> names;
         TVector<NProto::TNodeAttr> nodes;
 
+        const ui32 flags = 0;
+        const ui64 clientTabletId = 1;
+        ui64 requestId = 0;
+        TVector<ui64> requestIds;
+
         for (ui32 i = 0; i < 10; ++i) {
             auto fileName = TStringBuilder() << "file" << i;
             auto shardId = TStringBuilder() << "shard" << i;
@@ -1013,7 +1018,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 dir,
                 fileName,
                 shardId,
-                shardNodeName);
+                shardNodeName,
+                flags,
+                clientTabletId,
+                ++requestId);
             auto response = tablet.RecvRenameNodeInDestinationResponse();
             reconnectIfNeeded();
 
@@ -1031,6 +1039,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             node.SetShardFileSystemId(shardId);
             node.SetShardNodeName(shardNodeName);
             nodes.push_back(std::move(node));
+
+            requestIds.push_back(requestId);
         }
 
         auto response = tablet.ListNodes(dir);
@@ -1043,6 +1053,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             UNIT_ASSERT_VALUES_EQUAL(
                 nodes[i].ShortUtf8DebugString(),
                 listedNodes[i].ShortUtf8DebugString());
+        }
+
+        //
+        // Just checking that the responses have been persistently saved to
+        // the response log. It's ok that the responses are basically empty.
+        //
+
+        for (ui32 i = 0; i < requestIds.size(); ++i) {
+            auto response =
+                tablet.GetResponseLogEntry(clientTabletId, requestIds[i]);
+            const auto& e = response->Record.GetEntry();
+            UNIT_ASSERT_VALUES_EQUAL(clientTabletId, e.GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(requestIds[i], e.GetRequestId());
+            const auto& r = e.GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("", r.GetOldTargetNodeShardNodeName());
         }
 
         UNIT_ASSERT_C(
@@ -1162,9 +1188,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             const auto& entry = *opLogEntryResponse->OpLogEntry;
             const auto& dstRequest = entry.GetRenameNodeInDestinationRequest();
             UNIT_ASSERT_VALUES_EQUAL(
-                renameNodeRequest->Record.GetHeaders().ShortUtf8DebugString(),
-                dstRequest.GetHeaders().ShortUtf8DebugString());
-            UNIT_ASSERT_VALUES_EQUAL(
                 renameNodeRequest->Record.GetNewParentId(),
                 dstRequest.GetNewParentId());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1194,6 +1217,125 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 << rebootTracker.GetGenerationCount());
 
         UNIT_ASSERT_GT(failures, 0);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldDeleteGetWriteResponseLog)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto rebootAndReconnect = [&]()
+        {
+            tablet.RebootTablet();
+            tablet.ReconnectPipe();
+            tablet.WaitReady();
+        };
+
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(100);
+            entry.SetRequestId(10);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId("sh0");
+            r.SetOldTargetNodeShardNodeName("n0");
+            tablet.WriteResponseLogEntry(entry);
+
+            entry.SetClientTabletId(101);
+            entry.SetRequestId(11);
+            r.SetOldTargetNodeShardId("sh1");
+            r.SetOldTargetNodeShardNodeName("n1");
+            tablet.WriteResponseLogEntry(entry);
+
+            entry.SetClientTabletId(102);
+            entry.SetRequestId(12);
+            r.SetOldTargetNodeShardId("sh2");
+            r.SetOldTargetNodeShardNodeName("n2");
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        tablet.DeleteResponseLogEntry(101, 11);
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(101, 11);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(102, 12);
+            UNIT_ASSERT_VALUES_EQUAL(
+                102,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                12,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r.GetOldTargetNodeShardNodeName());
+        }
+
+        rebootAndReconnect();
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(101, 11);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(102, 12);
+            UNIT_ASSERT_VALUES_EQUAL(
+                102,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                12,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r.GetOldTargetNodeShardNodeName());
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInUnsafeNodeOperations)

@@ -112,6 +112,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadSessionHistoryEntries(args.SessionHistory),
         db.ReadOpLog(args.OpLog),
+        db.ReadResponseLog(args.ResponseLog),
         db.ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
         db.ReadOrphanNodes(args.OrphanNodeIds),
     };
@@ -265,6 +266,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.ResponseLog,
         config);
     UpdateLogTag();
 

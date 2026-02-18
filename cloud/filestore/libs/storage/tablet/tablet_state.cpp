@@ -79,8 +79,7 @@ TIndexTabletState::TIndexTabletState()
     : Impl(new TImpl(AllocatorRegistry))
 {}
 
-TIndexTabletState::~TIndexTabletState()
-{}
+TIndexTabletState::~TIndexTabletState() = default;
 
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
@@ -96,6 +95,7 @@ void TIndexTabletState::LoadState(
     const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
     const TVector<TDeletionMarker>& largeDeletionMarkers,
     const TVector<ui64>& orphanNodeIds,
+    const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
     Generation = generation;
@@ -170,6 +170,10 @@ void TIndexTabletState::LoadState(
     }
 
     Impl->OrphanNodeIds.insert(orphanNodeIds.begin(), orphanNodeIds.end());
+
+    for (const auto& entry: responseLog) {
+        CommitResponseLogEntry(entry);
+    }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     Impl->ShardBalancer = CreateShardBalancer(
@@ -262,6 +266,57 @@ ui64 TIndexTabletState::CalculateExpectedShardCount(
     }
 
     return Max(currentShardCount, autoShardCount);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+const NProtoPrivate::TResponseLogEntry*
+TIndexTabletState::LookupResponseLogEntry(
+    ui64 clientTabletId,
+    ui64 requestId) const
+{
+    const TInternalRequestId reqId(clientTabletId, requestId);
+    return Impl->InternalResponses.FindPtr(reqId);
+}
+
+void TIndexTabletState::WriteResponseLogEntry(
+    TIndexTabletDatabase& db,
+    const NProtoPrivate::TResponseLogEntry& e)
+{
+    db.WriteResponseLogEntry(e);
+
+    const TInternalRequestId reqId(e.GetClientTabletId(), e.GetRequestId());
+    auto& incompleteEntry = Impl->InternalResponses[reqId];
+    if (e.HasRenameNodeInDestinationResponse()) {
+        auto& incompleteResponse =
+            *incompleteEntry.MutableRenameNodeInDestinationResponse();
+        *incompleteResponse.MutableError() =
+            MakeError(E_REJECTED, "incomplete response");
+    } else {
+        TABLET_VERIFY_C(
+            0,
+            TStringBuilder() << "bad response log entry: "
+            << e.ShortUtf8DebugString());
+    }
+}
+
+void TIndexTabletState::CommitResponseLogEntry(
+    NProtoPrivate::TResponseLogEntry e)
+{
+    const TInternalRequestId reqId(e.GetClientTabletId(), e.GetRequestId());
+    auto& incompleteEntry = Impl->InternalResponses[reqId];
+    incompleteEntry = std::move(e);
+}
+
+void TIndexTabletState::DeleteResponseLogEntry(
+    TIndexTabletDatabase& db,
+    ui64 clientTabletId,
+    ui64 requestId)
+{
+    db.DeleteResponseLogEntry(clientTabletId, requestId);
+
+    const TInternalRequestId reqId(clientTabletId, requestId);
+    Impl->InternalResponses.erase(reqId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

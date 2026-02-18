@@ -619,6 +619,167 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
             });
     }
+
+    Y_UNIT_TEST(ShouldStoreOpLog)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        auto makeEntry = [&] (
+            ui64 entryId,
+            TString fsId,
+            ui64 newParentId,
+            TString newName)
+        {
+            NProto::TOpLogEntry e;
+            e.SetEntryId(entryId);
+            auto* r = e.MutableRenameNodeInDestinationRequest();
+            r->SetFileSystemId(std::move(fsId));
+            r->SetNewParentId(newParentId);
+            r->SetNewName(std::move(newName));
+            return e;
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteOpLogEntry(makeEntry(100, "fs0", 10, "name0"));
+            db.WriteOpLogEntry(makeEntry(101, "fs1", 11, "name1"));
+            db.WriteOpLogEntry(makeEntry(102, "fs2", 12, "name2"));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TOpLogEntry> entries;
+            UNIT_ASSERT(db.ReadOpLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetEntryId());
+            UNIT_ASSERT_VALUES_EQUAL(101, entries[1].GetEntryId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[2].GetEntryId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationRequest();
+            const auto& r1 = entries[1].GetRenameNodeInDestinationRequest();
+            const auto& r2 = entries[2].GetRenameNodeInDestinationRequest();
+            UNIT_ASSERT_VALUES_EQUAL("fs0", r0.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(10, r0.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name0", r0.GetNewName());
+            UNIT_ASSERT_VALUES_EQUAL("fs1", r1.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(11, r1.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name1", r1.GetNewName());
+            UNIT_ASSERT_VALUES_EQUAL("fs2", r2.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(12, r2.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name2", r2.GetNewName());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteOpLogEntry(101);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TOpLogEntry> entries;
+            UNIT_ASSERT(db.ReadOpLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetEntryId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[1].GetEntryId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationRequest();
+            const auto& r2 = entries[1].GetRenameNodeInDestinationRequest();
+            UNIT_ASSERT_VALUES_EQUAL("fs0", r0.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(10, r0.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name0", r0.GetNewName());
+            UNIT_ASSERT_VALUES_EQUAL("fs2", r2.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(12, r2.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name2", r2.GetNewName());
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TMaybe<NProto::TOpLogEntry> entry;
+            UNIT_ASSERT(db.ReadOpLogEntry(100, entry));
+            UNIT_ASSERT_VALUES_EQUAL(100, entry->GetEntryId());
+            const auto& r = entry->GetRenameNodeInDestinationRequest();
+            UNIT_ASSERT_VALUES_EQUAL("fs0", r.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(10, r.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name0", r.GetNewName());
+        });
+    }
+
+    Y_UNIT_TEST(ShouldStoreResponseLog)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        auto makeEntry = [&] (
+            ui64 clientTabletId,
+            ui64 requestId,
+            TString oldTargetNodeShardId,
+            TString oldTargetNodeShardNodeName)
+        {
+            NProtoPrivate::TResponseLogEntry e;
+            e.SetClientTabletId(clientTabletId);
+            e.SetRequestId(requestId);
+            auto* r = e.MutableRenameNodeInDestinationResponse();
+            r->SetOldTargetNodeShardId(std::move(oldTargetNodeShardId));
+            r->SetOldTargetNodeShardNodeName(
+                std::move(oldTargetNodeShardNodeName));
+            return e;
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteResponseLogEntry(makeEntry(100, 10, "sh0", "n0"));
+            db.WriteResponseLogEntry(makeEntry(101, 11, "sh1", "n1"));
+            db.WriteResponseLogEntry(makeEntry(102, 12, "sh2", "n2"));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProtoPrivate::TResponseLogEntry> entries;
+            UNIT_ASSERT(db.ReadResponseLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(10, entries[0].GetRequestId());
+            UNIT_ASSERT_VALUES_EQUAL(101, entries[1].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(11, entries[1].GetRequestId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[2].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(12, entries[2].GetRequestId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationResponse();
+            const auto& r1 = entries[1].GetRenameNodeInDestinationResponse();
+            const auto& r2 = entries[2].GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r0.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r0.GetOldTargetNodeShardNodeName());
+            UNIT_ASSERT_VALUES_EQUAL("sh1", r1.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n1", r1.GetOldTargetNodeShardNodeName());
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r2.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r2.GetOldTargetNodeShardNodeName());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteResponseLogEntry(101, 11);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProtoPrivate::TResponseLogEntry> entries;
+            UNIT_ASSERT(db.ReadResponseLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(10, entries[0].GetRequestId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[1].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(12, entries[1].GetRequestId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationResponse();
+            const auto& r2 = entries[1].GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r0.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r0.GetOldTargetNodeShardNodeName());
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r2.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r2.GetOldTargetNodeShardNodeName());
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TMaybe<NProtoPrivate::TResponseLogEntry> entry;
+            UNIT_ASSERT(db.ReadResponseLogEntry(100, 10, entry));
+            UNIT_ASSERT_VALUES_EQUAL(100, entry->GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(10, entry->GetRequestId());
+            const auto& r = entry->GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

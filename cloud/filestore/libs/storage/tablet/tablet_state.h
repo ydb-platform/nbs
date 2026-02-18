@@ -245,6 +245,7 @@ public:
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
         const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TVector<ui64>& orphanNodeIds,
+        const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
         const TThrottlerConfig& throttlerConfig);
 
     bool IsStateLoaded() const
@@ -847,6 +848,26 @@ FILESTORE_DUPCACHE_REQUESTS(FILESTORE_DECLARE_DUPCACHE)
 
     void CommitDupCacheEntry(
         const TString& sessionId,
+        ui64 requestId);
+
+    //
+    // ResponseLog
+    //
+
+public:
+    const NProtoPrivate::TResponseLogEntry* LookupResponseLogEntry(
+        ui64 clientTabletId,
+        ui64 requestId) const;
+
+    void WriteResponseLogEntry(
+        TIndexTabletDatabase& db,
+        const NProtoPrivate::TResponseLogEntry& e);
+
+    void CommitResponseLogEntry(NProtoPrivate::TResponseLogEntry e);
+
+    void DeleteResponseLogEntry(
+        TIndexTabletDatabase& db,
+        ui64 clientTabletId,
         ui64 requestId);
 
     //

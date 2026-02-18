@@ -305,6 +305,8 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     args.OpLogEntry.SetEntryId(args.CommitId);
     *args.OpLogEntry.MutableRenameNodeInDestinationRequest() =
         MakeRenameNodeInDestinationRequest(
+            TabletID(),
+            args.CommitId,
             args.Request,
             args.ChildRef->ShardId,
             args.ChildRef->ShardNodeName,
@@ -626,19 +628,26 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    // TODO(#2674): send ResponseLogEntry deletion request
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NProtoPrivate::TRenameNodeInDestinationRequest
 MakeRenameNodeInDestinationRequest(
+    ui64 tabletId,
+    ui64 commitId,
     NProto::TRenameNodeRequest originalRequest,
     TString sourceNodeShardId,
     TString sourceNodeShardNodeName,
     TString newParentShardId)
 {
     NProtoPrivate::TRenameNodeInDestinationRequest request;
-    request.MutableHeaders()->CopyFrom(originalRequest.GetHeaders());
+    auto& headers = *request.MutableHeaders();
+    headers.CopyFrom(originalRequest.GetHeaders());
+    headers.SetRequestId(commitId);
+    headers.MutableInternal()->SetClientTabletId(tabletId);
     request.SetFileSystemId(std::move(newParentShardId));
     request.SetNewParentId(originalRequest.GetNewParentId());
     request.SetNewName(originalRequest.GetNewName());

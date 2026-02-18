@@ -112,6 +112,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
     xxx(CommitRenameNodeInSource,           __VA_ARGS__)                       \
+    xxx(DeleteResponseLogEntry,             __VA_ARGS__)                       \
+    xxx(GetResponseLogEntry,                __VA_ARGS__)                       \
+    xxx(WriteResponseLogEntry,              __VA_ARGS__)                       \
                                                                                \
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
@@ -383,6 +386,7 @@ struct TTxIndexTablet
         TMaybe<NProto::TStorageConfig> StorageConfig;
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
         TVector<NProto::TOpLogEntry> OpLog;
+        TVector<NProtoPrivate::TResponseLogEntry> ResponseLog;
         TVector<TDeletionMarker> LargeDeletionMarkers;
         TVector<ui64> OrphanNodeIds;
 
@@ -407,6 +411,7 @@ struct TTxIndexTablet
             StorageConfig.Clear();
             SessionHistory.clear();
             OpLog.clear();
+            ResponseLog.clear();
             LargeDeletionMarkers.clear();
             OrphanNodeIds.clear();
         }
@@ -1180,6 +1185,7 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
+        NProtoPrivate::TResponseLogEntry ResponseLogEntry;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
 
         TString ShardIdForUnlink;
@@ -1233,6 +1239,7 @@ struct TTxIndexTablet
             NewChildRef.Clear();
 
             OpLogEntry.Clear();
+            ResponseLogEntry.Clear();
 
             Response.Clear();
 
@@ -1290,6 +1297,78 @@ struct TTxIndexTablet
             ChildRef.Clear();
 
             // deliberately not calling TProfileAware::Clear()
+        }
+    };
+
+    //
+    // DeleteResponseLogEntry
+    //
+
+    struct TDeleteResponseLogEntry: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 ClientTabletId;
+        const ui64 RequestId;
+
+        explicit TDeleteResponseLogEntry(
+                TRequestInfoPtr requestInfo,
+                ui64 clientTabletId,
+                ui64 requestId)
+            : RequestInfo(std::move(requestInfo))
+            , ClientTabletId(clientTabletId)
+            , RequestId(requestId)
+        {}
+
+        void Clear() override
+        {
+        }
+    };
+
+    //
+    // GetResponseLogEntry
+    //
+
+    struct TGetResponseLogEntry: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 ClientTabletId;
+        const ui64 RequestId;
+        TMaybe<NProtoPrivate::TResponseLogEntry> Entry;
+
+        explicit TGetResponseLogEntry(
+                TRequestInfoPtr requestInfo,
+                ui64 clientTabletId,
+                ui64 requestId)
+            : RequestInfo(std::move(requestInfo))
+            , ClientTabletId(clientTabletId)
+            , RequestId(requestId)
+        {}
+
+        void Clear() override
+        {
+            Entry.Clear();
+        }
+    };
+
+    //
+    // WriteResponseLogEntry
+    //
+
+    struct TWriteResponseLogEntry: TTxIndexTabletBase, TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TResponseLogEntry Entry;
+
+        explicit TWriteResponseLogEntry(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TResponseLogEntry entry)
+            : RequestInfo(std::move(requestInfo))
+            , Entry(std::move(entry))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
         }
     };
 
