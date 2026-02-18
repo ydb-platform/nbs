@@ -32,6 +32,16 @@ IEventBasePtr CreateResponseByActionType(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TRequest>
+constexpr bool IsAttachRequest =
+    std::is_same_v<TRequest, TEvDiskAgent::TEvAttachPathsRequest>;
+
+template <typename TResponse>
+constexpr bool IsAttachResponse =
+    std::is_same_v<TResponse, TEvDiskAgent::TEvAttachPathsResponse>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TAttachDetachPathActor: public TActorBootstrapped<TAttachDetachPathActor>
 {
 private:
@@ -164,9 +174,7 @@ IEventBasePtr TAttachDetachPathActor::CreateAttachDetachRequest()
 
     auto* mutablePaths = [&]()
     {
-        if constexpr (
-            std::is_same_v<TEvRequest, TEvDiskAgent::TEvAttachPathsRequest>)
-        {
+        if constexpr (IsAttachRequest<TEvRequest>) {
             return request->Record.MutablePathsToAttach();
         } else {
             return request->Record.MutablePathsToDetach();
@@ -266,9 +274,7 @@ void TAttachDetachPathActor::HandleAttachDetachPathResult(
     const TEvResponse& ev,
     const TActorContext& ctx)
 {
-    using TEvAttachResponse = TEvDiskAgent::TEvAttachPathsResponse::TPtr;
-
-    if constexpr (std::is_same_v<TEvResponse, TEvAttachResponse>) {
+    if constexpr (IsAttachResponse<TEvResponse>) {
         Y_ABORT_UNLESS(IsAttach);
     } else {
         Y_ABORT_UNLESS(!IsAttach);
@@ -290,7 +296,7 @@ void TAttachDetachPathActor::HandleAttachDetachPathResult(
             AgentId.Quote().c_str());
     }
 
-    if constexpr (std::is_same_v<TEvResponse, TEvAttachResponse>) {
+    if constexpr (IsAttachResponse<TEvResponse>) {
         UpdateDeviceStatesIfNeeded(ctx, record);
     } else {
         ReplyAndDie(ctx, {});
