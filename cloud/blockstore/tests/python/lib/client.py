@@ -216,3 +216,10 @@ class NbsClient:
         resp = self.__execute_action("diskregistrychangestate", req, timeout)
 
         return json.loads(resp)
+
+    def ensure_disk_registry_state_integrity(self, timeout=300):
+        req = {}
+
+        resp = self.__execute_action("ensurediskregistrystateintegrity", req, timeout)
+
+        return json.loads(resp)
