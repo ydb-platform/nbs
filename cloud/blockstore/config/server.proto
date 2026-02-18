@@ -29,7 +29,7 @@ message TLocation
 
 message TChecksumFlags
 {
-    // unused = 1;
+    reserved 1;
 
     // Enables data integrity validation client that calculates checksums for
     // write requests and validates checksums for read requests. Calculation for
