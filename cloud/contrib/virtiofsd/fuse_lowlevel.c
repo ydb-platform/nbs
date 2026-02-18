@@ -124,6 +124,13 @@ static int req_queue_index_from_chan(struct fuse_session *se,
     int queue_index = virtio_queue_index((struct fuse_chan *)ch);
 
     if (queue_index < 0 || queue_index >= se->num_backend_queues) {
+        fuse_log(
+            FUSE_LOG_ERR,
+            "fuse: req queue index out of bounds in %s: index=%d, queues=%d, "
+            "using 0\n",
+            __func__,
+            queue_index,
+            se->num_backend_queues);
         return 0;
     }
 
@@ -143,6 +150,13 @@ void fuse_free_req(fuse_req_t req)
     list_kind = req->list_kind;
     queue_index = req->req_queue_index;
     if (queue_index < 0 || queue_index >= se->num_backend_queues) {
+        fuse_log(
+            FUSE_LOG_ERR,
+            "fuse: req queue index out of bounds in %s: index=%d, queues=%d, "
+            "using 0\n",
+            __func__,
+            queue_index,
+            se->num_backend_queues);
         queue_index = 0;
     }
     req->ch = NULL;
@@ -1702,6 +1716,13 @@ static int find_interrupted(struct fuse_session *se, struct fuse_req *req)
     int i;
 
     if (queue_index < 0 || queue_index >= se->num_backend_queues) {
+        fuse_log(
+            FUSE_LOG_ERR,
+            "fuse: req queue index out of bounds in %s: index=%d, queues=%d, "
+            "using 0\n",
+            __func__,
+            queue_index,
+            se->num_backend_queues);
         queue_index = 0;
     }
 
