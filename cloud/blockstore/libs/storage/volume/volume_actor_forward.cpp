@@ -111,7 +111,14 @@ void TVolumeActor::UpdateIngestTimeStats(
         return;
     }
 
-    const auto& headers = ev->Get()->Record.GetHeaders();
+    const auto* msg = ev->Get();
+    // If the request was postponed, it has already been taken into account in
+    // the ingest time stats.
+    if (msg->CallContext->GetPostponeTs() != TInstant::Zero()) {
+        return;
+    }
+
+    const auto& headers = msg->Record.GetHeaders();
     if (headers.GetRetryNumber() > 0) {
         return;
     }
