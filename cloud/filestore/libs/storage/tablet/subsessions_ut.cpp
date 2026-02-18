@@ -207,11 +207,11 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(0, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, size);
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(0, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(0, size);
         UNIT_ASSERT_VALUES_EQUAL(false, subsessions.IsValid());
@@ -240,7 +240,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, size);
     }
@@ -268,7 +268,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(0, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, size);
     }
@@ -296,7 +296,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(0, size);
     }
 }
