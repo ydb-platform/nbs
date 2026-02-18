@@ -90,6 +90,20 @@ bool TTestActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
     return true;
 }
 
+void TTestActorSystem::Schedule(
+    TDuration delta,
+    IEventBasePtr event,
+    const TActorId& recipient,
+    const TActorId& sender,
+    ISchedulerCookie* cookie)
+{
+    Y_UNUSED(cookie);
+
+    Runtime->Schedule(
+        new IEventHandle(recipient, sender, event.release()),
+        delta);
+}
+
 TProgramShouldContinue& TTestActorSystem::GetProgramShouldContinue()
 {
     return ProgramShouldContinue;

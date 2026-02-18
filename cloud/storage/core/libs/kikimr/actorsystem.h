@@ -13,6 +13,10 @@
 #include <util/generic/ptr.h>
 #include <util/generic/strbuf.h>
 
+namespace NActors {
+    class ISchedulerCookie;
+}
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +34,13 @@ struct IActorSystem
     virtual bool Send(
         const NActors::TActorId& recipient,
         NActors::IEventBasePtr event) = 0;
+
+    virtual void Schedule(
+        TDuration delta,
+        NActors::IEventBasePtr event,
+        const NActors::TActorId& recipient,
+        const NActors::TActorId& sender,
+        NActors::ISchedulerCookie* cookie) = 0;
 
     virtual TProgramShouldContinue& GetProgramShouldContinue() = 0;
 };

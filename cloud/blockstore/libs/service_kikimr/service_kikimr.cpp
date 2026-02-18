@@ -1,7 +1,6 @@
 #include "service_kikimr.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -9,6 +8,9 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
+#include <cloud/storage/core/libs/actors/actor_pool.h>
+#include <cloud/storage/core/libs/actors/pooled_actor.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
@@ -51,11 +53,9 @@ BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<T>>
+class TRequestActor final : public TPooledActor
 {
     using TThis = TRequestActor<T>;
-    using TBase = TActorBootstrapped<TThis>;
 
     using TRequest = typename T::TRequest;
     using TRequestProto = typename T::TRequestProto;
@@ -67,27 +67,17 @@ private:
     std::shared_ptr<TRequestProto> Request;
     TPromise<TResponseProto> Response;
     TCallContextPtr CallContext;
-
-    const TDuration RequestTimeout;
-    const TString DiskId;
-
-    bool RequestCompleted = false;
+    TDuration RequestTimeout;
+    TString DiskId;
+    bool RequestCompleted = true;
 
 public:
     static constexpr const char ActorName[] =
         "NCloud::NBlockStore::NServer::TRequestActor<T>";
 
 public:
-    TRequestActor(
-            std::shared_ptr<TRequestProto> request,
-            TPromise<TResponseProto> response,
-            TCallContextPtr callContext,
-            TDuration requestTimeout)
-        : Request(std::move(request))
-        , Response(std::move(response))
-        , CallContext(std::move(callContext))
-        , RequestTimeout(requestTimeout)
-        , DiskId(GetDiskId(*Request))
+    TRequestActor()
+        : TPooledActor(static_cast<TReceiveFunc>(&TThis::StateWork))
     {}
 
     ~TRequestActor() override
@@ -108,23 +98,34 @@ public:
         }
     }
 
-    void Bootstrap(const TActorContext& ctx)
-    {
-        TThis::Become(&TThis::StateWork);
-
-        SendRequest(ctx);
+    void Reset() {
+        Request.reset();
+        Response = {};
+        CallContext.Reset();
+        RequestTimeout = TDuration::Zero();
+        DiskId.clear();
+        RequestCompleted = true;
     }
 
-private:
-    void SendRequest(const TActorContext& ctx)
+    void SendRequest(std::shared_ptr<TRequestProto> requestProto,
+        TPromise<TResponseProto> response,
+        TCallContextPtr callContext,
+        TDuration requestTimeout)
     {
-        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
-            TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " sending request");
+        RequestCompleted = false;
+        Response = std::move(response);
+        CallContext = std::move(callContext);
+        RequestTimeout = requestTimeout;
+        DiskId = GetDiskId(*requestProto);
 
-        auto request = std::make_unique<TRequest>(
-            CallContext,
-            std::move(*Request));
+        // LOG_TRACE_S(
+        //     ctx,
+        //     TBlockStoreComponents::SERVICE_PROXY,
+        //     TRequestInfo(T::Request, CallContext->RequestId, DiskId)
+        //         << " sending request");
+
+        auto request =
+            std::make_unique<TRequest>(CallContext, std::move(*requestProto));
 
         LWTRACK(
             RequestSent_Proxy,
@@ -132,16 +133,19 @@ private:
             GetBlockStoreRequestName(T::Request),
             CallContext->RequestId);
 
-        NCloud::Send(
-            ctx,
-            MakeStorageServiceId(),
-            std::move(request));
+        GetActorSystem()->Send(MakeStorageServiceId(), std::move(request));
 
         if (RequestTimeout && RequestTimeout != TDuration::Max()) {
-            ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
+            GetActorSystem()->Schedule(
+                RequestTimeout,
+                new TEvents::TEvWakeup(),
+                MakeStorageServiceId(),   // recipient
+                GetSelfId(),              // sender
+                nullptr);                 // cookie
         }
     }
 
+private:
     void CompleteRequest(const TActorContext& ctx, TResponseProto&& response)
     {
         try {
@@ -161,6 +165,21 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(TResponse, HandleResponse);
             HFunc(TEvents::TEvWakeup, HandleTimeout);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE_PROXY,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+
+    STFUNC(StateSleep)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
                 HandleUnexpectedEvent(
@@ -218,6 +237,14 @@ private:
 
         TThis::Die(ctx);
     }
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        TThis::Die(ctx);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -228,6 +255,7 @@ class TKikimrService final
 private:
     const IActorSystemPtr ActorSystem;
     const NProto::TKikimrServiceConfig Config;
+    TActorPool ActorPool;
 
 public:
     TKikimrService(
@@ -235,6 +263,7 @@ public:
             const NProto::TKikimrServiceConfig& config)
         : ActorSystem(std::move(actorSystem))
         , Config(config)
+        , ActorPool(nullptr, nullptr, ActorSystem, 1000)
     {}
 
     void Start() override {}
@@ -289,11 +318,7 @@ private:
         const auto& headers = request->GetHeaders();
         auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
 
-        ActorSystem->Register(std::make_unique<TRequestActor<T>>(
-            std::move(request),
-            std::move(response),
-            std::move(ctx),
-            timeout));
+        auto* actor = ActorPool.GetPooledActor<TRequestActor<T>>();
     }
 };
 

@@ -104,6 +104,19 @@ struct TTestActorSystem
         return true;
     }
 
+    void Schedule(
+        TDuration delta,
+        IEventBasePtr event,
+        const TActorId& recipient,
+        const TActorId& sender,
+        ISchedulerCookie* cookie) override
+    {
+        Y_UNUSED(cookie);
+        Runtime.Schedule(
+            new IEventHandle(recipient, sender, event.release()),
+            delta);
+    }
+
     TProgramShouldContinue& GetProgramShouldContinue() override
     {
         return ProgramShouldContinue;

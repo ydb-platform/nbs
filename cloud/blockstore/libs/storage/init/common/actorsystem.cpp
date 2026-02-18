@@ -99,6 +99,19 @@ bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
     return ActorSystem->Send(recipient, event.release());
 }
 
+void TActorSystem::Schedule(
+    TDuration delta,
+    IEventBasePtr event,
+    const NActors::TActorId& recipient,
+    const NActors::TActorId& sender,
+    NActors::ISchedulerCookie* cookie)
+{
+    ActorSystem->Schedule(
+        delta,
+        new IEventHandle(recipient, sender, event.release()),
+        cookie);
+}
+
 TLog TActorSystem::CreateLog(const TString& componentName)
 {
     if (LogBackend) {
