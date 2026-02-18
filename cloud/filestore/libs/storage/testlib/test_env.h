@@ -64,6 +64,7 @@ struct TTestEnvConfig
 {
     ui32 DomainUid = 1;
     TString DomainName = "local";
+    TString SubDomainName = "nfs";
 
     ui32 StaticNodes = 1;
     ui32 DynamicNodes = 1;
@@ -148,8 +149,7 @@ public:
     TLog CreateLog();
 
     ui64 AllocateTxId();
-    void CreateSubDomain(const TString& name);
-    ui32 CreateNode(const TString& name);
+    ui32 AddDynamicNode();
     void CreateAndRegisterStorageService(ui32 nodeIdx);
 
     ui64 BootIndexTablet(ui32 nodeIdx);
@@ -161,6 +161,8 @@ private:
     void SetupLogging();
 
     void SetupDomain(NKikimr::TAppPrepare& app);
+    void SetupSubDomain();
+
     void SetupChannelProfiles(NKikimr::TAppPrepare& app);
 
     std::unique_ptr<NKikimr::TTabletStorageInfo> BuildIndexTabletStorageInfo(

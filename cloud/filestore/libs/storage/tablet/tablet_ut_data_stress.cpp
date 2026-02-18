@@ -59,9 +59,7 @@ struct TEnvironment
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
-        Env.CreateSubDomain("nfs");
-
-        const ui32 nodeIdx = Env.CreateNode("nfs");
+        const ui32 nodeIdx = Env.AddDynamicNode();
         const ui64 tabletId = Env.BootIndexTablet(nodeIdx);
 
         TLog log = Env.CreateLog();
@@ -391,9 +389,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
 
         TTestEnv env({}, std::move(storageConfig));
 
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         // more than enough space
@@ -502,9 +499,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         storageConfig.SetWriteBlobThreshold(blobSize);
 
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         tabletConfig.BlockCount = 10_TB / block;
@@ -644,9 +640,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
 
         NProto::TStorageConfig storageConfig;
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(

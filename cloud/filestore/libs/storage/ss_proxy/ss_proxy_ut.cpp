@@ -44,9 +44,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldCreateDirectories)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.ModifyScheme(CreateDir("/local/foo"));
@@ -59,9 +58,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldCreateFileStore)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.CreateFileStore("test1", 1000);
@@ -77,9 +75,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldDestroyNonExistentFilestore)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         auto response = ssProxy.DestroyFileStore("nonexistent");
@@ -89,9 +86,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldReturnERejectedIfIfSchemeShardDetectsPathIdVersionMismatch)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.CreateFileStore("test", 2000);
@@ -154,9 +150,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldReturnConcurrentModificationErrorIfSchemeShardDetectsWrongVersion)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.CreateFileStore("test", 2000);
@@ -218,9 +213,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldFailFSCreationIfDescribeSchemeFails)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.CreateFileStore("test", 2000);
@@ -256,9 +250,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldFailDecsribeVolumeIfSSTimesOut)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         auto& runtime = env.GetRuntime();
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
@@ -288,9 +281,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldReturnERejectedIfIndexTabletIdIsZero)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.CreateFileStore("test", 2000);
@@ -322,9 +314,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldFailRequestIfWrongPathTypeIsReturnedFromSS)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.CreateFileStore("test", 2000);
@@ -360,9 +351,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         TTestEnv env;
         auto& runtime = env.GetRuntime();
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         NProto::TStorageConfig config;
         config.SetPathDescriptionBackupFilePath(backupFilePath);
