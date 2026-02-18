@@ -59,9 +59,6 @@ public:
         options.BlocksCount = volume.GetBlocksCount();
         options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
         options.SendMinBlockSize = request.GetSendNbdMinBlockSize();
-        options.CheckBufferModificationDuringWriting =
-            ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
-            IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
 

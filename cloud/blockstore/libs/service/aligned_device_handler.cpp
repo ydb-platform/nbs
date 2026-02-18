@@ -1,7 +1,6 @@
 #include "aligned_device_handler.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/service/checksum_storage_wrapper.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 
@@ -94,12 +93,7 @@ NProto::TError TryToNormalize(
 TAlignedDeviceHandler::TAlignedDeviceHandler(
         TDeviceHandlerParams params,
         ui32 maxSubRequestSize)
-    : Storage(
-          params.CheckBufferModificationDuringWriting
-              ? CreateChecksumStorageWrapper(
-                    std::move(params.Storage),
-                    params.DiskId)
-              : std::move(params.Storage))
+    : Storage(std::move(params.Storage))
     , DiskId(std::move(params.DiskId))
     , ClientId(std::move(params.ClientId))
     , BlockSize(params.BlockSize)
