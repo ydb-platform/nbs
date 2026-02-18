@@ -600,10 +600,6 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
         return false;   // not ready
     }
 
-    if (maxRows == 0) {
-        maxRows = Max<ui32>();
-    }
-
     ui32 bytes = 0;
     ui32 skipped = 0;
     while (it.IsValid()) {
