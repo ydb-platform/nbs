@@ -55,6 +55,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/bootstrapper
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/fresh_blocks_writer
     cloud/blockstore/libs/storage/partition
     cloud/blockstore/libs/storage/partition2
     cloud/blockstore/libs/storage/partition_nonrepl

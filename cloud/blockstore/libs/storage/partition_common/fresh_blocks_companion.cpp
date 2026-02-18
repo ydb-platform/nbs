@@ -3,6 +3,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NActors;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TFreshBlocksCompanion::TFreshBlocksCompanion(
@@ -31,7 +33,7 @@ TFreshBlocksCompanion::TFreshBlocksCompanion(
 void TFreshBlocksCompanion::KillActors(const NActors::TActorContext& ctx)
 {
     for (const auto& actor: Actors.GetActors()) {
-        NCloud::Send<NActors::TEvents::TEvPoisonPill>(ctx, actor);
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
 }
 

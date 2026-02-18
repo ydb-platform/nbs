@@ -190,6 +190,8 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
+    TRequestInfoPtr Poisoner;
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,

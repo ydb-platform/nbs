@@ -86,6 +86,7 @@ public:
         FollowerWrapper,
         ShadowDiskWrapper,
         MultiPartitionWrapper,
+        FreshBlocksWriter,
     };
 
 private:

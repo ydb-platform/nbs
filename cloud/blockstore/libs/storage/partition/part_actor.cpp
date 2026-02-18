@@ -401,6 +401,13 @@ void TPartitionActor::BeforeDie(const TActorContext& ctx)
     KillActors(ctx);
     ClearWriteQueue(ctx);
     CancelPendingRequests(ctx, PendingRequests);
+
+    if (Poisoner) {
+        NCloud::Reply(
+            ctx,
+            *Poisoner,
+            std::make_unique<TEvents::TEvPoisonTaken>());
+    }
 }
 
 void TPartitionActor::KillActors(const TActorContext& ctx)
@@ -658,6 +665,11 @@ void TPartitionActor::HandlePoisonPill(
         TBlockStoreComponents::PARTITION,
         "%s Stop tablet because of PoisonPill request",
         LogTitle.GetWithTime().c_str());
+
+    Poisoner = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
 
     Suicide(ctx);
 }
@@ -1276,9 +1288,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
     Y_UNUSED(ev);
     auto updates = ResourceMetricsQueue->PopAll();
     for (auto& update: updates) {
-        std::visit([&] (auto&& arg) {
-            UpdateResourceMetrics(arg);
-        }, update);
+        std::visit([&](auto&& arg) { UpdateResourceMetrics(arg); }, update);
     }
 
     // Schedule the next update
@@ -1286,6 +1296,22 @@ void TPartitionActor::HandleUpdateResourceMetrics(
         Config->GetResourceMetricsUpdateInterval(),
         std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
             .release());
+}
+
+void TPartitionActor::HandleGetFreshChannelsInfo(
+    const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<
+        TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+
+    response->TabletInfo = Info();
+    response->ChannelsCount = State->GetChannelCount();
+    response->Generation = Executor()->Generation();
+    response->PersistedTrimFreshLogToCommitId =
+        State->GetMeta().GetTrimFreshLogToCommitId();
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
