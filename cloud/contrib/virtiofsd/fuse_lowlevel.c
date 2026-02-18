@@ -118,18 +118,74 @@ static void destroy_req(fuse_req_t req)
     free(req);
 }
 
+static int req_queue_index_from_chan(struct fuse_session *se,
+                                     const struct fuse_chan *ch)
+{
+    int queue_index = virtio_queue_index((struct fuse_chan *)ch);
+
+    if (queue_index < 0 || queue_index >= se->num_backend_queues) {
+        fuse_log(
+            FUSE_LOG_ERR,
+            "fuse: req queue index out of bounds in %s: index=%d, queues=%d, "
+            "using 0\n",
+            __func__,
+            queue_index,
+            se->num_backend_queues);
+        return 0;
+    }
+
+    return queue_index;
+}
+
 void fuse_free_req(fuse_req_t req)
 {
     int ctr;
     struct fuse_session *se = req->se;
+    enum fuse_req_list_kind list_kind;
+    int queue_index;
 
-    pthread_mutex_lock(&se->lock);
+    pthread_mutex_lock(&req->lock);
     req->u.ni.func = NULL;
     req->u.ni.data = NULL;
-    list_del_req(req);
-    ctr = --req->ctr;
+    list_kind = req->list_kind;
+    queue_index = req->req_queue_index;
+    if (queue_index < 0 || queue_index >= se->num_backend_queues) {
+        fuse_log(
+            FUSE_LOG_ERR,
+            "fuse: req queue index out of bounds in %s: index=%d, queues=%d, "
+            "using 0\n",
+            __func__,
+            queue_index,
+            se->num_backend_queues);
+        queue_index = 0;
+    }
     req->ch = NULL;
-    pthread_mutex_unlock(&se->lock);
+    pthread_mutex_unlock(&req->lock);
+
+    switch (list_kind) {
+    case FUSE_REQ_LIST_QUEUE:
+        pthread_mutex_lock(&se->req_queue_locks[queue_index]);
+        list_del_req(req);
+        req->list_kind = FUSE_REQ_LIST_NONE;
+        ctr = --req->ctr;
+        pthread_mutex_unlock(&se->req_queue_locks[queue_index]);
+        break;
+    case FUSE_REQ_LIST_INTERRUPTS:
+        pthread_mutex_lock(&se->interrupts_lock);
+        list_del_req(req);
+        req->list_kind = FUSE_REQ_LIST_NONE;
+        if (se->interrupts.next == &se->interrupts) {
+            atomic_store_explicit(&se->has_pending_interrupts, false,
+                                  memory_order_release);
+        }
+        ctr = --req->ctr;
+        pthread_mutex_unlock(&se->interrupts_lock);
+        break;
+    case FUSE_REQ_LIST_NONE:
+        ctr = --req->ctr;
+        break;
+    }
+
     if (!ctr) {
         destroy_req(req);
     }
@@ -145,6 +201,8 @@ static struct fuse_req *fuse_ll_alloc_req(struct fuse_session *se)
     } else {
         req->se = se;
         req->ctr = 1;
+        req->req_queue_index = 0;
+        req->list_kind = FUSE_REQ_LIST_NONE;
         list_init_req(req);
         fuse_mutex_init(&req->lock);
     }
@@ -1609,45 +1667,88 @@ static void do_setlkw(fuse_req_t req, fuse_ino_t nodeid,
     do_setlk_common(req, nodeid, iter, 1);
 }
 
-static int find_interrupted(struct fuse_session *se, struct fuse_req *req)
+static int find_interrupted_in_queue(struct fuse_session *se,
+                                     struct fuse_req *req,
+                                     int queue_index)
 {
     struct fuse_req *curr;
 
-    for (curr = se->list.next; curr != &se->list; curr = curr->next) {
+    pthread_mutex_lock(&se->req_queue_locks[queue_index]);
+    for (curr = se->req_queues[queue_index].next;
+         curr != &se->req_queues[queue_index];
+         curr = curr->next) {
         if (curr->unique == req->u.i.unique) {
             fuse_interrupt_func_t func;
             void *data;
+            int ctr;
 
             curr->ctr++;
-            pthread_mutex_unlock(&se->lock);
+            pthread_mutex_unlock(&se->req_queue_locks[queue_index]);
 
-            /* Ugh, ugly locking */
             pthread_mutex_lock(&curr->lock);
-            pthread_mutex_lock(&se->lock);
             curr->interrupted = 1;
             func = curr->u.ni.func;
             data = curr->u.ni.data;
-            pthread_mutex_unlock(&se->lock);
             if (func) {
                 func(curr, data);
             }
             pthread_mutex_unlock(&curr->lock);
 
-            pthread_mutex_lock(&se->lock);
-            curr->ctr--;
-            if (!curr->ctr) {
+            pthread_mutex_lock(&se->req_queue_locks[queue_index]);
+            ctr = --curr->ctr;
+            pthread_mutex_unlock(&se->req_queue_locks[queue_index]);
+            if (!ctr) {
                 destroy_req(curr);
             }
 
             return 1;
         }
     }
-    for (curr = se->interrupts.next; curr != &se->interrupts;
-         curr = curr->next) {
-        if (curr->u.i.unique == req->u.i.unique) {
+    pthread_mutex_unlock(&se->req_queue_locks[queue_index]);
+
+    return 0;
+}
+
+static int find_interrupted(struct fuse_session *se, struct fuse_req *req)
+{
+    struct fuse_req *curr;
+    int queue_index = req->req_queue_index;
+    int i;
+
+    if (queue_index < 0 || queue_index >= se->num_backend_queues) {
+        fuse_log(
+            FUSE_LOG_ERR,
+            "fuse: req queue index out of bounds in %s: index=%d, queues=%d, "
+            "using 0\n",
+            __func__,
+            queue_index,
+            se->num_backend_queues);
+        queue_index = 0;
+    }
+
+    if (find_interrupted_in_queue(se, req, queue_index)) {
+        return 1;
+    }
+
+    for (i = 0; i < se->num_backend_queues; ++i) {
+        if (i == queue_index) {
+            continue;
+        }
+        if (find_interrupted_in_queue(se, req, i)) {
             return 1;
         }
     }
+
+    pthread_mutex_lock(&se->interrupts_lock);
+    for (curr = se->interrupts.next; curr != &se->interrupts;
+         curr = curr->next) {
+        if (curr->u.i.unique == req->u.i.unique) {
+            pthread_mutex_unlock(&se->interrupts_lock);
+            return 1;
+        }
+    }
+    pthread_mutex_unlock(&se->interrupts_lock);
+
     return 0;
 }
 
@@ -1670,13 +1771,16 @@ static void do_interrupt(fuse_req_t req, fuse_ino_t nodeid,
 
     req->u.i.unique = arg->unique;
 
-    pthread_mutex_lock(&se->lock);
     if (find_interrupted(se, req)) {
         destroy_req(req);
     } else {
+        pthread_mutex_lock(&se->interrupts_lock);
         list_add_req(req, &se->interrupts);
+        req->list_kind = FUSE_REQ_LIST_INTERRUPTS;
+        atomic_store_explicit(&se->has_pending_interrupts, true,
+                              memory_order_release);
+        pthread_mutex_unlock(&se->interrupts_lock);
     }
-    pthread_mutex_unlock(&se->lock);
 }
 
 static struct fuse_req *check_interrupt(struct fuse_session *se,
@@ -1684,21 +1788,42 @@ static struct fuse_req *check_interrupt(struct fuse_session *se,
 {
     struct fuse_req *curr;
 
+    if (!atomic_load_explicit(&se->has_pending_interrupts, memory_order_acquire)) {
+        return NULL;
+    }
+
+    pthread_mutex_lock(&se->interrupts_lock);
     for (curr = se->interrupts.next; curr != &se->interrupts;
          curr = curr->next) {
         if (curr->u.i.unique == req->unique) {
+            pthread_mutex_lock(&req->lock);
             req->interrupted = 1;
+            pthread_mutex_unlock(&req->lock);
             list_del_req(curr);
-            free(curr);
+            if (se->interrupts.next == &se->interrupts) {
+                atomic_store_explicit(&se->has_pending_interrupts, false,
+                                      memory_order_release);
+            }
+            pthread_mutex_unlock(&se->interrupts_lock);
+            destroy_req(curr);
             return NULL;
         }
     }
     curr = se->interrupts.next;
     if (curr != &se->interrupts) {
         list_del_req(curr);
+        curr->list_kind = FUSE_REQ_LIST_NONE;
+        if (se->interrupts.next == &se->interrupts) {
+            atomic_store_explicit(&se->has_pending_interrupts, false,
+                                  memory_order_release);
+        }
         list_init_req(curr);
+        pthread_mutex_unlock(&se->interrupts_lock);
         return curr;
     } else {
+        atomic_store_explicit(&se->has_pending_interrupts, false,
+                              memory_order_release);
+        pthread_mutex_unlock(&se->interrupts_lock);
         return NULL;
     }
 }
@@ -2295,10 +2420,8 @@ void fuse_req_interrupt_func(fuse_req_t req, fuse_interrupt_func_t func,
                              void *data)
 {
     pthread_mutex_lock(&req->lock);
-    pthread_mutex_lock(&req->se->lock);
     req->u.ni.func = func;
     req->u.ni.data = data;
-    pthread_mutex_unlock(&req->se->lock);
     if (req->interrupted && func) {
         func(req, data);
     }
@@ -2309,9 +2432,9 @@ int fuse_req_interrupted(fuse_req_t req)
 {
     int interrupted;
 
-    pthread_mutex_lock(&req->se->lock);
+    pthread_mutex_lock(&req->lock);
     interrupted = req->interrupted;
-    pthread_mutex_unlock(&req->se->lock);
+    pthread_mutex_unlock(&req->lock);
 
     return interrupted;
 }
@@ -2436,6 +2559,7 @@ void fuse_session_process_buf_int(struct fuse_session *se,
     req->ctx.gid = in->gid;
     req->ctx.pid = in->pid;
     req->ch = ch;
+    req->req_queue_index = req_queue_index_from_chan(se, ch);
 
     /*
      * INIT and DESTROY requests are serialized, all other request types
@@ -2493,10 +2617,11 @@ void fuse_session_process_buf_int(struct fuse_session *se,
     }
     if (in->opcode != FUSE_INTERRUPT) {
         struct fuse_req *intr;
-        pthread_mutex_lock(&se->lock);
+        pthread_mutex_lock(&se->req_queue_locks[req->req_queue_index]);
         intr = check_interrupt(se, req);
-        list_add_req(req, &se->list);
-        pthread_mutex_unlock(&se->lock);
+        list_add_req(req, &se->req_queues[req->req_queue_index]);
+        req->list_kind = FUSE_REQ_LIST_QUEUE;
+        pthread_mutex_unlock(&se->req_queue_locks[req->req_queue_index]);
         if (intr) {
             fuse_reply_err(intr, EAGAIN);
         }
@@ -2563,13 +2688,20 @@ void fuse_lowlevel_help(void)
 
 void fuse_session_destroy(struct fuse_session *se)
 {
+    int i;
+
     if (se->got_init && !se->got_destroy) {
         if (se->op.destroy) {
             se->op.destroy(se->userdata);
         }
     }
     pthread_rwlock_destroy(&se->init_rwlock);
-    pthread_mutex_destroy(&se->lock);
+    pthread_mutex_destroy(&se->interrupts_lock);
+    for (i = 0; i < se->num_backend_queues; ++i) {
+        pthread_mutex_destroy(&se->req_queue_locks[i]);
+    }
+    free(se->req_queue_locks);
+    free(se->req_queues);
     free(se->cuse_data);
     if (se->fd != -1) {
         close(se->fd);
@@ -2587,8 +2719,15 @@ void fuse_session_destroy(struct fuse_session *se)
 
 void fuse_session_suspend(struct fuse_session *se)
 {
+    int i;
+
     pthread_rwlock_destroy(&se->init_rwlock);
-    pthread_mutex_destroy(&se->lock);
+    pthread_mutex_destroy(&se->interrupts_lock);
+    for (i = 0; i < se->num_backend_queues; ++i) {
+        pthread_mutex_destroy(&se->req_queue_locks[i]);
+    }
+    free(se->req_queue_locks);
+    free(se->req_queues);
     free(se->cuse_data);
     if (se->fd != -1) {
         close(se->fd);
@@ -2609,6 +2748,7 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
                                       size_t op_size, void *userdata)
 {
     struct fuse_session *se;
+    int i;
 
     if (sizeof(struct fuse_lowlevel_ops) < op_size) {
         fuse_log(
@@ -2644,7 +2784,6 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
                  "fuse: warning: argv[0] looks like an option, but "
                  "will be ignored\n");
     } else if (args->argc != 1) {
-        int i;
         fuse_log(FUSE_LOG_ERR, "fuse: unknown option(s): `");
         for (i = 1; i < args->argc - 1; i++) {
             fuse_log(FUSE_LOG_ERR, "%s ", args->argv[i]);
@@ -2667,12 +2806,27 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
                  "fuse: --socket-group can only be used with --socket-path\n");
         goto out4;
     }
+    if (se->num_backend_queues <= 0) {
+        fuse_log(FUSE_LOG_ERR,
+                 "fuse: --num-backend-queues must be positive\n");
+        goto out4;
+    }
 
     se->bufsize = FUSE_MAX_MAX_PAGES * getpagesize() + FUSE_BUFFER_HEADER_SIZE;
 
-    list_init_req(&se->list);
+    se->req_queues = calloc(se->num_backend_queues, sizeof(*se->req_queues));
+    se->req_queue_locks = calloc(se->num_backend_queues,
+                                 sizeof(*se->req_queue_locks));
+    if (!se->req_queues || !se->req_queue_locks) {
+        goto out4;
+    }
+    for (i = 0; i < se->num_backend_queues; ++i) {
+        list_init_req(&se->req_queues[i]);
+        fuse_mutex_init(&se->req_queue_locks[i]);
+    }
     list_init_req(&se->interrupts);
-    fuse_mutex_init(&se->lock);
+    fuse_mutex_init(&se->interrupts_lock);
+    atomic_init(&se->has_pending_interrupts, false);
     pthread_rwlock_init(&se->init_rwlock, NULL);
 
     memcpy(&se->op, op, op_size);
@@ -2682,6 +2836,8 @@ struct fuse_session *fuse_session_new(struct fuse_args *args,
     return se;
 
 out4:
+    free(se->req_queue_locks);
+    free(se->req_queues);
     fuse_opt_free_args(args);
 out2:
     free(se);
