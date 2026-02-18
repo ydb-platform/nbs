@@ -846,6 +846,40 @@ void TPartitionActor::ZeroFreshBlocks(
     TBlockRange32 writeRange,
     ui64 commitId)
 {
+    if (State->GetUnflushedFreshBlobByteCount() >=
+        Config->GetFreshByteCountHardLimit())
+    {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
+        auto response =
+            std::make_unique<TEvService::TEvZeroBlocksResponse>(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "FreshByteCountHardLimit exceeded: "
+                                 << State->GetUnflushedFreshBlobByteCount(),
+                flags));
+
+        LWTRACK(
+            ResponseSent_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "ZeroBlocks",
+            requestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
+    ++WriteAndZeroRequestsInProgress;
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start zero blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
+        commitId,
+        DescribeRange(writeRange).c_str());
+
+    State->AccessCommitQueue().AcquireBarrier(commitId);
+
     const bool freshChannelZeroRequestsEnabled =
         Config->GetFreshChannelZeroRequestsEnabled();
 
