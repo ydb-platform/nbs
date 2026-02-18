@@ -96,9 +96,7 @@ void TRenameNodeInDestinationActor::SendRequest(const TActorContext& ctx)
         Request.GetNewParentId(),
         Request.GetNewName().c_str());
 
-    ctx.Send(
-        MakeIndexTabletProxyServiceId(),
-        request.release());
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
 void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
@@ -177,6 +175,8 @@ void TRenameNodeInDestinationActor::ReplyAndDie(
         Request.GetHeaders().GetSessionId(),
         RequestId,
         OpLogEntryId,
+        Request.GetFileSystemId(),
+        Request.GetHeaders().GetRequestId(),
         Request.GetOriginalRequest(), // TODO: move
         std::move(ProfileLogRequest),
         std::move(response)));
@@ -192,6 +192,191 @@ STFUNC(TRenameNodeInDestinationActor::StateWork)
         HFunc(
             TEvIndexTablet::TEvRenameNodeInDestinationResponse,
             HandleRenameNodeInDestinationResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeleteResponseLogEntryActor final
+    : public TActorBootstrapped<TDeleteResponseLogEntryActor>
+{
+private:
+    const TString LogTag;
+    const TActorId ParentId;
+    const TString ShardFileSystemId;
+    const ui64 ClientTabletId;
+    const ui64 TabletRequestId;
+
+public:
+    TDeleteResponseLogEntryActor(
+        TString logTag,
+        const TActorId& parentId,
+        TString shardFileSystemId,
+        ui64 clientTabletId,
+        ui64 tabletRequestId);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void SendRequest(const TActorContext& ctx);
+
+    void HandleDeleteResponseLogEntryResponse(
+        const TEvIndexTablet::TEvDeleteResponseLogEntryResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& e);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDeleteResponseLogEntryActor::TDeleteResponseLogEntryActor(
+        TString logTag,
+        const TActorId& parentId,
+        TString shardFileSystemId,
+        ui64 clientTabletId,
+        ui64 tabletRequestId)
+    : LogTag(std::move(logTag))
+    , ParentId(parentId)
+    , ShardFileSystemId(std::move(shardFileSystemId))
+    , ClientTabletId(clientTabletId)
+    , TabletRequestId(tabletRequestId)
+{}
+
+void TDeleteResponseLogEntryActor::Bootstrap(const TActorContext& ctx)
+{
+    SendRequest(ctx);
+    Become(&TThis::StateWork);
+}
+
+void TDeleteResponseLogEntryActor::SendRequest(const TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvDeleteResponseLogEntryRequest>();
+    request->Record.SetFileSystemId(ShardFileSystemId);
+    request->Record.SetClientTabletId(ClientTabletId);
+    request->Record.SetRequestId(TabletRequestId);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending DeleteResponseLogEntryRequest to shard %s",
+        LogTag.c_str(),
+        request->Record.ShortUtf8DebugString().Quote().c_str());
+
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+void TDeleteResponseLogEntryActor::HandleDeleteResponseLogEntryResponse(
+    const TEvIndexTablet::TEvDeleteResponseLogEntryResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s DeleteResponseLogEntry failed for %s, %lu, %lu with error"
+                " %s, retrying",
+                LogTag.c_str(),
+                ShardFileSystemId.c_str(),
+                ClientTabletId,
+                TabletRequestId,
+                FormatError(msg->GetError()).Quote().c_str());
+
+            SendRequest(ctx);
+            return;
+        }
+
+        const auto message = Sprintf(
+            "DeleteResponseLogEntry failed for %s, %lu, %lu with error %s"
+            ", will not retry",
+            ShardFileSystemId.c_str(),
+            ClientTabletId,
+            TabletRequestId,
+            FormatError(msg->GetError()).Quote().c_str());
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        ReplyAndDie(ctx, msg->Record.GetError());
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s DeleteResponseLogEntry succeeded for %s, %lu, %lu",
+        LogTag.c_str(),
+        ShardFileSystemId.c_str(),
+        ClientTabletId,
+        TabletRequestId);
+
+    ReplyAndDie(ctx, msg->Record.GetError());
+}
+
+void TDeleteResponseLogEntryActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
+void TDeleteResponseLogEntryActor::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& e)
+{
+    if (HasError(e)) {
+        const auto message = Sprintf(
+            "DeleteResponseLogEntry failed for %s, %lu, %lu with error %s"
+            ", will not retry",
+            ShardFileSystemId.c_str(),
+            ClientTabletId,
+            TabletRequestId,
+            FormatError(e).Quote().c_str());
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+    }
+
+    using TResponse = TEvIndexTabletPrivate::TEvResponseLogEntryDeleted;
+    ctx.Send(ParentId, std::make_unique<TResponse>());
+
+    Die(ctx);
+}
+
+STFUNC(TDeleteResponseLogEntryActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvIndexTablet::TEvDeleteResponseLogEntryResponse,
+            HandleDeleteResponseLogEntryResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -439,6 +624,8 @@ void TIndexTabletActor::HandleNodeRenamedInDestination(
         std::move(msg->ProfileLogRequest),
         std::move(msg->Response),
         msg->OpLogEntryId,
+        std::move(msg->ShardFileSystemId),
+        msg->TabletRequestId,
         false /* isExplicitRequest */);
 
     WorkerActors.erase(ev->Sender);
@@ -467,6 +654,8 @@ void TIndexTabletActor::HandleCommitRenameNodeInSource(
         NProto::TProfileLogRequestInfo{},
         std::move(msg->Response),
         msg->OpLogEntryId,
+        std::move(msg->ShardFileSystemId),
+        msg->TabletRequestId,
         true /* isExplicitRequest */);
 }
 
@@ -607,6 +796,26 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
+    if (!HasError(args.Error)
+            || GetErrorKind(args.Error) != EErrorKind::ErrorRetriable)
+    {
+        //
+        // Best-effort response log entry deletion attempt. The entries that
+        // don't get deleted because of this request not reaching the shard will
+        // be deleted in background when they become too old.
+        //
+
+        auto actor = std::make_unique<TDeleteResponseLogEntryActor>(
+            LogTag,
+            ctx.SelfID,
+            std::move(args.ShardFileSystemId),
+            TabletID(),
+            args.TabletRequestId);
+
+        auto actorId = NCloud::Register(ctx, std::move(actor));
+        WorkerActors.insert(actorId);
+    }
+
     if (args.IsExplicitRequest) {
         using TResponse =
             TEvIndexTabletPrivate::TEvCommitRenameNodeInSourceResponse;
@@ -628,8 +837,15 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
 
-    // TODO(#2674): send ResponseLogEntry deletion request
+void TIndexTabletActor::HandleResponseLogEntryDeleted(
+    const TEvIndexTabletPrivate::TEvResponseLogEntryDeleted::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    WorkerActors.erase(ev->Sender);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

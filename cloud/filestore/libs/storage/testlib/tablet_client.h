@@ -581,14 +581,18 @@ public:
     auto CreateCommitRenameNodeInSourceRequest(
         NProto::TRenameNodeRequest subRequest,
         NProtoPrivate::TRenameNodeInDestinationResponse subResponse,
-        ui64 opLogEntryId)
+        ui64 opLogEntryId,
+        TString shardFileSystemId,
+        ui64 tabletRequestId)
     {
         using TRequestEvent =
             TEvIndexTabletPrivate::TEvCommitRenameNodeInSourceRequest;
         return std::make_unique<TRequestEvent>(
             std::move(subRequest),
             std::move(subResponse),
-            opLogEntryId);
+            opLogEntryId,
+            std::move(shardFileSystemId),
+            tabletRequestId);
     }
 
     auto CreateDeleteResponseLogEntryRequest(

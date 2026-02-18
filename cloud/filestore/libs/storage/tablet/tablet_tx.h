@@ -1267,6 +1267,8 @@ struct TTxIndexTablet
         const NProto::TRenameNodeRequest Request;
         const NProtoPrivate::TRenameNodeInDestinationResponse Response;
         const ui64 OpLogEntryId;
+        /* const */ TString ShardFileSystemId;
+        const ui64 TabletRequestId;
         const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
@@ -1278,6 +1280,8 @@ struct TTxIndexTablet
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 NProtoPrivate::TRenameNodeInDestinationResponse response,
                 ui64 opLogEntryId,
+                TString shardFileSystemId,
+                ui64 tabletRequestId,
                 bool isExplicitRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
@@ -1285,6 +1289,8 @@ struct TTxIndexTablet
             , Request(std::move(request))
             , Response(std::move(response))
             , OpLogEntryId(opLogEntryId)
+            , ShardFileSystemId(std::move(shardFileSystemId))
+            , TabletRequestId(tabletRequestId)
             , IsExplicitRequest(isExplicitRequest)
         {}
 
