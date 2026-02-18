@@ -340,7 +340,7 @@ public:
             return;
         }
         if (!ShouldStop()) {
-            STORAGE_INFO("%s establishing session %lu",
+            STORAGE_INFO("%s establishing session with seqNo %lu",
                 MakeTestTag().c_str(), cmd.SessionSeqNo);
 
             TFuture<NProto::TCreateSessionResponse> result;

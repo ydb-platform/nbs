@@ -713,6 +713,7 @@ public:
         TIndexTabletDatabase& db,
         TSession* session,
         const TMaybe<TString>& state);
+    void RemovePipeServer(const NActors::TActorId& pipeServer);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;

@@ -42,7 +42,11 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         }
 
         {
-            subsessions.UpdateSubSession(2, true, TActorId(2, 1), TActorId(2, 2));
+            subsessions.UpdateSubSession(
+                2,
+                true,
+                TActorId(2, 1),
+                TActorId(2, 2));
             UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
             auto subsession = subsessions.GetSubSessionBySeqNo(2);
             UNIT_ASSERT_VALUES_EQUAL(true, subsession.has_value());
@@ -59,15 +63,27 @@ Y_UNIT_TEST_SUITE(TSubSessions)
     {
         TSubSessions subsessions(0, 0);
 
-        auto ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1) , TActorId(2, 0));
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        ans = subsessions.UpdateSubSession(2, false, TActorId(1, 1), TActorId(2, 1));
+        ans = subsessions.UpdateSubSession(
+            2,
+            false,
+            TActorId(1, 1),
+            TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        ans = subsessions.UpdateSubSession(3, true, TActorId(2, 1), TActorId(2, 2));
+        ans = subsessions.UpdateSubSession(
+            3,
+            true,
+            TActorId(2, 1),
+            TActorId(2, 2));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans->Owner);
         UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 0), ans->PipeServer);
@@ -81,19 +97,27 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TSubSessions subsessions(0, 0);
         ui32 size = 0;
 
-        auto ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1), TActorId(2, 0));
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1), TActorId(2, 1));
+        ans = subsessions.UpdateSubSession(
+            2,
+            true,
+            TActorId(1, 1),
+            TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(0, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, size);
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(0, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(0, size);
         UNIT_ASSERT_VALUES_EQUAL(false, subsessions.IsValid());
@@ -104,15 +128,23 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TSubSessions subsessions(0, 0);
         ui32 size = 0;
 
-        auto ans = subsessions.UpdateSubSession(1, false, TActorId(0, 1), TActorId(2, 0));
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            false,
+            TActorId(0, 1),
+            TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1), TActorId(2, 1));
+        ans = subsessions.UpdateSubSession(
+            2,
+            true,
+            TActorId(1, 1),
+            TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, size);
     }
@@ -122,15 +154,23 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TSubSessions subsessions(0, 0);
         ui32 size = 0;
 
-        auto ans = subsessions.UpdateSubSession(1, false, TActorId(0, 1), TActorId(2, 0));
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            false,
+            TActorId(0, 1),
+            TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        ans = subsessions.UpdateSubSession(2, true, TActorId(1, 1), TActorId(2, 1));
+        ans = subsessions.UpdateSubSession(
+            2,
+            true,
+            TActorId(1, 1),
+            TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(0, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, size);
     }
@@ -140,18 +180,25 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         TSubSessions subsessions(0, 0);
         ui32 size = 0;
 
-        auto ans = subsessions.UpdateSubSession(1, true, TActorId(0, 1), TActorId(2, 0));
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        ans = subsessions.UpdateSubSession(2, false, TActorId(1, 1), TActorId(1, 1));
+        ans = subsessions.UpdateSubSession(
+            2,
+            false,
+            TActorId(1, 1),
+            TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
         UNIT_ASSERT(!ans.has_value());
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(0, size);
     }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
-

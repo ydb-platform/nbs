@@ -308,28 +308,29 @@ void TIndexTabletState::OrphanSession(
     }
 
     auto* session = it->second;
-    
+
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-        "%s orphaning session c: %s, s: %s, pipeServer: %s",
+        "%s remove subsession c: %s, s: %s, pipeServer: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
         session->GetSessionId().c_str(),
         pipeServer.ToString().c_str());
+    Impl->SessionByPipeServer.erase(it);
 
     if (!session->DeleteSubSessionByPipeServer(pipeServer)) {
-        session->InactivityDeadline = deadline;
-
-        session->Unlink();
-        Impl->OrphanSessions.PushBack(session);
-
-        Impl->SessionByPipeServer.erase(it);
-
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
-            "%s removed last owner for session c: %s, s: %s, pipeServer: %s",
+        LOG_INFO(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
+            "%s removed last owner for session, orphaning session c: %s, s: "
+            "%s, pipeServer: %s",
             LogTag.c_str(),
             session->GetClientId().c_str(),
             session->GetSessionId().c_str(),
             pipeServer.ToString().c_str());
+
+        session->InactivityDeadline = deadline;
+        session->Unlink();
+        Impl->OrphanSessions.PushBack(session);
     }
 }
 
@@ -371,6 +372,11 @@ void TIndexTabletState::ResetSession(
                 TSessionHistoryEntry::RESET),
             SessionHistoryEntryCount);
     }
+}
+
+void TIndexTabletState::RemovePipeServer(const NActors::TActorId& pipeServer)
+{
+    Impl->SessionByPipeServer.erase(pipeServer);
 }
 
 void TIndexTabletState::RemoveSession(
