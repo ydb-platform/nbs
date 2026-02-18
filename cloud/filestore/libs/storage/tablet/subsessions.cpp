@@ -102,35 +102,6 @@ std::optional<TSessionPipeInfo> TSubSessions::UpdateSubSession(
     return AddSubSession(seqNo, readOnly, owner, pipeServer, tabletGeneration);
 }
 
-ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
-{
-    auto subsession = FindIf(
-        SubSessions,
-        [&] (const auto& subsession) {
-            return subsession.PipeInfo.Owner == owner;
-        });
-    if (subsession == SubSessions.end()) {
-        return true;
-    }
-
-    auto sessionSeqNo = subsession->SeqNo;
-    SubSessions.erase(subsession);
-
-    auto alive = !ReadyToDestroy(sessionSeqNo);
-    if (!alive) {
-        return false;
-    }
-
-    if (sessionSeqNo == MaxSeenRwSeqNo) {
-        MaxSeenRwSeqNo = 0;
-    }
-    if (sessionSeqNo == MaxSeenSeqNo) {
-        MaxSeenSeqNo = MaxSeenRwSeqNo;
-    }
-
-    return true;
-}
-
 ui32 TSubSessions::DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer)
 {
     auto subsession = FindIf(
@@ -160,7 +131,7 @@ ui32 TSubSessions::DeleteSubSessionByPipeServer(const NActors::TActorId& pipeSer
     return true;
 }
 
-ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
+std::optional<TSubSession> TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
 {
     auto subsession = FindIf(
         SubSessions,
@@ -169,14 +140,7 @@ ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
         });
 
     if (subsession == SubSessions.end()) {
-        return !ReadyToDestroy(sessionSeqNo);
-    }
-
-    SubSessions.erase(subsession);
-
-    auto alive = !ReadyToDestroy(sessionSeqNo);
-    if (!alive) {
-        return false;
+        return {};
     }
 
     if (sessionSeqNo == MaxSeenRwSeqNo) {
@@ -186,10 +150,12 @@ ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
         MaxSeenSeqNo = MaxSeenRwSeqNo;
     }
 
-    return true;
+    auto result = *subsession;
+    SubSessions.erase(subsession);
+    return result;
 }
 
-TVector<NActors::TActorId> TSubSessions::GetSubSessions() const
+TVector<NActors::TActorId> TSubSessions::GetSubSessionsOwner() const
 {
     TVector<NActors::TActorId> ans;
     for (const auto& s: SubSessions) {
