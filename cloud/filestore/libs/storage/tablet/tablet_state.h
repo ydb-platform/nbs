@@ -775,6 +775,7 @@ public:
     void RemoveSessionByPipeServer(const NActors::TActorId& pipeServer);
     void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
+    void RemovePipeServer(const NActors::TActorId& pipeServer);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
