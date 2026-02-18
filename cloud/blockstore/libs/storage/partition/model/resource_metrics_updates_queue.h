@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
 
 #include <util/datetime/base.h>
+#include <util/thread/lfstack.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
