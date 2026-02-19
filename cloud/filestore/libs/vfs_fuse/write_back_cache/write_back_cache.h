@@ -83,16 +83,10 @@ public:
     struct TPersistentQueueStats;
 
 private:
-    // Only for testing purposes
-    friend struct TTestUtilBootstrap;
-
-    struct TWriteDataEntryPart;
     struct TNodeState;
     struct TFlushState;
-    class TUtil;
     struct TQueuedOperations;
     class TContiguousWriteDataEntryPartsReader;
-    class TWriteDataEntryIntervalMap;
 };
 
 }   // namespace NCloud::NFileStore::NFuse
