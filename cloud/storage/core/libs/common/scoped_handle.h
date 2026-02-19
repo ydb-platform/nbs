@@ -21,6 +21,8 @@ private:
     T Value = InvalidValue;
 
 public:
+    using TUnderlyingType = T;
+
     constexpr TScopedHandle() = default;
 
     constexpr explicit TScopedHandle(T value)
@@ -83,9 +85,3 @@ struct TEqualTo<NCloud::TScopedHandle<T, V, Tag>>
 {};
 
 ////////////////////////////////////////////////////////////////////////////////
-
-template <typename T, T V, typename Tag>
-struct std::underlying_type<NCloud::TScopedHandle<T, V, Tag>>
-{
-    using type = T;
-};
