@@ -10855,7 +10855,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldKillWrappersOnPartitionDeath)
     {
-        const auto volumeBlockCount =
+        const ui64 volumeBlockCount =
             DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
 
         auto runtime = PrepareTestActorRuntime();
@@ -10864,7 +10864,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             runtime->AllocateEdgeActor(),
             0);
 
-        NActors::TActorId followerAcorId;
+        NActors::TActorId followerActorId;
 
         NActors::TActorId partActorId;
 
@@ -10876,7 +10876,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 Y_UNUSED(parentId);
                 auto* actor = runtime.FindActor(actorId);
                 if (dynamic_cast<TFollowerDiskActor*>(actor)) {
-                    followerAcorId = actorId;
+                    followerActorId = actorId;
                 } else if (dynamic_cast<TPartitionActor*>(actor)) {
                     partActorId = actorId;
                 }
@@ -10975,7 +10975,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             response->Follower.State);
         UNIT_ASSERT_VALUES_EQUAL(1_MB, response->Follower.MigratedBytes);
 
-        UNIT_ASSERT(followerAcorId);
+        UNIT_ASSERT(followerActorId);
 
         THashSet<TActorId> deadActors;
 
@@ -10989,7 +10989,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        auto firstFollower = followerAcorId;
+        auto firstFollower = followerActorId;
 
         runtime->SendToPipe(
             partitionTabletId,
