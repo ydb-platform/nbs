@@ -1827,26 +1827,16 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         TActorId sender;
 
-        TEvSSProxy::TEvDescribeSchemeResponse* response = nullptr;
-
         CreateVolume(runtime, "vol0", 4096);
 
         runtime.SetEventFilter(
             [&](auto&, TAutoPtr<IEventHandle>& event)
             {
-                switch (event->GetTypeRewrite()) {
-                    case TEvTxProxySchemeCache::EvNavigateKeySet:
-                        sender = event->Sender;
-                        event->DropRewrite();
-                        return true;
-                        break;
-                    case TEvSSProxy::EvDescribeSchemeResponse:
-                        response =
-                            event->Get<TEvSSProxy::TEvDescribeSchemeResponse>();
-                        break;
-                    default:
-                        return false;
-                        break;
+                if (event->GetTypeRewrite() ==
+                    TEvTxProxySchemeCache::EvNavigateKeySet)
+                {
+                    sender = event->Sender;
+                    return true;
                 }
                 return false;
             });
@@ -1877,18 +1867,15 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         Send(runtime, sender, sender, std::move(request));
 
-        runtime.DispatchEvents(
-            [&]
-            {
-                TDispatchOptions options;
-                options.CustomFinalCondition = [&]
-                {
-                    return response;
-                };
-                return options;
-            }());
+        TAutoPtr<IEventHandle> handle;
+        auto* response =
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "NavigateKeySet undelivered",
+            response->GetErrorReason());
     }
 }
 
