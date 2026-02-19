@@ -685,6 +685,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
             UNIT_ASSERT(response->Record.GetCookie().empty());
         }
+
+        // Limit by elements count.
+        {
+            auto response = tablet.ListNodes(RootNodeId, 0, TString{}, 1);
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(1, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("test1", names[0]);
+            const auto& nodes = response->Record.GetNodes();
+            UNIT_ASSERT_VALUES_EQUAL(1, nodes.size());
+            UNIT_ASSERT_VALUES_EQUAL(id1, nodes.Get(0).GetId());
+
+            UNIT_ASSERT_VALUES_EQUAL("test2", response->Record.GetCookie());
+        }
     }
 
     Y_UNIT_TEST(ShouldLimitListNodesWithFullRowSizeMode)

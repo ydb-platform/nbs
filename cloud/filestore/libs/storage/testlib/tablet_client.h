@@ -722,6 +722,16 @@ public:
         return request;
     }
 
+    auto CreateListNodesRequest(ui64 node, ui32 bytes, TString cookie, ui32 maxRows)
+    {
+        auto request = CreateSessionRequest<TEvService::TEvListNodesRequest>();
+        request->Record.SetNodeId(node);
+        request->Record.SetMaxBytes(bytes);
+        request->Record.SetCookie(std::move(cookie));
+        request->Record.SetMaxRows(maxRows);
+        return request;
+    }
+
     auto CreateReadNodeRefsRequest(ui64 node, TString cookie, ui32 limit){
         auto request = std::make_unique<TEvIndexTablet::TEvReadNodeRefsRequest>();
         request->Record.SetNodeId(node);
