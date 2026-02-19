@@ -6,7 +6,6 @@ UnalignedThreeStageWriteEnabled: true
 ReadAheadCacheRangeSize: 1048576
 # Sharding
 MultiTabletForwardingEnabled: true
-GetNodeAttrBatchEnabled: true
 DirectoryCreationInShardsEnabled: true
 
 GidPropagationEnabled: true
