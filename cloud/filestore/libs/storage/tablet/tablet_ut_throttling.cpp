@@ -51,8 +51,7 @@ public:
         }
 
         Env = std::make_unique<TTestEnv>(envConfig, storageConfig);
-        Env->CreateSubDomain("nfs");
-        const auto nodeIdx = Env->CreateNode("nfs");
+        const auto nodeIdx = Env->AddDynamicNode();
         const auto tabletId = Env->BootIndexTablet(nodeIdx);
 
         Tablet = std::make_unique<TIndexTabletClient>(
@@ -665,9 +664,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Throttling)
         storageConfig.SetWriteBlobThreshold(block);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(

@@ -19,9 +19,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
     Y_UNIT_TEST(ShouldBootTablet)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -31,9 +30,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
     Y_UNIT_TEST(ShouldUpdateConfig)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TDynamicCountersPtr counters = new TDynamicCounters();
@@ -69,9 +67,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
     Y_UNIT_TEST(ShouldUpdatePerformanceProfileConfig)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        const auto nodeIdx = env.CreateNode("nfs");
+        const auto nodeIdx = env.AddDynamicNode();
         const auto tabletId = env.BootIndexTablet(nodeIdx);
 
         const auto counters = new TDynamicCounters();
@@ -170,9 +167,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         constexpr ui32 channelCount = 6;
 
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TDynamicCountersPtr counters = new TDynamicCounters();
@@ -213,9 +209,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
     Y_UNIT_TEST(ShouldGetStorageConfig)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {});
@@ -235,9 +230,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
     Y_UNIT_TEST(ShouldNotifyServiceWhenFileSystemConfigChanged)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        const auto nodeIdx = env.CreateNode("nfs");
+        const auto nodeIdx = env.AddDynamicNode();
         const auto tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -283,7 +277,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
     Y_UNIT_TEST(ShouldRespectFeaturesConfig)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
         NCloud::NProto::TFeaturesConfig featuresConfigProto;
         auto* feature = featuresConfigProto.AddFeatures();
@@ -293,7 +286,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         env.GetStorageConfig()->SetFeaturesConfig(
             std::make_shared<NFeatures::TFeaturesConfig>(featuresConfigProto));
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);

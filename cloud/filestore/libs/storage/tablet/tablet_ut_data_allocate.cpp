@@ -32,9 +32,7 @@ struct TEnvironment
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
-        Env.CreateSubDomain("nfs");
-
-        const ui32 nodeIdx = Env.CreateNode("nfs");
+        const ui32 nodeIdx = Env.AddDynamicNode();
         const ui64 tabletId = Env.BootIndexTablet(nodeIdx);
 
         Tablet = std::make_unique<TIndexTabletClient>(

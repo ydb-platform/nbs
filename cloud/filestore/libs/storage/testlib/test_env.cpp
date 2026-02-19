@@ -126,6 +126,8 @@ TTestEnv::TTestEnv(
     Registry = NMetrics::CreateMetricsRegistry(
         {NMetrics::CreateLabel("counters", "filestore")},
         Runtime.GetAppData().Counters);
+
+    SetupSubDomain();
 }
 
 void TTestEnv::UpdateStorageConfig(NProto::TStorageConfig storageConfig)
@@ -166,42 +168,6 @@ ui64 TTestEnv::AllocateTxId()
     return event->Record.GetRangeBegin();
 }
 
-void TTestEnv::CreateSubDomain(const TString& name)
-{
-    ui64 tabletId = ChangeDomain(Tests::SchemeRoot, Config.DomainUid);
-    ui64 txId = AllocateTxId();
-
-    auto evTx = std::make_unique<TEvSchemeShard::TEvModifySchemeTransaction>(
-        txId,
-        tabletId);
-    auto* tx = evTx->Record.AddTransaction();
-    tx->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpCreateSubDomain);
-    tx->SetWorkingDir("/" + Config.DomainName);
-    tx->MutableSubDomain()->CopyFrom(GetSubDomainDefaultSettings(name));
-    for (const auto& [kind, pool] : Runtime.GetAppData().DomainsInfo->GetDomain(Config.DomainUid).StoragePoolTypes) {
-        auto* pbPool = tx->MutableSubDomain()->AddStoragePools();
-        pbPool->SetKind(kind);
-        pbPool->SetName(pool.GetName());
-    }
-
-    auto sender = Runtime.AllocateEdgeActor();
-    Runtime.SendToPipe(
-        tabletId,
-        sender,
-        evTx.release());
-
-    TAutoPtr<IEventHandle> handle;
-    auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvModifySchemeTransactionResult>(handle);
-    UNIT_ASSERT(event);
-    UNIT_ASSERT_EQUAL(event->Record.GetTxId(), txId);
-
-    if (event->Record.GetStatus() == NKikimrScheme::StatusAccepted) {
-        WaitForSchemeShardTx(txId);
-    } else {
-        UNIT_ASSERT_EQUAL(event->Record.GetStatus(), NKikimrScheme::StatusAlreadyExists);
-    }
-}
-
 void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
 {
     auto& appData = Runtime.GetAppData(nodeIdx);
@@ -226,7 +192,7 @@ void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
         nodeIdx);
 }
 
-ui32 TTestEnv::CreateNode(const TString& name)
+ui32 TTestEnv::AddDynamicNode()
 {
     ui32 nodeIdx = NextDynamicNode++;
     UNIT_ASSERT(nodeIdx < Config.StaticNodes + Config.DynamicNodes);
@@ -243,7 +209,7 @@ ui32 TTestEnv::CreateNode(const TString& name)
     SetupLocalServiceConfig(appData, *localConfig);
 
     TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
-    tenantPoolConfig->AddStaticSlot("/" + Config.DomainName + "/" + name);
+    tenantPoolConfig->AddStaticSlot("/" + Config.DomainName + "/" + Config.SubDomainName);
 
     auto tenantPoolId = Runtime.Register(
         CreateTenantPool(tenantPoolConfig),
@@ -406,6 +372,47 @@ void TTestEnv::SetupDomain(TAppPrepare& app)
     UNIT_ASSERT_EQUAL(domain->TxAllocators.front(), ChangeDomain(Tests::TxAllocator, Config.DomainUid));
 
     app.AddDomain(domain.Release());
+}
+
+void TTestEnv::SetupSubDomain()
+{
+    ui64 tabletId = ChangeDomain(Tests::SchemeRoot, Config.DomainUid);
+    ui64 txId = AllocateTxId();
+
+    auto evTx = std::make_unique<TEvSchemeShard::TEvModifySchemeTransaction>(
+        txId,
+        tabletId);
+    auto* tx = evTx->Record.AddTransaction();
+    tx->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpCreateSubDomain);
+    tx->SetWorkingDir("/" + Config.DomainName);
+    tx->MutableSubDomain()->CopyFrom(
+        GetSubDomainDefaultSettings(
+            Config.SubDomainName));
+    for (const auto& [kind, pool] : Runtime.GetAppData()
+            .DomainsInfo->GetDomain(Config.DomainUid)
+            .StoragePoolTypes)
+    {
+        auto* pbPool = tx->MutableSubDomain()->AddStoragePools();
+        pbPool->SetKind(kind);
+        pbPool->SetName(pool.GetName());
+    }
+
+    auto sender = Runtime.AllocateEdgeActor();
+    Runtime.SendToPipe(
+        tabletId,
+        sender,
+        evTx.release());
+
+    TAutoPtr<IEventHandle> handle;
+    auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvModifySchemeTransactionResult>(handle);
+    UNIT_ASSERT(event);
+    UNIT_ASSERT_EQUAL(event->Record.GetTxId(), txId);
+
+    if (event->Record.GetStatus() == NKikimrScheme::StatusAccepted) {
+        WaitForSchemeShardTx(txId);
+    } else {
+        UNIT_ASSERT_EQUAL(event->Record.GetStatus(), NKikimrScheme::StatusAlreadyExists);
+    }
 }
 
 void TTestEnv::SetupChannelProfiles(TAppPrepare& app)

@@ -154,9 +154,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldFail)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         auto response =
@@ -168,9 +167,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldDrainTablets)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -220,9 +218,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         config.SetReadAheadCacheMaxNodes(42);
 
         TTestEnv env{{}, config};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -261,9 +258,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     {
         NProto::TStorageConfig config;
         TTestEnv env{{}, config};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -431,9 +427,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         // being explicit
         config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -654,9 +649,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         *diagConfig.MutableHDDFileSystemPerformanceProfile() = pp;
 
         TTestEnv env{{}, storageConfig, {}, CreateProfileLogStub(), diagConfig};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -838,9 +832,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             strictFileSystemSizeEnforcementEnabled);
 
         TTestEnv env{{}, storageConfig};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -957,9 +950,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         NProto::TStorageConfig config;
         config.SetCompactionThreshold(1000);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -1102,9 +1094,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         config.SetInMemoryIndexCacheNodeRefsCapacity(10);
         config.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(5);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fsId = "test";

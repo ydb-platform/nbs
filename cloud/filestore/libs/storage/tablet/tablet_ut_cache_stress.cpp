@@ -51,9 +51,7 @@ public:
     {
         STORAGE_INFO("Seed: %lu", seed);
 
-        Env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = Env.CreateNode("nfs");
+        ui32 nodeIdx = Env.AddDynamicNode();
         ui64 tabletId = Env.BootIndexTablet(nodeIdx);
 
         Tablet = std::make_unique<TIndexTabletClient>(

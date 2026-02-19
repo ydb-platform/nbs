@@ -21,9 +21,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
     Y_UNIT_TEST(ShouldHandleRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
         ssProxy.CreateFileStore("test", 1000);
@@ -36,10 +35,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
     {
         TTestEnvConfig cfg {.StaticNodes = 1, .DynamicNodes = 2};
         TTestEnv env(cfg);
-        env.CreateSubDomain("nfs");
 
         auto& runtime = env.GetRuntime();
-        ui32 nodeIdx1 = env.CreateNode("nfs");
+        ui32 nodeIdx1 = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), runtime, nodeIdx1);
         ssProxy.CreateFileStore("test", 1000);
@@ -77,7 +75,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         TIndexTabletProxyClient tabletProxy1(env.GetRuntime(), nodeIdx1);
         tabletProxy1.WaitReady("test");
 
-        ui32 nodeIdx2 = env.CreateNode("nfs");
+        ui32 nodeIdx2 = env.AddDynamicNode();
 
         TIndexTabletProxyClient tabletProxy2(env.GetRuntime(), nodeIdx2);
         tabletProxy2.WaitReady("test");
@@ -95,9 +93,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
     Y_UNIT_TEST(ShouldNotDie)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(
             env.GetStorageConfig(),
@@ -129,10 +126,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
 
         TTestEnvConfig cfg{.StaticNodes = 1, .DynamicNodes = 2};
         TTestEnv env(cfg, storageConfig);
-        env.CreateSubDomain("nfs");
 
         auto& runtime = env.GetRuntime();
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), runtime, nodeIdx);
         ssProxy.CreateFileStore(originalFs, 1000);
