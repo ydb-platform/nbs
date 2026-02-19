@@ -427,6 +427,15 @@ Y_UNIT_TEST_SUITE(TBlockRangeMapTest)
             UNIT_ASSERT_VALUES_EQUAL(true, enumerated.contains("key-3"));
         }
     }
+
+    Y_UNIT_TEST(MoveOnlyType)
+    {
+        TBlockRangeMap<ui64, std::unique_ptr<int>> map;
+        map.AddRange(1, TBlockRange64::MakeOneBlock(1), nullptr);
+        auto extracted = map.ExtractRange(1);
+        UNIT_ASSERT_VALUES_EQUAL(true, extracted.has_value());
+        UNIT_ASSERT_EQUAL(nullptr, extracted->Value);
+    }
 }
 
 }   // namespace NCloud::NBlockStore

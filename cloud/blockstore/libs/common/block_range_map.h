@@ -69,13 +69,10 @@ public:
     {
         auto it = RangeByKey.find(key);
         if (it != RangeByKey.end()) {
-            TItem result{
-                .Key = it->second->Key,
-                .Range = it->second->Range,
-                .Value = std::move(it->second->Value)};
-            Ranges.erase(it->second);
+            auto node = Ranges.extract(it->second);
             RangeByKey.erase(it);
-            return result;
+            TItem& item = node.value();
+            return std::make_optional<TItem>(std::move(item));
         }
 
         return std::nullopt;
