@@ -1811,6 +1811,72 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldRejectNavigateKeySetRequestIfUndelivered)
+    {
+        TTestEnv env;
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+
+        TActorId sender;
+
+        CreateVolume(runtime, "vol0", 4096);
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvTxProxySchemeCache::EvNavigateKeySet)
+                {
+                    sender = event->Sender;
+                    return true;
+                }
+                return false;
+            });
+
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            runtime.AllocateEdgeActor(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("vol0"));
+
+        runtime.DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !!sender;
+                };
+                return options;
+            }());
+
+        auto navigateCacheRequest =
+            std::make_unique<NKikimr::NSchemeCache::TSchemeCacheNavigate>();
+
+        auto request =
+            std::make_unique<TEvTxProxySchemeCache::TEvNavigateKeySet>(
+                navigateCacheRequest.release());
+
+        Send(runtime, sender, sender, std::move(request));
+
+        TAutoPtr<IEventHandle> handle;
+        auto* response =
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "NavigateKeySet undelivered",
+            response->GetErrorReason());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -79,6 +79,10 @@ private:
     void HandleDescribeSchemeResult(
         const TEvTxProxySchemeCache::TEvNavigateKeySetResult::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandleNavigateKeySetUndelivery(
+        const TEvTxProxySchemeCache::TEvNavigateKeySet::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,18 +113,28 @@ void TDescribeSchemeActor::DescribeScheme(const TActorContext& ctx)
         RequestInfo->CallContext->RequestId);
 
     if (Config->GetUseSchemeCache()) {
-        auto request = std::make_unique<TSchemeCacheNavigate>();
-        request->DatabaseName = Config->GetSchemeShardDir();
-        TSchemeCacheNavigate::TEntry& entry = request->ResultSet.emplace_back();
+        auto navigateCacheRequest = std::make_unique<TSchemeCacheNavigate>();
+        navigateCacheRequest->DatabaseName = Config->GetSchemeShardDir();
+        TSchemeCacheNavigate::TEntry& entry =
+            navigateCacheRequest->ResultSet.emplace_back();
         entry.Operation = TSchemeCacheNavigate::OpList;
         entry.SyncVersion = true;
         entry.Path = SplitPath(Path);
 
-        NCloud::Send(
-            ctx,
-            MakeSchemeCacheID(),
+        auto request =
             std::make_unique<TEvTxProxySchemeCache::TEvNavigateKeySet>(
-                request.release()));
+                navigateCacheRequest.release());
+
+        auto event = std::make_unique<IEventHandle>(
+            MakeSchemeCacheID(),
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            RequestInfo->Cookie,
+            &ctx.SelfID   // forwardOnNondelivery
+        );
+
+        ctx.Send(event.release());
     } else {
         auto request = std::make_unique<TEvTxUserProxy::TEvNavigate>();
         request->Record.MutableDescribePath()->SetPath(Path);
@@ -312,11 +326,21 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
             std::move(pathDescription)));
 }
 
+void TDescribeSchemeActor::HandleNavigateKeySetUndelivery(
+    const TEvTxProxySchemeCache::TEvNavigateKeySet::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    HandleError(ctx, MakeError(E_REJECTED, "NavigateKeySet undelivered"));
+}
+
 STFUNC(TDescribeSchemeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvSchemeShard::TEvDescribeSchemeResult, HandleDescribeSchemeResult);
         HFunc(TEvTxProxySchemeCache::TEvNavigateKeySetResult, HandleDescribeSchemeResult);
+        HFunc(TEvTxProxySchemeCache::TEvNavigateKeySet, HandleNavigateKeySetUndelivery);
 
         default:
             HandleUnexpectedEvent(
