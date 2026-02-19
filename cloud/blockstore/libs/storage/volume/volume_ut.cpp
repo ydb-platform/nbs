@@ -4,10 +4,12 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
+#include <cloud/blockstore/libs/storage/partition/part_actor.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 
 #include <util/system/hostname.h>
 
@@ -10849,6 +10851,161 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     Y_UNIT_TEST(ShouldReceiveDeviceOperationStartedAndFinishedRdma)
     {
         DoShouldReceiveDeviceOperationStartedAndFinished(true);
+    }
+
+    Y_UNIT_TEST(ShouldKillWrappersOnPartitionDeath)
+    {
+        const auto volumeBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+
+        auto runtime = PrepareTestActorRuntime();
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(),
+            runtime->AllocateEdgeActor(),
+            0);
+
+        NActors::TActorId followerAcorId;
+
+        NActors::TActorId partActorId;
+
+        runtime->SetRegistrationObserverFunc(
+            [&](TTestActorRuntimeBase& runtime,
+                const TActorId& parentId,
+                const TActorId& actorId)
+            {
+                Y_UNUSED(parentId);
+                auto* actor = runtime.FindActor(actorId);
+                if (dynamic_cast<TFollowerDiskActor*>(actor)) {
+                    followerAcorId = actorId;
+                } else if (dynamic_cast<TPartitionActor*>(actor)) {
+                    partActorId = actorId;
+                }
+            });
+
+        TVolumeClient volume1(*runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            7 * 1024,   // block count per partition
+            "vol1"));
+        volume1.WaitReady();
+
+        TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            volumeBlockCount,   // block count per partition
+            "vol2"));
+        volume2.WaitReady();
+
+        auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
+        {
+            if (diskId == "vol1") {
+                volume1.ForwardToPipe(event);
+            } else if (diskId == "vol2") {
+                volume2.ForwardToPipe(event);
+            } else {
+                UNIT_ASSERT_C(
+                    false,
+                    TStringBuilder() << "Unknown disk id: " << diskId);
+            }
+        };
+
+        auto volumeProxyRequestHandler =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeVolumeProxyServiceId()) {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
+                }
+
+                return true;
+            }
+            return false;
+        };
+
+        runtime->SetEventFilter(volumeProxyRequestHandler);
+
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderShardId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su2"};
+        {
+            // Create link
+            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            link.LinkUUID = response->Record.GetLinkUUID();
+
+            // Reboot tablet
+            volume1.RebootTablet();
+            volume1.WaitReady();
+        }
+
+        const auto partitionTabletId = NKikimr::MakeTabletID(0, HiveId, 2);
+
+        auto actorId = runtime->AllocateEdgeActor(0);
+
+        using EState = TFollowerDiskInfo::EState;
+        auto follower = TFollowerDiskInfo{
+            .Link = link,
+            .CreatedAt = TInstant::Now(),
+            .State = EState::Preparing,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            .MigratedBytes = 1_MB};
+
+        auto response = volume1.UpdateFollowerState(follower);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            EState::Preparing,
+            response->Follower.State);
+        UNIT_ASSERT_VALUES_EQUAL(1_MB, response->Follower.MigratedBytes);
+
+        UNIT_ASSERT(followerAcorId);
+
+        THashSet<TActorId> deadActors;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvents::TEvPoisonTaken::EventType) {
+                    deadActors.emplace(event->Sender);
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto firstFollower = followerAcorId;
+
+        runtime->SendToPipe(
+            partitionTabletId,
+            actorId,
+            new TEvents::TEvPoisonPill(),
+            0,
+            GetPipeConfigWithRetries());
+
+        TAutoPtr<IEventHandle> handle;
+        runtime->GrabEdgeEvent<TEvents::TEvPoisonTaken>(
+            handle,
+            TDuration::Seconds(1));
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(deadActors.contains(firstFollower));
     }
 }
 

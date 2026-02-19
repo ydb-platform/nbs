@@ -401,6 +401,13 @@ void TPartitionActor::BeforeDie(const TActorContext& ctx)
     KillActors(ctx);
     ClearWriteQueue(ctx);
     CancelPendingRequests(ctx, PendingRequests);
+
+    if (Poisoner) {
+        NCloud::Reply(
+            ctx,
+            *Poisoner,
+            std::make_unique<TEvents::TEvPoisonTaken>());
+    }
 }
 
 void TPartitionActor::KillActors(const TActorContext& ctx)
@@ -651,7 +658,10 @@ void TPartitionActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    Poisoner = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
 
     LOG_INFO(
         ctx,
