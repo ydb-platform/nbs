@@ -57,6 +57,26 @@ concept HasTabletId = requires(T t) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString GetPartitionPrefix(
+    const TString& title,
+    ui64 tabletId,
+    ui32 partitionIndex,
+    ui32 partitionCount)
+{
+    auto builder = TStringBuilder();
+
+    builder << title;
+    if (partitionCount > 1) {
+        builder << partitionIndex;
+    }
+    builder << ":";
+    builder << tabletId;
+
+    return builder;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TString ToString(const TLogTitle::TVolume& data)
 {
     TStringBuilder stream;
