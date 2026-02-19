@@ -66,19 +66,25 @@ struct IRequestHandler: public NRdma::TNullContext
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TResponse>
-void ProcessPostponeTime(
+void ProcessThrottleTime(
     const TCallContextPtr& callContext,
     TResponse& localResponse)
 {
+    NProto::TThrottlerInfo& throttler =
+        *localResponse.MutableHeaders()->MutableThrottler();
     const ui64 throttlerDelay =
-        Max(localResponse.GetDeprecatedThrottlerDelay(),
-            localResponse.GetHeaders().GetThrottler().GetDelay());
+        Max(localResponse.GetDeprecatedThrottlerDelay(), throttler.GetDelay());
     callContext->AddTime(
         EProcessingStage::Postponed,
         TDuration::MicroSeconds(throttlerDelay));
     localResponse.SetDeprecatedThrottlerDelay(0);
-    localResponse.MutableHeaders()->MutableThrottler()->SetDelay(0);
+    throttler.SetDelay(0);
     callContext->SetPossiblePostponeDuration(TDuration::Zero());
+
+    callContext->AddTime(
+        EProcessingStage::Shaping,
+        TDuration::MicroSeconds(throttler.GetShapingDelay()));
+    throttler.SetShapingDelay(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,7 +187,7 @@ public:
             responseMsg.MutableHeaders()->ClearTrace();
         }
 
-        ProcessPostponeTime(CallContext, localResponse);
+        ProcessThrottleTime(CallContext, localResponse);
 
         Response.SetValue(std::move(localResponse));
     }
@@ -316,7 +322,7 @@ public:
             responseMsg.MutableHeaders()->ClearTrace();
         }
 
-        ProcessPostponeTime(CallContext, responseMsg);
+        ProcessThrottleTime(CallContext, responseMsg);
 
         Response.SetValue(std::move(responseMsg));
     }
@@ -418,7 +424,7 @@ public:
         responseMsg.MutableHeaders()->ClearTrace();
         responseMsg.ClearDeprecatedTrace();
 
-        ProcessPostponeTime(CallContext, responseMsg);
+        ProcessThrottleTime(CallContext, responseMsg);
 
         Response.SetValue(std::move(responseMsg));
     }
