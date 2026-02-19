@@ -1430,4 +1430,7 @@ message TStorageServiceConfig
     // If true, throw error when adding read-only client if a read-write one
     // already exists
     optional bool SendErrorOnAddClientConflict = 483;
+
+    // Enables separate fresh blocks writer.
+    optional bool FreshBlocksWriterEnabled = 484;
 }

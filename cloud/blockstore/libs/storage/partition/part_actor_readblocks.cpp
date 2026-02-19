@@ -1068,13 +1068,14 @@ bool TPartitionActor::PrepareReadBlocks(
         *Info(),
         args
     );
-    State->FindFreshBlocks(visitor, args.ReadRange, commitId);
+    if (!Config->GetFreshBlocksWriterEnabled()) {
+        State->FindFreshBlocks(visitor, args.ReadRange, commitId);
+    }
     auto ready = db.FindMixedBlocks(
         visitor,
         args.ReadRange,
-        false,  // precharge
-        commitId
-    );
+        false,   // precharge
+        commitId);
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,

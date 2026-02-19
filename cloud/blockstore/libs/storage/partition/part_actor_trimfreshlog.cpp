@@ -18,6 +18,11 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 {
+    // Fresh is managed by separate actor, no need to trim;
+    if (Config->GetFreshBlocksWriterEnabled()) {
+        return;
+    }
+
     if (State->GetTrimFreshLogState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
@@ -66,6 +71,8 @@ void TPartitionActor::HandleTrimFreshLog(
     const TEvPartitionCommonPrivate::TEvTrimFreshLogRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_ABORT_UNLESS(!Config->GetFreshBlocksWriterEnabled());
+
     auto* msg = ev->Get();
 
     using TMethod = TEvPartitionCommonPrivate::TTrimFreshLogMethod;
