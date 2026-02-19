@@ -186,8 +186,8 @@ struct TEvIndexTablet
         EvWriteResponseLogEntryResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
-        // sub-namespaces which don't have any non-local events so we if we run
-        // out of event ids in the TABLET sub-namespace we can extend it by
+        // sub-namespaces which don't have any non-local events so if we run out
+        // of event ids in the TABLET sub-namespace we can extend it by
         // moving TABLET_WORKER and TABLET_PROXY after SS_PROXY
 
         EvEnd

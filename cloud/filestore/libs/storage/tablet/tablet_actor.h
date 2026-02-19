@@ -612,6 +612,10 @@ private:
         const TEvIndexTabletPrivate::TEvNodeRenamedInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleResponseLogEntryDeleted(
+        const TEvIndexTabletPrivate::TEvResponseLogEntryDeleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleAggregateStatsCompleted(
         const TEvIndexTabletPrivate::TEvAggregateStatsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);

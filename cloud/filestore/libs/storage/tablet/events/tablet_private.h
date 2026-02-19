@@ -776,6 +776,8 @@ struct TEvIndexTabletPrivate
         const TString SessionId;
         const ui64 RequestId;
         const ui64 OpLogEntryId;
+        TString ShardFileSystemId;
+        const ui64 TabletRequestId;
         NProto::TRenameNodeRequest Request;
         NProto::TProfileLogRequestInfo ProfileLogRequest;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
@@ -785,6 +787,8 @@ struct TEvIndexTabletPrivate
                 TString sessionId,
                 ui64 requestId,
                 ui64 opLogEntryId,
+                TString shardFileSystemId,
+                ui64 tabletRequestId,
                 NProto::TRenameNodeRequest request,
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 NProtoPrivate::TRenameNodeInDestinationResponse response)
@@ -792,12 +796,16 @@ struct TEvIndexTabletPrivate
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
+            , ShardFileSystemId(std::move(shardFileSystemId))
+            , TabletRequestId(tabletRequestId)
             , Request(std::move(request))
             , ProfileLogRequest(std::move(profileLogRequest))
             , Response(std::move(response))
         {
         }
     };
+
+    using TResponseLogEntryDeleted = TEmpty;
 
     //
     // PrepareRenameNodeInSource
@@ -835,14 +843,20 @@ struct TEvIndexTabletPrivate
         NProto::TRenameNodeRequest Request;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
         const ui64 OpLogEntryId;
+        TString ShardFileSystemId;
+        const ui64 TabletRequestId;
 
         TCommitRenameNodeInSourceRequest(
                 NProto::TRenameNodeRequest request,
                 NProtoPrivate::TRenameNodeInDestinationResponse response,
-                ui64 opLogEntryId)
+                ui64 opLogEntryId,
+                TString shardFileSystemId,
+                ui64 tabletRequestId)
             : Request(std::move(request))
             , Response(std::move(response))
             , OpLogEntryId(opLogEntryId)
+            , ShardFileSystemId(std::move(shardFileSystemId))
+            , TabletRequestId(tabletRequestId)
         {
         }
     };
@@ -1171,6 +1185,7 @@ struct TEvIndexTabletPrivate
         EvDoRenameNode,
         EvUnlinkDirectoryNodeAbortedInShard,
         EvNodeRenamedInDestination,
+        EvResponseLogEntryDeleted,
 
         EvAggregateStatsCompleted,
 
@@ -1226,6 +1241,9 @@ struct TEvIndexTabletPrivate
 
     using TEvNodeRenamedInDestination =
         TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;
+
+    using TEvResponseLogEntryDeleted =
+        TRequestEvent<TResponseLogEntryDeleted, EvResponseLogEntryDeleted>;
 
     using TEvAggregateStatsCompleted =
         TResponseEvent<TAggregateStatsCompleted, EvAggregateStatsCompleted>;

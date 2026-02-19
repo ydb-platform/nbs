@@ -1328,6 +1328,225 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
+    TABLET_TEST_4K_ONLY(
+        ShouldDeleteResponseLogEntryUponCommitRenameNodeInSource)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        const ui64 dstDir = 11111;
+
+        const TString shardId = "shard";
+        const TString shardNodeName = CreateGuidAsString();
+        const ui64 opLogEntryId = Max<ui64>();
+
+        //
+        // Pre-creating a fake node-ref and a fake rename-node-in-destination
+        // response.
+        //
+
+        const TString fileName = "file";
+        tablet.UnsafeCreateNodeRef(
+            dir,
+            fileName,
+            0 /* childId */,
+            shardId,
+            shardNodeName);
+
+        const ui64 tabletRequestId = 10;
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(tabletId);
+            entry.SetRequestId(tabletRequestId);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId(shardId);
+            r.SetOldTargetNodeShardNodeName(shardNodeName);
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        //
+        // Calling CommitRenameNodeInSource for this node-ref and checking that
+        // the response-log-entry gets deleted.
+        //
+
+        {
+            auto renameNodeRequest = tablet.CreateRenameNodeRequest(
+                dir,
+                fileName,
+                dstDir,
+                fileName + ".new");
+
+            NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
+
+            tablet.CommitRenameNodeInSource(
+                renameNodeRequest->Record,
+                subResponse,
+                opLogEntryId,
+                shardId,
+                tabletRequestId);
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(tabletId, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldNotDeleteResponseLogEntryUponCommitRenameNodeInSourceWithError)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        const ui32 nodeIdx = env.CreateNode("nfs");
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        const ui64 dstDir = 11111;
+
+        const TString shardId = "shard";
+        const TString shardNodeName = CreateGuidAsString();
+        const ui64 opLogEntryId = Max<ui64>();
+
+        //
+        // Pre-creating a fake node-ref and a fake rename-node-in-destination
+        // response.
+        //
+
+        const TString fileName = "file";
+        tablet.UnsafeCreateNodeRef(
+            dir,
+            fileName,
+            0 /* childId */,
+            shardId,
+            shardNodeName);
+
+        const ui64 tabletRequestId = 10;
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(tabletId);
+            entry.SetRequestId(tabletRequestId);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId(shardId);
+            r.SetOldTargetNodeShardNodeName(shardNodeName);
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        //
+        // Calling CommitRenameNodeInSource for this node-ref and checking that
+        // the response-log-entry is not deleted for retriable errors.
+        //
+
+        {
+            auto renameNodeRequest = tablet.CreateRenameNodeRequest(
+                dir,
+                fileName,
+                dstDir,
+                fileName + ".new");
+
+            NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
+            *subResponse.MutableError() =
+                MakeError(E_REJECTED, "tablet is dead");
+
+            tablet.SendCommitRenameNodeInSourceRequest(
+                renameNodeRequest->Record,
+                subResponse,
+                opLogEntryId,
+                shardId,
+                tabletRequestId);
+
+            auto response = tablet.RecvCommitRenameNodeInSourceResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(subResponse.GetError()),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(tabletId, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                tabletId,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL(shardId, r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardNodeName,
+                r.GetOldTargetNodeShardNodeName());
+        }
+
+        //
+        // Calling CommitRenameNodeInSource for this node-ref and checking that
+        // the response-log-entry gets deleted for non-retriable errors.
+        //
+
+        {
+            auto renameNodeRequest = tablet.CreateRenameNodeRequest(
+                dir,
+                fileName,
+                dstDir,
+                fileName + ".new");
+
+            NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
+            *subResponse.MutableError() = MakeError(E_ARGUMENT);
+
+            tablet.SendCommitRenameNodeInSourceRequest(
+                renameNodeRequest->Record,
+                subResponse,
+                opLogEntryId,
+                shardId,
+                tabletRequestId);
+
+            auto response = tablet.RecvCommitRenameNodeInSourceResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(subResponse.GetError()),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(tabletId, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInUnsafeNodeOperations)
     {
         const ui32 maxTabletStep = 4;
@@ -1449,6 +1668,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
 
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        //OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
 
         TIndexTabletClient tablet(
             env.GetRuntime(),
@@ -1524,7 +1744,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             tablet.SendCommitRenameNodeInSourceRequest(
                 renameNodeRequest->Record,
                 subResponse,
-                opLogEntryId);
+                opLogEntryId,
+                dstShardId,
+                0 // tabletRequestId, doesn't matter for this test
+            );
             auto response = tablet.RecvCommitRenameNodeInSourceResponse();
             reconnectIfNeeded();
 

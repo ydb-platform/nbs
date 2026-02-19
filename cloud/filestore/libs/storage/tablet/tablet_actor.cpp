@@ -1061,6 +1061,9 @@ STFUNC(TIndexTabletActor::StateInit)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
+        HFunc(
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
         HFunc(
@@ -1129,6 +1132,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
+        HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
         HFunc(
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
@@ -1231,6 +1237,9 @@ STFUNC(TIndexTabletActor::StateZombie)
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
+        HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
 
@@ -1291,6 +1300,9 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
+        HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
         HFunc(
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);

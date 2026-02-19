@@ -209,7 +209,6 @@ void TIndexTabletActor::CompleteTx_WriteResponseLogEntry(
     CommitResponseLogEntry(std::move(args.Entry));
 
     using TResponse = TEvIndexTablet::TEvWriteResponseLogEntryResponse;
-
     auto response = std::make_unique<TResponse>(std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
