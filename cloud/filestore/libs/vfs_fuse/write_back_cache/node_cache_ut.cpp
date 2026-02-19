@@ -156,12 +156,12 @@ struct TBootstrap
     {
         TStringBuilder out;
         Cache.VisitUnflushedRequests(
-            [&out](const TCachedWriteDataRequest* entry)
+            [&out](const TCachedWriteDataRequest* request)
             {
                 if (!out.empty()) {
                     out << ", ";
                 }
-                out << entry->GetOffset() << ":" << entry->GetBuffer();
+                out << request->GetOffset() << ":" << request->GetBuffer();
                 return true;
             });
         return out;

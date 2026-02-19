@@ -82,35 +82,34 @@ TCachedWriteDataRequest* TNodeCache::MoveFrontUnflushedRequestToFlushed()
 {
     Y_ABORT_UNLESS(!UnflushedRequests.empty());
 
-    auto* entry = UnflushedRequests.front().get();
+    auto* cachedRequest = UnflushedRequests.front().get();
     FlushedRequests.push_back(std::move(UnflushedRequests.front()));
     UnflushedRequests.pop_front();
 
-    return entry;
+    return cachedRequest;
 }
 
-auto TNodeCache::DequeueFlushedRequest()
-    -> std::unique_ptr<TCachedWriteDataRequest>
+std::unique_ptr<TCachedWriteDataRequest> TNodeCache::DequeueFlushedRequest()
 {
     Y_ABORT_UNLESS(!FlushedRequests.empty());
 
-    auto entry = std::move(FlushedRequests.front());
+    auto cachedRequest = std::move(FlushedRequests.front());
     FlushedRequests.pop_front();
 
-    const ui64 begin = entry->GetOffset();
-    const ui64 end = begin + entry->GetByteCount();
+    const ui64 begin = cachedRequest->GetOffset();
+    const ui64 end = begin + cachedRequest->GetByteCount();
 
     CachedData.VisitOverlapping(
         begin,
         end,
-        [this, entry = entry.get()](auto it)
+        [this, request = cachedRequest.get()](auto it)
         {
-            if (it->second.Value == entry) {
+            if (it->second.Value == request) {
                 CachedData.Remove(it);
             }
         });
 
-    return entry;
+    return cachedRequest;
 }
 
 bool TNodeCache::Empty() const
@@ -175,7 +174,8 @@ ui64 TNodeCache::GetMinFlushedSequenceId() const
     return FlushedRequests.front()->GetSequenceId();
 }
 
-void TNodeCache::VisitUnflushedRequests(const TEntryVisitor& visitor) const
+void TNodeCache::VisitUnflushedRequests(
+    TCachedWriteDataRequestVisitor visitor) const
 {
     for (const auto& e: UnflushedRequests) {
         if (!visitor(e.get())) {
@@ -190,7 +190,7 @@ TCachedData TNodeCache::GetCachedData(ui64 offset, ui64 byteCount) const
         return {};
     }
 
-    const auto end = CachedData.rbegin()->second.End;
+    const ui64 end = CachedData.rbegin()->second.End;
 
     TCachedData result;
     result.ReadDataByteCount = end > offset ? Min(byteCount, end - offset) : 0;
@@ -202,8 +202,8 @@ TCachedData TNodeCache::GetCachedData(ui64 offset, ui64 byteCount) const
         {
             const ui64 partOffset = Max(offset, it->second.Begin);
             const ui64 partByteCount = Min(end, it->second.End) - partOffset;
-            TCachedWriteDataRequest* entry = it->second.Value;
-            TStringBuf data = entry->GetBuffer(partOffset, partByteCount);
+            TCachedWriteDataRequest* request = it->second.Value;
+            TStringBuf data = request->GetBuffer(partOffset, partByteCount);
             result.Parts.push_back({partOffset - offset, data});
         });
 

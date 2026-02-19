@@ -39,8 +39,8 @@ struct TCachedData
 class TNodeCache
 {
 public:
-    using TEntryVisitor =
-        TFunctionRef<bool(const TCachedWriteDataRequest* entry)>;
+    using TCachedWriteDataRequestVisitor =
+        TFunctionRef<bool(const TCachedWriteDataRequest* request)>;
 
 private:
     TDeque<std::unique_ptr<TPendingWriteDataRequest>> PendingRequests;
@@ -76,7 +76,7 @@ public:
     bool HasFlushedRequests() const;
     ui64 GetMinFlushedSequenceId() const;
 
-    void VisitUnflushedRequests(const TEntryVisitor& visitor) const;
+    void VisitUnflushedRequests(TCachedWriteDataRequestVisitor visitor) const;
 
     TCachedData GetCachedData(ui64 offset, ui64 byteCount) const;
     ui64 GetCachedDataEndOffset() const;
