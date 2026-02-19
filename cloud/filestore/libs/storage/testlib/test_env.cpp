@@ -92,7 +92,10 @@ TTestEnv::TTestEnv(
     , NextDynamicNode(Config.StaticNodes)
     , Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
 {
-    storageConfig.SetSchemeShardDir(Config.DomainName);
+    UNIT_ASSERT(config.StaticNodes > 0);
+
+    storageConfig.SetSchemeShardDir(
+        Config.DomainName + "/" + Config.SubDomainName);
 
     UpdateStorageConfig(std::move(storageConfig));
 
@@ -107,7 +110,6 @@ TTestEnv::TTestEnv(
     SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
     BootTablets();
     SetupStorage();
-    SetupLocalServices();
     SetupProxies();
 
     InitSchemeShard();
@@ -195,6 +197,7 @@ void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
 ui32 TTestEnv::AddDynamicNode()
 {
     ui32 nodeIdx = NextDynamicNode++;
+    UNIT_ASSERT(nodeIdx > 0);
     UNIT_ASSERT(nodeIdx < Config.StaticNodes + Config.DynamicNodes);
 
     auto& appData = Runtime.GetAppData(nodeIdx);
@@ -272,20 +275,19 @@ ui32 TTestEnv::AddDynamicNode()
         hiveProxyId,
         nodeIdx);
 
-    if (nodeIdx != 0) {
-        // we need node-local proxies as well
-        auto localTabletProxy = CreateIndexTabletProxy(StorageConfig);
-        auto localTabletProxyId = Runtime.Register(
-            localTabletProxy.release(),
-            0,
-            appData.UserPoolId,
-            TMailboxType::Simple,
-            0);
-        Runtime.EnableScheduleForActor(localTabletProxyId);
-        Runtime.RegisterService(
-            MakeIndexTabletProxyServiceId(),
-            localTabletProxyId,
-            0);
+    // we need node-local proxies as well
+    auto localTabletProxy = CreateIndexTabletProxy(StorageConfig);
+    auto localTabletProxyId = Runtime.Register(
+        localTabletProxy.release(),
+        0,
+        appData.UserPoolId,
+        TMailboxType::Simple,
+        0);
+    Runtime.EnableScheduleForActor(localTabletProxyId);
+    Runtime.RegisterService(
+        MakeIndexTabletProxyServiceId(),
+        localTabletProxyId,
+        0);
 
     auto localSsProxy = CreateSSProxy(StorageConfig);
     auto localSsProxyId = Runtime.Register(
@@ -320,7 +322,6 @@ ui32 TTestEnv::AddDynamicNode()
         MakeHiveProxyServiceId(),
         localHiveProxyId,
         0);
-    }
 
     return nodeIdx;
 }
@@ -611,37 +612,6 @@ void TTestEnv::SetupStorage()
     UNIT_ASSERT(Config.Groups <= GroupIds.size());
 }
 
-void TTestEnv::SetupLocalServices()
-{
-    for (ui32 nodeIdx = 0; nodeIdx < Config.StaticNodes; ++nodeIdx) {
-        SetupLocalService(nodeIdx);
-    }
-}
-
-void TTestEnv::SetupLocalService(ui32 nodeIdx)
-{
-    auto& appData = Runtime.GetAppData(nodeIdx);
-
-    TLocalConfig::TPtr localConfig = new TLocalConfig();
-    SetupLocalServiceConfig(appData, *localConfig);
-
-    TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
-    tenantPoolConfig->AddStaticSlot("/" + Config.DomainName);
-
-    auto tenantPoolActorId = Runtime.Register(
-        CreateTenantPool(tenantPoolConfig),
-        nodeIdx,
-        appData.SystemPoolId,
-        TMailboxType::Revolving,
-        0);
-    Runtime.EnableScheduleForActor(tenantPoolActorId);
-
-    Runtime.RegisterService(
-        MakeTenantPoolID(Runtime.GetNodeId(nodeIdx)),
-        tenantPoolActorId,
-        nodeIdx);
-}
-
 void TTestEnv::SetupLocalServiceConfig(
     TAppData& appData,
     TLocalConfig& localConfig)
@@ -920,7 +890,7 @@ void CheckForkJoin(const NLWTrace::TShuttleTrace& trace, bool forkRequired)
 TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig)
 {
     if (!storageConfig.GetSchemeShardDir()) {
-        storageConfig.SetSchemeShardDir("local");
+        storageConfig.SetSchemeShardDir("local/nfs");
     }
 
     storageConfig.SetHDDSystemChannelPoolKind("pool-kind-1");
