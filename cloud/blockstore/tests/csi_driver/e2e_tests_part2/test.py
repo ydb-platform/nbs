@@ -66,16 +66,21 @@ def test_readonly_volume(mount_path, access_type, vm_mode, gid):
 def test_mount_volume_group():
     # Scenario
     # 1. create volume and stage it
-    # 2. create directory and file in the staging directory
+    # 2. verify that the setgid bit is not set
+    # 3. create directory and file in the staging directory
     # 4. create new group with specified GID
     # 5. publish volume with mount volume group GID
-    # 6. check that mounted dir and existing files have specified GID
-    # 7. create new directory and file
-    # 8. check that new directory and file have specified GID
-    # 9. unpublish volume
-    # 10. create new file in staging directory and change ownership
-    # 11. publish volume with mount volume group GID
-    # 12. Verify that the new file doesn't have the specified GID.
+    # 6. verify that the setgid bit is set
+    # 7. check that mounted dir and existing files have specified GID
+    # 8. create new directory and file
+    # 9. check that new directory and file have specified GID
+    # 10. unpublish volume
+    # 11. verify that the setgid bit is set
+    # 12. create new file in staging directory and change ownership
+    # 13. publish volume with mount volume group GID
+    # 14. Verify that the new file doesn't have the specified GID.
+    # 15. Unpublish, unstage volume and stage it again
+    # 16. verify that the setgid bit is set
     # The change won't take effect because the GID of the mount directory
     # matches the GID of the volume group.
 
