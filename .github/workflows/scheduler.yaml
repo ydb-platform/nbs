@@ -92,7 +92,7 @@ concurrency:
   
 
 env:
-  disk_size: ${{ inputs.flavor == 'heavy' && 2046 || 93 }}
+  disk_size: ${{ inputs.flavor == 'heavy' && ( vars.POOLED_HEAVY_DISK_SIZE_GB || 2046 ) || ( vars.POOLED_LIGHT_DISK_SIZE_GB || 1023 ) }}
   parent_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PARENT_ID || vars.POOLED_LIGHT_PARENT_ID }}
   sa_json: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_SA_JSON || secrets.POOLED_LIGHT_SA_JSON }}
   preset: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_VM_PRESET || vars.POOLED_LIGHT_VM_PRESET }}
