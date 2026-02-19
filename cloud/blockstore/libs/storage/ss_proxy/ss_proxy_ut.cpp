@@ -1811,6 +1811,85 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldRejectNavigateKeySetRequestIfUndelivered)
+    {
+        TTestEnv env;
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+
+        TActorId sender;
+
+        TEvSSProxy::TEvDescribeSchemeResponse* response = nullptr;
+
+        CreateVolume(runtime, "vol0", 4096);
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTxProxySchemeCache::EvNavigateKeySet:
+                        sender = event->Sender;
+                        event->DropRewrite();
+                        return true;
+                        break;
+                    case TEvSSProxy::EvDescribeSchemeResponse:
+                        response =
+                            event->Get<TEvSSProxy::TEvDescribeSchemeResponse>();
+                        break;
+                    default:
+                        return false;
+                        break;
+                }
+                return false;
+            });
+
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            runtime.AllocateEdgeActor(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("vol0"));
+
+        runtime.DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !!sender;
+                };
+                return options;
+            }());
+
+        auto navigateCacheRequest =
+            std::make_unique<NKikimr::NSchemeCache::TSchemeCacheNavigate>();
+
+        auto request =
+            std::make_unique<TEvTxProxySchemeCache::TEvNavigateKeySet>(
+                navigateCacheRequest.release());
+
+        Send(runtime, sender, sender, std::move(request));
+
+        runtime.DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return response;
+                };
+                return options;
+            }());
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
