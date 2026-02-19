@@ -15,6 +15,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
+#include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
@@ -869,6 +870,11 @@ public:
         TIndexTabletDatabase& db,
         ui64 clientTabletId,
         ui64 requestId);
+
+    ui64 GetResponseLogEntryCount() const;
+
+    TVector<TInternalRequestId> ListOldResponseLogEntries(
+        TInstant minTimestamp);
 
     //
     // Writes

@@ -729,4 +729,11 @@ message TStorageConfig
     // Mode for calculating byte size in ListNodes when applying MaxBytes limit.
     // TODO(#5148): consider other size calculation modes
     optional EListNodesSizeMode ListNodesSizeMode = 484;
+
+    // Tablet ResponseLogEntry TTL in ms before it gets deleted by a regular
+    // tablet operation.
+    optional uint32 ResponseLogEntryTTL = 485;
+
+    // Frequency of tablet regular task runs (e.g. ResponseLogEntry cleanup).
+    optional uint32 TabletRegularTasksSchedulePeriod = 486;
 }

@@ -302,21 +302,6 @@ void TDeleteResponseLogEntryActor::HandleDeleteResponseLogEntryResponse(
             return;
         }
 
-        const auto message = Sprintf(
-            "DeleteResponseLogEntry failed for %s, %lu, %lu with error %s"
-            ", will not retry",
-            ShardFileSystemId.c_str(),
-            ClientTabletId,
-            TabletRequestId,
-            FormatError(msg->GetError()).Quote().c_str());
-
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s %s",
-            LogTag.c_str(),
-            message.c_str());
-
         ReplyAndDie(ctx, msg->Record.GetError());
         return;
     }

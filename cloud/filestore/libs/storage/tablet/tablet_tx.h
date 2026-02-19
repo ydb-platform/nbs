@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/request_metrics.h>
@@ -112,7 +113,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
     xxx(CommitRenameNodeInSource,           __VA_ARGS__)                       \
-    xxx(DeleteResponseLogEntry,             __VA_ARGS__)                       \
+    xxx(DeleteResponseLogEntries,           __VA_ARGS__)                       \
     xxx(GetResponseLogEntry,                __VA_ARGS__)                       \
     xxx(WriteResponseLogEntry,              __VA_ARGS__)                       \
                                                                                \
@@ -1307,22 +1308,19 @@ struct TTxIndexTablet
     };
 
     //
-    // DeleteResponseLogEntry
+    // DeleteResponseLogEntries
     //
 
-    struct TDeleteResponseLogEntry: TTxIndexTabletBase
+    struct TDeleteResponseLogEntries: TTxIndexTabletBase
     {
         const TRequestInfoPtr RequestInfo;
-        const ui64 ClientTabletId;
-        const ui64 RequestId;
+        const TVector<TInternalRequestId> InternalRequestIds;
 
-        explicit TDeleteResponseLogEntry(
+        explicit TDeleteResponseLogEntries(
                 TRequestInfoPtr requestInfo,
-                ui64 clientTabletId,
-                ui64 requestId)
+                TVector<TInternalRequestId> internalRequestIds)
             : RequestInfo(std::move(requestInfo))
-            , ClientTabletId(clientTabletId)
-            , RequestId(requestId)
+            , InternalRequestIds(std::move(internalRequestIds))
         {}
 
         void Clear() override

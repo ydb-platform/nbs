@@ -1012,6 +1012,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
@@ -1040,6 +1041,7 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
@@ -1110,6 +1112,7 @@ STFUNC(TIndexTabletActor::StateWork)
             HandleLoadCompactionMapChunkResponse);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
+        HFunc(TEvIndexTabletPrivate::TEvRunRegularTasks, HandleRunRegularTasks);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
 
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
@@ -1199,6 +1202,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAggregateStatsCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
@@ -1263,6 +1267,7 @@ STFUNC(TIndexTabletActor::StateBroken)
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
@@ -1471,6 +1476,25 @@ bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
     }
 
     return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::RunRegularTasks(const TActorContext& ctx)
+{
+    DeleteOldResponseLogEntries(ctx);
+
+    ctx.Schedule(Config->GetTabletRegularTasksSchedulePeriod(),
+        new TEvIndexTabletPrivate::TEvRunRegularTasks());
+}
+
+void TIndexTabletActor::HandleRunRegularTasks(
+    const TEvIndexTabletPrivate::TEvRunRegularTasks::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    RunRegularTasks(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

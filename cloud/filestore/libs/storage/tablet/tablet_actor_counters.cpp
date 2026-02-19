@@ -594,6 +594,8 @@ void TIndexTabletActor::HandleUpdateCounters(
     CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 
+    Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
 

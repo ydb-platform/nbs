@@ -1328,13 +1328,68 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
+    TABLET_TEST_4K_ONLY(ShouldDeleteOldResponseLogEntries)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetResponseLogEntryTTL(10'000);
+        storageConfig.SetTabletRegularTasksSchedulePeriod(5'000);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(100);
+            entry.SetRequestId(10);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId("sh0");
+            r.SetOldTargetNodeShardNodeName("n0");
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        }
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+    }
+
     TABLET_TEST_4K_ONLY(
         ShouldDeleteResponseLogEntryUponCommitRenameNodeInSource)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -1416,9 +1471,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         ShouldNotDeleteResponseLogEntryUponCommitRenameNodeInSourceWithError)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());

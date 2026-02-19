@@ -718,6 +718,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
         args.Request.GetHeaders().GetInternal().GetClientTabletId());
     args.ResponseLogEntry.SetRequestId(
         args.Request.GetHeaders().GetRequestId());
+    args.ResponseLogEntry.SetTimestampMs(ctx.Now().MilliSeconds());
     *args.ResponseLogEntry.MutableRenameNodeInDestinationResponse() =
         args.Response;
     WriteResponseLogEntry(db, args.ResponseLogEntry);

@@ -4,6 +4,7 @@
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -270,6 +271,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
         config);
     UpdateLogTag();
 
+    NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
+
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");
     auto idleSessionDeadline = ctx.Now() + Config->GetIdleSessionTimeout();
@@ -386,6 +389,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling OpLog ops");
     ReplayOpLog(ctx, args.OpLog);
+    RunRegularTasks(ctx);
 
     LOG_INFO_S(
         ctx,
