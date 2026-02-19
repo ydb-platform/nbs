@@ -8115,16 +8115,16 @@ NProto::EVolumeIOMode TDiskRegistryState::GetIoMode(
 TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo(
     const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter) const
 {
-    auto agentMatchesFilter = [&](const NProto::TAgentConfig& agent)
+    auto shouldFilterAgent = [&](const NProto::TAgentConfig& agent)
     {
-        return filter.GetStates().size() == 0 ||
-               std::ranges::find(filter.GetStates(), agent.GetState()) !=
+        return filter.GetStates().size() != 0 &&
+               std::ranges::find(filter.GetStates(), agent.GetState()) ==
                    filter.GetStates().end();
     };
 
     TVector<NProto::TAgentInfo> ret;
     for (const auto& agent: AgentList.GetAgents()) {
-        if (!agentMatchesFilter(agent)) {
+        if (shouldFilterAgent(agent)) {
             continue;
         }
 
