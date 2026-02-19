@@ -1,5 +1,6 @@
 import pytest
 import subprocess
+import stat
 import os
 
 from pathlib import Path
@@ -89,6 +90,8 @@ def test_mount_volume_group():
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name, access_type)
 
+        assert os.stat(stage_path).st_mode & stat.S_ISGID == 0
+
         stage_test_dir1 = stage_path / "testdir1"
         stage_test_dir1.mkdir()
         stage_test_file1 = stage_test_dir1 / "testfile1"
@@ -110,6 +113,8 @@ def test_mount_volume_group():
         )
 
         mount_path = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
+        assert os.stat(mount_path).st_mode & stat.S_ISGID != 0
+
         test_dir1 = mount_path / "testdir1"
         test_file1 = test_dir1 / "testfile1"
 
@@ -139,9 +144,15 @@ def test_mount_volume_group():
             access_type,
             volume_mount_group=str(gid)
         )
+        assert os.stat(mount_path).st_mode & stat.S_ISGID != 0
 
         test_file3 = test_dir1 / "testfile3"
         assert gid != test_file3.stat().st_gid
+
+        env.csi.unpublish_volume(pod_id, volume_name, access_type)
+        env.csi.unstage_volume(volume_name)
+        env.csi.stage_volume(volume_name, access_type)
+        assert os.stat(stage_path).st_mode & stat.S_ISGID != 0
 
     except subprocess.CalledProcessError as e:
         csi.log_called_process_error(e)
