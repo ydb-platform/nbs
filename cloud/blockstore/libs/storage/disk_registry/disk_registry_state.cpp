@@ -8117,7 +8117,7 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo(
 {
     auto shouldFilterAgent = [&](const NProto::TAgentConfig& agent)
     {
-        return filter.GetStates().size() != 0 &&
+        return !filter.GetStates().empty() &&
                std::ranges::find(filter.GetStates(), agent.GetState()) ==
                    filter.GetStates().end();
     };
