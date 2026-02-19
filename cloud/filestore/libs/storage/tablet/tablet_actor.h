@@ -251,6 +251,9 @@ private:
         TDuration time);
     void CalculateActorCPUUsage(const NActors::TActorContext& ctx);
 
+    void DeleteOldResponseLogEntries(const NActors::TActorContext& ctx);
+    void RunRegularTasks(const NActors::TActorContext& ctx);
+
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
     void CreateSessionsInShards(
@@ -552,6 +555,10 @@ private:
 
     void HandleUpdateLeakyBucketCounters(
         const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRunRegularTasks(
+        const TEvIndexTabletPrivate::TEvRunRegularTasks::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReleaseCollectBarrier(

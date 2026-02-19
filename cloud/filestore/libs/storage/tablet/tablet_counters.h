@@ -275,6 +275,8 @@ struct TTabletMetrics
     std::atomic<i64> CPUUsageMicros{0};
     i64 CPUUsageRate = 0;
 
+    std::atomic<i64> ResponseLogEntryCount{0};
+
     const NMetrics::IMetricsRegistryPtr StorageRegistry;
     const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
 

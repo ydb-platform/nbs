@@ -319,4 +319,22 @@ void TIndexTabletState::DeleteResponseLogEntry(
     Impl->InternalResponses.erase(reqId);
 }
 
+ui64 TIndexTabletState::GetResponseLogEntryCount() const
+{
+    return Impl->InternalResponses.size();
+}
+
+TVector<TInternalRequestId> TIndexTabletState::ListOldResponseLogEntries(
+    TInstant minTimestamp)
+{
+    TVector<TInternalRequestId> reqIds;
+    for (const auto& [k, e]: Impl->InternalResponses) {
+        if (e.GetTimestampMs() < minTimestamp.MilliSeconds()) {
+            reqIds.push_back(k);
+        }
+    }
+
+    return reqIds;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

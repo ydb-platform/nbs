@@ -326,6 +326,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ListNodesSizeMode,                                                     \
         NProto::EListNodesSizeMode,                                            \
         NProto::LNSM_NAME_ONLY                                                )\
+                                                                               \
+    xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
+    xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

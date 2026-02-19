@@ -998,6 +998,9 @@ message TResponseLogEntry
     uint64 ClientTabletId = 1;
     uint64 RequestId = 2;
 
+    // Entry creation timestamp
+    uint64 TimestampMs = 3;
+
     oneof Response {
         TRenameNodeInDestinationResponse RenameNodeInDestinationResponse = 101;
     }

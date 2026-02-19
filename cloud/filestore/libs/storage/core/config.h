@@ -387,6 +387,9 @@ public:
     bool GetGidPropagationEnabled() const;
 
     bool GetNodeRefsNoAutoPrecharge() const;
+
+    [[nodiscard]] TDuration GetTabletRegularTasksSchedulePeriod() const;
+    [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

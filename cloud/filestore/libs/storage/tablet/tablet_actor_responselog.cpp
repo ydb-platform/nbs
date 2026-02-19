@@ -25,19 +25,19 @@ void TIndexTabletActor::HandleDeleteResponseLogEntry(
     AddInFlightRequest<TEvIndexTablet::TDeleteResponseLogEntryMethod>(
         *requestInfo);
 
-    ExecuteTx<TDeleteResponseLogEntry>(
+    ExecuteTx<TDeleteResponseLogEntries>(
         ctx,
         std::move(requestInfo),
-        msg->Record.GetClientTabletId(),
-        msg->Record.GetRequestId());
+        TVector<TInternalRequestId>(
+           {{msg->Record.GetClientTabletId(), msg->Record.GetRequestId()}}));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_DeleteResponseLogEntry(
+bool TIndexTabletActor::PrepareTx_DeleteResponseLogEntries(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxIndexTablet::TDeleteResponseLogEntry& args)
+    TTxIndexTablet::TDeleteResponseLogEntries& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -46,26 +46,30 @@ bool TIndexTabletActor::PrepareTx_DeleteResponseLogEntry(
     return true;
 }
 
-void TIndexTabletActor::ExecuteTx_DeleteResponseLogEntry(
+void TIndexTabletActor::ExecuteTx_DeleteResponseLogEntries(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxIndexTablet::TDeleteResponseLogEntry& args)
+    TTxIndexTablet::TDeleteResponseLogEntries& args)
 {
     Y_UNUSED(ctx);
 
     TIndexTabletDatabase db(tx.DB);
-    DeleteResponseLogEntry(db, args.ClientTabletId, args.RequestId);
+    for (const auto& x: args.InternalRequestIds) {
+        DeleteResponseLogEntry(db, x.ClientTabletId, x.RequestId);
+    }
 }
 
-void TIndexTabletActor::CompleteTx_DeleteResponseLogEntry(
+void TIndexTabletActor::CompleteTx_DeleteResponseLogEntries(
     const TActorContext& ctx,
-    TTxIndexTablet::TDeleteResponseLogEntry& args)
+    TTxIndexTablet::TDeleteResponseLogEntries& args)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s DeleteResponseLogEntry completed (%lu, %lu)",
-        LogTag.c_str(),
-        args.ClientTabletId,
-        args.RequestId);
+    for (const auto& x: args.InternalRequestIds) {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s DeleteResponseLogEntries completed (%lu, %lu)",
+            LogTag.c_str(),
+            x.ClientTabletId,
+            x.RequestId);
+    }
 
     if (args.RequestInfo) {
         RemoveInFlightRequest(*args.RequestInfo);
@@ -211,6 +215,24 @@ void TIndexTabletActor::CompleteTx_WriteResponseLogEntry(
     using TResponse = TEvIndexTablet::TEvWriteResponseLogEntryResponse;
     auto response = std::make_unique<TResponse>(std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::DeleteOldResponseLogEntries(
+    const NActors::TActorContext& ctx)
+{
+    const auto minTimestamp = ctx.Now() - Config->GetResponseLogEntryTTL();
+    auto reqIds = ListOldResponseLogEntries(minTimestamp);
+
+    if (reqIds.empty()) {
+        return;
+    }
+
+    ExecuteTx<TDeleteResponseLogEntries>(
+        ctx,
+        nullptr /* requestInfo */,
+        std::move(reqIds));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
