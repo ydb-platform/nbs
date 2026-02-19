@@ -165,6 +165,22 @@ TString ToString(const TLogTitle::TDiskRegistry& data)
     return TStringBuilder() << "[dr:" << data.TabletId;
 }
 
+TString ToString(const TLogTitle::TFreshBlocksWriter& data)
+{
+    TStringBuilder stream;
+
+    stream << "[";
+    stream << GetPartitionPrefix(
+        "fbw",
+        data.TabletId,
+        data.PartitionIndex,
+        data.PartitionCount);
+    stream << " g:" << TOptional{data.Generation};
+    stream << " d:" << TOptional{data.DiskId};
+
+    return stream;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -175,16 +191,11 @@ TString TLogTitle::GetPartitionPrefix(
     ui32 partitionIndex,
     ui32 partitionCount)
 {
-    auto builder = TStringBuilder();
-
-    builder << "p";
-    if (partitionCount > 1) {
-        builder << partitionIndex;
-    }
-    builder << ":";
-    builder << tabletId;
-
-    return builder;
+    return ::NCloud::NBlockStore::NStorage::GetPartitionPrefix(
+        "p",
+        tabletId,
+        partitionIndex,
+        partitionCount);
 }
 
 TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
