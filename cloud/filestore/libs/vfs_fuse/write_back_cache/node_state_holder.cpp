@@ -49,7 +49,10 @@ const TNodeState* TNodeStateHolder::GetNodeState(
 void TNodeStateHolder::DeleteNodeState(ui64 nodeId)
 {
     auto it = NodeStates.find(nodeId);
-    Y_ABORT_UNLESS(it != NodeStates.end(), "Node %lu is not found in NodeStates", nodeId);
+    Y_ABORT_UNLESS(
+        it != NodeStates.end(),
+        "Node %lu is not found in NodeStates",
+        nodeId);
     Y_ABORT_UNLESS(
         it->second.DeletionSequenceId == 0,
         "Node %lu is already deleted with DeletionSequenceId %lu",
@@ -76,10 +79,7 @@ ui64 TNodeStateHolder::Pin()
 
 void TNodeStateHolder::Unpin(ui64 pinId)
 {
-    Y_ABORT_UNLESS(
-        Pins.erase(pinId),
-        "Pin %lu is not found",
-        pinId);
+    Y_ABORT_UNLESS(Pins.erase(pinId), "Pin %lu is not found", pinId);
 
     const ui64 minPinId = Pins.empty() ? Max<ui64>() : *Pins.begin();
 
