@@ -451,8 +451,6 @@ public:
             .ClientId = options.ClientId,
             .BlockSize = options.BlockSize,
             .MaxZeroBlocksSubRequestSize = options.MaxZeroBlocksSubRequestSize,
-            .CheckBufferModificationDuringWriting =
-                options.CheckBufferModificationDuringWriting,
             .UnalignedRequestsDisabled = options.UnalignedRequestsDisabled,
             .StorageMediaKind = options.StorageMediaKind};
 

@@ -44,7 +44,6 @@ struct TDeviceHandlerParams
     TString ClientId;
     ui32 BlockSize = 0;
     ui32 MaxZeroBlocksSubRequestSize = 0;
-    bool CheckBufferModificationDuringWriting = false;
     bool UnalignedRequestsDisabled = false;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
 };

@@ -29,10 +29,7 @@ message TLocation
 
 message TChecksumFlags
 {
-    // If enabled, the checksum for data buffer calculated before and after
-    // writing. This is done to ensure that the same data is written to all
-    // mirror disk replicas.
-    optional bool CheckBufferModificationForMirrorDisk = 1;
+    reserved 1;
 
     // Enables data integrity validation client that calculates checksums for
     // write requests and validates checksums for read requests. Calculation for

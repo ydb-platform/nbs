@@ -49,7 +49,6 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(MirroredDiskMinorityChecksumMismatch)                                  \
     xxx(MirroredDiskMajorityChecksumMismatch)                                  \
     xxx(MirroredDiskChecksumMismatchUponRead)                                  \
-    xxx(MirroredDiskChecksumMismatchUponWrite)                                 \
     xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
