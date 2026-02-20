@@ -30,8 +30,6 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
-    NProto::TError Error;
-
 public:
     TEnsureDiskRegistryStateIntegrityActor(
         TRequestInfoPtr requestInfo,
@@ -70,10 +68,10 @@ void TEnsureDiskRegistryStateIntegrityActor::Bootstrap(const TActorContext& ctx)
     if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
              .ok())
     {
-        Error = MakeError(E_ARGUMENT, "Failed to parse input");
+        NProto::TError error = MakeError(E_ARGUMENT, "Failed to parse input");
         ReplyAndDie(
             ctx,
-            std::make_unique<TEvService::TEvExecuteActionResponse>());
+            std::make_unique<TEvService::TEvExecuteActionResponse>(error));
         return;
     }
 
@@ -106,10 +104,8 @@ void TEnsureDiskRegistryStateIntegrityActor::
 {
     const auto* msg = ev->Get();
 
-    TString output;
-    google::protobuf::util::MessageToJsonString(msg->Record, &output);
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
-    response->Record.SetOutput(output);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(msg->GetError());
     ReplyAndDie(ctx, std::move(response));
 }
 
