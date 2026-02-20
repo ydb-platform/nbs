@@ -320,6 +320,10 @@ STFUNC(TServiceActor::StateWork)
             TEvServicePrivate::TEvListMountedVolumesRequest,
             HandleListMountedVolumes);
 
+        HFunc(
+            TEvService::TEvNeedSwitchVhostDiscardEnabledFlag,
+            HandleNeedSwitchVhostDiscardEnabledFlag);
+
         default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(

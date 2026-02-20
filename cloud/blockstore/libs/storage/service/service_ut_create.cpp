@@ -2054,6 +2054,162 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 static_cast<int>(volume.GetVhostDiscardEnabled()));
         }
     }
+
+    Y_UNIT_TEST(ShouldSendEventToSwitchVhostDiscardEnabledFlagOnVolumeRestart)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetEnableVhostDiscardForNewVolumes(false);
+        config.SetUnsetVhostDiscardEnabledOnVolumeRestart(false);
+        config.SetSetVhostDiscardEnabledOnVolumeRestart(true);
+        NProto::TFeaturesConfig featuresConfig;
+        ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        bool eventSent = false;
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvNeedSwitchVhostDiscardEnabledFlag: {
+                        auto* msg = event->Get<TEvService::TEvNeedSwitchVhostDiscardEnabledFlag>();
+                        UNIT_ASSERT_VALUES_EQUAL("vol0", msg->DiskId);
+                        UNIT_ASSERT_VALUES_EQUAL(true, msg->VhostDiscardEnabled);
+                        eventSent = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.CreateVolume(
+            "vol0",
+            1024,
+            DefaultBlockSize,
+            TString(),  // folderId
+            TString(),  // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD
+        );
+
+        {
+            auto response = service.DescribeVolume("vol0");
+            const auto& volume = response->Record.GetVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                static_cast<int>(volume.GetVhostDiscardEnabled()));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(true, eventSent);
+    }
+
+    Y_UNIT_TEST(ShouldSendEventToSwitchVhostDiscardEnabledFlagWithDifferentConfigs)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        NProto::TFeaturesConfig featuresConfig;
+
+        // Configure EnableVhostDiscardForNewVolumes feature
+        {
+            auto* feature = featuresConfig.AddFeatures();
+            feature->SetName("EnableVhostDiscardForNewVolumes");
+            auto* whitelist = feature->MutableWhitelist();
+            *whitelist->AddEntityIds() = "vol1";
+            *whitelist->AddEntityIds() = "vol2";
+            *whitelist->AddEntityIds() = "vol3";
+        }
+
+        // Configure SetVhostDiscardEnabledOnVolumeRestart feature
+        {
+            auto* feature = featuresConfig.AddFeatures();
+            feature->SetName("SetVhostDiscardEnabledOnVolumeRestart");
+            auto* whitelist = feature->MutableWhitelist();
+            *whitelist->AddEntityIds() = "vol0";
+            *whitelist->AddEntityIds() = "vol2";
+            *whitelist->AddEntityIds() = "vol3";
+        }
+
+        // Configure UnsetVhostDiscardEnabledOnVolumeRestart feature
+        {
+            auto* feature = featuresConfig.AddFeatures();
+            feature->SetName("UnsetVhostDiscardEnabledOnVolumeRestart");
+            auto* whitelist = feature->MutableWhitelist();
+            *whitelist->AddEntityIds() = "vol1";
+            *whitelist->AddEntityIds() = "vol2";
+        }
+
+        ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        // Track events for each volume
+        THashMap<TString, bool> eventsReceived;
+        THashMap<TString, bool> expectedEventValues;
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvNeedSwitchVhostDiscardEnabledFlag: {
+                        auto* msg = event->Get<TEvService::TEvNeedSwitchVhostDiscardEnabledFlag>();
+                        eventsReceived[msg->DiskId] = true;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            expectedEventValues[msg->DiskId],
+                            msg->VhostDiscardEnabled);
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Test cases: {diskId, expectedVhostDiscardEnabled, shouldReceiveEvent, expectedEventValue}
+        struct TTestCase {
+            TString DiskId;
+            bool ExpectedVhostDiscardEnabled;
+            bool ShouldReceiveEvent;
+            bool ExpectedEventValue;
+        };
+
+        TVector<TTestCase> testCases = {
+            // vol0: (False, True, False) - event should be sent with value=true
+            {"vol0", true, true, true},
+            // vol1: (True, False, True) - event should be sent with value=false
+            {"vol1", false, true, false},
+            // vol2: (True, True, True) - event should be sent with value=false (Unset takes precedence)
+            {"vol2", false, true, false},
+            // vol3: (True, True, False) - event should be sent with value=true
+            {"vol3", true, true, true},
+            // vol4: (False, False, False) - no event should be sent
+            {"vol4", false, false, false},
+        };
+
+        for (const auto& testCase : testCases) {
+            eventsReceived[testCase.DiskId] = false;
+            expectedEventValues[testCase.DiskId] = testCase.ExpectedEventValue;
+
+            service.CreateVolume(
+                testCase.DiskId,
+                1024,
+                DefaultBlockSize,
+                TString(),  // folderId
+                TString(),  // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD
+            );
+
+            {
+                auto response = service.DescribeVolume(testCase.DiskId);
+                const auto& volume = response->Record.GetVolume();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    testCase.ExpectedVhostDiscardEnabled,
+                    static_cast<bool>(volume.GetVhostDiscardEnabled()),
+                    TStringBuilder() << "Volume: " << testCase.DiskId);
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                testCase.ShouldReceiveEvent,
+                eventsReceived[testCase.DiskId],
+                TStringBuilder() << "Event for volume: " << testCase.DiskId);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

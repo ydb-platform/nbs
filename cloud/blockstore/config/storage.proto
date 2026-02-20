@@ -1470,4 +1470,8 @@ message TStorageServiceConfig
     // Pool kind to storage media kind mapping.
     // Used for cluster capacity estimation (getclustercapacity private api).
     repeated TPoolKindToMediaKindMapping PoolKindToMediaKindMapping = 487;
+
+    // If true, the VhostDiscardEnabled flag is enabled on volume restart.
+    // Applies to network-ssd and network-hdd disks.
+    optional bool EnableVhostDiscardEnabledOnVolumeRestart = 488;
 }

@@ -396,6 +396,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsEnableVhostDiscardEnabledOnVolumeRestartFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -762,6 +767,8 @@ public:
     [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
+
+    [[nodiscard]] bool GetEnableVhostDiscardEnabledOnVolumeRestart() const;
 
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 

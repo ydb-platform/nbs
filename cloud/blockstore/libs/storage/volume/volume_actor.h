@@ -573,6 +573,10 @@ private:
 
     ui32 GetCurrentConfigVersion() const;
 
+    // TOO:_ move to some other place?
+    void SendNeedSwitchVhostDiscardEnabledFlagIfNeeded(
+        const NActors::TActorContext& ctx);
+
     bool SendBootExternalRequest(
         const NActors::TActorContext& ctx,
         TPartitionInfo& partition);
