@@ -1,5 +1,7 @@
 #include "ss_proxy_actor.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
+
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -15,6 +17,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 GetTxIdFromOperationType(
+    const NKikimrTxUserProxy::TEvProposeTransactionStatus& record,
+    NKikimrSchemeOp::EOperationType opType)
+{
+    ui64 txId = record.GetTxId();
+
+    switch (opType) {
+        case NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume:
+            txId = record.GetPathCreateTxId();
+            break;
+        case NKikimrSchemeOp::ESchemeOpDropBlockStoreVolume:
+            txId = record.GetPathDropTxId();
+            break;
+        default:
+            break;
+    }
+    return txId;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TModifySchemeActor final
     : public TActorBootstrapped<TModifySchemeActor>
 {
@@ -22,6 +45,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TActorId Owner;
     const NKikimrSchemeOp::TModifyScheme ModifyScheme;
+    const bool UseSchemeCache;
 
     ui64 TxId = 0;
     ui64 SchemeShardTabletId = 0;
@@ -32,7 +56,8 @@ public:
     TModifySchemeActor(
         TRequestInfoPtr requestInfo,
         const TActorId& owner,
-        NKikimrSchemeOp::TModifyScheme modifyScheme);
+        NKikimrSchemeOp::TModifyScheme modifyScheme,
+        bool useSchemeCache);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -57,10 +82,12 @@ private:
 TModifySchemeActor::TModifySchemeActor(
         TRequestInfoPtr requestInfo,
         const TActorId& owner,
-        NKikimrSchemeOp::TModifyScheme modifyScheme)
+        NKikimrSchemeOp::TModifyScheme modifyScheme,
+        bool useSchemeCache)
     : RequestInfo(std::move(requestInfo))
     , Owner(owner)
     , ModifyScheme(std::move(modifyScheme))
+    , UseSchemeCache(useSchemeCache)
 {}
 
 void TModifySchemeActor::Bootstrap(const TActorContext& ctx)
@@ -89,19 +116,35 @@ void TModifySchemeActor::HandleStatus(
     auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus) record.GetStatus();
     switch (status) {
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:
-            LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
-                "Request %s with TxId# %lu completed immediately",
-                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).data(),
-                TxId);
+            if(!UseSchemeCache) {
+                LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+                    "Request %s with TxId# %lu completed immediately",
+                    NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
+                    TxId);
 
-            ReplyAndDie(ctx);
-            break;
+                ReplyAndDie(ctx);
+                break;
+            }
 
+            TxId = GetTxIdFromOperationType(record, ModifyScheme.GetOperationType());
+            [[fallthrough]];
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecInProgress:
             LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
                 "Request %s with TxId# %lu in progress, waiting for completion",
-                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).data(),
+                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
                 TxId);
+
+            if (UseSchemeCache && TxId == 0) {
+                ReplyAndDie(
+                    ctx,
+                    MakeError(
+                        E_REJECTED,
+                        (TStringBuilder()
+                         << NKikimrSchemeOp::EOperationType_Name(
+                                ModifyScheme.GetOperationType())
+                         << ": " << SchemeShardReason)));
+                break;
+            }
 
             NCloud::Send<TEvSSProxy::TEvWaitSchemeTxRequest>(
                 ctx,
@@ -257,7 +300,8 @@ void TSSProxyActor::HandleModifyScheme(
         ctx,
         std::move(requestInfo),
         ctx.SelfID,
-        msg->ModifyScheme);
+        msg->ModifyScheme,
+        Config->GetUseSchemeCache());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
