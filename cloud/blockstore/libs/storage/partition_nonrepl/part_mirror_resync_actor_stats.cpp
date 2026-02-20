@@ -112,6 +112,22 @@ void TMirrorPartitionResyncActor::HandleGetDiskRegistryBasedPartCounters(
         std::move(statActorIds));
 }
 
+void TMirrorPartitionResyncActor::RejectGetDiskRegistryBasedPartCounters(
+    const TEvNonreplPartitionPrivate::
+        TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            MakeError(E_REJECTED),
+            SelfId(),
+            PartConfig->GetName(),
+            ExtractPartCounters()));
+}
+
 void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
     const TEvNonreplPartitionPrivate::TEvDiskRegistryBasedPartCountersCombined::
         TPtr& ev,

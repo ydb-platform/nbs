@@ -947,6 +947,10 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
             RejectMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            RejectGetDiskRegistryBasedPartCounters);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
@@ -969,9 +973,6 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
-
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvGetDiskRegistryBasedPartCountersRequest);
 
         default:
             if (!HandleRequests(ev)) {
