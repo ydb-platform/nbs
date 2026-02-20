@@ -48,9 +48,9 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleGetDiskRegistryBasedPartCountersUndelivery(
-        TEvNonreplPartitionPrivate::
-            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
-        const TActorContext& ctx)
+        TEvNonreplPartitionPrivate::TEvGetDiskRegistryBasedPartCountersRequest::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
