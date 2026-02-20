@@ -56,6 +56,12 @@ namespace NCloud::NBlockStore::NClient {
            |                          |
            v                          v
     StorageDataClient          StorageDataClient
+           |                          |
+           v                          v
+ OverlappedRequestsGuard     OverlappedRequestsGuard
+           |                          |
+           v                          v
+       IStorage                    IStorage
 */
 
 struct ISwitchableSession: public ISession

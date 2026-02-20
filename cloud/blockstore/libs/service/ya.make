@@ -9,6 +9,7 @@ SRCS(
     blocks_info.cpp
     context.cpp
     device_handler.cpp
+    overlapped_requests_guard_wrapper.cpp
     request_helpers.cpp
     request.cpp
     service_auth.cpp
