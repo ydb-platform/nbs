@@ -11,13 +11,16 @@
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
+#include <contrib/ydb/core/base/hive.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
-
-#include <contrib/ydb/core/base/hive.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -149,6 +152,32 @@ TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
     }
 
     return buf;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TTabletStorageInfoPtr GetTabletStorageInfo(
+    TTestActorRuntime& runtime,
+    ui64 tabletId)
+{
+    using TEvHiveProxy = NCloud::NStorage::TEvHiveProxy;
+
+    auto sender = runtime.AllocateEdgeActor();
+    runtime.Send(new IEventHandle(
+        NCloud::NStorage::MakeHiveProxyServiceId(),
+        sender,
+        new TEvHiveProxy::TEvGetStorageInfoRequest(tabletId)));
+
+    TAutoPtr<IEventHandle> handle;
+    auto* event =
+        runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetStorageInfoResponse>(
+            handle);
+    UNIT_ASSERT(event);
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetError().GetCode());
+
+    auto storageInfo = event->StorageInfo;
+    UNIT_ASSERT(storageInfo);
+    return storageInfo;
 }
 
 }   // namespace
@@ -2619,19 +2648,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     Y_UNIT_TEST(ShouldReassignTablet)
     {
-        // TODO(svartmetal) skip the test, will be fixed in #3128
-        return;
-
         NProto::TStorageConfig config;
         config.SetCompactionThreshold(1000);
-        TTestEnv env({}, config);
+        // At least three groups are required, because in the worst case two
+        // different channels may use two different groups
+        TTestEnv env({.Groups = 3}, config);
+
+        auto& runtime = env.GetRuntime();
 
         ui32 nodeIdx = env.AddDynamicNode();
 
         ui64 tabletId = 0;
-        ui64 reassignedTabletId = 0;
-        TVector<ui32> reassignedChannels;
-        env.GetRuntime().SetEventFilter(
+        runtime.SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvSSProxy::EvDescribeFileStoreResponse: {
@@ -2640,18 +2668,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     const auto& desc =
                         msg->PathDescription.GetFileStoreDescription();
                     tabletId = desc.GetIndexTabletId();
-
-                    break;
-                }
-
-                case NKikimr::TEvHive::EvReassignTablet: {
-                    const auto* msg =
-                        event->Get<NKikimr::TEvHive::TEvReassignTablet>();
-                    reassignedTabletId = msg->Record.GetTabletID();
-                    reassignedChannels = {
-                        msg->Record.GetChannels().begin(),
-                        msg->Record.GetChannels().end()};
-
                     break;
                 }
             }
@@ -2666,22 +2682,145 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT(headers.SessionId);
         UNIT_ASSERT(tabletId);
 
-        NProtoPrivate::TReassignTabletRequest request;
-        request.SetTabletId(tabletId);
-        request.AddChannels(1);
-        request.AddChannels(4);
+        // The first part of the test: select groups for reassignment,
+        // emulating a high occupancy scenario - since Hive only allows
+        // reassignment to less occupied groups
 
-        TString buf;
-        google::protobuf::util::MessageToJsonString(request, &buf);
-        auto jsonResponse = service.ExecuteAction("reassigntablet", buf);
-        NProtoPrivate::TReassignTabletResponse response;
-        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
+        TVector<ui32> channelsToReassign = {1, 4};
+        TVector<ui32> groupsToReassign;
+
+        auto storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        UNIT_ASSERT(storageInfo->Channels.size() > channelsToReassign.size());
+
+        // Find which groups correspond to the channels being reassigned
+        for (size_t idx = 0; idx < storageInfo->Channels.size(); idx++) {
+            const auto& channel = storageInfo->Channels[idx];
+
+            auto it = Find(channelsToReassign, idx);
+            if (it != channelsToReassign.end()) {
+                UNIT_ASSERT_VALUES_EQUAL(1, channel.History.size());
+                const auto groupId = channel.History.back().GroupID;
+                groupsToReassign.push_back(groupId);
+            }
+        }
+
+        ui32 selectGroupsHappened = 0;
+        ui64 reassignedTabletId = 0;
+        TVector<ui32> reassignedChannels;
+
+        runtime.SetEventFilter([&] (auto&, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvControllerSelectGroupsResult: {
+                    selectGroupsHappened++;
+
+                    auto* msg = event->Get<
+                        TEvBlobStorage::TEvControllerSelectGroupsResult>();
+                    auto& record = msg->Record;
+                    for (auto& matchingGroups: *record.MutableMatchingGroups()) {
+                        for (auto& group: *matchingGroups.MutableGroups()) {
+                            auto it = FindIf(
+                                groupsToReassign,
+                                [=](ui32 groupId) {
+                                    return groupId == group.GetGroupID();
+                                });
+                            if (it != groupsToReassign.end()) {
+                                // Set a large occupancy to make reassignment from
+                                // this group possible
+                                group.MutableCurrentResources()->SetOccupancy(
+                                    0.7);
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                case TEvHive::EvReassignTablet: {
+                    const auto* msg =
+                        event->Get<NKikimr::TEvHive::TEvReassignTablet>();
+                    reassignedTabletId = msg->Record.GetTabletID();
+                    reassignedChannels = {
+                        msg->Record.GetChannels().begin(),
+                        msg->Record.GetChannels().end()};
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        env.RebootHive();
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(1, selectGroupsHappened);
+
+        {
+            NProtoPrivate::TReassignTabletRequest request;
+            request.SetTabletId(tabletId);
+            for (auto channel: channelsToReassign) {
+                request.AddChannels(channel);
+            }
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("reassigntablet", buf);
+            NProtoPrivate::TReassignTabletResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
 
         UNIT_ASSERT_VALUES_EQUAL(tabletId, reassignedTabletId);
-        UNIT_ASSERT_VALUES_EQUAL(2, reassignedChannels.size());
-        UNIT_ASSERT_VALUES_EQUAL(1, reassignedChannels[0]);
-        UNIT_ASSERT_VALUES_EQUAL(4, reassignedChannels[1]);
+        UNIT_ASSERT_VALUES_EQUAL(channelsToReassign, reassignedChannels);
+
+        ui32 reassignedToGroupId = 0;
+
+        storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        UNIT_ASSERT(storageInfo->Channels.size() > reassignedChannels.size());
+
+        // Ensure that the reassign did happen
+        for (size_t idx = 0; idx < reassignedChannels.size(); idx++) {
+            const auto& channel = storageInfo->Channels[reassignedChannels[idx]];
+            UNIT_ASSERT_VALUES_EQUAL(2, channel.History.size());
+            reassignedToGroupId = channel.History.back().GroupID;
+
+            // Validate that the reassigned group is not selected as the target
+            // for reassignment
+            const auto groupIt = Find(groupsToReassign, reassignedToGroupId);
+            UNIT_ASSERT(groupIt == groupsToReassign.end());
+        }
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, reassignedToGroupId);
+
+        // The second part of the test: attempt to reassign a previously
+        // reassigned channel and verify that no reassignment occurs
+
+        ui32 reassignedToChannel = reassignedChannels.back();
+
+        {
+            NProtoPrivate::TReassignTabletRequest request;
+            request.SetTabletId(tabletId);
+            request.AddChannels(reassignedToChannel);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("reassigntablet", buf);
+
+            TAutoPtr<IEventHandle> handle;
+            auto* event =
+                runtime.GrabEdgeEvent<TEvService::TEvExecuteActionResponse>(
+                    handle,
+                    TDuration::Seconds(5));
+            // Expect that the reassignment response did not occur
+            UNIT_ASSERT(event == nullptr);
+        }
+
+        storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        UNIT_ASSERT(storageInfo->Channels.size() > reassignedChannels.size());
+        {
+            auto channel = storageInfo->Channels[reassignedToChannel];
+            // Expect that the group was not reassigned
+            UNIT_ASSERT_VALUES_EQUAL(
+                reassignedToGroupId,
+                channel.History.back().GroupID);
+        }
     }
 
     void CheckThreeStageWrites(NProto::EStorageMediaKind kind, bool disableForHdd)

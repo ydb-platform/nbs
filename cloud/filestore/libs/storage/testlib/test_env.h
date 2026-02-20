@@ -157,6 +157,8 @@ public:
     TString UpdatePrivateCacheSize(ui64 tabletId, ui64 cacheSize);
     ui64 GetPrivateCacheSize(ui64 tabletId);
 
+    void RebootHive();
+
 private:
     void SetupLogging();
 

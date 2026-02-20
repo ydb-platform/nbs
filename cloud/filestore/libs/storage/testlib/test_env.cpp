@@ -326,6 +326,29 @@ ui32 TTestEnv::AddDynamicNode()
     return nodeIdx;
 }
 
+void TTestEnv::RebootHive()
+{
+    // The method only works in a single-node setup
+    UNIT_ASSERT_VALUES_EQUAL(1, Config.StaticNodes);
+    const ui64 nodeIdx = 0;
+
+    auto sender = Runtime.AllocateEdgeActor();
+    auto tabletId = GetHive();
+
+    TVector<ui64> tablets = { tabletId };
+    auto guard = NKikimr::CreateTabletScheduledEventsGuard(
+        tablets,
+        Runtime,
+        sender);
+
+    NKikimr::RebootTablet(
+        Runtime,
+        tabletId,
+        sender,
+        nodeIdx,
+        true);  // sysTablet
+}
+
 void TTestEnv::SetupLogging()
 {
     Runtime.SetLogPriority(NLog::InvalidComponent, Config.LogPriority_Others);
