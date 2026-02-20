@@ -2851,6 +2851,57 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST_SIMPLE(ShouldResizeOldSmallFileSystemWithLargeShards)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+
+        TStorageConfig storageConfig(config);
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount =
+            storageConfig.GetAutomaticallyCreatedShardSize() / blockSize;
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        // Create a small filesystem with two large shards
+        ui64 fsSize = 1000;
+        const ui64 shardsCount = 2;
+        service.CreateFileStore("test", fsSize);
+        service.ResizeFileStore("test", fsSize, false /* force */, shardsCount);
+
+        WaitForTabletStart(service);
+
+        // In spite new filesystem size is much smaller than the shards size
+        // it should be allowed to resize it.
+
+        fsSize *= 2;
+        service.ResizeFileStore("test", fsSize);
+
+        auto checkSizes = [&]()
+        {
+            const auto response = GetStorageStats(service, "test");
+            const auto& stats = response.GetStats();
+            UNIT_ASSERT_EQUAL(fsSize, stats.GetTotalBlocksCount());
+            UNIT_ASSERT_EQUAL(2, stats.GetShardStats().size());
+            for (const auto& stat: stats.GetShardStats()) {
+                UNIT_ASSERT_EQUAL(shardBlockCount, stat.GetTotalBlocksCount());
+            }
+        };
+        checkSizes();
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        env.UpdateStorageConfig(config);
+        env.CreateAndRegisterStorageService(nodeIdx);
+
+        fsSize *= 2;
+        service.ResizeFileStore("test", fsSize);
+        checkSizes();
+    }
+
     SERVICE_TEST_SIMPLE(ShouldAggregateFileSystemMetricsInBackground)
     {
         config.SetMultiTabletForwardingEnabled(true);
