@@ -208,7 +208,7 @@ void TAttachDetachPathActor::UpdatePathAttachStates(const TActorContext& ctx)
 {
     Y_ABORT_UNLESS(PendingRequests == 0);
     Y_ABORT_UNLESS(IsAttach);
-    for (auto& path : Paths) {
+    for (auto& path: Paths) {
         auto request = std::make_unique<
             TEvDiskRegistryPrivate::TEvUpdatePathAttachStateRequest>();
         request->Path = path;
@@ -513,15 +513,15 @@ void TDiskRegistryActor::HandleAttachDetachPathsOperationCompleted(
 
 void TDiskRegistryActor::ProcessPathsToAttachOnAgent(
     const NActors::TActorContext& ctx,
-    const NProto::TAgentConfig* agent,
+    const NProto::TAgentConfig& agent,
     const THashSet<TString>& paths)
 {
-    const TString& agentId = agent->GetAgentId();
+    const TString& agentId = agent.GetAgentId();
     TVector<TString> pathsToAttach;
     for (const auto& path: paths) {
-        auto it = agent->GetPathAttachStates().find(path);
-        Y_DEBUG_ABORT_UNLESS(it != agent->GetPathAttachStates().end());
-        if (it == agent->GetPathAttachStates().end()) {
+        auto it = agent.GetPathAttachStates().find(path);
+        Y_DEBUG_ABORT_UNLESS(it != agent.GetPathAttachStates().end());
+        if (it == agent.GetPathAttachStates().end()) {
             continue;
         }
 
@@ -540,7 +540,7 @@ void TDiskRegistryActor::ProcessPathsToAttachOnAgent(
         ctx,
         ctx.SelfID,
         agentId,
-        agent->GetNodeId(),
+        agent.GetNodeId(),
         true,   // isAttach
         std::move(pathsToAttach),
         Config->GetAttachDetachPathRequestTimeout(),
@@ -589,7 +589,7 @@ void TDiskRegistryActor::ProcessPathsToAttach(const TActorContext& ctx)
             continue;
         }
 
-        ProcessPathsToAttachOnAgent(ctx, agent, paths);
+        ProcessPathsToAttachOnAgent(ctx, *agent, paths);
 
         if (AgentsWithAttachDetachRequestsInProgress.size() ==
             Config->GetMaxInflightAttachDetachPathRequestsProcessing())

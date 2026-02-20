@@ -1432,5 +1432,5 @@ message TStorageServiceConfig
     optional bool SendErrorOnAddClientConflict = 483;
 
     // Maximum number of inflight attach/detach path requests.
-    optional uint32 MaxInflightAttachDetachPathRequestsProcessing = 484;
+    optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 484;
 }

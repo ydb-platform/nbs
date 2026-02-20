@@ -299,20 +299,17 @@ bool StateTransitionAllowed(
     NProto::EPathAttachState newState,
     NProto::EPathAttachState oldState)
 {
-    static const THashMap<
-        NProto::EPathAttachState,
-        THashSet<NProto::EPathAttachState>>
-        AllowedTransitions{
-            {NProto::PATH_ATTACH_STATE_ATTACHED,
-             {NProto::PATH_ATTACH_STATE_ATTACHING}},
-            {NProto::PATH_ATTACH_STATE_ATTACHING,
-             {NProto::PATH_ATTACH_STATE_DETACHED}},
-            {NProto::PATH_ATTACH_STATE_DETACHED,
-             {NProto::PATH_ATTACH_STATE_ATTACHING,
-              NProto::PATH_ATTACH_STATE_ATTACHED}}};
-
-    const auto* allowedOldStates = AllowedTransitions.FindPtr(newState);
-    return allowedOldStates && allowedOldStates->contains(oldState);
+    switch (newState) {
+        case NProto::PATH_ATTACH_STATE_ATTACHED:
+            return oldState == NProto::PATH_ATTACH_STATE_ATTACHING;
+        case NProto::PATH_ATTACH_STATE_ATTACHING:
+            return oldState == NProto::PATH_ATTACH_STATE_DETACHED;
+        case NProto::PATH_ATTACH_STATE_DETACHED:
+            return oldState == NProto::PATH_ATTACH_STATE_ATTACHING ||
+                   oldState == NProto::PATH_ATTACH_STATE_ATTACHED;
+        default:
+            return false;
+    }
 }
 
 }   // namespace
@@ -8524,6 +8521,7 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
         ReportDiskRegistryDetachPathWithDependentDisk(
             "Can't detach path with dependent disks",
             {{"agent", agent.GetAgentId()}, {"path", path}});
+        return;
     }
 
     const auto desirableState = attach ? NProto::PATH_ATTACH_STATE_ATTACHING
