@@ -781,25 +781,21 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
-    if (!HasError(args.Error)
-            || GetErrorKind(args.Error) != EErrorKind::ErrorRetriable)
-    {
-        //
-        // Best-effort response log entry deletion attempt. The entries that
-        // don't get deleted because of this request not reaching the shard will
-        // be deleted in background when they become too old.
-        //
+    //
+    // Best-effort response log entry deletion attempt. The entries that don't
+    // get deleted because of this request not reaching the shard will be
+    // deleted in background when they become too old.
+    //
 
-        auto actor = std::make_unique<TDeleteResponseLogEntryActor>(
-            LogTag,
-            ctx.SelfID,
-            std::move(args.ShardFileSystemId),
-            TabletID(),
-            args.TabletRequestId);
+    auto actor = std::make_unique<TDeleteResponseLogEntryActor>(
+        LogTag,
+        ctx.SelfID,
+        std::move(args.ShardFileSystemId),
+        TabletID(),
+        args.TabletRequestId);
 
-        auto actorId = NCloud::Register(ctx, std::move(actor));
-        WorkerActors.insert(actorId);
-    }
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 
     if (args.IsExplicitRequest) {
         using TResponse =
