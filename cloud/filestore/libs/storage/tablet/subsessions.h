@@ -13,11 +13,17 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSessionPipeInfo
+{
+    NActors::TActorId Owner;
+    NActors::TActorId PipeServer;
+};
+
 struct TSubSession
 {
     ui64 SeqNo;
     bool ReadOnly;
-    NActors::TActorId Owner;
+    TSessionPipeInfo PipeInfo;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,20 +40,23 @@ public:
         , MaxSeenRwSeqNo(maxSeenRwSeqNo)
     {}
 
-    NActors::TActorId AddSubSession(
+    std::optional<TSessionPipeInfo> AddSubSession(
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer);
 
-    NActors::TActorId UpdateSubSession(
+    std::optional<TSessionPipeInfo> UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer);
 
-    ui32 DeleteSubSession(const NActors::TActorId& owner);
-    ui32 DeleteSubSession(ui64 sessionSeqNo);
+    ui32 DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer);
+    std::optional<TSubSession> DeleteSubSession(ui64 sessionSeqNo);
 
-    TVector<NActors::TActorId> GetSubSessions() const;
+    TVector<NActors::TActorId> GetSubSessionsOwner() const;
+    TVector<NActors::TActorId> GetSubSessionsPipeServer() const;
     TVector<TSubSession> GetAllSubSessions() const;
 
     bool HasSeqNo(ui64 seqNo) const;

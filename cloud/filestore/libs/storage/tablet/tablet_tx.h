@@ -528,11 +528,15 @@ struct TTxIndexTablet
 
         TString SessionId;
 
+        const NActors::TActorId PipeServerId;
+
         TCreateSession(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TCreateSessionRequest request)
+                NProtoPrivate::TCreateSessionRequest request,
+                NActors::TActorId pipeServerId)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
+            , PipeServerId(pipeServerId)
         {}
 
         void Clear() override
