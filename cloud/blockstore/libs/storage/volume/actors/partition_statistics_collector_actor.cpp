@@ -12,8 +12,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionStatisticsCollectorActor::TPartitionStatisticsCollectorActor(
-        const TActorId& owner,
-        TVector<TActorId> partitions)
+    const TActorId& owner,
+    TVector<TActorId> partitions)
     : Owner(owner)
     , Partitions(std::move(partitions))
 {}
@@ -25,7 +25,17 @@ void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
     for (const auto& partition: Partitions) {
         auto request = std::make_unique<
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest>();
-        NCloud::Send(ctx, partition, std::move(request));
+
+        auto event = std::make_unique<IEventHandle>(
+            partition,
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            0,  // cookie
+            &ctx.SelfID   // forwardOnNondelivery
+        );
+
+        ctx.Send(event.release());
     }
 
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
@@ -74,14 +84,29 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
 {
     auto* record = ev->Get();
 
+
     if (HasError(record->Error)) {
         LastError = record->Error;
-        ++FailedResponses;
     } else {
         Response.PartCounters.push_back(std::move(*record));
     }
 
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size()) {
+        SendStatToVolume(ctx);
+    }
+}
+
+void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
+    TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LastError = MakeError(E_REJECTED, "GetPartCountersRequest undelivered");
+
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size()) {
         SendStatToVolume(ctx);
     }
 }
@@ -93,7 +118,10 @@ STFUNC(TPartitionStatisticsCollectorActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersResponse,
-            HandleGetPartCountersResponse)
+            HandleGetPartCountersResponse);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersUndelivery);
 
         default:
             HandleUnexpectedEvent(

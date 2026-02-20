@@ -1308,7 +1308,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.WaitReady();
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(
@@ -1358,7 +1358,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.WaitReady();
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(
@@ -1415,7 +1415,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 Y_UNUSED(runtime);
                 Y_UNUSED(delay);
                 Y_UNUSED(deadline);
-                if (ev->GetTypeRewrite() == TEvVolumePrivate::EvUpdateCounters)
+                if (ev->GetTypeRewrite() == TEvStatsService::EvGetServiceStatisticsRequest)
                 {
                     return true;
                 }
@@ -1442,7 +1442,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.WaitReady();
 
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
         {
             runtime->AdvanceCurrentTime(UpdateCountersInterval);
             TDispatchOptions options;
@@ -1554,20 +1554,34 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto runtime = PrepareTestActorRuntime(config, state);
 
         bool statUpdated = false;
+
         struct TReadAndWriteByteCount
         {
             ui64 ReadByteCount = 0;
             ui64 WriteByteCount = 0;
         };
+
         TMap<TString, TReadAndWriteByteCount> statsForDisks;
-        auto statEventInterceptor = runtime->AddObserver<TEvStatsService::TEvVolumePartCounters>(
-            [&](TEvStatsService::TEvVolumePartCounters::TPtr& event) {
-                auto* msg = event->Get();
-                statsForDisks[msg->DiskId].ReadByteCount +=
-                    msg->DiskCounters->RequestCounters.ReadBlocks.RequestBytes;
-                statsForDisks[msg->DiskId].WriteByteCount +=
-                    msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
-            });
+
+        auto updateStats = [&]()
+        {
+            TAutoPtr<IEventHandle> handle;
+            auto* response = runtime->GrabEdgeEventRethrow<
+                TEvStatsService::TEvGetServiceStatisticsResponse>(
+                handle,
+                TDuration::Seconds(5));
+
+            UNIT_ASSERT(handle);
+            auto* msg = response;
+            for (const auto& partCounters: msg->PartsCounters) {
+                statsForDisks[partCounters.DiskId].ReadByteCount +=
+                    partCounters.DiskCounters->RequestCounters.ReadBlocks
+                        .RequestBytes;
+                statsForDisks[partCounters.DiskId].WriteByteCount +=
+                    partCounters.DiskCounters->RequestCounters.WriteBlocks
+                        .RequestBytes;
+            }
+        };
 
         auto _ = runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
             [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
@@ -1582,7 +1596,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
-
 
         volume.UpdateVolumeConfig(
             0,
@@ -1603,23 +1616,31 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volume.AddClient(clientInfo);
 
-        volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
-
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1);
 
+        volume.SendToPipe(
+            std::make_unique<
+                TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+        updateStats();
+
         volume.ReadBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId());
 
-        runtime->AdvanceCurrentTime(UpdateCountersInterval);
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        volume.SendToPipe(
+            std::make_unique<
+                TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+        updateStats();
         // Check that statistics was updated
         UNIT_ASSERT(statUpdated);
-        UNIT_ASSERT_VALUES_EQUAL(statsForDisks["vol0"].WriteByteCount, 12582912);
+        UNIT_ASSERT_VALUES_EQUAL(
+            statsForDisks["vol0"].WriteByteCount,
+            12582912);
         UNIT_ASSERT_VALUES_EQUAL(statsForDisks["vol0"].ReadByteCount, 4194304);
     }
 
@@ -1662,7 +1683,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volume.WaitReady();
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
@@ -1712,7 +1733,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volume.WaitReady();
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
@@ -1818,7 +1839,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volume.WaitReady();
         volume.SendToPipe(
-            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         TDispatchOptions options;

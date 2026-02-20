@@ -36,14 +36,17 @@ struct TEvStatsService
         const TString DiskId;
         const ui64 TabletId;
         const NProto::TVolume Config;
+        const NActors::TActorId ActorId;
 
         TRegisterVolume(
                 TString diskId,
                 ui64 tabletId,
-                NProto::TVolume config)
+                NProto::TVolume config,
+                NActors::TActorId actorId)
             : DiskId(std::move(diskId))
             , TabletId(tabletId)
             , Config(std::move(config))
+            , ActorId(actorId)
         {}
     };
 
@@ -202,6 +205,35 @@ struct TEvStatsService
     };
 
     //
+    //  GetServiceStatistics
+    //
+
+    struct TGetServiceStatisticsRequest
+    {
+        TGetServiceStatisticsRequest() = default;
+    };
+
+    struct TGetServiceStatisticsResponse
+    {
+        std::optional<TVolumeSelfCounters> VolumeCounters;
+
+        TVector<TVolumePartCounters> PartsCounters;
+
+        explicit TGetServiceStatisticsResponse() = default;
+    };
+
+    //
+    //  ServiceStatisticsCombined
+    //
+
+    struct TServiceStatisticsCombined
+    {
+        TVector<TGetServiceStatisticsResponse> Counters;
+
+        TServiceStatisticsCombined() = default;
+    };
+
+    //
     // Events declaration
     //
 
@@ -217,6 +249,9 @@ struct TEvStatsService
         EvVolumeSelfCounters,
         EvGetVolumeStatsRequest,
         EvGetVolumeStatsResponse,
+        EvGetServiceStatisticsRequest,
+        EvGetServiceStatisticsResponse,
+        EvServiceStatisticsCombined,
 
         EvEnd
     };
@@ -256,6 +291,16 @@ struct TEvStatsService
         EvVolumeSelfCounters
     >;
 
+    using TEvGetServiceStatisticsRequest = TRequestEvent<
+        TGetServiceStatisticsRequest,
+        EvGetServiceStatisticsRequest>;
+
+    using TEvGetServiceStatisticsResponse = TResponseEvent<
+        TGetServiceStatisticsResponse,
+        EvGetServiceStatisticsResponse>;
+
+    using TEvServiceStatisticsCombined =
+        TResponseEvent<TServiceStatisticsCombined, EvServiceStatisticsCombined>;
 };
 
 

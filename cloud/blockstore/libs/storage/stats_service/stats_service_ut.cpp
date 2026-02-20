@@ -142,7 +142,8 @@ void RegisterVolume(
     auto registerMsg = std::make_unique<TEvStatsService::TEvRegisterVolume>(
         diskId,
         volumeTabletID,
-        std::move(volume));
+        std::move(volume),
+        runtime.AllocateEdgeActor());
     runtime.Send(
         new IEventHandle(
             MakeStorageStatsServiceId(),
@@ -1677,6 +1678,140 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
             EPublishingPolicy::DiskRegistryBased);
+    }
+
+    Y_UNIT_TEST(ShouldReportReadWriteZeroCountersPullScheme)
+    {
+        bool uploadSeen = false;
+        auto callback = [&](const TYdbRowData& rows)
+        {
+            Y_UNUSED(rows);
+            uploadSeen = true;
+            return NThreading::MakeFuture(MakeError(S_OK));
+        };
+
+        IYdbVolumesStatsUploaderPtr ydbStats =
+            std::make_shared<TYdbStatsMock>(callback);
+
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            std::move(ydbStats));
+
+        RegisterVolume(
+            runtime,
+            "vol0",
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            true /* isSystem */);
+
+        auto counters = CreatePartitionDiskCounters(
+            EPublishingPolicy::DiskRegistryBased,
+            EHistogramCounterOption::ReportMultipleCounters);
+        counters->RequestCounters.ReadBlocks.Count = 42;
+        counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
+
+        // Statistics were sent using the push method to check for possible
+        // failures.
+        SendDiskStats(
+            runtime,
+            "vol0",
+            false,   // isLocalMount
+            std::move(counters),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::DiskRegistryBased,
+                EHistogramCounterOption::ReportMultipleCounters),
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            0);
+
+        counters = CreatePartitionDiskCounters(
+            EPublishingPolicy::DiskRegistryBased,
+            EHistogramCounterOption::ReportMultipleCounters);
+        counters->RequestCounters.ReadBlocks.Count = 42;
+        counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
+
+        auto partCounters = TEvStatsService::TEvVolumePartCounters(
+            MakeIntrusive<TCallContext>(),
+            "vol0",
+            std::move(counters),
+            0,
+            0,
+            false,
+            NBlobMetrics::TBlobLoadMetrics{},
+            NKikimrTabletBase::TMetrics{});
+
+        auto selfCounters = TEvStatsService::TEvVolumeSelfCounters(
+            "vol0",
+            false,
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            false,
+            std::move(CreateVolumeSelfCounters(
+                EPublishingPolicy::DiskRegistryBased,
+                EHistogramCounterOption::ReportMultipleCounters)));
+
+        auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+        runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                MakeStorageStatsServiceId(),
+                updateMsg.release(),
+                0,   // flags
+                0),
+            0);
+
+        TAutoPtr<IEventHandle> handle;
+        runtime.GrabEdgeEventRethrow<
+            TEvStatsService::TEvGetServiceStatisticsRequest>(
+            handle,
+            TDuration::Seconds(5));
+
+        UNIT_ASSERT(handle);
+
+        auto response = std::make_unique<
+            TEvStatsService::TEvGetServiceStatisticsResponse>();
+
+        response->PartsCounters.push_back(std::move(partCounters));
+        response->VolumeCounters.emplace(std::move(selfCounters));
+
+        runtime.Send(
+            new IEventHandle(
+                handle->Sender,
+                MakeStorageStatsServiceId(),
+                response.release(),
+                0,   // flags
+                0),
+            0);
+
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        {
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("host", "cluster")
+                               ->GetSubgroup("volume", "vol0")
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup("request", "ReadBlocks")
+                               ->GetCounter("Count");
+            UNIT_ASSERT_VALUES_EQUAL(84, actual);
+        }
+
+        {
+            ui64 actual = *runtime.GetAppData(0)
+                               .Counters->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "service_volume")
+                               ->GetSubgroup("host", "cluster")
+                               ->GetSubgroup("volume", "vol0")
+                               ->GetSubgroup("cloud", DefaultCloudId)
+                               ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup("request", "ReadBlocks")
+                               ->GetCounter("RequestBytes");
+            UNIT_ASSERT_VALUES_EQUAL(201000, actual);
+        }
     }
 
     Y_UNIT_TEST(ShouldRegisterTrafficSources)

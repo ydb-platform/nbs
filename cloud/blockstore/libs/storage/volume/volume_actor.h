@@ -458,6 +458,8 @@ private:
         {}
     };
 
+    TRequestInfoPtr StatisticRequestInfo;
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -643,7 +645,6 @@ private:
         const NActors::TActorContext& ctx,
         const TString& diskId);
     void SendVolumeConfigUpdated(const NActors::TActorContext& ctx);
-    void SendVolumeSelfCounters(const NActors::TActorContext& ctx);
 
     TDuration GetLoadTime() const
     {
@@ -717,6 +718,15 @@ private:
         TDataForUpdatingDiskRegistryBasedPartCounters data);
 
     const TString& GetDiskId() const;
+
+    std::optional<TEvStatsService::TVolumePartCounters> GetPartCounters(
+        const TString& diskId);
+
+    TEvStatsService::TVolumeSelfCounters GetVolumeSelfCounters(
+        const NActors::TActorContext& ctx);
+
+    void SendStatsToServiceStatisticsCollectorActor(
+        const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateBoot);
@@ -1333,6 +1343,14 @@ private:
     void HandleGetDiskRegistryBasedPartCountersResponse(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetServiceStatistics(
+        const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectGetServiceStatistics(
+        const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
