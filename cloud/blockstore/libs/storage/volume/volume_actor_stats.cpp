@@ -891,19 +891,11 @@ void TVolumeActor::SendStatisticRequestForDiskRegistryBasedPartition(
         TabletID(),
         "Empty disk registry based partition actor");
 
-    auto request = std::make_unique<TEvNonreplPartitionPrivate::
-                             TEvGetDiskRegistryBasedPartCountersRequest>();
-
-    auto event = std::make_unique<IEventHandle>(
+    NCloud::Send(
+        ctx,
         State->GetDiskRegistryBasedPartitionActor(),
-        ctx.SelfID,
-        request.release(),
-        IEventHandle::FlagForwardOnNondelivery,
-        0,
-        &ctx.SelfID   // forwardOnNondelivery
-    );
-
-    ctx.Send(std::move(event));
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersRequest>());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
