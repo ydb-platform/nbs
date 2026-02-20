@@ -1722,7 +1722,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
 
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
-        //OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
 
         TIndexTabletClient tablet(
             env.GetRuntime(),
