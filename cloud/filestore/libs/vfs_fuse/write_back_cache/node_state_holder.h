@@ -43,7 +43,6 @@ private:
     TSet<ui64> Pins;
 
 public:
-
     explicit TNodeStateHolder(IWriteBackCacheStatsPtr stats);
 
     // Retrieve an existing node state or create a new empty one if it
