@@ -436,6 +436,25 @@ TDiskRegistryState::TDiskRegistryState(
 
 TDiskRegistryState::~TDiskRegistryState() = default;
 
+NProto::TError TDiskRegistryState::CompareMeaningfullFields(
+    const TDiskRegistryState& other) const
+{
+    static_assert(
+        sizeof(TDiskRegistryState) == 2144,
+        "If you have changed the fields in TDiskRegistryState, please consider "
+        "updating the comparison logic");
+
+    if (HasError(AgentList.CompareMeaningfullFields(other.AgentList))) {
+        return MakeError(E_FAIL, "AgentList is different");
+    }
+
+    if (HasError(DeviceList.CompareMeaningfullFields(other.DeviceList))) {
+        return MakeError(E_FAIL, "DeviceList is different");
+    }
+
+    return {};
+}
+
 void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)
