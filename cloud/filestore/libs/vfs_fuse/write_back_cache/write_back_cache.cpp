@@ -1,8 +1,9 @@
 #include "write_back_cache.h"
 
 #include "node_cache.h"
+#include "node_state.h"
+#include "node_state_holder.h"
 #include "persistent_storage.h"
-#include "read_write_range_lock.h"
 #include "sequence_id_generator.h"
 #include "utils.h"
 #include "write_data_request_builder.h"
@@ -54,18 +55,6 @@ struct TFlushConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFlushRequest
-{
-    const ui64 RequestId = 0;
-    TPromise<void> Promise = NewPromise();
-
-    explicit TFlushRequest(ui64 requestId)
-        : RequestId(requestId)
-    {}
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TBufferWriter
 {
     std::span<char> TargetBuffer;
@@ -88,79 +77,6 @@ struct TBufferWriter
 };
 
 }   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TWriteBackCache::TFlushState
-{
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> WriteRequests;
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
-    size_t AffectedWriteDataEntriesCount = 0;
-    size_t InFlightWriteRequestsCount = 0;
-    bool Executing = false;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TWriteBackCache::TNodeState
-{
-    const ui64 NodeId = 0;
-
-    TNodeCache Cache;
-
-    // Prevent from concurrent read and write requests with overlapping ranges
-    TReadWriteRangeLock RangeLock;
-
-    TFlushState FlushState;
-
-    // Flush requests are fulfilled when there are no entries in |AllEntries|
-    // with RequestId less or equal than |TFlushRequest::RequestId|.
-    // Flush requests are stored in chronological order: RequestId values are
-    // strictly increasing so newer flush requests have larger RequestId.
-    TDeque<TFlushRequest> FlushRequests;
-
-    // All entries with RequestId <= |AutomaticFlushRequestId| are to be flushed
-    ui64 AutomaticFlushRequestId = 0;
-
-    // Cached data extends the node size but until the data is flushed,
-    // the changes are not visible to the tablet. FileSystem requests that
-    // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
-    // should have the node size adjusted to this value.
-    ui64 CachedNodeSize = 0;
-
-    // Non-zero value indicates that the node state is to be deleted but it is
-    // referenced from |TImpl::NodeStateRefs|. 'Referenced' means that there are
-    // values in |TImpl::NodeStateRefs| that are less than |DeletionId|.
-    ui64 DeletionId = 0;
-
-    explicit TNodeState(ui64 nodeId)
-        : NodeId(nodeId)
-    {}
-
-    bool CanBeDeleted() const
-    {
-        if (Cache.Empty() && RangeLock.Empty()) {
-            Y_ABORT_UNLESS(!FlushState.Executing);
-            return true;
-        }
-        return false;
-    }
-
-    bool ShouldFlush(ui64 maxFlushAllRequestId) const
-    {
-        if (!Cache.HasUnflushedRequests()) {
-            return false;
-        }
-
-        if (!FlushRequests.empty()) {
-            return true;
-        }
-
-        const ui64 minRequestId = Cache.GetMinUnflushedSequenceId();
-        return minRequestId <= maxFlushAllRequestId ||
-               minRequestId <= AutomaticFlushRequestId;
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -221,15 +137,7 @@ private:
     IPersistentStoragePtr PersistentStorage;
 
     // WriteData entries and Flush states grouped by nodeId
-    THashMap<ui64, std::unique_ptr<TNodeState>> NodeStates;
-
-    // References to node states that prevents their deletion from |NodeStates|.
-    // Used to keep MinNodeSize information for flushed nodes.
-    TSet<ui64> NodeStateRefs;
-
-    // Node states to be deleted but that are referenced from |NodeStateRefs|.
-    // Key: |TNodeState::DeletionId|, Value: NodeId.
-    TMap<ui64, ui64> DeletedNodeStates;
+    TNodeStateHolder NodeStates;
 
     // Optimization: don't iterate over all node states during FlushAll;
     // only consider nodes that have new or changed entries.
@@ -269,6 +177,7 @@ public:
         , LogTag(
               Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , FileSystemId(fileSystemId)
+        , NodeStates(Stats)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
@@ -306,7 +215,8 @@ public:
         auto initStatus = RequestManager.Init(
             [&](std::unique_ptr<TCachedWriteDataRequest> entry)
             {
-                auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
+                auto& nodeState =
+                    NodeStates.GetOrCreateNodeState(entry->GetNodeId());
                 NodesWithNewEntries.insert(entry->GetNodeId());
                 AddCachedEntry(nodeState, std::move(entry));
             });
@@ -387,7 +297,8 @@ public:
         {
             if (auto self = ptr.lock()) {
                 auto guard = Guard(self->Lock);
-                auto* nodeState = self->GetNodeState(nodeId);
+                auto* nodeState = self->NodeStates.GetNodeState(nodeId);
+                Y_ABORT_UNLESS(nodeState);
                 nodeState->RangeLock.UnlockRead(offset, end);
                 self->DeleteNodeStateIfNeeded(nodeState);
                 self->ProcessQueuedOperations(guard);
@@ -418,8 +329,8 @@ public:
 
         auto guard = Guard(Lock);
 
-        auto* nodeState = GetOrCreateNodeState(nodeId);
-        nodeState->RangeLock.LockRead(offset, end, std::move(locker));
+        auto& nodeState = NodeStates.GetOrCreateNodeState(nodeId);
+        nodeState.RangeLock.LockRead(offset, end, std::move(locker));
 
         ProcessQueuedOperations(guard);
 
@@ -454,7 +365,8 @@ public:
         {
             if (auto self = ptr.lock()) {
                 auto guard = Guard(self->Lock);
-                auto* nodeState = self->GetNodeState(nodeId);
+                auto* nodeState = self->NodeStates.GetNodeState(nodeId);
+                Y_ABORT_UNLESS(nodeState);
                 nodeState->RangeLock.UnlockWrite(offset, end);
                 self->DeleteNodeStateIfNeeded(nodeState);
                 self->ProcessQueuedOperations(guard);
@@ -486,8 +398,8 @@ public:
 
         auto guard = Guard(Lock);
 
-        auto* nodeState = GetOrCreateNodeState(nodeId);
-        nodeState->RangeLock.LockWrite(offset, end, std::move(locker));
+        auto& nodeState = NodeStates.GetOrCreateNodeState(nodeId);
+        nodeState.RangeLock.LockWrite(offset, end, std::move(locker));
 
         ProcessQueuedOperations(guard);
 
@@ -498,7 +410,7 @@ public:
     {
         auto guard = Guard(Lock);
 
-        auto* nodeState = GetNodeStateOrNull(nodeId);
+        auto* nodeState = NodeStates.GetNodeState(nodeId);
         if (nodeState == nullptr ||
             !nodeState->Cache.HasPendingOrUnflushedRequests())
         {
@@ -547,8 +459,10 @@ public:
 
         bool queuedOperationsUpdated = false;
         for (auto nodeId: NodesWithNewEntries) {
-            queuedOperationsUpdated |=
-                EnqueueFlushIfNeeded(GetNodeState(nodeId));
+            auto* nodeState = NodeStates.GetNodeState(nodeId);
+            if (nodeState) {
+                queuedOperationsUpdated |= EnqueueFlushIfNeeded(nodeState);
+            }
         }
         NodesWithNewEntries.clear();
 
@@ -569,43 +483,30 @@ public:
     ui64 AcquireNodeStateRef()
     {
         with_lock (Lock) {
-            ui64 refId = SequenceIdGenerator->GenerateId();
-            NodeStateRefs.insert(refId);
-            return refId;
+            return NodeStates.Ref();
         }
     }
 
     void ReleaseNodeStateRef(ui64 refId)
     {
         with_lock (Lock) {
-            const bool erased = static_cast<bool>(NodeStateRefs.erase(refId));
-            Y_DEBUG_ABORT_UNLESS(erased);
-
-            const ui64 minRefId =
-                NodeStateRefs.empty() ? Max<ui64>() : *NodeStateRefs.begin();
-
-            for (auto it = DeletedNodeStates.begin();
-                 it != DeletedNodeStates.end() && it->first <= minRefId;)
-            {
-                EraseNodeState(it->second);
-                it = DeletedNodeStates.erase(it);
-            }
+            NodeStates.Unref(refId);
         }
     }
 
     ui64 GetCachedNodeSize(ui64 nodeId) const
     {
         with_lock (Lock) {
-            const auto* nodeStatePtr = NodeStates.FindPtr(nodeId);
-            return nodeStatePtr ? (*nodeStatePtr)->CachedNodeSize : 0;
+            const auto* nodeState = NodeStates.GetPinnedNodeState(nodeId);
+            return nodeState ? nodeState->CachedNodeSize : 0;
         }
     }
 
     void SetCachedNodeSize(ui64 nodeId, ui64 size)
     {
         with_lock (Lock) {
-            if (auto* nodeStatePtr = NodeStates.FindPtr(nodeId)) {
-                (*nodeStatePtr)->CachedNodeSize = size;
+            if (auto* nodeState = NodeStates.GetPinnedNodeState(nodeId)) {
+                nodeState->CachedNodeSize = size;
             }
         }
     }
@@ -615,7 +516,7 @@ private:
         std::unique_ptr<TCachedWriteDataRequest> request,
         TPromise<NProto::TWriteDataResponse> promise)
     {
-        auto* nodeState = GetOrCreateNodeState(request->GetNodeId());
+        auto& nodeState = NodeStates.GetOrCreateNodeState(request->GetNodeId());
         QueuedOperations.WriteDataCompleted.push_back(std::move(promise));
         AddCachedEntry(nodeState, std::move(request));
     }
@@ -625,9 +526,9 @@ private:
         TPromise<NProto::TWriteDataResponse> promise)
     {
         request->AccessPromise() = std::move(promise);
-        auto* nodeState =
-            GetOrCreateNodeState(request->GetRequest().GetNodeId());
-        nodeState->Cache.EnqueuePendingRequest(std::move(request));
+        auto& nodeState =
+            NodeStates.GetOrCreateNodeState(request->GetRequest().GetNodeId());
+        nodeState.Cache.EnqueuePendingRequest(std::move(request));
         RequestFlushAllCachedData();
     }
 
@@ -659,8 +560,8 @@ private:
     void RequestFlushAllCachedData()
     {
         for (auto nodeId: NodesWithNewCachedEntries) {
-            auto* nodeState = GetNodeState(nodeId);
-            if (nodeState->Cache.HasUnflushedRequests()) {
+            auto* nodeState = NodeStates.GetNodeState(nodeId);
+            if (nodeState && nodeState->Cache.HasUnflushedRequests()) {
                 nodeState->AutomaticFlushRequestId =
                     nodeState->Cache.GetMaxUnflushedSequenceId();
                 EnqueueFlushIfNeeded(nodeState);
@@ -671,66 +572,13 @@ private:
     }
 
     // should be protected by |Lock|
-    TNodeState* GetNodeStateOrNull(ui64 nodeId) const
-    {
-        auto it = NodeStates.find(nodeId);
-        return it != NodeStates.end() && it->second->DeletionId == 0
-                   ? it->second.get()
-                   : nullptr;
-    }
-
-    // should be protected by |Lock|
-    TNodeState* GetOrCreateNodeState(ui64 nodeId)
-    {
-        auto& ptr = NodeStates[nodeId];
-        if (!ptr) {
-            ptr = std::make_unique<TNodeState>(nodeId);
-            Stats->IncrementNodeCount();
-        }
-        if (ptr->DeletionId != 0) {
-            // Revive deleted node state
-            auto erased = DeletedNodeStates.erase(ptr->DeletionId);
-            Y_DEBUG_ABORT_UNLESS(erased);
-            ptr->DeletionId = 0;
-        }
-        return ptr.get();
-    }
-
-    // should be protected by |Lock|
-    TNodeState* GetNodeState(ui64 nodeId)
-    {
-        const auto& ptr = NodeStates[nodeId];
-        Y_ABORT_UNLESS(ptr);
-        Y_ABORT_UNLESS(ptr->DeletionId == 0);
-        return ptr.get();
-    }
-
-    // should be protected by |Lock|
-    void EraseNodeState(ui64 nodeId)
-    {
-        const auto erased = static_cast<bool>(NodeStates.erase(nodeId));
-        Y_DEBUG_ABORT_UNLESS(erased);
-        Stats->DecrementNodeCount();
-    }
-
-    // should be protected by |Lock|
     void DeleteNodeStateIfNeeded(TNodeState* nodeState)
     {
-        Y_DEBUG_ABORT_UNLESS(nodeState->DeletionId == 0);
-
         if (!nodeState->CanBeDeleted()) {
             return;
         }
 
-        NodesWithNewCachedEntries.erase(nodeState->NodeId);
-        NodesWithNewEntries.erase(nodeState->NodeId);
-
-        if (NodeStateRefs.empty()) {
-            EraseNodeState(nodeState->NodeId);
-        } else {
-            nodeState->DeletionId = SequenceIdGenerator->GenerateId();
-            DeletedNodeStates[nodeState->DeletionId] = nodeState->NodeId;
-        }
+        NodeStates.EraseNodeState(nodeState->NodeId);
     }
 
     // NOLINTNEXTLINE(misc-no-recursion)
@@ -797,8 +645,10 @@ private:
                 break;
             }
 
-            auto* nodeState = GetNodeState(cachedRequest->GetNodeId());
+            auto* nodeState =
+                NodeStates.GetNodeState(cachedRequest->GetNodeId());
 
+            Y_ABORT_UNLESS(nodeState);
             Y_ABORT_UNLESS(nodeState->Cache.HasPendingRequests());
             auto pendingRequest = nodeState->Cache.DequeuePendingRequest();
 
@@ -809,7 +659,7 @@ private:
             QueuedOperations.WriteDataCompleted.push_back(
                 std::move(pendingRequest->AccessPromise()));
 
-            AddCachedEntry(nodeState, std::move(cachedRequest));
+            AddCachedEntry(*nodeState, std::move(cachedRequest));
 
             // The entry transitioned from Pending to Cached status may be
             // requested for flushing. Recheck Flush condition for the node.
@@ -824,7 +674,7 @@ private:
         TString* buffer)
     {
         with_lock (Lock) {
-            auto* nodeState = GetNodeStateOrNull(nodeId);
+            auto* nodeState = NodeStates.GetNodeState(nodeId);
             if (nodeState == nullptr) {
                 return {};
             }
@@ -1171,18 +1021,17 @@ private:
 
     // should be protected by |Lock|
     void AddCachedEntry(
-        TNodeState* nodeState,
+        TNodeState& nodeState,
         std::unique_ptr<TCachedWriteDataRequest> entry)
     {
-        Y_ABORT_UNLESS(nodeState != nullptr);
-        Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
+        Y_ABORT_UNLESS(nodeState.NodeId == entry->GetNodeId());
 
-        nodeState->CachedNodeSize =
-            Max(nodeState->CachedNodeSize, entry->GetEnd());
+        nodeState.CachedNodeSize =
+            Max(nodeState.CachedNodeSize, entry->GetEnd());
 
-        nodeState->Cache.EnqueueUnflushedRequest(std::move(entry));
+        nodeState.Cache.EnqueueUnflushedRequest(std::move(entry));
 
-        NodesWithNewCachedEntries.insert(nodeState->NodeId);
+        NodesWithNewCachedEntries.insert(nodeState.NodeId);
     }
 };
 
