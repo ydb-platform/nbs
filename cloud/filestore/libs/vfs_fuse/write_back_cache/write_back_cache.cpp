@@ -214,9 +214,6 @@ private:
     const TString LogTag;
     const TString FileSystemId;
 
-    // Used to check AllEntries for emptiness without |Lock|
-    std::atomic<bool> EmptyFlag = true;
-
     // All fields below should be protected by this lock
     TMutex Lock;
 
@@ -485,8 +482,6 @@ public:
             {
                 self->DoAddRequest(std::move(res), std::move(promise));
             }, std::move(res));
-
-            self->EmptyFlag = false;
         };
 
         auto guard = Guard(Lock);
@@ -566,7 +561,9 @@ public:
 
     bool IsEmpty() const
     {
-        return EmptyFlag.load();
+        with_lock (Lock) {
+            return !RequestManager.HasPendingOrUnflushedRequests();
+        }
     }
 
     ui64 AcquireNodeStateRef()
@@ -734,8 +731,6 @@ private:
             nodeState->DeletionId = SequenceIdGenerator->GenerateId();
             DeletedNodeStates[nodeState->DeletionId] = nodeState->NodeId;
         }
-
-        EmptyFlag = NodeStates.empty();
     }
 
     // NOLINTNEXTLINE(misc-no-recursion)
