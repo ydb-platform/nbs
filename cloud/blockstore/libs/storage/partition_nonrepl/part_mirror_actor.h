@@ -273,11 +273,6 @@ private:
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void RejectDiskRegistryBasedPartCountersCombined(
-        const TEvNonreplPartitionPrivate::
-            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     template <typename TMethod>
     void MirrorRequest(
         const typename TMethod::TRequest::TPtr& ev,

@@ -785,6 +785,11 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
         HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksCompleted, HandleChecksumBlocksCompleted);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            RejectGetDiskRegistryBasedPartCounters);
+
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(TEvVolume::TEvGetCompactionStatusRequest, RejectGetCompactionStatus);
         HFunc(TEvVolume::TEvCompactRangeRequest, RejectCompactRange);
@@ -796,11 +801,6 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
-
-        HFunc(
-            TEvNonreplPartitionPrivate::
-                TEvGetDiskRegistryBasedPartCountersRequest,
-            RejectGetDiskRegistryBasedPartCounters);
 
         default:
             if (!HandleRequests(ev)) {

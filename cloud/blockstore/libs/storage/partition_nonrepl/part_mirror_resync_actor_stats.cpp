@@ -171,22 +171,6 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
     StatisticRequestInfo.Reset();;
 }
 
-void TMirrorPartitionResyncActor::RejectDiskRegistryBasedPartCountersCombined(
-    const TEvNonreplPartitionPrivate::TEvDiskRegistryBasedPartCountersCombined::
-        TPtr& ev,
-    const TActorContext& ctx)
-{
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::make_unique<TEvNonreplPartitionPrivate::
-                             TEvGetDiskRegistryBasedPartCountersResponse>(
-            MakeError(E_REJECTED),
-            SelfId(),
-            PartConfig->GetName(),
-            ExtractPartCounters()));
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartNonreplCountersData TMirrorPartitionResyncActor::ExtractPartCounters()

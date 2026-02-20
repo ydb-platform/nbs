@@ -360,10 +360,6 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersRequest,
             RejectGetDiskRegistryBasedPartCounters);
-        HFunc(
-            TEvNonreplPartitionPrivate::
-                TEvDiskRegistryBasedPartCountersCombined,
-            RejectDiskRegistryBasedPartCountersCombined);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(

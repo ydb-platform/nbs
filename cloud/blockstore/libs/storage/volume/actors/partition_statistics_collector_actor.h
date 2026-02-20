@@ -32,7 +32,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void SendStatToVolume(const NActors::TActorContext& ctx);
+    void ReplyAndDie(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -47,6 +47,10 @@ private:
 
     void HandleGetPartCountersResponse(
         TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetPartCountersUndelivery(
+        TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 
