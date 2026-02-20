@@ -285,61 +285,67 @@ void TPartitionActor::HandleZeroBlocks(
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
     const auto writeBlobThreshold =
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
-    if (requestSize < writeBlobThreshold) {
+    if (!Config->GetFreshBlocksWriterEnabled() &&
+        requestSize < writeBlobThreshold)
+    {
         // small writes will be accumulated in FreshBlocks table
         ZeroFreshBlocks(
             ctx,
             requestInfo,
             ConvertRangeSafe(writeRange),
             commitId);
-    } else {
-        ++WriteAndZeroRequestsInProgress;
-
-        LOG_TRACE(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Start zero blocks @%lu (range: %s)",
-            LogTitle.GetWithTime().c_str(),
-            commitId,
-            DescribeRange(writeRange).c_str());
-
-        State->AccessCommitQueue().AcquireBarrier(commitId);
-
-        // large writes could skip FreshBlocks table completely
-        TVector<TAddMergedBlob> requests(
-            Reserve(1 + writeRange.Size() / State->GetMaxBlocksInBlob()));
-
-        ui32 blobIndex = 0;
-        for (ui64 blockIndex: xrange(writeRange, State->GetMaxBlocksInBlob())) {
-            auto range = TBlockRange32::MakeClosedIntervalWithLimit(
-                blockIndex,
-                blockIndex + State->GetMaxBlocksInBlob() - 1,
-                writeRange.End);
-
-            auto blobId = State->GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId,
-                0,  // deletion marker
-                blobIndex++);
-
-            requests.emplace_back(
-                blobId,
-                range,
-                TBlockMask(), // skipMask
-                TVector<ui32>() /* checksums */);
-        }
-
-        Y_ABORT_UNLESS(requests);
-        auto actor = NCloud::Register<TZeroBlocksActor>(
-            ctx,
-            requestInfo,
-            SelfId(),
-            commitId,
-            std::move(requests));
-
-        Actors.Insert(actor);
+        return;
     }
+
+    // all small zero requests should be handled by TFreshBlocksWriter
+    Y_ABORT_UNLESS(requestSize >= writeBlobThreshold);
+
+    ++WriteAndZeroRequestsInProgress;
+
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start zero blocks @%lu (range: %s)",
+        LogTitle.GetWithTime().c_str(),
+        commitId,
+        DescribeRange(writeRange).c_str());
+
+    State->AccessCommitQueue().AcquireBarrier(commitId);
+
+    // large writes could skip FreshBlocks table completely
+    TVector<TAddMergedBlob> requests(
+        Reserve(1 + writeRange.Size() / State->GetMaxBlocksInBlob()));
+
+    ui32 blobIndex = 0;
+    for (ui64 blockIndex: xrange(writeRange, State->GetMaxBlocksInBlob())) {
+        auto range = TBlockRange32::MakeClosedIntervalWithLimit(
+            blockIndex,
+            blockIndex + State->GetMaxBlocksInBlob() - 1,
+            writeRange.End);
+
+        auto blobId = State->GenerateBlobId(
+            EChannelDataKind::Merged,
+            EChannelPermission::UserWritesAllowed,
+            commitId,
+            0,   // deletion marker
+            blobIndex++);
+
+        requests.emplace_back(
+            blobId,
+            range,
+            TBlockMask(),   // skipMask
+            TVector<ui32>() /* checksums */);
+    }
+
+    Y_ABORT_UNLESS(requests);
+    auto actor = NCloud::Register<TZeroBlocksActor>(
+        ctx,
+        requestInfo,
+        SelfId(),
+        commitId,
+        std::move(requests));
+
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleZeroBlocksCompleted(

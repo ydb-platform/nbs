@@ -77,6 +77,15 @@ public:
         ui32 Generation = 0;
     };
 
+    struct TFreshBlocksWriter
+    {
+        ui64 TabletId = 0;
+        TString DiskId;
+        ui32 PartitionIndex = 0;
+        ui32 PartitionCount = 0;
+        ui32 Generation = 0;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
@@ -86,7 +95,8 @@ private:
         TSession,
         TClient,
         TDiskRegistry,
-        TPartitionMirror>;
+        TPartitionMirror,
+        TFreshBlocksWriter>;
 
     ui64 StartTime = 0;
     TData Data;

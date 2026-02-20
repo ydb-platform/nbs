@@ -38,6 +38,8 @@ public:
 
     void RebootTablet();
 
+    void ReconnectPipe();
+
     void KillTablet();
 
     template <typename TRequest>
