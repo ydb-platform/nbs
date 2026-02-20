@@ -1035,7 +1035,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         }
 
         UNIT_ASSERT(completion);
-        env.GetRuntime().Send(completion.Release());
+        env.GetRuntime().Send(completion.Release(), nodeIdx);
 
         TDispatchOptions options;
         options.CustomFinalCondition = [&compactionCounter]()
