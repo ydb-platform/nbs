@@ -7261,7 +7261,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvAddFreshBlocksRequest: {
+                    case TEvPartitionCommonPrivate::EvAddFreshBlocksRequest: {
                         if (!addFreshBlocks) {
                             addFreshBlocks = event.Release();
                             return TTestActorRuntime::EEventAction::DROP;
@@ -7326,7 +7326,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvAddFreshBlocksRequest: {
+                    case TEvPartitionCommonPrivate::EvAddFreshBlocksRequest: {
                         if (!addFreshBlocks) {
                             addFreshBlocks = event.Release();
                             return TTestActorRuntime::EEventAction::DROP;
@@ -9614,8 +9614,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                 case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
                     if (spoofWriteBlobs) {
-                        auto response =
-                            std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
+                        auto response = std::make_unique<
+                            TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         response->BlockChecksums.resize(1);
                         runtime->Send(new IEventHandle(
                             event->Sender,
@@ -12826,6 +12826,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                 auto commitId = MakeCommitId(
                                         r.Id.Generation(),
                                         r.Id.Step());
+
+                                Cerr << "commitId: {" << r.Id.Generation()
+                                     << "," << r.Id.Step() << "}" << Endl;
                                 UNIT_ASSERT_VALUES_EQUAL(
                                     1,
                                     expectedBlobs.count(commitId));
@@ -12910,9 +12913,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                     break;
                 }
-                case TEvPartitionPrivate::EvWriteBlocksCompleted: {
-                    auto* msg =
-                        ev->Get<TEvPartitionPrivate::TEvWriteBlocksCompleted>();
+                case TEvPartitionCommonPrivate::EvWriteFreshBlocksCompleted: {
+                    auto* msg = ev->Get<TEvPartitionCommonPrivate::
+                                            TEvWriteFreshBlocksCompleted>();
                     UNIT_ASSERT_EQUAL(shouldRejectWriteBlob, HasError(msg->GetError()));
                     break;
                 }

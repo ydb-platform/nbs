@@ -768,6 +768,15 @@ void TPartitionActor::HandlePatchBlob(
     Y_ABORT("Unimplemented");
 }
 
+void TPartitionActor::HandleAddFreshBlocks(
+    const TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \

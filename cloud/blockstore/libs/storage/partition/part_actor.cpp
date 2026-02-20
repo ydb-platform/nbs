@@ -1087,7 +1087,13 @@ STFUNC(TPartitionActor::StateWork)
             IOCompanion->HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,
+            HandleWriteFreshBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
+            HandleZeroFreshBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvFlushCompleted, HandleFlushCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
         HFunc(TEvPartitionPrivate::TEvCompactionCompleted, HandleCompactionCompleted);

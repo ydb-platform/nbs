@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
@@ -22,8 +23,8 @@
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
+
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <library/cpp/lwtrace/shuttle.h>
 
@@ -165,7 +166,6 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
 
 #define BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(xxx, ...)                        \
     xxx(AddBlobs,                  __VA_ARGS__)                                \
-    xxx(AddFreshBlocks,            __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
     xxx(Compaction,                __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
@@ -224,6 +224,8 @@ struct TBlockCountRebuildState
 
 struct TEvPartitionPrivate
 {
+    using TOperationCompleted = TEvPartitionCommonPrivate::TOperationCompleted;
+
     //
     // AddBlobs
     //
@@ -269,33 +271,6 @@ struct TEvPartitionPrivate
     struct TAddBlobsResponse
     {
         ui64 ExecCycles = 0;
-    };
-
-    //
-    // AddFreshBlocks
-    //
-
-    struct TAddFreshBlocksRequest
-    {
-        ui64 CommitId;
-        ui64 BlobSize;
-        TVector<TBlockRange32> BlockRanges;
-        TVector<IWriteBlocksHandlerPtr> WriteHandlers;
-
-        TAddFreshBlocksRequest(
-                ui64 commitId,
-                ui64 blobSize,
-                TVector<TBlockRange32> blockRanges,
-                TVector<IWriteBlocksHandlerPtr> writeHandlers)
-            : CommitId(commitId)
-            , BlobSize(blobSize)
-            , BlockRanges(std::move(blockRanges))
-            , WriteHandlers(std::move(writeHandlers))
-        {}
-    };
-
-    struct TAddFreshBlocksResponse
-    {
     };
 
     //
@@ -595,23 +570,6 @@ struct TEvPartitionPrivate
     };
 
     //
-    // OperationCompleted
-    //
-
-    struct TOperationCompleted
-    {
-        NProto::TPartitionStats Stats;
-
-        ui64 TotalCycles = 0;
-        ui64 ExecCycles = 0;
-
-        ui64 CommitId = 0;
-
-        TVector<TBlockRange64> AffectedRanges;
-        TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
-    };
-
-    //
     // ReadBlocksCompleted
     //
 
@@ -794,19 +752,6 @@ struct TEvPartitionPrivate
     };
 
     //
-    // ZeroBlocksCompleted
-    //
-
-    struct TZeroBlocksCompleted: TOperationCompleted
-    {
-        const bool TrimFreshLogBarrierAcquired;
-
-        explicit TZeroBlocksCompleted(bool trimFreshLogBarrierAcquired)
-            : TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
-        {}
-    };
-
-    //
     // UpdateResourceMetrics
     //
 
@@ -861,7 +806,8 @@ struct TEvPartitionPrivate
 
     using TEvReadBlocksCompleted = TResponseEvent<TReadBlocksCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TWriteBlocksCompleted, EvWriteBlocksCompleted>;
-    using TEvZeroBlocksCompleted = TResponseEvent<TZeroBlocksCompleted, EvZeroBlocksCompleted>;
+    using TEvZeroBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;
     using TEvFlushCompleted = TResponseEvent<TFlushCompleted, EvFlushCompleted>;
     using TEvCompactionCompleted = TResponseEvent<TCompactionCompleted, EvCompactionCompleted>;
     using TEvCollectGarbageCompleted = TResponseEvent<TOperationCompleted, EvCollectGarbageCompleted>;

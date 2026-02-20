@@ -124,10 +124,7 @@ void TZeroBlocksActor::NotifyCompleted(
     const NProto::TError& error)
 {
     auto request =
-        std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(
-            error,
-            false   // trimFreshLogBarrierAcquired
-        );
+        std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(error);
 
     request->ExecCycles = RequestInfo->GetExecCycles();
     request->TotalCycles = RequestInfo->GetTotalCycles();
@@ -346,9 +343,36 @@ void TPartitionActor::HandleZeroBlocksCompleted(
     const TEvPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
+    HandleZeroBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        false);   // freshBlocksRequest
+}
 
-    ui64 commitId = msg->CommitId;
+void TPartitionActor::HandleZeroFreshBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    HandleZeroBlocksCompletedImpl(
+        ctx,
+        ev->Sender,
+        msg->GetError(),
+        *msg,
+        true);   // freshBlocksRequest
+}
+
+void TPartitionActor::HandleZeroBlocksCompletedImpl(
+    const NActors::TActorContext& ctx,
+    NActors::TActorId sender,
+    NProto::TError error,
+    const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+    bool freshBlocksRequest)
+{
+    ui64 commitId = opCompleted.CommitId;
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -356,25 +380,29 @@ void TPartitionActor::HandleZeroBlocksCompleted(
         LogTitle.GetWithTime().c_str(),
         commitId);
 
-    UpdateStats(msg->Stats);
+    UpdateStats(opCompleted.Stats);
 
-    ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
+    ui64 blocksCount =
+        opCompleted.Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * State->GetBlockSize();
 
-    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
+    UpdateCPUUsageStat(ctx.Now(), opCompleted.ExecCycles);
 
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
     State->AccessCommitQueue().ReleaseBarrier(commitId);
 
-    if (msg->TrimFreshLogBarrierAcquired && HasError(msg->GetError())) {
-        State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
+    if (freshBlocksRequest) {
+        FreshBlocksCompanion->ZeroFreshBlocksCompleted(
+            ctx,
+            error,
             commitId,
-            blocksCount);
+            blocksCount,
+            sender);
+    } else {
+        Actors.Erase(sender);
     }
-
-    Actors.Erase(ev->Sender);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;
