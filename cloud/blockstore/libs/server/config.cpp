@@ -23,7 +23,7 @@ constexpr TDuration Seconds(int s)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
+// clang-format off
 #define BLOCKSTORE_SERVER_CONFIG(xxx)                                          \
     xxx(Host,                        TString,               "localhost"       )\
     xxx(Port,                        ui32,                  9766              )\
@@ -112,8 +112,11 @@ constexpr TDuration Seconds(int s)
         NProto::EEncryptZeroPolicy,                                            \
         NProto::EZP_WRITE_ENCRYPTED_ZEROS                                     )\
     xxx(VhostPteFlushByteThreshold,  ui64,                   0                )\
-    xxx(AutomaticNbdDeviceManagement,bool,                   false            )
+    xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
+    xxx(EnableOverlappedRequestsGuard,  bool,                false            )\
 // BLOCKSTORE_SERVER_CONFIG
+
+// clang-format on
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \

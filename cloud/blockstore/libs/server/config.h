@@ -143,6 +143,7 @@ public:
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;
     ui64 GetVhostPteFlushByteThreshold() const;
     bool GetAutomaticNbdDeviceManagement() const;
+    bool GetEnableOverlappedRequestsGuard() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
