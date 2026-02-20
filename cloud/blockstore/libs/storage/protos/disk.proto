@@ -33,6 +33,27 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// passive - send attach/detach path request only on registration
+// active - send attach/detach path request on registration and trying to send this requests to DA until success
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// State                        // Can allocate disks?  // Should try attach or detach path?             //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_ATTACHED   // Yes                  // passive attach                                //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_ATTACHING  // No                   // active attach                                 //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_DETACHED   // No                   // passive detach                                //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 enum EPathAttachState
 {
     PATH_ATTACH_STATE_ATTACHED = 0;

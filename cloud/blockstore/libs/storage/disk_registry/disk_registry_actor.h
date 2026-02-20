@@ -343,7 +343,7 @@ private:
 
     void ProcessPathsToAttachOnAgent(
         const NActors::TActorContext& ctx,
-        const NProto::TAgentConfig* agent,
+        const NProto::TAgentConfig& agent,
         const THashSet<TString>& paths);
 
     void ProcessPathsToAttach(const NActors::TActorContext& ctx);
