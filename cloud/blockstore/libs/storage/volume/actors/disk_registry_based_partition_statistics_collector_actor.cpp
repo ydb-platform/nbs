@@ -34,7 +34,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::Bootstrap(
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            0,
+            0,            // cookie
             &ctx.SelfID   // forwardOnNondelivery
         );
 
@@ -105,6 +105,7 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
             TPtr& ev,
         const TActorContext& ctx)
 {
+    Y_UNUSED(ev);
 
     ++ResponsesCount;
 
