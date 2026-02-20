@@ -8,12 +8,6 @@ TNodeStateHolder::TNodeStateHolder(IWriteBackCacheStatsPtr stats)
     : Stats(std::move(stats))
 {}
 
-TNodeState* TNodeStateHolder::GetNodeState(ui64 nodeId)
-{
-    TItem* nodeState = NodeStates.FindPtr(nodeId);
-    return nodeState && nodeState->ErasureSequenceId == 0 ? nodeState : nullptr;
-}
-
 TNodeState& TNodeStateHolder::GetOrCreateNodeState(ui64 nodeId)
 {
     auto [it, inserted] = NodeStates.try_emplace(nodeId, TNodeState(nodeId));
@@ -22,75 +16,82 @@ TNodeState& TNodeStateHolder::GetOrCreateNodeState(ui64 nodeId)
     }
 
     TItem& nodeState = it->second;
-    if (nodeState.ErasureSequenceId != 0) {
+    if (nodeState.DeletionSequenceId != 0) {
         Y_ABORT_UNLESS(
-            ErasedNodeStates.erase(nodeState.ErasureSequenceId),
-            "Node %lu with ErasureSequenceId %lu is not found in ErasedNodes",
+            Deletions.erase(nodeState.DeletionSequenceId),
+            "Node %lu with DeletionSequenceId %lu is not found in Deletions",
             nodeId,
-            nodeState.ErasureSequenceId);
+            nodeState.DeletionSequenceId);
 
-        nodeState.ErasureSequenceId = 0;
+        nodeState.DeletionSequenceId = 0;
     }
     return nodeState;
 }
 
-void TNodeStateHolder::EraseNodeState(ui64 nodeId)
+TNodeState* TNodeStateHolder::GetNodeState(ui64 nodeId, bool includeDeleted)
+{
+    TItem* nodeState = NodeStates.FindPtr(nodeId);
+    return nodeState && (nodeState->DeletionSequenceId == 0 || includeDeleted)
+               ? nodeState
+               : nullptr;
+}
+
+const TNodeState* TNodeStateHolder::GetNodeState(
+    ui64 nodeId,
+    bool includeDeleted) const
+{
+    const TItem* nodeState = NodeStates.FindPtr(nodeId);
+    return nodeState && (nodeState->DeletionSequenceId == 0 || includeDeleted)
+               ? nodeState
+               : nullptr;
+}
+
+void TNodeStateHolder::DeleteNodeState(ui64 nodeId)
 {
     auto it = NodeStates.find(nodeId);
-    Y_ABORT_UNLESS(it != NodeStates.end(), "Node %lu is not found in Nodes", nodeId);
+    Y_ABORT_UNLESS(it != NodeStates.end(), "Node %lu is not found in NodeStates", nodeId);
     Y_ABORT_UNLESS(
-        it->second.ErasureSequenceId == 0,
-        "Node %lu is already erased with ErasureSequenceId %lu",
+        it->second.DeletionSequenceId == 0,
+        "Node %lu is already deleted with DeletionSequenceId %lu",
         nodeId,
-        it->second.ErasureSequenceId);
+        it->second.DeletionSequenceId);
 
-    if (References.empty()) {
+    if (Pins.empty()) {
         NodeStates.erase(it);
         Stats->DecrementNodeCount();
         return;
     }
 
-    const ui64 erasureSequenceId = ++SequenceId;
-    it->second.ErasureSequenceId = erasureSequenceId;
-    ErasedNodeStates[erasureSequenceId] = nodeId;
+    const ui64 deletionSequenceId = ++SequenceId;
+    it->second.DeletionSequenceId = deletionSequenceId;
+    Deletions[deletionSequenceId] = nodeId;
 }
 
-const TNodeState* TNodeStateHolder::GetPinnedNodeState(ui64 nodeId) const
+ui64 TNodeStateHolder::Pin()
 {
-    return NodeStates.FindPtr(nodeId);
+    const ui64 pinId = ++SequenceId;
+    Pins.insert(pinId);
+    return pinId;
 }
 
-TNodeState* TNodeStateHolder::GetPinnedNodeState(ui64 nodeId)
-{
-    return NodeStates.FindPtr(nodeId);
-}
-
-ui64 TNodeStateHolder::Ref()
-{
-    const ui64 sequenceId = ++SequenceId;
-    References.insert(sequenceId);
-    return sequenceId;
-}
-
-void TNodeStateHolder::Unref(ui64 refId)
+void TNodeStateHolder::Unpin(ui64 pinId)
 {
     Y_ABORT_UNLESS(
-        References.erase(refId),
-        "Reference %lu is not found",
-        refId);
+        Pins.erase(pinId),
+        "Pin %lu is not found",
+        pinId);
 
-    const ui64 minRefId =
-        References.empty() ? Max<ui64>() : *References.begin();
+    const ui64 minPinId = Pins.empty() ? Max<ui64>() : *Pins.begin();
 
-    auto it = ErasedNodeStates.begin();
-    while (it != ErasedNodeStates.end() && it->first < minRefId) {
+    auto it = Deletions.begin();
+    while (it != Deletions.end() && it->first < minPinId) {
         Y_ABORT_UNLESS(
             NodeStates.erase(it->second),
-            "Node %lu with ErasureSequenceId %lu is not found in Nodes",
+            "Node %lu with DeletionSequenceId %lu is not found in NodeStates",
             it->second,
             it->first);
 
-        it = ErasedNodeStates.erase(it);
+        it = Deletions.erase(it);
         Stats->DecrementNodeCount();
     }
 }

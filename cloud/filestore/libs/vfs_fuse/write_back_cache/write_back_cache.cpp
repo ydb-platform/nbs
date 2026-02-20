@@ -421,7 +421,7 @@ public:
             nodeState->Cache.GetMaxPendingOrUnflushedSequenceId();
 
         if (!nodeState->FlushRequests.empty() &&
-            nodeState->FlushRequests.back().RequestId >= maxRequestId)
+            nodeState->FlushRequests.back().SequenceId >= maxRequestId)
         {
             // The previous FlushAllData already affects all entries
             return nodeState->FlushRequests.back().Promise.GetFuture();
@@ -448,7 +448,7 @@ public:
         ui64 maxRequestId = RequestManager.GetMaxPendingOrUnflushedSequenceId();
 
         if (!FlushAllRequests.empty() &&
-            FlushAllRequests.back().RequestId >= maxRequestId)
+            FlushAllRequests.back().SequenceId >= maxRequestId)
         {
             // The previous FlushAllData already affects all entries
             return FlushAllRequests.back().Promise.GetFuture();
@@ -483,21 +483,21 @@ public:
     ui64 AcquireNodeStateRef()
     {
         with_lock (Lock) {
-            return NodeStates.Ref();
+            return NodeStates.Pin();
         }
     }
 
     void ReleaseNodeStateRef(ui64 refId)
     {
         with_lock (Lock) {
-            NodeStates.Unref(refId);
+            NodeStates.Unpin(refId);
         }
     }
 
     ui64 GetCachedNodeSize(ui64 nodeId) const
     {
         with_lock (Lock) {
-            const auto* nodeState = NodeStates.GetPinnedNodeState(nodeId);
+            const auto* nodeState = NodeStates.GetNodeState(nodeId, true);
             return nodeState ? nodeState->CachedNodeSize : 0;
         }
     }
@@ -505,7 +505,7 @@ public:
     void SetCachedNodeSize(ui64 nodeId, ui64 size)
     {
         with_lock (Lock) {
-            if (auto* nodeState = NodeStates.GetPinnedNodeState(nodeId)) {
+            if (auto* nodeState = NodeStates.GetNodeState(nodeId, true)) {
                 nodeState->CachedNodeSize = size;
             }
         }
@@ -545,7 +545,7 @@ private:
         }
 
         const ui64 maxFlushAllRequestId =
-            FlushAllRequests.empty() ? 0 : FlushAllRequests.back().RequestId;
+            FlushAllRequests.empty() ? 0 : FlushAllRequests.back().SequenceId;
 
         if (nodeState->ShouldFlush(maxFlushAllRequestId)) {
             nodeState->FlushState.Executing = true;
@@ -578,7 +578,7 @@ private:
             return;
         }
 
-        NodeStates.EraseNodeState(nodeState->NodeId);
+        NodeStates.DeleteNodeState(nodeState->NodeId);
     }
 
     // NOLINTNEXTLINE(misc-no-recursion)
@@ -954,7 +954,7 @@ private:
         ui64 minRequestId)
     {
         while (!flushRequests.empty() &&
-               flushRequests.front().RequestId < minRequestId)
+               flushRequests.front().SequenceId < minRequestId)
         {
             QueuedOperations.FlushCompleted.push_back(
                 std::move(flushRequests.front().Promise));
