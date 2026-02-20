@@ -919,11 +919,6 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to format or mount filesystem: %w", err)
 	}
 
-	err = os.Chmod(req.StagingTargetPath, targetPerm)
-	if err != nil {
-		return fmt.Errorf("failed to chmod target path: %w", err)
-	}
-
 	return nil
 }
 

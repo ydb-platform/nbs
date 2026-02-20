@@ -1,5 +1,6 @@
 import pytest
 import subprocess
+import stat
 import os
 
 from pathlib import Path
@@ -65,16 +66,21 @@ def test_readonly_volume(mount_path, access_type, vm_mode, gid):
 def test_mount_volume_group():
     # Scenario
     # 1. create volume and stage it
-    # 2. create directory and file in the staging directory
+    # 2. verify that the setgid bit is not set
+    # 3. create directory and file in the staging directory
     # 4. create new group with specified GID
     # 5. publish volume with mount volume group GID
-    # 6. check that mounted dir and existing files have specified GID
-    # 7. create new directory and file
-    # 8. check that new directory and file have specified GID
-    # 9. unpublish volume
-    # 10. create new file in staging directory and change ownership
-    # 11. publish volume with mount volume group GID
-    # 12. Verify that the new file doesn't have the specified GID.
+    # 6. verify that the setgid bit is set
+    # 7. check that mounted dir and existing files have specified GID
+    # 8. create new directory and file
+    # 9. check that new directory and file have specified GID
+    # 10. unpublish volume
+    # 11. verify that the setgid bit is set
+    # 12. create new file in staging directory and change ownership
+    # 13. publish volume with mount volume group GID
+    # 14. Verify that the new file doesn't have the specified GID.
+    # 15. Unpublish, unstage volume and stage it again
+    # 16. verify that the setgid bit is set
     # The change won't take effect because the GID of the mount directory
     # matches the GID of the volume group.
 
@@ -88,6 +94,8 @@ def test_mount_volume_group():
         access_type = "mount"
         env.csi.create_volume(name=volume_name, size=volume_size)
         env.csi.stage_volume(volume_name, access_type)
+
+        assert os.stat(stage_path).st_mode & stat.S_ISGID == 0
 
         stage_test_dir1 = stage_path / "testdir1"
         stage_test_dir1.mkdir()
@@ -110,6 +118,8 @@ def test_mount_volume_group():
         )
 
         mount_path = Path("/var/lib/kubelet/pods") / pod_id / "volumes/kubernetes.io~csi" / volume_name / "mount"
+        assert os.stat(mount_path).st_mode & stat.S_ISGID != 0
+
         test_dir1 = mount_path / "testdir1"
         test_file1 = test_dir1 / "testfile1"
 
@@ -139,9 +149,15 @@ def test_mount_volume_group():
             access_type,
             volume_mount_group=str(gid)
         )
+        assert os.stat(mount_path).st_mode & stat.S_ISGID != 0
 
         test_file3 = test_dir1 / "testfile3"
         assert gid != test_file3.stat().st_gid
+
+        env.csi.unpublish_volume(pod_id, volume_name, access_type)
+        env.csi.unstage_volume(volume_name)
+        env.csi.stage_volume(volume_name, access_type)
+        assert os.stat(stage_path).st_mode & stat.S_ISGID != 0
 
     except subprocess.CalledProcessError as e:
         csi.log_called_process_error(e)
