@@ -389,7 +389,8 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
             TEvVolume::TEvDeleteCheckpointDataRequest,
             RejectDeleteCheckpointData);
 
-        IgnoreFunc(TEvents::TEvPoisonPill);
+        // We need to handle undelivered poison pills.
+        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
         IgnoreFunc(NActors::TEvents::TEvWakeup);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
