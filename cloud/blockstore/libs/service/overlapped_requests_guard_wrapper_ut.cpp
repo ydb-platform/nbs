@@ -34,7 +34,7 @@ struct TTestEnvironment
     TTestEnvironment()
     {
         Storage = std::make_shared<TTestStorage>();
-        Wrapper = CreateOverlappedRequestsGuardStorageWrapper(Storage);
+        Wrapper = CreateOverlappingRequestsGuardStorageWrapper(Storage);
 
         Storage->ReadBlocksLocalHandler =
             [&](TCallContextPtr callContext,
@@ -81,7 +81,7 @@ struct TTestEnvironment
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TOverlappedRequestsGuardStorageWrapperTest)
+Y_UNIT_TEST_SUITE(TOverlappingRequestsGuardStorageWrapperTest)
 {
     Y_UNIT_TEST(OverlappingReadsShouldNotBlockEachOther)
     {

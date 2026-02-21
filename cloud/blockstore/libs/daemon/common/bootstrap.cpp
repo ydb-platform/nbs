@@ -368,8 +368,8 @@ void TBootstrapBase::Init()
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
         Configs->ServerConfig->GetDisableClientThrottlers();
-    sessionManagerOptions.EnableOverlappedRequestsGuard =
-        Configs->ServerConfig->GetEnableOverlappedRequestsGuard();
+    sessionManagerOptions.EnableOverlappingRequestsGuard =
+        Configs->ServerConfig->GetEnableOverlappingRequestsGuard();
     sessionManagerOptions.EnableDataIntegrityClient =
         checksumFlags.GetEnableDataIntegrityClient();
     for (auto mediaKind: checksumFlags.GetMediaKindsToValidateDataIntegrity()) {

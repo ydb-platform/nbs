@@ -71,7 +71,7 @@ struct TSessionManagerOptions
     bool TemporaryServer = false;
     bool DisableDurableClient = false;
     bool DisableClientThrottler = false;
-    bool EnableOverlappedRequestsGuard = false;
+    bool EnableOverlappingRequestsGuard = false;
 
     bool EnableDataIntegrityClient = false;
     TVector<NProto::EStorageMediaKind> MediaKindsToValidateDataIntegrity;
