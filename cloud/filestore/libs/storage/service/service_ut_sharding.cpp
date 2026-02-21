@@ -3042,6 +3042,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 (data1.size() + 2 * data2.size()) / 4_KB,
                 stats.GetMixedBlocksCount());
         }
+
+        // smoke test for GetStorageStats.TimeSumUs metric - it should not show
+        // unnaturally large values
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+        auto tabletCounters = env.GetRuntime().GetAppData().Counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "storage")
+            ->FindSubgroup("type", "hdd");
+        UNIT_ASSERT_LT(
+            tabletCounters->GetCounter("GetStorageStats.TimeSumUs")
+                ->GetAtomic(),
+            10'000'000);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldRetryUnlinkingInShard)

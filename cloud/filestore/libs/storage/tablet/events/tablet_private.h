@@ -1155,6 +1155,7 @@ struct TEvIndexTabletPrivate
         NProtoPrivate::TStorageStats AggregateStats;
         TVector<TShardStats> ShardStats;
         TInstant StartedTs;
+        bool IsBackgroundRequest = false;
     };
 
     //
