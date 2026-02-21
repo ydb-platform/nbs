@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/overlapped_requests_guard_wrapper.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
@@ -821,6 +822,11 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
             StorageProvider->CreateStorage(volume, clientId, accessMode);
 
         storage = Executor->ResultOrError(future).GetResult();
+    }
+
+    if (Options.EnableOverlappingRequestsGuard) {
+        storage =
+            CreateOverlappingRequestsGuardStorageWrapper(std::move(storage));
     }
 
     return {
