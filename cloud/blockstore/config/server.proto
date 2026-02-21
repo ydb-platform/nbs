@@ -270,7 +270,7 @@ message TServerConfig
     optional uint32 VhostOptimalIoSize = 127;
 
     // Enables protection from executing overlapping zero or write requests.
-    optional bool EnableOverlappedRequestsGuard = 128;
+    optional bool EnableOverlappingRequestsGuard = 128;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

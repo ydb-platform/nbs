@@ -18,7 +18,7 @@ namespace NCloud::NBlockStore {
 // Read requests are not affected in any way.
 // Thread-safe.
 
-IStoragePtr CreateOverlappedRequestsGuardStorageWrapper(IStoragePtr storage);
+IStoragePtr CreateOverlappingRequestsGuardStorageWrapper(IStoragePtr storage);
 
 ////////////////////////////////////////////////////////////////////////////////
 

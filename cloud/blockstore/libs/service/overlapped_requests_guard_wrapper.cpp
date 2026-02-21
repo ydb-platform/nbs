@@ -18,10 +18,10 @@ namespace {
 
 struct TInflight;
 
-class TOverlappedRequestsGuardStorageWrapper final
+class TOverlappingRequestsGuardStorageWrapper final
     : public IStorage
     , public std::enable_shared_from_this<
-          TOverlappedRequestsGuardStorageWrapper>
+          TOverlappingRequestsGuardStorageWrapper>
 {
 private:
     const IStoragePtr Storage;
@@ -31,8 +31,8 @@ private:
     TBlockRangeMap<ui64, std::unique_ptr<TInflight>> InflightRequests;
 
 public:
-    explicit TOverlappedRequestsGuardStorageWrapper(IStoragePtr storage);
-    ~TOverlappedRequestsGuardStorageWrapper() override;
+    explicit TOverlappingRequestsGuardStorageWrapper(IStoragePtr storage);
+    ~TOverlappingRequestsGuardStorageWrapper() override;
 
     // implements IStorage
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -121,9 +121,9 @@ void TInflight::OnRequestExecuted(
 
         result.Apply(
             [promise = std::move(delayed.Promise)](
-                const TFuture<NProto::TWriteBlocksLocalResponse>& f) mutable
+                TFuture<NProto::TWriteBlocksLocalResponse> f) mutable
             {
-                promise.SetValue(f.GetValue());   //
+                promise.SetValue(f.ExtractValue());   //
             });
     }
 
@@ -134,25 +134,25 @@ void TInflight::OnRequestExecuted(
 
         result.Apply(
             [promise = std::move(delayed.Promise)](
-                const TFuture<NProto::TZeroBlocksResponse>& f) mutable
+                TFuture<NProto::TZeroBlocksResponse> f) mutable
             {
-                promise.SetValue(f.GetValue());   //
+                promise.SetValue(f.ExtractValue());   //
             });
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TOverlappedRequestsGuardStorageWrapper::TOverlappedRequestsGuardStorageWrapper(
-    IStoragePtr storage)
+TOverlappingRequestsGuardStorageWrapper::
+    TOverlappingRequestsGuardStorageWrapper(IStoragePtr storage)
     : Storage(std::move(storage))
 {}
 
-TOverlappedRequestsGuardStorageWrapper::
-    ~TOverlappedRequestsGuardStorageWrapper() = default;
+TOverlappingRequestsGuardStorageWrapper::
+    ~TOverlappingRequestsGuardStorageWrapper() = default;
 
 TFuture<NProto::TZeroBlocksResponse>
-TOverlappedRequestsGuardStorageWrapper::ZeroBlocks(
+TOverlappingRequestsGuardStorageWrapper::ZeroBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
@@ -162,7 +162,7 @@ TOverlappedRequestsGuardStorageWrapper::ZeroBlocks(
 
     auto guard = Guard(Lock);
 
-    const auto* overlaps = InflightRequests.FindFirstOverlapping(range);
+    auto overlaps = InflightRequests.FindFirstOverlapping(range);
 
     if (!overlaps) {
         const ui64 requestId = ++RequestIdGenerator;
@@ -187,7 +187,7 @@ TOverlappedRequestsGuardStorageWrapper::ZeroBlocks(
         return result;
     }
 
-    std::unique_ptr<TInflight>& inflightPtr = overlaps->AccessValue();
+    std::unique_ptr<TInflight>& inflightPtr = overlaps->Value;
     if (!inflightPtr) {
         inflightPtr = std::make_unique<TInflight>();
     }
@@ -203,7 +203,7 @@ TOverlappedRequestsGuardStorageWrapper::ZeroBlocks(
 }
 
 TFuture<NProto::TReadBlocksLocalResponse>
-TOverlappedRequestsGuardStorageWrapper::ReadBlocksLocal(
+TOverlappingRequestsGuardStorageWrapper::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
@@ -211,7 +211,7 @@ TOverlappedRequestsGuardStorageWrapper::ReadBlocksLocal(
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse>
-TOverlappedRequestsGuardStorageWrapper::WriteBlocksLocal(
+TOverlappingRequestsGuardStorageWrapper::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
@@ -221,7 +221,7 @@ TOverlappedRequestsGuardStorageWrapper::WriteBlocksLocal(
 
     auto guard = Guard(Lock);
 
-    const auto* overlaps = InflightRequests.FindFirstOverlapping(range);
+    auto overlaps = InflightRequests.FindFirstOverlapping(range);
 
     if (!overlaps) {
         const ui64 requestId = ++RequestIdGenerator;
@@ -247,7 +247,7 @@ TOverlappedRequestsGuardStorageWrapper::WriteBlocksLocal(
         return result;
     }
 
-    std::unique_ptr<TInflight>& inflightPtr = overlaps->AccessValue();
+    std::unique_ptr<TInflight>& inflightPtr = overlaps->Value;
     if (!inflightPtr) {
         inflightPtr = std::make_unique<TInflight>();
     }
@@ -263,24 +263,24 @@ TOverlappedRequestsGuardStorageWrapper::WriteBlocksLocal(
     return inflightPtr->DelayedWrites.back().Promise;
 }
 
-TFuture<NProto::TError> TOverlappedRequestsGuardStorageWrapper::EraseDevice(
+TFuture<NProto::TError> TOverlappingRequestsGuardStorageWrapper::EraseDevice(
     NProto::EDeviceEraseMethod method)
 {
     return Storage->EraseDevice(method);
 }
 
-TStorageBuffer TOverlappedRequestsGuardStorageWrapper::AllocateBuffer(
+TStorageBuffer TOverlappingRequestsGuardStorageWrapper::AllocateBuffer(
     size_t bytesCount)
 {
     return Storage->AllocateBuffer(bytesCount);
 }
 
-void TOverlappedRequestsGuardStorageWrapper::ReportIOError()
+void TOverlappingRequestsGuardStorageWrapper::ReportIOError()
 {
     Storage->ReportIOError();
 }
 
-void TOverlappedRequestsGuardStorageWrapper::OnRequestFinished(
+void TOverlappingRequestsGuardStorageWrapper::OnRequestFinished(
     ui64 requestId,
     const NProto::TError& error)
 {
@@ -297,9 +297,9 @@ void TOverlappedRequestsGuardStorageWrapper::OnRequestFinished(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStoragePtr CreateOverlappedRequestsGuardStorageWrapper(IStoragePtr storage)
+IStoragePtr CreateOverlappingRequestsGuardStorageWrapper(IStoragePtr storage)
 {
-    return std::make_shared<TOverlappedRequestsGuardStorageWrapper>(storage);
+    return std::make_shared<TOverlappingRequestsGuardStorageWrapper>(storage);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

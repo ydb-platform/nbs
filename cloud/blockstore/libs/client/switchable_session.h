@@ -58,7 +58,7 @@ namespace NCloud::NBlockStore::NClient {
     StorageDataClient          StorageDataClient
            |                          |
            v                          v
- OverlappedRequestsGuard     OverlappedRequestsGuard
+ OverlappingRequestsGuard     OverlappingRequestsGuard
            |                          |
            v                          v
        IStorage                    IStorage

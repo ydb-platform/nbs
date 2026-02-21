@@ -824,8 +824,9 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
         storage = Executor->ResultOrError(future).GetResult();
     }
 
-    if (Options.EnableOverlappedRequestsGuard) {
-        storage = CreateOverlappedRequestsGuardStorageWrapper(std::move(storage));
+    if (Options.EnableOverlappingRequestsGuard) {
+        storage =
+            CreateOverlappingRequestsGuardStorageWrapper(std::move(storage));
     }
 
     return {

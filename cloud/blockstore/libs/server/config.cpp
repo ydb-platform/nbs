@@ -113,7 +113,7 @@ constexpr TDuration Seconds(int s)
         NProto::EZP_WRITE_ENCRYPTED_ZEROS                                     )\
     xxx(VhostPteFlushByteThreshold,  ui64,                   0                )\
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
-    xxx(EnableOverlappedRequestsGuard,  bool,                false            )\
+    xxx(EnableOverlappingRequestsGuard,  bool,               false            )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on
