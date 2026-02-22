@@ -6,6 +6,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
 
+#include <fcntl.h>
 #include <util/folder/dirut.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/array_ref.h>
@@ -277,6 +278,134 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
     {
         for (const auto& service: Services) {
             service->Stop();
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReadWriteWithSyncFlags, TFixture)
+    {
+        const TFsPath filePath = TryGetRamDrivePath() / "test_sync_flags";
+        TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned);
+        fileData.Resize(BlockCount * BlockSize);
+
+        const ui64 requestStartIndex = 20;
+        const ui64 requestBlockCount = 16;
+        const ui64 length = requestBlockCount * BlockSize;
+        const i64 offset = requestStartIndex * BlockSize;
+
+        std::shared_ptr<char> memory = AllocMem(length);
+        TArrayRef<char> buffer {memory.get(), length};
+
+        for (int i = 0; i != ServicesCount; ++i) {
+            auto& service = *Services[i];
+            const int syncData = 'A' + i;
+            const int dsyncData = 'a' + i;
+            std::memset(buffer.data(), syncData, buffer.size());
+
+            {
+                auto result = service.AsyncWrite(fileData, offset, buffer, O_SYNC);
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+            }
+
+            std::memset(buffer.data(), 0, buffer.size());
+            {
+                auto result = service.AsyncRead(fileData, offset, buffer);
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+            }
+
+            for (char val: buffer) {
+                UNIT_ASSERT_VALUES_EQUAL(syncData, val);
+            }
+
+            std::memset(buffer.data(), dsyncData, buffer.size());
+            {
+                auto result = service.AsyncWrite(fileData, offset, buffer, O_DSYNC);
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+            }
+
+            std::memset(buffer.data(), 0, buffer.size());
+            {
+                auto result = service.AsyncRead(fileData, offset, buffer);
+                UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+            }
+
+            for (char val: buffer) {
+                UNIT_ASSERT_VALUES_EQUAL(dsyncData, val);
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReadWriteVWithSyncFlags, TFixture)
+    {
+        const TFsPath filePath = TryGetRamDrivePath() / "test_sync_flags_v";
+        TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned);
+        fileData.Resize(BlockCount * BlockSize);
+
+        const ui64 requestStartIndex = 20;
+        const ui64 requestBlockCount = 16;
+        const ui64 length = requestBlockCount * BlockSize;
+        const i64 offset = requestStartIndex * BlockSize;
+
+        std::shared_ptr<char> memory = AllocMem(length);
+
+        TVector<TArrayRef<char>> buffers{
+            {memory.get(), 4 * BlockSize},
+            {memory.get() + 4 * BlockSize, 6 * BlockSize},
+            {memory.get() + 10 * BlockSize, 6 * BlockSize}};
+
+        TVector<TArrayRef<const char>> constBuffers;
+        for (auto& buffer: buffers) {
+            constBuffers.emplace_back(buffer.data(), buffer.size());
+        }
+
+        for (int i = 0; i != ServicesCount; ++i) {
+            auto& service = *Services[i];
+            const int syncData = 'A' + i;
+            const int dsyncData = 'a' + i;
+
+            for (auto& buffer: buffers) {
+                std::memset(buffer.data(), syncData, buffer.size());
+            }
+            {
+                auto result =
+                    service.AsyncWriteV(fileData, offset, constBuffers, O_SYNC);
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+            }
+
+            for (auto& buffer: buffers) {
+                std::memset(buffer.data(), 0, buffer.size());
+            }
+            {
+                auto result = service.AsyncReadV(fileData, offset, buffers);
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+            }
+            for (auto& buffer: buffers) {
+                for (char val: buffer) {
+                    UNIT_ASSERT_VALUES_EQUAL(syncData, val);
+                }
+            }
+
+            for (auto& buffer: buffers) {
+                std::memset(buffer.data(), dsyncData, buffer.size());
+            }
+            {
+                auto result =
+                    service.AsyncWriteV(fileData, offset, constBuffers, O_DSYNC);
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+            }
+
+            for (auto& buffer: buffers) {
+                std::memset(buffer.data(), 0, buffer.size());
+            }
+            {
+                auto result = service.AsyncReadV(fileData, offset, buffers);
+                UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+            }
+
+            for (auto& buffer: buffers) {
+                for (char val: buffer) {
+                    UNIT_ASSERT_VALUES_EQUAL(dsyncData, val);
+                }
+            }
         }
     }
 }
