@@ -20,6 +20,14 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCacheStateConfig
+{
+    // ToDo(#1751): Enable after https://github.com/ydb-platform/nbs/pull/4793
+    bool EnableFlushFailure = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // The class is thread safe
 class TWriteBackCacheState
 {
@@ -40,7 +48,8 @@ public:
         IPersistentStoragePtr persistentStorage,
         IQueuedOperationsProcessor& processor,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats);
+        IWriteBackCacheStatsPtr stats,
+        TWriteBackCacheStateConfig config);
 
     // Read state from the persistent storage
     bool Init();
@@ -52,9 +61,13 @@ public:
     NThreading::TFuture<NProto::TWriteDataResponse> AddWriteDataRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> AddFlushRequest(ui64 nodeId);
+    NThreading::TFuture<NCloud::NProto::TError> AddFlushRequest(ui64 nodeId);
 
-    NThreading::TFuture<void> AddFlushAllRequest();
+    NThreading::TFuture<NCloud::NProto::TError> AddFlushAllRequest();
+
+    NThreading::TFuture<NCloud::NProto::TError> AddReleaseHandleRequest(
+        ui64 nodeId,
+        ui64 handle);
 
     void TriggerPeriodicFlushAll();
 

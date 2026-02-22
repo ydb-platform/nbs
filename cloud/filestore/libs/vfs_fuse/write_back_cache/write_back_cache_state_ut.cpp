@@ -52,7 +52,7 @@ struct TBootstrap
         : Timer(CreateWallClockTimer())
         , Stats(std::make_shared<TTestWriteBackCacheStats>())
         , Storage(std::make_shared<TTestStorage>(Stats))
-        , State(Storage, Processor, Timer, Stats)
+        , State(Storage, Processor, Timer, Stats, {.EnableFlushFailure = false})
     {}
 
     auto Add(ui64 nodeId, ui64 handle, ui64 offset, TString data)
@@ -72,7 +72,12 @@ struct TBootstrap
 
     bool Recreate()
     {
-        State = TWriteBackCacheState(Storage, Processor, Timer, Stats);
+        State = TWriteBackCacheState(
+            Storage,
+            Processor,
+            Timer,
+            Stats,
+            {.EnableFlushFailure = false});
         return State.Init();
     }
 

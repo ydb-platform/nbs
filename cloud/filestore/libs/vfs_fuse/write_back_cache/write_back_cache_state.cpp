@@ -53,13 +53,15 @@ private:
     TState State;
     TQueuedOperations QueuedOperations;
     const IWriteBackCacheStatsPtr Stats;
+    TWriteBackCacheStateConfig Config;
 
 public:
     TImpl(
         IPersistentStoragePtr persistentStorage,
         IQueuedOperationsProcessor& processor,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats)
+        IWriteBackCacheStatsPtr stats,
+        TWriteBackCacheStateConfig config)
         : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
         , RequestManager(
               SequenceIdGenerator,
@@ -69,6 +71,7 @@ public:
         , State(stats)
         , QueuedOperations(processor)
         , Stats(std::move(stats))
+        , Config(config)
     {}
 
     bool Init()
@@ -97,7 +100,7 @@ public:
             std::move(variant));
     }
 
-    TFuture<void> AddFlushRequest(ui64 nodeId)
+    TFuture<TError> AddFlushRequest(ui64 nodeId)
     {
         auto guard = Guard(QueuedOperations);
 
@@ -105,7 +108,7 @@ public:
         if (nodeState == nullptr ||
             !nodeState->Cache.HasPendingOrUnflushedRequests())
         {
-            return MakeFuture();
+            return MakeFuture<TError>();
         }
 
         auto future = nodeState->FlushRequests
@@ -117,18 +120,44 @@ public:
         return future;
     }
 
-    TFuture<void> AddFlushAllRequest()
+    TFuture<TError> AddFlushAllRequest()
     {
         auto guard = Guard(QueuedOperations);
 
         if (!RequestManager.HasPendingOrUnflushedRequests()) {
-            return MakeFuture();
+            return MakeFuture<TError>();
         }
 
         TriggerFlushAll(true);
 
         return State.FlushAllRequestQueue.emplace_back(State.FlushAllSequenceId)
             .Promise.GetFuture();
+    }
+
+    TFuture<TError> AddReleaseHandleRequest(ui64 nodeId, ui64 handle)
+    {
+        auto guard = Guard(QueuedOperations);
+
+        auto* nodeState = State.Nodes.GetNodeState(nodeId);
+        if (nodeState == nullptr) {
+            return MakeFuture<TError>();
+        }
+
+        auto* handleState = nodeState->Handles.FindPtr(handle);
+        if (handleState == nullptr) {
+            return MakeFuture<TError>();
+        }
+
+        if (handleState->ReadyToReleasePromise.Initialized()) {
+            return handleState->ReadyToReleasePromise.GetFuture();
+        }
+
+        handleState->ReadyToReleasePromise = NewPromise<TError>();
+        nodeState->HandleReleaseCount++;
+
+        UpdateFlushStatus(nodeId, *nodeState);
+
+        return handleState->ReadyToReleasePromise.GetFuture();
     }
 
     void TriggerPeriodicFlushAll()
@@ -240,6 +269,7 @@ public:
             auto* cachedRequest =
                 nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
             RequestManager.SetFlushed(cachedRequest);
+            DecrementHandleCount(cachedRequest->GetHandle(), nodeState);
         }
 
         // Trigger Flush completions
@@ -272,8 +302,6 @@ public:
 
     void FlushFailed(ui64 nodeId, const TError& error)
     {
-        Y_UNUSED(error);
-
         auto guard = Guard(QueuedOperations);
 
         auto& nodeState = State.Nodes.GetOrCreateNodeState(nodeId);
@@ -282,6 +310,46 @@ public:
         if (nodeState.FlushStatus == ENodeFlushStatus::FlushScheduled) {
             nodeState.FlushStatus = ENodeFlushStatus::ReadyToFlush;
             State.NodesReadyToFlush.insert(nodeId);
+        }
+
+        if (Config.EnableFlushFailure) {
+            for (auto& it: nodeState.FlushRequests) {
+                QueuedOperations.Fail(std::move(it.Promise), error);
+            }
+
+            for (auto& it: State.FlushAllRequestQueue) {
+                QueuedOperations.Fail(std::move(it.Promise), error);
+            }
+
+            nodeState.FlushRequests.clear();
+            State.FlushAllRequestQueue.clear();
+        }
+
+        if (nodeState.Handles.size() == nodeState.HandleReleaseCount) {
+            // Drop node data
+            for (auto& it: nodeState.Handles) {
+                QueuedOperations.Fail(
+                    std::move(it.second.ReadyToReleasePromise),
+                    error);
+            }
+
+            while (nodeState.Cache.HasPendingRequests()) {
+                auto request = nodeState.Cache.DequeuePendingRequest();
+                QueuedOperations.Fail(
+                    std::move(request->AccessPromise()),
+                    error);
+            }
+
+            while (nodeState.Cache.HasUnflushedRequests()) {
+                auto* request =
+                    nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
+                RequestManager.SetFlushed(request);
+            }
+
+            nodeState.Handles.clear();
+            nodeState.HandleReleaseCount = 0;
+
+            EvictUnpinnedFlushedEntries(nodeId, nodeState);
         }
     }
 
@@ -311,6 +379,7 @@ private:
             return ENodeFlushStatus::NothingToFlush;
         }
         if (!nodeState.FlushRequests.empty() ||
+            nodeState.HandleReleaseCount > 0 ||
             nodeState.Cache.GetMinUnflushedSequenceId() <=
                 State.FlushAllSequenceId)
         {
@@ -336,6 +405,21 @@ private:
         nodeState.FlushStatus = newFlushStatus;
     }
 
+    void DecrementHandleCount(ui64 handle, TNodeState& nodeState)
+    {
+        auto& handleState = nodeState.Handles[handle];
+        Y_ABORT_UNLESS(handleState.RequestCount > 0);
+        if (--handleState.RequestCount == 0) {
+            if (handleState.ReadyToReleasePromise.Initialized()) {
+                Y_ABORT_UNLESS(nodeState.HandleReleaseCount > 0);
+                nodeState.HandleReleaseCount--;
+                QueuedOperations.Complete(
+                    std::move(handleState.ReadyToReleasePromise));
+            }
+            nodeState.Handles.erase(handle);
+        }
+    }
+
     TFuture<TWriteDataResponse> AddRequest(
         std::unique_ptr<TPendingWriteDataRequest> request)
     {
@@ -345,6 +429,7 @@ private:
         auto& nodeState =
             State.Nodes.GetOrCreateNodeState(request->GetRequest().GetNodeId());
 
+        nodeState.Handles[request->GetRequest().GetHandle()].RequestCount++;
         nodeState.Cache.EnqueuePendingRequest(std::move(request));
 
         return future;
@@ -356,6 +441,7 @@ private:
         const ui64 nodeId = request->GetNodeId();
 
         auto& nodeState = State.Nodes.GetOrCreateNodeState(nodeId);
+        nodeState.Handles[request->GetHandle()].RequestCount++;
         nodeState.CachedNodeSize =
             Max(nodeState.CachedNodeSize, request->GetEnd());
         nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
@@ -435,13 +521,15 @@ TWriteBackCacheState::TWriteBackCacheState(
     IPersistentStoragePtr persistentStorage,
     IQueuedOperationsProcessor& processor,
     ITimerPtr timer,
-    IWriteBackCacheStatsPtr stats)
+    IWriteBackCacheStatsPtr stats,
+    TWriteBackCacheStateConfig config)
     : Impl(
           std::make_unique<TImpl>(
               std::move(persistentStorage),
               processor,
               std::move(timer),
-              std::move(stats)))
+              std::move(stats),
+              config))
 {}
 
 bool TWriteBackCacheState::Init()
@@ -460,14 +548,21 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     return Impl->AddWriteDataRequest(std::move(request));
 }
 
-TFuture<void> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
+TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
 {
     return Impl->AddFlushRequest(nodeId);
 }
 
-TFuture<void> TWriteBackCacheState::AddFlushAllRequest()
+TFuture<TError> TWriteBackCacheState::AddFlushAllRequest()
 {
     return Impl->AddFlushAllRequest();
+}
+
+TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
+    ui64 nodeId,
+    ui64 handle)
+{
+    return Impl->AddReleaseHandleRequest(nodeId, handle);
 }
 
 void TWriteBackCacheState::TriggerPeriodicFlushAll()
