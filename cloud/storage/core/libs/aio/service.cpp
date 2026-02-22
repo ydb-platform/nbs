@@ -3,6 +3,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/common/write_sync_flags.h>
 
 #include <util/stream/file.h>
 #include <util/string/builder.h>
@@ -221,16 +222,18 @@ public:
         TFileIOCompletion* completion,
         ui32 flags) override
     {
-        Y_UNUSED(flags);
-
         auto req = std::make_unique<iocb>();
-
-        io_prep_pwrite(
+        const ui32 syncFlags = GetWriteSyncFlags(flags);
+        iovec iov;
+        iov.iov_base = static_cast<void*>(const_cast<char*>(buffer.data()));
+        iov.iov_len = buffer.size();
+        io_prep_pwritev2(
             req.get(),
             file,
-            const_cast<char*>(buffer.data()),
-            buffer.size(),
-            offset);
+            &iov,
+            1,
+            offset,
+            syncFlags);
 
         req->data = completion;
 
@@ -244,9 +247,8 @@ public:
         TFileIOCompletion* completion,
         ui32 flags) override
     {
-        Y_UNUSED(flags);
-
         auto req = std::make_unique<iocb>();
+        const ui32 syncFlags = GetWriteSyncFlags(flags);
 
         TVector<iovec> iov(buffers.size());
         for (ui32 i = 0; i < buffers.size(); ++i) {
@@ -254,13 +256,13 @@ public:
                 static_cast<void*>(const_cast<char*>(buffers[i].data()));
             iov[i].iov_len = buffers[i].size();
         }
-
-        io_prep_pwritev(
+        io_prep_pwritev2(
             req.get(),
             file,
             iov.data(),
             iov.size(),
-            offset);
+            offset,
+            syncFlags);
 
         req->data = completion;
 
