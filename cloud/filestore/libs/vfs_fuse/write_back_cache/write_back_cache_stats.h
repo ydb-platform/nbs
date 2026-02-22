@@ -13,7 +13,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 /**
  * WriteData request life cycle:
- * Initial -> Pending -> Unflushed -> Flushed
+ * [Pending] -> Unflushed -> Flushed
  *
  * For each NodeId it is guaranteed that there are no requests with out-of-order
  * statuses: if two requests A and B have the same NodeId, and the request A was

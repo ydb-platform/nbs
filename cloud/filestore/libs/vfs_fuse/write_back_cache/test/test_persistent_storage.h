@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/persistent_storage.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/intrlist.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -11,8 +12,15 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 class TTestStorage: public IPersistentStorage
 {
 private:
+    struct TEntry: public TIntrusiveListItem<TEntry>
+    {
+        TString Data;
+    };
+
     const IPersistentStorageStatsPtr Stats;
-    THashMap<const void*, std::unique_ptr<TString>> Data;
+    THashMap<const void*, std::unique_ptr<TEntry>> Data;
+    // Used to visit items in the allocation order
+    TIntrusiveList<TEntry> List;
     size_t Capacity = 0;
 
 public:

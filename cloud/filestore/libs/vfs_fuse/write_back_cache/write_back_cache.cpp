@@ -1,206 +1,30 @@
 #include "write_back_cache.h"
 
-#include "node_cache.h"
+#include "flusher.h"
 #include "persistent_storage.h"
-#include "read_write_range_lock.h"
 #include "sequence_id_generator.h"
 #include "utils.h"
+#include "write_back_cache_state.h"
+#include "write_back_cache_stats.h"
 #include "write_data_request_builder.h"
-#include "write_data_request.h"
-#include "write_data_request_manager.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 
-#include <library/cpp/digest/crc32c/crc32c.h>
-#include <library/cpp/threading/future/subscription/wait_all.h>
-
-#include <util/generic/hash_set.h>
-#include <util/generic/mem_copy.h>
-#include <util/generic/intrlist.h>
-#include <util/generic/set.h>
-#include <util/generic/strbuf.h>
-#include <util/generic/vector.h>
-#include <util/system/mutex.h>
-#include <util/stream/mem.h>
-
-#include <span>
+#include <util/generic/scope.h>
 
 namespace NCloud::NFileStore::NFuse {
 
-using namespace NCloud::NFileStore::NVFS;
 using namespace NThreading;
 using namespace NWriteBackCache;
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPendingReadDataRequest
-{
-    TCallContextPtr CallContext;
-    std::shared_ptr<NProto::TReadDataRequest> Request;
-    TPromise<NProto::TReadDataResponse> Promise;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TFlushConfig
-{
-    TDuration AutomaticFlushPeriod;
-    TDuration FlushRetryPeriod;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TFlushRequest
-{
-    const ui64 RequestId = 0;
-    TPromise<void> Promise = NewPromise();
-
-    explicit TFlushRequest(ui64 requestId)
-        : RequestId(requestId)
-    {}
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBufferWriter
-{
-    std::span<char> TargetBuffer;
-
-    explicit TBufferWriter(std::span<char> targetBuffer)
-        : TargetBuffer(targetBuffer)
-    {}
-
-    void Write(TStringBuf buffer)
-    {
-        Y_ABORT_UNLESS(
-            buffer.size() <= TargetBuffer.size(),
-            "Not enough space in the buffer to write %lu bytes, remaining: %lu",
-            buffer.size(),
-            TargetBuffer.size());
-
-        buffer.copy(TargetBuffer.data(), buffer.size());
-        TargetBuffer = TargetBuffer.subspan(buffer.size());
-    }
-};
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TWriteBackCache::TFlushState
-{
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> WriteRequests;
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
-    size_t AffectedWriteDataEntriesCount = 0;
-    size_t InFlightWriteRequestsCount = 0;
-    bool Executing = false;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TWriteBackCache::TNodeState
-{
-    const ui64 NodeId = 0;
-
-    TNodeCache Cache;
-
-    // Prevent from concurrent read and write requests with overlapping ranges
-    TReadWriteRangeLock RangeLock;
-
-    TFlushState FlushState;
-
-    // Flush requests are fulfilled when there are no entries in |AllEntries|
-    // with RequestId less or equal than |TFlushRequest::RequestId|.
-    // Flush requests are stored in chronological order: RequestId values are
-    // strictly increasing so newer flush requests have larger RequestId.
-    TDeque<TFlushRequest> FlushRequests;
-
-    // All entries with RequestId <= |AutomaticFlushRequestId| are to be flushed
-    ui64 AutomaticFlushRequestId = 0;
-
-    // Cached data extends the node size but until the data is flushed,
-    // the changes are not visible to the tablet. FileSystem requests that
-    // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
-    // should have the node size adjusted to this value.
-    ui64 CachedNodeSize = 0;
-
-    // Non-zero value indicates that the node state is to be deleted but it is
-    // referenced from |TImpl::NodeStateRefs|. 'Referenced' means that there are
-    // values in |TImpl::NodeStateRefs| that are less than |DeletionId|.
-    ui64 DeletionId = 0;
-
-    explicit TNodeState(ui64 nodeId)
-        : NodeId(nodeId)
-    {}
-
-    bool CanBeDeleted() const
-    {
-        if (Cache.Empty() && RangeLock.Empty()) {
-            Y_ABORT_UNLESS(!FlushState.Executing);
-            return true;
-        }
-        return false;
-    }
-
-    bool ShouldFlush(ui64 maxFlushAllRequestId) const
-    {
-        if (!Cache.HasUnflushedRequests()) {
-            return false;
-        }
-
-        if (!FlushRequests.empty()) {
-            return true;
-        }
-
-        const ui64 minRequestId = Cache.GetMinUnflushedSequenceId();
-        return minRequestId <= maxFlushAllRequestId ||
-               minRequestId <= AutomaticFlushRequestId;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Accumulate operations to execute after completing the main operation.
-// 1. Set promises exposed to the user code outside lock sections.
-// 2. Avoid recursion chains in future completion callbacks.
-struct TWriteBackCache::TQueuedOperations
-{
-    // Used to prevent recursive calls of ProcessQueuedOperations
-    bool Executing = false;
-
-    // The flag is set when an element is popped from
-    // |TImpl::CachedEntriesPersistentQueue| and free space is increased or
-    // an element is pushed to empty |TImpl::CachedEntriesPersistentQueue|.
-    // We should try to push pending entries to the persistent queue.
-    bool ShouldProcessPendingEntries = false;
-
-    // Pending ReadData requests that have acquired |TNodeState::RangeLock|
-    TVector<TPendingReadDataRequest> ReadData;
-
-    // Flush operations that have been scheduled but not yet started
-    TVector<TNodeState*> Flush;
-
-    // Report WriteData requests as completed
-    TVector<TPromise<NProto::TWriteDataResponse>> WriteDataCompleted;
-
-    // Report FlushData and FlushAll requests as completed
-    TVector<TPromise<void>> FlushCompleted;
-
-    bool Empty() const
-    {
-        return ReadData.empty() && Flush.empty() &&
-               WriteDataCompleted.empty() && FlushCompleted.empty();
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
+    , private IWriteBackCacheStateListener
+    , private IWriteDataRequestExecutor
 {
 private:
     const IFileStorePtr Session;
@@ -209,71 +33,48 @@ private:
     const IWriteBackCacheStatsPtr Stats;
     const IWriteDataRequestBuilderPtr RequestBuilder;
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
-    const TFlushConfig FlushConfig;
+    const TDuration AutomaticFlushPeriod;
+    const TDuration FlushRetryPeriod;
     const TLog Log;
     const TString LogTag;
     const TString FileSystemId;
 
-    // All fields below should be protected by this lock
-    TMutex Lock;
-
-    TWriteDataRequestManager RequestManager;
-    IPersistentStoragePtr PersistentStorage;
-
-    // WriteData entries and Flush states grouped by nodeId
-    THashMap<ui64, std::unique_ptr<TNodeState>> NodeStates;
-
-    // References to node states that prevents their deletion from |NodeStates|.
-    // Used to keep MinNodeSize information for flushed nodes.
-    TSet<ui64> NodeStateRefs;
-
-    // Node states to be deleted but that are referenced from |NodeStateRefs|.
-    // Key: |TNodeState::DeletionId|, Value: NodeId.
-    TMap<ui64, ui64> DeletedNodeStates;
-
-    // Optimization: don't iterate over all node states during FlushAll;
-    // only consider nodes that have new or changed entries.
-    THashSet<ui64> NodesWithNewEntries;
-    THashSet<ui64> NodesWithNewCachedEntries;
-
-    // FlushAll requests are fulfilled when there are no entries in |AllEntries|
-    // with RequestId less or equal than |TFlushRequest::RequestId|.
-    // FlushAll requests are stored in chronological order: RequestId values are
-    // strictly increasing so newer flush requests have larger RequestId.
-    TDeque<TFlushRequest> FlushAllRequests;
-
-    // Operations to execute after completing the main operation
-    TQueuedOperations QueuedOperations;
+    IPersistentStoragePtr Storage;
+    TWriteBackCacheState State;
+    TFlusher Flusher;
+    bool IsFailed = false;
 
 public:
-    TImpl(
-            IFileStorePtr session,
-            ISchedulerPtr scheduler,
-            ITimerPtr timer,
-            IWriteBackCacheStatsPtr stats,
-            NWriteBackCache::IWriteDataRequestBuilderPtr requestBuilder,
-            TLog log,
-            const TString& fileSystemId,
-            const TString& clientId,
-            const TString& filePath,
-            ui64 capacityBytes,
-            TFlushConfig flushConfig)
-        : Session(std::move(session))
-        , Scheduler(std::move(scheduler))
-        , Timer(std::move(timer))
-        , Stats(std::move(stats))
-        , RequestBuilder(std::move(requestBuilder))
+    explicit TImpl(TWriteBackCacheArgs args)
+        : Session(std::move(args.Session))
+        , Scheduler(std::move(args.Scheduler))
+        , Timer(std::move(args.Timer))
+        , Stats(
+              args.Stats ? std::move(args.Stats)
+                         : CreateDummyWriteBackCacheStats())
+        , RequestBuilder(CreateWriteDataRequestBuilder(
+              {.FileSystemId = args.FileSystemId,
+               .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
+               .MaxWriteRequestsCount = args.FlushMaxWriteRequestsCount,
+               .MaxSumWriteRequestsSize = args.FlushMaxSumWriteRequestsSize,
+               .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled}))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
-        , FlushConfig(flushConfig)
-        , Log(std::move(log))
-        , LogTag(
-              Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
-        , FileSystemId(fileSystemId)
+        , AutomaticFlushPeriod(args.AutomaticFlushPeriod)
+        , FlushRetryPeriod(args.FlushRetryPeriod)
+        , Log(std::move(args.Log))
+        , LogTag(Sprintf(
+              "[f:%s][c:%s]",
+              args.FileSystemId.c_str(),
+              args.ClientId.c_str()))
+        , FileSystemId(args.FileSystemId)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
                 Stats,
-                {.FilePath = filePath, .DataCapacity = capacityBytes});
+                {.FilePath = args.FilePath,
+                 .DataCapacity = args.CapacityBytes,
+                 .MetadataCapacity = 0,
+                 .EnableChecksumValidation = false});
 
         if (HasError(createPersistentStorageResult)) {
             ReportWriteBackCacheCorruptionError(
@@ -281,85 +82,73 @@ public:
                 << LogTag
                 << " WriteBackCache persistent storage initialization failed: "
                 << createPersistentStorageResult.GetError()
-                << ", FilePath: " << filePath.Quote());
+                << ", FilePath: " << args.FilePath.Quote());
+
+            IsFailed = true;
             return;
         }
 
-        PersistentStorage = createPersistentStorageResult.ExtractResult();
+        Storage = createPersistentStorageResult.ExtractResult();
+
+        State = TWriteBackCacheState(
+            Storage,
+            *this,
+            Timer,
+            Stats,
+            {.EnableFlushFailure = false});
+
+        Flusher = TFlusher(State, RequestBuilder, *this, Stats);
 
         // File ring buffer should be able to store any valid TWriteDataRequest.
         // Inability to store it will cause this and future requests to remain
         // in the pending queue forever (including requests with smaller size).
         // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
         Y_ABORT_UNLESS(
-            PersistentStorage->GetMaxSupportedAllocationByteCount() >=
+            Storage->GetMaxSupportedAllocationByteCount() >=
             1024 * 1024 + 1016);
 
         Stats->ResetNonDerivativeCounters();
 
-        RequestManager = TWriteDataRequestManager(
-            SequenceIdGenerator,
-            PersistentStorage,
-            Timer,
-            Stats);
-
-        auto initStatus = RequestManager.Init(
-            [&](std::unique_ptr<TCachedWriteDataRequest> entry)
-            {
-                auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
-                NodesWithNewEntries.insert(entry->GetNodeId());
-                AddCachedEntry(nodeState, std::move(entry));
-            });
-
-        if (!initStatus) {
+        if (!State.Init()) {
             ReportWriteBackCacheCorruptionError(
                 TStringBuilder()
                 << LogTag
                 << " WriteBackCache failed to deserialize requests from the "
                    "persistent storage, FilePath: "
-                << filePath.Quote());
+                << args.FilePath.Quote());
+
+            IsFailed = true;
             return;
         }
 
-        const auto persistentStorageStats = PersistentStorage->GetStats();
+        auto storageStats = Storage->GetStats();
 
         STORAGE_INFO(
             LogTag << " WriteBackCache has been initialized "
-            << "{\"FilePath\": " << filePath.Quote()
-            << ", \"RawCapacityByteCount\": "
-            << persistentStorageStats.RawCapacityByteCount
-            << ", \"RawUsedByteCount\": "
-            << persistentStorageStats.RawUsedByteCount
-            << ", \"EntryCount\": "
-            << persistentStorageStats.EntryCount << "}");
-
-        if (persistentStorageStats.IsCorrupted) {
-            ReportWriteBackCacheCorruptionError(
-                LogTag + " WriteBackCache persistent queue is corrupted");
-        }
+                   << "{\"FilePath\": " << args.FilePath.Quote()
+                   << ", \"RawCapacityBytes\": "
+                   << storageStats.RawCapacityByteCount
+                   << ", \"RawUsedBytesCount\": "
+                   << storageStats.RawUsedByteCount
+                   << ", \"WriteDataRequestCount\": " << storageStats.EntryCount
+                   << "}");
     }
 
     void ScheduleAutomaticFlushIfNeeded()
     {
-        if (!FlushConfig.AutomaticFlushPeriod) {
+        if (!AutomaticFlushPeriod) {
             return;
         }
 
         Scheduler->Schedule(
-            Timer->Now() + FlushConfig.AutomaticFlushPeriod,
-            [ptr = weak_from_this()] () {
+            Timer->Now() + AutomaticFlushPeriod,
+            [ptr = weak_from_this()]()
+            {
                 if (auto self = ptr.lock()) {
-                    self->RequestAutomaticFlush();
+                    self->State.TriggerPeriodicFlushAll();
+                    self->ScheduleAutomaticFlushIfNeeded();
                 }
             });
-    }
-
-    void RequestAutomaticFlush()
-    {
-        auto guard = Guard(Lock);
-        RequestFlushAllCachedData();
-        ProcessQueuedOperations(guard);
-        ScheduleAutomaticFlushIfNeeded();
     }
 
     TFuture<NProto::TReadDataResponse> ReadData(
@@ -378,52 +167,49 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        auto nodeId = request->GetNodeId();
-        auto offset = request->GetOffset();
-        auto end = request->GetOffset() + request->GetLength();
+        const auto nodeId = request->GetNodeId();
+        const auto offset = request->GetOffset();
+        const auto length = request->GetLength();
 
-        auto unlocker =
-            [ptr = weak_from_this(), nodeId, offset, end](const auto&)
+        // Prevent cached data parts from being evicted from storage until
+        // the response is completed
+        const auto pinId = State.PinCachedData(nodeId);
+        const auto cachedData = State.GetCachedData(nodeId, offset, length);
+
+        if (TUtils::IsFullyCoveredByParts(cachedData.Parts, length)) {
+            auto response = TUtils::BuildReadDataResponse(cachedData.Parts);
+            State.UnpinCachedData(nodeId, pinId);
+            Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
+            return MakeFuture(std::move(response));
+        }
+
+        auto callback = [ptr = weak_from_this(), nodeId, offset, length, pinId](
+                            TFuture<NProto::TReadDataResponse> future)
         {
+            auto response = future.ExtractValue();
+
             if (auto self = ptr.lock()) {
-                auto guard = Guard(self->Lock);
-                auto* nodeState = self->GetNodeState(nodeId);
-                nodeState->RangeLock.UnlockRead(offset, end);
-                self->DeleteNodeStateIfNeeded(nodeState);
-                self->ProcessQueuedOperations(guard);
+                if (!HasError(response)) {
+                    const auto cachedData =
+                        self->State.GetCachedData(nodeId, offset, length);
+
+                    if (cachedData.Parts.empty()) {
+                        self->Stats->AddReadDataStats(
+                            EReadDataRequestCacheStatus::Miss);
+                    } else {
+                        self->Stats->AddReadDataStats(
+                            EReadDataRequestCacheStatus::PartialHit);
+                    }
+
+                    TUtils::AugmentReadDataResponse(response, cachedData);
+                }
+                self->State.UnpinCachedData(nodeId, pinId);
             }
+            return response;
         };
 
-        TPendingReadDataRequest pendingRequest = {
-            .CallContext = std::move(callContext),
-            .Request = std::move(request),
-            .Promise = NewPromise<NProto::TReadDataResponse>()};
-
-        auto result = pendingRequest.Promise.GetFuture();
-        result.Subscribe(std::move(unlocker));
-
-        auto locker = [ptr = weak_from_this(),
-                       pendingRequest = std::move(pendingRequest)]() mutable
-        {
-            auto self = ptr.lock();
-            // Lock action is invoked immediately or from
-            // UnlockRead/UnlockWrite calls that can be made only when
-            // TImpl is alive
-            Y_DEBUG_ABORT_UNLESS(self);
-            if (self) {
-                self->QueuedOperations.ReadData.push_back(
-                    std::move(pendingRequest));
-            }
-        };
-
-        auto guard = Guard(Lock);
-
-        auto* nodeState = GetOrCreateNodeState(nodeId);
-        nodeState->RangeLock.LockRead(offset, end, std::move(locker));
-
-        ProcessQueuedOperations(guard);
-
-        return result;
+        return Session->ReadData(std::move(callContext), std::move(request))
+            .Apply(std::move(callback));
     }
 
     TFuture<NProto::TWriteDataResponse> WriteData(
@@ -442,747 +228,72 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        const auto nodeId = request->GetNodeId();
-        const auto offset = request->GetOffset();
-        const auto end = NStorage::CalculateByteCount(*request) -
-                         request->GetBufferOffset() + offset;
-
-        Y_ABORT_UNLESS(offset < end);
-
-        auto unlocker =
-            [ptr = weak_from_this(), nodeId, offset, end](const auto&)
-        {
-            if (auto self = ptr.lock()) {
-                auto guard = Guard(self->Lock);
-                auto* nodeState = self->GetNodeState(nodeId);
-                nodeState->RangeLock.UnlockWrite(offset, end);
-                self->DeleteNodeStateIfNeeded(nodeState);
-                self->ProcessQueuedOperations(guard);
-            }
-        };
-
-        auto promise = NewPromise<NProto::TWriteDataResponse>();
-        auto future = promise.GetFuture();
-
-        future.Subscribe(std::move(unlocker));
-
-        auto locker =
-            [ptr = weak_from_this(), request = std::move(request), promise = std::move(promise)]() mutable
-        {
-            auto self = ptr.lock();
-            // Lock action is invoked immediately or from
-            // UnlockRead/UnlockWrite calls that can be made only when
-            // TImpl is alive
-            Y_ABORT_UNLESS(self);
-
-            self->NodesWithNewEntries.insert(request->GetNodeId());
-
-            auto res = self->RequestManager.AddRequest(std::move(request));
-            std::visit([&](auto res)
-            {
-                self->DoAddRequest(std::move(res), std::move(promise));
-            }, std::move(res));
-        };
-
-        auto guard = Guard(Lock);
-
-        auto* nodeState = GetOrCreateNodeState(nodeId);
-        nodeState->RangeLock.LockWrite(offset, end, std::move(locker));
-
-        ProcessQueuedOperations(guard);
-
-        return future;
+        return State.AddWriteDataRequest(std::move(request));
     }
 
     TFuture<void> FlushNodeData(ui64 nodeId)
     {
-        auto guard = Guard(Lock);
-
-        auto* nodeState = GetNodeStateOrNull(nodeId);
-        if (nodeState == nullptr ||
-            !nodeState->Cache.HasPendingOrUnflushedRequests())
-        {
-            return NThreading::MakeFuture();
-        }
-
-        const ui64 maxRequestId =
-            nodeState->Cache.GetMaxPendingOrUnflushedSequenceId();
-
-        if (!nodeState->FlushRequests.empty() &&
-            nodeState->FlushRequests.back().RequestId >= maxRequestId)
-        {
-            // The previous FlushAllData already affects all entries
-            return nodeState->FlushRequests.back().Promise.GetFuture();
-        }
-
-        auto future = nodeState->FlushRequests.emplace_back(maxRequestId)
-                          .Promise.GetFuture();
-
-        if (EnqueueFlushIfNeeded(nodeState)) {
-            ProcessQueuedOperations(guard);
-        }
-
-        return future;
+        return State.AddFlushRequest(nodeId).IgnoreResult();
     }
 
     TFuture<void> FlushAllData()
     {
-        auto guard = Guard(Lock);
-
-        if (!RequestManager.HasPendingOrUnflushedRequests()) {
-            return NThreading::MakeFuture();
-        }
-
-        ui64 maxRequestId = RequestManager.GetMaxPendingOrUnflushedSequenceId();
-
-        if (!FlushAllRequests.empty() &&
-            FlushAllRequests.back().RequestId >= maxRequestId)
-        {
-            // The previous FlushAllData already affects all entries
-            return FlushAllRequests.back().Promise.GetFuture();
-        }
-
-        auto future =
-            FlushAllRequests.emplace_back(maxRequestId).Promise.GetFuture();
-
-        bool queuedOperationsUpdated = false;
-        for (auto nodeId: NodesWithNewEntries) {
-            queuedOperationsUpdated |=
-                EnqueueFlushIfNeeded(GetNodeState(nodeId));
-        }
-        NodesWithNewEntries.clear();
-
-        if (queuedOperationsUpdated) {
-            ProcessQueuedOperations(guard);
-        }
-
-        return future;
+        return State.AddFlushAllRequest().IgnoreResult();
     }
 
     bool IsEmpty() const
     {
-        with_lock (Lock) {
-            return !RequestManager.HasPendingOrUnflushedRequests();
-        }
+        return !State.HasUnflushedRequests();
     }
 
     ui64 AcquireNodeStateRef()
     {
-        with_lock (Lock) {
-            ui64 refId = SequenceIdGenerator->GenerateId();
-            NodeStateRefs.insert(refId);
-            return refId;
-        }
+        return State.PinMetadata();
     }
 
     void ReleaseNodeStateRef(ui64 refId)
     {
-        with_lock (Lock) {
-            const bool erased = static_cast<bool>(NodeStateRefs.erase(refId));
-            Y_DEBUG_ABORT_UNLESS(erased);
-
-            const ui64 minRefId =
-                NodeStateRefs.empty() ? Max<ui64>() : *NodeStateRefs.begin();
-
-            for (auto it = DeletedNodeStates.begin();
-                 it != DeletedNodeStates.end() && it->first <= minRefId;)
-            {
-                EraseNodeState(it->second);
-                it = DeletedNodeStates.erase(it);
-            }
-        }
+        State.UnpinMetadata(refId);
     }
 
     ui64 GetCachedNodeSize(ui64 nodeId) const
     {
-        with_lock (Lock) {
-            const auto* nodeStatePtr = NodeStates.FindPtr(nodeId);
-            return nodeStatePtr ? (*nodeStatePtr)->CachedNodeSize : 0;
-        }
+        return State.GetCachedNodeSize(nodeId);
     }
 
     void SetCachedNodeSize(ui64 nodeId, ui64 size)
     {
-        with_lock (Lock) {
-            if (auto* nodeStatePtr = NodeStates.FindPtr(nodeId)) {
-                (*nodeStatePtr)->CachedNodeSize = size;
-            }
-        }
+        State.SetCachedNodeSize(nodeId, size);
     }
 
 private:
-    void DoAddRequest(
-        std::unique_ptr<TCachedWriteDataRequest> request,
-        TPromise<NProto::TWriteDataResponse> promise)
-    {
-        auto* nodeState = GetOrCreateNodeState(request->GetNodeId());
-        QueuedOperations.WriteDataCompleted.push_back(std::move(promise));
-        AddCachedEntry(nodeState, std::move(request));
-    }
-
-    void DoAddRequest(
-        std::unique_ptr<TPendingWriteDataRequest> request,
-        TPromise<NProto::TWriteDataResponse> promise)
-    {
-        request->AccessPromise() = std::move(promise);
-        auto* nodeState =
-            GetOrCreateNodeState(request->GetRequest().GetNodeId());
-        nodeState->Cache.EnqueuePendingRequest(std::move(request));
-        RequestFlushAllCachedData();
-    }
-
-    // Check and enqueue Flush operation for the given node if needed.
-    // If the node should be flushed and there is no flush currently executing
-    // for the node, mark the node's flush state as executing and add it into
-    // |PendingOperations.Flush| so that ExecutePendingOperations will start it.
-    // Returns true when the node was enqueued for flushing, false otherwise.
-    // should be protected by |Lock|
-    bool EnqueueFlushIfNeeded(TNodeState* nodeState)
-    {
-        if (nodeState->FlushState.Executing) {
-            return false;
-        }
-
-        const ui64 maxFlushAllRequestId =
-            FlushAllRequests.empty() ? 0 : FlushAllRequests.back().RequestId;
-
-        if (nodeState->ShouldFlush(maxFlushAllRequestId)) {
-            nodeState->FlushState.Executing = true;
-            QueuedOperations.Flush.push_back(nodeState);
-            return true;
-        }
-
-        return false;
-    }
-
-    // should be protected by |Lock|
-    void RequestFlushAllCachedData()
-    {
-        for (auto nodeId: NodesWithNewCachedEntries) {
-            auto* nodeState = GetNodeState(nodeId);
-            if (nodeState->Cache.HasUnflushedRequests()) {
-                nodeState->AutomaticFlushRequestId =
-                    nodeState->Cache.GetMaxUnflushedSequenceId();
-                EnqueueFlushIfNeeded(nodeState);
-            }
-        }
-
-        NodesWithNewCachedEntries.clear();
-    }
-
-    // should be protected by |Lock|
-    TNodeState* GetNodeStateOrNull(ui64 nodeId) const
-    {
-        auto it = NodeStates.find(nodeId);
-        return it != NodeStates.end() && it->second->DeletionId == 0
-                   ? it->second.get()
-                   : nullptr;
-    }
-
-    // should be protected by |Lock|
-    TNodeState* GetOrCreateNodeState(ui64 nodeId)
-    {
-        auto& ptr = NodeStates[nodeId];
-        if (!ptr) {
-            ptr = std::make_unique<TNodeState>(nodeId);
-            Stats->IncrementNodeCount();
-        }
-        if (ptr->DeletionId != 0) {
-            // Revive deleted node state
-            auto erased = DeletedNodeStates.erase(ptr->DeletionId);
-            Y_DEBUG_ABORT_UNLESS(erased);
-            ptr->DeletionId = 0;
-        }
-        return ptr.get();
-    }
-
-    // should be protected by |Lock|
-    TNodeState* GetNodeState(ui64 nodeId)
-    {
-        const auto& ptr = NodeStates[nodeId];
-        Y_ABORT_UNLESS(ptr);
-        Y_ABORT_UNLESS(ptr->DeletionId == 0);
-        return ptr.get();
-    }
-
-    // should be protected by |Lock|
-    void EraseNodeState(ui64 nodeId)
-    {
-        const auto erased = static_cast<bool>(NodeStates.erase(nodeId));
-        Y_DEBUG_ABORT_UNLESS(erased);
-        Stats->DecrementNodeCount();
-    }
-
-    // should be protected by |Lock|
-    void DeleteNodeStateIfNeeded(TNodeState* nodeState)
-    {
-        Y_DEBUG_ABORT_UNLESS(nodeState->DeletionId == 0);
-
-        if (!nodeState->CanBeDeleted()) {
-            return;
-        }
-
-        NodesWithNewCachedEntries.erase(nodeState->NodeId);
-        NodesWithNewEntries.erase(nodeState->NodeId);
-
-        if (NodeStateRefs.empty()) {
-            EraseNodeState(nodeState->NodeId);
-        } else {
-            nodeState->DeletionId = SequenceIdGenerator->GenerateId();
-            DeletedNodeStates[nodeState->DeletionId] = nodeState->NodeId;
-        }
-    }
-
-    // NOLINTNEXTLINE(misc-no-recursion)
-    void ProcessQueuedOperations(TGuard<TMutex>& guard)
-    {
-        Y_DEBUG_ABORT_UNLESS(guard.WasAcquired());
-
-        // Prevent recursive calls
-        if (QueuedOperations.Executing) {
-            return;
-        }
-
-        QueuedOperations.Executing = true;
-
-        while (true) {
-            if (QueuedOperations.ShouldProcessPendingEntries) {
-                QueuedOperations.ShouldProcessPendingEntries = false;
-                ProcessPendingEntries();
-            }
-
-            if (QueuedOperations.Empty()) {
-                QueuedOperations.Executing = false;
-                return;
-            }
-
-            TVector<TPendingReadDataRequest> readData;
-            TVector<TNodeState*> flush;
-            TVector<TPromise<NProto::TWriteDataResponse>> writeDataCompleted;
-            TVector<TPromise<void>> flushCompleted;
-
-            swap(readData, QueuedOperations.ReadData);
-            swap(flush, QueuedOperations.Flush);
-            swap(writeDataCompleted, QueuedOperations.WriteDataCompleted);
-            swap(flushCompleted, QueuedOperations.FlushCompleted);
-
-            // Unguard works as an inverse lock - it releases lock held
-            // by a lock guard and acquires it back at the end of the section
-            auto unguard = Unguard(guard);
-
-            for (auto& request: readData) {
-                StartPendingReadDataRequest(std::move(request));
-            }
-
-            for (auto* nodeState: flush) {
-                StartFlush(nodeState);
-            }
-
-            for (auto& promise: writeDataCompleted) {
-                promise.SetValue({});
-            }
-
-            for (auto& promise: flushCompleted) {
-                promise.SetValue();
-            }
-        }
-    }
-
-    // should be protected by |Lock|
-    void ProcessPendingEntries()
-    {
-        while (true) {
-            auto cachedRequest = RequestManager.TryProcessPendingRequest();
-            if (!cachedRequest) {
-                break;
-            }
-
-            auto* nodeState = GetNodeState(cachedRequest->GetNodeId());
-
-            Y_ABORT_UNLESS(nodeState->Cache.HasPendingRequests());
-            auto pendingRequest = nodeState->Cache.DequeuePendingRequest();
-
-            Y_ABORT_UNLESS(
-                pendingRequest->GetSequenceId() ==
-                cachedRequest->GetSequenceId());
-
-            QueuedOperations.WriteDataCompleted.push_back(
-                std::move(pendingRequest->AccessPromise()));
-
-            AddCachedEntry(nodeState, std::move(cachedRequest));
-
-            // The entry transitioned from Pending to Cached status may be
-            // requested for flushing. Recheck Flush condition for the node.
-            EnqueueFlushIfNeeded(nodeState);
-        }
-    }
-
-    TVector<TCachedDataPart> CalculateDataPartsToReadAndFillBuffer(
-        ui64 nodeId,
-        ui64 offset,
-        ui64 length,
-        TString* buffer)
-    {
-        with_lock (Lock) {
-            auto* nodeState = GetNodeStateOrNull(nodeId);
-            if (nodeState == nullptr) {
-                return {};
-            }
-            auto data = nodeState->Cache.GetCachedData(offset, length);
-            if (data.ReadDataByteCount == 0) {
-                return {};
-            }
-            *buffer = TString(data.ReadDataByteCount, 0);
-            for (const auto& part: data.Parts) {
-                part.Data.copy(
-                    buffer->begin() + part.RelativeOffset,
-                    part.Data.size());
-            }
-            return data.Parts;
-        }
-    }
-
-    static bool IsIntervalFullyCoveredByParts(
-        const TVector<TCachedDataPart>& parts,
-        ui64 length)
-    {
-        if (parts.empty() || parts.front().RelativeOffset != 0 ||
-            parts.back().RelativeOffset + parts.back().Data.size() != length)
-        {
-            return false;
-        }
-
-        for (size_t i = 1; i < parts.size(); i++) {
-            const ui64 prevEnd =
-                parts[i - 1].RelativeOffset + parts[i - 1].Data.size();
-
-            Y_DEBUG_ABORT_UNLESS(prevEnd <= parts[i].RelativeOffset);
-            if (prevEnd != parts[i].RelativeOffset) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    struct TReadDataState
-    {
-        ui64 StartingFromOffset = 0;
-        ui64 Length = 0;
-        TString Buffer;
-        TVector<TCachedDataPart> Parts;
-        TPromise<NProto::TReadDataResponse> Promise;
-    };
-
-    void StartPendingReadDataRequest(TPendingReadDataRequest request)
-    {
-        auto nodeId = request.Request->GetNodeId();
-
-        TReadDataState state;
-        state.StartingFromOffset = request.Request->GetOffset();
-        state.Length = request.Request->GetLength();
-        state.Promise = std::move(request.Promise);
-
-        state.Parts = CalculateDataPartsToReadAndFillBuffer(
-            nodeId,
-            state.StartingFromOffset,
-            state.Length,
-            &state.Buffer);
-
-        if (IsIntervalFullyCoveredByParts(
-                state.Parts,
-                state.Length))
-        {
-            // Serve request from cache
-            Y_ABORT_UNLESS(state.Buffer.size() == state.Length);
-            NProto::TReadDataResponse response;
-            response.SetBuffer(std::move(state.Buffer));
-            Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
-            state.Promise.SetValue(std::move(response));
-            return;
-        }
-
-        auto cacheState = state.Parts.empty()
-            ? EReadDataRequestCacheStatus::Miss
-            : EReadDataRequestCacheStatus::PartialHit;
-
-        Stats->AddReadDataStats(cacheState);
-
-        // Cache is not sufficient to serve the request - read all the data
-        // and merge with the cached parts
-        auto future = Session->ReadData(
-            std::move(request.CallContext),
-            std::move(request.Request));
-
-        future.Subscribe(
-            [state = std::move(state)](auto future) mutable
-            {
-                auto response = future.ExtractValue();
-
-                if (HasError(response)) {
-                    state.Promise.SetValue(std::move(response));
-                } else {
-                    HandleReadDataResponse(
-                        std::move(state),
-                        std::move(response));
-                }
-            });
-    }
-
-    static void HandleReadDataResponse(
-        TReadDataState state,
-        NProto::TReadDataResponse response)
-    {
-        Y_ABORT_UNLESS(
-            response.GetBuffer().length() >= response.GetBufferOffset(),
-            "reponse buffer length %lu is expected to be >= buffer offset %u",
-            response.GetBuffer().length(),
-            response.GetBufferOffset());
-
-        auto responseBufferLength =
-            response.GetBuffer().length() - response.GetBufferOffset();
-
-        Y_ABORT_UNLESS(
-            responseBufferLength <= state.Length,
-            "response buffer length %lu is expected to be <= request length %lu",
-            responseBufferLength,
-            state.Length);
-
-        if (state.Buffer.empty()) {
-            // Cache miss
-            state.Promise.SetValue(std::move(response));
-            return;
-        }
-
-        if (response.GetBuffer().empty()) {
-            *response.MutableBuffer() = std::move(state.Buffer);
-            state.Promise.SetValue(std::move(response));
-            return;
-        }
-
-        if (responseBufferLength < state.Buffer.size()) {
-            response.SetBuffer(response.GetBuffer()
-                                   .substr(response.GetBufferOffset())
-                                   .resize(state.Buffer.size(), 0));
-            response.SetBufferOffset(0);
-        }
-
-        char* responseBufferData =
-            response.MutableBuffer()->begin() + response.GetBufferOffset();
-
-        // be careful and don't take data from parts here as it
-        // may be already deleted
-        for (const auto& part: state.Parts) {
-            const char* from = state.Buffer.data() + part.RelativeOffset;
-            char* to = responseBufferData + part.RelativeOffset;
-            MemCopy(to, from, part.Data.size());
-        }
-
-        state.Promise.SetValue(std::move(response));
-    }
-
-    // |nodeState| becomes unusable if the function returns false
-    void PrepareFlush(TNodeState* nodeState)
-    {
-        Y_ABORT_UNLESS(nodeState->FlushState.Executing);
-        Y_ABORT_UNLESS(nodeState->FlushState.WriteRequests.empty());
-
-        if (!nodeState->FlushState.FailedWriteRequests.empty()) {
-            // Retry write requests failed at the previous Flush attempt
-            swap(
-                nodeState->FlushState.WriteRequests,
-                nodeState->FlushState.FailedWriteRequests);
-            return;
-        }
-
-        size_t entryCount = 0;
-
-        auto batchBuilder = RequestBuilder->CreateWriteDataRequestBatchBuilder(
-            nodeState->NodeId);
-
-        {
-            auto guard = Guard(Lock);
-
-            nodeState->Cache.VisitUnflushedRequests(
-                [&](const TCachedWriteDataRequest* entry)
-                {
-                    if (batchBuilder->AddRequest(
-                            entry->GetHandle(),
-                            entry->GetOffset(),
-                            entry->GetBuffer()))
-                    {
-                        entryCount++;
-                        return true;
-                    }
-                    return false;
-                });
-        }
-
-        auto writeDataBatch = batchBuilder->Build();
-
-        // Flush cannot be scheduled when CachedEntries is empty
-        Y_ABORT_UNLESS(writeDataBatch.AffectedRequestCount > 0);
-        Y_ABORT_UNLESS(!writeDataBatch.Requests.empty());
-        Y_ABORT_UNLESS(writeDataBatch.AffectedRequestCount == entryCount);
-
-        Stats->FlushStarted();
-
-        nodeState->FlushState.AffectedWriteDataEntriesCount = entryCount;
-        nodeState->FlushState.WriteRequests =
-            std::move(writeDataBatch.Requests);
-    }
-
-    void StartFlush(TNodeState* nodeState)
-    {
-        PrepareFlush(nodeState);
-
-        auto& state = nodeState->FlushState;
-
-        Y_ABORT_UNLESS(state.Executing);
-        Y_ABORT_UNLESS(!state.WriteRequests.empty());
-        Y_ABORT_UNLESS(state.FailedWriteRequests.empty());
-        Y_ABORT_UNLESS(state.AffectedWriteDataEntriesCount > 0);
-        Y_ABORT_UNLESS(state.InFlightWriteRequestsCount == 0);
-
-        state.InFlightWriteRequestsCount = state.WriteRequests.size();
-
-        for (auto& request: state.WriteRequests) {
-            auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
-            callContext->RequestType = EFileStoreRequest::WriteData;
-            callContext->RequestSize = request->GetBuffer().size();
-
-            Session->WriteData(std::move(callContext), request)
-                .Subscribe(
-                    [nodeState,
-                     request = std::move(request),
-                     ptr = weak_from_this()](auto future)
-                    {
-                        auto self = ptr.lock();
-                        if (self) {
-                            self->OnWriteDataRequestCompleted(
-                                nodeState,
-                                std::move(request),
-                                future.GetValue());
-                        }
-                    })
-                .IgnoreResult();
-        }
-    }
-
-    void OnWriteDataRequestCompleted(
-        TNodeState* nodeState,
+    // Implementation of IWriteDataRequestExecutor
+    void ExecuteWriteDataRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request,
-        const NProto::TWriteDataResponse& response)
+        std::function<void(const NProto::TWriteDataResponse&)> callback)
+        override
     {
-        auto& state = nodeState->FlushState;
+        auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
 
-        with_lock (Lock) {
-            if (HasError(response)) {
-                state.FailedWriteRequests.push_back(std::move(request));
-            }
+        callContext->RequestType = EFileStoreRequest::WriteData;
+        callContext->RequestSize =
+            NStorage::CalculateByteCount(*request) - request->GetBufferOffset();
 
-            Y_ABORT_UNLESS(state.InFlightWriteRequestsCount > 0);
-            if (--state.InFlightWriteRequestsCount > 0) {
-                return;
-            }
-        }
-
-        state.WriteRequests.clear();
-
-        if (state.FailedWriteRequests.empty()) {
-            Stats->FlushCompleted();
-            CompleteFlush(nodeState);
-        } else {
-            Stats->FlushFailed();
-            ScheduleRetryFlush(nodeState);
-        }
+        Session->WriteData(std::move(callContext), std::move(request))
+            .Subscribe(
+                [ptr = weak_from_this(), callback = std::move(callback)](
+                    const TFuture<NProto::TWriteDataResponse>& future)
+                {
+                    if (auto self = ptr.lock()) {
+                        callback(future.GetValue());
+                    }
+                });
     }
 
-    // should be protected by |Lock|
-    void EnqueueFlushCompletions(
-        TDeque<TFlushRequest>& flushRequests,
-        ui64 minRequestId)
+    // Implementation of IWriteBackCacheStateListener
+    void ScheduleFlushNode(ui64 nodeId) override
     {
-        while (!flushRequests.empty() &&
-               flushRequests.front().RequestId < minRequestId)
-        {
-            QueuedOperations.FlushCompleted.push_back(
-                std::move(flushRequests.front().Promise));
-            flushRequests.pop_front();
-        }
-    }
-
-    // |nodeState| becomes unusable after this call
-    void CompleteFlush(TNodeState* nodeState)
-    {
-        Y_ABORT_UNLESS(nodeState->FlushState.Executing);
-        Y_ABORT_UNLESS(nodeState->FlushState.FailedWriteRequests.empty());
-        Y_ABORT_UNLESS(nodeState->FlushState.InFlightWriteRequestsCount == 0);
-
-        auto guard = Guard(Lock);
-
-        while (nodeState->FlushState.AffectedWriteDataEntriesCount > 0) {
-            nodeState->FlushState.AffectedWriteDataEntriesCount--;
-
-            Y_ABORT_UNLESS(nodeState->Cache.HasUnflushedRequests());
-
-            auto* request =
-                nodeState->Cache.MoveFrontUnflushedRequestToFlushed();
-
-            RequestManager.SetFlushed(request);
-        }
-
-        EnqueueFlushCompletions(
-            nodeState->FlushRequests,
-            nodeState->Cache.GetMinPendingOrUnflushedSequenceId(Max<ui64>()));
-
-        EnqueueFlushCompletions(
-            FlushAllRequests,
-            RequestManager.GetMinPendingOrUnflushedSequenceId());
-
-        // Clear flushed entries from the persistent queue
-        while (nodeState->Cache.HasFlushedRequests()) {
-            auto request = nodeState->Cache.DequeueFlushedRequest();
-            RequestManager.Evict(std::move(request));
-            QueuedOperations.ShouldProcessPendingEntries = true;
-        }
-
-        nodeState->FlushState.Executing = false;
-        if (!EnqueueFlushIfNeeded(nodeState)) {
-            DeleteNodeStateIfNeeded(nodeState);
-        }
-
-        ProcessQueuedOperations(guard);
-    }
-
-    void ScheduleRetryFlush(TNodeState* nodeState)
-    {
-        // TODO(nasonov): better retry policy
-        Scheduler->Schedule(
-            Timer->Now() + FlushConfig.FlushRetryPeriod,
-            [nodeState, ptr = weak_from_this()]()
-            {
-                auto self = ptr.lock();
-                if (self) {
-                    self->StartFlush(nodeState);
-                }
-            });
-    }
-
-    // should be protected by |Lock|
-    void AddCachedEntry(
-        TNodeState* nodeState,
-        std::unique_ptr<TCachedWriteDataRequest> entry)
-    {
-        Y_ABORT_UNLESS(nodeState != nullptr);
-        Y_ABORT_UNLESS(nodeState->NodeId == entry->GetNodeId());
-
-        nodeState->CachedNodeSize =
-            Max(nodeState->CachedNodeSize, entry->GetEnd());
-
-        nodeState->Cache.EnqueueUnflushedRequest(std::move(entry));
-
-        NodesWithNewCachedEntries.insert(nodeState->NodeId);
+        Flusher.ScheduleFlushNode(nodeId);
     }
 };
 
@@ -1190,40 +301,8 @@ private:
 
 TWriteBackCache::TWriteBackCache() = default;
 
-TWriteBackCache::TWriteBackCache(
-        IFileStorePtr session,
-        ISchedulerPtr scheduler,
-        ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats,
-        TLog log,
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& filePath,
-        ui64 capacityBytes,
-        TDuration automaticFlushPeriod,
-        TDuration flushRetryPeriod,
-        ui32 maxWriteRequestSize,
-        ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled)
-    : Impl(new TImpl(
-          std::move(session),
-          std::move(scheduler),
-          std::move(timer),
-          std::move(stats),
-          NWriteBackCache::CreateWriteDataRequestBuilder(
-              {.FileSystemId = fileSystemId,
-               .MaxWriteRequestSize = maxWriteRequestSize,
-               .MaxWriteRequestsCount = maxWriteRequestsCount,
-               .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
-               .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}),
-          std::move(log),
-          fileSystemId,
-          clientId,
-          filePath,
-          capacityBytes,
-          {.AutomaticFlushPeriod = automaticFlushPeriod,
-           .FlushRetryPeriod = flushRetryPeriod}))
+TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
+    : Impl(std::make_shared<TImpl>(std::move(args)))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }
