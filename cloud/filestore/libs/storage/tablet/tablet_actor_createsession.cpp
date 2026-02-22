@@ -92,6 +92,8 @@ void FillFeatures(
 
     features->SetGuestHandleKillPrivV2Enabled(
         config.GetGuestHandleKillPrivV2Enabled());
+    features->SetPropagateWriteSyncFlagsEnabled(
+        config.GetPropagateWriteSyncFlagsEnabled());
 
     features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 

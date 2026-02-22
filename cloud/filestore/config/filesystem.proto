@@ -104,4 +104,7 @@ message TFileSystemConfig
     // Inode entry timeout for regular entries (e.g. files)
     // Only applies if set. Not set by default
     optional uint32 RegularFileEntryTimeout = 31;
+
+    // Propagate O_SYNC/O_DSYNC flags from FUSE requests to local backend
+    optional bool PropagateWriteSyncFlagsEnabled = 32;
 }

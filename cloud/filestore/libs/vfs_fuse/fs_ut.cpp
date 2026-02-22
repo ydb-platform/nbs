@@ -417,11 +417,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         CheckWriteRequestWithFSyncQueue(true);
     }
 
-    void CheckCreateOpenHandleRequest(bool isCreate, bool isWriteBackCacheEnabled)
+    void CheckCreateOpenHandleRequest(
+        bool isCreate,
+        bool isWriteBackCacheEnabled,
+        int systemFlags = O_WRONLY,
+        ui32 expectedFlags = ProtoFlag(NProto::TCreateHandleRequest::E_WRITE),
+        bool propagateWriteSyncFlagsEnabled = false)
     {
         NProto::TFileStoreFeatures features;
         if (isWriteBackCacheEnabled) {
             features.SetGuestWriteBackCacheEnabled(true);
+        }
+        if (propagateWriteSyncFlagsEnabled) {
+            features.SetPropagateWriteSyncFlagsEnabled(true);
         }
 
         auto timer = CreateWallClockTimer();
@@ -444,9 +452,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     request->GetFlags(),
                     NProto::TCreateHandleRequest::E_READ));
             }
-            UNIT_ASSERT(HasFlag(
-                request->GetFlags(),
-                NProto::TCreateHandleRequest::E_WRITE));
+            for (ui32 flag = NProto::TCreateHandleRequest::EFlags_MIN;
+                 flag < NProto::TCreateHandleRequest::EFlags_ARRAYSIZE;
+                 ++flag)
+            {
+                if (HasFlag(
+                        expectedFlags,
+                        static_cast<NProto::TCreateHandleRequest::EFlags>(
+                            flag)))
+                {
+                    UNIT_ASSERT(HasFlag(
+                        request->GetFlags(),
+                        static_cast<NProto::TCreateHandleRequest::EFlags>(
+                            flag)));
+                }
+            }
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
             NProto::TCreateHandleResponse result;
@@ -461,13 +481,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         auto req = std::make_shared<TCreateHandleRequest>("/file1", RootNodeId);
-        req->In->Body.flags |= O_WRONLY;
+        req->In->Body.flags |= systemFlags;
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(req);
         UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
 
         if (!isCreate) {
             auto req = std::make_shared<TOpenHandleRequest>(handleId);
-            req->In->Body.flags |= O_WRONLY;
+            req->In->Body.flags |= systemFlags;
             auto handle = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(req);
             UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
         }
@@ -495,6 +515,41 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             false,   // Open Handle
             true     // guest writeback cache
         );
+    }
+
+    Y_UNIT_TEST(ShouldHandleSyncFlagsInCreateAndOpenRequests)
+    {
+        const ui32 writeFlags = ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+        const ui32 writeSyncFlags =
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_SYNC);
+        const ui32 writeDataSyncFlags =
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_DSYNC);
+
+        CheckCreateOpenHandleRequest(
+            true,   // Create Handle
+            false,  // no guest writeback cache
+            O_WRONLY | O_SYNC,
+            writeFlags);
+        CheckCreateOpenHandleRequest(
+            false,  // Open Handle
+            false,  // no guest writeback cache
+            O_WRONLY | O_DSYNC,
+            writeFlags);
+
+        CheckCreateOpenHandleRequest(
+            true,   // Create Handle
+            false,  // no guest writeback cache
+            O_WRONLY | O_SYNC,
+            writeSyncFlags,
+            true);
+        CheckCreateOpenHandleRequest(
+            false,  // Open Handle
+            false,  // no guest writeback cache
+            O_WRONLY | O_DSYNC,
+            writeDataSyncFlags,
+            true);
     }
 
     Y_UNIT_TEST(ShouldPassSessionId)
@@ -2502,10 +2557,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     // TODO: create and use metrics for write cache https://github.com/ydb-platform/nbs/issues/4154
     Y_UNIT_TEST(
-        ShouldNotUseServerWriteBackCacheForDirectHandles)
+        ShouldNotUseServerWriteBackCacheForDirectOrSyncHandles)
     {
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
+        features.SetPropagateWriteSyncFlagsEnabled(true);
 
         // disable automatic flush to make sure that write cache is not flushed
         const ui32 automaticFlushPeriodMs = 0;
@@ -2520,11 +2576,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handleId = 456;
 
         std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> firstFlags = -1;
+        std::atomic<int> secondFlags = -1;
+        std::atomic<int> thirdFlags = -1;
 
-        bootstrap.Service->WriteDataHandler = [&](auto callContext, auto)
+        bootstrap.Service->WriteDataHandler = [&](auto callContext, const auto& request)
         {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-            writeDataCalled++;
+            const auto index = writeDataCalled.fetch_add(1);
+            if (index == 0) {
+                firstFlags.store(request->GetFlags());
+            } else if (index == 1) {
+                secondFlags.store(request->GetFlags());
+            } else if (index == 2) {
+                thirdFlags.store(request->GetFlags());
+            }
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
         };
@@ -2546,6 +2612,33 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, firstFlags.load());
+
+        // write request with O_SYNC should not go to write cache
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_SYNC;
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(O_SYNC, secondFlags.load());
+
+        // write request with O_DSYNC should not go to write cache
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_DSYNC;
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(O_DSYNC, thirdFlags.load());
 
         // write request without O_DIRECT should go to write cache
         reqWrite = std::make_shared<TWriteRequest>(
@@ -2556,7 +2649,82 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         reqWrite->In->Body.flags |= O_WRONLY;
         write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotPropagateWriteSyncFlagsWhenDisabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui32 automaticFlushPeriodMs = 0;
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            automaticFlushPeriodMs);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> firstFlags = -1;
+        std::atomic<int> secondFlags = -1;
+
+        bootstrap.Service->WriteDataHandler = [&](auto callContext, const auto& request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            const auto index = writeDataCalled.fetch_add(1);
+            if (index == 0) {
+                firstFlags.store(request->GetFlags());
+            } else if (index == 1) {
+                secondFlags.store(request->GetFlags());
+            }
+
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_SYNC;
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'b'));
+        reqWrite->In->Body.flags |= O_DSYNC;
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        // Both writes are cached because sync flags are masked when
+        // PropagateWriteSyncFlagsEnabled is disabled.
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        auto flush = bootstrap.Fuse->SendRequest<TFlushRequest>(
+            nodeId,
+            handleId);
+        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+
+        // Both cached writes target the same range, so write-back cache
+        // coalesces them and only the latest buffer is flushed.
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, firstFlags.load());
+        UNIT_ASSERT_VALUES_EQUAL(-1, secondFlags.load());
     }
 
     Y_UNIT_TEST(ShouldFlushWithServerWriteBackCacheEnabled)
@@ -2599,6 +2767,73 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldFlushCachedDataBeforeSyncWrite)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        features.SetPropagateWriteSyncFlagsEnabled(true);
+
+        // disable automatic flush to verify ordering around sync writes
+        const ui32 automaticFlushPeriodMs = 0;
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            automaticFlushPeriodMs);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> firstPayload = 0;
+        std::atomic<int> secondPayload = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto callContext, const auto& request) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            const auto payload = static_cast<unsigned char>(
+                request->GetBuffer()[request->GetBufferOffset()]);
+            const auto index = writeDataCalled.fetch_add(1);
+            if (index == 0) {
+                firstPayload.store(payload);
+            } else if (index == 1) {
+                secondPayload.store(payload);
+            }
+
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto writeReq = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        writeReq->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(writeReq);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        writeReq = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'b'));
+        writeReq->In->Body.flags |= O_WRONLY;
+        writeReq->In->Body.flags |= O_SYNC;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(writeReq);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<int>('a'), firstPayload.load());
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<int>('b'), secondPayload.load());
     }
 
     Y_UNIT_TEST(ShouldReleaseWithServerWriteBackCacheEnabled)

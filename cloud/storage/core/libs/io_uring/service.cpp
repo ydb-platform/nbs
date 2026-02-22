@@ -16,7 +16,9 @@
 #include <util/system/sanitizers.h>
 #include <util/system/thread.h>
 
+#include <fcntl.h>
 #include <liburing.h>
+#include <linux/fs.h>
 #include <sys/eventfd.h>
 
 namespace NCloud {
@@ -24,6 +26,21 @@ namespace NCloud {
 using namespace NIoUring;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 GetWriteSyncFlags(ui32 flags)
+{
+    // O_SYNC includes O_DSYNC bits on Linux, so O_SYNC must take precedence.
+    if ((flags & O_SYNC) == O_SYNC) {
+        return RWF_SYNC;
+    }
+    if ((flags & O_DSYNC) == O_DSYNC) {
+        return RWF_DSYNC;
+    }
+
+    return 0;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -78,18 +95,32 @@ struct TIoUringService final
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Context.AsyncWrite(file, buffer, offset, completion, SqeFlags);
+        Context.AsyncWrite(
+            file,
+            buffer,
+            offset,
+            completion,
+            SqeFlags,
+            GetWriteSyncFlags(flags));
     }
 
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Context.AsyncWriteV(file, buffers, offset, completion, SqeFlags);
+        Context.AsyncWriteV(
+            file,
+            buffers,
+            offset,
+            completion,
+            SqeFlags,
+            GetWriteSyncFlags(flags));
     }
 };
 
@@ -131,9 +162,10 @@ struct TIoUringServiceNull final
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         Context.PostCompletion(completion, buffer.size());
     }
@@ -142,9 +174,10 @@ struct TIoUringServiceNull final
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         ui32 len = 0;
         for (const auto& buf: buffers) {

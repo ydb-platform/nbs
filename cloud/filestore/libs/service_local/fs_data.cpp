@@ -187,8 +187,15 @@ TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
+    const ui32 flags = Config->GetPropagateWriteSyncFlagsEnabled()
+        ? request.GetFlags()
+        : 0;
     auto promise = NewPromise<NProto::TWriteDataLocalResponse>();
-    FileIOService->AsyncWriteV(*handle, request.GetOffset(), request.Buffers)
+    FileIOService->AsyncWriteV(
+        *handle,
+        request.GetOffset(),
+        request.Buffers,
+        flags)
         .Subscribe(
             [this,
              &logRequest,
@@ -234,11 +241,18 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
     }
 
+    const ui32 flags = Config->GetPropagateWriteSyncFlagsEnabled()
+        ? request.GetFlags()
+        : 0;
     auto b = std::move(*request.MutableBuffer());
     auto offset = request.GetBufferOffset();
     TArrayRef<char> data(b.begin() + offset, b.vend());
     auto promise = NewPromise<NProto::TWriteDataResponse>();
-    FileIOService->AsyncWrite(*handle, request.GetOffset(), data)
+    FileIOService->AsyncWrite(
+        *handle,
+        request.GetOffset(),
+        data,
+        flags)
         .Subscribe(
             [&logRequest, b = std::move(b), promise](
                 const TFuture<ui32>& f) mutable

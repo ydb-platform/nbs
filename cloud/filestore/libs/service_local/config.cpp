@@ -48,6 +48,7 @@ namespace {
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,      ui64,       100'000                   )\
     xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
+    xxx(PropagateWriteSyncFlagsEnabled, bool,       false                     )\
     xxx(SnapshotsDirEnabled,            bool,       false                     )\
     xxx(SnapshotsDirRefreshInterval,    TDuration,  TDuration::Seconds(5)     )\
 // FILESTORE_SERVICE_CONFIG

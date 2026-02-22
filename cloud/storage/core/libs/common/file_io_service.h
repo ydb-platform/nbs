@@ -50,13 +50,15 @@ struct IFileIOService
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) = 0;
+        TFileIOCompletion* completion,
+        ui32 flags = 0) = 0;
 
     virtual void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) = 0;
+        TFileIOCompletion* completion,
+        ui32 flags = 0) = 0;
 
     // conveniences: callbacks
 
@@ -66,12 +68,13 @@ struct IFileIOService
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        F&& callback)
+        F&& callback,
+        ui32 flags = 0)
     {
         auto cb = std::make_unique<TCallbackCompletion<std::decay_t<F>>>(
             std::forward<F>(callback));
 
-        AsyncWrite(file, offset, buffer, cb.get());
+        AsyncWrite(file, offset, buffer, cb.get(), flags);
 
         Y_UNUSED(cb.release());  // ownership transferred
     }
@@ -82,12 +85,13 @@ struct IFileIOService
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        F&& callback)
+        F&& callback,
+        ui32 flags = 0)
     {
         auto cb = std::make_unique<TCallbackCompletion<std::decay_t<F>>>(
             std::forward<F>(callback));
 
-        AsyncWriteV(file, offset, buffers, cb.get());
+        AsyncWriteV(file, offset, buffers, cb.get(), flags);
 
         Y_UNUSED(cb.release());  // ownership transferred
     }
@@ -129,12 +133,14 @@ struct IFileIOService
     NThreading::TFuture<ui32> AsyncWrite(
         TFileHandle& file,
         i64 offset,
-        TArrayRef<const char> buffer);
+        TArrayRef<const char> buffer,
+        ui32 flags = 0);
 
     NThreading::TFuture<ui32> AsyncWriteV(
         TFileHandle& file,
         i64 offset,
-        const TVector<TArrayRef<const char>>& buffers);
+        const TVector<TArrayRef<const char>>& buffers,
+        ui32 flags = 0);
 
     NThreading::TFuture<ui32> AsyncRead(
         TFileHandle& file,

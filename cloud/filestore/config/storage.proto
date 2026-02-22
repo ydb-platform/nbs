@@ -736,4 +736,7 @@ message TStorageConfig
 
     // Frequency of tablet regular task runs (e.g. ResponseLogEntry cleanup).
     optional uint32 TabletRegularTasksSchedulePeriod = 486;
+
+    // Propagate O_SYNC/O_DSYNC flags from FUSE requests to local backend
+    optional bool PropagateWriteSyncFlagsEnabled = 487;
 }

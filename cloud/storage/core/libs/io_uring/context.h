@@ -60,7 +60,8 @@ public:
         TArrayRef<const char> buffer,
         ui64 offset,
         TFileIOCompletion* completion,
-        ui32 flags = 0);
+        ui32 sqeFlags = 0,
+        ui32 rwFlags = 0);
 
     void AsyncRead(
         int fd,
@@ -74,7 +75,8 @@ public:
         TArrayRef<const TArrayRef<const char>> buffer,
         ui64 offset,
         TFileIOCompletion* completion,
-        ui32 flags = 0);
+        ui32 sqeFlags = 0,
+        ui32 rwFlags = 0);
 
     void AsyncReadV(
         int fd,
@@ -95,7 +97,8 @@ private:
         ui32 len,
         ui64 offset,
         TFileIOCompletion* completion,
-        ui32 flags);
+        ui32 sqeFlags,
+        ui32 rwFlags = 0);
 
     void AsyncIO(
         int op,
@@ -104,7 +107,8 @@ private:
         ui32 len,
         ui64 offset,
         TFileIOCompletion* completion,
-        ui32 flags);
+        ui32 sqeFlags,
+        ui32 rwFlags = 0);
 
     void SubmitNOP(TFileIOCompletion* completion, ui32 flags);
     void SubmitMsg(TFileIOCompletion* completion, int res);

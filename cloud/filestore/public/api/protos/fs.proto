@@ -51,6 +51,7 @@ message TFileStoreFeatures
     bool ReadBlobDisabled = 36;
     bool WriteBlobDisabled = 37;
     bool FakeDescribeDataEnabled = 38;
+    bool PropagateWriteSyncFlagsEnabled = 39;
 }
 
 message TFileStore

@@ -154,6 +154,7 @@ public:
     ui64 GetDirectoryHandlesTableSize() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
+    bool GetPropagateWriteSyncFlagsEnabled() const;
 
     bool GetSnapshotsDirEnabled() const;
 
