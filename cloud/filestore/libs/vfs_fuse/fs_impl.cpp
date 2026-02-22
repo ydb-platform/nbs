@@ -369,7 +369,8 @@ void TFileSystem::CompleteAsyncDestroyHandle(
                         nextRequest.CallContext,
                         nextRequest.Req,
                         nextRequest.Ino,
-                        nextRequest.Fh))
+                        nextRequest.Fh,
+                        nextRequest.WriteBackCacheError))
                 {
                     DelayedReleaseQueue.pop();
                 }

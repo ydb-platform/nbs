@@ -53,6 +53,7 @@ struct TReleaseRequest
     fuse_req_t Req;
     fuse_ino_t Ino;
     ui64 Fh;
+    NCloud::NProto::TError WriteBackCacheError;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -463,12 +464,14 @@ private:
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
-        ui64 handle);
+        ui64 handle,
+        const NCloud::NProto::TError& writeBackCacheError);
     void ReleaseImpl(
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
-        ui64 handle);
+        ui64 handle,
+        const NCloud::NProto::TError& writeBackCacheError);
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,
         const NProto::TDestroyHandleResponse& response);
