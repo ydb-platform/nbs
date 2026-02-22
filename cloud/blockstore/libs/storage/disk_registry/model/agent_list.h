@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "agent_counters.h"
+#include "agent_paths.h"
 
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
@@ -37,7 +38,7 @@ struct TKnownAgent
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAgentList
+class TAgentList: private TAgentsPaths
 {
     using TAgentId = TString;
     using TDeviceId = TString;
@@ -133,6 +134,10 @@ public:
         const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
     TVector<TString> GetAgentIdsWithOverriddenListParams() const;
+
+    using TAgentsPaths::AddPathToAttach;
+    using TAgentsPaths::DeletePathToAttach;
+    using TAgentsPaths::GetPathsToAttach;
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);

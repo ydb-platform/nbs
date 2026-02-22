@@ -104,6 +104,14 @@ TAgentList::TAgentList(
     if (ComponentGroup) {
         RejectAgentTimeoutCounter.Register(ComponentGroup, "RejectAgentTimeout");
     }
+
+    for (const auto& agent: Agents) {
+        for (const auto& [path, state]: agent.GetPathAttachStates()) {
+            if (state == NProto::PATH_ATTACH_STATE_ATTACHING) {
+                AddPathToAttach(agent.GetAgentId(), path);
+            }
+        }
+    }
 }
 
 NProto::TAgentConfig& TAgentList::AddAgent(NProto::TAgentConfig config)
@@ -649,6 +657,7 @@ void TAgentList::RemoveAgentByIdx(size_t index)
 
     AgentIdToIdx.erase(agent.GetAgentId());
     NodeIdToIdx.erase(agent.GetNodeId());
+    TAgentsPaths::DeleteAgent(agent.GetAgentId());
 
     Agents.pop_back();
 

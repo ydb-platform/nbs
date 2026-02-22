@@ -1586,6 +1586,243 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT(FindPtr(pathsToDetach, "dev-1"));
         UNIT_ASSERT(FindPtr(pathsToDetach, "dev-2"));
     }
+
+    Y_UNIT_TEST_F(ShouldAttachPaths, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAttachDetachPathsEnabled(true);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {}));
+
+        RegisterAgents(*Runtime, 1);
+
+        ui64 attachRequests = 0;
+        TVector<TString> pathsToAttach;
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAttachPathsRequest) {
+                    attachRequests += 1;
+                    auto* baseEvent =
+                        event->Get<TEvDiskAgent::TEvAttachPathsRequest>();
+                    for (const auto& path: baseEvent->Record.GetPathsToAttach())
+                    {
+                        pathsToAttach.emplace_back(path);
+                    }
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        AddDevice("agent-1", "dev-2");
+
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, attachRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, pathsToAttach.size());
+        UNIT_ASSERT_VALUES_EQUAL("dev-2", pathsToAttach[0]);
+
+        // back dev-2 to detached state
+        RemoveDevice("agent-1", "dev-2");
+
+        attachRequests = 0;
+        pathsToAttach.clear();
+
+        AddHost("agent-1");
+
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, attachRequests);
+        UNIT_ASSERT_VALUES_EQUAL(2, pathsToAttach.size());
+        UNIT_ASSERT(FindPtr(pathsToAttach, "dev-1"));
+        UNIT_ASSERT(FindPtr(pathsToAttach, "dev-2"));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotAllocateDisksOnNotAttachedDevices, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        auto config = CreateDefaultStorageConfig();
+
+        config.SetAttachDetachPathsEnabled(true);
+
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {}));
+
+        RegisterAgents(*Runtime, 1);
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAttachPathsResponse) {
+                    return TTestActorRuntimeBase::EEventAction::DROP;
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        auto [res, timeout] = AddHost("agent-1");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, res.GetCode());
+        Runtime->AdvanceCurrentTime(TDuration::Minutes(2));
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // check that no devices available for allocate
+        DiskRegistry->SendAllocateDiskRequest("vol1", 10_GB);
+        auto response = DiskRegistry->RecvAllocateDiskResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_DISK_ALLOCATION_FAILED,
+            response->GetStatus());
+
+        Runtime->SetObserverFunc(&TTestActorRuntimeBase::DefaultObserverFunc);
+
+        Runtime->AdvanceCurrentTime(TDuration::Minutes(2));
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        DiskRegistry->AllocateDisk("vol1", 10_GB);
+    }
+
+    Y_UNIT_TEST_F(ShouldNotDetachPathsWithDisksOnThem, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        auto config = CreateDefaultStorageConfig();
+
+        config.SetAttachDetachPathsEnabled(true);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {}));
+
+        RegisterAgents(*Runtime, 1);
+
+        AddDevice("agent-1", "dev-1");
+        WaitForSecureErase(*Runtime, 1);
+
+        auto response = DiskRegistry->AllocateDisk("vol0", 10_GB);
+        const auto& msg = response->Record;
+        UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, msg.MigrationsSize());
+
+        AddDevice("agent-1", "dev-2");
+        WaitForSecureErase(*Runtime, 1);
+
+        ui64 detachRequests = 0;
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvDetachPathsRequest) {
+                    detachRequests += 1;
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        auto [error, timeout] = RemoveDevice(agent.GetAgentId(), "dev-1");
+
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetNonReplicatedInfraTimeout(),
+            timeout * 1000);
+
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, detachRequests);
+
+        DiskRegistry->FinishMigration("vol0", "uuid-1", "uuid-2");
+
+        for (;;) {
+            auto error = RemoveDevice(agent.GetAgentId(), "dev-1").first;
+            if (!HasError(error)) {
+                break;
+            }
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, detachRequests);
+    }
+
+    Y_UNIT_TEST_F(ShouldBrokeDeviceOnAttachError, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {CreateDeviceConfig(
+                {.Name = "dev-1",
+                 .Id = "uuid-1",
+                 .Rack = "rack-1",
+                 .TotalSize = 10_GB})});
+
+        auto config = CreateDefaultStorageConfig();
+
+        config.SetAttachDetachPathsEnabled(true);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {}));
+
+        RegisterAgents(*Runtime, 1);
+
+        auto response = DiskRegistry->BackupDiskRegistryState(NProto::BDRSS_MEMORY);
+        UNIT_ASSERT(
+            NProto::DEVICE_STATE_ONLINE == response->Record.GetMemoryBackup()
+                                               .GetAgents(0)
+                                               .GetUnknownDevices(0)
+                                               .GetState());
+
+        // Simulate device braking during attach.
+        {
+            auto sender = Runtime->AllocateEdgeActor();
+            auto nodeId = Runtime->GetNodeId(0);
+
+            auto request = std::make_unique<TEvBrokeDevice>();
+            request->DeviceUUID = "uuid-1";
+
+            Runtime->Send(new NActors::IEventHandle(
+                MakeDiskAgentServiceId(nodeId),
+                sender,
+                request.release()));
+
+            Runtime->DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        AddDevice("agent-1", "dev-1");
+        response = DiskRegistry->BackupDiskRegistryState(NProto::BDRSS_MEMORY);
+        UNIT_ASSERT(
+            NProto::DEVICE_STATE_ERROR == response->Record.GetMemoryBackup()
+                                              .GetAgents(0)
+                                              .GetDevices(0)
+                                              .GetState());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

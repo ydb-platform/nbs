@@ -211,6 +211,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(RestoreDiskRegistryPart,                    __VA_ARGS__)               \
     xxx(SwitchAgentDisksToReadOnly,                 __VA_ARGS__)               \
     xxx(PurgeHostCms,                               __VA_ARGS__)               \
+    xxx(UpdatePathAttachState,                      __VA_ARGS__)               \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -784,13 +785,28 @@ struct TEvDiskRegistryPrivate
     };
 
     //
-    // DetachPathsOperationCompleted
+    // AttachDetachPathsOperationCompleted
     //
 
-    struct TDetachPathsOperationCompleted
+    struct TAttachDetachPathsOperationCompleted
     {
         TString AgentId;
         bool IsAttach;
+    };
+
+    //
+    // UpdatePathAttachState
+    //
+
+    struct TUpdatePathAttachStateRequest
+    {
+        TString AgentId;
+        TString Path;
+        NProto::EPathAttachState NewState;
+    };
+
+    struct TUpdatePathAttachStateResponse
+    {
     };
 
     //
@@ -811,7 +827,7 @@ struct TEvDiskRegistryPrivate
 
         EvDiskRegistryAgentListExpiredParamsCleanup,
 
-        EvDetachPathsOperationCompleted,
+        EvAttachDetachPathsOperationCompleted,
 
         EvEnd
     };
@@ -836,9 +852,9 @@ struct TEvDiskRegistryPrivate
         TDiskRegistryAgentListExpiredParamsCleanup,
         EvDiskRegistryAgentListExpiredParamsCleanup>;
 
-    using TEvDetachPathsOperationCompleted = TResponseEvent<
-        TDetachPathsOperationCompleted,
-        EvDetachPathsOperationCompleted>;
+    using TEvAttachDetachPathsOperationCompleted = TResponseEvent<
+        TAttachDetachPathsOperationCompleted,
+        EvAttachDetachPathsOperationCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

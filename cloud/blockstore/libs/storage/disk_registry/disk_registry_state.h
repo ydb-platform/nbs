@@ -909,16 +909,18 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
-    void DetachPathsOnAgentIfNeeded(
-        TDiskRegistryDatabase& db,
-        NProto::TAgentConfig& agent);
-
-    void DetachPathIfNeeded(
-        TDiskRegistryDatabase& db,
-        NProto::TAgentConfig& agent,
-        const TString& path);
-
     bool HasDependentDisks(const TAgentId& agentId, const TString& path);
+
+    [[nodiscard]] NProto::TError UpdatePathAttachState(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId,
+        const TString& path,
+        NProto::EPathAttachState state);
+
+    const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttach() const
+    {
+        return AgentList.GetPathsToAttach();
+    }
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -1408,6 +1410,35 @@ private:
         const TString& masterDiskId);
 
     [[nodiscard]] bool IsUnavailableOrBroken(const TDeviceId& deviceId) const;
+
+    void AttachDetachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        bool attach);
+
+    void AttachDetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path,
+        bool attach);
+
+    void AttachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path);
+
+    void AttachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent);
+
+    void DetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path);
+
+    void DetachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

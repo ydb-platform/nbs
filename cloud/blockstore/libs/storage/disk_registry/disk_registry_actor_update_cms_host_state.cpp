@@ -118,6 +118,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     SecureErase(ctx);
     StartMigration(ctx);
 
+    ProcessPathsToAttach(ctx);
+
     if (!needToDetachPaths) {
         using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse;
 
