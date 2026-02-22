@@ -38,7 +38,7 @@ struct TTestFileIOService final
     MOCK_METHOD(
         void,
         AsyncWrite,
-        (TFileHandle&, i64, TArrayRef<const char>, TFileIOCompletion*),
+        (TFileHandle&, i64, TArrayRef<const char>, TFileIOCompletion*, ui32),
         (final));
 
     MOCK_METHOD(
@@ -47,7 +47,8 @@ struct TTestFileIOService final
         (TFileHandle&,
          i64,
          const TVector<TArrayRef<const char>>&,
-         TFileIOCompletion*),
+         TFileIOCompletion*,
+         ui32),
         (final));
 };
 
@@ -134,10 +135,10 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
             EXPECT_CALL(*fileIO, AsyncReadV(_, 0, _, _))
                 .Times(RequestsPerService)
                 .WillRepeatedly(Return());
-            EXPECT_CALL(*fileIO, AsyncWrite(_, 0, _, _))
+            EXPECT_CALL(*fileIO, AsyncWrite(_, 0, _, _, _))
                 .Times(RequestsPerService)
                 .WillRepeatedly(Return());
-            EXPECT_CALL(*fileIO, AsyncWriteV(_, 0, _, _))
+            EXPECT_CALL(*fileIO, AsyncWriteV(_, 0, _, _, _))
                 .Times(RequestsPerService)
                 .WillRepeatedly(Return());
 
@@ -198,10 +199,10 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
         EXPECT_CALL(*fileIO, AsyncReadV(_, 0, _, _))
             .Times(totalRequestCount)
             .WillRepeatedly(onRequest);
-        EXPECT_CALL(*fileIO, AsyncWrite(_, 0, _, _))
+        EXPECT_CALL(*fileIO, AsyncWrite(_, 0, _, _, _))
             .Times(totalRequestCount)
             .WillRepeatedly(onRequest);
-        EXPECT_CALL(*fileIO, AsyncWriteV(_, 0, _, _))
+        EXPECT_CALL(*fileIO, AsyncWriteV(_, 0, _, _, _))
             .Times(totalRequestCount)
             .WillRepeatedly(onRequest);
 
