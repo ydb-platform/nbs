@@ -54,24 +54,28 @@ struct TTestFileIOService
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) override
+        TFileIOCompletion* completion,
+        ui32 flags) override
     {
         Y_UNUSED(file);
         Y_UNUSED(offset);
         Y_UNUSED(buffer);
         Y_UNUSED(completion);
+        Y_UNUSED(flags);
     }
 
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) override
+        TFileIOCompletion* completion,
+        ui32 flags) override
     {
         Y_UNUSED(file);
         Y_UNUSED(offset);
         Y_UNUSED(buffers);
         Y_UNUSED(completion);
+        Y_UNUSED(flags);
     }
 };
 

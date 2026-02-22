@@ -78,8 +78,10 @@ struct TIoUringService final
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
+        Y_UNUSED(flags);
         Context.AsyncWrite(file, buffer, offset, completion, SqeFlags);
     }
 
@@ -87,8 +89,10 @@ struct TIoUringService final
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
+        Y_UNUSED(flags);
         Context.AsyncWriteV(file, buffers, offset, completion, SqeFlags);
     }
 };
@@ -131,9 +135,10 @@ struct TIoUringServiceNull final
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         Context.PostCompletion(completion, buffer.size());
     }
@@ -142,9 +147,10 @@ struct TIoUringServiceNull final
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         ui32 len = 0;
         for (const auto& buf: buffers) {

@@ -166,9 +166,10 @@ struct TTestFileIO final: public IFileIOService
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset, buffer);
+        Y_UNUSED(file, offset, buffer, flags);
 
         completion->Func(completion, MakeError(E_NOT_IMPLEMENTED), 0);
     }
@@ -177,9 +178,10 @@ struct TTestFileIO final: public IFileIOService
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset, buffers);
+        Y_UNUSED(file, offset, buffers, flags);
 
         completion->Func(completion, MakeError(E_NOT_IMPLEMENTED), 0);
     }
