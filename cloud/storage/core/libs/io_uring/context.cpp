@@ -233,10 +233,12 @@ void TContext::AsyncIO(
     ui32 len,
     ui64 offset,
     TFileIOCompletion* completion,
-    ui32 flags)
+    ui32 sqeFlags,
+    ui32 rwFlags)
 {
     SubmissionThread->ExecuteSimple(
-        [=, this] { SubmitIO(op, fd, addr, len, offset, completion, flags); });
+        [=, this]
+        { SubmitIO(op, fd, addr, len, offset, completion, sqeFlags, rwFlags); });
 }
 
 void TContext::AsyncNOP(TFileIOCompletion* completion, ui32 flags)
@@ -283,7 +285,8 @@ void TContext::SubmitIO(
     ui32 len,
     ui64 offset,
     TFileIOCompletion* completion,
-    ui32 flags)
+    ui32 sqeFlags,
+    ui32 rwFlags)
 {
     io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
     if (!sqe) {
@@ -293,7 +296,8 @@ void TContext::SubmitIO(
 
     io_uring_prep_rw(op, sqe, fd, addr, len, offset);
     io_uring_sqe_set_data(sqe, completion);
-    io_uring_sqe_set_flags(sqe, flags);
+    io_uring_sqe_set_flags(sqe, sqeFlags);
+    sqe->rw_flags = rwFlags;
 
     NSan::Release(completion);
 
@@ -402,7 +406,8 @@ void TContext::AsyncWrite(
     TArrayRef<const char> buffer,
     ui64 offset,
     TFileIOCompletion* completion,
-    ui32 flags)
+    ui32 sqeFlags,
+    ui32 rwFlags)
 {
     AsyncIO(
         IORING_OP_WRITE,
@@ -411,7 +416,8 @@ void TContext::AsyncWrite(
         buffer.size(),
         offset,
         completion,
-        flags);
+        sqeFlags,
+        rwFlags);
 }
 
 void TContext::AsyncRead(
@@ -436,7 +442,8 @@ void TContext::AsyncWriteV(
     TArrayRef<const TArrayRef<const char>> buffers,
     ui64 offset,
     TFileIOCompletion* completion,
-    ui32 flags)
+    ui32 sqeFlags,
+    ui32 rwFlags)
 {
     AsyncIO(
         IORING_OP_WRITEV,
@@ -445,7 +452,8 @@ void TContext::AsyncWriteV(
         buffers.size(),
         offset,
         completion,
-        flags);
+        sqeFlags,
+        rwFlags);
 }
 
 void TContext::AsyncReadV(

@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/write_sync_flags.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -81,8 +82,13 @@ struct TIoUringService final
         TFileIOCompletion* completion,
         ui32 flags) final
     {
-        Y_UNUSED(flags);
-        Context.AsyncWrite(file, buffer, offset, completion, SqeFlags);
+        Context.AsyncWrite(
+            file,
+            buffer,
+            offset,
+            completion,
+            SqeFlags,
+            GetWriteSyncFlags(flags));
     }
 
     void AsyncWriteV(
@@ -92,8 +98,13 @@ struct TIoUringService final
         TFileIOCompletion* completion,
         ui32 flags) final
     {
-        Y_UNUSED(flags);
-        Context.AsyncWriteV(file, buffers, offset, completion, SqeFlags);
+        Context.AsyncWriteV(
+            file,
+            buffers,
+            offset,
+            completion,
+            SqeFlags,
+            GetWriteSyncFlags(flags));
     }
 };
 
