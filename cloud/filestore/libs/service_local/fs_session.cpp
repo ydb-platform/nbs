@@ -70,6 +70,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         }
         features->SetGuestHandleKillPrivV2Enabled(
             Config->GetGuestHandleKillPrivV2Enabled());
+        features->SetPropagateWriteSyncFlagsEnabled(
+            Config->GetPropagateWriteSyncFlagsEnabled());
         return response;
     };
 

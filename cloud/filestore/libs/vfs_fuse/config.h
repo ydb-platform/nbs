@@ -68,6 +68,7 @@ public:
     bool GetFSyncQueueDisabled() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
+    bool GetPropagateWriteSyncFlagsEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

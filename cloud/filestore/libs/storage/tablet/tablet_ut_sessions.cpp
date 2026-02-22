@@ -829,6 +829,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetAllowHandlelessIO(true);
         config.SetZeroCopyWriteEnabled(true);
         config.SetGuestHandleKillPrivV2Enabled(true);
+        config.SetPropagateWriteSyncFlagsEnabled(true);
         config.SetZeroCopyReadEnabled(true);
         config.SetBlockChecksumsInProfileLogEnabled(true);
         config.SetReadBlobDisabled(true);
@@ -852,6 +853,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetAllowHandlelessIO(true);
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
+        features.SetPropagateWriteSyncFlagsEnabled(true);
         features.SetZeroCopyReadEnabled(true);
         features.SetBlockChecksumsInProfileLogEnabled(true);
         features.SetReadBlobDisabled(true);

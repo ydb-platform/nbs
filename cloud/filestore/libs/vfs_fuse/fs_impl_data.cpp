@@ -11,6 +11,8 @@
 
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
+#include <fcntl.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
@@ -23,6 +25,11 @@ namespace {
 bool IsAligned(ui64 size, ui32 block)
 {
     return AlignUp<ui64>(size, block) == size;
+}
+
+ui32 GetWriteSyncFlags(int flags)
+{
+    return flags & (O_SYNC | O_DSYNC);
 }
 
 void InitNodeInfo(
@@ -50,6 +57,10 @@ void TFileSystem::Create(
     mode_t mode,
     fuse_file_info* fi)
 {
+    if (!Config->GetPropagateWriteSyncFlagsEnabled()) {
+        fi->flags &= ~(O_SYNC | O_DSYNC);
+    }
+
     const auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
     STORAGE_DEBUG("Create #" << parent
         << " " << name.Quote()
@@ -107,6 +118,10 @@ void TFileSystem::Open(
     fuse_ino_t ino,
     fuse_file_info* fi)
 {
+    if (!Config->GetPropagateWriteSyncFlagsEnabled()) {
+        fi->flags &= ~(O_SYNC | O_DSYNC);
+    }
+
     const auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
     STORAGE_DEBUG("Open #" << ino
         << " flags: " << HandleFlagsToString(flags)
@@ -454,6 +469,10 @@ void TFileSystem::Write(
         << " offset:" << offset
         << " size:" << buffer.size());
 
+    if (!Config->GetPropagateWriteSyncFlagsEnabled()) {
+        fi->flags &= ~(O_SYNC | O_DSYNC);
+    }
+
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
@@ -473,6 +492,8 @@ void TFileSystem::Write(
     request->SetOffset(offset);
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
+    request->SetFlags(GetWriteSyncFlags(fi->flags));
+
 
     DoWrite(callContext, req, ino, std::move(request), buffer.size(), fi);
 }
@@ -485,6 +506,7 @@ void TFileSystem::DoWrite(
     ui64 size,
     fuse_file_info* fi)
 {
+    const bool syncWriteRequested = fi->flags & (O_SYNC | O_DSYNC);
     const auto wbcState = GetServerWriteBackCacheState(fi);
 
     const auto handle = fi->fh;
@@ -519,6 +541,26 @@ void TFileSystem::DoWrite(
     FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     if (wbcState == EServerWriteBackCacheState::Disabled) {
+        if (syncWriteRequested && WriteBackCache) {
+            // Sync writes must include all previously cached data for the same
+            // node, so flush the node cache first and only then submit this
+            // write directly to the session.
+            WriteBackCache.FlushNodeData(request->GetNodeId())
+                .Subscribe(
+                    [ptr = weak_from_this(),
+                     callback = std::move(callback),
+                     callContext = std::move(callContext),
+                     request = std::move(request)](const auto& f) mutable
+                    {
+                        f.GetValue();
+                        if (auto self = ptr.lock()) {
+                            self->Session->WriteData(callContext, std::move(request))
+                                .Subscribe(std::move(callback));
+                        }
+                    });
+            return;
+        }
+
         Session->WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
@@ -561,6 +603,7 @@ void TFileSystem::WriteBufLocal(
     auto request = StartRequest<NProto::TWriteDataLocalRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
+    request->SetFlags(GetWriteSyncFlags(fi->flags));
     request->BytesToWrite = size;
     request->Buffers.reserve(bufv->count);
 
@@ -607,6 +650,10 @@ void TFileSystem::WriteBuf(
     off_t offset,
     fuse_file_info* fi)
 {
+    if (!Config->GetPropagateWriteSyncFlagsEnabled()) {
+        fi->flags &= ~(O_SYNC | O_DSYNC);
+    }
+
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
@@ -664,6 +711,7 @@ void TFileSystem::WriteBuf(
     }
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
+    request->SetFlags(GetWriteSyncFlags(fi->flags));
 
     DoWrite(callContext, req, ino, std::move(request), size, fi);
 }
@@ -1020,7 +1068,7 @@ EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheState(
         return EServerWriteBackCacheState::Disabled;
     }
 
-    if (fi->flags & O_DIRECT) {
+    if (fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)) {
         return EServerWriteBackCacheState::Disabled;
     }
 

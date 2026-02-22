@@ -1226,6 +1226,8 @@ private:
 
         config.SetGuestHandleKillPrivV2Enabled(
             features.GetGuestHandleKillPrivV2Enabled());
+        config.SetPropagateWriteSyncFlagsEnabled(
+            features.GetPropagateWriteSyncFlagsEnabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
