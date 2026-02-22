@@ -4,6 +4,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <fcntl.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,6 +100,30 @@ Y_UNIT_TEST_SUITE(TUtilsTest)
             auto rq = std::make_shared<NProto::TWriteDataRequest>();
             rq->SetFileSystemId("fs_id_bad");
             rq->SetBuffer("123");
+
+            auto e = TUtils::ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
+        }
+
+        {
+            // O_SYNC is not compatible with WriteBackCache
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+            rq->SetBuffer("123");
+            rq->SetFlags(O_SYNC);
+
+            auto e = TUtils::ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
+        }
+
+        {
+            // O_DSYNC is not compatible with WriteBackCache
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+            auto* iovec = rq->AddIovecs();
+            iovec->SetBase(0);
+            iovec->SetLength(1);
+            rq->SetFlags(O_DSYNC);
 
             auto e = TUtils::ValidateWriteDataRequest(*rq, FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());

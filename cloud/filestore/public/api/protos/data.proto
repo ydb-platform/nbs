@@ -28,14 +28,14 @@ message TCreateHandleRequest
         E_NONBLOCK = 10;
         E_PATH = 11;
         E_DIRECT = 12;
+        E_DSYNC = 13;
+        E_SYNC = 14;
 
         // TODO: these flags have no meaning or only useful for the local svc
         // E_ASYNC
         // E_CLOEXEC
-        // E_DSYNC
         // E_LARGEFILE
         // E_NOCTTY
-        // E_SYNC
     };
 
     // Optional request headers.
@@ -230,6 +230,9 @@ message TWriteDataRequest
     // For vector I/O, the caller can pass an identifier. Its interpretation
     // is up to the callee.
     uint64 RegionId = 9;
+
+    // Optional linux specific flags for write operation.
+    uint32 Flags = 10;
 }
 
 message TWriteDataResponse

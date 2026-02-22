@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <fcntl.h>
+
 #include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -49,6 +51,13 @@ NCloud::NProto::TError TUtils::ValidateWriteDataRequest(
                 "expected: '%s', actual: '%s'",
                 expectedFileSystemId.c_str(),
                 request.GetFileSystemId().c_str()));
+    }
+
+    if (request.GetFlags() & (O_SYNC | O_DSYNC)) {
+        return MakeError(
+            E_ARGUMENT,
+            "WriteBackCache should not receive requests with O_SYNC or O_DSYNC "
+            "flags");
     }
 
     if (request.GetIovecs().empty()) {
