@@ -36,6 +36,7 @@ void TTestWriteBackCacheStats::FlushCompleted()
 void TTestWriteBackCacheStats::FlushFailed()
 {
     FailedFlushCount++;
+    InProgressFlushCount--;
 }
 
 void TTestWriteBackCacheStats::IncrementNodeCount()
@@ -104,7 +105,7 @@ void TTestWriteBackCacheStats::AddReadDataStats(
             ReadStats.CacheFullHitCount++;
             break;
         default:
-            Y_ABORT("Unknown EReadDataRequestCacheState value");
+            Y_ABORT("Unknown EReadDataRequestCacheStatus value");
     }
 }
 

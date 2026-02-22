@@ -20,7 +20,6 @@ struct TTestWriteDataRequestStats
 
 struct TTestReadDataRequestStats
 {
-    TVector<TDuration> Data;
     ui64 CacheMissCount = 0;
     ui64 CachePartialHitCount = 0;
     ui64 CacheFullHitCount = 0;

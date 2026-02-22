@@ -89,4 +89,69 @@ NCloud::NProto::TError TUtils::ValidateWriteDataRequest(
     return {};
 }
 
+// static
+bool TUtils::IsFullyCoveredByParts(
+    const TVector<TCachedDataPart>& parts,
+    ui64 byteCount)
+{
+    if (parts.empty() || parts.front().RelativeOffset != 0 ||
+        parts.back().RelativeOffset + parts.back().Data.size() != byteCount)
+    {
+        return false;
+    }
+
+    ui64 offset = 0;
+
+    for (const auto& part: parts) {
+        if (part.RelativeOffset != offset) {
+            return false;
+        }
+        offset += part.Data.size();
+    }
+
+    return true;
+}
+
+// static
+NProto::TReadDataResponse TUtils::BuildReadDataResponse(
+    const TVector<TCachedDataPart>& parts)
+{
+    if (parts.empty()) {
+        return {};
+    }
+
+    const auto length = parts.back().RelativeOffset + parts.back().Data.size();
+
+    auto buf = TString::Uninitialized(length);
+    for (const auto& part: parts) {
+        part.Data.copy(buf.begin() + part.RelativeOffset, part.Data.size());
+    }
+
+    NProto::TReadDataResponse response;
+    response.SetBuffer(std::move(buf));
+    return response;
+}
+
+// static
+void TUtils::AugmentReadDataResponse(
+    NProto::TReadDataResponse& response,
+    const TCachedData& cachedData)
+{
+    const auto responseData =
+        TStringBuf(response.GetBuffer()).Skip(response.GetBufferOffset());
+
+    if (responseData.size() < cachedData.ReadDataByteCount) {
+        auto tmp = TString(cachedData.ReadDataByteCount, 0);
+        responseData.copy(tmp.begin(), responseData.size());
+        response.SetBuffer(std::move(tmp));
+        response.SetBufferOffset(0);
+    }
+
+    char* dst = response.MutableBuffer()->begin() + response.GetBufferOffset();
+
+    for (const auto& part: cachedData.Parts) {
+        part.Data.copy(dst + part.RelativeOffset, part.Data.size());
+    }
+}
+
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
