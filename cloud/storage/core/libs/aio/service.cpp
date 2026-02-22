@@ -10,7 +10,9 @@
 #include <util/system/file.h>
 #include <util/system/thread.h>
 
+#include <fcntl.h>
 #include <libaio.h>
+#include <linux/fs.h>
 #include <sys/eventfd.h>
 
 #include <atomic>
@@ -38,6 +40,19 @@ auto MakeIOError(i64 ret)
     return ret < 0
         ? MakeSystemError(-ret, "async IO operation failed")
         : NProto::TError {};
+}
+
+int GetWriteSyncFlags(ui32 flags)
+{
+    // O_SYNC includes O_DSYNC bits on Linux, so O_SYNC must take precedence.
+    if ((flags & O_SYNC) == O_SYNC) {
+        return RWF_SYNC;
+    }
+    if ((flags & O_DSYNC) == O_DSYNC) {
+        return RWF_DSYNC;
+    }
+
+    return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -221,16 +236,18 @@ public:
         TFileIOCompletion* completion,
         ui32 flags) override
     {
-        Y_UNUSED(flags);
-
         auto req = std::make_unique<iocb>();
-
-        io_prep_pwrite(
+        const int syncFlags = GetWriteSyncFlags(flags);
+        iovec iov;
+        iov.iov_base = static_cast<void*>(const_cast<char*>(buffer.data()));
+        iov.iov_len = buffer.size();
+        io_prep_pwritev2(
             req.get(),
             file,
-            const_cast<char*>(buffer.data()),
-            buffer.size(),
-            offset);
+            &iov,
+            1,
+            offset,
+            syncFlags);
 
         req->data = completion;
 
@@ -244,9 +261,8 @@ public:
         TFileIOCompletion* completion,
         ui32 flags) override
     {
-        Y_UNUSED(flags);
-
         auto req = std::make_unique<iocb>();
+        const int syncFlags = GetWriteSyncFlags(flags);
 
         TVector<iovec> iov(buffers.size());
         for (ui32 i = 0; i < buffers.size(); ++i) {
@@ -254,13 +270,13 @@ public:
                 static_cast<void*>(const_cast<char*>(buffers[i].data()));
             iov[i].iov_len = buffers[i].size();
         }
-
-        io_prep_pwritev(
+        io_prep_pwritev2(
             req.get(),
             file,
             iov.data(),
             iov.size(),
-            offset);
+            offset,
+            syncFlags);
 
         req->data = completion;
 
