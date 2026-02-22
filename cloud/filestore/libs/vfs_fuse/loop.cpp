@@ -1282,11 +1282,12 @@ private:
 
             WriteBackCache.FlushAllData().Subscribe(
                 [w = weak_from_this(),
-                 s = std::move(stopCompleted)](const TFuture<void>& f) mutable
+                 s = std::move(stopCompleted)](const auto& f) mutable
                 {
-                    f.GetValue();
                     if (auto p = w.lock()) {
-                        p->StopAsyncOnWriteBackCacheFlushed(std::move(s));
+                        p->StopAsyncOnWriteBackCacheFlushed(
+                            std::move(s),
+                            f.GetValue());
                     } else {
                         s.SetValue();
                     }
@@ -1296,11 +1297,18 @@ private:
         }
     }
 
-    void StopAsyncOnWriteBackCacheFlushed(TPromise<void> stopCompleted)
+    void StopAsyncOnWriteBackCacheFlushed(
+        TPromise<void> stopCompleted,
+        const NProto::TError& error)
     {
         Y_ABORT_UNLESS(
+            !HasError(error),
+            "FlushAllData failed with error: %s",
+            FormatError(error).c_str());
+
+        Y_ABORT_UNLESS(
             WriteBackCache && WriteBackCache.IsEmpty(),
-            "WriteBackCache was not emptied after FlushAllData");
+            "WriteBackCache was not emptied after successful FlushAllData");
 
         STORAGE_INFO(
             "[f:%s][c:%s] completed FlushAllData",

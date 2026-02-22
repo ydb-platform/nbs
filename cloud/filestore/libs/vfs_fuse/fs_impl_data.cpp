@@ -159,7 +159,8 @@ bool TFileSystem::ProcessAsyncRelease(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    ui64 fh)
+    ui64 fh,
+    const NCloud::NProto::TError& writeBackCacheError)
 {
     with_lock (HandleOpsQueueLock) {
         const auto res = HandleOpsQueue->AddDestroyRequest(ino, fh);
@@ -184,7 +185,7 @@ bool TFileSystem::ProcessAsyncRelease(
 
     STORAGE_DEBUG(
         "Destroy handle request added to queue #" << ino << " @" << fh);
-    ReplyError(*callContext, {}, req, 0);
+    ReplyError(*callContext, writeBackCacheError, req, 0);
     return true;
 }
 
@@ -192,10 +193,21 @@ void TFileSystem::ReleaseImpl(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    ui64 handle)
+    ui64 handle,
+    const NCloud::NProto::TError& writeBackCacheError)
 {
+    // WriteBackCache may return an error when flushing data has failed
+    // We propagate this error to the result of Release if destroying handle
+    // itself was successful
+
     if (Config->GetAsyncDestroyHandleEnabled()) {
-        if (!ProcessAsyncRelease(callContext, req, ino, handle)) {
+        if (!ProcessAsyncRelease(
+                callContext,
+                req,
+                ino,
+                handle,
+                writeBackCacheError))
+        {
             with_lock (DelayedReleaseQueueLock) {
                 DelayedReleaseQueue.push(
                     TReleaseRequest(callContext, req, ino, handle));
@@ -207,17 +219,20 @@ void TFileSystem::ReleaseImpl(
     auto request = StartRequest<NProto::TDestroyHandleRequest>(ino);
     request->SetHandle(handle);
     Session->DestroyHandle(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, response.GetError(), req, 0);
-            }
-        });
+                const auto& response = future.GetValue();
+                if (CheckResponse(self, *callContext, req, response)) {
+                    // The response of DestroyHandle does not contain an error
+                    self->ReplyError(*callContext, writeBackCacheError, req, 0);
+                }
+            });
 }
 
 void TFileSystem::Release(
@@ -235,17 +250,21 @@ void TFileSystem::Release(
     }
 
     if (WriteBackCache) {
-        WriteBackCache.FlushNodeData(ino).Subscribe(
-            [=, ptr = weak_from_this()] (const auto&)
-            {
-                if (auto self = ptr.lock()) {
-                    self->ReleaseImpl(callContext, req, ino, handle);
-                }
-            });
+        // ReleaseHandle ensures that the handle is no longer in use
+        // by WriteBackCache and can be safely destroyed.
+        WriteBackCache.ReleaseHandle(ino, handle)
+            .Subscribe(
+                [=, ptr = weak_from_this()](const auto& future)
+                {
+                    if (auto self = ptr.lock()) {
+                        const NProto::TError& error = future.GetValue();
+                        self->ReleaseImpl(callContext, req, ino, handle, error);
+                    }
+                });
         return;
     }
 
-    ReleaseImpl(std::move(callContext), req, ino, handle);
+    ReleaseImpl(std::move(callContext), req, ino, handle, {});
 }
 
 void TFileSystem::ReadLocal(
@@ -564,19 +583,24 @@ void TFileSystem::DoWrite(
         "Invalid EServerWriteBackCacheState value = %d",
         wbcState);
 
-    WriteBackCache.FlushNodeData(request->GetNodeId())
-        .Subscribe(
-            [ptr = weak_from_this(),
-             callback = std::move(callback),
-             callContext = std::move(callContext),
-             request = std::move(request)](const auto& f) mutable
-            {
-                f.GetValue();
-                if (auto self = ptr.lock()) {
-                    self->Session->WriteData(callContext, std::move(request))
-                        .Subscribe(std::move(callback));
-                }
-            });
+    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
+    flushFuture.Subscribe(
+        [ptr = weak_from_this(),
+         callback = std::move(callback),
+         callContext = std::move(callContext),
+         request = std::move(request)](const auto& f) mutable
+        {
+            const NProto::TError& error = f.GetValue();
+            if (HasError(error)) {
+                // Propagate flush error to the WriteData response
+                NProto::TWriteDataResponse response;
+                *response.MutableError() = error;
+                callback(MakeFuture(std::move(response)));
+            } else if (auto self = ptr.lock()) {
+                self->Session->WriteData(callContext, std::move(request))
+                    .Subscribe(std::move(callback));
+            }
+        });
 }
 
 void TFileSystem::WriteBufLocal(
@@ -822,11 +846,16 @@ void TFileSystem::Flush(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
-            .Apply([] (const auto&) { return MakeError(S_OK); });
-
-        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino);
+        auto waitAll =
+            NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture);
+        future = waitAll.Apply(
+            [=](const auto&)
+            {
+                const auto& flushError = writeBackCacheFlushFuture.GetValue();
+                const auto& fsyncQueueError = fsyncQueueFuture.GetValue();
+                return HasError(flushError) ? flushError : fsyncQueueError;
+            });
     }
 
     future.Subscribe(std::move(callback));

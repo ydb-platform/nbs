@@ -24,6 +24,17 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EFlushRetryStatus
+{
+    // Flusher should stop trying to flush data - the error is unrecoverable
+    ShouldNotRetry,
+
+    // Flusher should retry attempts to flush data
+    ShouldRetry
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // The class is thread safe
 class TWriteBackCacheState
 {
@@ -65,9 +76,13 @@ public:
     NThreading::TFuture<NProto::TWriteDataResponse> AddWriteDataRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> AddFlushRequest(ui64 nodeId);
+    NThreading::TFuture<NCloud::NProto::TError> AddFlushRequest(ui64 nodeId);
 
-    NThreading::TFuture<void> AddFlushAllRequest();
+    NThreading::TFuture<NCloud::NProto::TError> AddFlushAllRequest();
+
+    NThreading::TFuture<NCloud::NProto::TError> AddReleaseHandleRequest(
+        ui64 nodeId,
+        ui64 handle);
 
     void TriggerPeriodicFlushAll();
 
@@ -95,6 +110,12 @@ public:
     // been flushed
     void FlushSucceeded(ui64 nodeId, size_t requestCount);
 
+    // Inform that the flush has failed - the error should be propagated to
+    // Flush, FlushAll and ReleaseHandle requests
+    EFlushRetryStatus FlushFailed(
+        ui64 nodeId,
+        const NCloud::NProto::TError& error);
+
 private:
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TPendingWriteDataRequest> request);
@@ -108,6 +129,8 @@ private:
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
+
+    void DecrementHandleCount(ui64 handle, TNodeState& nodeState);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

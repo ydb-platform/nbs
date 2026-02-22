@@ -52,17 +52,17 @@ private:
 
 public:
     TImpl(
-            IFileStorePtr session,
-            ISchedulerPtr scheduler,
-            ITimerPtr timer,
-            IWriteBackCacheStatsPtr stats,
-            NWriteBackCache::IWriteDataRequestBuilderPtr requestBuilder,
-            TLog log,
-            const TString& fileSystemId,
-            const TString& clientId,
-            const TString& filePath,
-            ui64 capacityBytes,
-            TFlushConfig flushConfig)
+        IFileStorePtr session,
+        ISchedulerPtr scheduler,
+        ITimerPtr timer,
+        IWriteBackCacheStatsPtr stats,
+        NWriteBackCache::IWriteDataRequestBuilderPtr requestBuilder,
+        TLog log,
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& filePath,
+        ui64 capacityBytes,
+        TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
@@ -117,11 +117,11 @@ public:
 
         STORAGE_INFO(
             LogTag << " WriteBackCache has been initialized "
-            << "{\"FilePath\": " << filePath.Quote()
-            << ", \"RawCapacityByteCount\": "
-            << persistentStorageStats.RawCapacityByteCount
-            << ", \"RawUsedByteCount\": "
-            << persistentStorageStats.RawUsedByteCount
+                   << "{\"FilePath\": " << filePath.Quote()
+                   << ", \"RawCapacityByteCount\": "
+                   << persistentStorageStats.RawCapacityByteCount
+                   << ", \"RawUsedByteCount\": "
+                   << persistentStorageStats.RawUsedByteCount
             << ", \"EntryCount\": "
             << persistentStorageStats.EntryCount << "}");
 
@@ -232,14 +232,19 @@ public:
         return State.AddWriteDataRequest(std::move(request));
     }
 
-    TFuture<void> FlushNodeData(ui64 nodeId)
+    TFuture<NProto::TError> FlushNodeData(ui64 nodeId)
     {
         return State.AddFlushRequest(nodeId);
     }
 
-    TFuture<void> FlushAllData()
+    TFuture<NProto::TError> FlushAllData()
     {
         return State.AddFlushAllRequest();
+    }
+
+    TFuture<NProto::TError> ReleaseHandle(ui64 nodeId, ui64 handle)
+    {
+        return State.AddReleaseHandleRequest(nodeId, handle);
     }
 
     bool IsEmpty() const
@@ -338,15 +343,21 @@ private:
 
         if (HasError(error)) {
             Stats->FlushFailed();
-            ScheduleRetryFlush(std::move(flushState));
-            return;
+
+            auto retryStatus =
+                State.FlushFailed(flushState->GetNodeId(), error);
+
+            if (retryStatus == EFlushRetryStatus::ShouldRetry) {
+                ScheduleRetryFlush(std::move(flushState));
+                return;
+            }
+        } else {
+            State.FlushSucceeded(
+                flushState->GetNodeId(),
+                flushState->GetAffectedUnflushedRequestCount());
         }
 
         Stats->FlushCompleted();
-
-        State.FlushSucceeded(
-            flushState->GetNodeId(),
-            flushState->GetAffectedUnflushedRequestCount());
     }
 
     void ScheduleRetryFlush(std::shared_ptr<TNodeFlushState> flushState)
@@ -423,14 +434,19 @@ TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteData(
     return Impl->WriteData(std::move(callContext), std::move(request));
 }
 
-TFuture<void> TWriteBackCache::FlushNodeData(ui64 nodeId)
+TFuture<NProto::TError> TWriteBackCache::FlushNodeData(ui64 nodeId)
 {
     return Impl->FlushNodeData(nodeId);
 }
 
-TFuture<void> TWriteBackCache::FlushAllData()
+TFuture<NProto::TError> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
+}
+
+TFuture<NProto::TError> TWriteBackCache::ReleaseHandle(ui64 nodeId, ui64 handle)
+{
+    return Impl->ReleaseHandle(nodeId, handle);
 }
 
 bool TWriteBackCache::IsEmpty() const

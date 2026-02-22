@@ -51,7 +51,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
         std::move(variant));
 }
 
-TFuture<void> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
+TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
 {
     auto guard = Guard(QueuedOperations);
 
@@ -59,7 +59,7 @@ TFuture<void> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
     if (nodeState == nullptr ||
         !nodeState->Cache.HasPendingOrUnflushedRequests())
     {
-        return MakeFuture();
+        return MakeFuture<TError>();
     }
 
     auto future =
@@ -71,18 +71,46 @@ TFuture<void> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
     return future;
 }
 
-TFuture<void> TWriteBackCacheState::AddFlushAllRequest()
+TFuture<TError> TWriteBackCacheState::AddFlushAllRequest()
 {
     auto guard = Guard(QueuedOperations);
 
     if (!RequestManager.HasPendingOrUnflushedRequests()) {
-        return MakeFuture();
+        return MakeFuture<TError>();
     }
 
     TriggerFlushAll(true);
 
     return FlushAllRequestQueue.emplace_back(FlushAllSequenceId)
         .Promise.GetFuture();
+}
+
+TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
+    ui64 nodeId,
+    ui64 handle)
+{
+    auto guard = Guard(QueuedOperations);
+
+    auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
+    if (nodeState == nullptr) {
+        return MakeFuture<TError>();
+    }
+
+    auto* handleState = nodeState->Handles.FindPtr(handle);
+    if (handleState == nullptr) {
+        return MakeFuture<TError>();
+    }
+
+    if (handleState->ReadyToReleasePromise.Initialized()) {
+        return handleState->ReadyToReleasePromise.GetFuture();
+    }
+
+    handleState->ReadyToReleasePromise = NewPromise<TError>();
+    nodeState->HandleReleaseCount++;
+
+    UpdateFlushStatus(nodeId, *nodeState);
+
+    return handleState->ReadyToReleasePromise.GetFuture();
 }
 
 void TWriteBackCacheState::TriggerPeriodicFlushAll()
@@ -207,6 +235,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
         auto* cachedRequest =
             nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
         RequestManager.SetFlushed(cachedRequest);
+        DecrementHandleCount(cachedRequest->GetHandle(), nodeState);
     }
 
     // Trigger Flush completions
@@ -216,7 +245,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     while (!nodeState.FlushRequests.empty() &&
            nodeState.FlushRequests.front().SequenceId < sequenceId)
     {
-        QueuedOperations.CompleteFlushPromise(
+        QueuedOperations.CompleteFlushOrReleasePromise(
             std::move(nodeState.FlushRequests.front().Promise));
         nodeState.FlushRequests.pop_front();
     }
@@ -228,13 +257,76 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     while (!FlushAllRequestQueue.empty() &&
            FlushAllRequestQueue.front().SequenceId < globalSequenceId)
     {
-        QueuedOperations.CompleteFlushPromise(
+        QueuedOperations.CompleteFlushOrReleasePromise(
             std::move(FlushAllRequestQueue.front().Promise));
         FlushAllRequestQueue.pop_front();
     }
 
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+}
+
+EFlushRetryStatus TWriteBackCacheState::FlushFailed(
+    ui64 nodeId,
+    const TError& error)
+{
+    auto guard = Guard(QueuedOperations);
+
+    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+
+    Y_ABORT_UNLESS(
+        nodeState.FlushStatus == ENodeFlushStatus::FlushRequested,
+        "Flush wasn't requested for a node %lu",
+        nodeId);
+
+    // Fail Flush and FlushAll requests
+    for (auto& it: nodeState.FlushRequests) {
+        QueuedOperations.FailFlushOrReleasePromise(
+            std::move(it.Promise),
+            error);
+    }
+
+    for (auto& it: FlushAllRequestQueue) {
+        QueuedOperations.FailFlushOrReleasePromise(
+            std::move(it.Promise),
+            error);
+    }
+
+    nodeState.FlushRequests.clear();
+    FlushAllRequestQueue.clear();
+
+    if (nodeState.Handles.size() != nodeState.HandleReleaseCount) {
+        // Keep status ENodeFlushStatus::FlushRequested if flush is retried
+        return EFlushRetryStatus::ShouldRetry;
+    }
+
+    nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+
+    // Drop node data - pending and unflushed requests
+    while (nodeState.Cache.HasPendingRequests()) {
+        auto request = nodeState.Cache.DequeuePendingRequest();
+        QueuedOperations.FailWriteDataPromise(
+            std::move(request->AccessPromise()),
+            error);
+    }
+
+    while (nodeState.Cache.HasUnflushedRequests()) {
+        auto* request = nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
+        RequestManager.SetFlushed(request);
+    }
+
+    for (auto& it: nodeState.Handles) {
+        QueuedOperations.FailFlushOrReleasePromise(
+            std::move(it.second.ReadyToReleasePromise),
+            error);
+    }
+
+    nodeState.Handles.clear();
+    nodeState.HandleReleaseCount = 0;
+
+    EvictUnpinnedFlushedEntries(nodeId, nodeState);
+
+    return EFlushRetryStatus::ShouldNotRetry;
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
@@ -246,6 +338,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     auto& nodeState =
         Nodes.GetOrCreateNodeState(request->GetRequest().GetNodeId());
 
+    nodeState.Handles[request->GetRequest().GetHandle()].RequestCount++;
     nodeState.Cache.EnqueuePendingRequest(std::move(request));
 
     return future;
@@ -257,6 +350,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     const ui64 nodeId = request->GetNodeId();
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+    nodeState.Handles[request->GetHandle()].RequestCount++;
     nodeState.CachedNodeSize = Max(nodeState.CachedNodeSize, request->GetEnd());
     nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
 
@@ -371,6 +465,23 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
 
         UpdateFlushStatus(nodeId, nodeState);
+    }
+}
+
+void TWriteBackCacheState::DecrementHandleCount(
+    ui64 handle,
+    TNodeState& nodeState)
+{
+    auto& handleState = nodeState.Handles[handle];
+    Y_ABORT_UNLESS(handleState.RequestCount > 0);
+    if (--handleState.RequestCount == 0) {
+        if (handleState.ReadyToReleasePromise.Initialized()) {
+            Y_ABORT_UNLESS(nodeState.HandleReleaseCount > 0);
+            nodeState.HandleReleaseCount--;
+            QueuedOperations.CompleteFlushOrReleasePromise(
+                std::move(handleState.ReadyToReleasePromise));
+        }
+        nodeState.Handles.erase(handle);
     }
 }
 
