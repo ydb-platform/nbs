@@ -156,6 +156,42 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
     }
 
+    Y_UNIT_TEST(PinCachedData)
+    {
+        TBootstrap b;
+
+        // pin1, pin2, pin3 reference to the same data (1)
+        auto pin1 = b.State->PinCachedData(1);
+        UNIT_ASSERT(b.Add(1, 101, 1, "a").GetValue());
+        auto pin2 = b.State->PinCachedData(1);
+        UNIT_ASSERT(b.Add(1, 102, 2, "b").GetValue());
+        UNIT_ASSERT(b.Add(1, 103, 3, "c").GetValue());
+        auto pin3 = b.State->PinCachedData(1);
+
+        b.State->AddFlushRequest(1);
+        b.State->FlushSucceeded(1, 2);
+        UNIT_ASSERT_VALUES_EQUAL("1:a, 2:b, 3:c", b.VisitCachedData(1));
+
+        // pin4 references to (3)
+        auto pin4 = b.State->PinCachedData(1);
+        UNIT_ASSERT(b.Add(1, 104, 4, "d").GetValue());
+
+        b.State->UnpinCachedData(1, pin2);
+        UNIT_ASSERT_VALUES_EQUAL("1:a, 2:b, 3:c, 4:d", b.VisitCachedData(1));
+
+        b.State->UnpinCachedData(1, pin3);
+        UNIT_ASSERT_VALUES_EQUAL("1:a, 2:b, 3:c, 4:d", b.VisitCachedData(1));
+
+        b.State->UnpinCachedData(1, pin1);
+        UNIT_ASSERT_VALUES_EQUAL("3:c, 4:d", b.VisitCachedData(1));
+
+        b.State->FlushSucceeded(1, 2);
+        UNIT_ASSERT_VALUES_EQUAL("3:c, 4:d", b.VisitCachedData(1));
+
+        b.State->UnpinCachedData(1, pin4);
+        UNIT_ASSERT_VALUES_EQUAL("", b.VisitCachedData(1));
+    }
+
     Y_UNIT_TEST(Recreate)
     {
         TBootstrap b;
