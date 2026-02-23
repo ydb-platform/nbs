@@ -298,6 +298,7 @@ func (client *Client) ListNodes(
 	session Session,
 	nodeID uint64,
 	cookie string,
+	maxBytes uint32,
 ) ([]Node, string, error) {
 
 	req := &protos.TListNodesRequest{
@@ -308,8 +309,8 @@ func (client *Client) ListNodes(
 			SessionSeqNo: session.SessionSeqNo,
 			SessionId:    []byte(session.SessionID),
 		},
+		MaxBytes: maxBytes,
 	}
-
 	resp, err := client.Impl.ListNodes(ctx, req)
 	if err != nil {
 		return nil, "", err
