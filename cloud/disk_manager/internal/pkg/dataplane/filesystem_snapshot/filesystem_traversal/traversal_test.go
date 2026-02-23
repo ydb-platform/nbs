@@ -144,6 +144,7 @@ func (f *fixture) getFilesAfterTraversal(
 		10,
 		10,
 		false,
+		0,
 	)
 
 	actualNodeNames := []string{}
@@ -276,6 +277,7 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		10,
 		10,
 		false,
+		0,
 	)
 
 	expectedError := fmt.Errorf("some error")

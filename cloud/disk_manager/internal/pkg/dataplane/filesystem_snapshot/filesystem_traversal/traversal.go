@@ -35,6 +35,7 @@ type FilesystemTraverser struct {
 	stateSaver               StateSaver
 	selectNodesToListLimit   uint64
 	rootNodeAlreadyScheduled bool
+	listNodesMaxBytes        uint32
 }
 
 // FilesystemTravers performs parallel traversal of a filesystem.
@@ -65,6 +66,7 @@ func NewFilesystemTraverser(
 	workersCount int,
 	selectNodesToListLimit uint64,
 	rootNodeAlreadyScheduled bool,
+	listNodesMaxBytes uint32,
 ) *FilesystemTraverser {
 
 	return &FilesystemTraverser{
@@ -79,6 +81,7 @@ func NewFilesystemTraverser(
 		stateSaver:               stateSaver,
 		selectNodesToListLimit:   selectNodesToListLimit,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
+		listNodesMaxBytes:        listNodesMaxBytes,
 	}
 }
 
@@ -242,7 +245,7 @@ func (t *FilesystemTraverser) listNode(
 			session,
 			node.NodeID,
 			cookie,
-			0, // maxBytes
+			t.listNodesMaxBytes,
 		)
 		if err != nil {
 			return err
