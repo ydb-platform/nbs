@@ -216,11 +216,15 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 		},
 		{
 			DirsCount:  5,
-			FilesCount: 100000,
+			FilesCount: 1000,
 		},
 		{
-			DirsCount:  10,
-			FilesCount: 10000,
+			DirsCount:  1000,
+			FilesCount: 1000,
+		},
+		{
+			DirsCount:  0,
+			FilesCount: 2,
 		},
 	}
 
@@ -235,8 +239,15 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 	actualNodeNames := tasks_common.NewStringSet()
 	var namesMu sync.Mutex
 
+	listNodesMaxBytes := uint32(1000)
+	// scrubFilesystemTask configured with a small ListNodesMaxBytes limit
+	// to test traversal behavior when listing is interrupted mid-way,
+	// without requiring large filesystem fixtures.
 	task := &scrubFilesystemTask{
-		config:  &scrubbing_config.FilesystemScrubbingConfig{},
+		config:  &scrubbing_config.FilesystemScrubbingConfig{
+
+			ListNodesMaxBytes: &listNodesMaxBytes,
+		},
 		factory: f.factory,
 		storage: f.storage,
 		request: &scrubbing_protos.ScrubFilesystemRequest{
@@ -266,7 +277,7 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 			return task.Run(ctx, execCtx)
 		},
 		0,
-		5*time.Second,
+		500*time.Millisecond,
 	)
 	require.NoError(t, err)
 

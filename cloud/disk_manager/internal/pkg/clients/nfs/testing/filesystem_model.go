@@ -392,6 +392,7 @@ func (m *ParallelFilesystemModel) createChildren(
 	parentID uint64,
 	children []Node,
 ) {
+
 	var childDirectories []struct {
 		parent   uint64
 		children []Node
@@ -464,6 +465,7 @@ func NewParallelFilesystemModel(
 	session nfs.Session,
 	rootDir Node,
 ) *ParallelFilesystemModel {
+
 	set := tasks_common.NewStringSet()
 	return &ParallelFilesystemModel{
 		t:             t,

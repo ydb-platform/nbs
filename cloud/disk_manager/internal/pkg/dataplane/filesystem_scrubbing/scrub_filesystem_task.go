@@ -12,7 +12,6 @@ import (
 	filesystem_traversal "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/filesystem_traversal"
 	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -52,10 +51,6 @@ func (t *scrubFilesystemTask) Run(
 ) error {
 
 	filesystem := t.request.GetFilesystem()
-	if filesystem == nil {
-		return errors.NewNonRetriableErrorf("filesystem is not set")
-	}
-
 	client, err := t.factory.NewClient(ctx, filesystem.GetZoneId())
 	if err != nil {
 		return err
@@ -76,6 +71,7 @@ func (t *scrubFilesystemTask) Run(
 		int(t.config.GetTraversalWorkersCount()),
 		t.config.GetSelectNodesToListLimit(),
 		rootNodeAlreadyScheduled,
+		t.config.GetListNodesMaxBytes(),
 	)
 
 	return traverser.Traverse(ctx, func(
