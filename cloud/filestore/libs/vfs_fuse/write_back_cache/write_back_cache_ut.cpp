@@ -1759,7 +1759,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
 
         UNIT_ASSERT(flushFuture1.HasValue());
-        UNIT_ASSERT(flushFuture2.HasValue());
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);

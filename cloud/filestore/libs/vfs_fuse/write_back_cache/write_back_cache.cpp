@@ -1,6 +1,6 @@
 #include "write_back_cache.h"
 
-#include "node_flush_state.h"
+#include "flusher.h"
 #include "persistent_storage.h"
 #include "sequence_id_generator.h"
 #include "utils.h"
@@ -34,6 +34,7 @@ struct TFlushConfig
 class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
     , private IQueuedOperationsProcessor
+    , private IWriteDataRequestExecutor
 {
 private:
     const IFileStorePtr Session;
@@ -49,6 +50,7 @@ private:
 
     IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
+    TFlusher Flusher;
 
 public:
     TImpl(
@@ -92,6 +94,8 @@ public:
         }
 
         PersistentStorage = createPersistentStorageResult.ExtractResult();
+
+        Flusher = TFlusher(State, RequestBuilder, *this, Stats);
 
         // File ring buffer should be able to store any valid TWriteDataRequest.
         // Inability to store it will cause this and future requests to remain
@@ -276,103 +280,30 @@ private:
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
-        auto batchBuilder =
-            RequestBuilder->CreateWriteDataRequestBatchBuilder(nodeId);
-
-        State.VisitUnflushedRequests(
-            nodeId,
-            [&batchBuilder](const TCachedWriteDataRequest* request)
-            {
-                return batchBuilder->AddRequest(
-                    request->GetHandle(),
-                    request->GetOffset(),
-                    request->GetBuffer());
-            });
-
-        auto writeDataBatch = batchBuilder->Build();
-
-        auto flushState = std::make_shared<TNodeFlushState>(
-            nodeId,
-            std::move(writeDataBatch.Requests),
-            writeDataBatch.AffectedRequestCount);
-
-        Stats->FlushStarted();
-
-        ExecuteFlush(flushState);
+        Flusher.ScheduleFlushNode(nodeId);
     }
 
-    void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
+    // Implementation of IWriteDataRequestExecutor
+    void ExecuteWriteDataRequest(
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        std::function<void(const NProto::TWriteDataResponse&)> callback)
+        override
     {
-        auto requests = flushState->BeginFlush();
+        auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
 
-        for (size_t i = 0; i < requests.size(); ++i) {
-            auto& request = requests[i];
-            auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
+        callContext->RequestType = EFileStoreRequest::WriteData;
+        callContext->RequestSize =
+            NStorage::CalculateByteCount(*request) - request->GetBufferOffset();
 
-            callContext->RequestType = EFileStoreRequest::WriteData;
-            callContext->RequestSize = NStorage::CalculateByteCount(*request) -
-                                       request->GetBufferOffset();
-
-            auto callback = [ptr = weak_from_this(), flushState, i](
-                                const auto& future) mutable
-            {
-                auto action = flushState->OnWriteDataRequestCompleted(
-                    i,
-                    future.GetValue());
-
-                switch (action) {
-                    case EWriteDataRequestCompletedAction::CollectFlushResult:
-                        if (auto self = ptr.lock()) {
-                            self->CompleteFlush(std::move(flushState));
-                        }
-                        break;
-
-                    case EWriteDataRequestCompletedAction::ContinueExecution:
-                        break;
-                }
-            };
-
-            Session->WriteData(std::move(callContext), std::move(request))
-                .Subscribe(std::move(callback));
-        }
-    }
-
-    void CompleteFlush(std::shared_ptr<TNodeFlushState> flushState)
-    {
-        auto error = flushState->CollectFlushResult();
-
-        if (HasError(error)) {
-            Stats->FlushFailed();
-
-            auto retryStatus =
-                State.FlushFailed(flushState->GetNodeId(), error);
-
-            if (retryStatus == EFlushRetryStatus::ShouldRetry) {
-                ScheduleRetryFlush(std::move(flushState));
-                return;
-            }
-        } else {
-            State.FlushSucceeded(
-                flushState->GetNodeId(),
-                flushState->GetAffectedUnflushedRequestCount());
-        }
-
-        Stats->FlushCompleted();
-    }
-
-    void ScheduleRetryFlush(std::shared_ptr<TNodeFlushState> flushState)
-    {
-        // TODO(nasonov): better retry policy
-        Scheduler->Schedule(
-            Timer->Now() + FlushConfig.FlushRetryPeriod,
-            [ptr = weak_from_this(),
-             flushState = std::move(flushState)]() mutable
-            {
-                auto self = ptr.lock();
-                if (self) {
-                    self->ExecuteFlush(flushState);
-                }
-            });
+        Session->WriteData(std::move(callContext), std::move(request))
+            .Subscribe(
+                [ptr = weak_from_this(), callback = std::move(callback)](
+                    const TFuture<NProto::TWriteDataResponse>& future)
+                {
+                    if (auto self = ptr.lock()) {
+                        callback(future.GetValue());
+                    }
+                });
     }
 };
 

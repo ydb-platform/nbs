@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     disjoint_interval_builder.cpp
+    flusher.cpp
     node_cache.cpp
     node_flush_state.cpp
     node_state_holder.cpp
