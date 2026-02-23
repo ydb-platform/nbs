@@ -244,7 +244,7 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 	// to test traversal behavior when listing is interrupted mid-way,
 	// without requiring large filesystem fixtures.
 	task := &scrubFilesystemTask{
-		config:  &scrubbing_config.FilesystemScrubbingConfig{
+		config: &scrubbing_config.FilesystemScrubbingConfig{
 
 			ListNodesMaxBytes: &listNodesMaxBytes,
 		},
