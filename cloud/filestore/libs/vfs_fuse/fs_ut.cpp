@@ -3475,7 +3475,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // The following filestore service operations affect node size:
         // - AllocateData
         // - SetNodeAttr (also returns new attributes)
-        // - TruncateData - seems to be unused
         // - WriteData
 
         bootstrap.Service->AllocateDataHandler = [&](auto, const auto& rq)

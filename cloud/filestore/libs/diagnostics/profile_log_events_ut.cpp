@@ -185,31 +185,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(length, rangeInfo.GetBytes());
     }
 
-    Y_UNIT_TEST(ShouldTruncateDataRequestInitializeFieldsCorrectly)
-    {
-        const auto nodeId = 12;
-        const auto handle = 34;
-        const auto length = 78;
-
-        NProto::TTruncateDataRequest req;
-        req.SetNodeId(nodeId);
-        req.SetHandle(handle);
-        req.SetLength(length);
-
-        NProto::TProfileLogRequestInfo profileLogRequest;
-        InitProfileLogRequestInfo(profileLogRequest, req);
-
-        UNIT_ASSERT_VALUES_EQUAL(1, profileLogRequest.RangesSize());
-        UNIT_ASSERT(!profileLogRequest.HasNodeInfo());
-        UNIT_ASSERT(!profileLogRequest.HasLockInfo());
-
-        const auto& rangeInfo = profileLogRequest.GetRanges().at(0);
-        UNIT_ASSERT_VALUES_EQUAL(nodeId, rangeInfo.GetNodeId());
-        UNIT_ASSERT_VALUES_EQUAL(handle, rangeInfo.GetHandle());
-        UNIT_ASSERT(!rangeInfo.HasOffset());
-        UNIT_ASSERT_VALUES_EQUAL(length, rangeInfo.GetBytes());
-    }
-
     Y_UNIT_TEST(ShouldAcquireLockRequestInitializeFieldsCorrectly)
     {
         const auto nodeId = 12;

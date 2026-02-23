@@ -289,37 +289,6 @@ message TAllocateDataResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TruncateData request/response
-// XXX unused
-
-message TTruncateDataRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // FileSystem identifier.
-    bytes FileSystemId = 2;
-
-    // Node.
-    uint64 NodeId = 3;
-
-    // IO handle.
-    uint64 Handle = 4;
-
-    // Number of bytes to keep.
-    uint64 Length = 6;
-}
-
-message TTruncateDataResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Fsync request/response
 
 message TFsyncRequest
