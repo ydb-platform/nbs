@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     disjoint_interval_builder.cpp
     node_cache.cpp
+    node_state_holder.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
     read_write_range_lock.cpp

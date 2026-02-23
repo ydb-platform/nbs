@@ -83,8 +83,6 @@ public:
     struct TPersistentQueueStats;
 
 private:
-    struct TNodeState;
-    struct TFlushState;
     struct TQueuedOperations;
     class TContiguousWriteDataEntryPartsReader;
 };
