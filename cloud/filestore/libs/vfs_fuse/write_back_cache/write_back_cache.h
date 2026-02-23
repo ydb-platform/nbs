@@ -79,12 +79,6 @@ public:
 
     ui64 GetCachedNodeSize(ui64 nodeId) const;
     void SetCachedNodeSize(ui64 nodeId, ui64 size);
-
-    struct TPersistentQueueStats;
-
-private:
-    struct TQueuedOperations;
-    class TContiguousWriteDataEntryPartsReader;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

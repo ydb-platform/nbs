@@ -1451,7 +1451,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         constexpr int WriteAttemptsThreshold = 3;
 
-        TBootstrap b;
+        TBootstrap b({.AutomaticFlushPeriod = TDuration::MilliSeconds(1)});
 
         std::atomic<int> writeAttempts = 0;
 
@@ -1471,7 +1471,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Flush starts synchronously in FlushData call and makes an attempt
         // to write data but fails
-        UNIT_ASSERT_GE(writeAttempts, 0);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
         UNIT_ASSERT(!flushFuture.HasValue());
 
         // WriteData request from Flush succeeds after WriteAttemptsThreshold
@@ -1625,7 +1625,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldReportFlushStats)
     {
-        TBootstrap b;
+        TBootstrap b({.AutomaticFlushPeriod = TDuration::MilliSeconds(1)});
+
         auto& stats = *b.Stats;
         stats.MaxItems = 10;
 
@@ -1662,8 +1663,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
         auto flushFuture2 = b.Cache.FlushNodeData(2);
 
-        UNIT_ASSERT(!flushFuture1.HasValue());
-        UNIT_ASSERT(flushFuture2.HasValue());
+        // Flush execution order is unspecified
+        UNIT_ASSERT(flushFuture1.HasValue() != flushFuture2.HasValue());
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
@@ -1672,6 +1673,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
 
         UNIT_ASSERT(flushFuture1.HasValue());
+        UNIT_ASSERT(flushFuture2.HasValue());
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
@@ -1949,6 +1951,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
 
         UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->PendingStats.InProgressCount);
 
         writeRequests.ProceedAll();
 

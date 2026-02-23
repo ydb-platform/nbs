@@ -13,13 +13,19 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNodeFlushState
+enum class ENodeFlushStatus
 {
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> WriteRequests;
-    TVector<std::shared_ptr<NProto::TWriteDataRequest>> FailedWriteRequests;
-    size_t AffectedWriteDataEntriesCount = 0;
-    size_t InFlightWriteRequestsCount = 0;
-    bool Executing = false;
+    // Node has no unflushed requests
+    NothingToFlush,
+
+    // Node has unflushed requests but flush has not been requested yet
+    ReadyToFlush,
+
+    // Flush should be requested for the node
+    ShouldFlush,
+
+    // Flush has been requested for a node
+    FlushScheduled
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,8 +47,6 @@ struct TFlushRequest
 
 struct TNodeState
 {
-    const ui64 NodeId;
-
     // Holds pending, unflushed and flushed requests
     // Tracks cached data parts
     TNodeCache Cache;
@@ -50,7 +54,7 @@ struct TNodeState
     // Prevent from concurrent read and write requests with overlapping ranges
     TReadWriteRangeLock RangeLock;
 
-    TNodeFlushState FlushState;
+    ENodeFlushStatus FlushStatus = ENodeFlushStatus::NothingToFlush;
 
     // Flush requests are fulfilled when there are no pending or unflushed
     // requests with SequenceId less or equal than |TFlushRequest::SequenceId|.
@@ -58,41 +62,33 @@ struct TNodeState
     // strictly increasing so newer flush requests have larger SequenceId.
     TDeque<TFlushRequest> FlushRequests;
 
-    // All entries with RequestId <= |AutomaticFlushRequestId| are to be flushed
-    ui64 AutomaticFlushRequestId = 0;
-
     // Cached data extends the node size but until the data is flushed,
     // the changes are not visible to the tablet. FileSystem requests that
     // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
     // should have the node size adjusted to this value.
     ui64 CachedNodeSize = 0;
 
-    explicit TNodeState(ui64 nodeId)
-        : NodeId(nodeId)
-    {}
-
     bool CanBeDeleted() const
     {
         if (Cache.Empty() && RangeLock.Empty()) {
-            Y_ABORT_UNLESS(!FlushState.Executing);
+            Y_ABORT_UNLESS(FlushRequests.empty());
+            Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
             return true;
         }
         return false;
     }
 
-    bool ShouldFlush(ui64 maxFlushAllRequestId) const
+    ENodeFlushStatus GetFlushStatus(ui64 flushAllSequenceId) const
     {
         if (!Cache.HasUnflushedRequests()) {
-            return false;
+            return ENodeFlushStatus::NothingToFlush;
         }
-
-        if (!FlushRequests.empty()) {
-            return true;
+        if (!FlushRequests.empty() ||
+            Cache.GetMinUnflushedSequenceId() <= flushAllSequenceId)
+        {
+            return ENodeFlushStatus::ShouldFlush;
         }
-
-        const ui64 minRequestId = Cache.GetMinUnflushedSequenceId();
-        return minRequestId <= maxFlushAllRequestId ||
-               minRequestId <= AutomaticFlushRequestId;
+        return ENodeFlushStatus::ReadyToFlush;
     }
 };
 
