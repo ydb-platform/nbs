@@ -10,12 +10,11 @@ namespace NCloud::NFileStore::NFuse {
 
 TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
 {
-    auto [it, inserted] = Nodes.emplace(attrs);
+    auto [it, inserted] = Id2Node.emplace(attrs.GetId(), TNode(attrs));
     Y_ABORT_UNLESS(inserted, "failed to insert %s",
         DumpMessage(attrs).data());
 
-    auto* node = (TNode*)&*it;
-    return node;
+    return &it->second;
 }
 
 TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs)
@@ -33,8 +32,8 @@ TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs)
 
 void TNodeCache::ForgetNode(ui64 ino, size_t count)
 {
-    auto it = Nodes.find(ino);
-    if (it == Nodes.end()) {
+    auto it = Id2Node.find(ino);
+    if (it == Id2Node.end()) {
         // we lose our cache after restart, so we should expect forget requests
         // targeting nodes that are absent from our cache
         // see NBS-2102
@@ -42,17 +41,16 @@ void TNodeCache::ForgetNode(ui64 ino, size_t count)
         return;
     }
 
-    count = const_cast<TNode&>(*it).UnRef(count);
+    count = it->second.UnRef(count);
     if (count == 0) {
         // do not pass element itself
-        Nodes.erase(it);
+        Id2Node.erase(it);
     }
 }
 
 TNode* TNodeCache::FindNode(ui64 ino)
 {
-    auto it = Nodes.find(ino);
-    return it != Nodes.end() ? (TNode*)&*it : nullptr;
+    return Id2Node.FindPtr(ino);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,7 +61,7 @@ void TXAttrCache::Add(
     const TString& value,
     ui64 version)
 {
-    auto current = Get(ino, name);
+    const auto* current = Get(ino, name);
     if (!current || current->Version < version) {
         Cache.Update(
             TKey{ino, name},

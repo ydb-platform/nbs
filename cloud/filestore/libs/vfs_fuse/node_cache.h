@@ -8,7 +8,7 @@
 
 #include <library/cpp/cache/cache.h>
 
-#include <util/generic/hash_set.h>
+#include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/string.h>
 
@@ -17,7 +17,6 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TNode
-    : private TNonCopyable
 {
     NProto::TNodeAttr Attrs;
     ui64 RefCount = 1;
@@ -51,74 +50,33 @@ struct TNode
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNodeOps
-{
-    struct THash
-    {
-        template <typename T>
-        size_t operator ()(const T& value) const
-        {
-            return IntHash(GetNodeId(value));
-        }
-    };
-
-    struct TEqual
-    {
-        template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
-        {
-            return GetNodeId(l) == GetNodeId(r);
-        }
-    };
-
-    static auto GetNodeId(const TNode& node)
-    {
-        return node.Attrs.GetId();
-    }
-
-    template <typename T>
-    static auto GetNodeId(const T& value)
-    {
-        return value;
-    }
-};
-
-using TNodeMap = THashSet<TNode, TNodeOps::THash, TNodeOps::TEqual>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TNodeCache
 {
 private:
-    TNodeMap Nodes;
-
-    // TODO: keep track of session re-creation
-    ui64 LastGen = 0;
+    THashMap<ui64, TNode> Id2Node;
 
 public:
-    ui64 Generation() const
-    {
-        return LastGen;
-    }
-
-    TNode* AddNode(const NProto::TNodeAttr& node);
-    TNode* TryAddNode(const NProto::TNodeAttr& node);
+    TNode* AddNode(const NProto::TNodeAttr& attrs);
+    TNode* TryAddNode(const NProto::TNodeAttr& attrs);
     TNode* FindNode(ui64 ino);
     void ForgetNode(ui64 ino, size_t count);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TXAttr {
+struct TXAttr
+{
     TString Name;
     TMaybe<TString> Value;
     ui64 Version;
     TInstant UpdateTime;
 };
 
-class TXAttrCache {
+class TXAttrCache
+{
 private:
-    struct TWeighter {
+    struct TWeighter
+    {
         static TInstant Weight(const TXAttr& value)
         {
             return value.UpdateTime;
