@@ -354,17 +354,6 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TTruncateDataRequest& request)
-{
-    auto* rangeInfo = profileLogRequest.AddRanges();
-    rangeInfo->SetNodeId(request.GetNodeId());
-    rangeInfo->SetHandle(request.GetHandle());
-    rangeInfo->SetBytes(request.GetLength());
-}
-
-template <>
-void InitProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TAcquireLockRequest& request)
 {
     InitProfileLogLockRequestInfo(profileLogRequest, request);
