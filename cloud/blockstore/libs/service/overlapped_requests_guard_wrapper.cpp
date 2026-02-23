@@ -119,11 +119,11 @@ void TInflight::OnRequestExecuted(
             std::move(delayed.CallContext),
             std::move(delayed.Request));
 
-        result.Apply(
+        result.Subscribe(
             [promise = std::move(delayed.Promise)](
-                TFuture<NProto::TWriteBlocksLocalResponse> f) mutable
+                const TFuture<NProto::TWriteBlocksLocalResponse>& f) mutable
             {
-                promise.SetValue(f.ExtractValue());   //
+                promise.SetValue(f.GetValue());   //
             });
     }
 
@@ -131,12 +131,11 @@ void TInflight::OnRequestExecuted(
         auto result = storage->ZeroBlocks(
             std::move(delayed.CallContext),
             std::move(delayed.Request));
-
-        result.Apply(
+        result.Subscribe(
             [promise = std::move(delayed.Promise)](
-                TFuture<NProto::TZeroBlocksResponse> f) mutable
+                const TFuture<NProto::TZeroBlocksResponse>& f) mutable
             {
-                promise.SetValue(f.ExtractValue());   //
+                promise.SetValue(f.GetValue());   //
             });
     }
 }
