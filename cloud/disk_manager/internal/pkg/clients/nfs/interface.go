@@ -83,6 +83,7 @@ type Client interface {
 		session Session,
 		parentNodeID uint64,
 		cookie string,
+		maxBytes uint32,
 	) ([]Node, string, error)
 
 	CreateNode(
