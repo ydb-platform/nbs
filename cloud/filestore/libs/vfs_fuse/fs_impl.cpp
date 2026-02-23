@@ -174,7 +174,7 @@ bool TFileSystem::UpdateNodeCache(
         Y_ABORT_UNLESS(node);
 
         entry.ino = attrs.GetId();
-        entry.generation = NodeCache.Generation();
+        entry.generation = 0; // TODO
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
         entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
 
