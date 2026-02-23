@@ -309,11 +309,8 @@ func (client *Client) ListNodes(
 			SessionSeqNo: session.SessionSeqNo,
 			SessionId:    []byte(session.SessionID),
 		},
+		MaxBytes: maxBytes,
 	}
-	if maxBytes > 0 {
-		req.MaxBytes = maxBytes
-	}
-
 	resp, err := client.Impl.ListNodes(ctx, req)
 	if err != nil {
 		return nil, "", err
