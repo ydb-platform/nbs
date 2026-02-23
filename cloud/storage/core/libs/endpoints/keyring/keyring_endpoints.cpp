@@ -107,7 +107,7 @@ private:
             return TVector<TKeyring>();
         }
 
-        return SafeExecute<TResultOrError<TVector<TKeyring>>>([&] {
+        return SafeExecute([&] {
             auto rootKeyring = TKeyring::GetProcKey(RootKeyringDesc);
             if (!rootKeyring) {
                 STORAGE_THROW_SERVICE_ERROR(E_INVALID_STATE)
@@ -130,9 +130,7 @@ private:
 
     TResultOrError<TString> GetKeyringValue(TKeyring keyring)
     {
-        return SafeExecute<TResultOrError<TString>>([&] {
-            return keyring.GetValue();
-        });
+        return SafeExecute([&] { return keyring.GetValue(); });
     }
 };
 

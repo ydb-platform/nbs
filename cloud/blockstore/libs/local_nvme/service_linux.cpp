@@ -279,9 +279,8 @@ auto TLocalNVMeService::FetchDevices() -> NProto::TError
 
         const auto pciAddr = NormalizePCIAddr(src.GetPCIAddress());
 
-        auto [device, deviceError] =
-            SafeExecute<TResultOrError<NProto::TNVMeDevice>>(
-                [&] { return SysFs->GetNVMeDeviceFromPCIAddr(pciAddr); });
+        auto [device, deviceError] = SafeExecute(
+            [&] { return SysFs->GetNVMeDeviceFromPCIAddr(pciAddr); });
 
         if (HasError(deviceError)) {
             STORAGE_ERROR(
@@ -400,12 +399,9 @@ auto TLocalNVMeService::BindDeviceToDriver(
         "Bind " << device.GetSerialNumber().Quote() << " to " << driverName
                 << " driver");
 
-    return SafeExecute<NProto::TError>(
+    return SafeExecute(
         [&]
-        {
-            SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
-            return MakeError(S_OK);
-        });
+        { SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName); });
 
     return {};
 }
@@ -493,7 +489,7 @@ auto TLocalNVMeService::ResetToSingleNamespace(
         "Reset NVMe " << device.GetSerialNumber().Quote()
                       << " to single namespace");
 
-    return SafeExecute<NProto::TError>(
+    return SafeExecute(
         [&]
         {
             const TFsPath ctrlPath = GetNVMeCtrlPath(device);

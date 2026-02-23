@@ -125,7 +125,7 @@ void TRdmaEndpoint::HandleRequest(
          in,
          out]() mutable
         {
-            auto error = SafeExecute<NProto::TError>(
+            auto error = SafeExecute(
                 [self,
                  context,
                  callContext = std::move(callContext),

@@ -353,7 +353,7 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
         ClientConfig,
         sessionConfig);
 
-    auto response = SafeExecute<NProto::TMountVolumeResponse>([&] {
+    NProto::TMountVolumeResponse response = SafeExecute([&] {
         return WaitFor(session->MountVolume());
     });
 
@@ -366,7 +366,7 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
 
 bool TCommand::UnmountVolume(ISession& session)
 {
-    auto response = SafeExecute<NProto::TUnmountVolumeResponse>([&] {
+    NProto::TUnmountVolumeResponse response = SafeExecute([&] {
         return WaitFor(session.UnmountVolume());
     });
 

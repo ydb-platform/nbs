@@ -447,7 +447,7 @@ private:
 
     bool ReadBatch(IReadRangeIterator& rangeIter, ui32 batchId)
     {
-        auto error = SafeExecute<NProto::TError>([&] {
+        auto error = SafeExecute([&] {
             auto readRange = rangeIter.Next();
 
             TString buffer;
@@ -496,8 +496,6 @@ private:
                 });
                 Ready.Signal();
             });
-
-            return NProto::TError();
         });
 
         if (HasError(error)) {

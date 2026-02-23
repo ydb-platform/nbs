@@ -456,13 +456,47 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TResponse, typename T>
-TResponse SafeExecute(T&& block)
+template <typename T>
+struct TSafeExecuteResultImpl
+{
+    using Type = TResultOrError<T>;
+};
+
+template <typename T>
+    requires std::is_same_v<T, void> || std::is_convertible_v<T, NProto::TError>
+struct TSafeExecuteResultImpl<T>
+{
+    using Type = NProto::TError;
+};
+
+template <TAcceptsError T>
+struct TSafeExecuteResultImpl<T>
+{
+    using Type = T;
+};
+
+template <typename T>
+struct TSafeExecuteResultImpl<TResultOrError<T>>
+{
+    using Type = TResultOrError<T>;
+};
+
+template <typename T>
+using TSafeExecuteResult =
+    typename TSafeExecuteResultImpl<std::invoke_result_t<T>>::Type;
+
+template <typename T>
+auto SafeExecute(T&& block) noexcept -> TSafeExecuteResult<T>
 {
     try {
-        return block();
+        if constexpr (std::is_same_v<std::invoke_result_t<T>, void>) {
+            std::forward<T>(block)();
+            return {};
+        } else {
+            return std::forward<T>(block)();
+        }
     } catch (const TServiceError& e) {
-        return TErrorResponse(e);
+        return TErrorResponse(e.GetCode(), TString(e.GetMessage()));
     } catch (const TIoSystemError& e) {
         return TErrorResponse(MAKE_SYSTEM_ERROR(e.Status()), e.what());
     } catch (...) {
@@ -470,37 +504,28 @@ TResponse SafeExecute(T&& block)
     }
 }
 
-template <typename T>
+template <TAcceptsError T>
 T ExtractResponse(NThreading::TFuture<T>& future)
 {
-    return SafeExecute<T>([&] {
-        return future.ExtractValue();
-    });
+    return SafeExecute([&] { return future.ExtractValue(); });
 }
 
 template <typename T>
-TResultOrError<T> ResultOrError(const NThreading::TFuture<T>& future)
+TResultOrError<T> ResultOrError(const NThreading::TFuture<T>& future) noexcept
 {
-    return SafeExecute<TResultOrError<T>>([&] {
-        return future.GetValue();
-    });
+    return SafeExecute([&] { return future.GetValue(); });
 }
 
 template <typename T>
 TResultOrError<T> ResultOrError(NThreading::TFuture<T>& future)
 {
-    return SafeExecute<TResultOrError<T>>([&] {
-        return future.ExtractValue();
-    });
+    return SafeExecute([&] { return future.ExtractValue(); });
 }
 
-inline TResultOrError<void> ResultOrError(
-    const NThreading::TFuture<void>& future)
+inline NProto::TError ResultOrError(
+    const NThreading::TFuture<void>& future) noexcept
 {
-    return SafeExecute<TResultOrError<void>>([&] {
-        future.TryRethrow();
-        return NProto::TError();
-    });
+    return SafeExecute([&] { future.TryRethrow(); });
 }
 
 inline TResultOrError<void> ResultOrError(NThreading::TFuture<void>& future)

@@ -196,7 +196,7 @@ public:
                 return error;
             }
 
-            auto error = SafeExecute<NProto::TError>([&] {
+            auto error = SafeExecute([&] {
                 return endpoint->Open(unixSocketPath, backlog, accessMode);
             });
             if (HasError(error)) {

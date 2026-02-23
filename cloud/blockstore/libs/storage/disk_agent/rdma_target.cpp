@@ -197,8 +197,7 @@ public:
              context = context,
              doHandleRequest = std::move(doHandleRequest)]() mutable
         {
-            auto error =
-                SafeExecute<NProto::TError>(std::move(doHandleRequest));
+            auto error = SafeExecute(std::move(doHandleRequest));
 
             if (error.GetCode()) {
                 if (auto ep = endpoint.lock()) {

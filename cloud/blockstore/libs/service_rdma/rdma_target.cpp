@@ -159,7 +159,7 @@ private:
         TStringBuf out) override
     {
         TaskQueue->ExecuteSimple([=, endpoint = Endpoint] {
-            auto error = SafeExecute<NProto::TError>([=] {
+            auto error = SafeExecute([=] {
                 return DoHandleRequest(context, callContext, in, out);
             });
 

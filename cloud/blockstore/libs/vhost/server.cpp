@@ -712,7 +712,7 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         options,
         std::move(storage));
 
-    auto error = SafeExecute<NProto::TError>([&] {
+    auto error = SafeExecute([&] {
         return endpoint->Start();
     });
     if (HasError(error)) {

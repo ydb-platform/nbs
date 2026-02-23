@@ -85,12 +85,14 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
 
     Y_UNIT_TEST(ShouldWrapExceptionInResponse)
     {
-        auto response = SafeExecute<TTestResponse>(
+        TTestResponse response = SafeExecute(
             []
             {
                 throw TServiceError(E_REJECTED) << "request cancelled";
                 return TTestResponse();
             });
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldExtractResponse)

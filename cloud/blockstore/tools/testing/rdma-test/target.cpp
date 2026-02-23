@@ -75,7 +75,7 @@ public:
         TStringBuf out) override
     {
         TaskQueue->ExecuteSimple([=, this] {
-            auto error = SafeExecute<NProto::TError>([=, this] {
+            auto error = SafeExecute([=, this] {
                 return DoHandleRequest(context, callContext, in, out);
             });
 

@@ -97,7 +97,7 @@ public:
 private:
     TResponse ReadKeyFromKeyring(ui32 keyringId, ui32 expectedLen)
     {
-        return SafeExecute<TResponse>([&] () -> TResponse {
+        return SafeExecute([&] () -> TResponse {
             auto keyring = TKeyring::Create(keyringId);
 
             if (keyring.GetValueSize() != expectedLen) {
@@ -112,7 +112,7 @@ private:
 
     TResponse ReadKeyFromFile(TString filePath, ui32 expectedLen)
     {
-        return SafeExecute<TResponse>([&] () -> TResponse {
+        return SafeExecute([&] () -> TResponse {
             TFile file(
                 filePath,
                 EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);

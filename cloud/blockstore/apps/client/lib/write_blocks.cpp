@@ -346,7 +346,7 @@ private:
                 return true;
             }
 
-            auto error = SafeExecute<NProto::TError>([&] {
+            auto error = SafeExecute([&] {
                 auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
                 request->SetStartIndex(writeRange->StartIndex);
                 request->BlocksCount = writeRange->BlocksCount;

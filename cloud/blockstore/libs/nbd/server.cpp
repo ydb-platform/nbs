@@ -312,7 +312,7 @@ public:
         auto localHost = PrintHostAndPort(ListenAddress);
         STORAGE_DEBUG("listen on " << localHost);
 
-        return SafeExecute<NProto::TError>([&] {
+        return SafeExecute([&] {
             ValidateSocketPath(ListenAddress);
             DeleteSocketIfExists(ListenAddress);
 
@@ -325,14 +325,12 @@ public:
                     ListenAddress,
                     SocketAccessMode);
             }
-
-            return NProto::TError();
         });
     }
 
     NProto::TError Stop(bool deleteSocket)
     {
-        return SafeExecute<NProto::TError>([&] {
+        return SafeExecute([&] {
             if (Connection) {
                 Connection->Stop();
             };
@@ -344,8 +342,6 @@ public:
             if (deleteSocket) {
                 DeleteSocketIfExists(ListenAddress);
             }
-
-            return NProto::TError();
         });
     }
 

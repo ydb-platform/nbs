@@ -831,7 +831,7 @@ private:
 
         const auto& encodedDEK = desc.GetEncryptionKey().GetEncryptedDEK();
 
-        auto [dek, error] = SafeExecute<TResultOrError<TString>>([&] {
+        auto [dek, error] = SafeExecute([&] {
             return Base64Decode(encodedDEK);
         });
 

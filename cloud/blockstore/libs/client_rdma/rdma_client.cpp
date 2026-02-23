@@ -859,10 +859,10 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
 
     auto future = client->StartEndpoint(config.Address, config.Port);
     return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {
-        auto result = SafeExecute<TResultOrError<IBlockStorePtr>>(
+        auto result = SafeExecute(
             [&] {
                 endpoint->Init(future.GetValue());
-                return TResultOrError<IBlockStorePtr>(endpoint);
+                return endpoint;
             });
         return result;
     });
@@ -902,10 +902,10 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
 
     auto future = client->StartEndpoint(config.Address, config.Port);
     return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {
-        auto result = SafeExecute<TResultOrError<IBlockStorePtr>>(
+        auto result = SafeExecute(
             [&] {
                 endpoint->Init(future.GetValue());
-                return TResultOrError<IBlockStorePtr>(endpoint);
+                return endpoint;
             });
         return result;
     });

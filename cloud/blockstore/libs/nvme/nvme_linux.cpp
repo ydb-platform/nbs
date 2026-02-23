@@ -394,7 +394,7 @@ public:
 
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
-        return SafeExecute<TResultOrError<TString>>([&] {
+        return SafeExecute([&] {
             TFileHandle device(path, OpenExisting | RdOnly);
 
             auto str = [] (auto& arr) {
@@ -419,7 +419,7 @@ public:
 
     TResultOrError<bool> IsSsd(const TString& path) override
     {
-        return SafeExecute<TResultOrError<bool>>([&] {
+        return SafeExecute([&] {
             TFileHandle device(path, OpenExisting | RdOnly);
 
             auto [isRot, error] = IsRotational(device);
@@ -434,7 +434,7 @@ public:
 
     NProto::TError Sanitize(const TString& ctrlPath) override
     {
-        return SafeExecute<NProto::TError>(
+        return SafeExecute(
             [&]
             {
                 TFileHandle device(ctrlPath, OpenExisting | RdWr);
@@ -454,16 +454,14 @@ public:
                     STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
                         << "Sanitize failed: " << strerror(err);
                 }
-
-                return MakeError(S_OK);
             });
     }
 
     TResultOrError<TSanitizeStatus> GetSanitizeStatus(
         const TString& ctrlPath) override
     {
-        return SafeExecute<TResultOrError<TSanitizeStatus>>(
-            [&]() -> TResultOrError<TSanitizeStatus>
+        return SafeExecute(
+            [&]
             {
                 TFileHandle device(ctrlPath, OpenExisting | RdWr);
                 if (!device.IsOpen()) {
@@ -525,7 +523,7 @@ public:
 
     NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
     {
-        return SafeExecute<NProto::TError>(
+        return SafeExecute(
             [&]
             {
                 TFileHandle device(ctrlPath, OpenExisting | RdWr);
@@ -589,8 +587,6 @@ public:
                     CreateNamespace(device, totalBlocks, lbaFormatIndex);
 
                 AttachNamespace(device, nsid, ctrl.cntlid);
-
-                return MakeError(S_OK);
             });
     }
 
