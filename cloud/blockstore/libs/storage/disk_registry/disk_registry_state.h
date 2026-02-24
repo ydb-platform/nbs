@@ -893,7 +893,8 @@ public:
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
 
-    TVector<NProto::TAgentInfo> QueryAgentsInfo() const;
+    TVector<NProto::TAgentInfo> QueryAgentsInfo(
+        const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter) const;
 
     TVector<TString> FindOrphanDevices() const;
 
