@@ -340,7 +340,8 @@ void TPartitionActor::HandleZeroBlocks(
             TVector<ui32>() /* checksums */);
     }
 
-    Y_ABORT_UNLESS(requests);
+    STORAGE_VERIFY(requests, TWellKnownEntityTypes::TABLET, TabletID());
+
     auto actor = NCloud::Register<TZeroBlocksActor>(
         ctx,
         requestInfo,
