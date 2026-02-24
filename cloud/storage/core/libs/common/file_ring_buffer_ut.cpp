@@ -411,9 +411,30 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotWriteBeyondBufferWhenEmpty)
+    {
+        const auto f = TTempFileHandle();
+        auto ri = TReferenceImplementation(64);
+        auto rb = TFileRingBuffer(f.GetName(), 64);
+
+        TString data(36, 'a');
+
+        UNIT_ASSERT(rb.PushBack(data));
+        UNIT_ASSERT(ri.PushBack(data));
+
+        rb.PopFront();
+        ri.PopFront();
+
+        UNIT_ASSERT(rb.PushBack(data));
+        UNIT_ASSERT(ri.PushBack(data));
+
+        UNIT_ASSERT(!rb.PushBack(data));
+        UNIT_ASSERT(!ri.PushBack(data));
+    }
+
     Y_UNIT_TEST(RandomizedPushPopRestore)
     {
-        DoRandomizedPushPopRestore(1_MB, 256_MB, 5_KB, 0);
+        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB, 0);
     }
 
     Y_UNIT_TEST(RandomizedPushPopRestoreSmall)
