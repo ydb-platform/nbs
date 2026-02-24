@@ -60,6 +60,7 @@ private:
     const ui32 FlushedFreshBlobCount;
     const ui64 FlushedFreshBlobByteCount;
     const TDuration BlobStorageAsyncRequestTimeout;
+    const size_t RangeSize = 0;
 
     TVector<TRequest> Requests;
     TVector<TBlockRange64> AffectedRanges;
@@ -82,6 +83,7 @@ public:
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
+        size_t rangeSize,
         TVector<TRequest> requests);
 
     void Bootstrap(const TActorContext& ctx);
@@ -125,6 +127,7 @@ TFlushActor::TFlushActor(
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
+        size_t rangeSize,
         TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
@@ -135,6 +138,7 @@ TFlushActor::TFlushActor(
     , FlushedFreshBlobCount(flushedFreshBlobCount)
     , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
+    , RangeSize(rangeSize)
     , Requests(std::move(requests))
 {}
 
@@ -233,7 +237,8 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
         freshBlobs.emplace_back(
             req.BlobId,
             std::move(req.Blocks),
-            std::move(req.Checksums));
+            std::move(req.Checksums),
+            RangeSize);
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -423,6 +428,8 @@ private:
     const ui32 MaxBlobRangeSize;
     const ui32 MaxBlocksInBlob;
     const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
+    const TCompactionMap& CompactionMap;
+    const bool IsBlockMaskOptimizationEnabled;
 
     TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
 
@@ -437,14 +444,18 @@ public:
             ui32 flushBlobSizeThreshold,
             ui32 maxBlobRangeSize,
             ui32 maxBlocksInBlob,
-            ui64 diskPrefixLengthWithBlockChecksumsInBlobs)
+            ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
+            const TCompactionMap& compactionMap,
+            bool isBlocksMaskOptimizationEnabled)
         : Blobs(blobs)
         , BlockSize(blockSize)
         , FlushBlobSizeThreshold(flushBlobSizeThreshold)
         , MaxBlobRangeSize(maxBlobRangeSize)
         , MaxBlocksInBlob(maxBlocksInBlob)
         , DiskPrefixLengthWithBlockChecksumsInBlobs(
-            diskPrefixLengthWithBlockChecksumsInBlobs)
+              diskPrefixLengthWithBlockChecksumsInBlobs)
+        , CompactionMap(compactionMap)
+        , IsBlockMaskOptimizationEnabled(isBlocksMaskOptimizationEnabled)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -453,6 +464,16 @@ public:
             // NBS-299: we do not want to mix blocks that are too far from each other
             if (GetBlobRangeSize(Blocks, block.Meta.BlockIndex)
                     > MaxBlobRangeSize / BlockSize)
+            {
+                Blobs.emplace_back(
+                    std::move(BlobContent),
+                    std::move(Blocks),
+                    std::move(Checksums));
+            }
+
+            if (IsBlockMaskOptimizationEnabled && Blocks &&
+                CompactionMap.GetRangeIndex(Blocks.front().BlockIndex) !=
+                    CompactionMap.GetRangeIndex(block.Meta.BlockIndex))
             {
                 Blobs.emplace_back(
                     std::move(BlobContent),
@@ -487,6 +508,16 @@ public:
             const auto blobRangeSize =
                 GetBlobRangeSize(ZeroBlocks, block.Meta.BlockIndex);
             if (blobRangeSize > MaxBlobRangeSize / BlockSize) {
+                Blobs.emplace_back(
+                    TBlockBuffer(),
+                    std::move(ZeroBlocks),
+                    TVector<ui32>() /* checksums */);
+            }
+
+            if (IsBlockMaskOptimizationEnabled && Blocks &&
+                CompactionMap.GetRangeIndex(Blocks.front().BlockIndex) !=
+                    CompactionMap.GetRangeIndex(block.Meta.BlockIndex))
+            {
                 Blobs.emplace_back(
                     TBlockBuffer(),
                     std::move(ZeroBlocks),
@@ -701,7 +732,9 @@ void TPartitionActor::HandleFlush(
             flushBlobSizeThreshold,
             Config->GetMaxBlobRangeSize(),
             State->GetMaxBlocksInBlob(),
-            Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs());
+            Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
+            State->GetCompactionMap(),
+            IsBlockMaskOptimizationEnabled());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
@@ -768,6 +801,9 @@ void TPartitionActor::HandleFlush(
             State->GetUnflushedFreshBlobCount(),
             State->GetUnflushedFreshBlobByteCount(),
             GetBlobStorageAsyncRequestTimeout(),
+            IsBlockMaskOptimizationEnabled()
+                ? State->GetCompactionMap().GetRangeSize()
+                : 0,
             std::move(requests));
 
         Actors.Insert(actor);

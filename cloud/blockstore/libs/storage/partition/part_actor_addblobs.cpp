@@ -222,7 +222,8 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        State.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+        State
+            .WriteMixedBlocks(db, blob.BlobId, blob.Blocks, blob.BlobAlignment);
 
         // update counters
         State.IncrementMixedBlobsCount(1);
@@ -376,7 +377,9 @@ private:
                 blob.BlobId,
                 block.CommitId,
                 block.BlockIndex,
-                blobOffset++});
+                blobOffset++,
+                blob.BlobAlignment
+             });
 
             if (block.IsStoredInDb) {
                 State.DeleteFreshBlockFromDb(

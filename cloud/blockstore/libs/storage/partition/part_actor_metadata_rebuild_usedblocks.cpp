@@ -42,7 +42,8 @@ public:
         ui32 blockIndex,
         ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset) override
+        ui16 blobOffset,
+        ui64) override
     {
         Y_UNUSED(commitId);
         Y_UNUSED(blobOffset);

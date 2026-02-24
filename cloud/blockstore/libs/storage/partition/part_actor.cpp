@@ -990,6 +990,14 @@ void TPartitionActor::CreateIOCompanionClient()
     IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
 }
 
+bool TPartitionActor::IsBlockMaskOptimizationEnabled() const
+{
+    return Config->IsBlockMaskOptimizationFeatureEnabled(
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
+        PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)

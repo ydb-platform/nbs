@@ -111,14 +111,19 @@ struct TPartitionSchema
         {
         };
 
+        struct BlobAlignment
+            : public Column<6, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
         using TKey = TableKey<BlockIndex, CommitId>;
         using TColumns = TableColumns<
             BlockIndex,
             CommitId,
             BlobCommitId,
             BlobId,
-            BlobOffset
-        >;
+            BlobOffset,
+            BlobAlignment>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;

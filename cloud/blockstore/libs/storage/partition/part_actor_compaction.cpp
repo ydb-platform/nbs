@@ -633,7 +633,11 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blockIndices.emplace_back(blockIndex);
                 }
             }
-            mixedBlobs.emplace_back(blobId, std::move(blockIndices), blockChecksums);
+            mixedBlobs.emplace_back(
+                blobId,
+                std::move(blockIndices),
+                blockChecksums,
+                ui64{0});
             mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else {
             LOG_ERROR(
@@ -684,17 +688,23 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         }
 
         for (auto& [blobId, blob]: rc.AffectedBlobs) {
+            if (auto* blockMask = blob.BlockMask.Get()) {
+                // could already be full
+                if (IsBlockMaskFull(*blockMask, MaxBlocksInBlob)) {
+                    continue;
+                }
+
+                // mask overwritten blocks
+                for (ui16 blobOffset: blob.Offsets) {
+                    blockMask->Set(blobOffset);
+                }
+            } else {
+                TBlockMask mask;
+                mask.Set(0, MaxBlocksInBlob);
+                blob.BlockMask = std::move(mask);
+            }
+
             auto& blockMask = blob.BlockMask.GetRef();
-
-            // could already be full
-            if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                continue;
-            }
-
-            // mask overwritten blocks
-            for (ui16 blobOffset: blob.Offsets) {
-                blockMask.Set(blobOffset);
-            }
 
             auto [blobIt, inserted] =
                 affectedBlobs.try_emplace(blobId, std::move(blob));
@@ -1022,6 +1032,7 @@ STFUNC(TCompactionActor::StateWork)
 class TCompactionBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IBlobsVisitor
 {
 private:
     TTxPartition::TRangeCompaction& Args;
@@ -1046,15 +1057,26 @@ public:
 
     bool KeepTrackOfAffectedBlocks = false;
 
+    bool Visit(TBlockRange32 range, const TPartialBlobId& blobId) override
+    {
+        // Cerr << "Range: " << range << " for blob: " << ToString(blobId) << Endl;
+        auto& ab = Args.AffectedBlobs[blobId];
+        ab.BlobRange = range;
+        return true;
+    }
+
     bool Visit(
         ui32 blockIndex,
         ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset) override
+        ui16 blobOffset,
+        ui64 blobAlignment) override
     {
         if (commitId > MaxCommitId) {
             return true;
         }
+        auto& ab = Args.AffectedBlobs[blobId];
+        ab.AlignBlockCount = blobAlignment;
 
         Args.MarkBlock(
             blockIndex,
@@ -1588,7 +1610,8 @@ void PrepareRangeCompaction(
     TPartitionDatabase& db,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
-    const TString& logTitle)
+    const TString& logTitle,
+    bool isBlockMaskOptimizationEnabled)
 {
     TCompactionBlockVisitor visitor(args, commitId);
     state.FindFreshBlocks(visitor, args.BlockRange, commitId);
@@ -1597,6 +1620,7 @@ void PrepareRangeCompaction(
     visitor.KeepTrackOfAffectedBlocks = false;
     ready &= db.FindMergedBlocks(
         visitor,
+        &visitor,
         args.BlockRange,
         true,   // precharge
         state.GetMaxBlocksInBlob(),
@@ -1701,12 +1725,25 @@ void PrepareRangeCompaction(
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
-        if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
-            Y_ABORT_UNLESS(kv.second.BlockMask.Defined(),
-                "Could not read block mask for blob: %s",
-                ToString(MakeBlobId(tabletId, kv.first)).data());
-        } else {
-            ready = false;
+        auto& blobRange = kv.second.BlobRange;
+        auto compactRangeContainsBlob =
+            blobRange && args.BlockRange.Contains(*blobRange);
+
+        if (!compactRangeContainsBlob &&
+                kv.second.AlignBlockCount !=
+                    state.GetCompactionMap().GetRangeSize() ||
+            !isBlockMaskOptimizationEnabled)
+        {
+            // Cerr << "Read block mask for blob: " << ToString(kv.first) << Endl;
+
+            if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
+                Y_ABORT_UNLESS(
+                    kv.second.BlockMask.Defined(),
+                    "Could not read block mask for blob: %s",
+                    ToString(MakeBlobId(tabletId, kv.first)).data());
+            } else {
+                ready = false;
+            }
         }
 
         if (args.ChecksumsEnabled) {
@@ -2008,7 +2045,8 @@ bool TPartitionActor::PrepareCompaction(
             db,
             *State,
             rangeCompaction,
-            LogTitle.GetWithTime());
+            LogTitle.GetWithTime(),
+            IsBlockMaskOptimizationEnabled());
     }
 
     return ready;

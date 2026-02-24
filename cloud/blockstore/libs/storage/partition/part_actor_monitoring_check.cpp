@@ -38,7 +38,7 @@ public:
         ui32 blockIndex,
         ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset) override
+        ui16 blobOffset, ui64) override
     {
         if (Index) {
             Args.MarkBlock_Index(blockIndex, commitId, blobId, blobOffset);
@@ -58,7 +58,7 @@ public:
     {
         Y_UNUSED(checksum);
 
-        return Visit(blockIndex, commitId, blobId, blobOffset);
+        return Visit(blockIndex, commitId, blobId, blobOffset, ui64{0});
     }
 };
 

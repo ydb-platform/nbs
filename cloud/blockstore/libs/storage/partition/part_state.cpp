@@ -423,7 +423,8 @@ void TPartitionState::WriteMixedBlock(
 void TPartitionState::WriteMixedBlocks(
     TPartitionDatabase& db,
     const TPartialBlobId& blobId,
-    const TVector<ui32>& blockIndices)
+    const TVector<ui32>& blockIndices,
+    ui32 blobAlignment)
 {
     const ui64 commitId = blobId.CommitId();
     ui16 blobOffset = 0;
@@ -434,12 +435,13 @@ void TPartitionState::WriteMixedBlocks(
             blobId,
             commitId,
             blockIndex,
-            blobOffset
+            blobOffset,
+            blobAlignment
         });
         ++blobOffset;
     }
 
-    db.WriteMixedBlocks(blobId, blockIndices);
+    db.WriteMixedBlocks(blobId, blockIndices, blobAlignment);
 }
 
 void TPartitionState::DeleteMixedBlock(
@@ -481,12 +483,24 @@ bool TPartitionState::FindMixedBlocksForCompaction(
             ui32 blockIndex,
             ui64 commitId,
             const TPartialBlobId& blobId,
-            ui16 blobOffset) override
+            ui16 blobOffset,
+            ui64 blobAlignment) override
         {
-            bool ok = Visitor.Visit(blockIndex, commitId, blobId, blobOffset);
+            // Cerr << "blobAlignment " << blobAlignment << " for blob " << blobId << Endl;
+            bool ok = Visitor.Visit(
+                blockIndex,
+                commitId,
+                blobId,
+                blobOffset,
+                blobAlignment);
             Y_ABORT_UNLESS(ok);
 
-            CacheInserter->Insert({blobId, commitId, blockIndex, blobOffset});
+            CacheInserter->Insert(
+                {blobId,
+                 commitId,
+                 blockIndex,
+                 blobOffset,
+                 static_cast<ui32>(blobAlignment)});
             return true;
         }
 

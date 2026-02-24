@@ -236,7 +236,7 @@ bool TMixedIndexCache::TImpl::VisitBlocksIfHot(
     }
 
     for (const auto& b: it->second.Blocks) {
-        if (!visitor.Visit(b.BlockIndex, b.CommitId, b.BlobId, b.BlobOffset)) {
+        if (!visitor.Visit(b.BlockIndex, b.CommitId, b.BlobId, b.BlobOffset, b.BlobAlignment)) {
             // interrupted
             return true;
         }

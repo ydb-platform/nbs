@@ -18,16 +18,19 @@ struct TMixedBlock
     ui64 CommitId;
     ui32 BlockIndex;
     ui16 BlobOffset;
+    ui32 BlobAlignment;
 
     TMixedBlock(
             TPartialBlobId blobId,
             ui64 commitId,
             ui32 blockIndex,
-            ui16 blobOffset)
+            ui16 blobOffset,
+            ui32 blobAlignment)
        : BlobId(blobId)
        , CommitId(commitId)
        , BlockIndex(blockIndex)
        , BlobOffset(blobOffset)
+       , BlobAlignment(blobAlignment)
     {}
 
     bool operator==(const TMixedBlock& other) const
@@ -35,11 +38,12 @@ struct TMixedBlock
         return BlockIndex == other.BlockIndex
             && CommitId == other.CommitId
             && BlobId == other.BlobId
-            && BlobOffset == other.BlobOffset;
+            && BlobOffset == other.BlobOffset
+            && BlobAlignment == other.BlobAlignment;
     }
 };
 
-static_assert(sizeof(TMixedBlock) == 32);
+static_assert(sizeof(TMixedBlock) == 40);
 
 ////////////////////////////////////////////////////////////////////////////////
 

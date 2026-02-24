@@ -109,8 +109,8 @@ TRequestGrouping GroupRequests(
             - g.FirstUngrouped->Data.Range.Start;
 
         if (weight) {
-            if (weight + cur->Weight - lastDiff > maxWeight
-                    || rangeSize > maxRange)
+            if (weight + cur->Weight - lastDiff > maxWeight ||
+                rangeSize > maxRange)
             {
                 flush(cur, last);
 

@@ -71,7 +71,8 @@ public:
 
     void WriteMixedBlocks(
         const TPartialBlobId& blobId,
-        const TVector<ui32>& blocks);
+        const TVector<ui32>& blocks,
+        ui32 blobAlignment);
 
     void DeleteMixedBlock(ui32 blockIndex, ui64 commitId);
 
@@ -98,6 +99,14 @@ public:
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange);
+
+    bool FindMergedBlocks(
+        IBlocksIndexVisitor& visitor,
+        IBlobsVisitor* blobsVisitor,
+        const TBlockRange32& readRange,
+        bool precharge,
+        ui32 maxBlocksInBlob,
+        ui64 maxCommitId = Max());
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,

@@ -519,6 +519,8 @@ private:
 
     void CreateIOCompanionClient();
 
+    [[nodiscard]] bool IsBlockMaskOptimizationEnabled() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

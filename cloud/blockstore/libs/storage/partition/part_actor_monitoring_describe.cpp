@@ -49,7 +49,8 @@ public:
         ui32 blockIndex,
         ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset) override
+        ui16 blobOffset,
+        ui64) override
     {
         Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
         return true;

@@ -166,20 +166,23 @@ void TPartitionDatabase::WriteMixedBlock(TMixedBlock block)
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset));
+                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
+                NIceDb::TUpdate<TTable::BlobAlignment>(block.BlobAlignment));
     } else {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobCommitId>(block.BlobId.CommitId()),
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset));
+                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset),
+                NIceDb::TUpdate<TTable::BlobAlignment>(block.BlobAlignment));
     }
 }
 
 void TPartitionDatabase::WriteMixedBlocks(
     const TPartialBlobId& blobId,
-    const TVector<ui32>& blocks)
+    const TVector<ui32>& blocks,
+    ui32 blobAlignment)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
@@ -189,7 +192,8 @@ void TPartitionDatabase::WriteMixedBlocks(
             .Key(blockIndex, ReverseCommitId(blobId.CommitId()))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(blobOffset));
+                NIceDb::TUpdate<TTable::BlobOffset>(blobOffset),
+                NIceDb::TUpdate<TTable::BlobAlignment>(blobAlignment));
         ++blobOffset;
     }
 }
@@ -244,7 +248,13 @@ bool TPartitionDatabase::FindMixedBlocks(
 
             ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
 
-            if (!visitor.Visit(blockIndex, commitId, blobId, blobOffset)) {
+            if (!visitor.Visit(
+                    blockIndex,
+                    commitId,
+                    blobId,
+                    blobOffset,
+                    it.GetValue<TTable::BlobAlignment>()))
+            {
                 return true;    // interrupted
             }
         }
@@ -300,7 +310,13 @@ bool TPartitionDatabase::FindMixedBlocks(
 
                     ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
 
-                    if (!visitor.Visit(blockIndex, commitId, blobId, blobOffset)) {
+                    if (!visitor.Visit(
+                            blockIndex,
+                            commitId,
+                            blobId,
+                            blobOffset,
+                            it.GetValue<TTable::BlobAlignment>()))
+                    {
                         return true;    // interrupted
                     }
                 }
@@ -365,6 +381,7 @@ void TPartitionDatabase::DeleteMergedBlocks(
 
 bool TPartitionDatabase::FindMergedBlocks(
     IBlocksIndexVisitor& visitor,
+    IBlobsVisitor* blobsVisitor,
     const TBlockRange32& readRange,
     bool precharge,
     ui32 maxBlocksInBlob,
@@ -393,6 +410,8 @@ bool TPartitionDatabase::FindMergedBlocks(
             it.GetValue<TTable::RangeStart>(),
             it.GetValue<TTable::RangeEnd>());
 
+        // Cerr << "range: " << range << Endl;
+
         Y_DEBUG_ABORT_UNLESS(range.End >= readRange.Start);
         Y_DEBUG_ABORT_UNLESS(range.Size() <= maxBlocksInBlob);
 
@@ -410,6 +429,10 @@ bool TPartitionDatabase::FindMergedBlocks(
                 auto blobId = MakePartialBlobId(
                     commitId,
                     it.GetValue<TTable::BlobId>());
+
+                if (blobsVisitor) {
+                    blobsVisitor->Visit(range, blobId);
+                }
 
                 const auto holeMask = BlockMaskFromString(
                     it.GetValueOrDefault<TTable::HoleMask>());
@@ -437,7 +460,13 @@ bool TPartitionDatabase::FindMergedBlocks(
                         continue;
                     }
 
-                    if (!visitor.Visit(blockIndex, commitId, blobId, blobOffset)) {
+                    if (!visitor.Visit(
+                            blockIndex,
+                            commitId,
+                            blobId,
+                            blobOffset,
+                            0))
+                    {
                         return true;    // interrupted
                     }
                 }
@@ -452,6 +481,22 @@ bool TPartitionDatabase::FindMergedBlocks(
     }
 
     return true;
+}
+
+bool TPartitionDatabase::FindMergedBlocks(
+    IBlocksIndexVisitor& visitor,
+    const TBlockRange32& readRange,
+    bool precharge,
+    ui32 maxBlocksInBlob,
+    ui64 maxCommitId)
+{
+    return FindMergedBlocks(
+        visitor,
+        nullptr,
+        readRange,
+        precharge,
+        maxBlocksInBlob,
+        maxCommitId);
 }
 
 bool TPartitionDatabase::FindMergedBlocks(
@@ -522,7 +567,9 @@ bool TPartitionDatabase::FindMergedBlocks(
                             continue;
                         }
 
-                        if (!visitor.Visit(*it, commitId, blobId, blobOffset)) {
+                        if (!visitor
+                                 .Visit(*it, commitId, blobId, blobOffset, 0))
+                        {
                             return true;    // interrupted
                         }
                     }
@@ -774,7 +821,8 @@ static EIndexProcResult FindBlocksInBlobIndex(
                 ui32 blockIndex,
                 ui64 commitId,
                 const TPartialBlobId& blobId,
-                ui16 blobOffset) override
+                ui16 blobOffset,
+                ui64) override
             {
                 if (blobId == BlobId) {
                     Marks[blockIndex - Intersection.Start] = {
