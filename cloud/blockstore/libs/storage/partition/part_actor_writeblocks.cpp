@@ -305,7 +305,7 @@ void TPartitionActor::WriteBlocks(
         return;
     }
 
-    // all small wrights should be handled by TFreshBlockWriter
+    // all small writes should be handled by TFreshBlockWriter
     Y_ABORT_UNLESS(requestSize >= writeBlobThreshold);
 
     // large writes could skip FreshBlocks table completely

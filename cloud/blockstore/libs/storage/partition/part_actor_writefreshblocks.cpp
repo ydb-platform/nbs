@@ -65,7 +65,6 @@ private:
     TVector<IWriteBlocksHandlerPtr> WriteHandlers;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const bool IsZeroRequest;
-    const TString DiskId;
 
     TString BlobContent;
     ui64 BlobSize = 0;
@@ -84,7 +83,7 @@ public:
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        TString diskId);
+        ui64 tabletId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -128,7 +127,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        TString diskId)
+        ui64 tabletId)
     : PartitionActorId(partitionActorId)
     , CommitId(commitId)
     , Channel(channel)
@@ -140,7 +139,6 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , IsZeroRequest(
           Requests.size() == 1 &&
           Requests.front().RequestType == ERequestType::ZeroBlocks)
-    , DiskId(std::move(diskId))
 {
     if (!IsZeroRequest) {
         const bool hasAnyZeroRequest = AnyOf(
@@ -149,13 +147,13 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
 
         STORAGE_VERIFY(
             !hasAnyZeroRequest && BlockRanges.size() == WriteHandlers.size(),
-            TWellKnownEntityTypes::DISK,
-            DiskId);
+            TWellKnownEntityTypes::TABLET,
+            tabletId);
     } else {
         STORAGE_VERIFY(
             WriteHandlers.empty() && BlockRanges.size() == 1,
-            TWellKnownEntityTypes::DISK,
-            DiskId);
+            TWellKnownEntityTypes::TABLET,
+            tabletId);
     }
 }
 
@@ -469,7 +467,11 @@ void TPartitionActor::WriteFreshBlocks(
     const TActorContext& ctx,
     TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer)
 {
-    Y_ABORT_UNLESS(!Config->GetFreshBlocksWriterEnabled());
+    STORAGE_VERIFY_C(
+        !Config->GetFreshBlocksWriterEnabled(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "All small writes should be handled by TFreshBlockWriter");
 
     if (requestsInBuffer.empty()) {
         return;
@@ -567,7 +569,7 @@ void TPartitionActor::WriteFreshBlocks(
             std::move(blockRanges),
             std::move(writeHandlers),
             BlockDigestGenerator,
-            PartitionConfig.GetDiskId());
+            TabletID());
 
         Actors.Insert(actor);
     } else {
@@ -618,8 +620,8 @@ void TPartitionActor::HandleAddFreshBlocks(
     STORAGE_VERIFY(
         msg->WriteHandlers.size() == msg->BlockRanges.size() ||
             msg->WriteHandlers.empty(),
-        TWellKnownEntityTypes::DISK,
-        PartitionConfig.GetDiskId());
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
 
     for (size_t i = 0; i < msg->BlockRanges.size(); ++i) {
         auto& blockRange = msg->BlockRanges[i];
@@ -848,7 +850,11 @@ void TPartitionActor::ZeroFreshBlocks(
     TBlockRange32 writeRange,
     ui64 commitId)
 {
-    Y_ABORT_UNLESS(!Config->GetFreshBlocksWriterEnabled());
+    STORAGE_VERIFY_C(
+        !Config->GetFreshBlocksWriterEnabled(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "All small writes should be handled by TFreshBlockWriter");
 
     if (State->GetUnflushedFreshBlobByteCount() >=
         Config->GetFreshByteCountHardLimit())
