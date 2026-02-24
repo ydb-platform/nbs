@@ -298,7 +298,10 @@ void TPartitionActor::HandleZeroBlocks(
     }
 
     // all small zero requests should be handled by TFreshBlocksWriter
-    Y_ABORT_UNLESS(requestSize >= writeBlobThreshold);
+    STORAGE_VERIFY(
+        requestSize >= writeBlobThreshold,
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
 
     ++WriteAndZeroRequestsInProgress;
 

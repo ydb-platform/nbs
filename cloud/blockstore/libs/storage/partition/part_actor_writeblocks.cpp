@@ -305,8 +305,11 @@ void TPartitionActor::WriteBlocks(
         return;
     }
 
-    // all small writes should be handled by TFreshBlockWriter
-    Y_ABORT_UNLESS(requestSize >= writeBlobThreshold);
+    // all small zero requests should be handled by TFreshBlocksWriter
+    STORAGE_VERIFY(
+        requestSize >= writeBlobThreshold,
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
 
     // large writes could skip FreshBlocks table completely
     WriteMergedBlocks(ctx, std::move(requestInBuffer));
