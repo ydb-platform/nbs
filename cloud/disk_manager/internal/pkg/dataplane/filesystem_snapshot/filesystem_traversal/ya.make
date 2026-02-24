@@ -10,6 +10,10 @@ SRCS(
 
 END()
 
+RECURSE(
+    config
+)
+
 RECURSE_FOR_TESTS(
     tests
 )

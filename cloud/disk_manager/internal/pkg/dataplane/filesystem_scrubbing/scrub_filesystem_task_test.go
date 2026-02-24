@@ -245,7 +245,6 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 	// without requiring large filesystem fixtures.
 	task := &scrubFilesystemTask{
 		config: &scrubbing_config.FilesystemScrubbingConfig{
-
 			ListNodesMaxBytes: &listNodesMaxBytes,
 		},
 		factory: f.factory,
