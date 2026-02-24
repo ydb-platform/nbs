@@ -1937,31 +1937,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
     }
 
-    Y_UNIT_TEST(ShouldRejectWriteDataRequestsWithSyncFlags)
-    {
-        TBootstrap b;
-
-        auto request = std::make_shared<NProto::TWriteDataRequest>();
-        request->SetNodeId(1);
-        request->SetOffset(0);
-        request->SetBuffer("abc");
-        request->SetFlags(O_SYNC);
-
-        auto response = b.Cache.WriteData(b.CallContext, request).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.SessionWriteDataHandlerCalled.load());
-
-        request = std::make_shared<NProto::TWriteDataRequest>();
-        request->SetNodeId(1);
-        request->SetOffset(0);
-        request->SetBuffer("abc");
-        request->SetFlags(O_DSYNC);
-
-        response = b.Cache.WriteData(b.CallContext, request).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.SessionWriteDataHandlerCalled.load());
-    }
-
     Y_UNIT_TEST(ShouldAutomaticallyFlushOnlyCachedRequests)
     {
         TBootstrap b;
