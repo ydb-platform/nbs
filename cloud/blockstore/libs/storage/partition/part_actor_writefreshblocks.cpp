@@ -918,7 +918,7 @@ void TPartitionActor::ZeroFreshBlocks(
             std::move(blockRanges),
             TVector<IWriteBlocksHandlerPtr>{},
             BlockDigestGenerator,
-            PartitionConfig.GetDiskId());
+            TabletID());
 
         Actors.Insert(actor);
     } else {
