@@ -16,7 +16,7 @@ void WriteFile(const TFsPath& path, TStringBuf data)
 {
     TFile file{path, EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly};
 
-    TFileOutput(file).Write(data);
+    file.Write(data.data(), data.size());
 }
 
 TString ReadFile(const TFsPath& path)
@@ -62,17 +62,19 @@ public:
         }
 
         const TFsPath basePath = SysFsRoot / "bus/pci";
+        const TFsPath devicePath = basePath / "devices" / pciAddr;
 
         // Unbind from the current driver
         if (currentDriver) {
-            WriteFile(
-                basePath / "devices" / pciAddr / "driver/unbind",
-                pciAddr);
+            WriteFile(devicePath / "driver/unbind", pciAddr);
         }
 
         // Bind to the new driver
         if (driverName) {
+            WriteFile(devicePath / "driver_override", driverName);
             WriteFile(basePath / "drivers" / driverName / "bind", pciAddr);
+        } else {
+            WriteFile(devicePath / "driver_override", {});
         }
     }
 
