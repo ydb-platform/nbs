@@ -392,6 +392,7 @@ TDiskRegistryState::TDiskRegistryState(
     : Log(logging->CreateLog("BLOCKSTORE_DISK_REGISTRY"))
     , StorageConfig(std::move(storageConfig))
     , Counters(counters)
+    , AgentsPaths(agents)
     , AgentList({
         static_cast<double>(
             StorageConfig->GetNonReplicatedAgentTimeoutGrowthFactor()),
@@ -3993,6 +3994,7 @@ void TDiskRegistryState::RemoveAgent(
 
     DeviceList.RemoveDevices(agent);
     AgentList.RemoveAgent(nodeId);
+    AgentsPaths.DeleteAgent(agentId);
 
     db.DeleteAgent(agentId);
 }
@@ -8476,9 +8478,9 @@ NProto::TError TDiskRegistryState::UpdatePathAttachState(
     UpdateAgent(db, *agent);
 
     if (state == NProto::PATH_ATTACH_STATE_ATTACHING) {
-        AgentList.AddPathToAttach(agentId, path);
+        AgentsPaths.AddPathToAttach(agentId, path);
     } else {
-        AgentList.DeletePathToAttach(agentId, path);
+        AgentsPaths.DeletePathToAttach(agentId, path);
     }
 
     return {};
@@ -8558,9 +8560,9 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
             agent.GetAgentId().Quote().c_str()));
 
         if (attach) {
-            AgentList.AddPathToAttach(agent.GetAgentId(), path);
+            AgentsPaths.AddPathToAttach(agent.GetAgentId(), path);
         } else {
-            AgentList.DeletePathToAttach(agent.GetAgentId(), path);
+            AgentsPaths.DeletePathToAttach(agent.GetAgentId(), path);
         }
 
         UpdateAgent(db, agent);

@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/agent_paths.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/pending_cleanup.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/replica_table.h>
@@ -294,6 +295,7 @@ private:
     const NMonitoring::TDynamicCountersPtr Counters;
     mutable TDiskRegistrySelfCounters SelfCounters;
 
+    TAgentsPaths AgentsPaths;
     TAgentList AgentList;
     TDeviceList DeviceList;
 
@@ -920,7 +922,7 @@ public:
 
     const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttach() const
     {
-        return AgentList.GetPathsToAttach();
+        return AgentsPaths.GetPathsToAttach();
     }
 
 private:

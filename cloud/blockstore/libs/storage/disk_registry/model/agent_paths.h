@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
@@ -17,6 +19,8 @@ private:
     TPathsByAgentId PathsToAttach;
 
 public:
+    explicit TAgentsPaths(const TVector<NProto::TAgentConfig>& agents);
+
     void AddPathToAttach(const TString& agentId, const TString& path);
     void DeletePathToAttach(const TString& agentId, const TString& path);
     void DeleteAgent(const TString& agentId);

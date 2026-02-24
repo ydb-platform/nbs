@@ -38,7 +38,7 @@ constexpr bool IsAttachRequest =
 
 template <typename TResponse>
 constexpr bool IsAttachResponse =
-    std::is_same_v<TResponse, TEvDiskAgent::TEvAttachPathsResponse>;
+    std::is_same_v<TResponse, TEvDiskAgent::TEvAttachPathsResponse::TPtr>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

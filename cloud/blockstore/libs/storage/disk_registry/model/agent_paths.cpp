@@ -2,6 +2,17 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+TAgentsPaths::TAgentsPaths(const TVector<NProto::TAgentConfig>& agents)
+{
+    for (const auto& agent: agents) {
+        for (const auto& [path, state]: agent.GetPathAttachStates()) {
+            if (state == NProto::PATH_ATTACH_STATE_ATTACHING) {
+                AddPathToAttach(agent.GetAgentId(), path);
+            }
+        }
+    }
+}
+
 auto TAgentsPaths::GetPathsToAttach() const -> const TPathsByAgentId&
 {
     return PathsToAttach;
@@ -26,6 +37,11 @@ void TAgentsPaths::DeletePathToAttach(const TString& agentId, const TString& pat
     if (!pathsForAgent) {
         PathsToAttach.erase(it);
     }
+}
+
+void TAgentsPaths::DeleteAgent(const TString& agentId)
+{
+    PathsToAttach.erase(agentId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
