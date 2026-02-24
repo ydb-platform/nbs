@@ -397,36 +397,53 @@ struct TBootstrap
 
     void ValidateCache(ui64 nodeId, ui64 offset, size_t length)
     {
-        auto future = ReadFromCache(nodeId, offset, length);
-        auto response = future.GetValueSync();
+        const int maxValidateAttempts = 50;
+        int validateAttempts = 0;
 
-        // In concurrent tests, new data may be written at any moment.
-        // We need take the most recent ExpectedData each time.
-        //
-        // Also, a race condition is still possible here:
-        // ExpectedData is not fully synchonized with the internal state.
-        // The following scenario may happen:
-        // 1. WriteData has written new data.
-        // 2. ReadFromCache reads new data.
-        // 3. The callback updates ExpectedData.
-        TString expected;
-        {
-            std::unique_lock lock(ExpectedDataMutex);
-            auto it = ExpectedData.find(nodeId);
-            if (it != ExpectedData.end()) {
-                auto buf = TStringBuf(it->second);
-                buf = buf.Skip(Min(offset, buf.size()));
-                buf = buf.Trunc(Min(length, buf.size()));
-                expected = buf;
+        while (true) {
+            auto future = ReadFromCache(nodeId, offset, length);
+            auto response = future.GetValueSync();
+
+            TString actual =
+                response.GetBuffer().substr(response.GetBufferOffset());
+
+            // In concurrent tests, new data may be written at any moment.
+            // We need take the most recent ExpectedData each time.
+            //
+            // Also, a race condition is still possible here:
+            // ExpectedData is not fully synchonized with the internal state.
+            // The following scenario may happen:
+            // 1. WriteData has written new data.
+            // 2. ReadFromCache reads new data.
+            // 3. The callback updates ExpectedData.
+            //
+            // In this case, we need to re-read the data
+            TString expected;
+            {
+                std::unique_lock lock(ExpectedDataMutex);
+                auto it = ExpectedData.find(nodeId);
+                if (it != ExpectedData.end()) {
+                    auto buf = TStringBuf(it->second);
+                    buf = buf.Skip(Min(offset, buf.size()));
+                    buf = buf.Trunc(Min(length, buf.size()));
+                    expected = buf;
+                }
             }
-        }
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            expected,
-            response.GetBuffer().substr(response.GetBufferOffset()),
-            TStringBuilder() << " while validating @" << nodeId
-            << " at offset " << offset
-            << " and length " << length);
+            if (expected == actual) {
+                break;
+            }
+
+            validateAttempts++;
+
+            UNIT_ASSERT_LE_C(
+                validateAttempts,
+                maxValidateAttempts,
+                TStringBuilder() << " while validating @" << nodeId
+                                 << " at offset " << offset << " and length "
+                                 << length << ". Expected: " << expected.Quote()
+                                 << ", Actual: " << actual.Quote());
+        }
     }
 
     void ValidateCache(ui64 nodeId)
