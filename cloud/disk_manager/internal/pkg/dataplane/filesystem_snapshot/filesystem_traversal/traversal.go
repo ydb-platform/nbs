@@ -245,6 +245,7 @@ func (t *FilesystemTraverser) listNode(
 			node.NodeID,
 			cookie,
 			t.listNodesMaxBytes,
+			false,
 		)
 		if err != nil {
 			return err
