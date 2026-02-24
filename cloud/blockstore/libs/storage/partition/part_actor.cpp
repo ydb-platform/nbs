@@ -1311,8 +1311,6 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->TabletInfo = Info();
     response->ChannelsCount = State->GetChannelCount();
     response->Generation = Executor()->Generation();
-    response->PersistedTrimFreshLogToCommitId =
-        State->GetMeta().GetTrimFreshLogToCommitId();
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

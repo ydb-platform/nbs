@@ -104,21 +104,6 @@ void TFreshBlocksWriterActor::Bootstrap(const NActors::TActorContext& ctx)
     NCloud::Send(ctx, PartitionActorId, std::move(request));
 }
 
-void TFreshBlocksWriterActor::FreshBlobsLoaded(
-    const NActors::TActorContext& ctx)
-{
-    IsFreshBlobsLoaded = true;
-    SendPendingRequests(ctx, PendingRequests);
-    Become(&TThis::StateWork);
-}
-
-void TFreshBlocksWriterActor::KillActors(const NActors::TActorContext& ctx)
-{
-    if (FreshBlocksCompanion) {
-        FreshBlocksCompanion->KillActors(ctx);
-    }
-}
-
 void TFreshBlocksWriterActor::HandlePartitionReady(
     const NPartition::TEvPartition::TEvWaitReadyResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -163,42 +148,21 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
 
     CommitIdsState =
         std::make_unique<TCommitIdsState>(TabletGeneration, /*lastCommitId=*/0);
-    FreshBlobState = std::make_unique<TPartitionFreshBlobState>();
     FlushState = std::make_unique<TPartitionFlushState>();
     TrimFreshLogState =
         std::make_unique<TPartitionTrimFreshLogState>(*CommitIdsState);
-    FreshBlocksState = std::make_unique<TPartitionFreshBlocksState>(
-        *CommitIdsState,
-        *FlushState,
-        *TrimFreshLogState);
 
-    FreshBlocksCompanionClient =
-        std::make_unique<TFreshBlocksCompanionClient>(*this);
+    Become(&TThis::StateWork);
 
-    FreshBlocksCompanion = std::make_unique<TFreshBlocksCompanion>(
-        StorageAccessMode,
-        PartitionConfig,
-        TabletStorageInfo.Get(),
-        *FreshBlocksCompanionClient,
-        *ChannelsState,
-        *FreshBlobState,
-        *FlushState,
-        *TrimFreshLogState,
-        *FreshBlocksState,
-        LogTitle);
-
-    FreshBlocksCompanion->LoadFreshBlobs(
-        ctx,
-        msg->PersistedTrimFreshLogToCommitId);
-
-    Become(&TThis::StateFreshBlobsLoading);
+    StateLoaded = true;
+    SendPendingRequests(ctx, PendingRequests);
 }
 
 void TFreshBlocksWriterActor::HandleWaitReady(
     const TEvFreshBlocksWriter::TEvWaitReadyRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    if (!IsFreshBlobsLoaded) {
+    if (!StateLoaded) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -286,29 +250,6 @@ STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
         HFunc(
             TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse,
             HandleFreshChannelsInfo);
-
-        default:
-            if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(
-                    ev,
-                    TBlockStoreComponents::PARTITION,
-                    __PRETTY_FUNCTION__);
-            }
-            break;
-    }
-}
-
-STFUNC(TFreshBlocksWriterActor::StateFreshBlobsLoading)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
-        HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
-
-        HFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest, HandleWaitReady);
-
-        HFunc(
-            TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted,
-            FreshBlocksCompanion->HandleLoadFreshBlobsCompleted);
 
         default:
             if (!RejectRequests(ev)) {

@@ -375,8 +375,6 @@ struct TEvPartitionCommonPrivate
         NKikimr::TTabletStorageInfoPtr TabletInfo;
         ui64 ChannelsCount;
         ui64 Generation;
-
-        ui64 PersistedTrimFreshLogToCommitId;
     };
 
     // Events declaration

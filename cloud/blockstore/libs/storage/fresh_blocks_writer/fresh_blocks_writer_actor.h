@@ -43,17 +43,12 @@ private:
 
     std::unique_ptr<TPartitionChannelsState> ChannelsState;
     std::unique_ptr<TCommitIdsState> CommitIdsState;
-    std::unique_ptr<TPartitionFreshBlobState> FreshBlobState;
     std::unique_ptr<TPartitionFlushState> FlushState;
     std::unique_ptr<TPartitionTrimFreshLogState> TrimFreshLogState;
-    std::unique_ptr<TPartitionFreshBlocksState> FreshBlocksState;
 
     ui64 TabletGeneration = 0;
 
-    std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
-    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
-
-    bool IsFreshBlobsLoaded = false;
+    bool StateLoaded = false;
 
     TDeque<TPendingRequest> PendingRequests;
 
