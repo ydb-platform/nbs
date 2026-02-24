@@ -151,6 +151,11 @@ struct TReferenceImplementation
         }
 
         Q.pop_front();
+
+        if (Q.empty()) {
+            ReadPos = 0;
+            WritePos = 0;
+        }
     }
 
     bool Empty() const
@@ -404,6 +409,27 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
             UNIT_ASSERT(!rb->IsCorrupted());
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotWriteBeyondBufferWhenEmpty)
+    {
+        const auto f = TTempFileHandle();
+        auto ri = TReferenceImplementation(64);
+        auto rb = TFileRingBuffer(f.GetName(), 64);
+
+        TString data(36, 'a');
+
+        UNIT_ASSERT(rb.PushBack(data));
+        UNIT_ASSERT(ri.PushBack(data));
+
+        rb.PopFront();
+        ri.PopFront();
+
+        UNIT_ASSERT(rb.PushBack(data));
+        UNIT_ASSERT(ri.PushBack(data));
+
+        UNIT_ASSERT(!rb.PushBack(data));
+        UNIT_ASSERT(!ri.PushBack(data));
     }
 
     Y_UNIT_TEST(RandomizedPushPopRestore)
