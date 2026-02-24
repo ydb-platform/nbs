@@ -541,8 +541,9 @@ void TFileSystem::DoWrite(
                      callContext = std::move(callContext),
                      request = std::move(request)](const auto& f) mutable
                     {
-                        // TODO: in future commits FlushNodeData() can fail and
-                        // we will need to propagate the failure error to caller
+                        // TODO(#1751): in future commits FlushNodeData() can
+                        // fail and we will need to propagate the failure error
+                        // to caller
                         f.GetValue();
                         if (auto self = ptr.lock()) {
                             self->Session
