@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -55,17 +54,6 @@ func newStorage(
 	require.NotNil(t, storage)
 
 	return storage
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func getNodeIDs(entries []NodeQueueEntry) []uint64 {
-	ids := make([]uint64, 0, len(entries))
-	for _, entry := range entries {
-		ids = append(ids, entry.NodeID)
-	}
-
-	return ids
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -633,122 +621,4 @@ func TestGetFilesystemSnapshotMeta(t *testing.T) {
 	require.Equal(t, uint64(100), meta.Size)
 	require.Equal(t, uint64(50), meta.StorageSize)
 	require.Equal(t, uint32(10), meta.ChunkCount)
-}
-
-func TestNodesScheduling(t *testing.T) {
-	f := createFixture(t)
-	defer f.teardown()
-
-	filesystemSnapshotID := "snapshot"
-	err := f.storage.ScheduleRootNodeForListing(
-		f.ctx,
-		filesystemSnapshotID,
-	)
-	require.NoError(t, err)
-
-	require.NoError(
-		t,
-		f.storage.ScheduleChildNodesForListing(
-			f.ctx,
-			filesystemSnapshotID,
-			1,
-			"cookie1",
-			0,
-			[]nfs.Node{
-				{NodeID: 2, ParentID: 1},
-				{NodeID: 3, ParentID: 1},
-				{NodeID: 5, ParentID: 1},
-				{NodeID: 6, ParentID: 1},
-			},
-		),
-	)
-	require.NoError(
-		t,
-		f.storage.ScheduleChildNodesForListing(
-			f.ctx,
-			filesystemSnapshotID,
-			2,
-			"cookie2",
-			1,
-			[]nfs.Node{
-				{NodeID: 4, ParentID: 2},
-			},
-		),
-	)
-
-	otherSnapshot := "other"
-	err = f.storage.ScheduleRootNodeForListing(f.ctx, otherSnapshot)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		f.storage.ScheduleChildNodesForListing(
-			f.ctx,
-			otherSnapshot,
-			1, // nodeID
-			"cookie99",
-			0, // depth
-			[]nfs.Node{
-				{NodeID: 99, ParentID: 1},
-				{NodeID: 100, ParentID: 1},
-			}, // children
-		),
-	)
-
-	entries, err := f.storage.SelectNodesToList(
-		f.ctx,
-		filesystemSnapshotID,
-		map[uint64]struct{}{}, // nodesToExclude
-		100,                   // limit
-	)
-	require.NoError(t, err)
-	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
-
-	entries, err = f.storage.SelectNodesToList(
-		f.ctx,
-		filesystemSnapshotID,
-		map[uint64]struct{}{2: {}, 4: {}}, // nodesToExclude
-		100,                               // limit
-	)
-	require.NoError(t, err)
-	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 3, 5, 6})
-
-	// 3) limit 1, fetched 1 element
-	entries, err = f.storage.SelectNodesToList(
-		f.ctx,
-		filesystemSnapshotID,
-		map[uint64]struct{}{}, // nodesToExclude
-		1,                     // limit
-	)
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	require.Contains(t, []uint64{1, 2, 3, 4, 5, 6}, entries[0].NodeID)
-	nodeIDsToExclude := map[uint64]struct{}{
-		1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {},
-	}
-	entries, err = f.storage.SelectNodesToList(
-		f.ctx,
-		filesystemSnapshotID,
-		nodeIDsToExclude,
-		100, // limit
-	)
-	require.NoError(t, err)
-	require.Len(t, entries, 0)
-
-	err = f.storage.ScheduleChildNodesForListing(
-		f.ctx,
-		otherSnapshot,
-		99,                                      // nodeID
-		"",                                      // nextCookie
-		1,                                       // depth
-		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
-	)
-	require.NoError(t, err)
-	entries, err = f.storage.SelectNodesToList(
-		f.ctx,
-		otherSnapshot,
-		map[uint64]struct{}{}, // nodesToExclude
-		100,                   // limit
-	)
-	require.NoError(t, err)
-	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 100, 101})
 }
