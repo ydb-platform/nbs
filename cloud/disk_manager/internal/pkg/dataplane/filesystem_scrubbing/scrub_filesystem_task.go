@@ -68,8 +68,7 @@ func (t *scrubFilesystemTask) Run(
 			t.state.RootNodeScheduled = true
 			return execCtx.SaveState(ctx)
 		},
-		int(t.config.GetTraversalWorkersCount()),
-		t.config.GetSelectNodesToListLimit(),
+		t.config.GetTraversalConfig(),
 		rootNodeAlreadyScheduled,
 		t.config.GetListNodesMaxBytes(),
 	)

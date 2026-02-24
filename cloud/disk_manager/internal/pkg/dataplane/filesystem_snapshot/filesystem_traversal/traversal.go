@@ -6,6 +6,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/filesystem_traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -26,14 +27,13 @@ type OnListedNodesFunc func(
 type FilesystemTraverser struct {
 	scheduledNodes           chan *storage.NodeQueueEntry
 	processedNodeIDs         chan uint64
-	workersCount             int
 	filesystemSnapshotID     string
 	filesystemID             string
 	filesystemCheckpointID   string
 	client                   nfs.Client
 	storage                  storage.Storage
 	stateSaver               StateSaver
-	selectNodesToListLimit   uint64
+	config                   *traversal_config.FilesystemTraversalConfig
 	rootNodeAlreadyScheduled bool
 	listNodesMaxBytes        uint32
 }
@@ -63,8 +63,7 @@ func NewFilesystemTraverser(
 	client nfs.Client,
 	snapshotStorage storage.Storage,
 	stateSaver StateSaver,
-	workersCount int,
-	selectNodesToListLimit uint64,
+	config *traversal_config.FilesystemTraversalConfig,
 	rootNodeAlreadyScheduled bool,
 	listNodesMaxBytes uint32,
 ) *FilesystemTraverser {
@@ -72,14 +71,13 @@ func NewFilesystemTraverser(
 	return &FilesystemTraverser{
 		scheduledNodes:           make(chan *storage.NodeQueueEntry),
 		processedNodeIDs:         make(chan uint64),
-		workersCount:             workersCount,
 		filesystemSnapshotID:     filesystemSnapshotID,
 		filesystemID:             filesystemID,
 		filesystemCheckpointID:   filesystemCheckpointID,
 		client:                   client,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
-		selectNodesToListLimit:   selectNodesToListLimit,
+		config:                   config,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 		listNodesMaxBytes:        listNodesMaxBytes,
 	}
@@ -118,7 +116,7 @@ func (t *FilesystemTraverser) Traverse(
 		return t.directoryScheduler(ctx)
 	})
 
-	for i := 0; i < t.workersCount; i++ {
+	for i := uint32(0); i < t.config.GetTraversalWorkersCount(); i++ {
 		eg.Go(func() error {
 			return t.directoryLister(ctx, onListedNodes)
 		})
@@ -152,7 +150,7 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			ctx,
 			t.filesystemSnapshotID,
 			processingNodeIDs,
-			t.selectNodesToListLimit,
+			t.config.GetSelectNodesToListLimit(),
 		)
 		if err != nil {
 			return err
