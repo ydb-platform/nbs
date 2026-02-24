@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
+	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/filesystem_traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -132,6 +133,8 @@ func (f *fixture) getFilesAfterTraversal(
 	fsModel *nfs_testing.FileSystemModel,
 ) []string {
 
+	workersCount := uint32(10)
+	selectNodesToListLimit := uint64(10)
 	traverser := NewFilesystemTraverser(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
@@ -141,8 +144,10 @@ func (f *fixture) getFilesAfterTraversal(
 		func(ctx context.Context) error {
 			return nil
 		},
-		10,
-		10,
+		&traversal_config.FilesystemTraversalConfig{
+			TraversalWorkersCount:  &workersCount,
+			SelectNodesToListLimit: &selectNodesToListLimit,
+		},
 		false,
 		0,
 	)
@@ -265,6 +270,8 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 	)
 	fsModel.CreateAllNodesRecursively()
 
+	workersCount := uint32(10)
+	selectNodesToListLimit := uint64(10)
 	traverser := NewFilesystemTraverser(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
@@ -274,8 +281,10 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		func(ctx context.Context) error {
 			return nil
 		},
-		10,
-		10,
+		&traversal_config.FilesystemTraversalConfig{
+			TraversalWorkersCount:  &workersCount,
+			SelectNodesToListLimit: &selectNodesToListLimit,
+		},
 		false,
 		0,
 	)

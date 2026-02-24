@@ -8,6 +8,10 @@ SRCS(
     traversal.go
 )
 
+PEERDIR(
+    cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/filesystem_traversal/config
+)
+
 END()
 
 RECURSE(
