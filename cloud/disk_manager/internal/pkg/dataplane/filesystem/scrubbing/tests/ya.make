@@ -1,4 +1,4 @@
-GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane/filesystem_scrubbing)
+GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing)
 
 SET_APPEND(RECIPE_ARGS --nfs-only)
 SET_APPEND(RECIPE_ARGS --allow-filestore-force-destroy)
