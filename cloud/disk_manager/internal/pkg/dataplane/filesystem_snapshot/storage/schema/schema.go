@@ -95,24 +95,6 @@ func Create(
 	err = db.CreateOrAlterTable(
 		ctx,
 		storageFolder,
-		"directory_listing_queue",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("cookie", persistence.Optional(persistence.TypeString)),
-			persistence.WithColumn("depth", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
-	}
-
-	logging.Info(ctx, "Created directory_listing_queue table")
-	err = db.CreateOrAlterTable(
-		ctx,
-		storageFolder,
 		"hardlinks",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
@@ -164,12 +146,6 @@ func Drop(
 		return err
 	}
 	logging.Info(ctx, "Dropped nodes table")
-
-	err = db.DropTable(ctx, storageFolder, "directory_listing_queue")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped directory_listing_queue table")
 
 	err = db.DropTable(ctx, storageFolder, "hardlinks")
 	if err != nil {
