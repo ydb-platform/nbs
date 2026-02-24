@@ -492,58 +492,61 @@ private:
 
     void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
-        flushState->InFlightWriteDataRequestCount =
-            flushState->WriteDataRequests.size();
+        auto requests = flushState->BeginFlush();
 
-        // flushState may become unusable after last Session->WriteData call
-        const auto size = flushState->WriteDataRequests.size();
-
-        for (size_t i = 0; i < size; ++i) {
-            const auto& request = flushState->WriteDataRequests[i].Request;
+        for (size_t i = 0; i < requests.size(); ++i) {
+            auto& request = requests[i];
             auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
 
             callContext->RequestType = EFileStoreRequest::WriteData;
             callContext->RequestSize = NStorage::CalculateByteCount(*request) -
                                        request->GetBufferOffset();
 
-            Session->WriteData(std::move(callContext), request)
-                .Subscribe(
-                    [flushState, i, ptr = weak_from_this()](auto future)
-                    {
-                        auto self = ptr.lock();
-                        if (self) {
-                            self->OnWriteDataRequestCompleted(
-                                flushState,
-                                i,
-                                future.GetValue());
+            auto callback = [ptr = weak_from_this(), flushState, i](
+                                const auto& future) mutable
+            {
+                auto action = flushState->OnWriteDataRequestCompleted(
+                    i,
+                    future.GetValue());
+
+                switch (action) {
+                    case EWriteDataRequestCompletedAction::CollectFlushResult:
+                        if (auto self = ptr.lock()) {
+                            self->CompleteFlush(std::move(flushState));
                         }
-                    });
+                        break;
+
+                    case EWriteDataRequestCompletedAction::ContinueExecution:
+                        break;
+
+                    default:
+                        Y_ABORT(
+                            "Unexpected action - %d",
+                            static_cast<int>(action));
+                }
+            };
+
+            Session->WriteData(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
         }
     }
 
-    void OnWriteDataRequestCompleted(
-        std::shared_ptr<TNodeFlushState> flushState,
-        size_t i,
-        const NProto::TWriteDataResponse& response)
+    void CompleteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
-        flushState->WriteDataRequests[i].Error = response.GetError();
+        auto error = flushState->CollectFlushResult();
 
-        if (flushState->CheckedDecrementInFlight() > 0) {
+        if (HasError(error)) {
+            Stats->FlushFailed();
+            ScheduleRetryFlush(std::move(flushState));
             return;
         }
 
-        flushState->EraseCompletedRequests();
+        Stats->FlushCompleted();
 
-        if (flushState->WriteDataRequests.empty()) {
-            Stats->FlushCompleted();
-            with_lock (Lock) {
-                State.FlushSucceeded(
-                    flushState->NodeId,
-                    flushState->AffectedUnflushedRequestCount);
-            }
-        } else {
-            Stats->FlushFailed();
-            ScheduleRetryFlush(std::move(flushState));
+        with_lock (Lock) {
+            State.FlushSucceeded(
+                flushState->GetNodeId(),
+                flushState->GetAffectedUnflushedRequestCount());
         }
     }
 

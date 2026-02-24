@@ -6,6 +6,8 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TWriteDataPromiseCompletedEvent
 {
     NThreading::TPromise<NProto::TWriteDataResponse> Promise;
@@ -16,7 +18,7 @@ struct TWriteDataPromiseCompletedEvent
     }
 };
 
-struct TFlushPromiseCompetedEvent
+struct TFlushPromiseCompletedEvent
 {
     NThreading::TPromise<void> Promise;
 
@@ -39,7 +41,7 @@ struct TScheduleFlushEvent
 
 using TEventVariant = std::variant<
     TWriteDataPromiseCompletedEvent,
-    TFlushPromiseCompetedEvent,
+    TFlushPromiseCompletedEvent,
     TScheduleFlushEvent>;
 
 }   // namespace
@@ -78,15 +80,15 @@ void TQueuedOperations::ScheduleFlushNode(ui64 nodeId)
     Events.push_back(TScheduleFlushEvent{Processor, nodeId});
 }
 
-void TQueuedOperations::Complete(
+void TQueuedOperations::CompleteWriteDataPromise(
     NThreading::TPromise<NProto::TWriteDataResponse> promise)
 {
     Events.push_back(TWriteDataPromiseCompletedEvent{std::move(promise)});
 }
 
-void TQueuedOperations::Complete(NThreading::TPromise<void> promise)
+void TQueuedOperations::CompleteFlushPromise(NThreading::TPromise<void> promise)
 {
-    Events.push_back(TFlushPromiseCompetedEvent{std::move(promise)});
+    Events.push_back(TFlushPromiseCompletedEvent{std::move(promise)});
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

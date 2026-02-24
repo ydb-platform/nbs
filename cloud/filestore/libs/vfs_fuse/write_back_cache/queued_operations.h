@@ -38,8 +38,9 @@ public:
     void Release();
 
     void ScheduleFlushNode(ui64 nodeId);
-    void Complete(NThreading::TPromise<NProto::TWriteDataResponse> promise);
-    void Complete(NThreading::TPromise<void> promise);
+    void CompleteWriteDataPromise(
+        NThreading::TPromise<NProto::TWriteDataResponse> promise);
+    void CompleteFlushPromise(NThreading::TPromise<void> promise);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

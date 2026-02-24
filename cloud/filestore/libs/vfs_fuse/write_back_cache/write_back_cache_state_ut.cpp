@@ -73,10 +73,7 @@ struct TBootstrap
 
     bool Recreate()
     {
-        State = std::make_unique<TWriteBackCacheState>(
-            Processor,
-            Timer,
-            Stats);
+        State = std::make_unique<TWriteBackCacheState>(Processor, Timer, Stats);
 
         return State->Init(Storage);
     }
@@ -141,21 +138,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             "1:abc, 2:def, 3:xyz",
             b.VisitUnflushedCachedRequests(1));
 
+        b.State->AddFlushRequest(1);
         b.State->FlushSucceeded(1, 1);
         UNIT_ASSERT_VALUES_EQUAL("2:d, 3:xy", b.VisitCachedData(1, 1, 4));
         UNIT_ASSERT_VALUES_EQUAL(
             "2:def, 3:xyz",
             b.VisitUnflushedCachedRequests(1));
 
+        b.State->AddFlushRequest(1);
         b.State->FlushSucceeded(1, 1);
         UNIT_ASSERT_VALUES_EQUAL("3:xy", b.VisitCachedData(1, 1, 4));
         UNIT_ASSERT_VALUES_EQUAL("3:xyz", b.VisitUnflushedCachedRequests(1));
 
+        b.State->AddFlushRequest(1);
         b.State->FlushSucceeded(1, 1);
         UNIT_ASSERT_VALUES_EQUAL("", b.VisitCachedData(1, 1, 4));
         UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
-
-        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
     }
 
     Y_UNIT_TEST(Recreate)

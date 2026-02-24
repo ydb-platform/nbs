@@ -55,7 +55,7 @@ TFuture<void> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
 {
     auto guard = Guard(QueuedOperations);
 
-    auto* nodeState = Nodes.GetNodeState(nodeId);
+    auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
     if (nodeState == nullptr ||
         !nodeState->Cache.HasPendingOrUnflushedRequests())
     {
@@ -111,7 +111,9 @@ ui64 TWriteBackCacheState::GetCachedNodeSize(ui64 nodeId) const
 {
     auto guard = Guard(QueuedOperations);
 
-    const auto* nodeState = Nodes.GetNodeState(nodeId, true);
+    const auto* nodeState =
+        Nodes.GetNodeState(nodeId, /* includeDeleted = */ true);
+
     return nodeState ? nodeState->CachedNodeSize : 0;
 }
 
@@ -159,9 +161,13 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
-    if (nodeState.FlushStatus == ENodeFlushStatus::FlushScheduled) {
-        nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
-    }
+    Y_ABORT_UNLESS(
+        nodeState.FlushStatus == ENodeFlushStatus::FlushRequested,
+        "Flush wasn't requested for a node %lu",
+        nodeId);
+
+    // We will recalculate the flush status later
+    nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
 
     for (size_t i = 0; i < requestCount; i++) {
         Y_ABORT_UNLESS(nodeState.Cache.HasUnflushedRequests());
@@ -171,13 +177,13 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     }
 
     // Trigger Flush completions
-    const ui64 sequenceId =
-        nodeState.Cache.GetMinPendingOrUnflushedSequenceId(Max<ui64>());
+    const ui64 sequenceId = nodeState.Cache.GetMinPendingOrUnflushedSequenceId(
+        /* defValue = */ Max<ui64>());
 
     while (!nodeState.FlushRequests.empty() &&
            nodeState.FlushRequests.front().SequenceId < sequenceId)
     {
-        QueuedOperations.Complete(
+        QueuedOperations.CompleteFlushPromise(
             std::move(nodeState.FlushRequests.front().Promise));
         nodeState.FlushRequests.pop_front();
     }
@@ -189,13 +195,13 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     while (!FlushAllRequestQueue.empty() &&
            FlushAllRequestQueue.front().SequenceId < globalSequenceId)
     {
-        QueuedOperations.Complete(
+        QueuedOperations.CompleteFlushPromise(
             std::move(FlushAllRequestQueue.front().Promise));
         FlushAllRequestQueue.pop_front();
     }
 
     UpdateFlushStatus(nodeId, nodeState);
-    EvictUnpinnedFlushedEntries(nodeId, nodeState);
+    EvictFlushedEntries(nodeId, nodeState);
 }
 
 NThreading::TFuture<void>
@@ -210,7 +216,7 @@ TWriteBackCacheState::LockRead(ui64 nodeId, ui64 begin, ui64 end)
         begin,
         end,
         [this, promise]() mutable
-        { QueuedOperations.Complete(std::move(promise)); });
+        { QueuedOperations.CompleteFlushPromise(std::move(promise)); });
 
     return promise.GetFuture();
 }
@@ -227,7 +233,7 @@ TWriteBackCacheState::LockWrite(ui64 nodeId, ui64 begin, ui64 end)
         begin,
         end,
         [this, promise]() mutable
-        { QueuedOperations.Complete(std::move(promise)); });
+        { QueuedOperations.CompleteFlushPromise(std::move(promise)); });
 
     return promise.GetFuture();
 }
@@ -295,7 +301,7 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 
     for (auto nodeId: NodesReadyToFlush) {
         auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-        nodeState.FlushStatus = ENodeFlushStatus::FlushScheduled;
+        nodeState.FlushStatus = ENodeFlushStatus::FlushRequested;
         QueuedOperations.ScheduleFlushNode(nodeId);
     }
 
@@ -304,33 +310,51 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 
 void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
 {
-    if (nodeState.FlushStatus == ENodeFlushStatus::FlushScheduled) {
-        // Once Flush has been scheduled, the status can be changed only in
-        // FlushSucceeded and FlushFailed calls
-        return;
-    }
-
-    auto newFlushStatus = nodeState.GetFlushStatus(FlushAllSequenceId);
+    auto newFlushStatus = nodeState.GetExpectedFlushStatus(FlushAllSequenceId);
     if (nodeState.FlushStatus == newFlushStatus) {
         return;
     }
 
-    if (nodeState.FlushStatus == ENodeFlushStatus::ReadyToFlush) {
-        NodesReadyToFlush.erase(nodeId);
-    }
-    if (newFlushStatus == ENodeFlushStatus::ReadyToFlush) {
-        NodesReadyToFlush.insert(nodeId);
+    // Process previous state
+    switch (nodeState.FlushStatus) {
+        case ENodeFlushStatus::NothingToFlush:
+        case ENodeFlushStatus::FlushRequested:
+            break;
+
+        case ENodeFlushStatus::ReadyToFlush:
+            Y_ABORT_UNLESS(NodesReadyToFlush.erase(nodeId));
+            break;
+
+        default:
+            Y_ABORT(
+                "Unexpected state - %d",
+                static_cast<int>(nodeState.FlushStatus));
     }
 
     nodeState.FlushStatus = newFlushStatus;
-    if (nodeState.FlushStatus == ENodeFlushStatus::ShouldFlush) {
-        nodeState.FlushStatus = ENodeFlushStatus::FlushScheduled;
-        QueuedOperations.ScheduleFlushNode(nodeId);
+
+    // Process new state
+    switch (nodeState.FlushStatus) {
+        case ENodeFlushStatus::NothingToFlush:
+            break;
+
+        case ENodeFlushStatus::ReadyToFlush:
+            Y_ABORT_UNLESS(NodesReadyToFlush.insert(nodeId).second);
+            break;
+
+        case ENodeFlushStatus::FlushRequested:
+            QueuedOperations.ScheduleFlushNode(nodeId);
+            break;
+
+        default:
+            Y_ABORT(
+                "Unexpected state - %d",
+                static_cast<int>(nodeState.FlushStatus));
     }
 }
 
 // nodeState becomes unusable after this call
-void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
+void TWriteBackCacheState::EvictFlushedEntries(
     ui64 nodeId,
     TNodeState& nodeState)
 {
@@ -366,7 +390,8 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         Y_ABORT_UNLESS(
             pendingRequest->GetSequenceId() == request->GetSequenceId());
 
-        QueuedOperations.Complete(std::move(pendingRequest->AccessPromise()));
+        QueuedOperations.CompleteWriteDataPromise(
+            std::move(pendingRequest->AccessPromise()));
 
         nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
 

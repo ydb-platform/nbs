@@ -108,7 +108,7 @@ private:
     ENodeFlushStatus GetFlushStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
 
-    void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
+    void EvictFlushedEntries(ui64 nodeId, TNodeState& nodeState);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -21,11 +21,8 @@ enum class ENodeFlushStatus
     // Node has unflushed requests but flush has not been requested yet
     ReadyToFlush,
 
-    // Flush should be requested for the node
-    ShouldFlush,
-
     // Flush has been requested for a node
-    FlushScheduled
+    FlushRequested
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,15 +75,20 @@ struct TNodeState
         return false;
     }
 
-    ENodeFlushStatus GetFlushStatus(ui64 flushAllSequenceId) const
+    ENodeFlushStatus GetExpectedFlushStatus(ui64 flushAllSequenceId) const
     {
+        if (FlushStatus == ENodeFlushStatus::FlushRequested) {
+            // Once Flush has been scheduled, the status can be changed only in
+            // FlushSucceeded and FlushFailed calls
+            return ENodeFlushStatus::FlushRequested;
+        }
         if (!Cache.HasUnflushedRequests()) {
             return ENodeFlushStatus::NothingToFlush;
         }
         if (!FlushRequests.empty() ||
             Cache.GetMinUnflushedSequenceId() <= flushAllSequenceId)
         {
-            return ENodeFlushStatus::ShouldFlush;
+            return ENodeFlushStatus::FlushRequested;
         }
         return ENodeFlushStatus::ReadyToFlush;
     }
