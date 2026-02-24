@@ -84,6 +84,7 @@ type Client interface {
 		parentNodeID uint64,
 		cookie string,
 		maxBytes uint32,
+		unsafe bool,
 	) ([]Node, string, error)
 
 	CreateNode(

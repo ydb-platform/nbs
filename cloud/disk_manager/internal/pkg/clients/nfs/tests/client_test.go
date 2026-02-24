@@ -212,8 +212,9 @@ func TestListNodesMaxBytes(t *testing.T) {
 		ctx,
 		session,
 		nfs.RootNodeID,
-		"", // cookie
-		0,  // maxBytes
+		"",    // cookie
+		0,     // maxBytes
+		false, // unsafe
 	)
 	require.NoError(t, err)
 	require.Equal(t, expectedNames, nfs_testing.NodeNames(nodes))
@@ -227,7 +228,8 @@ func TestListNodesMaxBytes(t *testing.T) {
 			session,
 			nfs.RootNodeID,
 			cookie,
-			1, // maxBytes
+			1,     // maxBytes
+			false, // unsafe
 		)
 		require.NoError(t, err)
 		require.Equal(t, []string{expectedName}, nfs_testing.NodeNames(nodes))

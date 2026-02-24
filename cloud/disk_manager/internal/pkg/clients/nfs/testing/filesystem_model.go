@@ -267,7 +267,8 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 			f.session,
 			parentNodeID,
 			cookie,
-			0, // maxBytes
+			0,     // maxBytes
+			false, // unsafe
 		)
 		require.NoError(f.t, err)
 		for index := range batch {
