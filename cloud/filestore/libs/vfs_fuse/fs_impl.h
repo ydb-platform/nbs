@@ -421,16 +421,14 @@ private:
 
     TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;
 
-    void AdjustNodeSize(
-        NProto::TNodeAttr& attrs
-    );
+    void AdjustNodeSize(NProto::TNodeAttr& attrs);
 
     bool UpdateNodeAttrsInCache(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry,
         ui64 version);
 
-    bool UpdateNodeSizeInCache(ui64 nodeId, ui64 size);
+    void InvalidateNodeInCache(ui64 nodeId);
 
     void UpdateXAttrCache(
         ui64 ino,

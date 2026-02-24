@@ -16,18 +16,37 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNode
+class TNode
 {
+private:
     NProto::TNodeAttr Attrs;
     ui64 RefCount = 1;
     ui64 LastUpdateVersion = 1;
 
+public:
     explicit TNode(const NProto::TNodeAttr& attrs) noexcept
         : Attrs(attrs)
     {
         Y_ABORT_UNLESS(attrs.GetId() != InvalidNodeId);
     }
 
+public:
+    const auto& GetAttrs() const
+    {
+        return Attrs;
+    }
+
+    bool IsValid() const
+    {
+        return Attrs.GetType() != NProto::E_INVALID_NODE;
+    }
+
+    ui64 GetVersion() const
+    {
+        return LastUpdateVersion;
+    }
+
+private:
     ui64 Ref()
     {
         return ++RefCount;
@@ -48,6 +67,8 @@ struct TNode
         Attrs.CopyFrom(attrs);
         LastUpdateVersion = version;
     }
+
+    friend class TNodeCache;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,6 +87,7 @@ public:
 public:
     TNode* AddNode(const NProto::TNodeAttr& attrs);
     TNode* TryAddNode(const NProto::TNodeAttr& attrs, ui64 version);
+    void InvalidateNode(ui64 ino, ui64 version);
     TNode* FindNode(ui64 ino);
     void ForgetNode(ui64 ino, size_t count);
 };

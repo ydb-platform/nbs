@@ -356,6 +356,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -468,6 +469,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -556,6 +558,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handleId);
                 result.MutableNodeAttr()->SetId(nodeId);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
             return MakeFuture(result);
         };
@@ -613,6 +616,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handle++);
                 result.MutableNodeAttr()->SetId(100500);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
 
             return MakeFuture(result);
@@ -708,6 +712,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handle);
                 result.MutableNodeAttr()->SetId(100500);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
 
             return MakeFuture(result);
@@ -1290,6 +1295,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse response;
             response.SetHandle(handleId);
             response.MutableNodeAttr()->SetId(nodeId);
+            response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
 
             return MakeFuture(response);
         };
@@ -1955,6 +1961,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 

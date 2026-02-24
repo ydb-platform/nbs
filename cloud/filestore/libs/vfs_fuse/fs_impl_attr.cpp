@@ -48,13 +48,9 @@ void TFileSystem::SetAttr(
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_GID);
         update->SetGid(attr->st_gid);
     }
-    bool isSizeUpdate = false;
-    ui64 newSize = 0;
     if (to_set & FUSE_SET_ATTR_SIZE) {
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
         update->SetSize(attr->st_size);
-        isSizeUpdate = true;
-        newSize = attr->st_size;
         if (WriteBackCache) {
             WriteBackCache.SetCachedNodeSize(ino, attr->st_size);
         }
@@ -99,9 +95,7 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckResponse(self, *callContext, req, response)) {
-            if (isSizeUpdate) {
-                UpdateNodeSizeInCache(ino, newSize);
-            }
+            InvalidateNodeInCache(ino);
 
             self->ReplyAttrWithCache(
                 *callContext,

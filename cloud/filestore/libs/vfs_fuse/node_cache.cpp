@@ -21,6 +21,12 @@ TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
         TStringBuilder() << "failed to insert node "
             << attrs.ShortUtf8DebugString());
 
+    STORAGE_VERIFY_C(
+        it->second.IsValid(),
+        TWellKnownEntityTypes::FILESYSTEM,
+        FileSystemId,
+        TStringBuilder() << "invalid attrs: " << attrs.ShortUtf8DebugString());
+
     return &it->second;
 }
 
@@ -34,12 +40,34 @@ TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs, ui64 version)
         if (version >= node->LastUpdateVersion) {
             node->UpdateAttrs(attrs, version);
             node->LastUpdateVersion = version;
+
+            STORAGE_VERIFY_C(
+                node->IsValid(),
+                TWellKnownEntityTypes::FILESYSTEM,
+                FileSystemId,
+                TStringBuilder() << "invalid attrs: "
+                    << attrs.ShortUtf8DebugString()
+                    << ", version: " << version);
         }
 
         node->Ref();
     }
 
     return node;
+}
+
+void TNodeCache::InvalidateNode(ui64 ino, ui64 version)
+{
+    NProto::TNodeAttr attrs;
+    attrs.SetId(ino);
+    auto [it, inserted] = Id2Node.emplace(ino, attrs);
+    if (version >= it->second.LastUpdateVersion) {
+        if (!inserted) {
+            it->second.Attrs = std::move(attrs);
+        }
+
+        it->second.LastUpdateVersion = version;
+    }
 }
 
 void TNodeCache::ForgetNode(ui64 ino, size_t count)

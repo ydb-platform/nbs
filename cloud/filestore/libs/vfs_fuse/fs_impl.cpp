@@ -177,13 +177,13 @@ bool TFileSystem::UpdateNodeAttrsInCache(
         auto* node = NodeCache.TryAddNode(attrs, version);
         Y_ABORT_UNLESS(node);
 
-        if (node->LastUpdateVersion == version) {
+        if (node->GetVersion() == version) {
             entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
             entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
 
             ConvertAttr(
                 Config->GetPreferredBlockSize(),
-                node->Attrs,
+                node->GetAttrs(),
                 entry.attr);
             return true;
         }
@@ -195,35 +195,17 @@ bool TFileSystem::UpdateNodeAttrsInCache(
     return false;
 }
 
-bool TFileSystem::UpdateNodeSizeInCache(ui64 nodeId, ui64 size)
+void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
 {
     const ui64 newVersion =
         GlobalVersion.fetch_add(1, std::memory_order_release) + 1;
 
-    STORAGE_TRACE("updating node size: " << nodeId << ", " << size
+    STORAGE_TRACE("invalidating node: " << nodeId
         << ", version: " << newVersion);
 
-    bool ret = true;
     with_lock (NodeCacheLock) {
-        auto* node = NodeCache.FindNode(nodeId);
-        if (node) {
-            if (node->Attrs.GetSize() < size) {
-                node->Attrs.SetSize(size);
-            } else {
-                ret = false;
-            }
-        } else {
-            NProto::TNodeAttr incompleteAttr;
-            incompleteAttr.SetId(nodeId);
-            incompleteAttr.SetType(NProto::E_REGULAR_NODE);
-            incompleteAttr.SetSize(size);
-            node = NodeCache.AddNode(incompleteAttr);
-        }
-
-        node->LastUpdateVersion = newVersion;
+        NodeCache.InvalidateNode(nodeId, newVersion);
     }
-
-    return ret;
 }
 
 void TFileSystem::UpdateXAttrCache(

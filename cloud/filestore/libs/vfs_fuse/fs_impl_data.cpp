@@ -517,14 +517,13 @@ void TFileSystem::DoWrite(
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
 
-        //
-        // Disallow result caching for all concurrently running operations that
-        // read node attributes.
-        //
-
-        UpdateNodeSizeInCache(ino, request->GetOffset() + size);
-
         if (self->CheckResponse(self, *callContext, req, response)) {
+            //
+            // Disallow result caching for all concurrently running operations
+            // that read node attributes.
+            //
+
+            InvalidateNodeInCache(ino);
             self->ReplyWrite(*callContext, error, req, size);
         }
     };
@@ -779,7 +778,7 @@ void TFileSystem::FAllocate(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                UpdateNodeSizeInCache(ino, offset + length);
+                InvalidateNodeInCache(ino);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
