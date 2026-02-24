@@ -406,6 +406,24 @@ TString DescribeVolumeAndReturnMountToken(
     return DescribeVolume(runtime, diskId).MountToken;
 }
 
+std::tuple<TString, TString> DescribeVolumeAndReturnDirAndName(
+    TTestActorRuntime& runtime,
+    const TString& diskId)
+{
+    auto path = DescribeVolumeAndReturnPath(runtime, diskId);
+
+    TString volumeDir;
+    TString volumeName;
+
+    TStringBuf dir;
+    TStringBuf name;
+    TStringBuf(path).RSplit('/', dir, name);
+    volumeDir = TString{dir};
+    volumeName = TString{name};
+
+    return std::make_tuple(volumeDir, volumeName);
+}
+
 using EOpType = TEvSSProxy::TModifyVolumeRequest::EOpType;
 
 void ModifyVolume(
@@ -468,6 +486,27 @@ BackupPathDescriptions(
     return std::unique_ptr<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
         handle->Release<TEvSSProxy::TEvBackupPathDescriptionsResponse>()
             .Release());
+}
+
+TEvSSProxy::TEvModifySchemeResponse::TPtr ModifyScheme(TTestActorRuntime& runtime, NKikimrSchemeOp::TModifyScheme modifyScheme)
+{
+    TActorId sender = runtime.AllocateEdgeActor();
+    Send(
+        runtime,
+        MakeSSProxyServiceId(),
+        sender,
+        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+            std::move(modifyScheme)));
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
+                handle);
+
+    UNIT_ASSERT_C(
+        Succeeded(response),
+        GetErrorReason(response));
+    return IEventHandle::Downcast<TEvSSProxy::TEvModifySchemeResponse>(
+        std::move(handle));
 }
 
 }   // namespace
@@ -1299,91 +1338,29 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         CreateVolumeViaModifySchemeDeprecated(runtime, config, "old-volume");
 
-        TActorId sender = runtime.AllocateEdgeActor();
+        auto [volumeDir, volumeName] =
+            DescribeVolumeAndReturnDirAndName(runtime, "old-volume");
 
-        Send(
-            runtime,
-            MakeSSProxyServiceId(),
-            sender,
-            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-                "old-volume"));
+        NKikimrBlockStore::TVolumeConfig volumeConfig;
+        volumeConfig.SetCloudId("cloud-id-changed");
 
-        // wait for background operations completion
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        NKikimrSchemeOp::TModifyScheme modifyScheme;
+        modifyScheme.SetWorkingDir(volumeDir);
+        modifyScheme.SetOperationType(
+            NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
 
-        {
-            TAutoPtr<IEventHandle> handle;
-            auto response = runtime.GrabEdgeEventRethrow<
-                TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+        auto* op = modifyScheme.MutableAlterBlockStoreVolume();
+        op->SetName(volumeName);
+        op->MutableVolumeConfig()->CopyFrom(volumeConfig);
 
-            UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+        ModifyScheme(runtime, modifyScheme);
 
-            const auto& pathDescription = response->PathDescription;
+        auto describeResponse = DescribePath(runtime, config, "old-volume");
 
-            UNIT_ASSERT_EQUAL(
-                NKikimrSchemeOp::EPathTypeBlockStoreVolume,
-                pathDescription.GetSelf().GetPathType());
-
-            TString volumeDir;
-            TString volumeName;
-
-            {
-                TStringBuf dir;
-                TStringBuf name;
-                TStringBuf(response->Path).RSplit('/', dir, name);
-                volumeDir = TString{dir};
-                volumeName = TString{name};
-            }
-
-            NKikimrBlockStore::TVolumeConfig volumeConfig;
-            volumeConfig.SetCloudId("cloud-id-changed");
-
-            NKikimrSchemeOp::TModifyScheme modifyScheme;
-            modifyScheme.SetWorkingDir(volumeDir);
-            modifyScheme.SetOperationType(
-                NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
-
-            auto* op = modifyScheme.MutableAlterBlockStoreVolume();
-            op->SetName(volumeName);
-            op->MutableVolumeConfig()->CopyFrom(volumeConfig);
-
-            Send(
-                runtime,
-                MakeSSProxyServiceId(),
-                sender,
-                std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
-                    std::move(modifyScheme)));
-        }
-
-        // wait for background operations completion
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
-
-        TAutoPtr<IEventHandle> modifyHandle;
-        auto modifyResponse =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
-                modifyHandle);
-
-        UNIT_ASSERT_C(
-            Succeeded(modifyResponse),
-            GetErrorReason(modifyResponse));
-
-        Send(
-            runtime,
-            MakeSSProxyServiceId(),
-            sender,
-            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-                "old-volume"));
-
-        // wait for background operations completion
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
-
-        TAutoPtr<IEventHandle> handle;
-        auto response =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
-                handle);
         UNIT_ASSERT_EQUAL(
             "cloud-id-changed",
-            response->PathDescription.GetBlockStoreVolumeDescription()
+            describeResponse->Get()
+                ->PathDescription.GetBlockStoreVolumeDescription()
                 .GetVolumeConfig()
                 .GetCloudId());
     }

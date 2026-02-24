@@ -17,7 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 GetTxIdFromOperationType(
+ui64 GetTxIdByOperationType(
     const NKikimrTxUserProxy::TEvProposeTransactionStatus& record,
     NKikimrSchemeOp::EOperationType opType)
 {
@@ -113,20 +113,27 @@ void TModifySchemeActor::HandleStatus(
     SchemeShardStatus = (NKikimrScheme::EStatus) record.GetSchemeShardStatus();
     SchemeShardReason = record.GetSchemeShardReason();
 
-    auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus) record.GetStatus();
+    auto status =
+        static_cast<TEvTxUserProxy::TEvProposeTransactionStatus::EStatus>(
+            record.GetStatus());
     switch (status) {
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:
-            if(!UseSchemeCache) {
-                LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+            if (!UseSchemeCache) {
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::SS_PROXY,
                     "Request %s with TxId# %lu completed immediately",
-                    NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
+                    NKikimrSchemeOp::EOperationType_Name(
+                        ModifyScheme.GetOperationType())
+                        .c_str(),
                     TxId);
 
                 ReplyAndDie(ctx);
                 break;
             }
 
-            TxId = GetTxIdFromOperationType(record, ModifyScheme.GetOperationType());
+            TxId =
+                GetTxIdByOperationType(record, ModifyScheme.GetOperationType());
             [[fallthrough]];
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecInProgress:
             LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
