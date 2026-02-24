@@ -295,6 +295,7 @@ func (c *client) ListNodes(
 	parentNodeID uint64,
 	cookie string,
 	maxBytes uint32,
+	unsafe bool,
 ) ([]Node, string, error) {
 
 	nodes, cookie, err := c.nfs.ListNodes(
@@ -303,6 +304,7 @@ func (c *client) ListNodes(
 		parentNodeID,
 		cookie,
 		maxBytes,
+		unsafe,
 	)
 	resultNodes := make([]Node, len(nodes))
 	for i := range nodes {

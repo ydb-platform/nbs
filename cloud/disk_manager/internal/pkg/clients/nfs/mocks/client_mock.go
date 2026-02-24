@@ -116,9 +116,10 @@ func (c *ClientMock) ListNodes(
 	parentNodeID uint64,
 	cookie string,
 	maxBytes uint32,
+	unsafe bool,
 ) ([]nfs.Node, string, error) {
 
-	args := c.Called(ctx, session, parentNodeID, cookie, maxBytes)
+	args := c.Called(ctx, session, parentNodeID, cookie, maxBytes, unsafe)
 	res, _ := args.Get(0).([]nfs.Node)
 	return res, args.Get(1).(string), args.Error(2)
 }
