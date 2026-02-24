@@ -488,8 +488,21 @@ BackupPathDescriptions(
             .Release());
 }
 
-TEvSSProxy::TEvModifySchemeResponse::TPtr ModifyScheme(TTestActorRuntime& runtime, NKikimrSchemeOp::TModifyScheme modifyScheme)
+TEvSSProxy::TEvModifySchemeResponse::TPtr ModifyScheme(
+    TTestActorRuntime& runtime,
+    const TString& volumeDir,
+    const TString& volumeName,
+    const NKikimrBlockStore::TVolumeConfig& config)
 {
+    NKikimrSchemeOp::TModifyScheme modifyScheme;
+    modifyScheme.SetWorkingDir(volumeDir);
+    modifyScheme.SetOperationType(
+        NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
+
+    auto* op = modifyScheme.MutableAlterBlockStoreVolume();
+    op->SetName(volumeName);
+    op->MutableVolumeConfig()->CopyFrom(config);
+
     TActorId sender = runtime.AllocateEdgeActor();
     Send(
         runtime,
@@ -499,12 +512,11 @@ TEvSSProxy::TEvModifySchemeResponse::TPtr ModifyScheme(TTestActorRuntime& runtim
             std::move(modifyScheme)));
 
     TAutoPtr<IEventHandle> handle;
-    auto* response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
-                handle);
+    auto* response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
+            handle);
 
-    UNIT_ASSERT_C(
-        Succeeded(response),
-        GetErrorReason(response));
+    UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
     return IEventHandle::Downcast<TEvSSProxy::TEvModifySchemeResponse>(
         std::move(handle));
 }
@@ -1344,16 +1356,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         NKikimrBlockStore::TVolumeConfig volumeConfig;
         volumeConfig.SetCloudId("cloud-id-changed");
 
-        NKikimrSchemeOp::TModifyScheme modifyScheme;
-        modifyScheme.SetWorkingDir(volumeDir);
-        modifyScheme.SetOperationType(
-            NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume);
-
-        auto* op = modifyScheme.MutableAlterBlockStoreVolume();
-        op->SetName(volumeName);
-        op->MutableVolumeConfig()->CopyFrom(volumeConfig);
-
-        ModifyScheme(runtime, modifyScheme);
+        ModifyScheme(runtime, volumeDir, volumeName, volumeConfig);
 
         auto describeResponse = DescribePath(runtime, config, "old-volume");
 
