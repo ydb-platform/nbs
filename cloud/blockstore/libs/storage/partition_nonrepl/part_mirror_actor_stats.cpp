@@ -220,20 +220,4 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
     StatisticRequestInfo.Reset();
 }
 
-void TMirrorPartitionActor::RejectDiskRegistryBasedPartCountersCombined(
-    const TEvNonreplPartitionPrivate::TEvDiskRegistryBasedPartCountersCombined::
-        TPtr& ev,
-    const TActorContext& ctx)
-{
-     NCloud::Reply(
-        ctx,
-        *ev,
-        std::make_unique<TEvNonreplPartitionPrivate::
-                             TEvGetDiskRegistryBasedPartCountersResponse>(
-            MakeError(E_REJECTED),
-            SelfId(),
-            DiskId,
-            ExtractPartCounters(ctx)));
-}
-
 }   // namespace NCloud::NBlockStore::NStorage
