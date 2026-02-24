@@ -3784,6 +3784,191 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         test("CachedRead", getSizeFromCachedRead);
         test("DirectRead", getSizeFromDirectRead);
     }
+
+    Y_UNIT_TEST(ShouldReturnUpToDateSizeUponAppendAndGetAttrRace)
+    {
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler);
+
+        const ui64 parentNodeId = 101;
+        const ui64 nodeId = 1001;
+        const ui64 handleId = 10001;
+        ui64 nodeSize = 0;
+
+        TPromise<NProto::TCreateHandleResponse> createHandleResponse;
+        bootstrap.Service->CreateHandleHandler = [&](auto, auto)
+        {
+            createHandleResponse = NewPromise<NProto::TCreateHandleResponse>();
+            return createHandleResponse.GetFuture();
+        };
+
+        TAutoEvent getNodeAttrRequestEvent;
+        TPromise<NProto::TGetNodeAttrResponse> getNodeAttrResponse;
+        bootstrap.Service->GetNodeAttrHandler = [&](auto, auto)
+        {
+            getNodeAttrRequestEvent.Signal();
+            getNodeAttrResponse = NewPromise<NProto::TGetNodeAttrResponse>();
+            return getNodeAttrResponse.GetFuture();
+        };
+
+        TPromise<NProto::TListNodesResponse> listNodesResponse;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            listNodesResponse = NewPromise<NProto::TListNodesResponse>();
+            return listNodesResponse.GetFuture();
+        };
+
+        TPromise<NProto::TResolvePathResponse> resolvePathResponse;
+        bootstrap.Service->ResolvePathHandler = [&](auto, auto)
+        {
+            resolvePathResponse = NewPromise<NProto::TResolvePathResponse>();
+            return resolvePathResponse.GetFuture();
+        };
+
+        auto writePromise = NewPromise();
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto& rq)
+        {
+            nodeSize = Max(nodeSize, rq->GetOffset() + rq->GetBuffer().size());
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result).Subscribe([&] (auto) {
+                writePromise.SetValue();
+            });
+        };
+
+        auto allocatePromise = NewPromise();
+        bootstrap.Service->AllocateDataHandler = [&](auto, const auto& rq)
+        {
+            nodeSize = Max(nodeSize, rq->GetOffset() + rq->GetLength());
+            NProto::TAllocateDataResponse result;
+            return MakeFuture(result).Subscribe([&] (auto) {
+                allocatePromise.SetValue();
+            });
+        };
+
+        auto setNodeAttrPromise = NewPromise();
+        bootstrap.Service->SetNodeAttrHandler = [&](auto, const auto& rq)
+        {
+            nodeSize = rq->GetUpdate().GetSize();
+            NProto::TSetNodeAttrResponse result;
+            result.MutableNode()->SetId(nodeId);
+            result.MutableNode()->SetSize(nodeSize);
+            return MakeFuture(std::move(result)).Subscribe([&] (auto) {
+                setNodeAttrPromise.SetValue();
+            });
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = [&] (ui64 offset, ui64 size) {
+            auto rq = std::make_shared<TWriteRequest>(
+                nodeId,
+                handleId,
+                offset,
+                CreateBuffer(size, 'a'));
+            rq->In->Body.flags |= O_WRONLY;
+            auto resp = bootstrap.Fuse->SendRequest<TWriteRequest>(rq);
+            resp.GetValue(WaitTimeout);
+            writePromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        auto allocate = [&] (ui64 offset, ui64 size) {
+            auto rq = std::make_shared<TAllocateRequest>(
+                nodeId,
+                handleId,
+                offset,
+                size);
+            auto resp = bootstrap.Fuse->SendRequest<TAllocateRequest>(rq);
+            resp.GetValue(WaitTimeout);
+            allocatePromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        auto setSize = [&](ui64 size)
+        {
+            auto rq = std::make_shared<TSetAttrRequest>(nodeId, handleId);
+            rq->In->Body.valid = FUSE_SET_ATTR_SIZE;
+            rq->In->Body.size = size;
+            auto resp = bootstrap.Fuse->SendRequest(rq);
+            resp.GetValue(WaitTimeout);
+            setNodeAttrPromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(nodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            getNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = nodeSize;
+            write(nodeSize, 4_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(nodeId);
+            n.SetSize(oldSize);
+            getNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // Write completed while we were processing GetNodeAttr - the result
+            // is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(nodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            getNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = nodeSize;
+            allocate(nodeSize, 4_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(nodeId);
+            n.SetSize(oldSize);
+            getNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // FAllocate completed while we were processing GetNodeAttr - the
+            // result is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(nodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            getNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = nodeSize;
+            setSize(12_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(nodeId);
+            n.SetSize(oldSize);
+            getNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // SetAttr completed while we were processing GetNodeAttr - the
+            // result is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+
+        Y_UNUSED(parentNodeId);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

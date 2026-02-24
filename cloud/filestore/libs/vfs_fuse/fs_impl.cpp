@@ -45,6 +45,7 @@ TFileSystem::TFileSystem(
     , Config(std::move(config))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
+    , NodeCache(Config->GetFileSystemId())
     , DirectoryHandlesStats(std::move(directoryHandlesStats))
     , XAttrCache(
         Timer,
@@ -161,27 +162,68 @@ void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
     }
 }
 
-bool TFileSystem::UpdateNodeCache(
+bool TFileSystem::UpdateNodeAttrsInCache(
     const NProto::TNodeAttr& attrs,
-    fuse_entry_param& entry)
+    fuse_entry_param& entry,
+    ui64 version)
 {
-    if (attrs.GetId() == InvalidNodeId) {
-        return false;
-    }
+    STORAGE_TRACE("updating node attrs: " << DumpMessage(attrs)
+        << ", version: " << version);
+
+    entry.ino = attrs.GetId();
+    entry.generation = 0; // TODO
 
     with_lock (NodeCacheLock) {
-        auto* node = NodeCache.TryAddNode(attrs);
+        auto* node = NodeCache.TryAddNode(attrs, version);
         Y_ABORT_UNLESS(node);
 
-        entry.ino = attrs.GetId();
-        entry.generation = 0; // TODO
-        entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
-        entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
+        if (node->LastUpdateVersion == version) {
+            entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
+            entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
 
-        ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
+            ConvertAttr(
+                Config->GetPreferredBlockSize(),
+                node->Attrs,
+                entry.attr);
+            return true;
+        }
     }
 
-    return true;
+    entry.attr_timeout = 0;
+    entry.entry_timeout = 0;
+    ConvertAttr(Config->GetPreferredBlockSize(), attrs, entry.attr);
+    return false;
+}
+
+bool TFileSystem::UpdateNodeSizeInCache(ui64 nodeId, ui64 size)
+{
+    const ui64 newVersion =
+        GlobalVersion.fetch_add(1, std::memory_order_release) + 1;
+
+    STORAGE_TRACE("updating node size: " << nodeId << ", " << size
+        << ", version: " << newVersion);
+
+    bool ret = true;
+    with_lock (NodeCacheLock) {
+        auto* node = NodeCache.FindNode(nodeId);
+        if (node) {
+            if (node->Attrs.GetSize() < size) {
+                node->Attrs.SetSize(size);
+            } else {
+                ret = false;
+            }
+        } else {
+            NProto::TNodeAttr incompleteAttr;
+            incompleteAttr.SetId(nodeId);
+            incompleteAttr.SetType(NProto::E_REGULAR_NODE);
+            incompleteAttr.SetSize(size);
+            node = NodeCache.AddNode(incompleteAttr);
+        }
+
+        node->LastUpdateVersion = newVersion;
+    }
+
+    return ret;
 }
 
 void TFileSystem::UpdateXAttrCache(
@@ -202,20 +244,24 @@ void TFileSystem::UpdateXAttrCache(
     XAttrCache.Add(ino, name, value, version);
 }
 
-void TFileSystem::ReplyCreate(
+void TFileSystem::ReplyCreateWithCache(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     ui64 handle,
-    const NProto::TNodeAttr& attrs)
+    const NProto::TNodeAttr& attrs,
+    ui64 version)
 {
-    STORAGE_TRACE("inserting node: " << DumpMessage(attrs));
+    STORAGE_TRACE("inserting node: " << DumpMessage(attrs)
+        << ", version: " << version);
 
-    fuse_entry_param entry = {};
-    if (!UpdateNodeCache(attrs, entry)) {
+    if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
+
+    fuse_entry_param entry = {};
+    UpdateNodeAttrsInCache(attrs, entry, version);
 
     fuse_file_info fi = {};
     fi.fh = handle;
@@ -229,19 +275,23 @@ void TFileSystem::ReplyCreate(
     }
 }
 
-void TFileSystem::ReplyEntry(
+void TFileSystem::ReplyEntryWithCache(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const NProto::TNodeAttr& attrs)
+    const NProto::TNodeAttr& attrs,
+    ui64 version)
 {
-    STORAGE_TRACE("inserting node: " << DumpMessage(attrs));
+    STORAGE_TRACE("inserting node: " << DumpMessage(attrs)
+        << ", version: " << version);
 
-    fuse_entry_param entry = {};
-    if (!UpdateNodeCache(attrs, entry)) {
+    if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
+
+    fuse_entry_param entry = {};
+    UpdateNodeAttrsInCache(attrs, entry, version);
 
     const int res = ReplyEntry(callContext, error, req, &entry);
     if (res == -ENOENT) {
@@ -272,24 +322,30 @@ void TFileSystem::ReplyXAttrInt(
     }
 }
 
-void TFileSystem::ReplyAttr(
+void TFileSystem::ReplyAttrWithCache(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,
     fuse_req_t req,
-    const NProto::TNodeAttr& attrs)
+    const NProto::TNodeAttr& attrs,
+    ui64 version)
 {
-    fuse_entry_param entry = {};
-    if (!UpdateNodeCache(attrs, entry)) {
+    STORAGE_TRACE("returning node: " << DumpMessage(attrs)
+        << ", version: " << version);
+
+    if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
     }
+
+    fuse_entry_param entry = {};
+    const bool updated = UpdateNodeAttrsInCache(attrs, entry, version);
 
     ReplyAttr(
         callContext,
         error,
         req,
         &entry.attr,
-        Config->GetAttrTimeout().SecondsFloat());
+        updated ? Config->GetAttrTimeout().SecondsFloat() : 0);
 }
 
 void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)

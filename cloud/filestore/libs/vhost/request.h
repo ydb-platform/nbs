@@ -5,6 +5,7 @@
 #include <contrib/libs/linux-headers/linux/fuse.h>
 
 #include <util/generic/string.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NVhost {
 
@@ -97,7 +98,8 @@ struct TRequestBase
     void OnCompletion()
     {
         if (Out->Header.unique != In->Header.unique) {
-            Result.SetException("Broken output");
+            Result.SetException(TStringBuilder() << "Header.unique mismatch: "
+                << Out->Header.unique << " != " << In->Header.unique);
             return;
         }
         if (Out->Header.error) {
@@ -230,7 +232,32 @@ struct TLookupRequest
     }
 };
 
+/*
+struct fuse_fallocate_in {
+	uint64_t	fh;
+	uint64_t	offset;
+	uint64_t	length;
+	uint32_t	mode;
+	uint32_t	padding;
+};
+*/
+
 ////////////////////////////////////////////////////////////////////////////////
+
+struct TAllocateRequest
+    : public TRequestBase<fuse_fallocate_in, void, void>
+{
+    TAllocateRequest(ui64 nodeId, ui64 handle, ui64 offset, ui64 size)
+    {
+        In->Header.opcode = FUSE_FALLOCATE;
+        In->Header.nodeid = nodeId;
+        In->Body.fh = handle;
+        In->Body.offset = offset;
+        In->Body.length = size;
+        In->Body.mode = 0;
+        In->Body.padding = 0;
+    }
+};
 
 struct TWriteRequest
     : public TRequestBase<fuse_write_in, fuse_write_out, ui32>

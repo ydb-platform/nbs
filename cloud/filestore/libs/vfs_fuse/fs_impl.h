@@ -96,7 +96,7 @@ private:
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
     TNodeCache NodeCache;
-    TMutex NodeCacheLock;
+    TAdaptiveLock NodeCacheLock;
 
     THashMap<ui64, std::shared_ptr<TDirectoryHandle>> DirectoryHandles;
     TMutex DirectoryHandlesLock;
@@ -114,6 +114,8 @@ private:
     TMutex DelayedReleaseQueueLock;
 
     TWriteBackCache WriteBackCache;
+
+    std::atomic<ui64> GlobalVersion = 1;
 
 public:
     TFileSystem(
@@ -423,9 +425,12 @@ private:
         NProto::TNodeAttr& attrs
     );
 
-    bool UpdateNodeCache(
+    bool UpdateNodeAttrsInCache(
         const NProto::TNodeAttr& attrs,
-        fuse_entry_param& entry);
+        fuse_entry_param& entry,
+        ui64 version);
+
+    bool UpdateNodeSizeInCache(ui64 nodeId, ui64 size);
 
     void UpdateXAttrCache(
         ui64 ino,
@@ -434,28 +439,31 @@ private:
         ui64 version,
         const NProto::TError& error);
 
-    void ReplyCreate(
+    void ReplyCreateWithCache(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         ui64 handle,
-        const NProto::TNodeAttr& attrs);
-    void ReplyEntry(
+        const NProto::TNodeAttr& attrs,
+        ui64 version);
+    void ReplyEntryWithCache(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
         fuse_req_t req,
-        const NProto::TNodeAttr& attrs);
+        const NProto::TNodeAttr& attrs,
+        ui64 version);
     void ReplyXAttrInt(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const TString& value,
         size_t size);
-    void ReplyAttr(
+    void ReplyAttrWithCache(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
         fuse_req_t req,
-        const NProto::TNodeAttr& attrs);
+        const NProto::TNodeAttr& attrs,
+        ui64 version);
 
     bool ProcessAsyncRelease(
         TCallContextPtr callContext,

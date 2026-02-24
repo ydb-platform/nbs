@@ -48,9 +48,13 @@ void TFileSystem::SetAttr(
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_GID);
         update->SetGid(attr->st_gid);
     }
+    bool isSizeUpdate = false;
+    ui64 newSize = 0;
     if (to_set & FUSE_SET_ATTR_SIZE) {
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
         update->SetSize(attr->st_size);
+        isSizeUpdate = true;
+        newSize = attr->st_size;
         if (WriteBackCache) {
             WriteBackCache.SetCachedNodeSize(ino, attr->st_size);
         }
@@ -81,6 +85,8 @@ void TFileSystem::SetAttr(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
+    const ui64 version = GlobalVersion.load(std::memory_order_acquire);
+
     auto callback = [=, ptr = weak_from_this()](const auto& future)
     {
         auto self = ptr.lock();
@@ -93,7 +99,16 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckResponse(self, *callContext, req, response)) {
-            self->ReplyAttr(*callContext, error, req, response.GetNode());
+            if (isSizeUpdate) {
+                UpdateNodeSizeInCache(ino, newSize);
+            }
+
+            self->ReplyAttrWithCache(
+                *callContext,
+                error,
+                req,
+                response.GetNode(),
+                version);
         }
     };
 
@@ -137,6 +152,8 @@ void TFileSystem::GetAttr(
     const auto cachedNodeSize =
         WriteBackCache ? WriteBackCache.GetCachedNodeSize(ino) : 0;
 
+    const ui64 version = GlobalVersion.load(std::memory_order_acquire);
+
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe(
             [=, ptr = weak_from_this()](auto future)
@@ -146,11 +163,12 @@ void TFileSystem::GetAttr(
                 if (CheckResponse(self, *callContext, req, response)) {
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), cachedNodeSize));
-                    self->ReplyAttr(
+                    self->ReplyAttrWithCache(
                         *callContext,
                         response.GetError(),
                         req,
-                        response.GetNode());
+                        response.GetNode(),
+                        version);
                 }
             });
 }

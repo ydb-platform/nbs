@@ -20,8 +20,9 @@ struct TNode
 {
     NProto::TNodeAttr Attrs;
     ui64 RefCount = 1;
+    ui64 LastUpdateVersion = 1;
 
-    TNode(const NProto::TNodeAttr& attrs) noexcept
+    explicit TNode(const NProto::TNodeAttr& attrs) noexcept
         : Attrs(attrs)
     {
         Y_ABORT_UNLESS(attrs.GetId() != InvalidNodeId);
@@ -41,10 +42,11 @@ struct TNode
         return RefCount;
     }
 
-    void UpdateAttrs(const NProto::TNodeAttr& attrs)
+    void UpdateAttrs(const NProto::TNodeAttr& attrs, ui64 version)
     {
         Y_ABORT_UNLESS(Attrs.GetId() == attrs.GetId());
         Attrs.CopyFrom(attrs);
+        LastUpdateVersion = version;
     }
 };
 
@@ -53,11 +55,17 @@ struct TNode
 class TNodeCache
 {
 private:
+    const TString FileSystemId;
     THashMap<ui64, TNode> Id2Node;
 
 public:
+    explicit TNodeCache(TString fileSystemId)
+        : FileSystemId(std::move(fileSystemId))
+    {}
+
+public:
     TNode* AddNode(const NProto::TNodeAttr& attrs);
-    TNode* TryAddNode(const NProto::TNodeAttr& attrs);
+    TNode* TryAddNode(const NProto::TNodeAttr& attrs, ui64 version);
     TNode* FindNode(ui64 ino);
     void ForgetNode(ui64 ino, size_t count);
 };
@@ -75,8 +83,7 @@ struct TXAttr
 class TXAttrCache
 {
 private:
-    struct TWeighter
-    {
+    struct TWeighter {
         static TInstant Weight(const TXAttr& value)
         {
             return value.UpdateTime;

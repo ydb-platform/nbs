@@ -2,7 +2,10 @@
 
 #include <cloud/filestore/libs/service/request.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 #include <util/generic/vector.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -10,20 +13,29 @@ namespace NCloud::NFileStore::NFuse {
 
 TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
 {
-    auto [it, inserted] = Id2Node.emplace(attrs.GetId(), TNode(attrs));
-    Y_ABORT_UNLESS(inserted, "failed to insert %s",
-        DumpMessage(attrs).data());
+    auto [it, inserted] = Id2Node.emplace(attrs.GetId(), attrs);
+    STORAGE_VERIFY_C(
+        inserted,
+        TWellKnownEntityTypes::FILESYSTEM,
+        FileSystemId,
+        TStringBuilder() << "failed to insert node "
+            << attrs.ShortUtf8DebugString());
 
     return &it->second;
 }
 
-TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs)
+TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs, ui64 version)
 {
     auto* node = FindNode(attrs.GetId());
     if (!node) {
         node = AddNode(attrs);
+        node->LastUpdateVersion = version;
     } else {
-        node->UpdateAttrs(attrs);
+        if (version >= node->LastUpdateVersion) {
+            node->UpdateAttrs(attrs, version);
+            node->LastUpdateVersion = version;
+        }
+
         node->Ref();
     }
 

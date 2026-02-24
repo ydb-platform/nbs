@@ -86,6 +86,8 @@ void TFileSystem::Create(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
+    const ui64 version = GlobalVersion.load(std::memory_order_acquire);
+
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -98,12 +100,13 @@ void TFileSystem::Create(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyCreate(
+                self->ReplyCreateWithCache(
                     *callContext,
                     error,
                     req,
                     response.GetHandle(),
-                    response.GetNodeAttr());
+                    response.GetNodeAttr(),
+                    version);
             }
         });
 }
@@ -514,6 +517,13 @@ void TFileSystem::DoWrite(
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
 
+        //
+        // Disallow result caching for all concurrently running operations that
+        // read node attributes.
+        //
+
+        UpdateNodeSizeInCache(ino, request->GetOffset() + size);
+
         if (self->CheckResponse(self, *callContext, req, response)) {
             self->ReplyWrite(*callContext, error, req, size);
         }
@@ -769,6 +779,7 @@ void TFileSystem::FAllocate(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                UpdateNodeSizeInCache(ino, offset + length);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
