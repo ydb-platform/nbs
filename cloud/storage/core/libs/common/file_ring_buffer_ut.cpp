@@ -151,6 +151,11 @@ struct TReferenceImplementation
         }
 
         Q.pop_front();
+
+        if (Q.empty()) {
+            ReadPos = 0;
+            WritePos = 0;
+        }
     }
 
     bool Empty() const
@@ -408,7 +413,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     Y_UNIT_TEST(RandomizedPushPopRestore)
     {
-        DoRandomizedPushPopRestore(1_MB, 16_MB, 5_KB, 0);
+        DoRandomizedPushPopRestore(1_MB, 256_MB, 5_KB, 0);
     }
 
     Y_UNIT_TEST(RandomizedPushPopRestoreSmall)
