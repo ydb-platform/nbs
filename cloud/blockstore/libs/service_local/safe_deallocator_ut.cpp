@@ -193,8 +193,8 @@ struct TFixture: public NUnitTest::TBaseFixture
     static constexpr ui64 StorageSize = 93_GB;
     static constexpr ui64 StartIndex = 0;
     static constexpr ui64 BlocksCount = StorageSize / BlockSize;
-    const ui32 ExpectedDeallocations = 93;
-    const ui32 ExpectedReads = BlocksCount / DefaultValidatedBlocksRatio;
+    static constexpr ui32 ExpectedDeallocations = 93;
+    static constexpr ui32 ExpectedReads = BlocksCount / DefaultValidatedBlocksRatio;
 
     const TString Filename = "filename";
 
@@ -398,7 +398,9 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
         {
             std::memset(buffer.data(), 0, buffer.size());
 
-            if (offset == StorageSize - BlockSize) {
+            const bool isLastRead =
+                FileIO->ReadRequests.size() == ExpectedReads;
+            if (isLastRead && offset == StorageSize - BlockSize) {
                 buffer[buffer.size() / 2] = 0x42;
             }
 
