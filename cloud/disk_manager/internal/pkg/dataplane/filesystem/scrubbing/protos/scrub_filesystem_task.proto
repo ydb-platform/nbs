@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package filesystem_scrubbing;
+package scrubbing;
 
 import "cloud/disk_manager/internal/pkg/types/types.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_scrubbing/protos";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 
