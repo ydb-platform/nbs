@@ -931,7 +931,6 @@ void TVolumeActor::HandleTabletStatus(
                 msg->TabletUser,
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
 
-
             TActorId freshBlocksWriterId;
             if (Config->GetFreshBlocksWriterEnabled()) {
                 actorStack = WrapWithFreshBlocksWriterIfNeeded(

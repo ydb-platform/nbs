@@ -581,11 +581,6 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(const TVector<TBlob>& blobs)
 
 void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 {
-    // Fresh is managed by separate actor, no need to flush;
-    if (Config->GetFreshBlocksWriterEnabled()) {
-        return;
-    }
-
     if (State->GetFlushState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
@@ -621,8 +616,6 @@ void TPartitionActor::HandleFlush(
     const TEvPartitionPrivate::TEvFlushRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(!Config->GetFreshBlocksWriterEnabled());
-
     auto* msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TFlushMethod>(

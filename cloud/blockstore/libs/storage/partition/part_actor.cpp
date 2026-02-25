@@ -669,11 +669,6 @@ void TPartitionActor::HandlePoisonPill(
         "%s Stop tablet because of PoisonPill request",
         LogTitle.GetWithTime().c_str());
 
-    Poisoner = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        MakeIntrusive<TCallContext>());
-
     Suicide(ctx);
 }
 
