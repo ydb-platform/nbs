@@ -8,7 +8,6 @@ TCommitIdsState::TCommitIdsState(TCommitIdGeneratorPtr generator)
     : CommitIdGenerator(std::move(generator))
 {}
 
-
 TCommitIdsState::TCommitIdsState(ui64 generation, ui64 lastCommitId)
     : CommitIdGenerator(
           std::make_shared<TCommitIdGenerator>(generation, lastCommitId))

@@ -10,13 +10,14 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TCounter
 {
 private:
     std::atomic<ui32> Value = 0;
 
 public:
-
     explicit TCounter(ui32 value)
         : Value(value)
     {}
@@ -30,7 +31,7 @@ public:
     {
         auto lastValue = Value.load();
         while (lastValue != Max<ui32>()) {
-            if (Value.compare_exchange_strong(lastValue, lastValue + 1)) {
+            if (Value.compare_exchange_weak(lastValue, lastValue + 1)) {
                 return lastValue + 1;
             }
         }
