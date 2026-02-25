@@ -240,6 +240,9 @@ void TIndexTabletActor::CompleteTx_ListNodes(
         Metrics.ListNodes.PrepareAttempts.fetch_add(
             args.PrepareAttempts,
             std::memory_order_relaxed);
+        Metrics.ListNodes.ResponseNodeRefs.fetch_add(
+            args.ChildRefs.size(),
+            std::memory_order_relaxed);
     }
 
     CompleteResponse<TEvService::TListNodesMethod>(

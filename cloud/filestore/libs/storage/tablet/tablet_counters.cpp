@@ -345,6 +345,9 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(
         ListNodes.PrepareAttempts,
         EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        ListNodes.ResponseNodeRefs,
+        EMetricType::MT_DERIVATIVE);
 
     REGISTER_REQUEST(GetNodeAttr);
     REGISTER_REQUEST(CreateHandle);

@@ -134,6 +134,7 @@ struct TListNodesTxStats
 {
     ui64 BytesPrecharge = 0;
     ui64 PrepareAttempts = 0;
+    ui64 ResponseNodeRefs = 0;
 };
 
 TListNodesTxStats GetListNodesTxStats(
@@ -160,6 +161,13 @@ TListNodesTxStats GetListNodesTxStats(
          [&stats](i64 value)
          {
             stats.PrepareAttempts = value;
+            return true;
+         }},
+        {{{"filesystem", "test"},
+          {"sensor", "ListNodes.ResponseNodeRefs"}},
+         [&stats](i64 value)
+         {
+            stats.ResponseNodeRefs = value;
             return true;
          }},
     });
@@ -1575,6 +1583,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             listNodesTxStats.PrepareAttempts);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesTxStats.ResponseNodeRefs);
     }
 }
 
