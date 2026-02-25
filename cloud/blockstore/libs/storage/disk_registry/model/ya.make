@@ -5,7 +5,7 @@ LIBRARY()
 SRCS(
     agent_counters.cpp
     agent_list.cpp
-    agent_paths.cpp
+    agents_paths.cpp
     device_list.cpp
     pending_cleanup.cpp
     replica_table.cpp

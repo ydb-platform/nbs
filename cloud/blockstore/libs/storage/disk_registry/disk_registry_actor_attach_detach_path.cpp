@@ -32,16 +32,6 @@ IEventBasePtr CreateResponseByActionType(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TRequest>
-constexpr bool IsAttachRequest =
-    std::is_same_v<TRequest, TEvDiskAgent::TEvAttachPathsRequest>;
-
-template <typename TResponse>
-constexpr bool IsAttachResponse =
-    std::is_same_v<TResponse, TEvDiskAgent::TEvAttachPathsResponse::TPtr>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TAttachDetachPathActor: public TActorBootstrapped<TAttachDetachPathActor>
 {
 private:
@@ -71,7 +61,6 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 public:
-    template <typename TEvRequest>
     IEventBasePtr CreateAttachDetachRequest();
 
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
@@ -96,10 +85,13 @@ public:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
-    template <typename TEvent>
-    void HandleAttachDetachPathResult(
-        const TEvent& ev,
-        const NActors::TActorContext& ctx);
+    void HandleAttachPathResponse(
+        const TEvDiskAgent::TEvAttachPathsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDetachPathResponse(
+        const TEvDiskAgent::TEvDetachPathsResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleChangeDeviceStateResponse(
         const TEvDiskRegistry::TEvChangeDeviceStateResponse::TPtr& ev,
@@ -138,10 +130,7 @@ TAttachDetachPathActor::TAttachDetachPathActor(
 
 void TAttachDetachPathActor::Bootstrap(const TActorContext& ctx)
 {
-    IEventBasePtr request =
-        IsAttach
-            ? CreateAttachDetachRequest<TEvDiskAgent::TEvAttachPathsRequest>()
-            : CreateAttachDetachRequest<TEvDiskAgent::TEvDetachPathsRequest>();
+    IEventBasePtr request = CreateAttachDetachRequest();
 
     auto event = std::make_unique<IEventHandle>(
         MakeDiskAgentServiceId(NodeId),
@@ -167,22 +156,16 @@ void TAttachDetachPathActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWaitAttachDetach);
 }
 
-template <typename TEvRequest>
 IEventBasePtr TAttachDetachPathActor::CreateAttachDetachRequest()
 {
-    auto request = std::make_unique<TEvRequest>();
+    if (IsAttach) {
+        auto request = std::make_unique<TEvDiskAgent::TEvAttachPathsRequest>();
+        request->Record.MutablePathsToAttach()->Add(Paths.begin(), Paths.end());
+        return request;
+    }
 
-    auto* mutablePaths = [&]()
-    {
-        if constexpr (IsAttachRequest<TEvRequest>) {
-            return request->Record.MutablePathsToAttach();
-        } else {
-            return request->Record.MutablePathsToDetach();
-        }
-    }();
-
-    mutablePaths->Add(Paths.begin(), Paths.end());
-
+    auto request = std::make_unique<TEvDiskAgent::TEvDetachPathsRequest>();
+    request->Record.MutablePathsToDetach()->Add(Paths.begin(), Paths.end());
     return request;
 }
 
@@ -269,16 +252,11 @@ void TAttachDetachPathActor::HandleAttachDetachPathTimeout(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "request timed out"));
 }
 
-template <typename TEvResponse>
-void TAttachDetachPathActor::HandleAttachDetachPathResult(
-    const TEvResponse& ev,
+void TAttachDetachPathActor::HandleAttachPathResponse(
+    const TEvDiskAgent::TEvAttachPathsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    if constexpr (IsAttachResponse<TEvResponse>) {
-        Y_ABORT_UNLESS(IsAttach);
-    } else {
-        Y_ABORT_UNLESS(!IsAttach);
-    }
+    Y_ABORT_UNLESS(IsAttach);
 
     auto* msg = ev->Get();
     auto& record = msg->Record;
@@ -296,11 +274,32 @@ void TAttachDetachPathActor::HandleAttachDetachPathResult(
             AgentId.Quote().c_str());
     }
 
-    if constexpr (IsAttachResponse<TEvResponse>) {
-        UpdateDeviceStatesIfNeeded(ctx, record);
-    } else {
-        ReplyAndDie(ctx, {});
+    UpdateDeviceStatesIfNeeded(ctx, record);
+}
+
+void TAttachDetachPathActor::HandleDetachPathResponse(
+    const TEvDiskAgent::TEvDetachPathsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(!IsAttach);
+
+    auto* msg = ev->Get();
+    auto& record = msg->Record;
+    const auto& error = record.GetError();
+
+    if (HasError(error) && error.GetCode() != E_PRECONDITION_FAILED) {
+        ReplyAndDie(ctx, error);
+        return;
     }
+    if (error.GetCode() == E_PRECONDITION_FAILED) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "Attach detach path on agent %s disabled, ignoring error",
+            AgentId.Quote().c_str());
+    }
+
+    ReplyAndDie(ctx, {});
 }
 
 void TAttachDetachPathActor::HandleChangeDeviceStateResponse(
@@ -361,8 +360,8 @@ STFUNC(TAttachDetachPathActor::StateWaitAttachDetach)
 
         HFunc(TEvents::TEvWakeup, HandleAttachDetachPathTimeout)
 
-        HFunc(TEvDiskAgent::TEvAttachPathsResponse, HandleAttachDetachPathResult);
-        HFunc(TEvDiskAgent::TEvDetachPathsResponse, HandleAttachDetachPathResult);
+        HFunc(TEvDiskAgent::TEvAttachPathsResponse, HandleAttachPathResponse);
+        HFunc(TEvDiskAgent::TEvDetachPathsResponse, HandleDetachPathResponse);
 
 
         default:
@@ -517,11 +516,12 @@ void TDiskRegistryActor::ProcessPathsToAttachOnAgent(
     const THashSet<TString>& paths)
 {
     const TString& agentId = agent.GetAgentId();
+    const auto& pathStates = agent.GetPathAttachStates();
     TVector<TString> pathsToAttach;
     for (const auto& path: paths) {
-        auto it = agent.GetPathAttachStates().find(path);
-        Y_DEBUG_ABORT_UNLESS(it != agent.GetPathAttachStates().end());
-        if (it == agent.GetPathAttachStates().end()) {
+        auto it = pathStates.find(path);
+        Y_DEBUG_ABORT_UNLESS(it != pathStates.end());
+        if (it == pathStates.end()) {
             continue;
         }
 
@@ -629,7 +629,7 @@ void TDiskRegistryActor::HandleUpdatePathAttachState(
         LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str(),
         msg->Path.Quote().c_str(),
-        static_cast<int>(msg->NewState));
+        EPathAttachState_Name(msg->NewState).c_str());
 
     ExecuteTx<TUpdatePathAttachState>(
         ctx,

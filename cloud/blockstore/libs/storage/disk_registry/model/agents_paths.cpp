@@ -1,6 +1,8 @@
-#include "agent_paths.h"
+#include "agents_paths.h"
 
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
 
 TAgentsPaths::TAgentsPaths(const TVector<NProto::TAgentConfig>& agents)
 {

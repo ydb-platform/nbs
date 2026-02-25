@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
-#include <cloud/blockstore/libs/storage/disk_registry/model/agent_paths.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/agents_paths.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/pending_cleanup.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/replica_table.h>
