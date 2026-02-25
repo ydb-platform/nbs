@@ -770,6 +770,8 @@ public:
     [[nodiscard]] TDuration GetResourceMetricsUpdateInterval() const;
 
     [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
+
+    [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 };
 
 ui64 GetAllocationUnit(

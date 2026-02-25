@@ -45,6 +45,11 @@ void TPartitionClient::RebootTablet()
 
     // sooner or later after reset pipe will reconnect
     // but we do not want to wait
+    ReconnectPipe();
+}
+
+void TPartitionClient::ReconnectPipe()
+{
     PipeClient = Runtime.ConnectToPipe(
         TabletId,
         Sender,

@@ -1072,9 +1072,8 @@ bool TPartitionActor::PrepareReadBlocks(
     auto ready = db.FindMixedBlocks(
         visitor,
         args.ReadRange,
-        false,  // precharge
-        commitId
-    );
+        false,   // precharge
+        commitId);
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,
