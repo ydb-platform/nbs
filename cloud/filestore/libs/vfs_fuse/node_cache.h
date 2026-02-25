@@ -73,6 +73,22 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/*
+ * Currently this cache is not used for lookup - we rely on the inode cache in
+ * the guest for this. This cache is used to be able to detect races between
+ * the operations that fetch node attrs from the backend and the operations that
+ * can modify those attrs.
+ *
+ * When an attr-reading operation starts, it should get current fs "version".
+ * Upon each attr-modifying operation completion we bump this global version and
+ * invalidate the affected node with this version. If an attr-reading operation
+ * finds out upon its completion that the node version in the node (or nodes
+ * in case of ListNodes) is already higher than at the start of the operation,
+ * it should tell the guest not to cache these attributes because they might
+ * already be stale.
+ *
+ * In the future we might actually start using this cache for attribute lookups.
+ */
 class TNodeCache
 {
 private:
