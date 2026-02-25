@@ -79,6 +79,9 @@ message TFileStore
 
     // Zero for main fs, non-zero for shards.
     uint32 ShardNo = 13;
+
+    // The id of the main filestore tablet.
+    uint64 MainTabletId = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -202,6 +202,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1'000, response.GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetConfigVersion());
+        UNIT_ASSERT(response.GetMainTabletId() != 0);
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
