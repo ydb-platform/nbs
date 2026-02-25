@@ -270,6 +270,13 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
 
     if(!data.PartCountersData.DiskCounters)
     {
+        UpdateCounters(ctx);
+        CleanupHistory(
+            ctx,
+            SelfId(),                       // sender
+            0,                              // cookie
+            MakeIntrusive<TCallContext>()   // callContext
+        );
         return;
     }
 
