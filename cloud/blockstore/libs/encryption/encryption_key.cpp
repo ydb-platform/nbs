@@ -1,5 +1,6 @@
 #include "encryption_key.h"
 
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring.h>
 
 #include <library/cpp/string_utils/base64/base64.h>
@@ -141,21 +142,25 @@ private:
         ui32 expectedLen)
     {
         auto future = KmsKeyProvider->GetKey(kmsKey, diskId);
-        return future.Apply([diskId, expectedLen] (auto f) -> TResponse {
-            auto response = f.ExtractValue();
-            if (HasError(response)) {
-                return response.GetError();
-            }
+        return future.Apply(
+            [diskId, expectedLen]   //
+            (const TFuture<TResultOrError<TEncryptionKey>>& f) -> TResponse
+            {
+                auto response = UnsafeExtractValue(f);
+                if (HasError(response)) {
+                    return response.GetError();
+                }
 
-            auto key = response.ExtractResult();
-            if (key.GetKey().size() != expectedLen) {
-                return MakeError(E_INVALID_STATE, TStringBuilder()
-                    << "Key from KMS for disk " << diskId
-                    << " should has size " << expectedLen);
-            }
+                auto key = response.ExtractResult();
+                if (key.GetKey().size() != expectedLen) {
+                    return MakeError(
+                        E_INVALID_STATE,
+                        TStringBuilder() << "Key from KMS for disk " << diskId
+                                         << " should has size " << expectedLen);
+                }
 
-            return std::move(key);
-        });
+                return std::move(key);
+            });
     }
 
     TFuture<TResponse> ReadKeyFromRootKMS(
@@ -164,21 +169,26 @@ private:
         ui32 expectedLen)
     {
         auto future = RootKmsKeyProvider->GetKey(kmsKey, diskId);
-        return future.Apply([diskId, expectedLen] (auto f) -> TResponse {
-            auto response = f.ExtractValue();
-            if (HasError(response)) {
-                return response.GetError();
-            }
+        return future.Apply(
+            [diskId, expectedLen]   //
+            (const TFuture<TResultOrError<TEncryptionKey>>& f) -> TResponse
+            {
+                auto response = UnsafeExtractValue(f);
+                if (HasError(response)) {
+                    return response.GetError();
+                }
 
-            auto key = response.ExtractResult();
-            if (key.GetKey().size() != expectedLen) {
-                return MakeError(E_INVALID_STATE, TStringBuilder()
-                    << "Key from Root KMS for disk " << diskId
-                    << " should has size " << expectedLen);
-            }
+                auto key = response.ExtractResult();
+                if (key.GetKey().size() != expectedLen) {
+                    return MakeError(
+                        E_INVALID_STATE,
+                        TStringBuilder()
+                            << "Key from Root KMS for disk " << diskId
+                            << " should has size " << expectedLen);
+                }
 
-            return std::move(key);
-        });
+                return std::move(key);
+            });
     }
 };
 

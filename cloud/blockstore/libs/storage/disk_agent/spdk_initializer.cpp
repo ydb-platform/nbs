@@ -9,6 +9,8 @@
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
+
 #include <library/cpp/iterator/zip.h>
 
 #include <util/string/builder.h>
@@ -226,9 +228,11 @@ TFuture<void> TSpdkInitializer::RegisterNVMeDevices(
     auto pool = args.GetPoolName();
 
     return result.Apply(
-        [=, this] (auto future) mutable {
+        [=, this]   //
+        (const TFuture<TVector<TString>>& future) mutable
+        {
             try {
-                auto devices = future.ExtractValue();
+                auto devices = UnsafeExtractValue(future);
 
                 Y_ABORT_UNLESS(devices.size() == deviceIds.size());
 
@@ -325,9 +329,11 @@ TFuture<void> TSpdkInitializer::ProcessDevice(
     const TString& id,
     const TString& pool)
 {
-    auto stats = QueryDeviceStats(name, id)
-        .Apply([=, this] (auto future) {
-            auto config = future.ExtractValue();
+    auto stats = QueryDeviceStats(name, id).Apply(
+        [=, this]   //
+        (const TFuture<NProto::TDeviceConfig>& future)
+        {
+            auto config = UnsafeExtractValue(future);
             config.SetPoolName(pool);
             ProcessDeviceConfig(std::move(config));
         });
@@ -340,9 +346,11 @@ TFuture<void> TSpdkInitializer::ProcessNVMeDevice(
     const TString& id,
     const TString& pool)
 {
-    auto stats = QueryDeviceStats(name, id)
-        .Apply([=, this] (auto future) {
-            auto config = future.ExtractValue();
+    auto stats = QueryDeviceStats(name, id).Apply(
+        [=, this]   //
+        (const TFuture<NProto::TDeviceConfig>& future)
+        {
+            auto config = UnsafeExtractValue(future);
             config.SetBaseName(baseName);
             config.SetPoolName(pool);
             ProcessDeviceConfig(std::move(config));

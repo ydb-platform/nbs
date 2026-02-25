@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -78,9 +79,9 @@ public:
                 std::move(requestInfo.Request));
             future.Subscribe(
                 [promise = std::move(requestInfo.Promise)](
-                    TFuture<TResponse> f) mutable
+                    const TFuture<TResponse>& f) mutable
                 {
-                    promise.SetValue(f.ExtractValue());   //
+                    promise.SetValue(UnsafeExtractValue(f));   //
                 });
         }
         Requests.clear();
@@ -289,12 +290,12 @@ private:
                 std::move(callContext),
                 std::move(request));
 
-        return future.Apply(
+        return future.Subscribe(
             [sessionSwitcher = SessionSwitcher]   //
-            (TFuture<NProto::TMountVolumeResponse> future)
-                -> NProto::TMountVolumeResponse
+            (const TFuture<NProto::TMountVolumeResponse>& future)
             {
-                NProto::TMountVolumeResponse response = future.ExtractValue();
+                const NProto::TMountVolumeResponse& response =
+                    future.GetValue();
 
                 if (!HasError(response) &&
                     response.GetVolume().GetPrincipalDiskId())
@@ -305,8 +306,6 @@ private:
                             response.GetVolume().GetPrincipalDiskId());
                     }
                 }
-
-                return response;
             });
     }
 };
