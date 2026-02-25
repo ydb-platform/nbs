@@ -34,6 +34,11 @@ constexpr std::array SUPPORTED_HANDLE_FLAGS = {
     TFlag2Proto{O_NONBLOCK,  TCreateHandleRequest::E_NONBLOCK},
     TFlag2Proto{O_PATH,      TCreateHandleRequest::E_PATH},
     TFlag2Proto{O_DIRECT,    TCreateHandleRequest::E_DIRECT},
+    // Keep O_SYNC before O_DSYNC: on Linux O_SYNC contains O_DSYNC bit.
+    // SystemFlagsToRequest clears matched bits as it iterates, so this order
+    // preserves exact sync mode and avoids reporting O_SYNC as O_DSYNC.
+    TFlag2Proto{O_SYNC,      TCreateHandleRequest::E_SYNC},
+    TFlag2Proto{O_DSYNC,     TCreateHandleRequest::E_DSYNC},
 };
 
 constexpr std::array SUPPORTED_RENAME_FLAGS = {
@@ -56,7 +61,9 @@ ui32 SystemFlagsToRequest(int flags, std::span<const TFlag2Proto> supportedFlags
 {
     ui32 value = 0;
     for (const auto& [flag, proto]: supportedFlags) {
-        if (flag & flags) {
+        // Use full-bit match instead of overlap. This is required for flags
+        // like O_SYNC/O_DSYNC where one value may include bits of another.
+        if ((flags & flag) == flag) {
             value |= ProtoFlag(proto);
             flags &= ~flag;
         }

@@ -14,6 +14,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <fcntl.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
