@@ -608,10 +608,11 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
     }
 
     return future.Apply(
-        [sglist = std::move(sglist)](auto future)
+        [sglist = std::move(sglist)]   //
+        (const TFuture<NProto::TReadBlocksLocalResponse>& future)
         {
             NProto::TReadBlocksLocalResponse response =
-                future.ExtractValueSync();
+                UnsafeExtractValue(future);
             if (HasError(response.GetError())) {
                 return response;
             }
