@@ -343,6 +343,10 @@ void TTabletMetrics::Register(
         ListNodesExtra.PrepareAttempts,
         "ListNodes.PrepareAttempts",
         EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM_EXT(
+        ListNodesExtra.ResponseNodeRefs,
+        "ListNodes.ResponseNodeRefs",
+        EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM_EXT(
         CompactionExtra.DudCount,
