@@ -9,7 +9,8 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
-#include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 
@@ -77,14 +78,10 @@ private:
 
     void FreshBlobsLoaded(const NActors::TActorContext& ctx);
 
-    void KillActors(const NActors::TActorContext& ctx);
-
     // IMortalActor overrides
 
     void Poison(const NActors::TActorContext& ctx) override
     {
-        KillActors(ctx);
-
         CancelPendingRequests(ctx, PendingRequests);
 
         Die(ctx);

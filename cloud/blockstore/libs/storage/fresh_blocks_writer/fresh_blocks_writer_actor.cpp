@@ -1,7 +1,5 @@
 #include "fresh_blocks_writer_actor.h"
 
-#include "fresh_blocks_companion_client.h"
-
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
