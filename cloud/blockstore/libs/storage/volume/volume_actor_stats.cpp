@@ -268,15 +268,8 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
             DiagnosticsConfig->GetHistogramCounterOptions());
     }
 
-    if(!data.PartCountersData.DiskCounters)
-    {
+    if (!data.PartCountersData.DiskCounters) {
         UpdateCounters(ctx);
-        CleanupHistory(
-            ctx,
-            SelfId(),                       // sender
-            0,                              // cookie
-            MakeIntrusive<TCallContext>()   // callContext
-        );
         return;
     }
 
