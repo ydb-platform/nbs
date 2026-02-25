@@ -192,6 +192,8 @@ private:
 
     NActors::TActorId FreshBlocksWriter;
 
+    TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
+
     TRequestInfoPtr Poisoner;
 
 public:

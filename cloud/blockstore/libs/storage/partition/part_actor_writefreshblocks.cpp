@@ -134,7 +134,8 @@ void TPartitionActor::WriteFreshBlocks(
             std::move(writeHandlers),
             BlockDigestGenerator,
             TabletID(),
-            true);   // waitForAddFreshBlocksResponseBeforeResponse
+            true,       // waitForAddFreshBlocksResponseBeforeResponse
+            nullptr);   // unflushedFreshBlobByteCount
 
         Actors.Insert(actor);
     } else {
@@ -506,7 +507,8 @@ void TPartitionActor::ZeroFreshBlocks(
             TVector<IWriteBlocksHandlerPtr>{},
             BlockDigestGenerator,
             TabletID(),
-            true);   // waitForAddFreshBlocksResponseBeforeResponse
+            true,       // waitForAddFreshBlocksResponseBeforeResponse
+            nullptr);   // unflushedFreshBlobByteCount
 
         Actors.Insert(actor);
     } else {

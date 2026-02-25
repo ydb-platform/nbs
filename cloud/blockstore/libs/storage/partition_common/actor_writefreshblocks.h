@@ -59,6 +59,7 @@ private:
     const bool IsZeroRequest;
     const bool WaitForAddFreshBlocksResponseBeforeResponse;
     const ui64 TabletId;
+    TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
 
     TString BlobContent;
     ui64 BlobSize = 0;
@@ -81,7 +82,8 @@ public:
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui64 tabletId,
-        bool waitForAddFreshBlocksResponseBeforeResponse);
+        bool waitForAddFreshBlocksResponseBeforeResponse,
+        TUnflushedFreshBlobByteCountPtr unflushedFreshBlobByteCount);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -26,6 +26,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TUnflushedFreshBlobByteCountPtr = std::shared_ptr<std::atomic<ui64>>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
     xxx(ReadBlob,                  __VA_ARGS__)                                \
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
@@ -396,6 +400,8 @@ struct TEvPartitionCommonPrivate
         NPartition::TThreadSafePartCountersPtr PartCounters;
         NPartition::TThreadSafePartStatsPtr PartStats;
         NPartition::TGroupDowntimesPtr GroupDowntimes;
+
+        TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
 
         TCommitIdGeneratorPtr CommitIdGenerator;
     };

@@ -1340,6 +1340,10 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->PartCounters = IoCompanionCounters;
     response->GroupDowntimes = GroupDowntimes;
 
+    UnflushedFreshBlobByteCount = std::make_shared<std::atomic<ui64>>();
+    UnflushedFreshBlobByteCount->store(State->GetUnflushedFreshBlobByteCount());
+    response->UnflushedFreshBlobByteCount = UnflushedFreshBlobByteCount;
+
     response->PartStats = State->AccessThreadSafeStats();
 
     for (size_t i = 0; i < State->GetChannelCount(); ++i) {

@@ -77,6 +77,8 @@ private:
 
     NPartition::TThreadSafePartStatsPtr PartStats;
 
+    TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
+
 public:
     TFreshBlocksWriterActor(
         TStorageConfigPtr config,

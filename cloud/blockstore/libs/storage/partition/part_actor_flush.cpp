@@ -844,6 +844,11 @@ void TPartitionActor::HandleFlushCompleted(
 
         State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
         State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
+
+        if (UnflushedFreshBlobByteCount) {
+            UnflushedFreshBlobByteCount->fetch_sub(
+                msg->FlushedFreshBlobByteCount);
+        }
     }
 
     State->AccessFlushedCommitIdsInProgress().clear();

@@ -316,6 +316,8 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
     PartCounters = msg->PartCounters;
     PartStats = msg->PartStats;
 
+    UnflushedFreshBlobByteCount = msg->UnflushedFreshBlobByteCount;
+
     StateLoaded = true;
     SendPendingRequests(ctx, PendingRequests);
 }

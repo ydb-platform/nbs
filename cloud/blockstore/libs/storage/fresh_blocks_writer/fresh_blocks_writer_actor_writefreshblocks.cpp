@@ -31,7 +31,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    if (FlushState->GetUnflushedFreshBlobByteCount() >=
+    if (UnflushedFreshBlobByteCount->load() >=
         Config->GetFreshByteCountHardLimit())
     {
         for (auto& r: requestsInBuffer) {
@@ -127,7 +127,8 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         std::move(writeHandlers),
         BlockDigestGenerator,
         PartitionTabletID,
-        false);   // waitForAddFreshBlocksResponseBeforeResponse
+        false,   // waitForAddFreshBlocksResponseBeforeResponse
+        UnflushedFreshBlobByteCount);
 
     Actors.Insert(actor);
 }
