@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package filesystem_traversal;
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/filesystem_traversal/config";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package scrubbing;
 
-import "cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/filesystem_traversal/config/config.proto";
+import "cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config/config.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config";
 
