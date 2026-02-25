@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/io_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 
@@ -40,6 +41,9 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
     const NActors::TActorId VolumeActorId;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const IBlockDigestGeneratorPtr BlockDigestGenerator;
+
+    IProfileLogPtr ProfileLog;
 
     NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
 
@@ -56,6 +60,10 @@ private:
 
     TDeque<TPendingRequest> PendingRequests;
 
+    ui64 WriteAndZeroRequestsInProgress = 0;
+
+    TRunningActors Actors;
+
     TLogTitle LogTitle;
 
     ui64 BSGroupOperationId = 0;
@@ -64,17 +72,24 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
+    NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
+    NPartition::TThreadSafePartCountersPtr PartCounters;
+
+    NPartition::TThreadSafePartStatsPtr PartStats;
+
 public:
     TFreshBlocksWriterActor(
         TStorageConfigPtr config,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
+        ui64 partitionTabletId,
         ui32 partitionIndex,
         ui32 siblingCount,
         NActors::TActorId partitionActorId,
         NActors::TActorId volumeActorId,
         TDiagnosticsConfigPtr diagnosticsConfig,
-        ui64 partitionTabletId);
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IProfileLogPtr profileLog);
 
     ~TFreshBlocksWriterActor() override;
 
@@ -100,12 +115,43 @@ private:
 
     // IMortalActor overrides
 
-    void Poison(const NActors::TActorContext& ctx) override
-    {
-        CancelPendingRequests(ctx, PendingRequests);
+    void Poison(const NActors::TActorContext& ctx) override;
 
-        Die(ctx);
-    }
+    void KillActors(const NActors::TActorContext& ctx);
+
+    bool InitReadWriteBlockRange(
+        ui64 blockIndex,
+        ui32 blockCount,
+        TBlockRange64* range) const;
+
+    bool CheckBlockRange(const TBlockRange64& range) const;
+
+    void WriteBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        const TBlockRange32& writeRange,
+        IWriteBlocksHandlerPtr writeHandler,
+        bool replyLocal);
+
+    void WriteFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInBuffer<TWriteBufferRequestData> requestInBuffer);
+
+    void WriteFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer);
+
+    void ZeroFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 writeRange,
+        ui64 commitId);
+
+    void RebootOnCommitIdOverflow(
+        const NActors::TActorContext& ctx,
+        const TStringBuf& requestName);
+
+    void UpdateStats(const NProto::TPartitionStats& update);
 
 private:
     STFUNC(StateWaitPartition);
@@ -123,6 +169,20 @@ private:
     void HandleFreshChannelsInfo(
         const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse::TPtr&
             ev,
+        const NActors::TActorContext& ctx);
+
+    template <typename TMethod>
+    void HandleWriteBlocksRequest(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx,
+        bool replyLocal);
+
+    void HandleWriteBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleZeroBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

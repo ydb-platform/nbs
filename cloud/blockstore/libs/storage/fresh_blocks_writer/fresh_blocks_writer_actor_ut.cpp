@@ -1,8 +1,9 @@
-#include <cloud/blockstore/libs/storage/partition/part_actor.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/fresh_blocks_writer/fresh_blocks_writer_actor.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
+#include <cloud/blockstore/libs/storage/partition/part_actor.h>
+#include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/part_client.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
@@ -25,6 +26,25 @@ using namespace NLWTrace;
 using namespace NPartition;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetBlockContent(char fill = 0, size_t size = DefaultBlockSize)
+{
+    return TString(size, fill);
+}
+
+TString GetBlocksContent(
+    char fill = 0,
+    ui32 blockCount = 1,
+    size_t blockSize = DefaultBlockSize)
+{
+    TString result;
+    for (ui32 i = 0; i < blockCount; ++i) {
+        result += GetBlockContent(fill, blockSize);
+    }
+    return result;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -117,12 +137,14 @@ struct TTestEnv
     NProto::TPartitionConfig PartitionConfig;
     std::unique_ptr<TTestActorRuntime> Runtime;
 
-    std::shared_ptr<TActorId> PartitionActorId = std::make_shared<TActorId>();
+    TActorId PartitionActorId = {};
 
-    void SetupRegisterObserver() const
+    TActorId FreshBlocksWriterActorId = {};
+
+    void SetupRegisterObserver()
     {
         Runtime->SetRegistrationObserverFunc(
-            [partActorId = PartitionActorId](
+            [&](
                 TTestActorRuntimeBase& runtime,
                 const TActorId& parentId,
                 const TActorId& actorId)
@@ -131,8 +153,23 @@ struct TTestEnv
                 auto actor =
                     dynamic_cast<TPartitionActor*>(runtime.FindActor(actorId));
                 if (actor) {
-                    Cerr << "PART_ACTOR_ID: " << actorId << Endl;
-                    *partActorId = actorId;
+                    PartitionActorId = actorId;
+
+                    FreshBlocksWriterActorId = runtime.Register(
+                        std::make_unique<
+                            NFreshBlocksWriter::TFreshBlocksWriterActor>(
+                            Configs->StorageConfig,
+                            PartitionConfig,
+                            EStorageAccessMode::Default,
+                            TestTabletId,
+                            0,
+                            1,
+                            actorId,
+                            VolumeActorId,
+                            Configs->DiagnosticsConfig,
+                            CreateBlockDigestGeneratorStub(),
+                            CreateProfileLogStub())
+                            .release());
                 }
             });
     }
@@ -285,6 +322,52 @@ public:
             NFreshBlocksWriter::TEvFreshBlocksWriter::TEvWaitReadyRequest>();
     }
 
+    std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest(
+        const TBlockRange32& writeRange,
+        char fill)
+    {
+        auto blockContent = GetBlockContent(fill);
+
+        auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
+        request->Record.SetStartIndex(writeRange.Start);
+
+        auto& buffers = *request->Record.MutableBlocks()->MutableBuffers();
+        for (ui32 i = 0; i < writeRange.Size(); ++i) {
+            *buffers.Add() = blockContent;
+        }
+
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest(
+        ui32 blockIndex,
+        char fill)
+    {
+        return CreateWriteBlocksRequest(
+            TBlockRange32::WithLength(blockIndex, 1),
+            fill);
+    }
+
+    std::unique_ptr<TEvService::TEvReadBlocksRequest> CreateReadBlocksRequest(
+        const TBlockRange32& range,
+        const TString& checkpointId = {})
+    {
+        auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
+        request->Record.SetStartIndex(range.Start);
+        request->Record.SetBlocksCount(range.Size());
+        request->Record.SetCheckpointId(checkpointId);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvReadBlocksRequest> CreateReadBlocksRequest(
+        ui32 blockIndex,
+        const TString& checkpointId = {})
+    {
+        return CreateReadBlocksRequest(
+            TBlockRange32::WithLength(blockIndex, 1),
+            checkpointId);
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -316,8 +399,56 @@ public:
         BLOCKSTORE_DECLARE_METHOD,
         NFreshBlocksWriter::TEvFreshBlocksWriter);
 
+    BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvService)
+    BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvVolume)
+
 #undef BLOCKSTORE_DECLARE_METHOD
 };
+
+TString GetBlockContent(
+    const std::unique_ptr<TEvService::TEvReadBlocksResponse>& response)
+{
+    if (response->Record.GetBlocks().BuffersSize() == 1) {
+        return response->Record.GetBlocks().GetBuffers(0);
+    }
+    return {};
+}
+
+TString GetBlocksContent(
+    const std::unique_ptr<TEvService::TEvReadBlocksResponse>& response)
+{
+    const auto& blocks = response->Record.GetBlocks();
+
+    {
+        bool empty = true;
+        for (size_t i = 0; i < blocks.BuffersSize(); ++i) {
+            if (blocks.GetBuffers(i)) {
+                empty = false;
+            }
+        }
+
+        if (empty) {
+            return TString();
+        }
+    }
+
+    TString result;
+
+    for (size_t i = 0; i < blocks.BuffersSize(); ++i) {
+        const auto& block = blocks.GetBuffers(i);
+        if (!block) {
+            result += GetBlockContent(char(0));
+            continue;
+        }
+        result += block;
+    }
+
+    return result;
+}
 
 }   // namespace
 
@@ -335,20 +466,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         TPartitionClient partition(*testEnv.Runtime);
         partition.WaitReady();
 
-        auto freshBlocksWriter = testEnv.Runtime->Register(
-            std::make_unique<NFreshBlocksWriter::TFreshBlocksWriterActor>(
-                testEnv.Configs->StorageConfig,
-                testEnv.PartitionConfig,
-                EStorageAccessMode::Default,
-                0,
-                1,
-                *testEnv.PartitionActorId,
-                VolumeActorId,
-                testEnv.Configs->DiagnosticsConfig,
-                TestTabletId)
-                .release());
-
-        TFreshBlocksWriterClient fbwClient(*testEnv.Runtime, freshBlocksWriter);
+        TFreshBlocksWriterClient fbwClient(
+            *testEnv.Runtime,
+            testEnv.FreshBlocksWriterActorId);
 
         fbwClient.WaitReady();
 
@@ -359,6 +479,218 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         UNIT_ASSERT_C(
             SUCCEEDED(response->GetStatus()),
             response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldAddFreshBlocksBeforeReply)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlocksWriterEnabled(true);
+
+        auto testEnv = PrepareTestActorRuntime(config);
+        auto& runtime = *testEnv.Runtime;
+
+        bool wasAddFreshBlocksRequest = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
+                {
+                    wasAddFreshBlocksRequest = true;
+                }
+
+                // Drop add fresh blocks response to be sure that we don't wait
+                // partition.
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksResponse)
+                {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvWriteBlocksResponse) {
+                    UNIT_ASSERT(wasAddFreshBlocksRequest);
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(0, '0');
+    }
+
+
+    Y_UNIT_TEST(ShouldWriteFreshBlocks)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlocksWriterEnabled(true);
+
+        auto testEnv = PrepareTestActorRuntime(config);
+        auto& runtime = *testEnv.Runtime;
+
+        // TODO(issue-4875): remove trim events dropping after adding trim
+        // synchronization
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
+                    UNIT_ASSERT_VALUES_UNEQUAL(testEnv.PartitionActorId, event->GetRecipientRewrite());
+
+                    return false;
+                }
+                return event->GetTypeRewrite() ==
+                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+            });
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(0, '0');
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('0'),
+            GetBlockContent(fbwClient.ReadBlocks(0)));
+
+        fbwClient.WriteBlocks(1, '1');
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('1'),
+            GetBlockContent(fbwClient.ReadBlocks(1)));
+
+        fbwClient.WriteBlocks(2, '2');
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('2'),
+            GetBlockContent(fbwClient.ReadBlocks(2)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('1'),
+            GetBlockContent(fbwClient.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('0'),
+            GetBlockContent(fbwClient.ReadBlocks(0)));
+    }
+
+    Y_UNIT_TEST(ShouldPassLargeWritesToPartition)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlocksWriterEnabled(true);
+
+        auto testEnv = PrepareTestActorRuntime(config);
+        auto& runtime = *testEnv.Runtime;
+
+        // TODO(issue-4875): remove trim events dropping after adding trim
+        // synchronization
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    UNIT_ASSERT_VALUES_UNEQUAL(
+                        testEnv.FreshBlocksWriterActorId,
+                        event->GetRecipientRewrite());
+
+                    return false;
+                }
+                return event->GetTypeRewrite() ==
+                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+            });
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(0, 1024), 'A');
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('A', 1024),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 1024))));
+    }
+
+    Y_UNIT_TEST(ShouldWriteBlocksWithCorrectCommitId)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlocksWriterEnabled(true);
+
+        auto testEnv = PrepareTestActorRuntime(config, 2048);
+        auto& runtime = *testEnv.Runtime;
+
+        // TODO(issue-4875): remove trim events dropping after adding trim
+        // synchronization
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                return event->GetTypeRewrite() ==
+                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+            });
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+
+        fbwClient.WaitReady();
+
+        // Partition write
+        // 0 1 2 3 4 5 6 7 ...
+        // A A A A A A A A ...
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(0, 1024), 'A');
+
+        // FBW write
+        // 0 1 2 3 4 5 6 7 ...
+        // A B A A A A A A ...
+        fbwClient.WriteBlocks(1, 'B');
+
+        // FBW write
+        // 0 1 2 3 4 5 6 7 ...
+        // A B A C C C A A ...
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(3, 3), 'C');
+
+        // Partition write
+        // 0 1 2 3 4 5 6 7 ...
+        // A B A C C D D D ...
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(5, 1024), 'D');
+
+        // FBW write
+        // 0 1 2 3 4 5 6 7 ...
+        // A B A C E E D D ...
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(4, 2), 'E');
+
+        auto actualContent = GetBlocksContent(
+            fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 7)));
+
+        TStringBuilder expectedContent;
+        expectedContent << GetBlockContent('A') << GetBlockContent('B')
+                        << GetBlockContent('A') << GetBlockContent('C')
+                        << GetBlockContent('E') << GetBlockContent('E')
+                        << GetBlockContent('D');
+
+        UNIT_ASSERT_EQUAL(expectedContent, actualContent);
     }
 }
 

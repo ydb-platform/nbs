@@ -25,6 +25,8 @@
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/part_counters.h>
 #include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
@@ -1056,8 +1058,10 @@ public:
     // Stats
     //
 
-public:
+private:
+    TThreadSafePartStatsPtr Stats = std::make_shared<TThreadSafePartStats>();
 
+public:
     const NProto::TPartitionStats& GetStats() const
     {
         return Meta.GetStats();
@@ -1065,6 +1069,7 @@ public:
 
     NProto::TPartitionStats& AccessStats()
     {
+        UpdateWithThreadSafeStats();
         return *Meta.MutableStats();
     }
 
@@ -1090,6 +1095,17 @@ public:
 
     void DumpHtml(IOutputStream& out) const;
     NJson::TJsonValue AsJson() const;
+
+    TThreadSafePartStatsPtr AccessThreadSafeStats()
+    {
+        return Stats;
+    }
+
+    void UpdateWithThreadSafeStats()
+    {
+        auto statsToAdd = Stats->Swap({});
+        UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
