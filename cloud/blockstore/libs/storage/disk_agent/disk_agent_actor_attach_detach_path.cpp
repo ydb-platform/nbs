@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
+
 #include <util/string/join.h>
 
 #include <algorithm>
@@ -255,11 +257,11 @@ void TDiskAgentActor::HandleAttachPaths(
          selfId = ctx.SelfID,
          pathsToAttach = std::move(detachedPaths),
          alreadyAttachedPaths = std::move(attachedPaths),
-         controlPlaneRequestNumber](
-            TFuture<TResultOrError<TDiskAgentState::TPreparePathsResult>>
-                future) mutable
+         controlPlaneRequestNumber]   //
+        (const TFuture<TResultOrError<TDiskAgentState::TPreparePathsResult>>&
+             future) mutable
         {
-            auto [result, error] = future.ExtractValue();
+            auto [result, error] = UnsafeExtractValue(future);
 
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(

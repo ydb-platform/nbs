@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/notify/iface/notify.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
@@ -100,9 +101,9 @@ public:
              p,
              event = data.Event,
              v = JsonGenerator->Generate(data)](
-                TFuture<TResultOrError<TString>> future) mutable
+                const TFuture<TResultOrError<TString>>& future) mutable
             {
-                auto [token, error] = future.ExtractValue();
+                auto [token, error] = UnsafeExtractValue(future);
                 if (HasError(error)) {
                     p.SetValue(error);
                     return;
