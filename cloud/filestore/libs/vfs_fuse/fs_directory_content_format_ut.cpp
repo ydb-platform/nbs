@@ -115,7 +115,13 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
         auto buffer = builder.Finish();
 
         ValidateBuffer(*buffer, attrTimeout, entryTimeout);
-        auto error = ResetAttrTimeout(buffer->Data(), buffer->Size());
+        auto error = VisitEntries(
+            buffer->Data(),
+            buffer->Size(),
+            [] (fuse_entry_out& e) {
+                e.attr_valid = 0;
+                e.attr_valid_nsec = 0;
+            });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
         ValidateBuffer(*buffer, 0, entryTimeout);
     }
