@@ -11,6 +11,61 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ValidateBuffer(
+    const TBuffer& buffer,
+    ui64 attrTimeout,
+    ui64 entryTimeout)
+{
+    auto buf = TStringBuf(buffer.Data(), buffer.Size());
+    UNIT_ASSERT_GT(buf.Size(), sizeof(fuse_direntplus));
+
+    {
+        const auto* de =
+            reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+        UNIT_ASSERT_VALUES_EQUAL(10001, de->dirent.ino);
+        TStringBuf name(de->dirent.name, de->dirent.namelen);
+        UNIT_ASSERT_VALUES_EQUAL("file1", name);
+        UNIT_ASSERT_VALUES_EQUAL(S_IFREG, de->entry_out.attr.mode);
+        UNIT_ASSERT_VALUES_EQUAL(10_KB, de->entry_out.attr.size);
+        UNIT_ASSERT_VALUES_EQUAL(attrTimeout, de->entry_out.attr_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+        UNIT_ASSERT_VALUES_EQUAL(entryTimeout, de->entry_out.entry_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
+
+        buf.Skip(
+            sizeof(*de) + AlignUp<ui64>(de->dirent.namelen, sizeof(ui64)));
+    }
+
+    UNIT_ASSERT_GT(buf.Size(), sizeof(fuse_direntplus));
+
+    {
+        const auto* de =
+            reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+        UNIT_ASSERT_VALUES_EQUAL(10002, de->dirent.ino);
+        TStringBuf name(de->dirent.name, de->dirent.namelen);
+        UNIT_ASSERT_VALUES_EQUAL("dir1", name);
+        UNIT_ASSERT_VALUES_EQUAL(S_IFDIR, de->entry_out.attr.mode);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr.size);
+        UNIT_ASSERT_VALUES_EQUAL(attrTimeout, de->entry_out.attr_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+        UNIT_ASSERT_VALUES_EQUAL(entryTimeout, de->entry_out.entry_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
+
+        buf.Skip(
+            sizeof(*de) + AlignUp<ui64>(de->dirent.namelen, sizeof(ui64)));
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL(0, buf.Size());
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
@@ -59,48 +114,10 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
 
         auto buffer = builder.Finish();
 
-        auto buf = TStringBuf(buffer->Data(), buffer->Size());
-        UNIT_ASSERT_GT(buf.Size(), sizeof(fuse_direntplus));
-
-        {
-            const auto* de =
-                reinterpret_cast<const fuse_direntplus*>(buf.data());
-
-            UNIT_ASSERT_VALUES_EQUAL(10001, de->dirent.ino);
-            TStringBuf name(de->dirent.name, de->dirent.namelen);
-            UNIT_ASSERT_VALUES_EQUAL("file1", name);
-            UNIT_ASSERT_VALUES_EQUAL(S_IFREG, de->entry_out.attr.mode);
-            UNIT_ASSERT_VALUES_EQUAL(10_KB, de->entry_out.attr.size);
-            UNIT_ASSERT_VALUES_EQUAL(attrTimeout, de->entry_out.attr_valid);
-            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
-            UNIT_ASSERT_VALUES_EQUAL(entryTimeout, de->entry_out.entry_valid);
-            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
-
-            buf.Skip(
-                sizeof(*de) + AlignUp<ui64>(de->dirent.namelen, sizeof(ui64)));
-        }
-
-        UNIT_ASSERT_GT(buf.Size(), sizeof(fuse_direntplus));
-
-        {
-            const auto* de =
-                reinterpret_cast<const fuse_direntplus*>(buf.data());
-
-            UNIT_ASSERT_VALUES_EQUAL(10002, de->dirent.ino);
-            TStringBuf name(de->dirent.name, de->dirent.namelen);
-            UNIT_ASSERT_VALUES_EQUAL("dir1", name);
-            UNIT_ASSERT_VALUES_EQUAL(S_IFDIR, de->entry_out.attr.mode);
-            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr.size);
-            UNIT_ASSERT_VALUES_EQUAL(attrTimeout, de->entry_out.attr_valid);
-            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
-            UNIT_ASSERT_VALUES_EQUAL(entryTimeout, de->entry_out.entry_valid);
-            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
-
-            buf.Skip(
-                sizeof(*de) + AlignUp<ui64>(de->dirent.namelen, sizeof(ui64)));
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(0, buf.Size());
+        ValidateBuffer(*buffer, attrTimeout, entryTimeout);
+        auto error = ResetAttrTimeout(buffer->Data(), buffer->Size());
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        ValidateBuffer(*buffer, 0, entryTimeout);
     }
 }
 

@@ -23,4 +23,8 @@ public:
     TBufferPtr Finish();
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ResetAttrTimeout(char* data, ui64 len);
+
 }   // namespace NCloud::NFileStore::NFuse
