@@ -111,6 +111,8 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         writeHandlers.push_back(r.Data.Handler);
     }
 
+    TrimFreshLogState->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+
     const ui32 channel = ChannelsState->PickNextChannel(
         EChannelDataKind::Fresh,
         EChannelPermission::UserWritesAllowed);

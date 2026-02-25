@@ -1362,6 +1362,8 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     FreshBlocksWriter = ev->Sender;
 
     NCloud::Reply(ctx, *ev, std::move(response));
+
+    EnqueueTrimFreshLogIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

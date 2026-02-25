@@ -363,6 +363,10 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
     WriteAndZeroRequestsInProgress -= requestCount;
 
+    TrimFreshLogState->AccessTrimFreshLogBarriers().ReleaseBarrierN(
+        commitId,
+        blocksCount);
+
     // TODO(issue-4875): process drain requests
     // DrainActorCompanion.ProcessDrainRequests(ctx);
 }

@@ -63,6 +63,7 @@ using TPartitionSharedStatePtr = std::shared_ptr<TPartitionSharedState>;
     xxx(PatchBlob,                 __VA_ARGS__)                                \
     xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
     xxx(AddFreshBlocks,            __VA_ARGS__)                                \
+    xxx(GetTrimFreshLogToCommitId, __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -455,7 +456,20 @@ struct TEvPartitionCommonPrivate
     {
     };
 
+    //
+    // GetTrimFreshLogToCommitId
+    //
 
+    struct TGetTrimFreshLogToCommitIdRequest
+    {
+    };
+
+    struct TGetTrimFreshLogToCommitIdResponse
+    {
+        ui64 TrimFreshLogToCommitId;
+    };
+
+    //
     // Events declaration
     //
 

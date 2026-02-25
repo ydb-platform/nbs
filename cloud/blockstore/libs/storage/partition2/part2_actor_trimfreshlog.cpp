@@ -102,8 +102,6 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
-
     auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "TrimFreshLog");
@@ -111,9 +109,8 @@ void TPartitionActor::HandleTrimFreshLog(
     }
 
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start TrimFreshLog @%lu @%lu",
+        "[%lu] Start TrimFreshLog @%lu",
         TabletID(),
-        trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
     State->GetTrimFreshLogState().SetStatus(EOperationStatus::Started);
@@ -127,12 +124,13 @@ void TPartitionActor::HandleTrimFreshLog(
         requestInfo,
         SelfId(),
         Info(),
-        trimFreshLogToCommitId,
         ParseCommitId(State->GetLastCommitId()).first,
         nextPerGenerationCounter,
         std::move(freshChannels),
         "",
-        Config->GetTrimFreshLogTimeout());
+        Config->GetTrimFreshLogTimeout(),
+        TVector{ctx.SelfID},
+        State->GetLastTrimFreshLogToCommitId());
 
     Actors.insert(actor);
 }
@@ -169,6 +167,18 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.TrimFreshLog.AddRequest(time);
+}
+
+void TPartitionActor::HandleGetTrimFreshLogToCommitId(
+    const TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdRequest::TPtr&
+        ev,
+    const TActorContext& ctx)
+{
+    auto response = std::make_unique<
+        TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdResponse>(
+        State->GetTrimFreshLogToCommitId());
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

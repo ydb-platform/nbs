@@ -6,6 +6,8 @@
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <algorithm>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -22,28 +24,33 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         TRequestInfoPtr requestInfo,
         const TActorId& partitionActorId,
         TTabletStorageInfoPtr tabletInfo,
-        ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<ui32> freshChannels,
         TString diskId,
-        TDuration timeout)
+        TDuration timeout,
+        const TVector<NActors::TActorId>& actorsToGetTrimFreshLogToCommitId,
+        ui64 lastTrimFreshLogToCommitId)
     : RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
     , TabletInfo(std::move(tabletInfo))
-    , TrimFreshLogToCommitId(trimFreshLogToCommitId)
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
     , FreshChannels(std::move(freshChannels))
     , DiskId(std::move(diskId))
     , Timeout(timeout)
-{}
+    , LastTrimFreshLogToCommitId(lastTrimFreshLogToCommitId)
+{
+    for (const auto& actorId : actorsToGetTrimFreshLogToCommitId) {
+        ActorToTrimFreshLogToCommitId.push_back({.ActorId=actorId});
+    }
+}
 
 void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 
-    Become(&TThis::StateWork);
+    Become(&TThis::StateWaitTrimFreshLogToCommitId);
 
     LWTRACK(
         RequestReceived_PartitionWorker,
@@ -51,7 +58,15 @@ void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
         "TrimFreshLog",
         RequestInfo->CallContext->RequestId);
 
-    TrimFreshLog(ctx);
+    GetTrimFreshLogToCommitId(ctx);
+}
+
+void TTrimFreshLogActor::GetTrimFreshLogToCommitId(const TActorContext& ctx)
+{
+    auto& actorId = ActorToTrimFreshLogToCommitId[ActorIdx].ActorId;
+
+    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdRequest>();
+    NCloud::Send(ctx, actorId, std::move(request));
 }
 
 void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
@@ -61,8 +76,8 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
     auto barriers = BuildGCBarriers(
         *TabletInfo,
         FreshChannels,
-        TVector<TPartialBlobId>(),  // knownBlobIds
-        TrimFreshLogToCommitId);
+        TVector<TPartialBlobId>(),   // knownBlobIds
+        *TrimFreshLogToCommitId);
 
     for (auto channelId: FreshChannels) {
         for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId)) {
@@ -104,7 +119,7 @@ void TTrimFreshLogActor::NotifyCompleted(const TActorContext& ctx)
     using TEvent = TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted;
     auto ev = std::make_unique<TEvent>(Error);
 
-    ev->CommitId = TrimFreshLogToCommitId;
+    ev->CommitId = *TrimFreshLogToCommitId;
     ev->ExecCycles = RequestInfo->GetExecCycles();
     ev->TotalCycles = RequestInfo->GetTotalCycles();
 
@@ -127,6 +142,72 @@ void TTrimFreshLogActor::ReplyAndDie(const TActorContext& ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TTrimFreshLogActor::HandleGetTrimFreshLogToCommitIdResponse(
+    const TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdResponse::TPtr&
+        ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
+            "[%lu] Got error while waiting TrimFreshLogToCommitId: %s",
+            TabletInfo->TabletID,
+            FormatError(msg->GetError()).c_str());
+        Error = std::move(msg->GetError());
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    STORAGE_VERIFY(
+        ActorIdx < ActorToTrimFreshLogToCommitId.size(),
+        TWellKnownEntityTypes::DISK,
+        DiskId);
+
+    ui64 trimFreshLogToCommitId = msg->TrimFreshLogToCommitId;
+
+    ActorToTrimFreshLogToCommitId[ActorIdx].CommitId =
+        trimFreshLogToCommitId;
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%lu] Got TrimFreshLog @%lu from actor %s",
+        TabletInfo->TabletID,
+        trimFreshLogToCommitId,
+        ToString(ActorToTrimFreshLogToCommitId[ActorIdx].ActorId).c_str());
+
+    ++ActorIdx;
+
+    if (ActorIdx < ActorToTrimFreshLogToCommitId.size()) {
+        GetTrimFreshLogToCommitId(ctx);
+        return;
+    }
+
+    TrimFreshLogToCommitId = std::ranges::min_element(
+                                 ActorToTrimFreshLogToCommitId,
+                                 [](const auto& lhs, const auto& rhs)
+                                 { return lhs.CommitId < rhs.CommitId; })
+                                 ->CommitId;
+
+    if (*TrimFreshLogToCommitId == LastTrimFreshLogToCommitId) {
+        NotifyCompleted(ctx);
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "[%lu] Start trimming @%lu",
+        TabletInfo->TabletID,
+        TrimFreshLogToCommitId);
+
+    Become(&TThis::StateWork);
+    TrimFreshLog(ctx);
+}
 
 void TTrimFreshLogActor::HandleCollectGarbageResult(
     const TEvBlobStorage::TEvCollectGarbageResult::TPtr& ev,
@@ -163,6 +244,27 @@ void TTrimFreshLogActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     Die(ctx);
+}
+
+STFUNC(TTrimFreshLogActor::StateWaitTrimFreshLogToCommitId)
+{
+    TRequestScope timer(*RequestInfo);
+
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdResponse,
+            HandleGetTrimFreshLogToCommitIdResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+
 }
 
 STFUNC(TTrimFreshLogActor::StateWork)

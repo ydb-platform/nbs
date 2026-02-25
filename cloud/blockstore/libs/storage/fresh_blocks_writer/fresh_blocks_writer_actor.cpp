@@ -361,6 +361,18 @@ void TFreshBlocksWriterActor::HandleWaitReady(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TFreshBlocksWriterActor::HandleGetTrimFreshLogToCommitId(
+    const TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdRequest::TPtr&
+        ev,
+    const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<
+        TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdResponse>(
+        TrimFreshLogState->GetTrimFreshLogToCommitId());
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -453,6 +465,10 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
             HandleZeroBlocksCompleted);
+
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdRequest,
+            HandleGetTrimFreshLogToCommitId);
 
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&

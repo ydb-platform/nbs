@@ -187,6 +187,11 @@ private:
         const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleGetTrimFreshLogToCommitId(
+        const TEvPartitionCommonPrivate::TEvGetTrimFreshLogToCommitIdRequest::
+            TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleProcessWriteQueue(
         const NPartition::TEvPartitionPrivate::TEvProcessWriteQueue::TPtr& ev,
         const NActors::TActorContext& ctx);
