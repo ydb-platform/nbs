@@ -23,4 +23,5 @@ ServerConfig {
   ChecksumFlags {
   }
   # UseFakeRdmaClient: true
+  EnableOverlappingRequestsGuard: true
 }

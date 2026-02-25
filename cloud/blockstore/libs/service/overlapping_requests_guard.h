@@ -6,7 +6,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The wrapper over IStorage protects the underlying layers from executing
+// The wrapper over IBlockStore protects the underlying layers from executing
 // overlapping zero or write requests.
 // If the new request is received that intersects with an already executing one,
 // it is postponed until the completion of the executing one.
@@ -16,9 +16,13 @@ namespace NCloud::NBlockStore {
 // reordered, and we pretend that the #2 request was executed first, and was
 // then completely rewritten by #1.
 // Read requests are not affected in any way.
-// Thread-safe.
+//
+// Notes:
+//   Thread-safe.
+//   One instance serves one disk.
+//   Use CreateOverlappingRequestsGuardService() to serve multiple disks.
 
-IStoragePtr CreateOverlappingRequestsGuardStorageWrapper(IStoragePtr storage);
+IBlockStorePtr CreateOverlappingRequestsGuard(IBlockStorePtr service);
 
 ////////////////////////////////////////////////////////////////////////////////
 

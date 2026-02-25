@@ -54,6 +54,7 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/overlapping_requests_guard_service.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
@@ -242,6 +243,10 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("Service initialized");
 
+    if (Configs->ServerConfig->GetEnableOverlappingRequestsGuard()) {
+        Service = CreateOverlappingRequestsGuardsService(std::move(Service));
+    }
+
     if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
         InitRdmaRequestServer();
         if (RdmaRequestServer) {
@@ -368,8 +373,6 @@ void TBootstrapBase::Init()
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
         Configs->ServerConfig->GetDisableClientThrottlers();
-    sessionManagerOptions.EnableOverlappingRequestsGuard =
-        Configs->ServerConfig->GetEnableOverlappingRequestsGuard();
     sessionManagerOptions.EnableDataIntegrityClient =
         checksumFlags.GetEnableDataIntegrityClient();
     for (auto mediaKind: checksumFlags.GetMediaKindsToValidateDataIntegrity()) {

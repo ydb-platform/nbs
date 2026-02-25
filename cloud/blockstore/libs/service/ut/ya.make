@@ -5,7 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 SRCS(
     blocks_info_ut.cpp
     device_handler_ut.cpp
-    overlapped_requests_guard_wrapper_ut.cpp
+    overlapping_requests_guard_service_ut.cpp
     service_filtered_ut.cpp
     storage_ut.cpp
 )
