@@ -1,5 +1,9 @@
 #include "fs_directory_content_format.h"
 
+#if defined(FUSE_VIRTIO)
+#   include<cloud/contrib/virtiofsd/fuse.h>
+#endif
+
 #include <util/system/align.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -62,10 +66,10 @@ TBufferPtr TDirectoryBuilder::Finish()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError VisitEntries(
+NProto::TError ResetAttrTimeout(
     char* data,
     ui64 len,
-    const TDirEntryAttrVisitor& visitor)
+    const TNodeIdVisitor& visitor)
 {
 #if defined(FUSE_VIRTIO)
     while (len > sizeof(fuse_direntplus)) {
@@ -77,7 +81,10 @@ NProto::TError VisitEntries(
                 << de->entry_out.attr.ino);
         }
 
-        visitor(de->entry_out);
+        if (visitor(de->dirent.ino)) {
+            de->entry_out.attr_valid = 0;
+            de->entry_out.attr_valid_nsec = 0;
+        }
 
         const ui64 fullSize = sizeof(fuse_direntplus)
             + AlignUp<ui64>(de->dirent.namelen, sizeof(ui64));

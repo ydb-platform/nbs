@@ -2,12 +2,6 @@
 
 #include "fs_directory_handle.h"
 
-#if defined(FUSE_VIRTIO)
-#   include <cloud/contrib/virtiofsd/fuse.h>
-#else
-struct fuse_entry_out;
-#endif
-
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,10 +25,10 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDirEntryAttrVisitor = std::function<void(fuse_entry_out& e)>;
-NProto::TError VisitEntries(
+using TNodeIdVisitor = std::function<bool(ui64)>;
+NProto::TError ResetAttrTimeout(
     char* data,
     ui64 len,
-    const TDirEntryAttrVisitor& visitor);
+    const TNodeIdVisitor& visitor);
 
 }   // namespace NCloud::NFileStore::NFuse
