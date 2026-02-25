@@ -1,4 +1,5 @@
 RECURSE(
     scrubbing
+    snapshot
     traversal
 )

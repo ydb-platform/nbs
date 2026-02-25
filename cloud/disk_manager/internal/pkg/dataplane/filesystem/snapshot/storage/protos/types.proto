@@ -4,7 +4,7 @@ package types;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage/protos";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
 
