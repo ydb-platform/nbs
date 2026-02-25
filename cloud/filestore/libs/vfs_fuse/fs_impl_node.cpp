@@ -37,7 +37,7 @@ void TFileSystem::Lookup(
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
 
-    const ui64 version = GlobalVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (auto future) {

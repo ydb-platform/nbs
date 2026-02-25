@@ -198,7 +198,7 @@ bool TFileSystem::UpdateNodeAttrsInCache(
 void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
 {
     const ui64 newVersion =
-        GlobalVersion.fetch_add(1, std::memory_order_release) + 1;
+        GlobalAttrVersion.fetch_add(1, std::memory_order_release) + 1;
 
     STORAGE_TRACE("invalidating node: " << nodeId
         << ", version: " << newVersion);

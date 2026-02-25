@@ -81,7 +81,7 @@ void TFileSystem::SetAttr(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
-    const ui64 version = GlobalVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
 
     auto callback = [=, ptr = weak_from_this()](const auto& future)
     {
@@ -146,7 +146,7 @@ void TFileSystem::GetAttr(
     const auto cachedNodeSize =
         WriteBackCache ? WriteBackCache.GetCachedNodeSize(ino) : 0;
 
-    const ui64 version = GlobalVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe(

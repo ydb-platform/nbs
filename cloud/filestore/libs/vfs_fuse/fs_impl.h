@@ -115,7 +115,7 @@ private:
 
     TWriteBackCache WriteBackCache;
 
-    std::atomic<ui64> GlobalVersion = 1;
+    std::atomic<ui64> GlobalAttrVersion = 1;
 
 public:
     TFileSystem(

@@ -244,6 +244,8 @@ void TFileSystem::ReadDir(
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
 
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+
     Session->ListNodes(callContext, std::move(request))
         .Subscribe(
             [=, fh = fi->fh, ptr = weak_from_this()](auto future) -> void
@@ -333,6 +335,7 @@ void TFileSystem::ReadDir(
                     size,
                     offset,
                     builder.Finish(),
+                    version,
                     response.GetCookie());
 
                 STORAGE_TRACE(
