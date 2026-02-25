@@ -187,6 +187,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: get reporter name
@@ -240,6 +241,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
 
@@ -353,6 +355,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: set up home
@@ -460,6 +463,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: Calculate pr build and test targets matrix

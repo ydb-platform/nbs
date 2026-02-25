@@ -118,6 +118,7 @@ jobs:
         with:
           sparse-checkout: '.github'
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: List VMs and prepare removal (vms older than 24h) and creation lists
@@ -152,6 +153,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: Remove VM ${{ matrix.vms_to_remove }}
@@ -181,6 +183,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: Remove Broken VM ${{ matrix.broken_vms_to_remove }}
@@ -210,6 +213,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: Create VM ${{ matrix.vms_to_create }}
