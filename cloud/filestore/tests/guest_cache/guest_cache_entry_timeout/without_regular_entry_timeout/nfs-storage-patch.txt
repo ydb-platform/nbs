@@ -1,1 +1,1 @@
-EntryTimeout: 15000
+EntryTimeout: 30000
