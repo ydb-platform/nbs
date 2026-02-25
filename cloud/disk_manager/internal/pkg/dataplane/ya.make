@@ -30,6 +30,7 @@ END()
 RECURSE(
     common
     config
+    filesystem
     filesystem_snapshot
     nbs
     protos
