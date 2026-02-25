@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/commit_id_generator.h>
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
@@ -12,13 +13,14 @@ namespace NCloud::NBlockStore::NStorage {
 class TCommitIdsState
 {
 private:
-    const ui64 Generation = 0;
     NPartition::TCommitQueue CommitQueue;
-    ui32 LastCommitId = 0;
+    TCommitIdGeneratorPtr CommitIdGenerator;
 
     NPartition::TCheckpointStore Checkpoints;
 
 public:
+    explicit TCommitIdsState(TCommitIdGeneratorPtr generator);
+
     TCommitIdsState(ui64 generation, ui64 lastCommitId);
 
     [[nodiscard]] const NPartition::TCommitQueue& GetCommitQueue() const
@@ -34,15 +36,12 @@ public:
 
     [[nodiscard]] ui64 GetLastCommitId() const
     {
-        return MakeCommitId(Generation, LastCommitId);
+        return CommitIdGenerator->GetLastCommitId();
     }
 
     ui64 GenerateCommitId()
     {
-        if (LastCommitId == Max<ui32>()) {
-            return InvalidCommitId;
-        }
-        return MakeCommitId(Generation, ++LastCommitId);
+        return CommitIdGenerator->GenerateCommitId();
     }
 
     [[nodiscard]] auto& AccessCheckpoints()
