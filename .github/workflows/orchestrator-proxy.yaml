@@ -59,6 +59,7 @@ jobs:
           sparse-checkout: '.github'
           clean: true
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: Set up gh cli
