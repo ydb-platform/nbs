@@ -149,9 +149,11 @@ void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
     auto it = nodeState.CachedDataPins.find(pinId);
-    Y_ENSURE(
+    Y_ABORT_UNLESS(
         it != nodeState.CachedDataPins.end(),
-        "Pin " << pinId << " not found for node " << nodeId);
+        "Pin %lu not found for node %lu",
+        pinId,
+        nodeId);
 
     nodeState.CachedDataPins.erase(it);
 

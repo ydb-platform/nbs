@@ -48,7 +48,11 @@ struct TNodeState
     // Tracks cached data parts
     TNodeCache Cache;
 
-    // Prevents flushed requests from being evicted from Cache
+    // Flushed requests with SequenceId >= PinId are prevented
+    // from being evicted from cache.
+    // Used by ReadData request handler in order to keep the cached data
+    // available until the data is no longer needed (avoid copying data to
+    // the temporary buffer under lock)
     TMultiSet<ui64> CachedDataPins;
 
     ENodeFlushStatus FlushStatus = ENodeFlushStatus::NothingToFlush;
