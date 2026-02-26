@@ -479,6 +479,7 @@ FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
         ScrubbingConfig: <
             TraversalConfig: <
             >
+            ListNodesMaxBytes: {list_nodes_max_bytes}
         >
     >
 """
@@ -610,6 +611,7 @@ class DiskManagerLauncher:
         retry_broken_disk_registry_based_disk_checkpoint=False,
         cell_selection_policy="FIRST_IN_CONFIG",
         filesystem_dataplane_enabled=False,
+        list_nodes_max_bytes=0,
     ):
         self.__idx = idx
 
@@ -671,6 +673,7 @@ class DiskManagerLauncher:
                     ),
                     filesystem_dataplane_config="" if not filesystem_dataplane_enabled else FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE.format(
                         ydb_port=ydb_port,
+                        list_nodes_max_bytes=list_nodes_max_bytes,
                     ),
                     nfs_config="" if not filesystem_dataplane_enabled else NFS_DATAPLANE_CONFIG_TEMPLATE.format(
                         nfs_port=nfs_port,
