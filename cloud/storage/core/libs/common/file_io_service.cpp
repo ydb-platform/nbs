@@ -68,9 +68,10 @@ class TFileIOServiceStub final
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) override
+        TFileIOCompletion* completion,
+        ui32 flags) override
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         std::invoke(
             completion->Func,
@@ -83,9 +84,10 @@ class TFileIOServiceStub final
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) override
+        TFileIOCompletion* completion,
+        ui32 flags) override
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         ui32 size = 0;
         for (auto& buffer: buffers) {
@@ -152,20 +154,22 @@ public:
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
         const size_t index = PickIndex();
-        FileIOs[index]->AsyncWrite(file, offset, buffer, completion);
+        FileIOs[index]->AsyncWrite(file, offset, buffer, completion, flags);
     }
 
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
         const size_t index = PickIndex();
-        FileIOs[index]->AsyncWriteV(file, offset, buffers, completion);
+        FileIOs[index]->AsyncWriteV(file, offset, buffers, completion, flags);
     }
 
 private:
@@ -246,38 +250,44 @@ public:
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
         using TFunc = void (IFileIOService::*)(
             TFileHandle&,
             i64,
             TArrayRef<const char>,
-            TFileIOCompletion*);
+            TFileIOCompletion*,
+            ui32);
 
         Enqueue<static_cast<TFunc>(&IFileIOService::AsyncWrite)>(
             file,
             offset,
             buffer,
-            completion);
+            completion,
+            flags);
     }
 
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
         using TFunc = void (IFileIOService::*)(
             TFileHandle&,
             i64,
             const TVector<TArrayRef<const char>>&,
-            TFileIOCompletion*);
+            TFileIOCompletion*,
+            ui32);
 
         Enqueue<static_cast<TFunc>(&IFileIOService::AsyncWriteV)>(
             file,
             offset,
             buffers,
-            completion);
+            completion,
+            flags);
     }
 
 private:
@@ -303,7 +313,8 @@ private:
 TFuture<ui32> IFileIOService::AsyncWrite(
     TFileHandle& file,
     i64 offset,
-    TArrayRef<const char> buffer)
+    TArrayRef<const char> buffer,
+    ui32 flags)
 {
     auto p = NewPromise<ui32>();
 
@@ -318,7 +329,8 @@ TFuture<ui32> IFileIOService::AsyncWrite(
             } else {
                 p.SetValue(bytes);
             }
-        }
+        },
+        flags
     );
 
     return p.GetFuture();
@@ -327,7 +339,8 @@ TFuture<ui32> IFileIOService::AsyncWrite(
 TFuture<ui32> IFileIOService::AsyncWriteV(
     TFileHandle& file,
     i64 offset,
-    const TVector<TArrayRef<const char>>& buffers)
+    const TVector<TArrayRef<const char>>& buffers,
+    ui32 flags)
 {
     auto p = NewPromise<ui32>();
 
@@ -342,7 +355,8 @@ TFuture<ui32> IFileIOService::AsyncWriteV(
             } else {
                 p.SetValue(bytes);
             }
-        }
+        },
+        flags
     );
 
     return p.GetFuture();

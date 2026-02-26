@@ -218,8 +218,11 @@ public:
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) override
+        TFileIOCompletion* completion,
+        ui32 flags) override
     {
+        Y_UNUSED(flags);
+
         auto req = std::make_unique<iocb>();
 
         io_prep_pwrite(
@@ -238,8 +241,11 @@ public:
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) override
+        TFileIOCompletion* completion,
+        ui32 flags) override
     {
+        Y_UNUSED(flags);
+
         auto req = std::make_unique<iocb>();
 
         TVector<iovec> iov(buffers.size());
