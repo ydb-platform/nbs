@@ -28,31 +28,31 @@ ui32 GetMaxIORequestsInFlight(
     }
 }
 
-#define BLOCKSTORE_SERVICE_FWD_TO_PARTITION_REQUESTS(xxx, ...) \
-    xxx(ReadBlocks, __VA_ARGS__)                               \
-    xxx(WriteBlocks, __VA_ARGS__)                              \
-    xxx(ZeroBlocks, __VA_ARGS__)                               \
-    xxx(CreateCheckpoint, __VA_ARGS__)                         \
-    xxx(DeleteCheckpoint, __VA_ARGS__)                         \
-    xxx(GetChangedBlocks, __VA_ARGS__)                         \
-    xxx(GetCheckpointStatus, __VA_ARGS__)                      \
-    xxx(ReadBlocksLocal, __VA_ARGS__)                          \
-    xxx(WriteBlocksLocal, __VA_ARGS__)                         \
-    // BLOCKSTORE_SERVICE_FWD_TO_PARTITION_REQUESTS
+#define BLOCKSTORE_SERVICE_FWD_TO_PARTITION_REQUESTS(xxx, ...)                 \
+    xxx(ReadBlocks,          __VA_ARGS__)                                      \
+    xxx(WriteBlocks,         __VA_ARGS__)                                      \
+    xxx(ZeroBlocks,          __VA_ARGS__)                                      \
+    xxx(CreateCheckpoint,    __VA_ARGS__)                                      \
+    xxx(DeleteCheckpoint,    __VA_ARGS__)                                      \
+    xxx(GetChangedBlocks,    __VA_ARGS__)                                      \
+    xxx(GetCheckpointStatus, __VA_ARGS__)                                      \
+    xxx(ReadBlocksLocal,     __VA_ARGS__)                                      \
+    xxx(WriteBlocksLocal,    __VA_ARGS__)                                      \
+// BLOCKSTORE_SERVICE_FWD_TO_PARTITION_REQUESTS
 
-#define BLOCKSTORE_VOLUME_FWD_TO_PARTITION_REQUESTS(xxx, ...) \
-    xxx(DescribeBlocks, __VA_ARGS__)                          \
-    xxx(GetUsedBlocks, __VA_ARGS__)                           \
-    xxx(GetPartitionInfo, __VA_ARGS__)                        \
-    xxx(CompactRange, __VA_ARGS__)                            \
-    xxx(GetCompactionStatus, __VA_ARGS__)                     \
-    xxx(DeleteCheckpointData, __VA_ARGS__)                    \
-    xxx(RebuildMetadata, __VA_ARGS__)                         \
-    xxx(GetRebuildMetadataStatus, __VA_ARGS__)                \
-    xxx(ScanDisk, __VA_ARGS__)                                \
-    xxx(GetScanDiskStatus, __VA_ARGS__)                       \
-    xxx(CheckRange, __VA_ARGS__)                              \
-    // BLOCKSTORE_VOLUME_FWD_TO_PARTITION_REQUESTS
+#define BLOCKSTORE_VOLUME_FWD_TO_PARTITION_REQUESTS(xxx, ...)                  \
+    xxx(DescribeBlocks,              __VA_ARGS__)                              \
+    xxx(GetUsedBlocks,               __VA_ARGS__)                              \
+    xxx(GetPartitionInfo,            __VA_ARGS__)                              \
+    xxx(CompactRange,                __VA_ARGS__)                              \
+    xxx(GetCompactionStatus,         __VA_ARGS__)                              \
+    xxx(DeleteCheckpointData,        __VA_ARGS__)                              \
+    xxx(RebuildMetadata,             __VA_ARGS__)                              \
+    xxx(GetRebuildMetadataStatus,    __VA_ARGS__)                              \
+    xxx(ScanDisk,                    __VA_ARGS__)                              \
+    xxx(GetScanDiskStatus,           __VA_ARGS__)                              \
+    xxx(CheckRange,                  __VA_ARGS__)                              \
+// BLOCKSTORE_VOLUME_FWD_TO_PARTITION_REQUESTS
 
 }   // namespace
 
