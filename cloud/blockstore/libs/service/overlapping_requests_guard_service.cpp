@@ -65,7 +65,8 @@ public:
         : Service(std::move(service))
     {
         TOverlappingRequestsServicesRegistryPtr registry =
-            new TOverlappingRequestsServicesRegistry({});
+            MakeIntrusive<TOverlappingRequestsServicesRegistry>(
+                TServiceByDiskId());
         ServicesRegistry.AtomicStore(registry);
     }
 
@@ -172,7 +173,7 @@ private:
             guardWrappers[diskId] = diskService;
 
             TOverlappingRequestsServicesRegistryPtr registry =
-                new TOverlappingRequestsServicesRegistry(
+                MakeIntrusive<TOverlappingRequestsServicesRegistry>(
                     std::move(guardWrappers));
             ServicesRegistry.AtomicStore(registry);
 
