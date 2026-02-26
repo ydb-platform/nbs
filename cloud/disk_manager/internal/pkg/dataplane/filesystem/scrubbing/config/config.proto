@@ -12,4 +12,7 @@ message FilesystemScrubbingConfig {
     optional filesystem_traversal.FilesystemTraversalConfig TraversalConfig = 1;
     // default value 0 means no limit on the client size.
     optional uint32 ListNodesMaxBytes = 2;
+    // Path to a file where node names will be logged (append-only).
+    // Used only for tests on a single machine.
+    optional string ListNodesLogPath = 3;
 }
