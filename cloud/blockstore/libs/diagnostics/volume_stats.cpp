@@ -252,7 +252,7 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
-    TDuration InactivityTimeout;
+    bool RemoveByInactivityTimeoutEnabled = true;
     TInstant LastRemountTime;
 
     static TRequestCounters::EOptions GetRequestCountersOptions(
@@ -293,6 +293,16 @@ public:
     TDuration GetPossiblePostponeDuration() const override
     {
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
+    }
+
+    void SetRemoveByInactivityTimeoutEnabled(bool enabled) override
+    {
+        RemoveByInactivityTimeoutEnabled = enabled;
+    }
+
+    bool GetRemoveByInactivityTimeoutEnabled() const override
+    {
+        return RemoveByInactivityTimeoutEnabled;
     }
 
     ui64 RequestStarted(
@@ -512,7 +522,8 @@ public:
 
     bool MountVolumeImpl(
         NProto::TVolume volume,
-        const TRealInstanceId& realInstanceId)
+        const TRealInstanceId& realInstanceId,
+        bool removeByInactivityTimeout = true)
     {
         bool inserted = false;
 
@@ -537,8 +548,9 @@ public:
             inserted = true;
         }
 
+        instanceIt->second->RemoveByInactivityTimeoutEnabled =
+            removeByInactivityTimeout;
         instanceIt->second->LastRemountTime = Timer->Now();
-        instanceIt->second->InactivityTimeout = InactiveClientsTimeout;
 
         if (!inserted) {
             AlterVolumeImpl(
@@ -565,12 +577,55 @@ public:
         return MountVolumeImpl(volume, itr->second);
     }
 
+    void UnmountVolumeImpl(const TString& diskId, const TString& clientId)
+    {
+        auto&& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
+
+        auto volume = Volumes.find(logicalDiskId);
+        if (volume == Volumes.end()) {
+            return;
+        }
+
+        auto realInstance = ClientToRealInstance.find(clientId);
+        if (realInstance == ClientToRealInstance.end()) {
+            return;
+        }
+
+        TVolumeMap& infos = volume->second.VolumeInfos;
+
+        auto info = infos.find(realInstance->second);
+        if (info == infos.end()) {
+            return;
+        }
+
+        auto& holder = info->second;
+
+        UnregisterInstance(holder->VolumeBase, holder->RealInstanceId);
+
+        std::erase_if(
+            ClientToRealInstance,
+            [&holder](const auto& client)
+            {
+                return TRealInstanceKeyEqual().operator()(
+                    client.second,
+                    holder->RealInstanceId);
+            });
+
+        infos.erase(info);
+
+        if (infos.empty()) {
+            UnregisterVolume(holder->VolumeBase);
+            Volumes.erase(volume);
+        }
+    }
+
     void UnmountVolume(
         const TString& diskId,
         const TString& clientId) override
     {
-        Y_UNUSED(clientId);
-        Y_UNUSED(diskId);
+        TWriteGuard guard(Lock);
+
+        UnmountVolumeImpl(diskId, clientId);
     }
 
     void AlterVolumeImpl(
@@ -604,7 +659,10 @@ public:
 
         for (const auto& item: holder.VolumeInfos) {
             const TVolumeInfo& info = *item.second;
-            MountVolumeImpl(volumeConfig, info.RealInstanceId);
+            MountVolumeImpl(
+                volumeConfig,
+                info.RealInstanceId,
+                info.RemoveByInactivityTimeoutEnabled);
         }
     }
 
@@ -665,8 +723,9 @@ public:
     {
         std::erase_if(infos, [this, now] (const auto& item){
             const TVolumeInfo& info = *item.second;
-            if (info.InactivityTimeout &&
-                now - info.LastRemountTime > info.InactivityTimeout)
+            if (info.RemoveByInactivityTimeoutEnabled &&
+                InactiveClientsTimeout &&
+                now - info.LastRemountTime > InactiveClientsTimeout)
             {
                 UnregisterInstance(
                     info.VolumeBase,
