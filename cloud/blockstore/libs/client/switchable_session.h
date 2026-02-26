@@ -21,6 +21,7 @@ namespace NCloud::NBlockStore::NClient {
 // 7. The old session is drained.
 // 8. The old session and all its underlying clients are deleted.
 /*
+Diagram
          Vhost
            |
            v
@@ -56,9 +57,6 @@ namespace NCloud::NBlockStore::NClient {
            |                          |
            v                          v
     StorageDataClient          StorageDataClient
-           |                          |
-           v                          v
- OverlappingRequestsGuard     OverlappingRequestsGuard
            |                          |
            v                          v
        IStorage                    IStorage
