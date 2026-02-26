@@ -1303,7 +1303,7 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     auto response = std::make_unique<
         TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
 
-    response->TabletInfo = Info();
+    response->TabletInfo = MakeIntrusive<NKikimr::TTabletStorageInfo>(*Info());
     response->ChannelsCount = State->GetChannelCount();
     response->Generation = Executor()->Generation();
 
