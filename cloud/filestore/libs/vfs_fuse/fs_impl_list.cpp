@@ -134,10 +134,7 @@ void TFileSystem::ReadDir(
         TBuffer c(content.GetData(), content.GetSize());
 
         ResetAttrTimeout(c.Data(), c.Size(), [&] (ui64 ino) {
-            with_lock (NodeCacheLock) {
-                const auto* node = NodeCache.FindNode(ino);
-                return node && node->GetVersion() > content.AttrVersion;
-            }
+            return NodeCache.GetNodeVersion(ino) > content.AttrVersion;
         });
 
         fs.ReplyBuf(*callContext, {}, req, c.Data(), c.Size());

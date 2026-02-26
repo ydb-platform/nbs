@@ -23,11 +23,11 @@ private:
     ui64 RefCount = 1;
     ui64 LastUpdateVersion = 1;
 
-public:
-    explicit TNode(const NProto::TNodeAttr& attrs) noexcept
-        : Attrs(attrs)
+private:
+    explicit TNode(NProto::TNodeAttr attrs) noexcept
+        : Attrs(std::move(attrs))
     {
-        Y_ABORT_UNLESS(attrs.GetId() != InvalidNodeId);
+        Y_ABORT_UNLESS(Attrs.GetId() != InvalidNodeId);
     }
 
 public:
@@ -94,6 +94,7 @@ class TNodeCache
 private:
     const TString FileSystemId;
     THashMap<ui64, TNode> Id2Node;
+    TAdaptiveLock Lock;
 
 public:
     explicit TNodeCache(TString fileSystemId)
@@ -101,11 +102,10 @@ public:
     {}
 
 public:
-    TNode* AddNode(const NProto::TNodeAttr& attrs);
-    TNode* TryAddNode(const NProto::TNodeAttr& attrs, ui64 version);
+    bool UpdateNode(const NProto::TNodeAttr& attrs, ui64 version);
     void InvalidateNode(ui64 ino, ui64 version);
-    TNode* FindNode(ui64 ino);
     void ForgetNode(ui64 ino, size_t count);
+    ui64 GetNodeVersion(ui64 ino) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

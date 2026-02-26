@@ -96,7 +96,6 @@ private:
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
     TNodeCache NodeCache;
-    TAdaptiveLock NodeCacheLock;
 
     THashMap<ui64, std::shared_ptr<TDirectoryHandle>> DirectoryHandles;
     TMutex DirectoryHandlesLock;

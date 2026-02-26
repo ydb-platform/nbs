@@ -11,56 +11,45 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
+bool TNodeCache::UpdateNode(const NProto::TNodeAttr& attrs, ui64 version)
 {
-    auto [it, inserted] = Id2Node.emplace(attrs.GetId(), attrs);
-    STORAGE_VERIFY_C(
-        inserted,
-        TWellKnownEntityTypes::FILESYSTEM,
-        FileSystemId,
-        TStringBuilder() << "failed to insert node "
-            << attrs.ShortUtf8DebugString());
+    auto g = Guard(Lock);
 
-    STORAGE_VERIFY_C(
-        it->second.IsValid(),
-        TWellKnownEntityTypes::FILESYSTEM,
-        FileSystemId,
-        TStringBuilder() << "invalid attrs: " << attrs.ShortUtf8DebugString());
-
-    return &it->second;
-}
-
-TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs, ui64 version)
-{
-    auto* node = FindNode(attrs.GetId());
-    if (!node) {
-        node = AddNode(attrs);
-        node->LastUpdateVersion = version;
+    auto [it, inserted] = Id2Node.emplace(attrs.GetId(), TNode(attrs));
+    auto& node = it->second;
+    bool updated = false;
+    if (inserted) {
+        node.LastUpdateVersion = version;
+        updated = true;
     } else {
-        if (version >= node->LastUpdateVersion) {
-            node->UpdateAttrs(attrs, version);
-            node->LastUpdateVersion = version;
+        if (version >= node.LastUpdateVersion) {
+            node.UpdateAttrs(attrs, version);
+            node.LastUpdateVersion = version;
 
             STORAGE_VERIFY_C(
-                node->IsValid(),
+                node.IsValid(),
                 TWellKnownEntityTypes::FILESYSTEM,
                 FileSystemId,
                 TStringBuilder() << "invalid attrs: "
                     << attrs.ShortUtf8DebugString()
                     << ", version: " << version);
+
+            updated = true;
         }
 
-        node->Ref();
+        node.Ref();
     }
 
-    return node;
+    return updated;
 }
 
 void TNodeCache::InvalidateNode(ui64 ino, ui64 version)
 {
+    auto g = Guard(Lock);
+
     NProto::TNodeAttr attrs;
     attrs.SetId(ino);
-    auto [it, inserted] = Id2Node.emplace(ino, attrs);
+    auto [it, inserted] = Id2Node.emplace(ino, TNode(std::move(attrs)));
     if (version >= it->second.LastUpdateVersion) {
         if (!inserted) {
             it->second.Attrs = std::move(attrs);
@@ -72,6 +61,8 @@ void TNodeCache::InvalidateNode(ui64 ino, ui64 version)
 
 void TNodeCache::ForgetNode(ui64 ino, size_t count)
 {
+    auto g = Guard(Lock);
+
     auto it = Id2Node.find(ino);
     if (it == Id2Node.end()) {
         // we lose our cache after restart, so we should expect forget requests
@@ -88,9 +79,12 @@ void TNodeCache::ForgetNode(ui64 ino, size_t count)
     }
 }
 
-TNode* TNodeCache::FindNode(ui64 ino)
+ui64 TNodeCache::GetNodeVersion(ui64 ino) const
 {
-    return Id2Node.FindPtr(ino);
+    auto g = Guard(Lock);
+
+    const auto* node = Id2Node.FindPtr(ino);
+    return node ? node->LastUpdateVersion : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

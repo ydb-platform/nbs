@@ -173,26 +173,17 @@ bool TFileSystem::UpdateNodeAttrsInCache(
     entry.ino = attrs.GetId();
     entry.generation = 0; // TODO
 
-    with_lock (NodeCacheLock) {
-        auto* node = NodeCache.TryAddNode(attrs, version);
-        Y_ABORT_UNLESS(node);
-
-        if (node->GetVersion() == version) {
-            entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
-            entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
-
-            ConvertAttr(
-                Config->GetPreferredBlockSize(),
-                node->GetAttrs(),
-                entry.attr);
-            return true;
-        }
+    const bool updated = NodeCache.UpdateNode(attrs, version);
+    if (updated) {
+        entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
+        entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
+    } else {
+        entry.attr_timeout = 0;
+        entry.entry_timeout = 0;
     }
 
-    entry.attr_timeout = 0;
-    entry.entry_timeout = 0;
     ConvertAttr(Config->GetPreferredBlockSize(), attrs, entry.attr);
-    return false;
+    return updated;
 }
 
 void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
@@ -203,9 +194,7 @@ void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
     STORAGE_TRACE("invalidating node: " << nodeId
         << ", version: " << newVersion);
 
-    with_lock (NodeCacheLock) {
-        NodeCache.InvalidateNode(nodeId, newVersion);
-    }
+    NodeCache.InvalidateNode(nodeId, newVersion);
 }
 
 void TFileSystem::UpdateXAttrCache(
@@ -251,9 +240,7 @@ void TFileSystem::ReplyCreateWithCache(
     const int res = ReplyCreate(callContext, error, req, &entry, &fi);
     if (res == -ENOENT) {
         // syscall was interrupted
-        with_lock (NodeCacheLock) {
-            NodeCache.ForgetNode(entry.ino, 1);
-        }
+        NodeCache.ForgetNode(entry.ino, 1);
     }
 }
 
@@ -278,9 +265,7 @@ void TFileSystem::ReplyEntryWithCache(
     const int res = ReplyEntry(callContext, error, req, &entry);
     if (res == -ENOENT) {
         // syscall was interrupted
-        with_lock (NodeCacheLock) {
-            NodeCache.ForgetNode(entry.ino, 1);
-        }
+        NodeCache.ForgetNode(entry.ino, 1);
     }
 }
 
