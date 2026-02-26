@@ -296,7 +296,7 @@ func run(
 
 		filesystemConfig := dataplaneConfig.GetFilesystemConfig()
 		persistenceConfig := filesystemConfig.GetPersistenceConfig()
-		if filesystemConfig != nil  && persistenceConfig != nil {
+		if filesystemConfig != nil && persistenceConfig != nil {
 			if config.GetNfsConfig() == nil {
 				logging.Fatal(ctx, "Empty nfs config with enabled dataplane nfs config is not allowed")
 				return err

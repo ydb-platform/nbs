@@ -103,6 +103,9 @@ func initFilesystemDataplane(
 	}
 
 	scrubbingConfig := filesystemConfig.GetScrubbingConfig()
+	if scrubbingConfig == nil {
+		return nil
+	}
 	traversalConfig := scrubbingConfig.GetTraversalConfig()
 	if traversalConfig == nil {
 		return nil
