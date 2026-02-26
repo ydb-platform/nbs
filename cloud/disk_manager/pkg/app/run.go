@@ -295,9 +295,13 @@ func run(
 		}
 
 		filesystemConfig := dataplaneConfig.GetFilesystemConfig()
-		if filesystemConfig != nil {
+		persistenceConfig := filesystemConfig.GetPersistenceConfig()
+		if filesystemConfig != nil  && persistenceConfig != nil {
+			if config.GetNfsConfig() == nil {
+				logging.Fatal(ctx, "Empty nfs config with enabled dataplane nfs config is not allowed")
+				return err
+			}
 			logging.Info(ctx, "Initializing filesystem dataplane")
-
 			nfsClientMetricsRegistry := mon.NewRegistry("nfs_client_dataplane")
 			nfsFactory := nfs.NewFactoryWithCreds(
 				ctx,
@@ -308,7 +312,7 @@ func run(
 
 			filesystemDB, err := persistence.NewYDBClient(
 				ctx,
-				filesystemConfig.GetPersistenceConfig(),
+				persistenceConfig,
 				ydbClientRegistry,
 				persistence.WithCredentials(creds),
 			)

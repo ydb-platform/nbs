@@ -52,8 +52,8 @@ func (c *testingClient) FillFilesystemWithDefaultTree(
 			FilesCount: filesPerDir,
 		}
 	}
-	tree := HomogeneousDirectoryTree(layers)
 
+	tree := HomogeneousDirectoryTree(layers)
 	model := NewParallelFilesystemModel(c.t, ctx, c.Client, session, tree)
 	model.CreateAllNodesRecursively()
 

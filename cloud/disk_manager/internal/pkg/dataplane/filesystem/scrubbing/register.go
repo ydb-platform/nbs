@@ -41,7 +41,11 @@ func RegisterForExecution(
 			mu.Lock()
 			defer mu.Unlock()
 
-			f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			f, err := os.OpenFile(
+				logPath,
+				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+				0644,
+			)
 			if err != nil {
 				return
 			}

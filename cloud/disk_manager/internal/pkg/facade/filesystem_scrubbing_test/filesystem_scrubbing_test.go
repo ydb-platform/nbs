@@ -67,7 +67,11 @@ func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
 	testcommon.WaitOperationEnded(t, ctx, taskID)
 
 	logPath := os.Getenv("DISK_MANAGER_RECIPE_LIST_NODES_LOG_PATH")
-	require.NotEmpty(t, logPath, "DISK_MANAGER_RECIPE_LIST_NODES_LOG_PATH not set")
+	require.NotEmpty(
+		t,
+		logPath,
+		"DISK_MANAGER_RECIPE_LIST_NODES_LOG_PATH not set",
+	)
 
 	file, err := os.Open(logPath)
 	require.NoError(t, err)
