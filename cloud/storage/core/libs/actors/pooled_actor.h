@@ -5,7 +5,25 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 
+#include <util/generic/ptr.h>
+
 namespace NCloud {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TDerived>
+class IPooledActor;
+
+// Interface for returning a pooled actor after its work is done. Implemented
+// by TActorPool to put actors back into the reuse queue.
+template <typename TActor>
+class IActorReturnQueue: public TThrRefBase
+{
+public:
+    ~IActorReturnQueue() override = default;
+
+    virtual void OnWorkFinished(IPooledActor<TActor>* actor) = 0;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -24,7 +42,7 @@ private:
 
     IActorSystemPtr ActorSystem;
     NActors::TActorId SelfId;
-    std::function<void()> WorkFinishedCallback;
+    TIntrusivePtr<IActorReturnQueue<TDerived>> ReturnQueue;
 
 protected:
     explicit IPooledActor(
@@ -39,13 +57,13 @@ public:
 
     void WorkFinished(const NActors::TActorContext& ctx)
     {
-        if (!WorkFinishedCallback) {
+        if (!ReturnQueue) {
             TBase::Die(ctx);
             return;
         }
 
         Reset();
-        WorkFinishedCallback();
+        ReturnQueue->OnWorkFinished(this);
     }
 
     IActorSystem* GetActorSystem()
@@ -69,11 +87,9 @@ private:
         SelfId = selfId;
     }
 
-    // Optional callback that will be called on WorkFinished(). If not set, the
-    // actor is for one use only.
-    void SetWorkFinishedCallback(std::function<void()> workFinishedCallback)
+    void SetReturnQueue(TIntrusivePtr<IActorReturnQueue<TDerived>> returnQueue)
     {
-        WorkFinishedCallback = std::move(workFinishedCallback);
+        ReturnQueue = std::move(returnQueue);
     }
 };
 

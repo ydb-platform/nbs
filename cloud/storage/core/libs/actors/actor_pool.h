@@ -17,10 +17,10 @@ namespace NCloud {
 // Thread-safe bounded pool of reusable actors. Actors are created on demand up
 // to MaxActors and returned to the pool automatically when their work is done
 // (via IPooledActor::WorkFinished). Actors beyond the limit are one-shot: they
-// receive no put-back callback and Die() after completing their work.
+// receive no return queue and Die() after completing their work.
 // On shutdown, all tracked actors are sent a PoisonPill.
 template <typename TActor>
-class TActorPool final: public TAtomicRefCount<TActorPool<TActor>>
+class TActorPool final: public IActorReturnQueue<TActor>
 {
 private:
     const IActorSystemPtr ActorSystem;
@@ -55,7 +55,7 @@ public:
         , MaxActors(maxActors)
     {}
 
-    ~TActorPool() = default;
+    ~TActorPool() override = default;
 
     void OnBeforeDestroy()
     {
@@ -98,14 +98,17 @@ public:
             actorRawPtr->SetActorSystem(ActorSystem);
         }
 
-        std::function<void()> putBackCallback;
         if (PooledActors.GetCounter().Val() < MaxActors) {
+            actorRawPtr->SetReturnQueue(this);
             PooledActors.Enqueue(actorId);
-            actorRawPtr->SetWorkFinishedCallback(
-                GetActorPutBackCallback(actorRawPtr, actorId));
         }
 
         return actorRawPtr;
+    }
+
+    void OnWorkFinished(IPooledActor<TActor>* actor) override
+    {
+        PutActorToQueue(actor, actor->GetSelfId());
     }
 
 private:
@@ -116,20 +119,6 @@ private:
         if (!Stopped.test()) {
             FreePooledActors.Enqueue({.ActorId = actorId, .Actor = actor});
         }
-    }
-
-    std::function<void()> GetActorPutBackCallback(
-        IPooledActor<TActor>* actor,
-        NActors::TActorId actorId)
-    {
-        Y_DEBUG_ABORT_UNLESS(actor);
-        Y_DEBUG_ABORT_UNLESS(actorId);
-
-        TIntrusivePtr<TActorPool> selfPtr{this};
-        return [selfPtr = std::move(selfPtr), actor, actorId]()
-        {
-            selfPtr->PutActorToQueue(actor, actorId);
-        };
     }
 };
 

@@ -121,7 +121,8 @@ public:
         TimeoutCookie.Detach();
     }
 
-    void SendRequest(std::shared_ptr<TRequestProto> requestProto,
+    void SendRequest(
+        std::shared_ptr<TRequestProto> requestProto,
         TPromise<TResponseProto> response,
         TCallContextPtr callContext,
         TDuration requestTimeout)
