@@ -757,15 +757,17 @@ func ScheduleFilesystemScrubbing(
 
 	scheduler, err := newScheduler(ctx)
 	require.NoError(t, err)
-
+	lastReqNumber++
 	taskID, err := filesystem_scrubbing.ScheduleScrubFilesystem(
-		ctx,
+		tasks_headers.SetIncomingIdempotencyKey(
+			ctx,
+			fmt.Sprintf("scrubbing_%v_%v", t.Name(), lastReqNumber),
+		),
 		scheduler,
 		zoneID,
 		filesystemID,
 	)
 	require.NoError(t, err)
-
 	return taskID
 }
 

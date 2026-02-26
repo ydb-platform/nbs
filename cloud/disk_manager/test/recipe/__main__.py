@@ -69,6 +69,8 @@ def parse_args(args):
     parser.add_argument("--allow-filestore-force-destroy", action='store_true', default=False)
     parser.add_argument("--without-shadow-disks", action='store_true', default=False)
     parser.add_argument("--filesystem-dataplane-enabled", action='store_true', default=False)
+    parser.add_argument("--enable-list-nodes-logging", action='store_true', default=False)
+    parser.add_argument("--list-nodes-max-bytes", type=int, default=0)
     args, _ = parser.parse_known_args(args=args)
     return args
 
@@ -335,6 +337,12 @@ def start(argv):
     with open(s3_credentials_file, "w") as f:
         f.write(S3_CREDENTIALS_FILE)
 
+    # Create list_nodes_log_path for filesystem scrubbing tests.
+    list_nodes_log_path = ""
+    if args.enable_list_nodes_logging:
+        list_nodes_log_path = os.path.join(working_dir, "list_nodes.log")
+        set_env("DISK_MANAGER_RECIPE_LIST_NODES_LOG_PATH", list_nodes_log_path)
+
     disk_managers = []
 
     controlplane_disk_manager_count = 2 if args.multiple_disk_managers else 1
@@ -402,6 +410,8 @@ def start(argv):
             max_restart_period_sec=args.max_restart_period_sec,
             proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
             filesystem_dataplane_enabled=args.filesystem_dataplane_enabled,
+            list_nodes_max_bytes=args.list_nodes_max_bytes,
+            list_nodes_log_path=list_nodes_log_path,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
