@@ -29,15 +29,15 @@ ui32 GetMaxIORequestsInFlight(
 }
 
 #define BLOCKSTORE_SERVICE_FWD_TO_PARTITION_REQUESTS(xxx, ...)                 \
-    xxx(ReadBlocks,          __VA_ARGS__)                                      \
-    xxx(WriteBlocks,         __VA_ARGS__)                                      \
-    xxx(ZeroBlocks,          __VA_ARGS__)                                      \
-    xxx(CreateCheckpoint,    __VA_ARGS__)                                      \
-    xxx(DeleteCheckpoint,    __VA_ARGS__)                                      \
-    xxx(GetChangedBlocks,    __VA_ARGS__)                                      \
-    xxx(GetCheckpointStatus, __VA_ARGS__)                                      \
-    xxx(ReadBlocksLocal,     __VA_ARGS__)                                      \
-    xxx(WriteBlocksLocal,    __VA_ARGS__)                                      \
+    xxx(ReadBlocks,                  __VA_ARGS__)                              \
+    xxx(WriteBlocks,                 __VA_ARGS__)                              \
+    xxx(ZeroBlocks,                  __VA_ARGS__)                              \
+    xxx(CreateCheckpoint,            __VA_ARGS__)                              \
+    xxx(DeleteCheckpoint,            __VA_ARGS__)                              \
+    xxx(GetChangedBlocks,            __VA_ARGS__)                              \
+    xxx(GetCheckpointStatus,         __VA_ARGS__)                              \
+    xxx(ReadBlocksLocal,             __VA_ARGS__)                              \
+    xxx(WriteBlocksLocal,            __VA_ARGS__)                              \
 // BLOCKSTORE_SERVICE_FWD_TO_PARTITION_REQUESTS
 
 #define BLOCKSTORE_VOLUME_FWD_TO_PARTITION_REQUESTS(xxx, ...)                  \
