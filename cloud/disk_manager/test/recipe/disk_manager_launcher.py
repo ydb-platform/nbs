@@ -59,45 +59,7 @@ TasksConfig: <
     InflightHangingTaskTimeout: "100s"
     StallingHangingTaskTimeout: "30m"
 >
-NfsConfig: <
-    Zones: <
-        key: "zone-a"
-        value: <
-            Endpoints: [
-                "localhost:{nfs_port}",
-                "localhost:{nfs_port}"
-            ]
-        >
-    >
-    Zones: <
-        key: "zone-b"
-        value: <
-            Endpoints: [
-                "localhost:{nfs_port}",
-                "localhost:{nfs_port}"
-            ]
-        >
-    >
-    Zones: <
-        key: "zone-c"
-        value: <
-            Endpoints: [
-                "localhost:{nfs2_port}",
-                "localhost:{nfs2_port}"
-            ]
-        >
-    >
-    Zones: <
-        key: "zone-c-shard1"
-        value: <
-            Endpoints: [
-                "localhost:{nfs3_port}",
-                "localhost:{nfs3_port}"
-            ]
-        >
-    >
-    RootCertsFile: "{root_certs_file}"
->
+{nfs_config}
 FilestoreCellsConfig: <
     CellSelectionPolicy: FIRST_IN_CONFIG
     FolderAllowList: [
@@ -485,7 +447,7 @@ FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
     >
 """
 
-NFS_DATAPLANE_CONFIG_TEMPLATE = """
+NFS_CONFIG_TEMPLATE = """
 NfsConfig: <
     Zones: <
         key: "zone-a"
@@ -678,7 +640,7 @@ class DiskManagerLauncher:
                         list_nodes_max_bytes=list_nodes_max_bytes,
                         list_nodes_log_path=list_nodes_log_path,
                     ),
-                    nfs_config="" if not filesystem_dataplane_enabled else NFS_DATAPLANE_CONFIG_TEMPLATE.format(
+                    nfs_config=NFS_CONFIG_TEMPLATE.format(
                         nfs_port=nfs_port,
                         nfs2_port=nfs2_port,
                         nfs3_port=nfs3_port,
@@ -701,9 +663,12 @@ class DiskManagerLauncher:
                     cert_file=cert_file,
                     private_key_file=cert_key_file,
                     root_certs_file=root_certs_file,
-                    nfs_port=nfs_port,
-                    nfs2_port=nfs2_port,
-                    nfs3_port=nfs3_port,
+                    nfs_config=NFS_CONFIG_TEMPLATE.format(
+                        nfs_port=nfs_port,
+                        nfs2_port=nfs2_port,
+                        nfs3_port=nfs3_port,
+                        root_certs_file=root_certs_file,
+                    ),
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
