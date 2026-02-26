@@ -53,11 +53,11 @@ public:
     // Return a pointer to the node state for nodeId or nullptr if it does not
     // exist.
     //
-    // If includeDeleted is false (default), logically deleted states are
-    // treated as absent and nullptr may be returned. If includeDeleted is
-    // true, the function will return states that were deleted but are still
-    // retained due to active pins.
-    TNodeState* GetNodeState(ui64 nodeId, bool includeDeleted = false);
+    // If includeDeleted is false, logically deleted states are treated as
+    // absent and nullptr may be returned. If includeDeleted is true, the
+    // function will return states that were deleted but are still retained due
+    // to active pins.
+    TNodeState* GetNodeState(ui64 nodeId, bool includeDeleted);
 
     const TNodeState* GetNodeState(
         ui64 nodeId,

@@ -399,36 +399,53 @@ struct TBootstrap
 
     void ValidateCache(ui64 nodeId, ui64 offset, size_t length)
     {
-        auto future = ReadFromCache(nodeId, offset, length);
-        auto response = future.GetValueSync();
+        const int maxValidateAttempts = 50;
+        int validateAttempts = 0;
 
-        // In concurrent tests, new data may be written at any moment.
-        // We need take the most recent ExpectedData each time.
-        //
-        // Also, a race condition is still possible here:
-        // ExpectedData is not fully synchonized with the internal state.
-        // The following scenario may happen:
-        // 1. WriteData has written new data.
-        // 2. ReadFromCache reads new data.
-        // 3. The callback updates ExpectedData.
-        TString expected;
-        {
-            std::unique_lock lock(ExpectedDataMutex);
-            auto it = ExpectedData.find(nodeId);
-            if (it != ExpectedData.end()) {
-                auto buf = TStringBuf(it->second);
-                buf = buf.Skip(Min(offset, buf.size()));
-                buf = buf.Trunc(Min(length, buf.size()));
-                expected = buf;
+        while (true) {
+            auto future = ReadFromCache(nodeId, offset, length);
+            auto response = future.GetValueSync();
+
+            TString actual =
+                response.GetBuffer().substr(response.GetBufferOffset());
+
+            // In concurrent tests, new data may be written at any moment.
+            // We need take the most recent ExpectedData each time.
+            //
+            // Also, a race condition is still possible here:
+            // ExpectedData is not fully synchonized with the internal state.
+            // The following scenario may happen:
+            // 1. WriteData has written new data.
+            // 2. ReadFromCache reads new data.
+            // 3. The callback updates ExpectedData.
+            //
+            // In this case, we need to re-read the data
+            TString expected;
+            {
+                std::unique_lock lock(ExpectedDataMutex);
+                auto it = ExpectedData.find(nodeId);
+                if (it != ExpectedData.end()) {
+                    auto buf = TStringBuf(it->second);
+                    buf = buf.Skip(Min(offset, buf.size()));
+                    buf = buf.Trunc(Min(length, buf.size()));
+                    expected = buf;
+                }
             }
-        }
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            expected,
-            response.GetBuffer().substr(response.GetBufferOffset()),
-            TStringBuilder() << " while validating @" << nodeId
-            << " at offset " << offset
-            << " and length " << length);
+            if (expected == actual) {
+                break;
+            }
+
+            validateAttempts++;
+
+            UNIT_ASSERT_LE_C(
+                validateAttempts,
+                maxValidateAttempts,
+                TStringBuilder() << " while validating @" << nodeId
+                                 << " at offset " << offset << " and length "
+                                 << length << ". Expected: " << expected.Quote()
+                                 << ", Actual: " << actual.Quote());
+        }
     }
 
     void ValidateCache(ui64 nodeId)
@@ -1453,7 +1470,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         constexpr int WriteAttemptsThreshold = 3;
 
-        TBootstrap b;
+        TBootstrap b({.AutomaticFlushPeriod = TDuration::MilliSeconds(1)});
 
         std::atomic<int> writeAttempts = 0;
 
@@ -1473,7 +1490,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Flush starts synchronously in FlushData call and makes an attempt
         // to write data but fails
-        UNIT_ASSERT_GE(writeAttempts, 0);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
         UNIT_ASSERT(!flushFuture.HasValue());
 
         // WriteData request from Flush succeeds after WriteAttemptsThreshold
@@ -1627,7 +1644,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldReportFlushStats)
     {
-        TBootstrap b;
+        TBootstrap b({.AutomaticFlushPeriod = TDuration::MilliSeconds(1)});
+
         auto& stats = *b.Stats;
         stats.MaxItems = 10;
 
@@ -1664,8 +1682,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
         auto flushFuture2 = b.Cache.FlushNodeData(2);
 
-        UNIT_ASSERT(!flushFuture1.HasValue());
-        UNIT_ASSERT(flushFuture2.HasValue());
+        // Flush execution order is unspecified
+        UNIT_ASSERT(flushFuture1.HasValue() != flushFuture2.HasValue());
         UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
@@ -1674,6 +1692,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
 
         UNIT_ASSERT(flushFuture1.HasValue());
+        UNIT_ASSERT(flushFuture2.HasValue());
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
         UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
         UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
@@ -1951,6 +1970,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
 
         UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->PendingStats.InProgressCount);
 
         writeRequests.ProceedAll();
 
