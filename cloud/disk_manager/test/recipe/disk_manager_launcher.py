@@ -402,6 +402,7 @@ NbsConfig: <
     SessionRediscoverPeriodMin: "20s"
     SessionRediscoverPeriodMax: "30s"
 >
+{nfs_config}
 LoggingConfig: <
     LoggingStderr: <>
     Level: LEVEL_DEBUG
@@ -444,6 +445,7 @@ DataplaneConfig: <
     SnapshotCollectionInflightLimit: 10
     ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 {migration_config}
+{filesystem_dataplane_config}
 >
 """
 
@@ -465,6 +467,62 @@ MIGRATION_CONFIG_TEMPLATE = """
         ChunkBlobsS3KeyPrefix: "snapshot/chunks"
     >
     MigratingSnapshotsInflightLimit: {migrating_snapshots_inflight_limit}
+"""
+
+FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
+    FilesystemConfig: <
+        PersistenceConfig: <
+            Endpoint: "localhost:{ydb_port}"
+            Database: "/Root"
+            RootPath: "disk_manager/recipe/filesystem"
+        >
+        ScrubbingConfig: <
+            TraversalConfig: <
+            >
+        >
+    >
+"""
+
+NFS_DATAPLANE_CONFIG_TEMPLATE = """
+NfsConfig: <
+    Zones: <
+        key: "zone-a"
+        value: <
+            Endpoints: [
+                "localhost:{nfs_port}",
+                "localhost:{nfs_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-b"
+        value: <
+            Endpoints: [
+                "localhost:{nfs_port}",
+                "localhost:{nfs_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-c"
+        value: <
+            Endpoints: [
+                "localhost:{nfs2_port}",
+                "localhost:{nfs2_port}"
+            ]
+        >
+    >
+    Zones: <
+        key: "zone-c-shard1"
+        value: <
+            Endpoints: [
+                "localhost:{nfs3_port}",
+                "localhost:{nfs3_port}"
+            ]
+        >
+    >
+    RootCertsFile: "{root_certs_file}"
+>
 """
 
 SERVICE_NAME = "disk_manager"
@@ -551,6 +609,7 @@ class DiskManagerLauncher:
         migrating_snapshots_inflight_limit=None,
         retry_broken_disk_registry_based_disk_checkpoint=False,
         cell_selection_policy="FIRST_IN_CONFIG",
+        filesystem_dataplane_enabled=False,
     ):
         self.__idx = idx
 
@@ -609,6 +668,15 @@ class DiskManagerLauncher:
                             s3_credentials_file=migration_dst_s3_credentials_file,
                         ),
                         migrating_snapshots_inflight_limit=migrating_snapshots_inflight_limit,
+                    ),
+                    filesystem_dataplane_config="" if not filesystem_dataplane_enabled else FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE.format(
+                        ydb_port=ydb_port,
+                    ),
+                    nfs_config="" if not filesystem_dataplane_enabled else NFS_DATAPLANE_CONFIG_TEMPLATE.format(
+                        nfs_port=nfs_port,
+                        nfs2_port=nfs2_port,
+                        nfs3_port=nfs3_port,
+                        root_certs_file=root_certs_file,
                     ),
                 ))
         else:
