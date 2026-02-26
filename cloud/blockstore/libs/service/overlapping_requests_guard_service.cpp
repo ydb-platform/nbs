@@ -4,6 +4,8 @@
 #include "service.h"
 #include "service_method.h"
 
+#include <library/cpp/threading/hot_swap/hot_swap.h>
+
 #include <util/system/mutex.h>
 
 using namespace NThreading;
@@ -18,6 +20,7 @@ using TServiceByDiskId = THashMap<TString, IBlockStorePtr>;
 
 // Finds a service by the name of the disk, if it is registered.
 class TOverlappingRequestsServicesRegistry
+    : public TAtomicRefCount<TOverlappingRequestsServicesRegistry>
 {
     const TServiceByDiskId ServiceWrappers;
 
@@ -42,7 +45,7 @@ public:
 };
 
 using TOverlappingRequestsServicesRegistryPtr =
-    std::shared_ptr<TOverlappingRequestsServicesRegistry>;
+    TIntrusivePtr<TOverlappingRequestsServicesRegistry>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -53,21 +56,18 @@ class TOverlappingRequestsGuardsService
 private:
     const IBlockStorePtr Service;
 
-    // Copying of shared_ptr and simultaneously writing to same shared_ptr is
-    // thread-safe, either the old or the new value will be copied. Therefore,
-    // before accessing ServicesRegistry, we need to copy it without getting a
-    // lock. But updating ServicesRegistry should be done under lock to avoid
-    // races.
+    // Updating ServicesRegistry should be done under lock to avoid races.
     TMutex Lock;
-    TOverlappingRequestsServicesRegistryPtr ServicesRegistry;
+    THotSwap<TOverlappingRequestsServicesRegistry> ServicesRegistry;
 
 public:
     explicit TOverlappingRequestsGuardsService(IBlockStorePtr service)
         : Service(std::move(service))
-        , ServicesRegistry(
-              std::make_shared<TOverlappingRequestsServicesRegistry>(
-                  TServiceByDiskId()))
-    {}
+    {
+        TOverlappingRequestsServicesRegistryPtr registry =
+            new TOverlappingRequestsServicesRegistry({});
+        ServicesRegistry.AtomicStore(registry);
+    }
 
     // implements IBlockStore
 
@@ -140,10 +140,9 @@ private:
         std::shared_ptr<TRequest> request)
     {
         const auto& diskId = request->GetDiskId();
-        // Need to copy ServicesRegistry before using it, because if
-        // ServicesRegistry updated from another thread, it can destroy the
-        // TOverlappingRequestsServicesRegistry that is being accessed.
-        auto servicesRegistry = ServicesRegistry;
+
+        TOverlappingRequestsServicesRegistryPtr servicesRegistry =
+            ServicesRegistry.AtomicLoad();
         auto diskService = servicesRegistry->GetService(diskId);
         if (!diskService) {
             diskService = CreateGuard(diskId);
@@ -158,18 +157,25 @@ private:
     IBlockStorePtr CreateGuard(const TString& diskId)
     {
         with_lock (Lock) {
-            if (auto diskService = ServicesRegistry->GetService(diskId)) {
+            TOverlappingRequestsServicesRegistryPtr currentServicesRegistry =
+                ServicesRegistry.AtomicLoad();
+
+            if (auto diskService = currentServicesRegistry->GetService(diskId))
+            {
                 // Perhaps someone has already created the necessary handler
                 // while we were waiting for the lock.
                 return diskService;
             }
 
-            auto guardWrappers = ServicesRegistry->GetServiceWrappers();
+            auto guardWrappers = currentServicesRegistry->GetServiceWrappers();
             auto diskService = CreateOverlappingRequestsGuard(Service);
             guardWrappers[diskId] = diskService;
-            ServicesRegistry =
-                std::make_shared<TOverlappingRequestsServicesRegistry>(
+
+            TOverlappingRequestsServicesRegistryPtr registry =
+                new TOverlappingRequestsServicesRegistry(
                     std::move(guardWrappers));
+            ServicesRegistry.AtomicStore(registry);
+
             return diskService;
         }
     }
