@@ -322,13 +322,9 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
             break;
 
         case ENodeFlushStatus::ReadyToFlush:
-            Y_ABORT_UNLESS(NodesReadyToFlush.erase(nodeId));
+            auto erased = NodesReadyToFlush.erase(nodeId);
+            Y_ABORT_UNLESS(erased);
             break;
-
-        default:
-            Y_ABORT(
-                "Unexpected state - %d",
-                static_cast<int>(nodeState.FlushStatus));
     }
 
     nodeState.FlushStatus = newFlushStatus;
@@ -338,18 +334,14 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
         case ENodeFlushStatus::NothingToFlush:
             break;
 
-        case ENodeFlushStatus::ReadyToFlush:
-            Y_ABORT_UNLESS(NodesReadyToFlush.insert(nodeId).second);
-            break;
-
         case ENodeFlushStatus::FlushRequested:
             QueuedOperations.ScheduleFlushNode(nodeId);
             break;
 
-        default:
-            Y_ABORT(
-                "Unexpected state - %d",
-                static_cast<int>(nodeState.FlushStatus));
+        case ENodeFlushStatus::ReadyToFlush:
+            auto inserted = NodesReadyToFlush.insert(nodeId).second;
+            Y_ABORT_UNLESS(inserted);
+            break;
     }
 }
 

@@ -50,11 +50,19 @@ EWriteDataRequestCompletedAction TNodeFlushState::OnWriteDataRequestCompleted(
     WriteDataRequests[index].Error = response.GetError();
 
     auto prev =
-        InFlightWriteDataRequestCount.fetch_sub(1, std::memory_order_acq_rel);
+        InFlightWriteDataRequestCount.fetch_sub(1, std::memory_order_release);
     Y_ABORT_UNLESS(prev > 0);
 
-    return prev == 1 ? EWriteDataRequestCompletedAction::CollectFlushResult
-                     : EWriteDataRequestCompletedAction::ContinueExecution;
+    if (prev > 1) {
+        return EWriteDataRequestCompletedAction::ContinueExecution;
+    }
+
+    // The thread that has made the final decrement should process the results
+    // of other threads
+    auto cur = InFlightWriteDataRequestCount.load(std::memory_order_acquire);
+    Y_ABORT_UNLESS(cur == 0);
+
+    return EWriteDataRequestCompletedAction::CollectFlushResult;
 }
 
 NCloud::NProto::TError TNodeFlushState::CollectFlushResult()
