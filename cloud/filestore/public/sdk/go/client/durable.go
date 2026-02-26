@@ -21,7 +21,7 @@ type durableClient struct {
 	timeout          time.Duration
 	timeoutIncrement time.Duration
 	onError          func(ClientError)
-	log              Log
+	logger           Logger
 }
 
 func (client *durableClient) executeRequest(
@@ -38,17 +38,13 @@ func (client *durableClient) executeRequest(
 	for delay := client.timeoutIncrement; ; delay += client.timeoutIncrement {
 		resp, err := call(ctx)
 		if err == nil && retryCount > 1 {
-			if logger := client.log.Logger(LOG_INFO); logger != nil {
-				duration := time.Since(started)
-				logger.Printf(
-					ctx,
-					"%s%s completed (retries: %d, duration: %v)",
-					requestName(req),
-					requestDetails(req),
-					retryCount,
-					duration,
-				)
-			}
+			client.logger.Infof(
+				"%s%s completed (retries: %d, duration: %v)",
+				requestName(req),
+				requestDetails(req),
+				retryCount,
+				time.Since(started),
+			)
 		}
 
 		cerr := GetClientError(err)
@@ -59,29 +55,23 @@ func (client *durableClient) executeRequest(
 		client.onError(cerr)
 
 		if !cerr.IsRetriable() {
-			if logger := client.log.Logger(LOG_ERROR); logger != nil {
-				logger.Printf(
-					ctx,
-					"%s%s request failed: %v",
-					requestName(req),
-					requestDetails(req),
-					err,
-				)
-			}
+			client.logger.Errorf(
+				"%s%s request failed: %v",
+				requestName(req),
+				requestDetails(req),
+				err,
+			)
 			return resp, err
 		}
 
-		if logger := client.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s%s retry request (retries: %d, timeout: %v, error: %v)",
-				requestName(req),
-				requestDetails(req),
-				retryCount,
-				client.timeout,
-				err,
-			)
-		}
+		client.logger.Warnf(
+			"%s%s retry request (retries: %d, timeout: %v, error: %v)",
+			requestName(req),
+			requestDetails(req),
+			retryCount,
+			client.timeout,
+			err,
+		)
 
 		retryCount++
 		select {
@@ -327,7 +317,7 @@ type durableEndpointClient struct {
 	timeout          time.Duration
 	timeoutIncrement time.Duration
 	onError          func(ClientError)
-	log              Log
+	logger           Logger
 }
 
 func (client *durableEndpointClient) executeRequest(
@@ -344,17 +334,14 @@ func (client *durableEndpointClient) executeRequest(
 	for delay := client.timeoutIncrement; ; delay += client.timeoutIncrement {
 		resp, err := call(ctx)
 		if err == nil && retryCount > 1 {
-			if logger := client.log.Logger(LOG_INFO); logger != nil {
-				duration := time.Since(started)
-				logger.Printf(
-					ctx,
-					"%s%s completed (retries: %d, duration: %v)",
-					requestName(req),
-					requestDetails(req),
-					retryCount,
-					duration,
-				)
-			}
+			duration := time.Since(started)
+			client.logger.Infof(
+				"%s%s completed (retries: %d, duration: %v)",
+				requestName(req),
+				requestDetails(req),
+				retryCount,
+				duration,
+			)
 		}
 
 		cerr := GetClientError(err)
@@ -365,29 +352,23 @@ func (client *durableEndpointClient) executeRequest(
 		client.onError(cerr)
 
 		if !cerr.IsRetriable() {
-			if logger := client.log.Logger(LOG_ERROR); logger != nil {
-				logger.Printf(
-					ctx,
-					"%s%s request failed: %v",
-					requestName(req),
-					requestDetails(req),
-					err,
-				)
-			}
+			client.logger.Errorf(
+				"%s%s request failed: %v",
+				requestName(req),
+				requestDetails(req),
+				err,
+			)
 			return resp, err
 		}
 
-		if logger := client.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s%s retry request (retries: %d, timeout: %v, error: %v)",
-				requestName(req),
-				requestDetails(req),
-				retryCount,
-				client.timeout,
-				err,
-			)
-		}
+		client.logger.Warnf(
+			"%s%s retry request (retries: %d, timeout: %v, error: %v)",
+			requestName(req),
+			requestDetails(req),
+			retryCount,
+			client.timeout,
+			err,
+		)
 
 		retryCount++
 		select {
@@ -493,7 +474,7 @@ type DurableClientOpts struct {
 func NewDurableClient(
 	impl ClientIface,
 	opts *DurableClientOpts,
-	log Log,
+	logger Logger,
 ) ClientIface {
 
 	retryTimeout := defaultRetryTimeout
@@ -516,14 +497,14 @@ func NewDurableClient(
 		retryTimeout,
 		retryTimeoutIncrement,
 		onError,
-		log,
+		logger,
 	}
 }
 
 func NewDurableEndpointClient(
 	impl EndpointClientIface,
 	opts *DurableClientOpts,
-	log Log,
+	logger Logger,
 ) EndpointClientIface {
 
 	retryTimeout := defaultRetryTimeout
@@ -546,6 +527,6 @@ func NewDurableEndpointClient(
 		retryTimeout,
 		retryTimeoutIncrement,
 		onError,
-		log,
+		logger,
 	}
 }

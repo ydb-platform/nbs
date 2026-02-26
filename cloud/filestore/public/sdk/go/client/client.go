@@ -530,15 +530,15 @@ func (client *EndpointClient) Ping(
 func NewClient(
 	grpcOpts *GrpcClientOpts,
 	durableOpts *DurableClientOpts,
-	log Log,
+	logger Logger,
 ) (*Client, error) {
 
-	grpcClient, err := NewGrpcClient(grpcOpts, log)
+	grpcClient, err := NewGrpcClient(grpcOpts, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	durableClient := NewDurableClient(grpcClient, durableOpts, log)
+	durableClient := NewDurableClient(grpcClient, durableOpts, logger)
 
 	return &Client{
 		durableClient,
@@ -548,15 +548,15 @@ func NewClient(
 func NewEndpointClient(
 	grpcOpts *GrpcClientOpts,
 	durableOpts *DurableClientOpts,
-	log Log,
+	logger Logger,
 ) (*EndpointClient, error) {
 
-	grpcClient, err := NewGrpcEndpointClient(grpcOpts, log)
+	grpcClient, err := NewGrpcEndpointClient(grpcOpts, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	durableClient := NewDurableEndpointClient(grpcClient, durableOpts, log)
+	durableClient := NewDurableEndpointClient(grpcClient, durableOpts, logger)
 
 	return &EndpointClient{
 		durableClient,

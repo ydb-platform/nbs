@@ -3,10 +3,11 @@ package client
 import (
 	"time"
 
-	api "github.com/ydb-platform/nbs/cloud/filestore/public/api/grpc"
-	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+
+	api "github.com/ydb-platform/nbs/cloud/filestore/public/api/grpc"
+	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,7 +26,7 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcClient struct {
-	log      Log
+	logger   Logger
 	impl     api.TFileStoreServiceClient
 	conn     *grpc.ClientConn
 	timeout  time.Duration
@@ -86,10 +87,7 @@ func (client *grpcClient) executeRequest(
 	requestID := nextRequestID()
 	client.setupHeaders(ctx, req)
 
-	if logger := client.log.Logger(LOG_DEBUG); logger != nil {
-		logger.Printf(ctx, "%s #%d sending request", requestName(req), requestID)
-	}
-
+	client.logger.Debugf("%s #%d sending request", requestName(req), requestID)
 	ctx, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
 
@@ -107,27 +105,23 @@ func (client *grpcClient) executeRequest(
 	}
 
 	if requestTime < requestTimeWarnThreshold {
-		if logger := client.log.Logger(LOG_DEBUG); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s #%d request completed (time: %v, size: %d, error: %v)",
-				requestName(req),
-				requestID,
-				requestTime,
-				requestSize(req),
-				err)
-		}
+		client.logger.Debugf(
+			"%s #%d request completed (time: %v, size: %d, error: %v)",
+			requestName(req),
+			requestID,
+			requestTime,
+			requestSize(req),
+			err,
+		)
 	} else {
-		if logger := client.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s #%d request too slow (time: %v, size: %d, error: %v)",
-				requestName(req),
-				requestID,
-				requestTime,
-				requestSize(req),
-				err)
-		}
+		client.logger.Warnf(
+			"%s #%d request too slow (time: %v, size: %d, error: %v)",
+			requestName(req),
+			requestID,
+			requestTime,
+			requestSize(req),
+			err,
+		)
 	}
 
 	return resp, err
@@ -414,7 +408,7 @@ func (client *grpcClient) ReadLink(
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcEndpointClient struct {
-	log      Log
+	logger   Logger
 	impl     api.TEndpointManagerServiceClient
 	conn     *grpc.ClientConn
 	timeout  time.Duration
@@ -475,9 +469,11 @@ func (client *grpcEndpointClient) executeRequest(
 	requestID := nextRequestID()
 	client.setupHeaders(ctx, req)
 
-	if logger := client.log.Logger(LOG_DEBUG); logger != nil {
-		logger.Printf(ctx, "%s #%d sending request", requestName(req), requestID)
-	}
+	client.logger.Debugf(
+		"%s #%d sending request",
+		requestName(req),
+		requestID,
+	)
 
 	ctx, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
@@ -496,27 +492,23 @@ func (client *grpcEndpointClient) executeRequest(
 	}
 
 	if requestTime < requestTimeWarnThreshold {
-		if logger := client.log.Logger(LOG_DEBUG); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s #%d request completed (time: %v, size: %d, error: %v)",
-				requestName(req),
-				requestID,
-				requestTime,
-				requestSize(req),
-				err)
-		}
+		client.logger.Debugf(
+			"%s #%d request completed (time: %v, size: %d, error: %v)",
+			requestName(req),
+			requestID,
+			requestTime,
+			requestSize(req),
+			err,
+		)
 	} else {
-		if logger := client.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s #%d request too slow (time: %v, size: %d, error: %v)",
-				requestName(req),
-				requestID,
-				requestTime,
-				requestSize(req),
-				err)
-		}
+		client.logger.Warnf(
+			"%s #%d request too slow (time: %v, size: %d, error: %v)",
+			requestName(req),
+			requestID,
+			requestTime,
+			requestSize(req),
+			err,
+		)
 	}
 
 	return resp, err
@@ -628,7 +620,7 @@ type GrpcClientOpts struct {
 		opts ...grpc.DialOption) (conn *grpc.ClientConn, err error)
 }
 
-func NewGrpcClient(opts *GrpcClientOpts, log Log) (ClientIface, error) {
+func NewGrpcClient(opts *GrpcClientOpts, logger Logger) (ClientIface, error) {
 	requestTimeout := defaultRequestTimeout
 	if opts.Timeout != nil {
 		requestTimeout = *opts.Timeout
@@ -670,7 +662,7 @@ func NewGrpcClient(opts *GrpcClientOpts, log Log) (ClientIface, error) {
 	}
 
 	client := &grpcClient{
-		log,
+		logger,
 		api.NewTFileStoreServiceClient(conn),
 		conn,
 		requestTimeout,
@@ -680,7 +672,11 @@ func NewGrpcClient(opts *GrpcClientOpts, log Log) (ClientIface, error) {
 	return client, nil
 }
 
-func NewGrpcEndpointClient(opts *GrpcClientOpts, log Log) (EndpointClientIface, error) {
+func NewGrpcEndpointClient(
+	opts *GrpcClientOpts,
+	logger Logger,
+) (EndpointClientIface, error) {
+
 	requestTimeout := defaultRequestTimeout
 	if opts.Timeout != nil {
 		requestTimeout = *opts.Timeout
@@ -722,7 +718,7 @@ func NewGrpcEndpointClient(opts *GrpcClientOpts, log Log) (EndpointClientIface, 
 	}
 
 	client := &grpcEndpointClient{
-		log,
+		logger,
 		api.NewTEndpointManagerServiceClient(conn),
 		conn,
 		requestTimeout,

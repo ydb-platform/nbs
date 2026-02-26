@@ -2,7 +2,6 @@ package nfs
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
@@ -13,90 +12,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"golang.org/x/exp/maps"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-type errorLogger struct {
-}
-
-func (l *errorLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Error(ctx, fmt.Sprint(v...))
-}
-
-func (l *errorLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Error(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type warnLogger struct {
-}
-
-func (l *warnLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Warn(ctx, fmt.Sprint(v...))
-}
-
-func (l *warnLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Warn(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type infoLogger struct {
-}
-
-func (l *infoLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Info(ctx, fmt.Sprint(v...))
-}
-
-func (l *infoLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Info(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type debugLogger struct {
-}
-
-func (l *debugLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Debug(ctx, fmt.Sprint(v...))
-}
-
-func (l *debugLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Debug(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type nfsClientLogWrapper struct {
-	level   nfs_client.LogLevel
-	loggers []nfs_client.Logger
-}
-
-func (w *nfsClientLogWrapper) Logger(level nfs_client.LogLevel) nfs_client.Logger {
-	if level <= w.level {
-		return w.loggers[level]
-	}
-	return nil
-}
-
-func NewNfsClientLog(level nfs_client.LogLevel) nfs_client.Log {
-	loggers := []nfs_client.Logger{
-		&errorLogger{},
-		&warnLogger{},
-		&infoLogger{},
-		&debugLogger{},
-	}
-	return &nfsClientLogWrapper{level, loggers}
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -159,7 +74,7 @@ func (f *factory) NewClient(
 				f.metrics.OnError(err)
 			},
 		},
-		NewNfsClientLog(nfs_client.LOG_DEBUG),
+		logging.GetLogger(ctx),
 	)
 	if err != nil {
 		return nil, errors.NewRetriableError(err)
