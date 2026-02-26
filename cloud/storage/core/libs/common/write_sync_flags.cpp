@@ -5,6 +5,8 @@
 
 namespace NCloud {
 
+////////////////////////////////////////////////////////////////////////////////
+
 ui32 GetWriteSyncFlags(ui32 flags)
 {
     // O_SYNC includes O_DSYNC bits on Linux, so O_SYNC must take precedence.

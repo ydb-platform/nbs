@@ -225,7 +225,7 @@ public:
         auto req = std::make_unique<iocb>();
         const ui32 syncFlags = GetWriteSyncFlags(flags);
         iovec iov;
-        iov.iov_base = static_cast<void*>(const_cast<char*>(buffer.data()));
+        iov.iov_base = const_cast<char*>(buffer.data());
         iov.iov_len = buffer.size();
         io_prep_pwritev2(
             req.get(),
@@ -252,8 +252,7 @@ public:
 
         TVector<iovec> iov(buffers.size());
         for (ui32 i = 0; i < buffers.size(); ++i) {
-            iov[i].iov_base =
-                static_cast<void*>(const_cast<char*>(buffers[i].data()));
+            iov[i].iov_base = const_cast<char*>(buffers[i].data());
             iov[i].iov_len = buffers[i].size();
         }
         io_prep_pwritev2(
