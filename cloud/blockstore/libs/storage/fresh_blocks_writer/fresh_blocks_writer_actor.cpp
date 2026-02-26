@@ -1,5 +1,7 @@
 #include "fresh_blocks_writer_actor.h"
 
+#include "io_companion_client.h"
+
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
@@ -65,12 +67,17 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
         ui32 partitionIndex,
         ui32 siblingCount,
         NActors::TActorId partitionActorId,
+        NActors::TActorId volumeActorId,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         ui64 partitionTabletId)
     : Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , StorageAccessMode(storageAccessMode)
     , PartitionTabletID(partitionTabletId)
     , PartitionActorId(partitionActorId)
+    , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , VolumeActorId(volumeActorId)
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PoisonPillHelper(this)
     , LogTitle(
           GetCycleCount(),
@@ -100,6 +107,38 @@ void TFreshBlocksWriterActor::Bootstrap(const NActors::TActorContext& ctx)
         LogTitle.GetWithTime().c_str());
 
     NCloud::Send(ctx, PartitionActorId, std::move(request));
+}
+
+void TFreshBlocksWriterActor::ScheduleYellowStateUpdate(
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
+void TFreshBlocksWriterActor::UpdateYellowState(
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
+void TFreshBlocksWriterActor::ReassignChannelsIfNeeded(
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
+void TFreshBlocksWriterActor::UpdateChannelPermissions(
+    const NActors::TActorContext& ctx,
+    ui32 channel,
+    EChannelPermissions permissions)
+{
+    Y_UNUSED(ctx);
+
+    ChannelsState->UpdatePermissions(channel, permissions);
+    //TODO(@vladstepanyuk): add partition notification.
 }
 
 void TFreshBlocksWriterActor::HandlePartitionReady(
@@ -144,12 +183,39 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         Config->GetReassignSystemChannelsImmediately(),
         Min(tabletChannelCount, configChannelCount));
 
+    for (ui32 channel = 0; channel < ChannelsState->GetChannelCount();
+         ++channel)
+    {
+        ChannelsState->UpdatePermissions(
+            channel,
+            msg->ChannelPermissions[channel]);
+    }
+
     CommitIdsState =
         std::make_unique<TCommitIdsState>(TabletGeneration, /*lastCommitId=*/0);
     FlushState = std::make_unique<TPartitionFlushState>();
     TrimFreshLogState =
         std::make_unique<TPartitionTrimFreshLogState>(*CommitIdsState);
 
+    IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
+
+    IOCompanion = std::make_unique<TIOCompanion>(
+        Config,
+        PartitionConfig,
+        TabletStorageInfo,
+        PartitionTabletID,
+        BlobCodec,
+        VolumeActorId,
+        DiagnosticsConfig,
+        StorageAccessMode,
+        BSGroupOperationTimeTracker,
+        BSGroupOperationId,
+        *IOCompanionClient,
+        *ChannelsState,
+        LogTitle,
+        msg->ResourceMetricsQueue,
+        msg->GroupDowntimes,
+        msg->PartCounters);
     Become(&TThis::StateWork);
 
     StateLoaded = true;
@@ -267,7 +333,9 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            if (!HandleRequests(ev)) {
+            if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
+                !HandleRequests(ev))
+            {
                 HandleUnexpectedEvent(
                     ev,
                     TBlockStoreComponents::PARTITION,

@@ -72,7 +72,7 @@ public:
     TIOCompanion(
         TStorageConfigPtr config,
         const NProto::TPartitionConfig& partitionConfig,
-        NKikimr::TTabletStorageInfo* tabletStorageInfo,
+        NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
         ui64 tabletID,
         const NBlockCodecs::ICodec* blobCodec,
         const NActors::TActorId& volumeActorId,
@@ -118,6 +118,8 @@ public:
     void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
 
     void KillActors(const NActors::TActorContext& ctx);
+
+    bool HandleRequests(STFUNC_SIG, const NActors::TActorContext& ctx);
 
 private:
     auto Info()

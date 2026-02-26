@@ -27,4 +27,6 @@ public:
     void RegisterSuccess(TInstant now, ui32 groupId);
 };
 
+using TGroupDowntimesPtr = std::shared_ptr<TGroupDowntimes>;
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -537,4 +537,9 @@ bool TPartitionChannelsState::UpdateChannelFreeSpaceScore(
     return false;
 }
 
+EChannelPermissions TPartitionChannelsState::GetChannelPermissions(ui32 channel)
+{
+    return GetChannel(channel).Permissions;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

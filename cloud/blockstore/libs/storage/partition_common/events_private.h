@@ -5,6 +5,10 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
@@ -375,6 +379,12 @@ struct TEvPartitionCommonPrivate
         NKikimr::TTabletStorageInfoPtr TabletInfo;
         ui64 ChannelsCount;
         ui64 Generation;
+
+        TVector<EChannelPermissions> ChannelPermissions;
+
+        NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
+        NPartition::TThreadSafePartCountersPtr PartCounters;
+        NPartition::TGroupDowntimesPtr GroupDowntimes;
     };
 
     // Events declaration

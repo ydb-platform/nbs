@@ -106,4 +106,6 @@ public:
     }
 };
 
+using TResourceMetricsQueuePtr = std::shared_ptr<TResourceMetricsQueue>;
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

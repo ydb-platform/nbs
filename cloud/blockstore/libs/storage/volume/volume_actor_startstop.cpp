@@ -1103,6 +1103,8 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
             partitionIndex,
             siblingCount,
             actors.GetTop(),
+            ctx.SelfID,
+            DiagnosticsConfig,
             partTabletId);
     actors.Push(actorId, TActorsStack::EActorPurpose::FreshBlocksWriter);
     return actors;
