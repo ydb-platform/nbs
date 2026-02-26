@@ -24,4 +24,5 @@ ServerConfig {
     EnableDataIntegrityClient: true
   }
   # UseFakeRdmaClient: true
+  EnableOverlappingRequestsGuard: true
 }
