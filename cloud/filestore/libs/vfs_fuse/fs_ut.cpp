@@ -3992,7 +3992,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         const TString name = "file";
 
-        {
+        auto doTest = [&] (const std::function<void()>& w) {
             auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(
                 bootstrap.ParentNodeId);
             UNIT_ASSERT(handle.Wait(WaitTimeout));
@@ -4004,7 +4004,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto rf = bootstrap.Fuse->SendRequest(rq);
             bootstrap.ListNodesRequestEvent.WaitT(WaitTimeout);
             const ui64 oldSize = bootstrap.NodeSize;
-            bootstrap.Write(bootstrap.NodeSize, 4_KB);
+            w();
 
             NProto::TListNodesResponse r;
             r.AddNames(name);
@@ -4041,57 +4041,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.ParentNodeId,
                 handleId);
             UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
-        }
+        };
 
-        /*
-        {
-            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
-            auto rf = bootstrap.Fuse->SendRequest(rq);
-            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
-            const ui64 oldSize = bootstrap.NodeSize;
+        doTest([&] () {
+            bootstrap.Write(bootstrap.NodeSize, 4_KB);
+        });
+
+        doTest([&] () {
             bootstrap.Allocate(bootstrap.NodeSize, 4_KB);
+        });
 
-            NProto::TGetNodeAttrResponse r;
-            auto& n = *r.MutableNode();
-            n.SetId(bootstrap.NodeId);
-            n.SetSize(oldSize);
-            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
-            rf.GetValue(WaitTimeout);
-
-            //
-            // FAllocate completed while we were processing GetNodeAttr - the
-            // result is stale, shouldn't be cached (attr_timeout should be 0).
-            //
-
-            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
-            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
-            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
-        }
-
-        {
-            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
-            auto rf = bootstrap.Fuse->SendRequest(rq);
-            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
-            const ui64 oldSize = bootstrap.NodeSize;
+        doTest([&] () {
             bootstrap.SetSize(12_KB);
-
-            NProto::TGetNodeAttrResponse r;
-            auto& n = *r.MutableNode();
-            n.SetId(bootstrap.NodeId);
-            n.SetSize(oldSize);
-            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
-            rf.GetValue(WaitTimeout);
-
-            //
-            // SetAttr completed while we were processing GetNodeAttr - the
-            // result is stale, shouldn't be cached (attr_timeout should be 0).
-            //
-
-            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
-            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
-            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
-        }
-        */
+        });
     }
 }
 
