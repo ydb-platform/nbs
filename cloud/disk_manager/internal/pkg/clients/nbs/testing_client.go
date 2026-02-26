@@ -261,7 +261,7 @@ func (c *testingClient) CalculateCrc32WithEncryption(
 
 	session := nbs_client.NewSession(
 		*nbsClient,
-		NewNbsClientLog(nbs_client.LOG_DEBUG),
+		logging.GetLogger(ctx),
 	)
 	defer session.Close()
 
@@ -484,7 +484,7 @@ func (c *testingClient) MountForReadWrite(
 
 	session := nbs_client.NewSession(
 		*nbsClient,
-		NewNbsClientLog(nbs_client.LOG_DEBUG),
+		logging.GetLogger(ctx),
 	)
 
 	opts := nbs_client.MountVolumeOpts{
@@ -525,7 +525,7 @@ func (c *testingClient) Write(
 
 	session := nbs_client.NewSession(
 		*nbsClient,
-		NewNbsClientLog(nbs_client.LOG_DEBUG),
+		logging.GetLogger(ctx),
 	)
 	defer session.Close()
 

@@ -28,7 +28,6 @@ GO_TEST_SRCS(
     durable_test.go
     error_test.go
     grpc_test.go
-    log_test.go
     session_test.go
 )
 
