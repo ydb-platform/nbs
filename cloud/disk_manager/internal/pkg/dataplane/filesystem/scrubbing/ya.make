@@ -1,6 +1,7 @@
 GO_LIBRARY()
 
 SRCS(
+    register.go
     scrub_filesystem_task.go
 )
 

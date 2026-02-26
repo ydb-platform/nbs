@@ -4,8 +4,11 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -83,5 +86,37 @@ func initDataplane(
 		snapshotMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,
+	)
+}
+
+func initFilesystemDataplane(
+	ctx context.Context,
+	config *server_config.ServerConfig,
+	taskRegistry *tasks.Registry,
+	nfsFactory nfs.Factory,
+	filesystemDB *persistence.YDBClient,
+) error {
+
+	filesystemConfig := config.GetDataplaneConfig().GetFilesystemConfig()
+	if filesystemConfig == nil {
+		return nil
+	}
+
+	scrubbingConfig := filesystemConfig.GetScrubbingConfig()
+	traversalConfig := scrubbingConfig.GetTraversalConfig()
+	if traversalConfig == nil {
+		return nil
+	}
+
+	traversalStorage := traversal_storage.NewStorage(
+		filesystemDB,
+		traversalConfig.GetStorageFolder(),
+	)
+
+	return scrubbing.RegisterForExecution(
+		taskRegistry,
+		scrubbingConfig,
+		nfsFactory,
+		traversalStorage,
 	)
 }
