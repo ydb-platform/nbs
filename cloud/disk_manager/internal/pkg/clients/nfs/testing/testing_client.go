@@ -17,6 +17,9 @@ type TestingClient interface {
 	FillFilesystemWithDefaultTree(
 		ctx context.Context,
 		filesystemID string,
+		filesPerDir int,
+		dirsPerDir int,
+		depth int,
 	) *tasks_common.StringSet
 }
 
@@ -30,6 +33,9 @@ type testingClient struct {
 func (c *testingClient) FillFilesystemWithDefaultTree(
 	ctx context.Context,
 	filesystemID string,
+	filesPerDir int,
+	dirsPerDir int,
+	depth int,
 ) *tasks_common.StringSet {
 
 	session, err := c.CreateSession(ctx, filesystemID, "", false)
@@ -39,10 +45,12 @@ func (c *testingClient) FillFilesystemWithDefaultTree(
 		require.NoError(c.t, err)
 	}()
 
-	layers := []FilesystemLayerConfig{
-		{DirsCount: 3, FilesCount: 100},
-		{DirsCount: 10, FilesCount: 1000},
-		{DirsCount: 10, FilesCount: 1000},
+	layers := make([]FilesystemLayerConfig, depth)
+	for i := 0; i < depth; i++ {
+		layers[i] = FilesystemLayerConfig{
+			DirsCount:  dirsPerDir,
+			FilesCount: filesPerDir,
+		}
 	}
 	tree := HomogeneousDirectoryTree(layers)
 
