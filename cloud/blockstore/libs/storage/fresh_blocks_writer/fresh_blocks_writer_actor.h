@@ -20,15 +20,11 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFreshBlocksCompanionClient;
-
 class TFreshBlocksWriterActor final
     : public NActors::TActorBootstrapped<TFreshBlocksWriterActor>
     , public IMortalActor
 {
     using TBase = NActors::TActorBootstrapped<TFreshBlocksWriterActor>;
-
-    friend TFreshBlocksCompanionClient;
 
 private:
     const TStorageConfigPtr Config;
