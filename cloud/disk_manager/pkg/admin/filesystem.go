@@ -12,8 +12,7 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
-	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
@@ -356,19 +355,14 @@ func (c *scrubFilesystem) run() error {
 	}
 	defer c.close()
 
-	taskID, err := c.scheduler.ScheduleTask(
+	taskID, err := scrubbing.ScheduleScrubFilesystem(
 		headers.SetIncomingIdempotencyKey(
 			c.ctx,
 			"dataplane.ScrubFilesystem_"+c.filesystemID+"_"+generateID(),
 		),
-		"dataplane.ScrubFilesystem",
-		"Traverse filesystem to check for inconsistencies",
-		&scrubbing_protos.ScrubFilesystemRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       c.zoneID,
-				FilesystemId: c.filesystemID,
-			},
-		},
+		c.scheduler,
+		c.zoneID,
+		c.filesystemID,
 	)
 	if err != nil {
 		return err
