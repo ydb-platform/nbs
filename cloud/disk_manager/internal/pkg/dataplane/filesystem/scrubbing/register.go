@@ -2,8 +2,6 @@ package scrubbing
 
 import (
 	"context"
-	"os"
-	"sync"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
@@ -31,32 +29,6 @@ func RegisterForExecution(
 	storage storage.Storage,
 ) error {
 
-	callback := func(nodes []nfs.Node) {}
-
-	// ListNodesLogPath is only used in single-host tests.
-	logPath := config.GetListNodesLogPath()
-	if logPath != "" {
-		var mu sync.Mutex
-		callback = func(nodes []nfs.Node) {
-			mu.Lock()
-			defer mu.Unlock()
-
-			f, err := os.OpenFile(
-				logPath,
-				os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-				0644,
-			)
-			if err != nil {
-				return
-			}
-			defer f.Close()
-
-			for _, node := range nodes {
-				f.WriteString(node.Name + "\n")
-			}
-		}
-	}
-
 	return taskRegistry.RegisterForExecution(
 		"dataplane.ScrubFilesystem",
 		func() tasks.Task {
@@ -64,7 +36,7 @@ func RegisterForExecution(
 				config:   config,
 				factory:  factory,
 				storage:  storage,
-				callback: callback,
+				callback: func(nodes []nfs.Node) {},
 			}
 		},
 	)

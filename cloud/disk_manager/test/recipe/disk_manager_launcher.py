@@ -442,7 +442,6 @@ FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
             TraversalConfig: <
             >
             ListNodesMaxBytes: {list_nodes_max_bytes}
-            ListNodesLogPath: "{list_nodes_log_path}"
         >
     >
 """
@@ -575,7 +574,6 @@ class DiskManagerLauncher:
         cell_selection_policy="FIRST_IN_CONFIG",
         filesystem_dataplane_enabled=False,
         list_nodes_max_bytes=0,
-        list_nodes_log_path="",
     ):
         self.__idx = idx
 
@@ -638,7 +636,6 @@ class DiskManagerLauncher:
                     filesystem_dataplane_config="" if not filesystem_dataplane_enabled else FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE.format(
                         ydb_port=ydb_port,
                         list_nodes_max_bytes=list_nodes_max_bytes,
-                        list_nodes_log_path=list_nodes_log_path,
                     ),
                     nfs_config=NFS_CONFIG_TEMPLATE.format(
                         nfs_port=nfs_port,
