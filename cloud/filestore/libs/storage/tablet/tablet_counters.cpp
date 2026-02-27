@@ -268,6 +268,7 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
 
     REGISTER_LOCAL(TabletStartTimestamp, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(TabletId, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);

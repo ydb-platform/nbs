@@ -846,13 +846,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         });
     }
 
-    Y_UNIT_TEST(ShouldReportTabletStartTime)
+    Y_UNIT_TEST(ShouldReportTabletInfo)
     {
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetBlobCompressionRate(2);
-        storageConfig.SetWriteBlobThreshold(1);
-
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env;
         auto registry = env.GetRegistry();
 
         auto startTime = env.GetRuntime().GetCurrentTime().MicroSeconds();
@@ -871,6 +867,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              [startTime](i64 val)
              {
                  return val > static_cast<i64>(startTime);
+             }},
+            {{{"sensor", "TabletId"}, {"filesystem", "test"}},
+             [tabletId](i64 val)
+             {
+                 return val == static_cast<i64>(tabletId);
              }},
         });
     }
