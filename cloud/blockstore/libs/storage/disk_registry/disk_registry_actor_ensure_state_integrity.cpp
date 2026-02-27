@@ -133,7 +133,7 @@ void TEnsureStateIntegrityActor::HandleBackupDiskRegistryStateResponse(
     // After adding a new field to the DiskRegistryState class, include a
     // comparison method if needed and update the value to reflect the current
     // size of the class.
-    static_assert(sizeof(TDiskRegistryState) == 2144);
+    static_assert(sizeof(TDiskRegistryState) == 2176);
 
     const bool equal = diff.Compare(
         msg->Record.GetMemoryBackup(),
