@@ -68,41 +68,54 @@ TBufferPtr TDirectoryBuilder::Finish()
 
 NProto::TError ResetAttrTimeout(
     char* data,
-    ui64 len,
+    ui64 remainingLen,
     const TNodeIdVisitor& visitor)
 {
 #if defined(FUSE_VIRTIO)
-    while (len > sizeof(fuse_direntplus)) {
+    while (remainingLen >= sizeof(fuse_direntplus)) {
         auto* de = reinterpret_cast<fuse_direntplus*>(data);
 
-        if (de->dirent.ino != de->entry_out.attr.ino) {
-            return MakeError(E_INVALID_STATE, TStringBuilder() << "ino mismatch"
-                << " in dirent and attr: " << de->dirent.ino << " != "
-                << de->entry_out.attr.ino);
-        }
+        if (de->dirent.ino != MissingNodeId) {
+            if (de->dirent.ino != de->entry_out.attr.ino) {
+                return MakeError(E_INVALID_STATE, TStringBuilder()
+                    << "ino mismatch in dirent and attr: " << de->dirent.ino
+                    << " != " << de->entry_out.attr.ino);
+            }
 
-        if (visitor(de->dirent.ino)) {
-            de->entry_out.attr_valid = 0;
-            de->entry_out.attr_valid_nsec = 0;
+            if (de->dirent.ino != de->entry_out.nodeid) {
+                return MakeError(E_INVALID_STATE, TStringBuilder()
+                    << "ino mismatch in dirent and entry: " << de->dirent.ino
+                    << " != " << de->entry_out.nodeid);
+            }
+
+            if (de->dirent.ino != 0 && de->dirent.namelen == 0) {
+                return MakeError(E_INVALID_STATE, TStringBuilder()
+                    << "no name in dirent " << de->dirent.ino);
+            }
+
+            if (visitor(de->dirent.ino)) {
+                de->entry_out.attr_valid = 0;
+                de->entry_out.attr_valid_nsec = 0;
+            }
         }
 
         const ui64 fullSize = sizeof(fuse_direntplus)
             + AlignUp<ui64>(de->dirent.namelen, sizeof(ui64));
 
-        if (len < fullSize) {
+        if (remainingLen < fullSize) {
             return MakeError(E_INVALID_STATE, TStringBuilder() << "expected >= "
-                << fullSize << " bytes of dir content, have " << len
+                << fullSize << " bytes of dir content, have " << remainingLen
                 << " bytes");
         }
 
-        len -= fullSize;
+        remainingLen -= fullSize;
         data += fullSize;
     }
 #else
     // for non-virtiofs builds we don't return attrs in listing results
 
     Y_UNUSED(data);
-    Y_UNUSED(len);
+    Y_UNUSED(remainingLen);
     Y_UNUSED(visitor);
 #endif
 

@@ -79,9 +79,6 @@ class TFileSystem final
     , public std::enable_shared_from_this<TFileSystem>
 {
 private:
-    static constexpr ui64 MissingNodeId = -1;
-
-private:
     const ILoggingServicePtr Logging;
     const IProfileLogPtr ProfileLog;
     const ITimerPtr Timer;

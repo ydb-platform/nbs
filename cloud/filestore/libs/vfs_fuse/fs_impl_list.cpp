@@ -133,11 +133,16 @@ void TFileSystem::ReadDir(
     auto reply = [=] (TFileSystem& fs, const TDirectoryContent& content) {
         TBuffer c(content.GetData(), content.GetSize());
 
-        ResetAttrTimeout(c.Data(), c.Size(), [&] (ui64 ino) {
+        auto error = ResetAttrTimeout(c.Data(), c.Size(), [&] (ui64 ino) {
             return NodeCache.GetNodeVersion(ino) > content.AttrVersion;
         });
 
-        fs.ReplyBuf(*callContext, {}, req, c.Data(), c.Size());
+        if (HasError(error)) {
+            STORAGE_ERROR("request #" << fuse_req_unique(req)
+                << " ResetAttrTimeout error: " << FormatError(error).Quote());
+        }
+
+        fs.ReplyBuf(*callContext, error, req, c.Data(), c.Size());
     };
 
     if (!offset) {

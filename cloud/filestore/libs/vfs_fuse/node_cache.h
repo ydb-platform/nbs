@@ -115,8 +115,10 @@ private:
 
 public:
     explicit TNodeCache(const TString& fileSystemId, ui32 shardCount = 1)
-        : Shards(shardCount, TNodeCacheShard(fileSystemId))
     {
+        for (ui32 i = 0; i < shardCount; ++i) {
+            Shards.emplace_back(fileSystemId);
+        }
     }
 
 public:
