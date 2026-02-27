@@ -6,6 +6,8 @@
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/features/features_config.h>
+
 #include <contrib/libs/protobuf/src/google/protobuf/stubs/stringpiece.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -1138,6 +1140,42 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         UNIT_ASSERT_VALUES_EQUAL(2, listResponse->Record.GetNodes().size());
 
         UNIT_ASSERT_VALUES_EQUAL(1, getCacheHit());
+    }
+
+    Y_UNIT_TEST(ShouldNotLeakFeaturesAcrossFileStoresWithSharedConfig)
+    {
+        // Reproduce the bug: all tablet actors share the same TStorageConfig
+        // passed by shared_ptr. When SetCloudFolderEntity is modifies the
+        // shared ProtoConfig for all tablets, not only the matching one
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        auto* feature = featuresConfigProto.AddFeatures();
+        feature->SetName("ParentlessFilesOnly");
+        feature->MutableWhitelist()->AddEntityIds("with-feature");
+
+        NProto::TStorageConfig config;
+        TTestEnv env{{}, config};
+        env.GetStorageConfig()->SetFeaturesConfig(
+            std::make_shared<NFeatures::TFeaturesConfig>(featuresConfigProto));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateFileStore("with-feature", 1'000);
+        service.CreateFileStore("without-feature", 1'000);
+
+        {
+            auto response = ExecuteGetStorageConfig("with-feature", service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetParentlessFilesOnly());
+        }
+
+        {
+            auto response = ExecuteGetStorageConfig("without-feature", service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                response.GetParentlessFilesOnly());
+        }
     }
 }
 
