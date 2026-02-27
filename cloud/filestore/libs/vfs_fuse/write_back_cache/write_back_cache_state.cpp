@@ -133,13 +133,17 @@ TWriteBackCacheState::TPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
-    // Prevent unflushed requests from being evicted after flush
-    const ui64 sequenceId =
-        nodeState.Cache.GetMinPendingOrUnflushedSequenceId(0);
+    // Setting a pin allows evicting from cache only those WriteData requests
+    // that are flushed by the moment. Other requests will not be evicted
+    // until the pin is removed.
+    const ui64 allowedToEvictMaxSequenceId =
+        nodeState.Cache.HasFlushedRequests()
+            ? nodeState.Cache.GetMaxFlushedSequenceId()
+            : 0;
 
-    nodeState.CachedDataPins.insert(sequenceId);
+    nodeState.CachedDataPins.insert(allowedToEvictMaxSequenceId);
 
-    return sequenceId;
+    return allowedToEvictMaxSequenceId;
 }
 
 void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
@@ -210,8 +214,10 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     }
 
     // Trigger Flush completions
-    const ui64 sequenceId = nodeState.Cache.GetMinPendingOrUnflushedSequenceId(
-        /* defValue = */ Max<ui64>());
+    const ui64 sequenceId =
+        nodeState.Cache.HasPendingOrUnflushedRequests()
+            ? nodeState.Cache.GetMinPendingOrUnflushedSequenceId()
+            : Max<ui64>();
 
     while (!nodeState.FlushRequests.empty() &&
            nodeState.FlushRequests.front().SequenceId < sequenceId)
@@ -327,13 +333,13 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
 {
     bool entriesDeleted = false;
 
-    const ui64 nodePinSequenceId = nodeState.CachedDataPins.empty()
-                                       ? Max<ui64>()
-                                       : *nodeState.CachedDataPins.begin();
+    const ui64 allowedToEvictMaxSequenceId =
+        nodeState.CachedDataPins.empty() ? Max<ui64>()
+                                         : *nodeState.CachedDataPins.begin();
 
     while (nodeState.Cache.HasFlushedRequests()) {
         const ui64 sequenceId = nodeState.Cache.GetMinFlushedSequenceId();
-        if (sequenceId >= nodePinSequenceId) {
+        if (sequenceId > allowedToEvictMaxSequenceId) {
             break;
         }
         auto cachedRequest = nodeState.Cache.DequeueFlushedRequest();

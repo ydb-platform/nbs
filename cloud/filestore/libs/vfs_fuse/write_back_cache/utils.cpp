@@ -4,6 +4,7 @@
 
 #include <fcntl.h>
 
+#include <util/stream/mem.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -132,9 +133,11 @@ NProto::TReadDataResponse TUtils::BuildReadDataResponse(
     const auto length = parts.back().RelativeOffset + parts.back().Data.size();
 
     auto buf = TString::Uninitialized(length);
+    TMemoryOutput out(buf.begin(), length);
     for (const auto& part: parts) {
-        part.Data.copy(buf.begin() + part.RelativeOffset, part.Data.size());
+        out.Write(part.Data);
     }
+    Y_ABORT_UNLESS(out.Exhausted());
 
     NProto::TReadDataResponse response;
     response.SetBuffer(std::move(buf));
