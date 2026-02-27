@@ -24,7 +24,6 @@ bool TNodeCache::UpdateNode(const NProto::TNodeAttr& attrs, ui64 version)
     } else {
         if (version >= node.LastUpdateVersion) {
             node.UpdateAttrs(attrs, version);
-            node.LastUpdateVersion = version;
 
             STORAGE_VERIFY_C(
                 node.IsValid(),
@@ -49,7 +48,7 @@ void TNodeCache::InvalidateNode(ui64 ino, ui64 version)
 
     NProto::TNodeAttr attrs;
     attrs.SetId(ino);
-    auto [it, inserted] = Id2Node.emplace(ino, TNode(std::move(attrs)));
+    auto [it, inserted] = Id2Node.emplace(ino, TNode(attrs));
     if (version >= it->second.LastUpdateVersion) {
         if (!inserted) {
             it->second.Attrs = std::move(attrs);
