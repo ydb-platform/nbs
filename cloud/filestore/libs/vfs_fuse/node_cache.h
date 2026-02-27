@@ -68,7 +68,7 @@ private:
         LastUpdateVersion = version;
     }
 
-    friend class TNodeCache;
+    friend class TNodeCacheShard;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +89,7 @@ private:
  *
  * In the future we might actually start using this cache for attribute lookups.
  */
-class TNodeCache
+class TNodeCacheShard
 {
 private:
     const TString FileSystemId;
@@ -97,7 +97,7 @@ private:
     TAdaptiveLock Lock;
 
 public:
-    explicit TNodeCache(TString fileSystemId)
+    explicit TNodeCacheShard(TString fileSystemId)
         : FileSystemId(std::move(fileSystemId))
     {}
 
@@ -106,6 +106,39 @@ public:
     void InvalidateNode(ui64 ino, ui64 version);
     void ForgetNode(ui64 ino, size_t count);
     ui64 GetNodeVersion(ui64 ino) const;
+};
+
+class TNodeCache
+{
+private:
+    TVector<TNodeCacheShard> Shards;
+
+public:
+    explicit TNodeCache(const TString& fileSystemId, ui32 shardCount = 1)
+        : Shards(shardCount, TNodeCacheShard(fileSystemId))
+    {
+    }
+
+public:
+    bool UpdateNode(const NProto::TNodeAttr& attrs, ui64 version)
+    {
+        return Shards[attrs.GetId() % Shards.size()].UpdateNode(attrs, version);
+    }
+
+    void InvalidateNode(ui64 ino, ui64 version)
+    {
+        Shards[ino % Shards.size()].InvalidateNode(ino, version);
+    }
+
+    void ForgetNode(ui64 ino, size_t count)
+    {
+        Shards[ino % Shards.size()].ForgetNode(ino, count);
+    }
+
+    ui64 GetNodeVersion(ui64 ino) const
+    {
+        return Shards[ino % Shards.size()].GetNodeVersion(ino);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

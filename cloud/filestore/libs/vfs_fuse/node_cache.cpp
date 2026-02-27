@@ -11,7 +11,9 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TNodeCache::UpdateNode(const NProto::TNodeAttr& attrs, ui64 version)
+bool TNodeCacheShard::UpdateNode(
+    const NProto::TNodeAttr& attrs,
+    ui64 version)
 {
     auto g = Guard(Lock);
 
@@ -42,7 +44,7 @@ bool TNodeCache::UpdateNode(const NProto::TNodeAttr& attrs, ui64 version)
     return updated;
 }
 
-void TNodeCache::InvalidateNode(ui64 ino, ui64 version)
+void TNodeCacheShard::InvalidateNode(ui64 ino, ui64 version)
 {
     auto g = Guard(Lock);
 
@@ -58,7 +60,7 @@ void TNodeCache::InvalidateNode(ui64 ino, ui64 version)
     }
 }
 
-void TNodeCache::ForgetNode(ui64 ino, size_t count)
+void TNodeCacheShard::ForgetNode(ui64 ino, size_t count)
 {
     auto g = Guard(Lock);
 
@@ -78,7 +80,7 @@ void TNodeCache::ForgetNode(ui64 ino, size_t count)
     }
 }
 
-ui64 TNodeCache::GetNodeVersion(ui64 ino) const
+ui64 TNodeCacheShard::GetNodeVersion(ui64 ino) const
 {
     auto g = Guard(Lock);
 
