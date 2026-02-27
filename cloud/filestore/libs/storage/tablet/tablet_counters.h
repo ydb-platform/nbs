@@ -258,6 +258,7 @@ struct TTabletMetrics
     {
         std::atomic<i64> RequestedBytesPrecharge{0};
         std::atomic<i64> PrepareAttempts{0};
+        std::atomic<i64> ResponseNodeRefs{0};
     } ListNodesExtra;
 
     i64 LastNetworkMetric = 0;
