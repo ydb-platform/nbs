@@ -182,6 +182,12 @@ bool TFileSystem::UpdateNodeAttrsInCache(
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
         entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
     } else {
+        //
+        // NodeCache contains a newer node version. This means that the attrs
+        // that we're going to return might be stale. So we should disallow
+        // caching.
+        //
+
         entry.attr_timeout = 0;
         entry.entry_timeout = 0;
     }

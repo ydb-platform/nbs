@@ -636,9 +636,19 @@ void TFileSystem::WriteBufLocal(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+            self->FSyncQueue->Dequeue(
+                reqId,
+                error,
+                TNodeId {ino},
+                THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                //
+                // Disallow result caching for all concurrently running
+                // operations that read node attributes.
+                //
+
+                InvalidateNodeInCache(ino);
                 self->ReplyWrite(*callContext, error, req, size);
             }
         });
@@ -778,6 +788,11 @@ void TFileSystem::FAllocate(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                //
+                // Disallow result caching for all concurrently running
+                // operations that read node attributes.
+                //
+
                 InvalidateNodeInCache(ino);
                 self->ReplyError(*callContext, error, req, 0);
             }
