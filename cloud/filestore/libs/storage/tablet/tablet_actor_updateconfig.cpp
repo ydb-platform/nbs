@@ -247,6 +247,12 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Setting CloudId=" << GetCloudId() << ", FolderId="
+               << GetFolderId() << ", EntityId=" << GetFileSystemId()
+               << " for the storage config features overrides");
     Config->SetCloudFolderEntity(
         GetCloudId(),
         GetFolderId(),
