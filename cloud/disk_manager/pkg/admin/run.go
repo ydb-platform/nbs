@@ -78,14 +78,7 @@ func Run(
 			}
 			return cmd.Flags().Set("id", args[0])
 		},
-		CompletionOptions: struct {
-			DisableDefaultCmd   bool
-			DisableNoDescFlag   bool
-			DisableDescriptions bool
-			HiddenDefaultCmd    bool
-		}{
-			DisableDefaultCmd:   false,
-			DisableNoDescFlag:   false,
+		CompletionOptions: cobra.CompletionOptions{
 			DisableDescriptions: true,
 			HiddenDefaultCmd:    true,
 		},
