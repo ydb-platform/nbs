@@ -142,6 +142,8 @@ public:
         return BackpressureDiskSpaceScore;
     }
 
+    EChannelPermissions GetChannelPermissions(ui32 channel);
+
 protected:
     void InitChannels();
 

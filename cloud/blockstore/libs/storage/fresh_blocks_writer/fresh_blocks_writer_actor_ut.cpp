@@ -343,6 +343,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                 0,
                 1,
                 *testEnv.PartitionActorId,
+                VolumeActorId,
+                testEnv.Configs->DiagnosticsConfig,
                 TestTabletId)
                 .release());
 

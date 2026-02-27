@@ -190,6 +190,8 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
+    NActors::TActorId FreshBlocksWriter;
+
     TRequestInfoPtr Poisoner;
 
 public:

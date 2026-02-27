@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/io_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 
@@ -20,19 +21,25 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TIOCompanionClient;
+
 class TFreshBlocksWriterActor final
     : public NActors::TActorBootstrapped<TFreshBlocksWriterActor>
     , public IMortalActor
 {
     using TBase = NActors::TActorBootstrapped<TFreshBlocksWriterActor>;
 
+    friend TIOCompanionClient;
+
 private:
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const EStorageAccessMode StorageAccessMode;
     const ui64 PartitionTabletID;
-
     const NActors::TActorId PartitionActorId;
+    const NBlockCodecs::ICodec* BlobCodec;
+    const NActors::TActorId VolumeActorId;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
 
     NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
 
@@ -51,6 +58,12 @@ private:
 
     TLogTitle LogTitle;
 
+    ui64 BSGroupOperationId = 0;
+    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
+
+    std::unique_ptr<TIOCompanionClient> IOCompanionClient;
+    std::unique_ptr<TIOCompanion> IOCompanion;
+
 public:
     TFreshBlocksWriterActor(
         TStorageConfigPtr config,
@@ -59,6 +72,8 @@ public:
         ui32 partitionIndex,
         ui32 siblingCount,
         NActors::TActorId partitionActorId,
+        NActors::TActorId volumeActorId,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         ui64 partitionTabletId);
 
     ~TFreshBlocksWriterActor() override;
@@ -72,7 +87,16 @@ private:
         NCloud::Send<NActors::TEvents::TEvPoisonPill>(ctx, ctx.SelfID);
     }
 
-    void FreshBlobsLoaded(const NActors::TActorContext& ctx);
+    void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
+
+    void UpdateYellowState(const NActors::TActorContext& ctx);
+
+    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx);
+
+    void UpdateChannelPermissions(
+        const NActors::TActorContext& ctx,
+        ui32 channel,
+        EChannelPermissions permissions);
 
     // IMortalActor overrides
 
