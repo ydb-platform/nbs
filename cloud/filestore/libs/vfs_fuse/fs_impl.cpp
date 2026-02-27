@@ -20,6 +20,10 @@ ELogPriority GetErrorPriority(ui32 code)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui32 NODE_CACHE_SHARD_COUNT = 16;
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,7 +49,7 @@ TFileSystem::TFileSystem(
     , Config(std::move(config))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
-    , NodeCache(Config->GetFileSystemId())
+    , NodeCache(Config->GetFileSystemId(), NODE_CACHE_SHARD_COUNT)
     , DirectoryHandlesStats(std::move(directoryHandlesStats))
     , XAttrCache(
         Timer,
