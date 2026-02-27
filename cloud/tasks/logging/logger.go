@@ -43,10 +43,13 @@ func GetLogger(ctx context.Context) Logger {
 	}
 
 	if name, ok := ctx.Value(loggerNameKey{}).(string); ok {
-		return logger.WithName(name)
+		logger = logger.WithName(name)
 	}
 
-	return logger
+	return &contextLogger{
+		ctx:    ctx,
+		logger: logger,
+	}
 }
 
 func AddCallerSkip(ctx context.Context, skip int) context.Context {
