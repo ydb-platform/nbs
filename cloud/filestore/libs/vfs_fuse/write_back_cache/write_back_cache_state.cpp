@@ -150,18 +150,19 @@ void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
 {
     auto guard = Guard(QueuedOperations);
 
-    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+    auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted= */ false);
+    Y_ABORT_UNLESS(nodeState, "Node %lu not found", nodeId);
 
-    auto it = nodeState.CachedDataPins.find(pinId);
+    auto it = nodeState->CachedDataPins.find(pinId);
     Y_ABORT_UNLESS(
-        it != nodeState.CachedDataPins.end(),
+        it != nodeState->CachedDataPins.end(),
         "Pin %lu not found for node %lu",
         pinId,
         nodeId);
 
-    nodeState.CachedDataPins.erase(it);
+    nodeState->CachedDataPins.erase(it);
 
-    EvictUnpinnedFlushedEntries(nodeId, nodeState);
+    EvictUnpinnedFlushedEntries(nodeId, *nodeState);
 }
 
 TWriteBackCacheState::TPin TWriteBackCacheState::PinNodeStates()
