@@ -16,15 +16,6 @@ type contextLogger struct {
 	logger log.Logger
 }
 
-// WithContext returns a new Logger that includes context fields in all log
-// calls. This allows passing the logger to code that doesn't accept context.
-func WithContext(ctx context.Context) Logger {
-	return &contextLogger{
-		ctx:    ctx,
-		logger: GetLogger(ctx),
-	}
-}
-
 func (l *contextLogger) Trace(msg string, fields ...log.Field) {
 	ctxlog.Trace(l.ctx, log.AddCallerSkip(l.logger, 1), msg, fields...)
 }
