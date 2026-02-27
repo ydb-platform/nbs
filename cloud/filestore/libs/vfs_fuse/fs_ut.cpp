@@ -3183,10 +3183,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(!path.Exists());
     }
 
-    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    void TestShouldHandleZeroCopyReadRequest(bool enableWriteBackCache)
     {
         NProto::TFileStoreFeatures features;
         features.SetZeroCopyReadEnabled(true);
+        features.SetServerWriteBackCacheEnabled(enableWriteBackCache);
 
         TBootstrap bootstrap(
             CreateWallClockTimer(),
@@ -3231,6 +3232,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(
             data,
             TString(reinterpret_cast<char*>(&request->Out->Body), size));
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    {
+        TestShouldHandleZeroCopyReadRequest(false);
+        TestShouldHandleZeroCopyReadRequest(true);
     }
 
     Y_UNIT_TEST(ShouldHandleZeroCopyReadRequestFallbackToBuffer)

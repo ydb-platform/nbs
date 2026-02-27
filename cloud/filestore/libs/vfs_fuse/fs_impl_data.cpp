@@ -363,7 +363,7 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
-    if (!WriteBackCache && Config->GetZeroCopyReadEnabled()) {
+    if (Config->GetZeroCopyReadEnabled()) {
         // TODO(issue-4800): Support ZeroCopyReadEnabled for local filestore
         struct iovec* iov = nullptr;
         int count = 0;

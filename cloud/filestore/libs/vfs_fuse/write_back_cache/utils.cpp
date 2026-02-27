@@ -2,10 +2,10 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <fcntl.h>
-
 #include <util/stream/mem.h>
 #include <util/string/printf.h>
+
+#include <fcntl.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -28,6 +28,27 @@ NCloud::NProto::TError TUtils::ValidateReadDataRequest(
 
     if (request.GetLength() == 0) {
         return MakeError(E_ARGUMENT, "ReadData request has zero length");
+    }
+
+    if (!request.GetIovecs().empty()) {
+        ui64 totalLength = 0;
+        for (const auto& iovec: request.GetIovecs()) {
+            if (iovec.GetLength() == 0) {
+                return MakeError(
+                    E_ARGUMENT,
+                    "WriteData request contains an Iovec with zero length");
+            }
+            totalLength += iovec.GetLength();
+        }
+        if (totalLength < request.GetLength()) {
+            return MakeError(
+                E_ARGUMENT,
+                Sprintf(
+                    "Total length of Iovecs %lu is less than request Length "
+                    "%lu",
+                    totalLength,
+                    request.GetLength()));
+        }
     }
 
     return {};
@@ -97,73 +118,6 @@ NCloud::NProto::TError TUtils::ValidateWriteDataRequest(
     }
 
     return {};
-}
-
-// static
-bool TUtils::IsFullyCoveredByParts(
-    const TVector<TCachedDataPart>& parts,
-    ui64 byteCount)
-{
-    if (parts.empty() || parts.front().RelativeOffset != 0 ||
-        parts.back().RelativeOffset + parts.back().Data.size() != byteCount)
-    {
-        return false;
-    }
-
-    ui64 offset = 0;
-
-    for (const auto& part: parts) {
-        if (part.RelativeOffset != offset) {
-            return false;
-        }
-        offset += part.Data.size();
-    }
-
-    return true;
-}
-
-// static
-NProto::TReadDataResponse TUtils::BuildReadDataResponse(
-    const TVector<TCachedDataPart>& parts)
-{
-    if (parts.empty()) {
-        return {};
-    }
-
-    const auto length = parts.back().RelativeOffset + parts.back().Data.size();
-
-    auto buf = TString::Uninitialized(length);
-    TMemoryOutput out(buf.begin(), length);
-    for (const auto& part: parts) {
-        out.Write(part.Data);
-    }
-    Y_ABORT_UNLESS(out.Exhausted());
-
-    NProto::TReadDataResponse response;
-    response.SetBuffer(std::move(buf));
-    return response;
-}
-
-// static
-void TUtils::AugmentReadDataResponse(
-    NProto::TReadDataResponse& response,
-    const TCachedData& cachedData)
-{
-    const auto responseData =
-        TStringBuf(response.GetBuffer()).Skip(response.GetBufferOffset());
-
-    if (responseData.size() < cachedData.ReadDataByteCount) {
-        auto tmp = TString(cachedData.ReadDataByteCount, 0);
-        responseData.copy(tmp.begin(), responseData.size());
-        response.SetBuffer(std::move(tmp));
-        response.SetBufferOffset(0);
-    }
-
-    char* dst = response.MutableBuffer()->begin() + response.GetBufferOffset();
-
-    for (const auto& part: cachedData.Parts) {
-        part.Data.copy(dst + part.RelativeOffset, part.Data.size());
-    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

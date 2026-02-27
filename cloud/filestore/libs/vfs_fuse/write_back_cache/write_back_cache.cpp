@@ -2,6 +2,7 @@
 
 #include "node_flush_state.h"
 #include "persistent_storage.h"
+#include "read_response_builder.h"
 #include "sequence_id_generator.h"
 #include "utils.h"
 #include "write_back_cache_state.h"
@@ -167,43 +168,37 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        const auto nodeId = request->GetNodeId();
-        const auto offset = request->GetOffset();
-        const auto length = request->GetLength();
-
         // Prevent cached data parts from being evicted from storage until
         // the response is completed
-        const auto pinId = State.PinCachedData(nodeId);
-        const auto cachedData = State.GetCachedData(nodeId, offset, length);
+        const auto pinId = State.PinCachedData(request->GetNodeId());
 
-        if (TUtils::IsFullyCoveredByParts(cachedData.Parts, length)) {
-            auto response = TUtils::BuildReadDataResponse(cachedData.Parts);
-            State.UnpinCachedData(nodeId, pinId);
+        TReadResponseBuilder responseBuilder(*request, State);
+        if (responseBuilder.CanFullyServeFromCache()) {
+            auto response = responseBuilder.FullyServeFromCache();
+            State.UnpinCachedData(request->GetNodeId(), pinId);
             Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
             return MakeFuture(std::move(response));
         }
 
-        auto callback = [ptr = weak_from_this(), nodeId, offset, length, pinId](
+        auto callback = [ptr = weak_from_this(), request, pinId](
                             TFuture<NProto::TReadDataResponse> future)
         {
             auto response = future.ExtractValue();
 
             if (auto self = ptr.lock()) {
                 if (!HasError(response)) {
-                    const auto cachedData =
-                        self->State.GetCachedData(nodeId, offset, length);
+                    TReadResponseBuilder responseBuilder(*request, self->State);
+                    responseBuilder.AugmentResponseWithCachedData(response);
 
-                    if (cachedData.Parts.empty()) {
-                        self->Stats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::Miss);
-                    } else {
+                    if (responseBuilder.HasCachedData()) {
                         self->Stats->AddReadDataStats(
                             EReadDataRequestCacheStatus::PartialHit);
+                    } else {
+                        self->Stats->AddReadDataStats(
+                            EReadDataRequestCacheStatus::Miss);
                     }
-
-                    TUtils::AugmentReadDataResponse(response, cachedData);
                 }
-                self->State.UnpinCachedData(nodeId, pinId);
+                self->State.UnpinCachedData(request->GetNodeId(), pinId);
             }
             return response;
         };
