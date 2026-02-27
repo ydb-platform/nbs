@@ -232,16 +232,6 @@ struct TLookupRequest
     }
 };
 
-/*
-struct fuse_fallocate_in {
-	uint64_t	fh;
-	uint64_t	offset;
-	uint64_t	length;
-	uint32_t	mode;
-	uint32_t	padding;
-};
-*/
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TAllocateRequest
