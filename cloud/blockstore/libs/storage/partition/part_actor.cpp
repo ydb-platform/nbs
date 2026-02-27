@@ -1286,9 +1286,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
     Y_UNUSED(ev);
     auto updates = ResourceMetricsQueue->PopAll();
     for (auto& update: updates) {
-        std::visit([&] (auto&& arg) {
-            UpdateResourceMetrics(arg);
-        }, update);
+        std::visit([&](auto&& arg) { UpdateResourceMetrics(arg); }, update);
     }
 
     // Schedule the next update
@@ -1296,6 +1294,20 @@ void TPartitionActor::HandleUpdateResourceMetrics(
         Config->GetResourceMetricsUpdateInterval(),
         std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
             .release());
+}
+
+void TPartitionActor::HandleGetFreshChannelsInfo(
+    const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<
+        TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+
+    response->TabletInfo = MakeIntrusive<NKikimr::TTabletStorageInfo>(*Info());
+    response->ChannelsCount = State->GetChannelCount();
+    response->Generation = Executor()->Generation();
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
