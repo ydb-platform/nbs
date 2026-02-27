@@ -43,7 +43,7 @@ func getLogger(ctx context.Context) Logger {
 	}
 
 	if name, ok := ctx.Value(loggerNameKey{}).(string); ok {
-		logger = logger.WithName(name)
+		return logger.WithName(name)
 	}
 
 	return logger
