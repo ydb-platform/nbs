@@ -36,7 +36,7 @@ func SetLogger(ctx context.Context, logger Logger) context.Context {
 	return WithCommonFields(context.WithValue(ctx, loggerKey{}, logger))
 }
 
-func GetLogger(ctx context.Context) Logger {
+func getLogger(ctx context.Context) Logger {
 	logger, _ := ctx.Value(loggerKey{}).(Logger)
 	if logger == nil {
 		return nil
@@ -46,9 +46,12 @@ func GetLogger(ctx context.Context) Logger {
 		logger = logger.WithName(name)
 	}
 
+	return logger
+}
+func GetLogger(ctx context.Context) Logger {
 	return &contextLogger{
 		ctx:    ctx,
-		logger: logger,
+		logger: getLogger(ctx),
 	}
 }
 
