@@ -144,6 +144,141 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
+class TMethodHandler final
+{
+    using TRequest = typename TMethod::TRequest;
+    using TResponse = typename TMethod::TResponse;
+
+    using TRequestEvent = typename TMethod::TRequestEvent;
+    using TResponseEvent = typename TMethod::TResponseEvent;
+
+private:
+    THashMap<ui64, TPromise<TResponse>> Responses;
+    ui64 Cookie = 0;
+
+public:
+    void SendRequest(
+        IActorSystem& ass,
+        TCallContextPtr callContext,
+        TRequest request,
+        TPromise<TResponse> promise,
+        TActorId actorId)
+    {
+        const ui64 cookie = ++Cookie;
+        Responses[cookie] = std::move(promise);
+        auto event = std::make_unique<IEventHandle>(
+            MakeStorageServiceId(),
+            actorId,
+            std::make_unique<TRequestEvent>(
+                std::move(callContext),
+                std::move(request)).release(),
+            0 /* flags */,
+            cookie,
+            nullptr /* forwardOnNondelivery */);
+
+        ass.Send(std::move(event));
+    }
+
+    void HandleResponse(
+        const typename TResponseEvent::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+
+        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+            TMethod::RequestName << " response received");
+
+        auto it = Responses.find(ev->Cookie);
+        if (it == Responses.end()) {
+            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+                TMethod::RequestName << " unknown cookie: " << ev->Cookie);
+            return;
+        }
+
+        try {
+            it->second.SetValue(std::move(msg->Record));
+        } catch (...) {
+            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+                TMethod::RequestName << " exception in callback: "
+                << CurrentExceptionMessage());
+        }
+
+        Responses.erase(it);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct THandler
+{
+    TActorId SelfId;
+
+public:
+#define FILESTORE_SEND_REQUEST(name, ...)                                      \
+    TMethodHandler<T##name##Method> name##Handler;                             \
+    auto SendRequest(                                                          \
+        IActorSystem& ass,                                                     \
+        TCallContextPtr callContext,                                           \
+        NProto::T##name##Request request,                                      \
+        TPromise<T##name##Method::TResponse> promise)                          \
+    {                                                                          \
+        return name##Handler.SendRequest(                                      \
+            ass,                                                               \
+            std::move(callContext),                                            \
+            std::move(request),                                                \
+            std::move(promise),                                                \
+            SelfId);                                                           \
+    }                                                                          \
+// FILESTORE_SEND_REQUEST
+
+FILESTORE_REMOTE_SERVICE(FILESTORE_SEND_REQUEST)
+
+#undef FILESTORE_SEND_REQUEST
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class THandlerActor final
+    : public TActor<THandlerActor>
+{
+private:
+    std::shared_ptr<THandler> Impl;
+
+public:
+    explicit THandlerActor(std::shared_ptr<THandler> impl)
+        : TActor<THandlerActor>(&THandlerActor::StateWork)
+        , Impl(std::move(impl))
+    {}
+
+public:
+    static constexpr const char ActorName[] =
+        "NCloud::NFileStore::THandlerActor";
+
+public:
+#define FILESTORE_HANDLE_RESPONSE_IMPL(name, ...)                              \
+    HFunc(T##name##Method::TResponseEvent, Impl->name##Handler.HandleResponse);\
+// FILESTORE_HANDLE_RESPONSE_IMPL
+
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            FILESTORE_REMOTE_SERVICE(FILESTORE_HANDLE_RESPONSE_IMPL)
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE_PROXY,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+
+#undef FILESTORE_HANDLE_RESPONSE_IMPL
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
 class TStreamRequestActor final
     : public TActorBootstrapped<TStreamRequestActor<TMethod>>
 {
@@ -257,14 +392,24 @@ class TKikimrFileStore final
 {
 private:
     const IActorSystemPtr ActorSystem;
+    std::shared_ptr<THandler> Handler;
+    bool UsePermanentActor;
 
 public:
-    TKikimrFileStore(IActorSystemPtr actorSystem)
+    TKikimrFileStore(IActorSystemPtr actorSystem, bool usePermanentActor)
         : ActorSystem(std::move(actorSystem))
+        , UsePermanentActor(usePermanentActor)
     {}
 
     void Start() override
-    {}
+    {
+        if (UsePermanentActor) {
+            Handler = std::make_shared<THandler>();
+            auto actorId = ActorSystem->Register(
+                std::make_unique<THandlerActor>(Handler));
+            Handler->SelfId = actorId;
+        }
+    }
 
     void Stop() override
     {}
@@ -334,6 +479,15 @@ private:
         std::shared_ptr<typename T::TRequest> request,
         TPromise<typename T::TResponse> response)
     {
+        if (UsePermanentActor) {
+            Handler->SendRequest(
+                *ActorSystem,
+                std::move(callContext),
+                std::move(*request),
+                std::move(response));
+            return;
+        }
+
         ActorSystem->Register(std::make_unique<TRequestActor<T>>(
             std::move(callContext),
             std::move(request),
@@ -383,9 +537,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileStoreServicePtr CreateKikimrFileStore(IActorSystemPtr actorSystem)
+IFileStoreServicePtr CreateKikimrFileStore(
+    IActorSystemPtr actorSystem,
+    bool usePermanentActor)
 {
-    return std::make_shared<TKikimrFileStore>(std::move(actorSystem));
+    return std::make_shared<TKikimrFileStore>(
+        std::move(actorSystem),
+        usePermanentActor);
 }
 
 }   // namespace NCloud::NFileStore

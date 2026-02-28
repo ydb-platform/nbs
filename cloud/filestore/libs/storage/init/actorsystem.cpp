@@ -315,6 +315,7 @@ public:
 
     TActorId Register(IActorPtr actor, TStringBuf executorName) override;
     bool Send(const TActorId& recipient, IEventBasePtr event) override;
+    bool Send(IEventHandlePtr ev) override;
 
     TLog CreateLog(const TString& component) override;
 
@@ -450,6 +451,11 @@ TActorId TActorSystem::Register(IActorPtr actor, TStringBuf executorName)
 bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
 {
     return ActorSystem->Send(recipient, event.release());
+}
+
+bool TActorSystem::Send(IEventHandlePtr ev)
+{
+    return ActorSystem->Send(ev.release());
 }
 
 TLog TActorSystem::CreateLog(const TString& componentName)
