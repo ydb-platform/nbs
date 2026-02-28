@@ -246,7 +246,10 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
 
     Y_UNIT_TEST(ShouldDetectGarbage)
     {
-        auto garbage = TString::Uninitialized(200);
+        TString garbage(200, 0);
+        for (ui32 i = 0; i < garbage.Size(); ++i) {
+            garbage[i] = i;
+        }
 
         auto error = ResetAttrTimeout(
             garbage.begin(),
