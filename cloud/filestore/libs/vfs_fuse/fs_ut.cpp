@@ -3801,7 +3801,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 ParentNodeId = 101;
         const ui64 NodeId = 1001;
         const ui64 HandleId = 10001;
-        ui64 NodeSize = 0;
+        std::atomic<ui64> NodeSize = 0;
 
         TAutoEvent GetNodeAttrRequestEvent;
         TPromise<NProto::TGetNodeAttrResponse> GetNodeAttrResponse;
@@ -3834,8 +3834,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             Service->WriteDataHandler = [&](auto, const auto& rq)
             {
-                NodeSize =
-                    Max(NodeSize, rq->GetOffset() + rq->GetBuffer().size());
+                NodeSize = Max(
+                    NodeSize.load(),
+                    rq->GetOffset() + rq->GetBuffer().size());
                 NProto::TWriteDataResponse result;
                 return MakeFuture(result).Subscribe([&] (auto) {
                     WritePromise.SetValue();
@@ -3844,7 +3845,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             Service->AllocateDataHandler = [&](auto, const auto& rq)
             {
-                NodeSize = Max(NodeSize, rq->GetOffset() + rq->GetLength());
+                NodeSize = Max(
+                    NodeSize.load(),
+                    rq->GetOffset() + rq->GetLength());
                 NProto::TAllocateDataResponse result;
                 return MakeFuture(result).Subscribe([&] (auto) {
                     AllocatePromise.SetValue();
