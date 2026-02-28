@@ -2,36 +2,68 @@
 
 #include <cloud/filestore/libs/service/request.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 #include <util/generic/vector.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
+bool TNodeCacheShard::UpdateNode(
+    const NProto::TNodeAttr& attrs,
+    ui64 version)
 {
+    auto g = Guard(Lock);
+
     auto [it, inserted] = Id2Node.emplace(attrs.GetId(), TNode(attrs));
-    Y_ABORT_UNLESS(inserted, "failed to insert %s",
-        DumpMessage(attrs).data());
-
-    return &it->second;
-}
-
-TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs)
-{
-    auto* node = FindNode(attrs.GetId());
-    if (!node) {
-        node = AddNode(attrs);
+    auto& node = it->second;
+    bool updated = false;
+    if (inserted) {
+        node.LastUpdateVersion = version;
+        updated = true;
     } else {
-        node->UpdateAttrs(attrs);
-        node->Ref();
+        if (version >= node.LastUpdateVersion) {
+            node.UpdateAttrs(attrs, version);
+
+            STORAGE_VERIFY_C(
+                node.IsValid(),
+                TWellKnownEntityTypes::FILESYSTEM,
+                FileSystemId,
+                TStringBuilder() << "invalid attrs: "
+                    << attrs.ShortUtf8DebugString()
+                    << ", version: " << version);
+
+            updated = true;
+        }
+
+        node.Ref();
     }
 
-    return node;
+    return updated;
 }
 
-void TNodeCache::ForgetNode(ui64 ino, size_t count)
+void TNodeCacheShard::InvalidateNode(ui64 ino, ui64 version)
 {
+    auto g = Guard(Lock);
+
+    NProto::TNodeAttr attrs;
+    attrs.SetId(ino);
+    auto [it, inserted] = Id2Node.emplace(ino, TNode(attrs));
+    if (version >= it->second.LastUpdateVersion) {
+        if (!inserted) {
+            it->second.Attrs = std::move(attrs);
+        }
+
+        it->second.LastUpdateVersion = version;
+    }
+}
+
+void TNodeCacheShard::ForgetNode(ui64 ino, size_t count)
+{
+    auto g = Guard(Lock);
+
     auto it = Id2Node.find(ino);
     if (it == Id2Node.end()) {
         // we lose our cache after restart, so we should expect forget requests
@@ -48,9 +80,12 @@ void TNodeCache::ForgetNode(ui64 ino, size_t count)
     }
 }
 
-TNode* TNodeCache::FindNode(ui64 ino)
+ui64 TNodeCacheShard::GetNodeVersion(ui64 ino) const
 {
-    return Id2Node.FindPtr(ino);
+    auto g = Guard(Lock);
+
+    const auto* node = Id2Node.FindPtr(ino);
+    return node ? node->LastUpdateVersion : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

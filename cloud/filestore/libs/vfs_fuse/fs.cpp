@@ -150,12 +150,12 @@ int ReplyAttr(
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct stat *attr,
-    double attr_timeout)
+    double attrTimeout)
 {
     requestStats.ResponseSent(callContext);
     FILESTORE_TRACK(ResponseSent, (&callContext), "Attr");
 
-    int res = fuse_reply_attr(req, attr, attr_timeout);
+    int res = fuse_reply_attr(req, attr, attrTimeout);
     if (res != 0) {
         STORAGE_WARN(callContext.LogString()
             << " fuse_reply_attr failed with code " << res);

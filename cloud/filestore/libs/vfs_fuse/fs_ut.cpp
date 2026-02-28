@@ -67,6 +67,10 @@ constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
 constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
+// sizeof(ui64) comes from the name "." aligned up to ui64
+constexpr ui64 dotSize = sizeof(fuse_direntplus) + sizeof(ui64);
+constexpr ui64 dotDotSize = dotSize;
+
 static const TString FileSystemId = "fs1";
 static const TString SessionId = CreateGuidAsString();
 
@@ -356,6 +360,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -468,6 +473,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -556,6 +562,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handleId);
                 result.MutableNodeAttr()->SetId(nodeId);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
             return MakeFuture(result);
         };
@@ -613,6 +620,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handle++);
                 result.MutableNodeAttr()->SetId(100500);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
 
             return MakeFuture(result);
@@ -708,6 +716,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handle);
                 result.MutableNodeAttr()->SetId(100500);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
 
             return MakeFuture(result);
@@ -1290,6 +1299,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse response;
             response.SetHandle(handleId);
             response.MutableNodeAttr()->SetId(nodeId);
+            response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
 
             return MakeFuture(response);
         };
@@ -1955,6 +1965,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -3582,9 +3593,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
                         // Skip "." and ".." entries
                         UNIT_ASSERT_LE(
-                            sizeof(fuse_direntplus) + 320,
+                            sizeof(fuse_direntplus) + dotSize + dotDotSize,
                             buf.size());
-                        buf = buf.Skip(320);
+                        buf = buf.Skip(dotSize + dotDotSize);
 
                         const auto* de =
                             reinterpret_cast<const fuse_direntplus*>(
@@ -3783,6 +3794,269 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         test("DirectoryRead", getSizeFromDirectoryRead);
         test("CachedRead", getSizeFromCachedRead);
         test("DirectRead", getSizeFromDirectRead);
+    }
+
+    struct TAttrRaceBootstrap: TBootstrap
+    {
+        const ui64 ParentNodeId = 101;
+        const ui64 NodeId = 1001;
+        const ui64 HandleId = 10001;
+        std::atomic<ui64> NodeSize = 0;
+
+        TAutoEvent GetNodeAttrRequestEvent;
+        TPromise<NProto::TGetNodeAttrResponse> GetNodeAttrResponse;
+
+        TAutoEvent ListNodesRequestEvent;
+        TPromise<NProto::TListNodesResponse> ListNodesResponse;
+
+        TPromise<void> WritePromise = NewPromise();
+        TPromise<void> AllocatePromise = NewPromise();
+        TPromise<void> SetNodeAttrPromise = NewPromise();
+
+        TAttrRaceBootstrap()
+            : TBootstrap(
+                CreateWallClockTimer(),
+                std::make_shared<TTestScheduler>())
+        {
+            Service->GetNodeAttrHandler = [&](auto, auto)
+            {
+                GetNodeAttrRequestEvent.Signal();
+                GetNodeAttrResponse = NewPromise<NProto::TGetNodeAttrResponse>();
+                return GetNodeAttrResponse.GetFuture();
+            };
+
+            Service->ListNodesHandler = [&](auto, auto)
+            {
+                ListNodesRequestEvent.Signal();
+                ListNodesResponse = NewPromise<NProto::TListNodesResponse>();
+                return ListNodesResponse.GetFuture();
+            };
+
+            Service->WriteDataHandler = [&](auto, const auto& rq)
+            {
+                NodeSize = Max(
+                    NodeSize.load(),
+                    rq->GetOffset() + rq->GetBuffer().size());
+                NProto::TWriteDataResponse result;
+                return MakeFuture(result).Subscribe([&] (auto) {
+                    WritePromise.SetValue();
+                });
+            };
+
+            Service->AllocateDataHandler = [&](auto, const auto& rq)
+            {
+                NodeSize = Max(
+                    NodeSize.load(),
+                    rq->GetOffset() + rq->GetLength());
+                NProto::TAllocateDataResponse result;
+                return MakeFuture(result).Subscribe([&] (auto) {
+                    AllocatePromise.SetValue();
+                });
+            };
+
+            Service->SetNodeAttrHandler = [&](auto, const auto& rq)
+            {
+                NodeSize = rq->GetUpdate().GetSize();
+                NProto::TSetNodeAttrResponse result;
+                result.MutableNode()->SetId(NodeId);
+                result.MutableNode()->SetSize(NodeSize);
+                return MakeFuture(std::move(result)).Subscribe([&] (auto) {
+                    SetNodeAttrPromise.SetValue();
+                });
+            };
+        }
+
+        void Write(ui64 offset, ui64 size)
+        {
+            auto rq = std::make_shared<TWriteRequest>(
+                NodeId,
+                HandleId,
+                offset,
+                CreateBuffer(size, 'a'));
+            rq->In->Body.flags |= O_WRONLY;
+            auto resp = Fuse->SendRequest<TWriteRequest>(rq);
+            resp.GetValue(WaitTimeout);
+            WritePromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        void Allocate(ui64 offset, ui64 size)
+        {
+            auto rq = std::make_shared<TAllocateRequest>(
+                NodeId,
+                HandleId,
+                offset,
+                size);
+            auto resp = Fuse->SendRequest<TAllocateRequest>(rq);
+            resp.GetValue(WaitTimeout);
+            AllocatePromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        void SetSize(ui64 size)
+        {
+            auto rq = std::make_shared<TSetAttrRequest>(NodeId, HandleId);
+            rq->In->Body.valid = FUSE_SET_ATTR_SIZE;
+            rq->In->Body.size = size;
+            auto resp = Fuse->SendRequest(rq);
+            resp.GetValue(WaitTimeout);
+            SetNodeAttrPromise.GetFuture().GetValue(WaitTimeout);
+        };
+    };
+
+    Y_UNIT_TEST(
+        ShouldNotAllowGuestAttrCachingUponGetAttrAndAttrModificationRace)
+    {
+        TAttrRaceBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            bootstrap.Write(bootstrap.NodeSize, 4_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(bootstrap.NodeId);
+            n.SetSize(oldSize);
+            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // Write completed while we were processing GetNodeAttr - the result
+            // is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            bootstrap.Allocate(bootstrap.NodeSize, 4_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(bootstrap.NodeId);
+            n.SetSize(oldSize);
+            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // FAllocate completed while we were processing GetNodeAttr - the
+            // result is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            bootstrap.SetSize(12_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(bootstrap.NodeId);
+            n.SetSize(oldSize);
+            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // SetAttr completed while we were processing GetNodeAttr - the
+            // result is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotAllowGuestAttrCachingUponListNodesAndAttrModificationRace)
+    {
+        TAttrRaceBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const TString name = "file";
+
+        auto doTest = [&] (const std::function<void()>& w) {
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(
+                bootstrap.ParentNodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            auto handleId = handle.GetValue();
+
+            auto rq = std::make_shared<TReadDirRequest>(
+                bootstrap.ParentNodeId,
+                handleId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.ListNodesRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            w();
+
+            NProto::TListNodesResponse r;
+            r.AddNames(name);
+            auto* node = r.AddNodes();
+            node->SetId(bootstrap.NodeId);
+            node->SetType(NProto::E_REGULAR_NODE);
+            node->SetSize(oldSize);
+            bootstrap.ListNodesResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // Write completed while we were processing ListNodes - the result
+            // is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            auto buf = TStringBuf(
+                reinterpret_cast<const char*>(rq->Out->Data()),
+                rq->Out->Header.len - sizeof(rq->Out->Header));
+
+            // Skip "." and ".." entries
+            UNIT_ASSERT_LE(
+                sizeof(fuse_direntplus) + dotSize + dotDotSize,
+                buf.size());
+            buf = buf.Skip(dotSize + dotDotSize);
+
+            const auto* de =
+                reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, de->entry_out.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+
+            auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+                bootstrap.ParentNodeId,
+                handleId);
+            UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+        };
+
+        doTest([&] () {
+            bootstrap.Write(bootstrap.NodeSize, 4_KB);
+        });
+
+        doTest([&] () {
+            bootstrap.Allocate(bootstrap.NodeSize, 4_KB);
+        });
+
+        doTest([&] () {
+            bootstrap.SetSize(12_KB);
+        });
     }
 }
 
