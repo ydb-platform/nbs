@@ -329,6 +329,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
+                                                                               \
+    xxx(ForceDestroySizeThreshold,          ui32,       0                      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
