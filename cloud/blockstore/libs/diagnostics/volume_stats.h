@@ -38,7 +38,7 @@ struct IVolumeInfo
     virtual const NProto::TVolume& GetInfo() const = 0;
     virtual TDuration GetPossiblePostponeDuration() const = 0;
 
-    virtual void SetRemoveByInactivityTimeoutEnabled(bool enabled = true) = 0;
+    virtual void SetRemoveByInactivityTimeoutEnabled(bool enabled) = 0;
     virtual bool GetRemoveByInactivityTimeoutEnabled() const = 0;
 
     virtual ui64 RequestStarted(
