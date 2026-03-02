@@ -66,7 +66,7 @@ public:
     bool Send(
         const NActors::TActorId& recipient,
         NActors::IEventBasePtr event) override;
-    bool Send(IEventHandlePtr ev) override;
+    bool Send(NActors::IEventHandlePtr ev) override;
 
     TLog CreateLog(const TString& component) override;
 
