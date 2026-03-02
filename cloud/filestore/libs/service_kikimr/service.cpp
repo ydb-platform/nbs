@@ -159,7 +159,7 @@ private:
 
 public:
     void SendRequest(
-        IActorSystem& ass,
+        IActorSystem& actorSystem,
         TCallContextPtr callContext,
         TRequest request,
         TPromise<TResponse> promise,
@@ -181,7 +181,7 @@ public:
             cookie,
             nullptr /* forwardOnNondelivery */);
 
-        ass.Send(std::move(event));
+        actorSystem.Send(std::move(event));
     }
 
     void HandleResponse(
@@ -227,14 +227,14 @@ struct THandler
 public:
 #define FILESTORE_SEND_REQUEST(name, ...)                                      \
     TMethodHandler<T##name##Method> name##Handler;                             \
-    auto SendRequest(                                                          \
-        IActorSystem& ass,                                                     \
+    void SendRequest(                                                          \
+        IActorSystem& actorSystem,                                             \
         TCallContextPtr callContext,                                           \
         NProto::T##name##Request request,                                      \
         TPromise<T##name##Method::TResponse> promise)                          \
     {                                                                          \
-        return name##Handler.SendRequest(                                      \
-            ass,                                                               \
+        name##Handler.SendRequest(                                             \
+            actorSystem,                                                       \
             std::move(callContext),                                            \
             std::move(request),                                                \
             std::move(promise),                                                \
