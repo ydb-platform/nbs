@@ -125,7 +125,7 @@ void TMirrorPartitionResyncActor::RejectGetDiskRegistryBasedPartCounters(
             MakeError(E_REJECTED),
             SelfId(),
             PartConfig->GetName(),
-            ExtractPartCounters()));
+            TPartNonreplCountersData{}));
 }
 
 void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(

@@ -92,7 +92,7 @@ void TNonreplicatedPartitionActor::
             MakeError(E_REJECTED),
             SelfId(),
             PartConfig->GetName(),
-            ExtractPartCounters(ctx)));
+            TPartNonreplCountersData{}));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

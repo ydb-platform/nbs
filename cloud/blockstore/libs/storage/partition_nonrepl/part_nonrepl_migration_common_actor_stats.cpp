@@ -169,7 +169,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
             MakeError(E_REJECTED),
             SelfId(),
             DiskId,
-            ExtractPartCounters()));
+            TPartNonreplCountersData{}));
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::

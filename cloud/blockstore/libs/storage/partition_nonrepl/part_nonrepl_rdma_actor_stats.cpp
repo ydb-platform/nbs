@@ -81,7 +81,7 @@ void TNonreplicatedPartitionRdmaActor::RejectGetDiskRegistryBasedPartCounters(
             MakeError(E_REJECTED),
             SelfId(),
             PartConfig->GetName(),
-            ExtractPartCounters()));
+            TPartNonreplCountersData{}));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

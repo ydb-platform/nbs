@@ -89,10 +89,11 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
 
     if (HasError(msg->Error)) {
         LastError = msg->Error;
+    } else {
+        Response.Counters.push_back(std::move(*msg));
     }
 
     ++ResponsesCount;
-    Response.Counters.push_back(std::move(*msg));
 
     if (ResponsesCount == StatActorIds.size()) {
         ReplyAndDie(ctx);
