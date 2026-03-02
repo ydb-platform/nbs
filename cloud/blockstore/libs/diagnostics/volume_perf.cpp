@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -213,46 +214,49 @@ void TSufferCounters::PublishCounters()
 {
     ui64 total = 0;
 
+    // clang-format off
     total += UpdateCounter(
         Ssd,
-        "ssd",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD]);
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_SSD),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_SSD]);
 
     total += UpdateCounter(
         SsdNonrepl,
-        "ssd_nonrepl",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED]);
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED]);
 
     total += UpdateCounter(
         HddNonrepl,
-        "hdd_nonrepl",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED]);
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED]);
 
     total += UpdateCounter(
         SsdMirror2,
-        "ssd_mirror2",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2]);
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2]);
 
     total += UpdateCounter(
         SsdMirror3,
-        "ssd_mirror3",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3]);
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3]);
 
     total += UpdateCounter(
         SsdLocal,
-        "ssd_local",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL]);
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL]);
 
     total += UpdateCounter(
         HddLocal,
-        "hdd_local",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL]);
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL]);
 
-    ui64 hddCount = RunCounters[NCloud::NProto::STORAGE_MEDIA_DEFAULT] +
-                    RunCounters[NCloud::NProto::STORAGE_MEDIA_HYBRID] +
-                    RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD];
-
-    total += UpdateCounter(Hdd, "hdd", hddCount);
+    total += UpdateCounter(
+        Hdd,
+        MediaKindToString(NCloud::NProto::STORAGE_MEDIA_HDD),
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_HDD] +
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_HYBRID] +
+        RunCounters      [NCloud::NProto::STORAGE_MEDIA_DEFAULT]);
+    // clang-format on
 
     if (!Total && !total) {
         return;
