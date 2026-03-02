@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -228,6 +229,18 @@ func createSlowBalancer(delay time.Duration, hosts ...string) ClientIface {
 			}
 		},
 	}
+}
+
+func eventuallyEq(t *testing.T, value *atomic.Int64, expected int64) {
+	t.Helper()
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if value.Load() == expected {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Errorf("timed out waiting for value to equal %d, got %d", expected, value.Load())
 }
 
 func testDiscoveryClientLimit(t *testing.T, failExpected bool) {
@@ -1155,10 +1168,10 @@ func TestDiscoveryClientSlowBalancers(t *testing.T) {
 func TestDiscoveryClientCachedBalancers(t *testing.T) {
 
 	type balancerState struct {
-		pings       int
-		maxPings    int
-		requests    int
-		maxRequests int
+		pings       atomic.Int64
+		maxPings    int64
+		requests    atomic.Int64
+		maxRequests int64
 		delay       time.Duration
 	}
 
@@ -1168,9 +1181,10 @@ func TestDiscoveryClientCachedBalancers(t *testing.T) {
 				ctx context.Context,
 				req *protos.TDiscoverInstancesRequest,
 			) (*protos.TDiscoverInstancesResponse, error) {
-				state.requests++
 
-				if state.maxRequests > 0 && state.requests >= state.maxRequests {
+				requests := state.requests.Add(1)
+
+				if state.maxRequests > 0 && requests >= state.maxRequests {
 					return nil, &ClientError{
 						Code:    E_REJECTED,
 						Message: "too many requests",
@@ -1190,13 +1204,14 @@ func TestDiscoveryClientCachedBalancers(t *testing.T) {
 				ctx context.Context,
 				req *protos.TPingRequest,
 			) (*protos.TPingResponse, error) {
-				state.pings++
+
+				pings := state.pings.Add(1)
 
 				if state.delay != 0 {
 					<-time.After(state.delay)
 				}
 
-				if state.maxPings > 0 && state.pings >= state.maxPings {
+				if state.maxPings > 0 && pings >= state.maxPings {
 					return nil, &ClientError{
 						Code:    E_REJECTED,
 						Message: "too many pings",
@@ -1250,21 +1265,11 @@ func TestDiscoveryClientCachedBalancers(t *testing.T) {
 		t.Error(err)
 	}
 
-	if fooState.pings != 1 {
-		t.Errorf("Unexpectedly pings for `foo`: %v (expected: 1)", fooState.pings)
-	}
+	eventuallyEq(t, &fooState.pings, 1)
+	eventuallyEq(t, &barState.pings, 1)
 
-	if barState.pings != 1 {
-		t.Errorf("Unexpectedly pings for `bar`: %v (expected: 1)", barState.pings)
-	}
-
-	if fooState.requests != 1 {
-		t.Errorf("Unexpectedly requests for `foo`: %v (expected: 1)", fooState.requests)
-	}
-
-	if barState.requests != 0 {
-		t.Errorf("Unexpectedly requests for `bar`: %v (expected: 0)", barState.requests)
-	}
+	eventuallyEq(t, &fooState.requests, 1)
+	eventuallyEq(t, &barState.requests, 0)
 
 	// uses cashed balancer `foo` & gets error
 	// then find closest -> bar & sends discovery request to `bar`
@@ -1273,21 +1278,11 @@ func TestDiscoveryClientCachedBalancers(t *testing.T) {
 		t.Error(err)
 	}
 
-	if fooState.pings != 2 {
-		t.Errorf("Unexpectedly pings for `foo`: %v (expected: 2)", fooState.pings)
-	}
+	eventuallyEq(t, &fooState.pings, 2)
+	eventuallyEq(t, &barState.pings, 2)
 
-	if barState.pings != 2 {
-		t.Errorf("Unexpectedly pings for `bar`: %v (expected: 2)", barState.pings)
-	}
-
-	if fooState.requests != 2 {
-		t.Errorf("Unexpectedly requests for `foo`: %v (expected: 2)", fooState.requests)
-	}
-
-	if barState.requests != 1 {
-		t.Errorf("Unexpectedly requests for `bar`: %v (expected: 1)", barState.requests)
-	}
+	eventuallyEq(t, &fooState.requests, 2)
+	eventuallyEq(t, &barState.requests, 1)
 
 	// uses `bar`
 	err = describeVolume(context.TODO(), discovery)
@@ -1295,19 +1290,9 @@ func TestDiscoveryClientCachedBalancers(t *testing.T) {
 		t.Error(err)
 	}
 
-	if fooState.pings != 2 {
-		t.Errorf("Unexpectedly pings for `foo`: %v (expected: 2)", fooState.pings)
-	}
+	eventuallyEq(t, &fooState.pings, 2)
+	eventuallyEq(t, &barState.pings, 2)
 
-	if barState.pings != 2 {
-		t.Errorf("Unexpectedly pings for `bar`: %v (expected: 2)", barState.pings)
-	}
-
-	if fooState.requests != 2 {
-		t.Errorf("Unexpectedly requests for `foo`: %v (expected: 2)", fooState.requests)
-	}
-
-	if barState.requests != 2 {
-		t.Errorf("Unexpectedly requests for `bar`: %v (expected: 2)", barState.requests)
-	}
+	eventuallyEq(t, &fooState.requests, 2)
+	eventuallyEq(t, &barState.requests, 2)
 }
