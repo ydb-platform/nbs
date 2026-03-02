@@ -36,6 +36,7 @@ type FilesystemTraverser struct {
 	config                   *traversal_config.FilesystemTraversalConfig
 	rootNodeAlreadyScheduled bool
 	listNodesMaxBytes        uint32
+	rootNodeID               uint64
 }
 
 // FilesystemTravers performs parallel traversal of a filesystem.
@@ -66,6 +67,7 @@ func NewFilesystemTraverser(
 	config *traversal_config.FilesystemTraversalConfig,
 	rootNodeAlreadyScheduled bool,
 	listNodesMaxBytes uint32,
+	rootNodeID uint64,
 ) *FilesystemTraverser {
 
 	return &FilesystemTraverser{
@@ -80,6 +82,7 @@ func NewFilesystemTraverser(
 		config:                   config,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 		listNodesMaxBytes:        listNodesMaxBytes,
+		rootNodeID: rootNodeID,
 	}
 }
 
@@ -99,7 +102,11 @@ func (t *FilesystemTraverser) Traverse(
 
 	if !t.rootNodeAlreadyScheduled {
 		logging.Info(ctx, "Scheduling root node for listing.")
-		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
+		err := t.storage.SchedulerDirectoryForTraversal(
+			ctx,
+			t.filesystemSnapshotID,
+			t.rootNodeID,
+		)
 		if err != nil {
 			return err
 		}
