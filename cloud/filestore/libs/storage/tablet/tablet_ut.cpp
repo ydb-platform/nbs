@@ -284,7 +284,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         feature->MutableWhitelist()->AddCloudIds("test_cloud");
 
         env.GetStorageConfig()->SetFeaturesConfig(
-            std::make_shared<NFeatures::TFeaturesConfig>(featuresConfigProto));
+            NFeatures::TFeaturesConfig(featuresConfigProto));
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
