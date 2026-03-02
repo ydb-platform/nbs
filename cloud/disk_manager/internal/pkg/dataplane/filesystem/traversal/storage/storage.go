@@ -17,10 +17,11 @@ type NodeQueueEntry struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Storage interface {
-	// Saves the root node to the directory listing queue.
-	ScheduleRootNodeForListing(
+	// Saves the subtree root directory to the directory listing queue.
+	SchedulerDirectoryForTraversal(
 		ctx context.Context,
 		snapshotID string,
+		nodeID uint64,
 	) error
 
 	// Selects nodes to be listed from the directory listing queue.

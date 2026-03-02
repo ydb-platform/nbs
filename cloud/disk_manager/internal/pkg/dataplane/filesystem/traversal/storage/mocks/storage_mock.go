@@ -14,9 +14,10 @@ type StorageMock struct {
 	mock.Mock
 }
 
-func (s *StorageMock) ScheduleRootNodeForListing(
+func (s *StorageMock) SchedulerDirectoryForTraversal(
 	ctx context.Context,
 	snapshotID string,
+	nodeID uint64,
 ) error {
 
 	args := s.Called(ctx, snapshotID)
