@@ -92,12 +92,8 @@ TVolumeActor::TVolumeActor(
               .DiskId = std::move(diskId)})
     , ThrottlerLogger(
           TabletID(),
-          [this](ui32 opType, TDuration time)
-          {
-              UpdateDelayCounter(
-                  static_cast<TVolumeThrottlingPolicy::EOpType>(opType),
-                  time);
-          })
+          [this](EVolumeThrottlingOpType opType, TDuration time)
+          { UpdateDelayCounter(opType, time); })
     , TransactionTimeTracker(VolumeTransactions)
 {}
 

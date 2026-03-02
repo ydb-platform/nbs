@@ -67,7 +67,7 @@ NProto::TVolumePerformanceProfile MakeSimpleConfig(
 
 Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
 {
-    using EOpType = TVolumeThrottlingPolicy::EOpType;
+    using EOpType = EVolumeThrottlingOpType;
 
 #define DO_TEST_V(tp, expectedDelayMcs, nowMcs, byteCount, opType, cv)      \
     UNIT_ASSERT_VALUES_EQUAL(                                               \
