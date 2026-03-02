@@ -75,9 +75,7 @@ public:
         FreePooledActors.DequeueAll(&freeActors);
     }
 
-    template <typename TRequestActor>
-        requires std::derived_from<TRequestActor, IPooledActor<TRequestActor>>
-    TRequestActor* GetPooledActor()
+    TActor* GetPooledActor()
     {
         if (Stopped.test()) {
             return nullptr;
@@ -85,13 +83,13 @@ public:
 
         TActorEntry entry;
         if (FreePooledActors.Dequeue(&entry)) {
-            return static_cast<TRequestActor*>(entry.Actor);
+            return static_cast<TActor*>(entry.Actor);
         }
 
-        TRequestActor* actorRawPtr;
+        TActor* actorRawPtr;
         NActors::TActorId actorId;
         {
-            auto actorPtr = std::make_unique<TRequestActor>();
+            auto actorPtr = std::make_unique<TActor>();
             actorRawPtr = actorPtr.get();
             actorId = ActorSystem->Register(std::move(actorPtr));
             actorRawPtr->SetSelfId(actorId);

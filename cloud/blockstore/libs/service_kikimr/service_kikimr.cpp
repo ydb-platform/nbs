@@ -110,7 +110,8 @@ public:
         }
     }
 
-    void Reset() override {
+    void Reset() override
+    {
         this->Become(&TThis::StateSleep);
         Request.reset();
         Response = {};
@@ -413,7 +414,7 @@ private:
         const auto& headers = request->GetHeaders();
         auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
 
-        auto* actor = pool->template GetPooledActor<TRequestActor<TMethod>>();
+        auto* actor = pool->GetPooledActor();
         if (!actor) {
             response.SetValue(
                 TErrorResponse(E_REJECTED, "Failed to get actor from pool"));

@@ -274,15 +274,15 @@ Y_UNIT_TEST_SUITE(TActorPoolTest)
         std::array<ui32, 3> deadCounters{};
         std::array<ui32, 3> resetCounters{};
 
-        auto* actor1 = actorPool->GetPooledActor<TTestActor>();
+        auto* actor1 = actorPool->GetPooledActor();
         actor1->SetOnDestroyCallback([&deadCounters]() { deadCounters[0]++; });
         actor1->SetOnResetCallback([&resetCounters]() { resetCounters[0]++; });
-        auto* actor2 = actorPool->GetPooledActor<TTestActor>();
+        auto* actor2 = actorPool->GetPooledActor();
         actor2->SetOnDestroyCallback([&deadCounters]() { deadCounters[1]++; });
         actor2->SetOnResetCallback([&resetCounters]() { resetCounters[1]++; });
 
         // This actor should be destroyed after its work is finished.
-        auto* actor3 = actorPool->GetPooledActor<TTestActor>();
+        auto* actor3 = actorPool->GetPooledActor();
         actor3->SetOnDestroyCallback([&deadCounters]() { deadCounters[2]++; });
         actor3->SetOnResetCallback([&resetCounters]() { resetCounters[2]++; });
 
@@ -324,7 +324,7 @@ Y_UNIT_TEST_SUITE(TActorPoolTest)
 
         ui32 deadCounter = 0;
         // This actor should be destroyed after its work is finished.
-        auto* actor = actorPool->GetPooledActor<TTestActor>();
+        auto* actor = actorPool->GetPooledActor();
         actor->SetOnDestroyCallback([&deadCounter]() { deadCounter++; });
 
         actor->SendPing(testEnv.Sender);
@@ -349,13 +349,13 @@ Y_UNIT_TEST_SUITE(TActorPoolTest)
         std::array<ui32, 3> deadCounters{};
         std::array<ui32, 3> resetCounters{};
 
-        auto* actor1 = actorPool->GetPooledActor<TTestActor>();
+        auto* actor1 = actorPool->GetPooledActor();
         actor1->SetOnDestroyCallback([&deadCounters]() { deadCounters[0]++; });
         actor1->SetOnResetCallback([&resetCounters]() { resetCounters[0]++; });
-        auto* actor2 = actorPool->GetPooledActor<TTestActor>();
+        auto* actor2 = actorPool->GetPooledActor();
         actor2->SetOnDestroyCallback([&deadCounters]() { deadCounters[1]++; });
         actor2->SetOnResetCallback([&resetCounters]() { resetCounters[1]++; });
-        auto* actor3 = actorPool->GetPooledActor<TTestActor>();
+        auto* actor3 = actorPool->GetPooledActor();
         actor3->SetOnDestroyCallback([&deadCounters]() { deadCounters[2]++; });
         actor3->SetOnResetCallback([&resetCounters]() { resetCounters[2]++; });
 
