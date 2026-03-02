@@ -3616,6 +3616,73 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetForceDestroySizeThreshold(1_GB);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        // Size less than ForceDestroySizeThreshold
+        const auto initialBlockCount = 80_MB / DefaultBlockSize;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldNotDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetForceDestroySizeThreshold(1_GB);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        // Size more than ForceDestroySizeThreshold
+        const auto initialBlockCount = 2_GB / DefaultBlockSize;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+        service.AssertDestroyFileStoreFailed(fsId);
+
+        headers.SessionId =
+            createSessionResponse->Record.GetSession().GetSessionId();
+        auto destroySessionResponse = service.DestroySession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroySessionResponse->GetStatus(),
+            destroySessionResponse->GetErrorReason());
+
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(DestroyDestroyedFileStoreShouldNotFail)
     {
         TTestEnv env;
