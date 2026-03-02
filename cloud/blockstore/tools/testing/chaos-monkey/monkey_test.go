@@ -387,6 +387,13 @@ func (n nbsService) ListDiskStates(
 	panic("implement me")
 }
 
+func (n nbsService) QueryKnownStorage(
+	ctx context.Context,
+	request *protos.TQueryKnownStorageRequest,
+) (*protos.TQueryKnownStorageResponse, error) {
+	panic("implement me")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type TestContext struct {

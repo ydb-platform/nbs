@@ -129,6 +129,22 @@ class NbsServiceMock(service_pb2_grpc.TBlockStoreServiceServicer):
 
         return response
 
+    def QueryKnownStorage(self, request, context):
+        response = protos.TQueryKnownStorageResponse()
+
+        for i, name in enumerate(request.AgentIds):
+            knownPathInfo = protos.TKnownPathInfo()
+            knownPathInfo.Path = f"/dev/disk/by-partlabel/NVMECOMPUTE{i+1:02d}"
+            knownPathInfo.StoragePoolName = ""
+            knownPathInfo.StoragePoolKind = protos.EStoragePoolKind.STORAGE_POOL_KIND_DEFAULT
+
+            knownStorageInfo = protos.TKnownStorageInfos()
+            knownStorageInfo.AgentId = name
+            knownStorageInfo.KnownPathInfos.append(knownPathInfo)
+            response.KnownStorage.append(knownStorageInfo)
+
+        return response
+
 
 class NbsServer:
 
@@ -293,5 +309,26 @@ def test_acquire_and_release_nvme_device():
 
         with pytest.raises(ClientError):
             client.release_nvme_device("unknown")
+
+        client.close()
+
+
+def test_query_known_storage():
+    logging.basicConfig()
+
+    with NbsServer() as nbs:
+        client = CreateDiscoveryClient([nbs.endpoint])
+
+        storage = client.query_known_storage([
+            f'myt1-ct5-{i + 1}.cloud.yandex.net' for i in range(3)
+        ])
+
+        assert len(storage) == 3
+        for i, info in enumerate(storage):
+            assert info.AgentId == f'myt1-ct5-{i + 1}.cloud.yandex.net'
+            for pathInfo in info.KnownPathInfos:
+                assert pathInfo.Path == f"/dev/disk/by-partlabel/NVMECOMPUTE{i+1:02d}"
+                assert pathInfo.StoragePoolName == ""
+                assert pathInfo.StoragePoolKind == protos.EStoragePoolKind.STORAGE_POOL_KIND_DEFAULT
 
         client.close()

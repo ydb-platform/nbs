@@ -139,3 +139,17 @@ func TestLocalNVMeMethods(t *testing.T) {
 	err = client.ReleaseNVMeDevice(ctx, "sn")
 	require.NoError(t, err)
 }
+
+func TestQueryKnownStorage(t *testing.T) {
+	ctx := context.Background()
+	port := os.Getenv("LOCAL_NULL_INSECURE_NBS_SERVER_PORT")
+
+	client, err := createTestClient(port)
+	require.NoError(t, err)
+
+	_, err = client.QueryKnownStorage(
+		ctx,
+		[]string{"node"},
+	)
+	require.NoError(t, err)
+}

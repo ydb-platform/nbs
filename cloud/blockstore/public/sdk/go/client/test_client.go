@@ -51,6 +51,7 @@ type listNVMeDevicesHandler func(ctx context.Context, req *protos.TListNVMeDevic
 type acquireNVMeDeviceHandler func(ctx context.Context, req *protos.TAcquireNVMeDeviceRequest) (*protos.TAcquireNVMeDeviceResponse, error)
 type releaseNVMeDeviceHandler func(ctx context.Context, req *protos.TReleaseNVMeDeviceRequest) (*protos.TReleaseNVMeDeviceResponse, error)
 type closeHandlerFunc func() error
+type queryKnownStorageHandler func(ctx context.Context, req *protos.TQueryKnownStorageRequest) (*protos.TQueryKnownStorageResponse, error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -98,6 +99,7 @@ type testClient struct {
 	AcquireNVMeDeviceHandler             acquireNVMeDeviceHandler
 	ReleaseNVMeDeviceHandler             releaseNVMeDeviceHandler
 	CloseHandlerFunc                     closeHandlerFunc
+	QueryKnownStorageHandler             queryKnownStorageHandler
 }
 
 func (client *testClient) Close() error {
@@ -610,4 +612,16 @@ func (client *testClient) ReleaseNVMeDevice(
 	}
 
 	return &protos.TReleaseNVMeDeviceResponse{}, nil
+}
+
+func (client *testClient) QueryKnownStorage(
+	ctx context.Context,
+	req *protos.TQueryKnownStorageRequest,
+) (*protos.TQueryKnownStorageResponse, error) {
+
+	if client.QueryKnownStorageHandler != nil {
+		return client.QueryKnownStorageHandler(ctx, req)
+	}
+
+	return &protos.TQueryKnownStorageResponse{}, nil
 }

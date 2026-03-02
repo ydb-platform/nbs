@@ -327,6 +327,13 @@ service TBlockStoreService
         };
     }
 
+    rpc QueryKnownStorage(TQueryKnownStorageRequest) returns (TQueryKnownStorageResponse) {
+        option (google.api.http) = {
+            post: "/query_known_storage"
+            body: "*"
+        };
+    }
+
     rpc CreateVolumeFromDevice(TCreateVolumeFromDeviceRequest) returns (TCreateVolumeFromDeviceResponse) {
         option (google.api.http) = {
             post: "/create_volume_from_device"

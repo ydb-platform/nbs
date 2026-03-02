@@ -211,6 +211,15 @@ struct TPlacementGroupInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TAgentKnownDeviceInfo
+{
+    TString Path;
+    TString PoolName;
+    NProto::EDevicePoolKind PoolKind;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDiskRegistryState
 {
     using TAgentId = TString;
@@ -777,6 +786,9 @@ public:
         const TString& agentId,
         const TString& poolName,
         NProto::EDevicePoolKind poolKind) const;
+
+    TResultOrError<TVector<TAgentKnownDeviceInfo>> QueryKnownStorage(
+        const TString& agentId) const;
 
     NProto::TError MarkReplacementDevice(
         TInstant now,

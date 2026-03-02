@@ -379,6 +379,9 @@ struct TEvService
         EvSetVhostDiscardFlagRequest = EvExtBegin + 1,
         EvSetVhostDiscardFlagResponse = EvExtBegin + 2,
 
+        EvQueryKnownStorageRequest = EvExtBegin + 3,
+        EvQueryKnownStorageResponse = EvExtBegin + 4,
+
         EvEnd
     };
 
