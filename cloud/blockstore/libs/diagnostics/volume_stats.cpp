@@ -523,7 +523,7 @@ public:
     bool MountVolumeImpl(
         NProto::TVolume volume,
         const TRealInstanceId& realInstanceId,
-        bool removeByInactivityTimeout = true)
+        bool removeByInactivityTimeout)
     {
         bool inserted = false;
 
@@ -574,7 +574,7 @@ public:
             clientId,
             instanceId);
 
-        return MountVolumeImpl(volume, itr->second);
+        return MountVolumeImpl(volume, itr->second, true);
     }
 
     void UnmountVolumeImpl(const TString& diskId, const TString& clientId)
