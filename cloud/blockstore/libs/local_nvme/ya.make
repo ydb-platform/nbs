@@ -10,6 +10,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/nvme
     cloud/blockstore/libs/storage/protos
     cloud/storage/core/libs/coroutine
@@ -34,4 +35,8 @@ END()
 RECURSE_FOR_TESTS(
     ut
     ut_infra
+)
+
+RECURSE(
+    protos
 )

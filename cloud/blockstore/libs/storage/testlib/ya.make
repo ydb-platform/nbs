@@ -24,6 +24,7 @@ PEERDIR(
     cloud/blockstore/libs/discovery
     cloud/blockstore/libs/endpoints
     cloud/blockstore/libs/kikimr
+    cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/service
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
