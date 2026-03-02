@@ -24,7 +24,7 @@ struct TProcessor: IQueuedOperationsProcessor
 
     void ScheduleFlushNode(ui64 nodeId) override
     {
-        if (!Log.Empty()) {
+        if (!Log.empty()) {
             Log << ",";
         }
         Log << nodeId;
