@@ -33,9 +33,8 @@ TFeaturesConfig::TFeatureInfo::TFeatureInfo(NProto::TFeatureConfig config)
 }
 
 TFeaturesConfig::TFeaturesConfig(NProto::TFeaturesConfig config)
-    : Config(std::move(config))
 {
-    for (const auto& feature: Config.GetFeatures()) {
+    for (const auto& feature: config.GetFeatures()) {
         Features.emplace(feature.GetName(), feature);
     }
 }

@@ -45,7 +45,7 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
             "test-cloud");
 
         config.SetFeaturesConfig(
-            std::make_shared<NFeatures::TFeaturesConfig>(featuresConfigProto));
+            NFeatures::TFeaturesConfig(featuresConfigProto));
 
         config.SetCloudFolderEntity("other-cloud", "folder", "entity");
         UNIT_ASSERT_VALUES_EQUAL(false, config.GetNewCleanupEnabled());
