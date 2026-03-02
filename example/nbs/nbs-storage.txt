@@ -13,6 +13,9 @@ NonReplicatedDiskRecyclingPeriod: 5000
 NonReplicatedDontSuspendDevices: true
 NonReplicatedMigrationStartAllowed: true
 
+# Volume
+OverlappingRequestsPolicy: ORP_ENABLE_WITH_CRIT_EVENT
+
 # DiskRegistry-based
 AcquireNonReplicatedDevices: true
 AssignIdToWriteAndZeroRequestsEnabled: true

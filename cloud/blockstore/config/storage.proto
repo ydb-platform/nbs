@@ -93,6 +93,20 @@ enum ENonreplAllocationPolicy
     NONREPL_ALLOC_POLICY_USER_ANTI_AFFINITY = 1;
 }
 
+enum EOverlappingRequestsPolicy
+{
+    // Overlapping requests are processed as usual.
+    ORP_ENABLE = 0;
+
+    // Overlapping requests are processed as usual, but when an overlapping
+    // request appears, the CritEvent raised.
+    ORP_ENABLE_WITH_CRIT_EVENT = 1;
+
+    // Protection against overlapping requests is disabled. It is assumed that
+    // the protection is implemented on the underlying layer.
+    ORD_DISABLE = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
@@ -1436,4 +1450,9 @@ message TStorageServiceConfig
 
     // Maximum number of inflight attach/detach path requests.
     optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 485;
+
+    // Policy for overlapping requests handling in TVolumeActor.
+    // It is preferable to enable handling overlapping requests via
+    // EnableOverlappingRequestsGuard in the Storage config.
+    optional EOverlappingRequestsPolicy OverlappingRequestsPolicy = 486;
 }

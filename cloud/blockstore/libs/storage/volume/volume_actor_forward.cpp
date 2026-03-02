@@ -958,12 +958,26 @@ void TVolumeActor::ForwardRequest(
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
-    if constexpr (IsWriteMethod<TMethod>) {
+    const bool overlappingRequestProcessing =
+        IsWriteMethod<TMethod> &&
+        Config->GetOverlappingRequestsPolicy() !=
+            NProto::EOverlappingRequestsPolicy::ORD_DISABLE;
+
+    if (overlappingRequestProcessing) {
         auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
             volumeRequestId,
             blockRange);
 
         if (!addResult.Added) {
+            if (Config->GetOverlappingRequestsPolicy() ==
+                NProto::EOverlappingRequestsPolicy::ORP_ENABLE_WITH_CRIT_EVENT)
+            {
+                ReportOverlappingRequestsDetected(
+                    {{"disk", State->GetDiskId()},
+                     {"Inflight", *addResult.InflightRange},
+                     {"New", blockRange}});
+            }
+
             if (addResult.DuplicateRequestId
                     == TRequestsInFlight::InvalidRequestId)
             {
