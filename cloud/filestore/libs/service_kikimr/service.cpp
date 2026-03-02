@@ -155,6 +155,7 @@ class TMethodHandler final
 private:
     THashMap<ui64, TPromise<TResponse>> Responses;
     ui64 Cookie = 0;
+    TAdaptiveLock Lock;
 
 public:
     void SendRequest(
@@ -164,8 +165,12 @@ public:
         TPromise<TResponse> promise,
         TActorId actorId)
     {
-        const ui64 cookie = ++Cookie;
-        Responses[cookie] = std::move(promise);
+        ui64 cookie = 0;
+        with_lock (Lock) {
+            cookie = ++Cookie;
+            Responses[cookie] = std::move(promise);
+        }
+
         auto event = std::make_unique<IEventHandle>(
             MakeStorageServiceId(),
             actorId,
@@ -188,22 +193,28 @@ public:
         LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
             TMethod::RequestName << " response received");
 
-        auto it = Responses.find(ev->Cookie);
-        if (it == Responses.end()) {
+        TPromise<TResponse> promise;
+        with_lock (Lock) {
+            auto it = Responses.find(ev->Cookie);
+            if (it != Responses.end()) {
+                promise = std::move(it->second);
+                Responses.erase(it);
+            }
+        }
+
+        if (!promise.Initialized()) {
             LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
                 TMethod::RequestName << " unknown cookie: " << ev->Cookie);
             return;
         }
 
         try {
-            it->second.SetValue(std::move(msg->Record));
+            promise.SetValue(std::move(msg->Record));
         } catch (...) {
             LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
                 TMethod::RequestName << " exception in callback: "
                 << CurrentExceptionMessage());
         }
-
-        Responses.erase(it);
     }
 };
 
