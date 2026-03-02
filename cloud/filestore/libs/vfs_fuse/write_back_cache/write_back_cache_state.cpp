@@ -127,6 +127,44 @@ void TWriteBackCacheState::SetCachedNodeSize(ui64 nodeId, ui64 size)
     }
 }
 
+TWriteBackCacheState::TPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
+{
+    auto guard = Guard(QueuedOperations);
+
+    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+
+    // Setting a pin allows evicting from cache only those WriteData requests
+    // that are flushed by the moment. Other requests will not be evicted
+    // until the pin is removed.
+    const ui64 allowedToEvictMaxSequenceId =
+        nodeState.Cache.HasFlushedRequests()
+            ? nodeState.Cache.GetMaxFlushedSequenceId()
+            : 0;
+
+    nodeState.CachedDataPins.insert(allowedToEvictMaxSequenceId);
+
+    return allowedToEvictMaxSequenceId;
+}
+
+void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
+{
+    auto guard = Guard(QueuedOperations);
+
+    auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted= */ false);
+    Y_ABORT_UNLESS(nodeState, "Node %lu not found", nodeId);
+
+    auto it = nodeState->CachedDataPins.find(pinId);
+    Y_ABORT_UNLESS(
+        it != nodeState->CachedDataPins.end(),
+        "Pin %lu not found for node %lu",
+        pinId,
+        nodeId);
+
+    nodeState->CachedDataPins.erase(it);
+
+    EvictUnpinnedFlushedEntries(nodeId, *nodeState);
+}
+
 TWriteBackCacheState::TPin TWriteBackCacheState::PinNodeStates()
 {
     auto guard = Guard(QueuedOperations);
@@ -177,8 +215,10 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     }
 
     // Trigger Flush completions
-    const ui64 sequenceId = nodeState.Cache.GetMinPendingOrUnflushedSequenceId(
-        /* defValue = */ Max<ui64>());
+    const ui64 sequenceId =
+        nodeState.Cache.HasPendingOrUnflushedRequests()
+            ? nodeState.Cache.GetMinPendingOrUnflushedSequenceId()
+            : Max<ui64>();
 
     while (!nodeState.FlushRequests.empty() &&
            nodeState.FlushRequests.front().SequenceId < sequenceId)
@@ -201,65 +241,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     }
 
     UpdateFlushStatus(nodeId, nodeState);
-    EvictFlushedEntries(nodeId, nodeState);
-}
-
-NThreading::TFuture<void>
-TWriteBackCacheState::LockRead(ui64 nodeId, ui64 begin, ui64 end)
-{
-    auto guard = Guard(QueuedOperations);
-
-    auto promise = NThreading::NewPromise<void>();
-
-    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-    nodeState.RangeLock.LockRead(
-        begin,
-        end,
-        [this, promise]() mutable
-        { QueuedOperations.CompleteFlushPromise(std::move(promise)); });
-
-    return promise.GetFuture();
-}
-
-NThreading::TFuture<void>
-TWriteBackCacheState::LockWrite(ui64 nodeId, ui64 begin, ui64 end)
-{
-    auto guard = Guard(QueuedOperations);
-
-    auto promise = NThreading::NewPromise<void>();
-
-    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-    nodeState.RangeLock.LockWrite(
-        begin,
-        end,
-        [this, promise]() mutable
-        { QueuedOperations.CompleteFlushPromise(std::move(promise)); });
-
-    return promise.GetFuture();
-}
-
-void TWriteBackCacheState::UnlockRead(ui64 nodeId, ui64 begin, ui64 end)
-{
-    auto guard = Guard(QueuedOperations);
-
-    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-    nodeState.RangeLock.UnlockRead(begin, end);
-
-    if (nodeState.CanBeDeleted()) {
-        Nodes.DeleteNodeState(nodeId);
-    }
-}
-
-void TWriteBackCacheState::UnlockWrite(ui64 nodeId, ui64 begin, ui64 end)
-{
-    auto guard = Guard(QueuedOperations);
-
-    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-    nodeState.RangeLock.UnlockWrite(begin, end);
-
-    if (nodeState.CanBeDeleted()) {
-        Nodes.DeleteNodeState(nodeId);
-    }
+    EvictUnpinnedFlushedEntries(nodeId, nodeState);
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
@@ -346,13 +328,21 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
 }
 
 // nodeState becomes unusable after this call
-void TWriteBackCacheState::EvictFlushedEntries(
+void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     ui64 nodeId,
     TNodeState& nodeState)
 {
     bool entriesDeleted = false;
 
+    const ui64 allowedToEvictMaxSequenceId =
+        nodeState.CachedDataPins.empty() ? Max<ui64>()
+                                         : *nodeState.CachedDataPins.begin();
+
     while (nodeState.Cache.HasFlushedRequests()) {
+        const ui64 sequenceId = nodeState.Cache.GetMinFlushedSequenceId();
+        if (sequenceId > allowedToEvictMaxSequenceId) {
+            break;
+        }
         auto cachedRequest = nodeState.Cache.DequeueFlushedRequest();
         RequestManager.Evict(std::move(cachedRequest));
         entriesDeleted = true;

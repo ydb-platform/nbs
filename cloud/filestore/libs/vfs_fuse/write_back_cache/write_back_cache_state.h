@@ -77,6 +77,10 @@ public:
     ui64 GetCachedNodeSize(ui64 nodeId) const;
     void SetCachedNodeSize(ui64 nodeId, ui64 size);
 
+    // Prevent WriteData requests from being evicted from cache after flush
+    TPin PinCachedData(ui64 nodeId);
+    void UnpinCachedData(ui64 nodeId, TPin pinId);
+
     // Keep NodeStates alive
     // Used to prevent data race and return correct node size
     TPin PinNodeStates();
@@ -91,11 +95,6 @@ public:
     // been flushed
     void FlushSucceeded(ui64 nodeId, size_t requestCount);
 
-    NThreading::TFuture<void> LockRead(ui64 nodeId, ui64 begin, ui64 end);
-    NThreading::TFuture<void> LockWrite(ui64 nodeId, ui64 begin, ui64 end);
-    void UnlockRead(ui64 nodeId, ui64 begin, ui64 end);
-    void UnlockWrite(ui64 nodeId, ui64 begin, ui64 end);
-
 private:
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TPendingWriteDataRequest> request);
@@ -108,7 +107,7 @@ private:
     ENodeFlushStatus GetFlushStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
 
-    void EvictFlushedEntries(ui64 nodeId, TNodeState& nodeState);
+    void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

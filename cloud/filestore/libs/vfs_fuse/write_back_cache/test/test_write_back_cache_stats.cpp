@@ -71,8 +71,6 @@ TTestWriteDataRequestStats& TTestWriteBackCacheStats::GetWriteStats(
             return UnflushedStats;
         case EWriteDataRequestStatus::Flushed:
             return FlushedStats;
-        default:
-            Y_ABORT("Unknown EWriteDataRequestStatus value");
     }
 }
 
@@ -124,8 +122,6 @@ void TTestWriteBackCacheStats::AddReadDataStats(
         case EReadDataRequestCacheStatus::FullHit:
             ReadStats.CacheFullHitCount++;
             break;
-        default:
-            Y_ABORT("Unknown EReadDataRequestCacheState value");
     }
 }
 

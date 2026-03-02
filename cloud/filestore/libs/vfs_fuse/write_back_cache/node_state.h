@@ -1,13 +1,13 @@
 #pragma once
 
 #include "node_cache.h"
-#include "read_write_range_lock.h"
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -48,8 +48,12 @@ struct TNodeState
     // Tracks cached data parts
     TNodeCache Cache;
 
-    // Prevent from concurrent read and write requests with overlapping ranges
-    TReadWriteRangeLock RangeLock;
+    // Flushed requests with SequenceId >= PinId are prevented
+    // from being evicted from cache.
+    // Used by ReadData request handler in order to keep the cached data
+    // available until the data is no longer needed (avoid copying data to
+    // the temporary buffer under lock)
+    TMultiSet<ui64> CachedDataPins;
 
     ENodeFlushStatus FlushStatus = ENodeFlushStatus::NothingToFlush;
 
@@ -67,7 +71,7 @@ struct TNodeState
 
     bool CanBeDeleted() const
     {
-        if (Cache.Empty() && RangeLock.Empty()) {
+        if (Cache.Empty() && CachedDataPins.empty()) {
             Y_ABORT_UNLESS(FlushRequests.empty());
             Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
             return true;
