@@ -660,7 +660,8 @@ void TVolumeActor::HandleUpdateThrottlerState(
             ctx,
             std::move(requestInfo),
             TVolumeDatabase::TThrottlerStateInfo{
-                State->GetThrottlingPolicy().GetCurrentBoostBudget().MilliSeconds()
+                State->GetThrottlingPolicy().GetCurrentBoostBudget().MilliSeconds(),
+                State->GetShapingThrottler().CalculateCurrentSpentBudgetShare(ctx.Now())
             });
     }
 }

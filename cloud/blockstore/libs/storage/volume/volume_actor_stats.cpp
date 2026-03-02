@@ -788,6 +788,10 @@ TEvStatsService::TVolumeSelfCounters TVolumeActor::GetVolumeSelfCounters(
         State->GetMeta().GetMigrations().size() == 0);
     simple.HasPerformanceProfileModifications.Set(
         HasPerformanceProfileModifications);
+    simple.ShapingThrottlerBudgetSpent.Set(
+        std::round(
+            100 * State->GetShapingThrottler().CalculateCurrentSpentBudgetShare(
+                      ctx.Now())));
 
     THashSet<ui32> allAgents;
     for (const NProto::TDeviceConfig* device: GetAllDevices(State->GetMeta())) {

@@ -430,6 +430,9 @@ struct TRequestCounters::TStatCounters
     TAdaptiveTimeHist BackoffTimeHist;
     TRequestPercentiles<TAdaptiveTimeHist> BackoffTimePercentiles;
 
+    TAdaptiveTimeHist ShapingTimeHist;
+    TRequestPercentiles<TAdaptiveTimeHist> ShapingTimePercentiles;
+
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTotalTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxSizeCalc;
@@ -463,6 +466,8 @@ struct TRequestCounters::TStatCounters
         , PostponedTimePercentiles(PostponedTimeHist)
         , BackoffTimeHist("BackoffTime", histogramCounterOptions)
         , BackoffTimePercentiles(BackoffTimeHist)
+        , ShapingTimeHist("ShapingTime", histogramCounterOptions)
+        , ShapingTimePercentiles(ShapingTimeHist)
         , MaxTimeCalc(timer)
         , MaxTotalTimeCalc(timer)
         , MaxSizeCalc(timer)
@@ -565,6 +570,7 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimePercentiles.Register(counters);
                 PostponedTimePercentiles.Register(counters);
                 BackoffTimePercentiles.Register(counters);
+                ShapingTimePercentiles.Register(counters);
                 TimePercentiles.Register(counters);
             }
 
@@ -587,6 +593,7 @@ struct TRequestCounters::TStatCounters
 
             PostponedTimeHist.Register(counters, visibleHistogram);
             BackoffTimeHist.Register(counters, visibleHistogram);
+            ShapingTimeHist.Register(counters, visibleHistogram);
             TimeHist.Register(counters, visibleHistogram);
 
             // Always enough only percentiles.
@@ -631,8 +638,10 @@ struct TRequestCounters::TStatCounters
     }
 
     void AddStats(
-        TDuration requestTime,
-        TDuration requestCompletionTime,
+        TDuration totalTime,
+        TDuration completionTime,
+        TDuration time,
+        TDuration execTime,
         TDuration postponedTime,
         TDuration backoffTime,
         TDuration shapingTime,
@@ -641,8 +650,6 @@ struct TRequestCounters::TStatCounters
         bool unaligned,
         ECalcMaxTime calcMaxTime)
     {
-        Y_UNUSED(shapingTime);
-
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
                 || !IsReadWriteRequest);
@@ -684,19 +691,16 @@ struct TRequestCounters::TStatCounters
                 return;
         }
 
-        const auto time = requestTime - requestCompletionTime;
-        const auto execTime = time - postponedTime - backoffTime;
-
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(execTime.MicroSeconds());
         }
-        MaxTotalTimeCalc.Add(requestTime.MicroSeconds());
+        MaxTotalTimeCalc.Add(totalTime.MicroSeconds());
 
         Time->Add(time.MicroSeconds());
         TimeHist.Increment(time);
 
-        if (requestCompletionTime != TDuration::Zero()) {
-            RequestCompletionTimeHist.Increment(requestCompletionTime);
+        if (completionTime != TDuration::Zero()) {
+            RequestCompletionTimeHist.Increment(completionTime);
         }
 
         if (IsReadWriteRequest) {
@@ -725,6 +729,7 @@ struct TRequestCounters::TStatCounters
 
             PostponedTimeHist.Increment(postponedTime);
             BackoffTimeHist.Increment(backoffTime);
+            ShapingTimeHist.Increment(shapingTime);
         }
     }
 
@@ -870,6 +875,7 @@ struct TRequestCounters::TStatCounters
                 RequestCompletionTimePercentiles.Update();
                 PostponedTimePercentiles.Update();
                 BackoffTimePercentiles.Update();
+                ShapingTimePercentiles.Update();
 
                 for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
                     sizeClass.Value->ExecutionTimePercentiles.Update();
@@ -979,19 +985,22 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     ECalcMaxTime calcMaxTime,
     ui64 responseSent)
 {
-    auto requestCompleted = GetCycleCount();
-    auto requestTime = CyclesToDurationSafe(requestCompleted - requestStarted);
-    auto requestCompletionTime =
+    const ui64 requestCompleted = GetCycleCount();
+    const TDuration totalTime =
+        CyclesToDurationSafe(requestCompleted - requestStarted);
+    const TDuration completionTime =
         responseSent ? CyclesToDurationSafe(requestCompleted - responseSent)
                      : TDuration::Zero();
 
-    const auto time = requestTime - requestCompletionTime;
-    const auto execTime = time - postponedTime;
+    const TDuration time = totalTime - completionTime;
+    const TDuration execTime = time - postponedTime - backoffTime - shapingTime;
 
     RequestCompletedImpl(
         requestType,
-        requestTime,
-        requestCompletionTime,
+        totalTime,
+        completionTime,
+        time,
+        execTime,
         postponedTime,
         backoffTime,
         shapingTime,
@@ -1001,7 +1010,7 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
         unaligned,
         calcMaxTime);
 
-    return {.ExecutionTime = execTime, .Time = requestTime};
+    return {.ExecutionTime = execTime, .Time = totalTime};
 }
 
 void TRequestCounters::AddRetryStats(
@@ -1145,8 +1154,10 @@ void TRequestCounters::RequestStartedImpl(
 
 void TRequestCounters::RequestCompletedImpl(
     TRequestType requestType,
-    TDuration requestTime,
-    TDuration requestCompletionTime,
+    TDuration totalTime,
+    TDuration completionTime,
+    TDuration time,
+    TDuration execTime,
     TDuration postponedTime,
     TDuration backoffTime,
     TDuration shapingTime,
@@ -1164,8 +1175,10 @@ void TRequestCounters::RequestCompletedImpl(
         auto& statCounters = AccessRequestStats(requestType);
         statCounters.Completed(requestBytes);
         statCounters.AddStats(
-            requestTime,
-            requestCompletionTime,
+            totalTime,
+            completionTime,
+            time,
+            execTime,
             postponedTime,
             backoffTime,
             shapingTime,
@@ -1177,8 +1190,10 @@ void TRequestCounters::RequestCompletedImpl(
     NotifySubscribers(
         &TRequestCounters::RequestCompletedImpl,
         requestType,
-        requestTime,
-        requestCompletionTime,
+        totalTime,
+        completionTime,
+        time,
+        execTime,
         postponedTime,
         backoffTime,
         shapingTime,

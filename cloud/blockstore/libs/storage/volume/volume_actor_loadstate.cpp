@@ -113,14 +113,17 @@ void TVolumeActor::CompleteLoadState(
     }
 
     if (args.Meta.Defined()) {
+        const auto throttlerInfo = args.ThrottlerStateInfo.GetOrElse(
+            TVolumeDatabase::TThrottlerStateInfo{
+                .Budget = CalculateBoostTime(
+                              args.Meta->GetConfig().GetPerformanceProfile())
+                              .MilliSeconds(),
+                .SpentShapingBudgetShare = 0});
         TThrottlerConfig throttlerConfig(
             Config->GetMaxThrottlerDelay(),
             Config->GetMaxWriteCostMultiplier(),
             Config->GetDefaultPostponedRequestWeight(),
-            args.ThrottlerStateInfo.Defined()
-                ? TDuration::MilliSeconds(args.ThrottlerStateInfo->Budget)
-                : CalculateBoostTime(
-                    args.Meta->GetConfig().GetPerformanceProfile()),
+            TDuration::MilliSeconds(throttlerInfo.Budget),
             Config->GetDiskSpaceScoreThrottlingEnabled());
 
         bool startPartitionsNeeded = args.StartPartitionsNeeded.GetOrElse(false);
@@ -136,6 +139,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.MetaHistory),
             std::move(args.VolumeParams),
             throttlerConfig,
+            throttlerInfo.SpentShapingBudgetShare,
             std::move(args.Clients),
             std::move(volumeHistory),
             std::move(args.CheckpointRequests),

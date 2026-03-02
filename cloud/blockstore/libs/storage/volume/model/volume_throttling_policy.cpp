@@ -114,7 +114,7 @@ struct TVolumeThrottlingPolicy::TImpl
             const bool useDiskSpaceScore)
         : ThrottlingRule(std::move(throttlingRule))
         , OriginalConfig(std::move(config))
-        , Config(CalculateProfile(ThrottlingRule))
+        , Config(CalculateProfile())
         , PolicyVersion(policyVersion)
         , VolatileVersion(volatileVersion)
         , MaxDelay(maxDelay)
@@ -123,19 +123,18 @@ struct TVolumeThrottlingPolicy::TImpl
         , UseDiskSpaceScore(useDiskSpaceScore)
         , MaxQuotas(CalculateMaxQuotas())
         , Bucket(
-              CalcBurstTime(),
+              CalculateBurstTime(),
               CalculateBoostRate(Config),
               CalculateBoostTime(Config),
               CalculateBoostRefillTime(Config),
               initialBoostBudget)
     {}
 
-    NProto::TVolumePerformanceProfile CalculateProfile(
-        const NProto::TVolumeThrottlingRule& throttlingRule) const
+    NProto::TVolumePerformanceProfile CalculateProfile() const
     {
         NProto::TVolumePerformanceProfile result = OriginalConfig;
 
-        const auto& coefficients = throttlingRule.GetCoefficients();
+        const auto& coefficients = ThrottlingRule.GetCoefficients();
         // Volatile throttling can override ThrottlingEnabled
         if (coefficients.HasThrottlingEnabled()) {
             result.SetThrottlingEnabled(coefficients.GetThrottlingEnabled());
@@ -234,7 +233,7 @@ struct TVolumeThrottlingPolicy::TImpl
         return Config;
     }
 
-    TDuration CalcBurstTime() const
+    TDuration CalculateBurstTime() const
     {
         return SecondsToDuration(
             (Config.GetBurstPercentage() ? Config.GetBurstPercentage() : 10)
@@ -560,6 +559,10 @@ TDuration TVolumeThrottlingPolicy::GetCurrentBoostBudget() const
 ui64 TVolumeThrottlingPolicy::CalculatePostponedWeight() const
 {
     return Impl->PostponedWeight;
+}
+
+TDuration TVolumeThrottlingPolicy::CalculateBurstTime() const {
+    return Impl->CalculateBurstTime();
 }
 
 double TVolumeThrottlingPolicy::CalculateCurrentSpentBudgetShare(TInstant ts) const

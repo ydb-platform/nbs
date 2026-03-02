@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+
 #include <util/generic/guid.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -140,6 +142,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
     ui64 traceTime,
+    TThrottlingRequestInfo throttlingRequestInfo,
     bool forkTraces,
     bool isMultipartitionWriteOrZero)
 {
@@ -183,6 +186,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             std::move(originalContext),
             forkTraces ? msg->CallContext : nullptr,
             traceTime,
+            GetCycleCount(),
+            throttlingRequestInfo,
             &RejectVolumeRequest<TMethod>,
             isMultipartitionWriteOrZero));
 
@@ -225,7 +230,8 @@ void TVolumeActor::SendRequestToPartition(
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
-    ui64 traceTime)
+    ui64 traceTime,
+    TThrottlingRequestInfo throttlingRequestInfo)
 {
     STORAGE_VERIFY_C(
         State->IsDiskRegistryMediaKind() || State->GetPartitions(),
@@ -278,6 +284,7 @@ void TVolumeActor::SendRequestToPartition(
         volumeRequestId,
         blockRange,
         traceTime,
+        throttlingRequestInfo,
         forkTraces,
         isMultipartitionWriteOrZero);
 
@@ -439,6 +446,42 @@ bool TVolumeActor::ReplyToOriginalRequest(
             volumeRequest.ForkedContext->LWOrbit);
     }
 
+    const ui64 now = GetCycleCount();
+    const TDuration execTime = CyclesToDurationSafe(now - volumeRequest.ExecutionStartTime);
+    const TDuration shapingDelay = State->AccessShapingThrottler().SuggestDelay(
+        ctx.Now(),
+        volumeRequest.ThrottlingRequestInfo.ByteCount,
+        static_cast<EVolumeThrottlingOpType>(
+            volumeRequest.ThrottlingRequestInfo.OpType),
+        execTime);
+    // const TDuration requestCost = Config->GetShapingThrottlerConfig().GetRequestCostMultiplier() * CostPerIO(
+    //     volumeRequest.ThrottlingRequestInfo.MaxIops,
+    //     volumeRequest.ThrottlingRequestInfo.MaxBandwidth,
+    //     volumeRequest.ThrottlingRequestInfo.ByteCount);
+    const TDuration requestCost = TDuration::Zero();
+
+    // const i64 requestOverconsumptionUsec =
+    //     static_cast<i64>(volumeRequest.RequestStartTime.MicroSeconds() + (volumeRequest.RequestCost.MicroSeconds() * Config->GetRequestCostMultiplier())) - static_cast<i64>(now.MicroSeconds());
+    // const TDuration requestOverconsumption = TDuration::MicroSeconds(requestOverconsumptionUsec > 0 ? requestOverconsumptionUsec : 0);
+
+    // const TDuration shapingDelay = State->AccessShapingThrottler().SuggestDelay(
+    //     now,
+    //     requestOverconsumption);
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::METERING,
+        "Response for %s request in %s; Size: %s; ShapingDelay: %s; "
+        "RequestCost: %s; BoostBudget: %s ",
+        TMethod::Name,
+        FormatDuration(execTime).c_str(),
+        FormatByteSize(volumeRequest.ThrottlingRequestInfo.ByteCount).c_str(),
+        FormatDuration(shapingDelay).c_str(),
+        FormatDuration(requestCost).c_str(),
+        FormatDuration(State->GetShapingThrottler().GetCurrentBudget())
+            .c_str());
+
+    volumeRequest.CallContext->AddTime(EProcessingStage::Shaping, shapingDelay);
     FillResponse<TMethod>(
         *response,
         *volumeRequest.CallContext,
@@ -451,7 +494,12 @@ bool TVolumeActor::ReplyToOriginalRequest(
         response.release(),
         flags,
         volumeRequest.CallerCookie);
-    ctx.Send(std::move(event));
+
+    if (shapingDelay.GetValue() > 0) {
+        ctx.ExecutorThread.Schedule(shapingDelay, event.release());
+    } else {
+        ctx.Send(std::move(event));
+    }
 
     if (volumeRequest.IsMultipartitionWriteOrZero) {
         Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
@@ -580,7 +628,7 @@ void TVolumeActor::ForwardRequest(
     }
 
     auto* msg = ev->Get();
-    auto now = GetCycleCount();
+    ui64 now = GetCycleCount();
 
     // Fill block range.
     TBlockRange64 blockRange;
@@ -847,8 +895,13 @@ void TVolumeActor::ForwardRequest(
         return;
     }
 
+    TThrottlingRequestInfo throttlingRequestInfo;
     {
-        auto error = Throttle<TMethod>(ctx, ev, throttlingDisabled);
+        auto error = Throttle<TMethod>(
+            ctx,
+            ev,
+            &throttlingRequestInfo,
+            throttlingDisabled);
         if (HasError(error)) {
             replyError(std::move(error));
             return;
@@ -1013,7 +1066,13 @@ void TVolumeActor::ForwardRequest(
     // prepared by the WrapRequest<TMethod>() method, which replaces the sender
     // and receiver.
 
-    SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, blockRange, now);
+    SendRequestToPartition<TMethod>(
+        ctx,
+        ev,
+        volumeRequestId,
+        blockRange,
+        now,
+        throttlingRequestInfo);
 }
 
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \

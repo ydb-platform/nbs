@@ -775,6 +775,8 @@ public:
 
     [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
 
+    [[nodiscard]] NProto::TShapingThrottlerConfig GetShapingThrottlerConfig() const;
+
     [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 
     [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
