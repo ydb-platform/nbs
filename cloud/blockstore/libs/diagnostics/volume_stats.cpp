@@ -581,24 +581,24 @@ public:
     {
         auto&& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
 
-        auto volume = Volumes.find(logicalDiskId);
-        if (volume == Volumes.end()) {
+        auto volumeIt = Volumes.find(logicalDiskId);
+        if (volumeIt == Volumes.end()) {
             return;
         }
 
-        auto realInstance = ClientToRealInstance.find(clientId);
-        if (realInstance == ClientToRealInstance.end()) {
+        auto realInstanceIt = ClientToRealInstance.find(clientId);
+        if (realInstanceIt == ClientToRealInstance.end()) {
             return;
         }
 
-        TVolumeMap& infos = volume->second.VolumeInfos;
+        TVolumeMap& infos = volumeIt->second.VolumeInfos;
 
-        auto info = infos.find(realInstance->second);
-        if (info == infos.end()) {
+        auto infoIt = infos.find(realInstanceIt->second);
+        if (infoIt == infos.end()) {
             return;
         }
 
-        auto& holder = info->second;
+        const auto& holder = infoIt->second;
 
         UnregisterInstance(holder->VolumeBase, holder->RealInstanceId);
 
@@ -611,11 +611,11 @@ public:
                     holder->RealInstanceId);
             });
 
-        infos.erase(info);
+        infos.erase(infoIt);
 
         if (infos.empty()) {
             UnregisterVolume(holder->VolumeBase);
-            Volumes.erase(volume);
+            Volumes.erase(volumeIt);
         }
     }
 
