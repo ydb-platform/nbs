@@ -82,7 +82,7 @@ func NewFilesystemTraverser(
 		config:                   config,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
 		listNodesMaxBytes:        listNodesMaxBytes,
-		rootNodeID: rootNodeID,
+		rootNodeID:               rootNodeID,
 	}
 }
 
