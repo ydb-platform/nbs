@@ -31,6 +31,8 @@ struct IActorSystem
         const NActors::TActorId& recipient,
         NActors::IEventBasePtr event) = 0;
 
+    virtual bool Send(NActors::IEventHandlePtr ev) = 0;
+
     virtual TProgramShouldContinue& GetProgramShouldContinue() = 0;
 };
 

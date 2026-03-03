@@ -104,6 +104,13 @@ struct TTestActorSystem
         return true;
     }
 
+    bool Send(IEventHandlePtr event) override
+    {
+        Runtime.SendAsync(event.release());
+
+        return true;
+    }
+
     TProgramShouldContinue& GetProgramShouldContinue() override
     {
         return ProgramShouldContinue;

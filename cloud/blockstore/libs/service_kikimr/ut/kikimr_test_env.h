@@ -60,6 +60,8 @@ public:
         const NActors::TActorId& recipient,
         NActors::IEventBasePtr event) override;
 
+    bool Send(NActors::IEventHandlePtr event) override;
+
     TProgramShouldContinue& GetProgramShouldContinue() override;
 
     //
