@@ -790,14 +790,14 @@ public:
 
             std::ranges::for_each(
                 DownDisksCounters,
-                [](auto& c)
+                [](TDynamicCounters::TCounterPtr& c)
                 {
                     if (c) {
                         *c = 0;
                     }
                 });
 
-            for (ui32 mk = NProto::EStorageMediaKind_MIN;
+            for (int mk = NProto::EStorageMediaKind_MIN;
                  mk < NProto::EStorageMediaKind_ARRAYSIZE;
                  mk++)
             {
