@@ -1,8 +1,7 @@
 #include "node_cache.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/request.h>
-
-#include <cloud/storage/core/libs/common/verify.h>
 
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
@@ -27,13 +26,12 @@ bool TNodeCacheShard::UpdateNode(
         if (version >= node.LastUpdateVersion) {
             node.UpdateAttrs(attrs, version);
 
-            STORAGE_VERIFY_C(
-                node.IsValid(),
-                TWellKnownEntityTypes::FILESYSTEM,
-                FileSystemId,
-                TStringBuilder() << "invalid attrs: "
-                    << attrs.ShortUtf8DebugString()
+            if (!node.IsValid()) {
+                ReportNodeCacheInvalidNode(TStringBuilder()
+                    << "fs: " << FileSystemId
+                    << ", attrs: " << attrs.ShortUtf8DebugString()
                     << ", version: " << version);
+            }
 
             updated = true;
         }

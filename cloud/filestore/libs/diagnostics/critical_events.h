@@ -50,6 +50,7 @@ namespace NCloud::NFileStore{
     xxx(CounterIsNegative)                                                     \
     xxx(InvalidResponseLogEntry)                                               \
     xxx(InvalidateTimedOutRegionsError)                                        \
+    xxx(NodeCacheInvalidNode)                                                  \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
