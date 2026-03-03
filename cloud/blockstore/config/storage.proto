@@ -103,7 +103,7 @@ enum EOverlappingRequestsPolicy
     ORP_ENABLE_WITH_CRIT_EVENT = 1;
 
     // Protection against overlapping requests is disabled. It is assumed that
-    // the protection is implemented on the underlying layer.
+    // the protection is implemented on couple layers above volume.
     ORP_DISABLE = 2;
 }
 
