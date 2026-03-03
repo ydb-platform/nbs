@@ -49,7 +49,7 @@ func (s *storageYDB) schedulerDirectoryForTraversal(
 		declare $cookie as String;
 
 		upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie)
-		values ($snapshot_id, $root_node_id, $cookie)
+		values ($snapshot_id, $node_id, $cookie)
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 		persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
