@@ -124,7 +124,6 @@ func TestNodesScheduling(t *testing.T) {
 			filesystemSnapshotID,
 			1,
 			"cookie1",
-			0,
 			[]nfs.Node{
 				{NodeID: 2, ParentID: 1},
 				{NodeID: 3, ParentID: 1},
@@ -140,7 +139,6 @@ func TestNodesScheduling(t *testing.T) {
 			filesystemSnapshotID,
 			2,
 			"cookie2",
-			1,
 			[]nfs.Node{
 				{NodeID: 4, ParentID: 2},
 			},
@@ -157,7 +155,6 @@ func TestNodesScheduling(t *testing.T) {
 			otherSnapshot,
 			1, // nodeID
 			"cookie99",
-			0, // depth
 			[]nfs.Node{
 				{NodeID: 99, ParentID: 1},
 				{NodeID: 100, ParentID: 1},
@@ -210,7 +207,6 @@ func TestNodesScheduling(t *testing.T) {
 		otherSnapshot,
 		99,                                      // nodeID
 		"",                                      // nextCookie
-		1,                                       // depth
 		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
 	)
 	require.NoError(t, err)

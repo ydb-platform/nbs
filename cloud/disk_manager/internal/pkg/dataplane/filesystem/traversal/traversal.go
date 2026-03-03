@@ -174,7 +174,6 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			pendingNodes = append(pendingNodes, &storage.NodeQueueEntry{
 				NodeID: entry.NodeID,
 				Cookie: entry.Cookie,
-				Depth:  entry.Depth,
 			})
 		}
 	}
@@ -277,7 +276,6 @@ func (t *FilesystemTraverser) listNode(
 			t.filesystemSnapshotID,
 			node.NodeID,
 			nextCookie,
-			node.Depth,
 			childDirs,
 		)
 		if err != nil {

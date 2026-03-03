@@ -11,7 +11,6 @@ import (
 type NodeQueueEntry struct {
 	NodeID uint64
 	Cookie string
-	Depth  uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,7 +36,6 @@ type Storage interface {
 		snapshotID string,
 		parentNodeID uint64,
 		nextCookie string,
-		depth uint64,
 		children []nfs.Node,
 	) error
 }
