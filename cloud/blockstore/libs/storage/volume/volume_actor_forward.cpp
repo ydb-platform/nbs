@@ -961,7 +961,7 @@ void TVolumeActor::ForwardRequest(
     const bool overlappingRequestProcessing =
         IsWriteMethod<TMethod> &&
         Config->GetOverlappingRequestsPolicy() !=
-            NProto::EOverlappingRequestsPolicy::ORD_DISABLE;
+            NProto::EOverlappingRequestsPolicy::ORP_DISABLE;
 
     if (overlappingRequestProcessing) {
         auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(

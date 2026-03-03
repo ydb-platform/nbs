@@ -104,7 +104,7 @@ enum EOverlappingRequestsPolicy
 
     // Protection against overlapping requests is disabled. It is assumed that
     // the protection is implemented on the underlying layer.
-    ORD_DISABLE = 2;
+    ORP_DISABLE = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
