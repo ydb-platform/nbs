@@ -22,6 +22,7 @@ public:
     struct TAddResult
     {
         bool Added = false;
+        std::optional<TBlockRange64> InflightRange;
         ui64 DuplicateRequestId = InvalidRequestId;
     };
     TAddResult TryAddRequest(ui64 requestId, TBlockRange64 blockRange);
