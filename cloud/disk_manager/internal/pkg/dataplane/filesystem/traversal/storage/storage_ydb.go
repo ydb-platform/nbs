@@ -28,10 +28,11 @@ func NewStorage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) scheduleRootNodeForListing(
+func (s *storageYDB) schedulerDirectoryForTraversal(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
+	nodeID uint64,
 ) error {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -44,15 +45,15 @@ func (s *storageYDB) scheduleRootNodeForListing(
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
-		declare $root_node_id as Uint64;
+		declare $node_id as Uint64;
 		declare $cookie as String;
 		declare $depth as Uint64;
 
 		upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie, depth)
-		values ($snapshot_id, $root_node_id, $cookie, $depth)
+		values ($snapshot_id, $node_id, $cookie, $depth)
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$root_node_id", persistence.Uint64Value(nfs.RootNodeID)),
+		persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
 		persistence.ValueParam("$cookie", persistence.StringValue([]byte(""))),
 		persistence.ValueParam("$depth", persistence.Uint64Value(0)),
 	)
@@ -219,15 +220,21 @@ func (s *storageYDB) scheduleChildNodesForListing(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) ScheduleRootNodeForListing(
+func (s *storageYDB) SchedulerDirectoryForTraversal(
 	ctx context.Context,
 	snapshotID string,
+	nodeID uint64,
 ) (err error) {
 
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			err = s.scheduleRootNodeForListing(ctx, session, snapshotID)
+			err = s.schedulerDirectoryForTraversal(
+				ctx,
+				session,
+				snapshotID,
+				nodeID,
+			)
 			return err
 		},
 	)

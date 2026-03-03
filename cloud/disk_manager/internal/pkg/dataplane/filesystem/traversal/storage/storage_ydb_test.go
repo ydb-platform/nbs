@@ -111,9 +111,10 @@ func TestNodesScheduling(t *testing.T) {
 	defer f.teardown()
 
 	filesystemSnapshotID := "snapshot"
-	err := f.storage.ScheduleRootNodeForListing(
+	err := f.storage.SchedulerDirectoryForTraversal(
 		f.ctx,
 		filesystemSnapshotID,
+		nfs.RootNodeID,
 	)
 	require.NoError(t, err)
 
@@ -148,7 +149,11 @@ func TestNodesScheduling(t *testing.T) {
 	)
 
 	otherSnapshot := "other"
-	err = f.storage.ScheduleRootNodeForListing(f.ctx, otherSnapshot)
+	err = f.storage.SchedulerDirectoryForTraversal(
+		f.ctx,
+		otherSnapshot,
+		nfs.RootNodeID,
+	)
 	require.NoError(t, err)
 	require.NoError(
 		t,
