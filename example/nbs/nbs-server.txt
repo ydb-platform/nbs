@@ -19,7 +19,7 @@ ServerConfig {
   NodeType: "nbs"
   NbdEnabled: true
   VhostEnabled: true
-  VhostServerPath: "../cloud/blockstore/vhost-server/blockstore-vhost-server"
+  VhostServerPath: "../cloud/blockstore/buildall/cloud/blockstore/vhost-server/blockstore-vhost-server"
   ChecksumFlags {
     EnableDataIntegrityClient: true
   }

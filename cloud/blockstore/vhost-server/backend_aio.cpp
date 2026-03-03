@@ -49,10 +49,11 @@ void CompleteRequest(
 
     if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            NSan::Unpoison(req->Data[0].iov_base, req->Data[0].iov_len);
+            TBlockDataRef data = req->GetData();
+            NSan::Unpoison(data.data(), data.size());
             const bool success = SgListCopyWithOptionalDecryption(
                 log,
-                static_cast<const char*>(req->Data[0].iov_base),
+                data,
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
@@ -96,10 +97,11 @@ void CompleteCompoundRequest(
         }
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            NSan::Unpoison(req->Buffer.get(), bytes);
+            TBlockDataRef data = req->GetData();
+            NSan::Unpoison(data.data(), data.size());
             const bool success = SgListCopyWithOptionalDecryption(
                 log,
-                req->Buffer.get(),
+                data,
                 bio->sglist,
                 encryptor,
                 bio->first_sector);
