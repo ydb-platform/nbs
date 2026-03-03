@@ -42,6 +42,9 @@ message TAcquireNVMeDeviceRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
+
+    // Device Serial number.
+    string SerialNumber = 2;
 }
 
 message TAcquireNVMeDeviceResponse
@@ -54,6 +57,9 @@ message TReleaseNVMeDeviceRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
+
+    // Device Serial number.
+    string SerialNumber = 2;
 }
 
 message TReleaseNVMeDeviceResponse

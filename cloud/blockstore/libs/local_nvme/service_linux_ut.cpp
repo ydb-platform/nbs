@@ -420,7 +420,7 @@ struct TFixture: public TFixtureBase
 
 struct TFixtureInfra: public TFixtureBase
 {
-    std::shared_ptr<ILocalNVMeDeviceProvider> DeviceProvider;
+    ILocalNVMeDeviceProviderPtr DeviceProvider;
 
     void SetUp(NUnitTest::TTestContext& testContext) override
     {

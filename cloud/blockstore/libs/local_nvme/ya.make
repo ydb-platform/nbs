@@ -5,6 +5,7 @@ SRCS(
     device_provider.cpp
     generic_inventory_service_client.cpp
     service.cpp
+    service_proxy.cpp
 )
 
 PEERDIR(

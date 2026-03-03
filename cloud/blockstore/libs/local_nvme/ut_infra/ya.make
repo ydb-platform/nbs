@@ -10,10 +10,12 @@ SRCS(
 IF (OS_LINUX)
     SRCS(
         service_linux_ut.cpp
+        service_proxy_ut.cpp
     )
 ENDIF(OS_LINUX)
 
 PEERDIR(
+    cloud/blockstore/libs/service
     cloud/blockstore/tools/testing/infra-device-provider/protos
     cloud/storage/core/libs/grpc
 
