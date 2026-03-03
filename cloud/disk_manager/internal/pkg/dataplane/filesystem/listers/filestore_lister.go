@@ -9,11 +9,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type filestoreLister struct {
-	nfsClient        nfs.Client
-	session          nfs.Session
+	nfsClient         nfs.Client
+	session           nfs.Session
 	listNodesMaxBytes uint32
-	readOnly         bool
-	unsafe           bool
+	readOnly          bool
+	unsafe            bool
 }
 
 type FilestoreOpener struct {
