@@ -48,6 +48,7 @@ func getLogger(ctx context.Context) Logger {
 
 	return logger
 }
+
 func GetLogger(ctx context.Context) Logger {
 	logger := getLogger(ctx)
 	if logger == nil {
