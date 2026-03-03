@@ -119,3 +119,11 @@ def test_local_nvme(ydb, nbs):
         assert lhs.VendorId == rhs['VendorId']
         assert lhs.DeviceId == rhs['DeviceId']
         assert lhs.Model == rhs['Model']
+
+    response = client.list_nvme_devices()
+    assert len(response.Devices) == len(devices)
+
+    for lhs, rhs in zip(response.Devices, devices):
+        assert lhs.SerialNumber == rhs['SerialNumber']
+        assert lhs.PCIAddress == rhs['PCIAddress']
+        assert lhs.IOMMUGroup == rhs['IOMMUGroup']

@@ -679,7 +679,10 @@ void TBootstrapBase::Init()
         STORAGE_INFO("ValidationService initialized");
     }
 
-    Service = CreateLocalNVMeServiceProxy(std::move(Service), LocalNVMeService);
+    if (LocalNVMeService) {
+        Service =
+            CreateLocalNVMeServiceProxy(std::move(Service), LocalNVMeService);
+    }
 
     Server = CreateServer(
         Configs->ServerConfig,
