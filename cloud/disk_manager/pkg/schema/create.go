@@ -97,6 +97,11 @@ func create(
 		if err != nil {
 			return err
 		}
+
+		err = initFilesystemDataplane(ctx, config, creds, dropUnusedColumns)
+		if err != nil {
+			return err
+		}
 	}
 
 	// TODO: should not use GrpcConfig here.

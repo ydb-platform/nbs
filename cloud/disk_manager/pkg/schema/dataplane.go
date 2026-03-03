@@ -5,6 +5,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	filesystem_traversal_schema "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -96,6 +97,50 @@ func initDataplane(
 		migrationDstSnapshotConfig,
 		migrationDstDB,
 		migrationDstS3,
+		dropUnusedColumns,
+	)
+}
+
+func initFilesystemDataplane(
+	ctx context.Context,
+	config *server_config.ServerConfig,
+	creds auth.Credentials,
+	dropUnusedColumns bool,
+) error {
+
+	filesystemConfig := config.GetDataplaneConfig().GetFilesystemConfig()
+	if filesystemConfig == nil {
+		return nil
+	}
+
+	scrubbingConfig := filesystemConfig.GetScrubbingConfig()
+	if scrubbingConfig == nil {
+		return nil
+	}
+	traversalConfig := scrubbingConfig.GetTraversalConfig()
+	if traversalConfig == nil {
+		return nil
+	}
+	persistenceConfig := filesystemConfig.GetPersistenceConfig()
+	if persistenceConfig == nil {
+		return nil
+	}
+
+	filesystemDB, err := persistence.NewYDBClient(
+		ctx,
+		persistenceConfig,
+		metrics.NewEmptyRegistry(),
+		persistence.WithCredentials(creds),
+	)
+	if err != nil {
+		return err
+	}
+	defer filesystemDB.Close(ctx)
+
+	return filesystem_traversal_schema.Create(
+		ctx,
+		traversalConfig.GetStorageFolder(),
+		filesystemDB,
 		dropUnusedColumns,
 	)
 }

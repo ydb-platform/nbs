@@ -24,6 +24,8 @@ import (
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
+	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
+	filesystem_scrubbing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
@@ -391,7 +393,7 @@ func NewNfsTestingClient(
 	t *testing.T,
 	ctx context.Context,
 	zoneID string,
-) nfs.Client {
+) nfs_testing.TestingClient {
 
 	nfsFactory := nfs.NewFactory(
 		ctx,
@@ -400,7 +402,7 @@ func NewNfsTestingClient(
 	)
 	client, err := nfsFactory.NewClient(ctx, zoneID)
 	require.NoError(t, err)
-	return client
+	return nfs_testing.NewTestingClient(t, client)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -744,6 +746,29 @@ func WaitOperationEnded(
 
 	err = scheduler.WaitTaskEnded(ctx, operationID)
 	require.NoError(t, err)
+}
+
+func ScheduleFilesystemScrubbing(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+	filesystemID string,
+) string {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+	lastReqNumber++
+	taskID, err := filesystem_scrubbing.ScheduleScrubFilesystem(
+		tasks_headers.SetIncomingIdempotencyKey(
+			ctx,
+			fmt.Sprintf("scrubbing_%v_%v", t.Name(), lastReqNumber),
+		),
+		scheduler,
+		zoneID,
+		filesystemID,
+	)
+	require.NoError(t, err)
+	return taskID
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -68,6 +68,8 @@ def parse_args(args):
     parser.add_argument("--cell-selection-policy", type=str, default="FIRST_IN_CONFIG")
     parser.add_argument("--allow-filestore-force-destroy", action='store_true', default=False)
     parser.add_argument("--without-shadow-disks", action='store_true', default=False)
+    parser.add_argument("--filesystem-dataplane-enabled", action='store_true', default=False)
+    parser.add_argument("--list-nodes-max-bytes", type=int, default=0)
     args, _ = parser.parse_known_args(args=args)
     return args
 
@@ -392,11 +394,16 @@ def start(argv):
             is_dataplane=True,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
+            nfs_port=nfs.port,
+            nfs2_port=nfs2.port,
+            nfs3_port=nfs3.port,
             s3_port=s3.port,
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
             proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
+            filesystem_dataplane_enabled=args.filesystem_dataplane_enabled,
+            list_nodes_max_bytes=args.list_nodes_max_bytes,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
