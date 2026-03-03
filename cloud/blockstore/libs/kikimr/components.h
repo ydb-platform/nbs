@@ -18,7 +18,7 @@ namespace NCloud::NBlockStore {
 #define BLOCKSTORE_ACTORS(xxx)                                                 \
     xxx(BOOTSTRAPPER)                                                          \
     xxx(SERVICE)                                                               \
-    xxx(SERVICE_EXT)                                                         \
+    xxx(SERVICE_EXT)                                                           \
     xxx(VOLUME)                                                                \
     xxx(PARTITION)                                                             \
     xxx(PARTITION_WORKER)                                                      \
@@ -39,7 +39,7 @@ namespace NCloud::NBlockStore {
     xxx(PARTITION_COMMON)                                                      \
     xxx(STATS_SERVICE)                                                         \
     xxx(FRESH_BLOCKS_WRITER)                                                   \
-    xxx(SERVICE_PROXY)                                                           \
+    xxx(SERVICE_PROXY)                                                         \
 // BLOCKSTORE_ACTORS
 
 #define BLOCKSTORE_COMPONENTS(xxx)                                             \
