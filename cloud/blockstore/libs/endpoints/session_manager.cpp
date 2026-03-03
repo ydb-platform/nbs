@@ -288,7 +288,7 @@ public:
                         instanceId);
 
                     // Make volumeInfo stats durable after successfull mount
-                    auto&& volumeInfo = self->VolumeStats->GetVolumeInfo(
+                    auto volumeInfo = self->VolumeStats->GetVolumeInfo(
                         response.GetVolume().GetDiskId(),
                         self->ClientId);
 

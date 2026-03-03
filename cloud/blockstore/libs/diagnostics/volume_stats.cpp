@@ -579,7 +579,7 @@ public:
 
     void UnmountVolumeImpl(const TString& diskId, const TString& clientId)
     {
-        auto&& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
+        const auto& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
 
         auto volumeIt = Volumes.find(logicalDiskId);
         if (volumeIt == Volumes.end()) {
