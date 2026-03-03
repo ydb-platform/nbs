@@ -958,59 +958,62 @@ void TVolumeActor::ForwardRequest(
      *  Processing overlapping writes. Overlapping writes should not be sent
      *  to the underlying (storage) layer.
      */
-    const bool overlappingRequestProcessing =
-        IsWriteMethod<TMethod> &&
-        Config->GetOverlappingRequestsPolicy() !=
-            NProto::EOverlappingRequestsPolicy::ORP_DISABLE;
+    if constexpr (IsWriteMethod<TMethod>) {
+        const auto policy = Config->GetOverlappingRequestsPolicy();
 
-    if (overlappingRequestProcessing) {
-        auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
-            volumeRequestId,
-            blockRange);
+        if (policy != NProto::EOverlappingRequestsPolicy::ORP_DISABLE) {
+            auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
+                volumeRequestId,
+                blockRange);
 
-        if (!addResult.Added) {
-            if (Config->GetOverlappingRequestsPolicy() ==
-                NProto::EOverlappingRequestsPolicy::ORP_ENABLE_WITH_CRIT_EVENT)
-            {
-                ReportOverlappingRequestsDetected(
-                    {{"disk", State->GetDiskId()},
-                     {"Inflight", *addResult.InflightRange},
-                     {"New", blockRange}});
-            }
+            if (!addResult.Added) {
+                if (policy == NProto::EOverlappingRequestsPolicy::
+                                  ORP_ENABLE_WITH_CRIT_EVENT)
+                {
+                    ReportOverlappingRequestsDetected(
+                        {{"disk", State->GetDiskId()},
+                         {"Inflight", *addResult.InflightRange},
+                         {"New", blockRange}});
+                }
 
-            if (addResult.DuplicateRequestId
-                    == TRequestsInFlight::InvalidRequestId)
-            {
-                replyError(MakeError(E_REJECTED, TStringBuilder()
-                    << "Request " << TMethod::Name
-                    << " intersects with inflight write or zero request"
-                    << " (block range: " << DescribeRange(blockRange) << ")"));
+                if (addResult.DuplicateRequestId ==
+                    TRequestsInFlight::InvalidRequestId)
+                {
+                    replyError(MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "Request " << TMethod::Name
+                            << " intersects with inflight write or zero request"
+                            << " (block range: " << DescribeRange(blockRange)
+                            << ")"));
+                    return;
+                }
+
+                LWTRACK(
+                    DuplicatedRequestReceived_Volume,
+                    msg->CallContext->LWOrbit,
+                    TMethod::Name,
+                    msg->CallContext->RequestId,
+                    addResult.DuplicateRequestId);
+
+                DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId]
+                    .push_back(
+                        {ev->Get()->CallContext,
+                         static_cast<TEvService::EEvents>(
+                             TMethod::TRequest::EventType),
+                         NActors::IEventHandlePtr(ev.Release()),
+                         now});
+                ++DuplicateRequestCount;
+
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s DuplicateRequestCount=%lu",
+                    LogTitle.GetWithTime().c_str(),
+                    DuplicateRequestCount);
+
                 return;
             }
-
-            LWTRACK(
-                DuplicatedRequestReceived_Volume,
-                msg->CallContext->LWOrbit,
-                TMethod::Name,
-                msg->CallContext->RequestId,
-                addResult.DuplicateRequestId);
-
-            DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId].push_back({
-                ev->Get()->CallContext,
-                static_cast<TEvService::EEvents>(TMethod::TRequest::EventType),
-                NActors::IEventHandlePtr(ev.Release()),
-                now
-            });
-            ++DuplicateRequestCount;
-
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s DuplicateRequestCount=%lu",
-                LogTitle.GetWithTime().c_str(),
-                DuplicateRequestCount);
-
-            return;
         }
     }
 
