@@ -20,6 +20,7 @@ SRCS(
     service_null.cpp
     service_test.cpp
     service.cpp
+    split_request_service.cpp
     storage_provider.cpp
     storage_test.cpp
     storage.cpp

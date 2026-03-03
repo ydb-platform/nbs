@@ -144,6 +144,7 @@ public:
     ui64 GetVhostPteFlushByteThreshold() const;
     bool GetAutomaticNbdDeviceManagement() const;
     bool GetEnableOverlappingRequestsGuard() const;
+    bool GetEnableRequestsSplitter() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

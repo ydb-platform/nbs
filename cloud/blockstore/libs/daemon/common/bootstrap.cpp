@@ -61,6 +61,7 @@
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/service_filtered.h>
 #include <cloud/blockstore/libs/service/service_null.h>
+#include <cloud/blockstore/libs/service/split_request_service.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/service_local.h>
@@ -243,6 +244,10 @@ void TBootstrapBase::Init()
     }
 
     STORAGE_INFO("Service initialized");
+
+    if (Configs->ServerConfig->GetEnableRequestsSplitter()) {
+        Service = CreateSplitRequestService(std::move(Service));
+    }
 
     if (Configs->ServerConfig->GetEnableOverlappingRequestsGuard()) {
         Service = CreateOverlappingRequestsGuardsService(std::move(Service));

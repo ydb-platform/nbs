@@ -139,6 +139,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
     xxx(OverlappingRequestsDetected)                                           \
     xxx(AddFreshBlocksResultedInError)                                         \
+    xxx(DiskDevicesSizeViolation)                                              \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
