@@ -82,6 +82,7 @@ func Create(
 			persistence.WithColumn("mtime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("ctime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("links", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("symlink_target", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),
