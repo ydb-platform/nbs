@@ -4058,6 +4058,97 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.SetSize(12_KB);
         });
     }
+
+    Y_UNIT_TEST(ShouldListWithDirectoryContentChunkAtNameBoundary)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            NProto::TListNodesResponse r;
+            for (ui32 ino = 2; ino < 100; ++ino) {
+                r.AddNames(TStringBuilder() << "f" << ino);
+                auto* node = r.AddNodes();
+                node->SetId(ino);
+                node->SetType(NProto::E_REGULAR_NODE);
+                node->SetSize(4_KB);
+            }
+            return MakeFuture(std::move(r));
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 parentNodeId = 1;
+
+        auto handle =
+            bootstrap.Fuse->SendRequest<TOpenDirRequest>(parentNodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        auto handleId = handle.GetValue();
+
+        const ui64 smallDirentSize =
+            sizeof(fuse_direntplus) + sizeof(ui64);
+        const ui64 direntWithoutNameSize = sizeof(fuse_direntplus);
+        const ui64 size = dotSize + dotDotSize
+            + 10 * smallDirentSize + direntWithoutNameSize;
+        auto rq = std::make_shared<TReadDirRequest>(
+            parentNodeId,
+            handleId,
+            0 /* offset */,
+            size);
+        auto rf = bootstrap.Fuse->SendRequest(rq);
+        rf.GetValue(WaitTimeout);
+
+        auto buf = TStringBuf(
+            reinterpret_cast<const char*>(rq->Out->Data()),
+            rq->Out->Header.len - sizeof(rq->Out->Header));
+
+        // Skip "." and ".." entries
+        UNIT_ASSERT_LE(
+            sizeof(fuse_direntplus) + dotSize + dotDotSize,
+            buf.size());
+        buf = buf.Skip(dotSize + dotDotSize);
+
+        for (ui32 ino = 2; ino < 12; ++ino) {
+            UNIT_ASSERT_GE(buf.Size(), sizeof(fuse_direntplus));
+
+            const auto* de =
+                reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, de->entry_out.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder() << "f" << ino,
+                TStringBuf(de->dirent.name, de->dirent.namelen));
+
+            buf = buf.Skip(AlignUp<ui64>(
+                sizeof(fuse_direntplus) + de->dirent.namelen,
+                sizeof(uint64_t)));
+        }
+
+        //
+        // Checking that our test did what's expected - generated a dirent
+        // without a name.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(direntWithoutNameSize, buf.Size());
+
+        //
+        // This incomplete dirent shouldn't cause any errors.
+        //
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "ListNodes");
+        // counters->OutputPlainText(Cerr);
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+
+        auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+            parentNodeId,
+            handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

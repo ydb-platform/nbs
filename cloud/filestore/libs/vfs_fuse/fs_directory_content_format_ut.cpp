@@ -5,6 +5,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/random/random.h>
 #include <util/system/align.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -262,6 +263,52 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             E_INVALID_STATE,
             error.GetCode(),
             FormatError(error));
+    }
+
+    Y_UNIT_TEST(ShouldBuildBigContent)
+    {
+        const ui64 size = 4_KB;
+        const ui64 attrTimeout = 15;
+        const ui64 entryTimeout = 10;
+        const ui32 preferredBlockSize = 4_KB;
+        const size_t offset = 0;
+        fuse_req_t req = nullptr;
+
+        TDirectoryBuilder builder(size);
+
+        for (ui64 ino = 2; ino < 10001; ++ino) {
+            fuse_entry_param entry = {
+                .ino = ino,
+                .attr_timeout = attrTimeout,
+                .entry_timeout = entryTimeout,
+            };
+
+            NProto::TNodeAttr attr;
+            attr.SetId(ino);
+            attr.SetType(NProto::E_REGULAR_NODE);
+            attr.SetSize(10_KB);
+            ConvertAttr(preferredBlockSize, attr, entry.attr);
+
+            TStringBuilder name;
+            name << "f";
+            ui32 len = ino % 200;
+            for (ui32 i = 0; i < len; ++i) {
+                name << (i % 10);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(name.Size(), strlen(name.c_str()));
+            builder.Add(req, name, entry, offset);
+        }
+
+        auto buffer = builder.Finish();
+
+        auto error = ResetAttrTimeout(
+            buffer->Data(),
+            buffer->Size(),
+            [] (ui64 ino) {
+                Y_UNUSED(ino);
+                return true;
+            });
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 }
 
