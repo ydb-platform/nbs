@@ -1,6 +1,9 @@
 package driver
 
 import (
+	"hash/fnv"
+	"strconv"
+
 	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 )
 
@@ -44,4 +47,20 @@ func isDiskRegistryMediaKind(mediaKind storagecoreapi.EStorageMediaKind) bool {
 	default:
 		return false
 	}
+}
+
+func getNfsSocket(socketKey string, nfsVhostReplicaCount uint) string {
+	if nfsVhostReplicaCount == 0 {
+		return defaultNfsSocketName
+	}
+
+	h := fnv.New64a()
+	h.Write([]byte(socketKey))
+	index := h.Sum64() % uint64(nfsVhostReplicaCount)
+	if index == 0 {
+		// Use the default socket name for the first instance to support scaling
+		// of existing deployments.
+		return defaultNfsSocketName
+	}
+	return "nfs" + strconv.FormatUint(index, 10) + ".sock"
 }

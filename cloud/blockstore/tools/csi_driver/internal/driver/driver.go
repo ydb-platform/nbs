@@ -70,6 +70,7 @@ type Config struct {
 	GrpcRequestTimeout               time.Duration
 	StartEndpointRequestTimeout      time.Duration
 	RetriableErrorsDurationThreshold time.Duration
+	NfsVhostReplicaCount             uint
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -245,7 +246,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 			mounter.NewMounter(),
 			strings.Split(cfg.MountOptions, ","),
 			cfg.UseDiscardForYDBBasedDisks,
-			cfg.StartEndpointRequestTimeout))
+			cfg.StartEndpointRequestTimeout,
+			cfg.NfsVhostReplicaCount))
 
 	return &Driver{
 		grpcServer: grpcServer,

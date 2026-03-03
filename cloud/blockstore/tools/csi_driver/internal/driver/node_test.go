@@ -38,6 +38,7 @@ const (
 	defaultPodId                       = "test-pod-id-13"
 	defaultDiskId                      = "test-disk-id-42"
 	defaultInstanceId                  = "testInstanceId"
+	defaultNfsVhostReplicaCount        = 0
 )
 
 type LocalFsOverride int
@@ -103,11 +104,21 @@ func getVolumeId(perInstanceVolumes bool) string {
 	return defaultDiskId
 }
 
-func CreateTestContext(t *testing.T, vmMode bool, legacyMode bool, perInstanceVolumes bool) testContext {
+func CreateTestContext(
+	t *testing.T,
+	vmMode bool,
+	legacyMode bool,
+	perInstanceVolumes bool,
+	nfsVhostReplicaCount uint32,
+) testContext {
 	tempDir := t.TempDir()
 	socketsDir := filepath.Join(tempDir, "sockets")
 	sourcePath := getSourcePath(socketsDir, vmMode, legacyMode)
 
+	socketKey := defaultPodId
+	if perInstanceVolumes {
+		socketKey = defaultInstanceId
+	}
 	return testContext{nbsClient: mocks.NewNbsClientMock(),
 		nfsClient:               mocks.NewNfsEndpointClientMock(),
 		nfsLocalClient:          mocks.NewNfsEndpointClientMock(),
@@ -122,7 +133,7 @@ func CreateTestContext(t *testing.T, vmMode bool, legacyMode bool, perInstanceVo
 		stagingTargetPath:       filepath.Join(tempDir, "testStagingTargetPath"),
 		sourcePath:              sourcePath,
 		nbsSocketPath:           filepath.Join(sourcePath, "nbs.sock"),
-		nfsSocketPath:           filepath.Join(sourcePath, "nfs.sock"),
+		nfsSocketPath:           filepath.Join(sourcePath, getNfsSocket(socketKey, uint(nfsVhostReplicaCount))),
 		targetPathMountMode:     filepath.Join(tempDir, "pods", defaultPodId, "volumes", defaultDiskId, "mount"),
 		targetPathBlockMode:     filepath.Join(tempDir, "volumeDevices", "publish", defaultDiskId, defaultPodId),
 		localFsOverrides:        make(ExternalFsOverrideMap),
@@ -146,7 +157,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 	requestQueuesCountOpt *uint32,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, true, false)
+	testCtx := CreateTestContext(t, true, true, false, defaultNfsVhostReplicaCount)
 
 	ctx := context.Background()
 
@@ -171,6 +182,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		[]string{},
 		true, // enable discard
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -375,9 +387,10 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	perInstanceVolumes bool,
 	localFsOverride LocalFsOverride,
 	requestQueuesCountOpt *uint32,
+	nfsVhostReplicaCount uint32,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, false, perInstanceVolumes)
+	testCtx := CreateTestContext(t, true, false, perInstanceVolumes, defaultNfsVhostReplicaCount)
 
 	ctx := context.Background()
 	deviceName := defaultDiskId
@@ -419,6 +432,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		[]string{},
 		false, // enableDiscard is false for staged tests
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -559,7 +573,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		}).Return(&nbs.TStopEndpointResponse{}, nil)
 
 		expectedNfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
-			SocketPath: filepath.Join(testCtx.socketsDir, defaultPodId, defaultDiskId, nfsSocketName),
+			SocketPath: filepath.Join(testCtx.socketsDir, defaultPodId, defaultDiskId, defaultNfsSocketName),
 		}).Return(&nfs.TStopEndpointResponse{}, nil)
 	}
 
@@ -614,6 +628,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 		perInstanceVolumes    bool
 		localFsOverride       LocalFsOverride
 		requestQueuesCountOpt *uint32
+		nfsVhostReplicaCount  uint32
 	}{
 		// Legacy tests (perInstanceVolumes = false, requestQueuesCountOpt = nil)
 		{
@@ -623,6 +638,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceNameLegacy",
@@ -631,6 +647,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "FilestoreForKubevirtLegacy",
@@ -639,6 +656,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirtLegacy",
@@ -647,6 +665,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideLegacyEnabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		// Per-instance volume tests (perInstanceVolumes = true, requestQueuesCountOpt = nil)
 		{
@@ -656,6 +675,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceName",
@@ -664,6 +684,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "FilestoreForKubevirt",
@@ -672,6 +693,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirt",
@@ -680,6 +702,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideEnabled,
 			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  0,
 		},
 		// Multiqueue tests (perInstanceVolumes = false, requestQueuesCountOpt = &rqc32)
 		// These correspond to the original "Multiqueue" tests which were legacy style.
@@ -690,6 +713,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceNameMultiqueue",
@@ -698,6 +722,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "FilestoreForKubevirtMultiqueue",
@@ -706,6 +731,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirtMultiqueueLegacy",
@@ -714,6 +740,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideLegacyEnabled,
 			requestQueuesCountOpt: &rqc32,
+			nfsVhostReplicaCount:  0,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirtMultiqueue",
@@ -722,6 +749,16 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideEnabled,
 			requestQueuesCountOpt: &rqc32,
+			nfsVhostReplicaCount:  0,
+		},
+		{
+			name:                  "FilestoreForKubevirtMultipleNfsVhost",
+			backend:               "nfs",
+			deviceNameOpt:         nil,
+			perInstanceVolumes:    true,
+			localFsOverride:       LocalFsOverrideDisabled,
+			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  3,
 		},
 	}
 
@@ -736,6 +773,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 				tc.perInstanceVolumes,
 				tc.localFsOverride,
 				tc.requestQueuesCountOpt,
+				tc.nfsVhostReplicaCount,
 			)
 		})
 	}
@@ -777,7 +815,7 @@ func TestReadVhostSettings(t *testing.T) {
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false)
+	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
 
 	groupId := ""
 	currentUser, err := user.Current()
@@ -815,6 +853,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		[]string{"grpid"},
 		true,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -937,7 +976,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 }
 
 func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false)
+	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(testCtx.tempDir, "dev", "nbd3")
@@ -963,6 +1002,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1089,7 +1129,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 }
 
 func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false)
+	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
 
 	info, err := os.Stat(testCtx.tempDir)
 	require.NoError(t, err)
@@ -1112,6 +1152,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	ctx := context.Background()
@@ -1154,7 +1195,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 }
 
 func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
-	testCtx := CreateTestContext(t, true, true, false)
+	testCtx := CreateTestContext(t, true, true, false, defaultNfsVhostReplicaCount)
 
 	nodeService := newNodeService(
 		defaultNodeId,
@@ -1172,6 +1213,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	ctx := context.Background()
@@ -1202,7 +1244,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 }
 
 func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false)
+	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
 	ctx := context.Background()
 
 	volumeContext := map[string]string{
@@ -1225,6 +1267,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
@@ -1273,7 +1316,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 }
 
 func TestExternaFs(t *testing.T) {
-	testCtx := CreateTestContext(t, true, false, true)
+	testCtx := CreateTestContext(t, true, false, true, defaultNfsVhostReplicaCount)
 
 	ctx := context.Background()
 	mountFilePath := filepath.Join(testCtx.tempDir, "mountDone")
@@ -1314,6 +1357,7 @@ func TestExternaFs(t *testing.T) {
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		4, // custom NfsVhostReplicaCount value should not affect mounting of external fs
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
@@ -1429,7 +1473,7 @@ func TestExternaFs(t *testing.T) {
 }
 
 func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false)
+	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(testCtx.tempDir, "dev", "nbd3")
@@ -1454,6 +1498,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1509,7 +1554,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 	t *testing.T,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, false, true)
+	testCtx := CreateTestContext(t, true, false, true, defaultNfsVhostReplicaCount)
 
 	ctx := context.Background()
 	backend := "nbs"
@@ -1530,6 +1575,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -1591,7 +1637,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 	t *testing.T,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, false, false)
+	testCtx := CreateTestContext(t, true, false, false, defaultNfsVhostReplicaCount)
 
 	ctx := context.Background()
 
@@ -1611,6 +1657,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		[]string{},
 		false,
 		defaultStartEndpointRequestTimeout,
+		defaultNfsVhostReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
