@@ -352,8 +352,8 @@ struct TEvService
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::SERVICE_END,
-        "EvEnd expected to be < TBlockStoreEvents::SERVICE_END");
+    static_assert(EvEnd < (int)TBlockStoreEvents::SERVICE_EXT_END,
+        "EvEnd expected to be < TBlockStoreEvents::SERVICE_EXT_END");
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
