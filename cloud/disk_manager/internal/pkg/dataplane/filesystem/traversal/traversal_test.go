@@ -1,4 +1,4 @@
-package filesystemtraversal
+package traversal
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/mocks"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/mocks"
@@ -142,7 +143,12 @@ func (f *fixture) getFilesAfterTraversal(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
-		f.client,
+		listers.NewFilestoreOpener(
+			f.client,
+			0,     // listNodesMaxBytes
+			true,  // readOnly
+			false, // unsafe
+		),
 		f.storage,
 		func(ctx context.Context) error {
 			return nil
@@ -152,7 +158,6 @@ func (f *fixture) getFilesAfterTraversal(
 			SelectNodesToListLimit: &selectNodesToListLimit,
 		},
 		false,
-		0,
 		nfs.RootNodeID,
 	)
 
@@ -163,7 +168,7 @@ func (f *fixture) getFilesAfterTraversal(
 		func(
 			ctx context.Context,
 			nodes []nfs.Node,
-			_ nfs.Session,
+			_ listers.FilesystemLister,
 		) error {
 
 			nodesMutex.Lock()
@@ -277,7 +282,12 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
-		fixture.client,
+		listers.NewFilestoreOpener(
+			fixture.client,
+			0,     // listNodesMaxBytes
+			true,  // readOnly
+			false, // unsafe
+		),
 		fixture.storage,
 		func(ctx context.Context) error {
 			return nil
@@ -287,7 +297,6 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 			SelectNodesToListLimit: &selectNodesToListLimit,
 		},
 		false,
-		0,
 		nfs.RootNodeID,
 	)
 
@@ -297,7 +306,7 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		func(
 			ctx context.Context,
 			nodes []nfs.Node,
-			_ nfs.Session,
+			_ listers.FilesystemLister,
 		) error {
 			return expectedError
 		},
