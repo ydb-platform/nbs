@@ -22,7 +22,7 @@ struct TTestData
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBootStrap: private IQueuedOperationsProcessor
+class TBootstrap: private IQueuedOperationsProcessor
 {
 private:
     std::shared_ptr<TTestWriteBackCacheStats> Stats;
@@ -32,7 +32,7 @@ private:
     const TString Expected = TString("\0\0ABSPQR\0\0IXYL\0Z", 16);
 
 public:
-    TBootStrap()
+    TBootstrap()
         : Stats(std::make_shared<TTestWriteBackCacheStats>())
         , State(*this, std::make_shared<TTestTimer>(), Stats)
     {
@@ -120,14 +120,14 @@ Y_UNIT_TEST_SUITE(TReadResponseBufferTest)
 {
     Y_UNIT_TEST(Simple)
     {
-        TBootStrap b;
+        TBootstrap b;
 
         UNIT_ASSERT_VALUES_EQUAL("ABSP", b.ReadData(2, 4, {{0, 4}}));
     }
 
     Y_UNIT_TEST(Single)
     {
-        TBootStrap b;
+        TBootstrap b;
 
         for (ui64 begin = 0; begin < 17; begin++) {
             for (ui64 end = begin + 1; end <= 17; end++) {
@@ -144,7 +144,7 @@ Y_UNIT_TEST_SUITE(TReadResponseBufferTest)
 
     Y_UNIT_TEST(Double)
     {
-        TBootStrap b;
+        TBootstrap b;
 
         for (ui64 len1 = 1; len1 <= 16; len1++) {
             for (ui64 len2 = 1; len2 <= 17 - len1; len2++) {
@@ -165,7 +165,7 @@ Y_UNIT_TEST_SUITE(TReadResponseBufferTest)
 
     Y_UNIT_TEST(Multiple)
     {
-        TBootStrap b;
+        TBootstrap b;
 
         auto expected = b.GetExpected(0, 16);
         auto actual =
