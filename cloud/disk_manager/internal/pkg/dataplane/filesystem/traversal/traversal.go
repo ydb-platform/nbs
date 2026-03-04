@@ -19,7 +19,6 @@ type OnListedNodesFunc func(
 	ctx context.Context,
 	nodes []nfs.Node,
 	session nfs.Session,
-	client nfs.Client,
 ) error
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,7 +202,7 @@ func (t *FilesystemTraverser) directoryLister(
 
 	cleanupCtx := context.WithoutCancel(ctx)
 	defer func() {
-		err = t.client.DestroySession(cleanupCtx, session)
+		err = session.Close(cleanupCtx)
 		if err != nil {
 			logging.Error(
 				cleanupCtx,
@@ -245,9 +244,8 @@ func (t *FilesystemTraverser) listNode(
 
 	cookie := node.Cookie
 	for {
-		children, nextCookie, err := t.client.ListNodes(
+		children, nextCookie, err := session.ListNodes(
 			ctx,
-			session,
 			node.NodeID,
 			cookie,
 			t.listNodesMaxBytes,
@@ -258,7 +256,7 @@ func (t *FilesystemTraverser) listNode(
 		}
 
 		if len(children) > 0 {
-			err = onListedNodes(ctx, children, session, t.client)
+			err = onListedNodes(ctx, children, session)
 			if err != nil {
 				return err
 			}
@@ -269,7 +267,7 @@ func (t *FilesystemTraverser) listNode(
 			// In case of filesystem scrubbing, ListNodes may return InvalidNodeID
 			// for nodes present in index tablet and absent in shard.
 			// See: https://github.com/ydb-platform/nbs/issues/5094
-			if node.NodeID == nfs.InvalidNodeID {
+			if n.NodeID == nfs.InvalidNodeID {
 				continue
 			}
 

@@ -139,7 +139,6 @@ func (f *fixture) fillFilesystem(
 		model := nfs_testing.NewParallelFilesystemModel(
 			t,
 			f.ctx,
-			f.client,
 			session,
 			rootDir,
 		)
@@ -149,7 +148,6 @@ func (f *fixture) fillFilesystem(
 	model := nfs_testing.NewFileSystemModel(
 		t,
 		f.ctx,
-		f.client,
 		session,
 		rootDir,
 	)

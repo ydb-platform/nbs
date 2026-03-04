@@ -78,7 +78,6 @@ func (t *scrubFilesystemTask) Run(
 		ctx context.Context,
 		nodes []nfs.Node,
 		_ nfs.Session,
-		_ nfs.Client,
 	) error {
 
 		t.callback(nodes)
