@@ -127,7 +127,7 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
     Y_UNIT_TEST(ShouldSpentBudgetShareBoosted)
     {
         TBoostedTimeBucket lb(
-            TDuration::MilliSeconds(100),
+            TDuration::MicroSeconds(200),
             11,
             TDuration::Seconds(2),
             TDuration::Seconds(20),
@@ -136,17 +136,17 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
 
         GET_SHARE_AND_CHECK(0);
         REG_AND_CHECK_D(0, 100'000, 110);
-        GET_SHARE_AND_CHECK(0.001);
+        GET_SHARE_AND_CHECK(0.55);
         REG_AND_CHECK_D(0, 500'000, 70);
-        GET_SHARE_AND_CHECK(0.001);
+        GET_SHARE_AND_CHECK(0.35);
         REG_AND_CHECK_D(0, 2'000'000, 200);
-        GET_SHARE_AND_CHECK(0.001);
+        GET_SHARE_AND_CHECK(1.0);
     }
 
     Y_UNIT_TEST(ShouldSpentBudgetShareWithCustomInitialBudgetBoosted)
     {
         TBoostedTimeBucket lb(
-            TDuration::MilliSeconds(100),
+            TDuration::MicroSeconds(200),
             11,
             TDuration::Seconds(2),
             TDuration::Seconds(20),
@@ -154,11 +154,11 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
         );
 
         REG_AND_CHECK_D(0, 100'000, 110);
-        GET_SHARE_AND_CHECK(0.001);
+        GET_SHARE_AND_CHECK(0.55);
         REG_AND_CHECK_D(0, 500'000, 70);
-        GET_SHARE_AND_CHECK(0.0007);
+        GET_SHARE_AND_CHECK(0.35);
         REG_AND_CHECK_D(0, 2'000'000, 200);
-        GET_SHARE_AND_CHECK(0.002);
+        GET_SHARE_AND_CHECK(1.0);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateBoostedTimeBucket)
