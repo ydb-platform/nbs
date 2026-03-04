@@ -15,6 +15,7 @@ SRCS(
     device_path_ut.cpp
     iovector_ut.cpp
     safe_debug_print_ut.cpp
+    split_request_helpers_ut.cpp
 )
 
 PEERDIR(

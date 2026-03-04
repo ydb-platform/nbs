@@ -1,11 +1,14 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/public/api/protos/io.pb.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <cloud/storage/core/libs/common/error.h>
 
-namespace NCloud::NBlockStore::NStorage {
+#include <span>
+
+namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,4 +29,6 @@ auto MergeReadResponses(
     std::span<NProto::TReadBlocksLocalResponse> responsesToMerge)
     -> NProto::TReadBlocksLocalResponse;
 
-}   // namespace NCloud::NBlockStore::NStorage
+////////////////////////////////////////////////////////////////////////////////
+
+}   // namespace NCloud::NBlockStore
