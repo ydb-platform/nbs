@@ -99,7 +99,7 @@ func TestCreateFilesystemInCells(t *testing.T) {
 		true,
 	)
 	require.NoError(t, err)
-	defer cellNfsClient.DestroySession(ctx, session)
+	defer session.Close(ctx)
 	zoneNfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-c")
 	require.NoError(t, err)
 	defer zoneNfsClient.Close()

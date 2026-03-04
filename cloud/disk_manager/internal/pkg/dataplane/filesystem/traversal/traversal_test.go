@@ -119,7 +119,6 @@ func (f *fixture) fillFilesystem(
 	model := nfs_testing.NewFileSystemModel(
 		t,
 		f.ctx,
-		f.client,
 		session,
 		rootDir,
 	)
@@ -161,7 +160,6 @@ func (f *fixture) getFilesAfterTraversal(
 			ctx context.Context,
 			nodes []nfs.Node,
 			_ nfs.Session,
-			_ nfs.Client,
 		) error {
 
 			nodesMutex.Lock()
@@ -219,7 +217,7 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 	defer fixture.cleanupFilesystem(t, filesystemID)
 	session, err := fixture.client.CreateSession(fixture.ctx, filesystemID, "", false)
 	require.NoError(t, err)
-	defer fixture.client.DestroySession(fixture.ctx, session)
+	defer session.Close(fixture.ctx)
 
 	rootDir := nfs_testing.RandomDirectoryTree(
 		3,   // maxDepth
@@ -229,7 +227,6 @@ func TestRandomFilesystemTraversal(t *testing.T) {
 	fsModel := nfs_testing.NewFileSystemModel(
 		t,
 		fixture.ctx,
-		fixture.client,
 		session,
 		rootDir,
 	)
@@ -260,12 +257,11 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	defer fixture.client.DestroySession(fixture.ctx, session)
+	defer session.Close(fixture.ctx)
 	rootDir := nfs_testing.Root(nfs_testing.Dir("Some"))
 	fsModel := nfs_testing.NewFileSystemModel(
 		t,
 		fixture.ctx,
-		fixture.client,
 		session,
 		rootDir,
 	)
@@ -298,7 +294,6 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 			ctx context.Context,
 			nodes []nfs.Node,
 			_ nfs.Session,
-			_ nfs.Client,
 		) error {
 			return expectedError
 		},

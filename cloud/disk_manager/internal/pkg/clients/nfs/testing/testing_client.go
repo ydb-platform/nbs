@@ -41,7 +41,7 @@ func (c *testingClient) FillFilesystemWithDefaultTree(
 	session, err := c.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(c.t, err)
 	defer func() {
-		err := c.DestroySession(ctx, session)
+		err := session.Close(ctx)
 		require.NoError(c.t, err)
 	}()
 
@@ -54,7 +54,7 @@ func (c *testingClient) FillFilesystemWithDefaultTree(
 	}
 
 	tree := HomogeneousDirectoryTree(layers)
-	model := NewParallelFilesystemModel(c.t, ctx, c.Client, session, tree)
+	model := NewParallelFilesystemModel(c.t, ctx, session, tree)
 	model.CreateAllNodesRecursively()
 
 	return model.ExpectedNodeNames()

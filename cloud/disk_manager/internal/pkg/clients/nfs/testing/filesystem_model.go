@@ -196,7 +196,6 @@ type FileSystemModel struct {
 	root          Node
 	t             *testing.T
 	ctx           context.Context
-	client        nfs.Client
 	session       nfs.Session
 	defaultUid    uint32
 	defaultGid    uint32
@@ -224,7 +223,7 @@ func (f *FileSystemModel) CreateNodesRecursively(
 		GID:        1,
 		LinkTarget: nodeToCreate.Target,
 	}
-	id, err := f.client.CreateNode(f.ctx, f.session, expectedNode)
+	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
 	f.ExpectedNodes = append(f.ExpectedNodes, expectedNode)
 	if !nodeToCreate.FileType.IsDirectory() {
@@ -262,9 +261,8 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 	)
 
 	for {
-		batch, nextCookie, err := f.client.ListNodes(
+		batch, nextCookie, err := f.session.ListNodes(
 			f.ctx,
-			f.session,
 			parentNodeID,
 			cookie,
 			0,     // maxBytes
@@ -276,9 +274,8 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 				continue
 			}
 
-			target, err := f.client.ReadLink(
+			target, err := f.session.ReadLink(
 				f.ctx,
-				f.session,
 				batch[index].NodeID,
 			)
 			require.NoError(f.t, err)
@@ -332,7 +329,7 @@ func (f *FileSystemModel) SetSession(session nfs.Session) {
 }
 
 func (f *FileSystemModel) Close() {
-	err := f.client.DestroySession(f.ctx, f.session)
+	err := f.session.Close(f.ctx)
 	require.NoError(f.t, err)
 }
 
@@ -348,7 +345,6 @@ func (f *FileSystemModel) ExpectedNodeNames() *tasks_common.StringSet {
 func NewFileSystemModel(
 	t *testing.T,
 	ctx context.Context,
-	client nfs.Client,
 	session nfs.Session,
 	root Node,
 ) *FileSystemModel {
@@ -357,7 +353,6 @@ func NewFileSystemModel(
 		root:          root,
 		t:             t,
 		ctx:           ctx,
-		client:        client,
 		session:       session,
 		defaultUid:    1,
 		defaultGid:    1,
@@ -381,7 +376,6 @@ func NodeNames(nodes []nfs.Node) []string {
 
 type ParallelFilesystemModel struct {
 	ctx           context.Context
-	client        nfs.Client
 	session       nfs.Session
 	t             *testing.T
 	rootNode      Node
@@ -403,9 +397,8 @@ func (m *ParallelFilesystemModel) createChildren(
 	for _, child := range children {
 		child := child
 		eg.Go(func() error {
-			id, err := m.client.CreateNode(
+			id, err := m.session.CreateNode(
 				ctx,
-				m.session,
 				nfs.Node{
 					ParentID:   parentID,
 					Name:       child.Name,
@@ -455,14 +448,13 @@ func (m *ParallelFilesystemModel) CreateAllNodesRecursively() {
 }
 
 func (m *ParallelFilesystemModel) Close() {
-	err := m.client.DestroySession(m.ctx, m.session)
+	err := m.session.Close(m.ctx)
 	require.NoError(m.t, err)
 }
 
 func NewParallelFilesystemModel(
 	t *testing.T,
 	ctx context.Context,
-	client nfs.Client,
 	session nfs.Session,
 	rootDir Node,
 ) *ParallelFilesystemModel {
@@ -471,7 +463,6 @@ func NewParallelFilesystemModel(
 	return &ParallelFilesystemModel{
 		t:             t,
 		ctx:           ctx,
-		client:        client,
 		session:       session,
 		rootNode:      rootDir,
 		ExpectedNames: &set,
