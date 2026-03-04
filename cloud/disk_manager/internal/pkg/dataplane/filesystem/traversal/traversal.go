@@ -267,7 +267,7 @@ func (t *FilesystemTraverser) listNode(
 			// In case of filesystem scrubbing, ListNodes may return InvalidNodeID
 			// for nodes present in index tablet and absent in shard.
 			// See: https://github.com/ydb-platform/nbs/issues/5094
-			if node.NodeID == nfs.InvalidNodeID {
+			if n.NodeID == nfs.InvalidNodeID {
 				continue
 			}
 
