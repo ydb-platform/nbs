@@ -80,9 +80,7 @@ void TIndexTabletActor::HandleWriteData(
                 b < range.FirstBlock() + range.BlockCount();
                 ++b)
         {
-            const auto rangeId = GetMixedRangeIndex(
-                msg->Record.GetNodeId(),
-                range.FirstBlock());
+            const auto rangeId = GetMixedRangeIndex(msg->Record.GetNodeId(), b);
 
             if (rangeId > s.MaxLoadedInOrderRangeId
                     && !s.LoadedOutOfOrderRangeIds.contains(rangeId))

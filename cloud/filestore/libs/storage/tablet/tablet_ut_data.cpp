@@ -3856,6 +3856,95 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldEnqueueAllRangesForCrossBoundaryWriteDuringCompactionLoad)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        TAutoPtr<IEventHandle> loadChunk;
+        ui32 loadChunkCount = 0;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::
+                        EvLoadCompactionMapChunkRequest: {
+                        ++loadChunkCount;
+
+                        if (loadChunkCount == 1) {
+                            loadChunk = event.Release();
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            });
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // Verify blocks at BlockGroupSize boundary fall into different ranges
+        ui32 rangeId1 = GetMixedRangeIndex(id, BlockGroupSize - 1);
+        ui32 rangeId2 = GetMixedRangeIndex(id, BlockGroupSize);
+        UNIT_ASSERT_VALUES_UNEQUAL(rangeId1, rangeId2);
+
+        tablet.SendWriteDataRequest(
+            handle,
+            (BlockGroupSize - 1) * block,
+            2 * block,
+            'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        UNIT_ASSERT(loadChunk);
+        UNIT_ASSERT_VALUES_EQUAL(1, loadChunkCount);
+
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+
+        tablet.SendWriteDataRequest(
+            handle,
+            (BlockGroupSize - 1) * block,
+            2 * block,
+            'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Run compaction to ensure all pending events are processed
+        tablet.SendCompactionRequest(rangeId1);
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(3, loadChunkCount);
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldNotAllowTruncateDuringCompactionMapLoading)
     {
         const auto block = tabletConfig.BlockSize;
