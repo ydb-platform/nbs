@@ -249,3 +249,57 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.Empty(t, listed)
 	require.Empty(t, nextCookie)
 }
+
+func TestGetDestinationNodeID(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	srcSnapshotID := "src-snapshot"
+	dstFilesystemID := "dst-filesystem"
+
+	// Get from empty table returns ok=false.
+	_, ok, err := f.storage.GetDestinationNodeID(
+		f.ctx,
+		srcSnapshotID,
+		dstFilesystemID,
+		42,
+	)
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	// Save some mappings.
+	srcNodeIds := []uint64{100, 200, 300}
+	dstNodeIds := []uint64{1000, 2000, 3000}
+
+	err = f.storage.UpdateRestorationNodeIDMapping(
+		f.ctx,
+		srcSnapshotID,
+		dstFilesystemID,
+		srcNodeIds,
+		dstNodeIds,
+	)
+	require.NoError(t, err)
+
+	// Get nonexistent id from populated table returns ok=false.
+	_, ok, err = f.storage.GetDestinationNodeID(
+		f.ctx,
+		srcSnapshotID,
+		dstFilesystemID,
+		999,
+	)
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	// Get each saved mapping returns correct destination node id.
+	for i, srcNodeID := range srcNodeIds {
+		dstNodeID, ok, err := f.storage.GetDestinationNodeID(
+			f.ctx,
+			srcSnapshotID,
+			dstFilesystemID,
+			srcNodeID,
+		)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, dstNodeIds[i], dstNodeID)
+	}
+}

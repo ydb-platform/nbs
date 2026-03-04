@@ -46,7 +46,7 @@ func (s *StorageMock) DeleteSnapshotData(
 	return args.Bool(0), args.Error(1)
 }
 
-func (s *StorageMock) SaveRestoredDirectories(
+func (s *StorageMock) UpdateRestorationNodeIDMapping(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstSnapshotID string,
@@ -56,6 +56,17 @@ func (s *StorageMock) SaveRestoredDirectories(
 
 	args := s.Called(ctx, srcSnapshotID, dstSnapshotID, srcNodeIds, dstNodeIds)
 	return args.Error(0)
+}
+
+func (s *StorageMock) GetDestinationNodeID(
+	ctx context.Context,
+	srcSnapshotID string,
+	dstFilesystemID string,
+	srcNodeID uint64,
+) (uint64, bool, error) {
+
+	args := s.Called(ctx, srcSnapshotID, dstFilesystemID, srcNodeID)
+	return args.Get(0).(uint64), args.Bool(1), args.Error(2)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

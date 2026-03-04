@@ -112,17 +112,17 @@ func Create(
 	logging.Info(ctx, "Created hardlinks table")
 
 	// table which maps node ids between source/destination filesystems/filesystem snapshots
-	// used during restore or filesystem metadata comparison.
+	// used during restore.
 	err = db.CreateOrAlterTable(
 		ctx,
 		storageFolder,
-		"filesystems_mapping",
+		"restoration_node_ids_mapping",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("source_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("destination_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("source_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("destination_filesystem_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("source_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("destination_node_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithPrimaryKeyColumn("source_id", "destination_id", "source_node_id"),
+			persistence.WithPrimaryKeyColumn("source_snapshot_id", "destination_filesystem_id", "source_node_id"),
 		),
 		dropUnusedColumns,
 	)
@@ -130,7 +130,7 @@ func Create(
 		return err
 	}
 
-	logging.Info(ctx, "Created restore_mappings table")
+	logging.Info(ctx, "Created restoration_node_ids_mapping table")
 	logging.Info(ctx, "Created schema for dataplane filesystem snapshot storage")
 
 	return nil
@@ -174,11 +174,11 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped hardlinks table")
 
-	err = db.DropTable(ctx, storageFolder, "restore_mappings")
+	err = db.DropTable(ctx, storageFolder, "restoration_node_ids_mapping")
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped restore_mappings table")
+	logging.Info(ctx, "Dropped restoration_node_ids_mapping table")
 
 	logging.Info(ctx, "Dropped schema for dataplane filesystem snapshot storage")
 

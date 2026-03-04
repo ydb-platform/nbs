@@ -26,11 +26,18 @@ type Storage interface {
 		snapshotID string,
 	) (bool, error)
 
-	SaveRestoredDirectories(
+	UpdateRestorationNodeIDMapping(
 		ctx context.Context,
-		srcSnapshotID string,
-		dstSnapshotID string,
+		srcID string,
+		dstID string,
 		srcNodeIds []uint64,
 		dstNodeIds []uint64,
 	) error
+
+	GetDestinationNodeID(
+		ctx context.Context,
+		srcSnapshotID string,
+		dstFilesystemID string,
+		srcNodeID uint64,
+	) (dstNodeID uint64, ok bool, err error)
 }

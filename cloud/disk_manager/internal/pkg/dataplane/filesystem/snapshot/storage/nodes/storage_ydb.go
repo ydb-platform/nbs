@@ -119,7 +119,7 @@ func hardlinkStructValue(
 
 func restoreMappingStructTypeString() string {
 	return `Struct<
-		source_filesystem_id: Utf8,
+		source_snapshot_id: Utf8,
 		destination_filesystem_id: Utf8,
 		source_node_id: Uint64,
 		destination_node_id: Uint64>`
@@ -133,7 +133,7 @@ func restoreMappingStructValue(
 ) persistence.Value {
 
 	return persistence.StructValue(
-		persistence.StructFieldValue("source_filesystem_id", persistence.UTF8Value(srcSnapshotID)),
+		persistence.StructFieldValue("source_snapshot_id", persistence.UTF8Value(srcSnapshotID)),
 		persistence.StructFieldValue("destination_filesystem_id", persistence.UTF8Value(dstSnapshotID)),
 		persistence.StructFieldValue("source_node_id", persistence.Uint64Value(srcNodeID)),
 		persistence.StructFieldValue("destination_node_id", persistence.Uint64Value(dstNodeID)),
@@ -504,7 +504,7 @@ func (s *storageYDB) deleteSnapshotData(
 	tables := []string{
 		"node_refs",
 		"nodes",
-		"restore_mappings",
+		"restoration_node_ids_mapping",
 		"hardlinks",
 	}
 
@@ -536,8 +536,8 @@ func (s *storageYDB) deleteFromTable(
 ) (uint64, error) {
 
 	snapshotIDColumn := "filesystem_snapshot_id"
-	if table == "restore_mappings" {
-		snapshotIDColumn = "source_filesystem_id"
+	if table == "restoration_node_ids_mapping" {
+		snapshotIDColumn = "source_snapshot_id"
 	}
 
 	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
@@ -585,7 +585,7 @@ func (s *storageYDB) deleteFromTable(
 	return count, nil
 }
 
-func (s *storageYDB) SaveRestoredDirectories(
+func (s *storageYDB) updateRestorationNodeIDMapping(
 	ctx context.Context,
 	session *persistence.Session,
 	srcSnapshotID string,
@@ -609,13 +609,61 @@ func (s *storageYDB) SaveRestoredDirectories(
 		pragma TablePathPrefix = "%v";
 		declare $mappings as List<%v>;
 
-		upsert into restore_mappings
+		upsert into restoration_node_ids_mapping
 		select *
 		from AS_TABLE($mappings)
 	`, s.tablesPath, restoreMappingStructTypeString()),
 		persistence.ValueParam("$mappings", persistence.ListValue(values...)),
 	)
 	return err
+}
+
+func (s *storageYDB) getDestinationNodeID(
+	ctx context.Context,
+	session *persistence.Session,
+	srcSnapshotID string,
+	dstFilesystemID string,
+	srcNodeID uint64,
+) (uint64, bool, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $src_snapshot_id as Utf8;
+		declare $dst_filesystem_id as Utf8;
+		declare $src_node_id as Uint64;
+
+		select destination_node_id
+		from restoration_node_ids_mapping
+		where source_snapshot_id = $src_snapshot_id
+			and destination_filesystem_id = $dst_filesystem_id
+			and source_node_id = $src_node_id
+	`, s.tablesPath),
+		persistence.ValueParam("$src_snapshot_id", persistence.UTF8Value(srcSnapshotID)),
+		persistence.ValueParam("$dst_filesystem_id", persistence.UTF8Value(dstFilesystemID)),
+		persistence.ValueParam("$src_node_id", persistence.Uint64Value(srcNodeID)),
+	)
+	if err != nil {
+		return 0, false, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, false, nil
+	}
+
+	var dstNodeID uint64
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("destination_node_id", &dstNodeID),
+	)
+	if err != nil {
+		return 0, false, errors.NewNonRetriableErrorf(
+			"getDestinationNodeID: failed to parse row: %w",
+			err,
+		)
+	}
+
+	return dstNodeID, true, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -691,7 +739,7 @@ func (s *storageYDB) DeleteSnapshotData(
 	return done, err
 }
 
-func (s *storageYDB) SaveRestoredDirectories(
+func (s *storageYDB) UpdateRestorationNodeIDMapping(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstSnapshotID string,
@@ -710,7 +758,7 @@ func (s *storageYDB) SaveRestoredDirectories(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.SaveRestoredDirectories(
+			return s.updateRestorationNodeIDMapping(
 				ctx,
 				session,
 				srcSnapshotID,
@@ -720,4 +768,31 @@ func (s *storageYDB) SaveRestoredDirectories(
 			)
 		},
 	)
+}
+
+func (s *storageYDB) GetDestinationNodeID(
+	ctx context.Context,
+	srcSnapshotID string,
+	dstFilesystemID string,
+	srcNodeID uint64,
+) (uint64, bool, error) {
+
+	var dstNodeID uint64
+	var ok bool
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			dstNodeID, ok, err = s.getDestinationNodeID(
+				ctx,
+				session,
+				srcSnapshotID,
+				dstFilesystemID,
+				srcNodeID,
+			)
+			return err
+		},
+	)
+	return dstNodeID, ok, err
 }
