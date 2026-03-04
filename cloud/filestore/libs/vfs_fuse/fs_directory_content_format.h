@@ -18,6 +18,12 @@ private:
 public:
     explicit TDirectoryBuilder(size_t size) noexcept;
 
+    /*
+     * This method serializes fuse_entry_param into the underlying buffer.
+     * THE NULL TERMINATOR OF THE name FIELD MAY BE CUT OFF!
+     * Use dirent::namelen to get actual length of dirent::name. Do not use
+     * strlen!
+     */
     void Add(
         fuse_req_t req,
         const TString& name,
