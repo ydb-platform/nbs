@@ -89,9 +89,7 @@ public:
     // IActorSystem
     //
 
-    NActors::TActorId Register(
-        NActors::IActorPtr actor,
-        TStringBuf executorName = {}) override
+    TActorId Register(IActorPtr actor, TStringBuf executorName = {}) override
     {
         Y_UNUSED(executorName);
 
@@ -101,15 +99,19 @@ public:
         return actorId;
     }
 
-    bool Send(
-        const NActors::TActorId& recipient,
-        NActors::IEventBasePtr event) override
+    bool Send(IEventHandlePtr event) override
+    {
+        Runtime.Send(event.release());
+        return true;
+    }
+
+    bool Send(const TActorId& recipient, IEventBasePtr event) override
     {
         Runtime.Send(new IEventHandle(recipient, Sender, event.release()));
         return true;
     }
 
-    bool Send(TAutoPtr<NActors::IEventHandle> ev) override
+    bool Send(TAutoPtr<IEventHandle> ev) override
     {
         Runtime.Send(ev);
         return true;
@@ -117,14 +119,14 @@ public:
 
     void Schedule(
         TDuration delta,
-        std::unique_ptr<NActors::IEventHandle> ev,
-        NActors::ISchedulerCookie* cookie) override
+        std::unique_ptr<IEventHandle> ev,
+        ISchedulerCookie* cookie) override
     {
         Y_UNUSED(cookie);
         Runtime.Schedule(ev.release(), delta);
     }
 
-    NActors::NLog::TSettings* LoggerSettings() const override
+    NLog::TSettings* LoggerSettings() const override
     {
         return Runtime.GetLogSettings(0).Get();
     }
