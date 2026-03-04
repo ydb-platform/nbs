@@ -445,7 +445,7 @@ private:
     TPromise<IClientEndpointPtr> StartResult = NewPromise<IClientEndpointPtr>();
     TPromise<void> StopResult = NewPromise<void>();
 
-    ui64 FlushStartCycles = 0;
+    std::atomic<ui64> FlushStartCycles = 0;
 
     TBufferPool SendBuffers;
     TBufferPool RecvBuffers;
@@ -840,6 +840,10 @@ bool TClientEndpoint::HandleInputRequests()
         RequestEvent.Clear();
     }
 
+    if (!CheckState(EEndpointState::Connected)) {
+        return false;
+    }
+
     auto requests = InputRequests.DequeueAll();
     if (!requests) {
         return false;
@@ -855,6 +859,7 @@ void TClientEndpoint::HandleQueuedRequests()
     if (!CheckState(EEndpointState::Connected)) {
         return;
     }
+
     while (QueuedRequests) {
         auto* send = SendQueue.Pop();
         if (!send) {
@@ -909,6 +914,10 @@ bool TClientEndpoint::HandleCancelRequests()
         CancelRequestEvent.Clear();
     }
 
+    if (!CheckState(EEndpointState::Connected)) {
+        return false;
+    }
+
     auto requests = CancelRequests.DequeueAll();
     if (!requests) {
         return false;
@@ -944,11 +953,15 @@ bool TClientEndpoint::HandleCancelRequests()
 
 bool TClientEndpoint::AbortRequests() noexcept
 {
-    bool ret = false;
-
     if (WaitMode == EWaitMode::Poll) {
         AbortRequestsEvent.Clear();
     }
+
+    if (!CheckState(EEndpointState::Disconnecting)) {
+        return false;
+    }
+
+    bool ret = false;
 
     auto requests = InputRequests.DequeueAll();
     if (requests) {
@@ -989,6 +1002,12 @@ void TClientEndpoint::AbortRequest(
 
 bool TClientEndpoint::HandleCompletionEvents()
 {
+    if (!CheckState(EEndpointState::Connected) &&
+        !CheckState(EEndpointState::Disconnecting))
+    {
+        return false;
+    }
+
     ibv_cq* cq = CompletionQueue.get();
 
     if (WaitMode == EWaitMode::Poll) {
@@ -1306,8 +1325,9 @@ bool TClientEndpoint::Flushed() const
 
 bool TClientEndpoint::FlushHanging() const
 {
-    return FlushStartCycles && CyclesToDurationSafe(GetCycleCount() -
-        FlushStartCycles) >= FLUSH_TIMEOUT;
+    auto start = FlushStartCycles.load();
+    return start &&
+           CyclesToDurationSafe(GetCycleCount() - start) >= FLUSH_TIMEOUT;
 }
 
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
@@ -1672,14 +1692,9 @@ private:
         for (const auto& endpoint: *endpoints) {
             try {
                 hasWork |= endpoint->HandleCancelRequests();
-                if (endpoint->CheckState(EEndpointState::Connected)) {
-                    hasWork |= endpoint->HandleInputRequests();
-                    hasWork |= endpoint->HandleCompletionEvents();
-                }
-                if (endpoint->CheckState(EEndpointState::Disconnecting)) {
-                    hasWork |= endpoint->HandleCompletionEvents();
-                    hasWork |= endpoint->AbortRequests();
-                }
+                hasWork |= endpoint->HandleInputRequests();
+                hasWork |= endpoint->HandleCompletionEvents();
+                hasWork |= endpoint->AbortRequests();
             } catch (const TServiceError& e) {
                 RDMA_ERROR(endpoint->Log, e.what());
                 endpoint->Disconnect();
