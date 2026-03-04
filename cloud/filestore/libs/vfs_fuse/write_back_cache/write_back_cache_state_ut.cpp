@@ -426,6 +426,182 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!b.State->HasUnflushedRequests());
         UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->WriteDataRequestDroppedCount);
     }
+
+    Y_UNIT_TEST(ShouldSupportBarriers)
+    {
+        {
+            // Simple
+            TBootstrap b;
+            auto barrier = b.State->AcquireBarrier(1);
+            UNIT_ASSERT(barrier.HasValue());
+            UNIT_ASSERT(!HasError(barrier.GetValue().GetError()));
+
+            UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+
+            auto flush = b.State->AddFlushRequest(1);
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+
+            b.State->ReleaseBarrier(1, barrier.GetValue().GetResult());
+            UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc",
+                b.VisitUnflushedCachedRequests(1));
+        }
+
+        {
+            // Different nodes
+            TBootstrap b;
+            auto barrier = b.State->AcquireBarrier(2);
+            UNIT_ASSERT(barrier.HasValue());
+            UNIT_ASSERT(!HasError(barrier.GetValue().GetError()));
+
+            UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc",
+                b.VisitUnflushedCachedRequests(1));
+
+            auto flush = b.State->AddFlushRequest(1);
+            UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc",
+                b.VisitUnflushedCachedRequests(1));
+
+            b.State->ReleaseBarrier(2, barrier.GetValue().GetResult());
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc",
+                b.VisitUnflushedCachedRequests(1));
+        }
+
+        {
+            // Multiple barriers
+            TBootstrap b;
+            auto barrier1 = b.State->AcquireBarrier(1);
+            auto barrier2 = b.State->AcquireBarrier(1);
+            UNIT_ASSERT(barrier1.HasValue());
+            UNIT_ASSERT(barrier2.HasValue());
+
+            UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+            auto barrier3 = b.State->AcquireBarrier(1);
+            auto barrier4 = b.State->AcquireBarrier(1);
+            UNIT_ASSERT(!barrier3.HasValue());
+            UNIT_ASSERT(!barrier4.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+
+            b.State->ReleaseBarrier(1, barrier1.GetValue().GetResult());
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+
+            b.State->ReleaseBarrier(1, barrier2.GetValue().GetResult());
+            UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc",
+                b.VisitUnflushedCachedRequests(1));
+
+            b.State->FlushSucceeded(1, 1);
+            UNIT_ASSERT(barrier3.HasValue());
+            UNIT_ASSERT(barrier4.HasValue());
+        }
+
+        {
+            // Flush failure
+            TBootstrap b;
+            UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+            auto barrier = b.State->AcquireBarrier(1);
+            UNIT_ASSERT(b.Add(1, 101, 4, "def").GetValue());
+
+            UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc",
+                b.VisitUnflushedCachedRequests(1));
+
+            b.State->FlushFailed(1, MakeError(E_FAIL, "Flush failed"));
+            UNIT_ASSERT(barrier.HasValue());
+            UNIT_ASSERT(HasError(barrier.GetValue().GetError()));
+
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc, 4:def",
+                b.VisitUnflushedCachedRequests(1));
+        }
+
+        {
+            // Complex scenario with pins
+            TBootstrap b;
+            b.Storage->SetCapacity(3);
+
+            // unflushed: abc def ghi
+            // pin: abc
+            // barrier: def
+            UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+            auto pin = b.State->PinCachedData(1);
+            auto flush = b.State->AddFlushRequest(1);
+            UNIT_ASSERT(b.Add(1, 101, 4, "def").GetValue());
+            auto barrier = b.State->AcquireBarrier(1);
+            UNIT_ASSERT(b.Add(1, 101, 7, "ghi").GetValue());
+            UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1:abc, 4:def",
+                b.VisitUnflushedCachedRequests(1));
+
+            UNIT_ASSERT(!flush.HasValue());
+            UNIT_ASSERT(!barrier.HasValue());
+
+            // flushed: abc
+            // unflushed: def ghi
+            // pin: abc
+            // barrier: def
+            b.State->FlushSucceeded(1, 1);
+            UNIT_ASSERT(flush.HasValue());
+            UNIT_ASSERT(!barrier.HasValue());
+            // Flush is requested because of AcquireBarrier
+            UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "4:def",
+                b.VisitUnflushedCachedRequests(1));
+
+            // flushed: abc def
+            // unflushed: ghi
+            // pin: abc
+            // barrier: def
+            b.State->FlushSucceeded(1, 1);
+            UNIT_ASSERT(flush.HasValue());
+            // Barrier is not acquired because of pin
+            UNIT_ASSERT(!barrier.HasValue());
+            // Flush is no more requested because of barrier acquisition request
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+
+            // unflushed: ghi
+            // barrier: def
+            b.State->UnpinCachedData(1, pin);
+            UNIT_ASSERT(barrier.HasValue());
+            UNIT_ASSERT(!HasError(barrier.GetValue().GetError()));
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+
+            // pending: l
+            // unflushed: ghi j k
+            // barrier: def
+            UNIT_ASSERT(b.Add(1, 101, 10, "j").GetValue());
+            UNIT_ASSERT(b.Add(1, 101, 11, "k").GetValue());
+            UNIT_ASSERT(!b.Add(1, 101, 12, "l").HasValue());
+            UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL("", b.VisitUnflushedCachedRequests(1));
+
+            // Flush is requested after barrier release
+            b.State->ReleaseBarrier(1, barrier.GetValue().GetResult());
+            UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "7:ghi, 10:j, 11:k",
+                b.VisitUnflushedCachedRequests(1));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

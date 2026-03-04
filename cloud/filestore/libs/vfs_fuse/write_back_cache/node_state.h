@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/deque.h>
@@ -56,6 +58,17 @@ struct TFlushRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBarrier
+{
+    // The promise is fulfilled when all requests associated with a node with
+    // SequenceId <= TBarrier::SequenceId are evicted
+    NThreading::TPromise<TResultOrError<ui64>> Promise;
+
+    bool IsAcquired = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TNodeState
 {
     // Holds pending, unflushed and flushed requests
@@ -87,15 +100,12 @@ struct TNodeState
     // dropped
     size_t HandleToReleaseCount = 0;
 
-    // Cached data extends the node size but until the data is flushed,
-    // the changes are not visible to the tablet. FileSystem requests that
-    // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
-    // should have the node size adjusted to this value.
-    ui64 CachedNodeSize = 0;
+    // Requests with SequenceId > BarrierId are prevented from being flushed
+    TMap<ui64, TBarrier> Barriers;
 
     bool CanBeDeleted() const
     {
-        if (Cache.Empty() && CachedDataPins.empty()) {
+        if (Cache.Empty() && CachedDataPins.empty() && Barriers.empty()) {
             Y_ABORT_UNLESS(FlushRequests.empty());
             Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
             Y_ABORT_UNLESS(Handles.empty());
@@ -115,8 +125,17 @@ struct TNodeState
         if (!Cache.HasUnflushedRequests()) {
             return ENodeFlushStatus::NothingToFlush;
         }
+
+        const ui64 minUnflushedSequenceId = Cache.GetMinUnflushedSequenceId();
+
+        if (!Barriers.empty()) {
+            return minUnflushedSequenceId < Barriers.cbegin()->first
+                       ? ENodeFlushStatus::FlushRequested
+                       : ENodeFlushStatus::NothingToFlush;
+        }
+
         if (!FlushRequests.empty() ||
-            Cache.GetMinUnflushedSequenceId() <= flushAllSequenceId)
+            minUnflushedSequenceId <= flushAllSequenceId)
         {
             return ENodeFlushStatus::FlushRequested;
         }

@@ -258,14 +258,24 @@ public:
         State.UnpinNodeStates(refId);
     }
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const
     {
-        return State.GetCachedNodeSize(nodeId);
+        return State.GetMaxWrittenOffset(nodeId);
     }
 
-    void SetCachedNodeSize(ui64 nodeId, ui64 size)
+    void ResetMaxWrittenOffset(ui64 nodeId)
     {
-        State.SetCachedNodeSize(nodeId, size);
+        State.ResetMaxWrittenOffset(nodeId);
+    }
+
+    NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId)
+    {
+        return State.AcquireBarrier(nodeId);
+    }
+
+    void ReleaseBarrier(ui64 nodeId, ui64 barrierId)
+    {
+        State.ReleaseBarrier(nodeId, barrierId);
     }
 
 private:
@@ -429,14 +439,25 @@ void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
     Impl->ReleaseNodeStateRef(refId);
 }
 
-ui64 TWriteBackCache::GetCachedNodeSize(ui64 nodeId) const
+ui64 TWriteBackCache::GetMaxWrittenOffset(ui64 nodeId) const
 {
-    return Impl->GetCachedNodeSize(nodeId);
+    return Impl->GetMaxWrittenOffset(nodeId);
 }
 
-void TWriteBackCache::SetCachedNodeSize(ui64 nodeId, ui64 size)
+void TWriteBackCache::ResetMaxWrittenOffset(ui64 nodeId)
 {
-    Impl->SetCachedNodeSize(nodeId, size);
+    Impl->ResetMaxWrittenOffset(nodeId);
+}
+
+NThreading::TFuture<TResultOrError<ui64>> TWriteBackCache::AcquireBarrier(
+    ui64 nodeId)
+{
+    return Impl->AcquireBarrier(nodeId);
+}
+
+void TWriteBackCache::ReleaseBarrier(ui64 nodeId, ui64 barrierId)
+{
+    Impl->ReleaseBarrier(nodeId, barrierId);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

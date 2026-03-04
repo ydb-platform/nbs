@@ -95,8 +95,12 @@ public:
     // Includes both flushed and unflushed data
     TCachedData GetCachedData(ui64 nodeId, ui64 offset, ui64 byteCount) const;
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+    // Used to adjust node size according to cached data
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const;
+
+    // Used to clear max written offset in SetNodeAttr handler
+    // Note: a barrier should be acquired via AcquireBarrier
+    void ResetMaxWrittenOffset(ui64 nodeId);
 
     // Prevent WriteData requests from being evicted from cache after flush
     TPin PinCachedData(ui64 nodeId);
@@ -122,6 +126,15 @@ public:
         ui64 nodeId,
         const NCloud::NProto::TError& error);
 
+    // Barriers enforce sequencing and allow execution of operations without
+    // interfering with cache (such as SetNodeAttr or ReadData/WriteData with
+    // O_DIRECT/O_SYNC/O_DSYNC)
+    // Successfully acquired barrier ensures that:
+    // - all prior WriteData requests are flushed and evicted;
+    // - no flush will take place until the barrier is released.
+    NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId);
+    void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
+
 private:
     // Combines acquiring mutex and executing queued operations on mutex release
     // TQueuedOperations has custom Release method that:
@@ -140,8 +153,11 @@ private:
 
     ENodeFlushStatus GetFlushStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
+    void TriggerFlushCompletions(TNodeState& nodeState);
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
+    void TriggerBarrierAcquisitions(TNodeState& nodeState);
+    void ProcessPendingRequests();
 
     void AddActiveRequestToHandleState(TNodeState& nodeState, ui64 handle);
     void RemoveActiveRequestFromHandleState(TNodeState& nodeState, ui64 handle);

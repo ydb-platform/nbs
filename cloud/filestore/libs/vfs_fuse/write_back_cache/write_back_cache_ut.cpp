@@ -49,6 +49,8 @@ constexpr ui64 NodeToHandleOffset = 1000;
 
 constexpr TDuration FlushRetryPeriod = TDuration::MilliSeconds(100);
 
+constexpr TDuration WaitTimeout = TDuration::Seconds(5);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void SleepForRandomDurationMs(ui32 maxDurationMs)
@@ -603,6 +605,19 @@ struct TBootstrap
         Cache.FlushAllData().GetValueSync();
 
         ValidateCacheIsFlushed();
+    }
+
+    ui64 AcquireBarrier(ui64 nodeId)
+    {
+        auto future = Cache.AcquireBarrier(nodeId);
+        const auto& result = future.GetValue(WaitTimeout);
+        UNIT_ASSERT(!HasError(result.GetError()));
+        return result.GetResult();
+    }
+
+    void ReleaseBarrier(ui64 nodeId, ui64 barrierId)
+    {
+        Cache.ReleaseBarrier(nodeId, barrierId);
     }
 
     void ValidateCacheIsFlushed()
@@ -2276,64 +2291,61 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(TString(5, '\0'), readFromCache(13, 5));
     }
 
-    Y_UNIT_TEST(ShouldReportMinNodeSize)
+    Y_UNIT_TEST(ShouldReportNodeSize)
     {
         TBootstrap b;
 
-        // The node is node cached
-        b.Cache.SetCachedNodeSize(1, 2);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        // The node is not cached
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
 
-        // The node is cached
+        // The node is cached but not referenced
         b.WriteToCacheSync(1, 0, "abc");
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.SetCachedNodeSize(1, 4);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
+        b.WriteToCacheSync(1, 2, "def");
+        UNIT_ASSERT_VALUES_EQUAL(5, b.Cache.GetMaxWrittenOffset(1));
+        b.WriteToCacheSync(1, 1, "123");
+        UNIT_ASSERT_VALUES_EQUAL(5, b.Cache.GetMaxWrittenOffset(1));
         b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
 
         // Single reference - flush before release
         b.WriteToCacheSync(1, 0, "abc");
         auto ref1 = b.Cache.AcquireNodeStateRef();
         b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.SetCachedNodeSize(1, 4);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
         b.Cache.ReleaseNodeStateRef(ref1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
 
         // Single reference - flush after release
         b.WriteToCacheSync(1, 0, "abc");
         auto ref2 = b.Cache.AcquireNodeStateRef();
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.SetCachedNodeSize(1, 4);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
         b.Cache.ReleaseNodeStateRef(ref2);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
         b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
 
         // Single reference - resurrect node state
         b.WriteToCacheSync(1, 0, "abc");
         auto ref3 = b.Cache.AcquireNodeStateRef();
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
         b.FlushCache(1);
         b.WriteToCacheSync(1, 0, "abcd");
         b.Cache.ReleaseNodeStateRef(ref3);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetMaxWrittenOffset(1));
         b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
 
         // Multiple references
         b.WriteToCacheSync(1, 0, "abc");
         auto ref4 = b.Cache.AcquireNodeStateRef();
         auto ref5 = b.Cache.AcquireNodeStateRef();
         b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
         b.Cache.ReleaseNodeStateRef(ref5);
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
         b.Cache.ReleaseNodeStateRef(ref4);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
 
         // Newer references don't affect deleted node states
         b.WriteToCacheSync(1, 0, "abc");
@@ -2341,8 +2353,21 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.FlushCache(1);
         auto ref7 = b.Cache.AcquireNodeStateRef();
         b.Cache.ReleaseNodeStateRef(ref6);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
         b.Cache.ReleaseNodeStateRef(ref7);
+
+        // Combine with barriers
+        b.WriteToCacheSync(1, 2, "abc");
+        ui64 barrierId = b.AcquireBarrier(1);
+        UNIT_ASSERT_VALUES_EQUAL(5, b.Cache.GetMaxWrittenOffset(1));
+        b.WriteToCacheSync(1, 0, "def");
+        UNIT_ASSERT_VALUES_EQUAL(5, b.Cache.GetMaxWrittenOffset(1));
+        b.Cache.ResetMaxWrittenOffset(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
+        b.ReleaseBarrier(1, barrierId);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetMaxWrittenOffset(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetMaxWrittenOffset(1));
     }
 }
 

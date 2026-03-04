@@ -142,8 +142,25 @@ public:
     ui64 AcquireNodeStateRef();
     void ReleaseNodeStateRef(ui64 refId);
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+    // Used to adjust node size according to cached data
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const;
+
+    // Used to clear max written offset in SetNodeAttr handler
+    // Note: a barrier should be acquired via AcquireBarrier
+    void ResetMaxWrittenOffset(ui64 nodeId);
+
+    /* Acquiring a barrier ensures that all prior WriteData requests are flushed
+     * and evicted from cache and no new WriteData requests will be flushed
+     * until the barrier is released.
+     *
+     * Used to execute requests that should not interfere with cache:
+     * SetNodeAddr, ReadData/WriteData with O_DIRECT/O_SYNC/O_DSYNC.
+     *
+     * A error may be returned if flush fails - in this case, a barrier will
+     * not be acquired.
+     */
+    NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId);
+    void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

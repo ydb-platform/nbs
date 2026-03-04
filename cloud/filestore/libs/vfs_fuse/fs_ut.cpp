@@ -4230,6 +4230,189 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release2).Wait(WaitTimeout));
         UNIT_ASSERT(!release2->Out->Header.error);
     }
+
+    Y_UNIT_TEST(ShouldUseWriteBackCacheBarriers)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+        {
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        auto setNodeAttrCalled = NewPromise();
+        auto setNodeAttrPromise = NewPromise<NProto::TSetNodeAttrResponse>();
+
+        bootstrap.Service->SetNodeAttrHandler = [&](auto, const auto&)
+        {
+            setNodeAttrCalled.SetValue();
+            return setNodeAttrPromise.GetFuture();
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        // Initiate a request that acquires a barrier
+        {
+            auto rq = std::make_shared<TSetAttrRequest>(NodeId, HandleId);
+            rq->In->Body.valid = FUSE_SET_ATTR_SIZE;
+            rq->In->Body.size = 42;
+            bootstrap.Fuse->SendRequest(rq);
+            setNodeAttrCalled.GetFuture().GetValue(WaitTimeout);
+        }
+
+        // Add some data to write-back cache
+        {
+            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                NodeId,
+                NodeId + 1,
+                0,
+                "abc");
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+        }
+
+        auto flush =
+            bootstrap.Fuse->SendRequest<TFlushRequest>(NodeId, NodeId + 1);
+
+        // WriteBackCache will not execute flush until all barriers are released
+        // There is no reliable way to ensure that flush request was processed
+        // by write-back cache
+        // TODO(#1751): add a metric for this
+        Sleep(TDuration::Seconds(1));
+
+        UNIT_ASSERT(!flush.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        NProto::TSetNodeAttrResponse response;
+        response.MutableNode()->SetId(NodeId);
+        response.MutableNode()->SetSize(42);
+        setNodeAttrPromise.SetValue(std::move(response));
+
+        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(DirectReadAndWritesShouldTriggerWriteBackCacheFlush)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        std::atomic<int> readDataCalled = 0;
+        std::atomic<int> writeDataCalled = 0;
+
+        bootstrap.Service->ReadDataHandler = [&](auto, const auto&)
+        {
+            readDataCalled++;
+            NProto::TReadDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+        {
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto addSomeData = [&]()
+        {
+            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                NodeId,
+                HandleId,
+                1000,
+                "abc");
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        };
+
+        addSomeData();
+
+        {
+            // Cached read
+            auto rq = std::make_shared<TReadRequest>(NodeId, HandleId, 0, 11);
+            auto read = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(read.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(1, readDataCalled.load());
+            UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+        }
+
+        {
+            // Direct read
+            auto rq = std::make_shared<TReadRequest>(NodeId, HandleId, 0, 11);
+            rq->In->Body.flags |= O_DIRECT;
+            auto read = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(read.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(2, readDataCalled.load());
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+        }
+
+        {
+            // Cached write
+            auto rq = std::make_shared<TWriteRequest>(NodeId, HandleId, 0, "a");
+            auto write = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+        }
+
+        {
+            // Direct write
+            auto rq = std::make_shared<TWriteRequest>(NodeId, HandleId, 0, "a");
+            rq->In->Body.flags |= O_DIRECT;
+            auto write = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+        }
+
+        addSomeData();
+
+        {
+            // O_SYNC write
+            auto rq = std::make_shared<TWriteRequest>(NodeId, HandleId, 0, "a");
+            rq->In->Body.flags |= O_SYNC;
+            auto write = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(5, writeDataCalled.load());
+        }
+
+        addSomeData();
+
+        {
+            // O_DSYNC write
+            auto rq = std::make_shared<TWriteRequest>(NodeId, HandleId, 0, "a");
+            rq->In->Body.flags |= O_DSYNC;
+            auto write = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
