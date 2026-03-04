@@ -2,6 +2,7 @@ syntax = "proto2";
 
 package dataplane;
 
+import "cloud/disk_manager/internal/pkg/dataplane/filesystem/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/snapshot/config/config.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config";
@@ -36,4 +37,6 @@ message DataplaneConfig {
     optional uint32 MigratingSnapshotsInflightLimit = 18 [default = 10];
 
     optional int64 ReplicationBetweenCellsSecondsRemainingThreshold = 19 [default = 300];
+
+    optional filesystem_dataplane.FilesystemDataplaneConfig FilesystemConfig = 20;
 }

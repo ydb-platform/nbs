@@ -74,6 +74,7 @@ type Node struct {
 	Mode       uint32
 	UID        uint64
 	GID        uint64
+	Links      uint32
 	Type       NodeType
 	LinkTarget string
 }
@@ -340,6 +341,7 @@ func (client *Client) ListNodes(
 			Mode:     nodes[idx].GetMode(),
 			UID:      uint64(nodes[idx].GetUid()),
 			GID:      uint64(nodes[idx].GetGid()),
+			Links:    nodes[idx].GetLinks(),
 			Type:     NodeType(nodes[idx].GetType()),
 		}
 	}

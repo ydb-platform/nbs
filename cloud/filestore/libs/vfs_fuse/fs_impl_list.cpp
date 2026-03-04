@@ -142,6 +142,11 @@ void TFileSystem::ReadDir(
                 << " ResetAttrTimeout error: " << FormatError(error).Quote());
         }
 
+        //
+        // Returning success to the guest but tracking the error (if any) in our
+        // metrics.
+        //
+
         fs.ReplyBuf(*callContext, error, req, c.Data(), c.Size());
     };
 

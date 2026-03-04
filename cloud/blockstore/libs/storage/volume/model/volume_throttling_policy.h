@@ -46,15 +46,6 @@ class TVolumeThrottlingPolicy final
     : public ITabletThrottlerPolicy
 {
 public:
-    enum class EOpType
-    {
-        Read,
-        Write,
-        Zero,
-        Describe,
-        Last = Describe,
-    };
-
     struct TSplittedUsedQuota {
         double Iops = 0;
         double Bandwidth = 0;
@@ -124,8 +115,8 @@ public:
     NProto::TVolumePerformanceProfile GetCurrentPerformanceProfile() const;
 
     // the following funcs were made public to display the results on monpages
-    ui64 C1(EOpType opType) const;
-    ui64 C2(EOpType opType) const;
+    ui64 C1(EVolumeThrottlingOpType opType) const;
+    ui64 C2(EVolumeThrottlingOpType opType) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

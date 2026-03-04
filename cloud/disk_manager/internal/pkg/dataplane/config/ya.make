@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/disk_manager/internal/pkg/dataplane/filesystem/config
     cloud/disk_manager/internal/pkg/dataplane/snapshot/config
 )
 

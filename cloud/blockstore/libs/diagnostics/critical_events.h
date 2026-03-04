@@ -137,6 +137,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(InflightRequestInvariantViolation)                                     \
     xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
+    xxx(OverlappingRequestsDetected)                                           \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -11,16 +11,16 @@ import (
 type NodeQueueEntry struct {
 	NodeID uint64
 	Cookie string
-	Depth  uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type Storage interface {
-	// Saves the root node to the directory listing queue.
-	ScheduleRootNodeForListing(
+	// Saves the subtree root directory to the directory listing queue.
+	SchedulerDirectoryForTraversal(
 		ctx context.Context,
 		snapshotID string,
+		nodeID uint64,
 	) error
 
 	// Selects nodes to be listed from the directory listing queue.
@@ -37,7 +37,6 @@ type Storage interface {
 		snapshotID string,
 		parentNodeID uint64,
 		nextCookie string,
-		depth uint64,
 		children []nfs.Node,
 	) error
 }

@@ -1155,7 +1155,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         NProto::TStorageConfig config;
         TTestEnv env{{}, config};
         env.GetStorageConfig()->SetFeaturesConfig(
-            std::make_shared<NFeatures::TFeaturesConfig>(featuresConfigProto));
+            NFeatures::TFeaturesConfig(featuresConfigProto));
 
         ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);

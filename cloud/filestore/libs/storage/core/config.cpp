@@ -572,7 +572,7 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
 ////////////////////////////////////////////////////////////////////////////////
 
 void TStorageConfig::SetFeaturesConfig(
-    NFeatures::TFeaturesConfigPtr featuresConfig)
+    NFeatures::TFeaturesConfig featuresConfig)
 {
     FeaturesConfig = std::move(featuresConfig);
 }
@@ -582,10 +582,6 @@ void TStorageConfig::SetCloudFolderEntity(
     const TString& folderId,
     const TString& entityId)
 {
-    if (!FeaturesConfig) {
-        return;
-    }
-
     const google::protobuf::Descriptor* descriptor =
         ProtoConfig.GetDescriptor();
     const auto* reflection = ProtoConfig.GetReflection();
@@ -598,7 +594,7 @@ void TStorageConfig::SetCloudFolderEntity(
         {
             const auto& name = field->name();
             if (FeaturesConfig
-                    ->IsFeatureEnabled(cloudId, folderId, entityId, name))
+                    .IsFeatureEnabled(cloudId, folderId, entityId, name))
             {
                 reflection->SetBool(&ProtoConfig, field, true);
             }

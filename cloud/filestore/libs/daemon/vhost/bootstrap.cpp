@@ -130,7 +130,8 @@ public:
     bool AddEndpoint(
         const TString& name,
         const NProto::TClientConfig& config,
-        NDaemon::EServiceKind kind)
+        NDaemon::EServiceKind kind,
+        bool usePermanentActor)
     {
         auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
         IFileStoreServicePtr fileStore;
@@ -141,7 +142,8 @@ public:
             }
 
             case NDaemon::EServiceKind::Kikimr: {
-                fileStore = CreateKikimrFileStore(ActorSystem);
+                fileStore =
+                    CreateKikimrFileStore(ActorSystem, usePermanentActor);
                 break;
             }
 
@@ -393,7 +395,8 @@ void TBootstrapVhost::InitEndpoints()
         bool inserted = endpoints->AddEndpoint(
             endpoint.GetName(),
             endpoint.GetClientConfig(),
-            Configs->Options->Service);
+            Configs->Options->Service,
+            Configs->AppConfig.GetVhostServiceConfig().GetUsePermanentActor());
 
         if (inserted) {
             STORAGE_INFO("configured endpoint type %s -> %s",

@@ -71,6 +71,7 @@ func (t *scrubFilesystemTask) Run(
 		t.config.GetTraversalConfig(),
 		rootNodeAlreadyScheduled,
 		t.config.GetListNodesMaxBytes(),
+		nfs.RootNodeID,
 	)
 
 	return traverser.Traverse(ctx, func(

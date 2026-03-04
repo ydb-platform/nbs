@@ -629,9 +629,7 @@ private:
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 
-    void UpdateDelayCounter(
-        TVolumeThrottlingPolicy::EOpType opType,
-        TDuration time);
+    void UpdateDelayCounter(EVolumeThrottlingOpType opType, TDuration time);
 
     void ResetServicePipes(const NActors::TActorContext& ctx);
 

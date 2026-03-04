@@ -27,7 +27,6 @@ func Create(
 			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("cookie", persistence.Optional(persistence.TypeString)),
-			persistence.WithColumn("depth", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),
 		dropUnusedColumns,

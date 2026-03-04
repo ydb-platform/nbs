@@ -28,10 +28,11 @@ func NewStorage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) scheduleRootNodeForListing(
+func (s *storageYDB) schedulerDirectoryForTraversal(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
+	nodeID uint64,
 ) error {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -44,17 +45,15 @@ func (s *storageYDB) scheduleRootNodeForListing(
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
-		declare $root_node_id as Uint64;
+		declare $node_id as Uint64;
 		declare $cookie as String;
-		declare $depth as Uint64;
 
-		upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie, depth)
-		values ($snapshot_id, $root_node_id, $cookie, $depth)
+		upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie)
+		values ($snapshot_id, $node_id, $cookie)
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$root_node_id", persistence.Uint64Value(nfs.RootNodeID)),
+		persistence.ValueParam("$node_id", persistence.Uint64Value(nodeID)),
 		persistence.ValueParam("$cookie", persistence.StringValue([]byte(""))),
-		persistence.ValueParam("$depth", persistence.Uint64Value(0)),
 	)
 	if err != nil {
 		return err
@@ -91,7 +90,7 @@ func (s *storageYDB) selectNodesToList(
 		declare $limit as Uint64;
 		declare $exclude_node_ids as List<Uint64>;
 
-		select node_id, cookie, depth
+		select node_id, cookie
 		from directory_listing_queue
 		where filesystem_snapshot_id = $snapshot_id
 			and node_id not in $exclude_node_ids
@@ -114,7 +113,6 @@ func (s *storageYDB) selectNodesToList(
 			err = res.ScanNamed(
 				persistence.OptionalWithDefault("node_id", &entry.NodeID),
 				persistence.OptionalWithDefault("cookie", &cookie),
-				persistence.OptionalWithDefault("depth", &entry.Depth),
 			)
 			if err != nil {
 				return nil, err
@@ -134,7 +132,6 @@ func (s *storageYDB) scheduleChildNodesForListing(
 	snapshotID string,
 	parentNodeID uint64,
 	nextCookie string,
-	depth uint64,
 	children []nfs.Node,
 ) error {
 
@@ -167,15 +164,13 @@ func (s *storageYDB) scheduleChildNodesForListing(
 			declare $snapshot_id as Utf8;
 			declare $node_id as Uint64;
 			declare $cookie as String;
-			declare $depth as Uint64;
 
-			upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie, depth)
-			values ($snapshot_id, $node_id, $cookie, $depth)
+			upsert into directory_listing_queue (filesystem_snapshot_id, node_id, cookie)
+			values ($snapshot_id, $node_id, $cookie)
 		`, s.tablesPath),
 			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
 			persistence.ValueParam("$node_id", persistence.Uint64Value(parentNodeID)),
 			persistence.ValueParam("$cookie", persistence.StringValue([]byte(nextCookie))),
-			persistence.ValueParam("$depth", persistence.Uint64Value(depth)),
 		)
 	}
 	if err != nil {
@@ -183,14 +178,12 @@ func (s *storageYDB) scheduleChildNodesForListing(
 	}
 
 	if len(children) > 0 {
-		childDepth := depth + 1
 		childEntries := make([]persistence.Value, 0, len(children))
 		for _, child := range children {
 			childEntries = append(childEntries, persistence.StructValue(
 				persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
 				persistence.StructFieldValue("node_id", persistence.Uint64Value(child.NodeID)),
 				persistence.StructFieldValue("cookie", persistence.StringValue([]byte(""))),
-				persistence.StructFieldValue("depth", persistence.Uint64Value(childDepth)),
 			))
 		}
 
@@ -201,7 +194,6 @@ func (s *storageYDB) scheduleChildNodesForListing(
 				filesystem_snapshot_id: Utf8,
 				node_id: Uint64,
 				cookie: String,
-				depth: Uint64
 			>>;
 
 			upsert into directory_listing_queue
@@ -219,15 +211,21 @@ func (s *storageYDB) scheduleChildNodesForListing(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) ScheduleRootNodeForListing(
+func (s *storageYDB) SchedulerDirectoryForTraversal(
 	ctx context.Context,
 	snapshotID string,
+	nodeID uint64,
 ) (err error) {
 
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			err = s.scheduleRootNodeForListing(ctx, session, snapshotID)
+			err = s.schedulerDirectoryForTraversal(
+				ctx,
+				session,
+				snapshotID,
+				nodeID,
+			)
 			return err
 		},
 	)
@@ -262,12 +260,9 @@ func (s *storageYDB) ScheduleChildNodesForListing(
 	snapshotID string,
 	parentNodeID uint64,
 	nextCookie string,
-	depth uint64,
 	children []nfs.Node,
 ) error {
 
-	// Depth is required for filesystem snapshot restoration.
-	// Child inodes can not be created without creating parent directories first.
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
@@ -277,7 +272,6 @@ func (s *storageYDB) ScheduleChildNodesForListing(
 				snapshotID,
 				parentNodeID,
 				nextCookie,
-				depth,
 				children,
 			)
 		},

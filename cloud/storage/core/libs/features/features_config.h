@@ -27,8 +27,6 @@ class TFeaturesConfig
     };
 
 private:
-    const NProto::TFeaturesConfig Config;
-
     THashMap<TString, TFeatureInfo> Features;
 
 public:

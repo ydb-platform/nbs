@@ -54,12 +54,11 @@ func Create(
 		"node_refs",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("depth", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("parent_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("name", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("child_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("node_type", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "depth", "parent_node_id", "name"),
+			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "parent_node_id", "name"),
 		),
 		dropUnusedColumns,
 	)
@@ -82,6 +81,7 @@ func Create(
 			persistence.WithColumn("mtime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("ctime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("links", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("symlink_target", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),
