@@ -783,19 +783,16 @@ public:
                 *TotalDownDisksCounter = totalDownDisks;
             }
 
-            // Two-phase set to combine counters instead of ovewrite them (and
-            // hide prev value) in case of some NProto::EStorageMediaKind
+            // Two-phase set to combine counters instead of overwriting them
+            // (and hide prev value) in case of some NProto::EStorageMediaKind
             // attached to a single DownDisksCounters (e.g. HYBRID attached to
             // HDD counters, see MediaKindToStatsString())
 
-            std::ranges::for_each(
-                DownDisksCounters,
-                [](TDynamicCounters::TCounterPtr& c)
-                {
-                    if (c) {
-                        *c = 0;
-                    }
-                });
+            for (auto& c: DownDisksCounters) {
+                if (c) {
+                    *c = 0;
+                }
+            }
 
             for (int mk = NProto::EStorageMediaKind_MIN;
                  mk < NProto::EStorageMediaKind_ARRAYSIZE;
