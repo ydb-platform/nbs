@@ -32,14 +32,16 @@ func (s *session) CreateCheckpoint(
 	nodeID uint64,
 ) error {
 
-	return s.nfs.CreateCheckpoint(
-		ctx,
-		s.session,
-		filesystemID,
-		&nfs_client.CreateCheckpointOpts{
-			CheckpointID: checkpointID,
-			NodeID:       nodeID,
-		},
+	return wrapError(
+		s.nfs.CreateCheckpoint(
+			ctx,
+			s.session,
+			filesystemID,
+			&nfs_client.CreateCheckpointOpts{
+				CheckpointID: checkpointID,
+				NodeID:       nodeID,
+			},
+		),
 	)
 }
 
