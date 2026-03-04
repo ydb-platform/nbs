@@ -245,6 +245,81 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             FormatError(error));
     }
 
+    Y_UNIT_TEST(ShouldHandleIncompleteEntry)
+    {
+        const ui64 size = 4_KB;
+        const ui64 attrTimeout = 15;
+        const ui64 entryTimeout = 10;
+        const ui32 preferredBlockSize = 4_KB;
+        const size_t offset = 0;
+        fuse_req_t req = nullptr;
+
+        TDirectoryBuilder builder(size);
+
+        {
+            fuse_entry_param entry = {
+                .ino = 10001,
+                .attr_timeout = attrTimeout,
+                .entry_timeout = entryTimeout,
+            };
+
+            NProto::TNodeAttr attr;
+            attr.SetId(10001);
+            attr.SetType(NProto::E_REGULAR_NODE);
+            attr.SetSize(10_KB);
+            ConvertAttr(preferredBlockSize, attr, entry.attr);
+
+            builder.Add(req, "some-long-name", entry, offset);
+        }
+
+        {
+            fuse_entry_param entry = {
+                .ino = 10002,
+                .attr_timeout = attrTimeout,
+                .entry_timeout = entryTimeout,
+            };
+
+            NProto::TNodeAttr attr;
+            attr.SetId(10002);
+            attr.SetType(NProto::E_REGULAR_NODE);
+            attr.SetSize(10_KB);
+            ConvertAttr(preferredBlockSize, attr, entry.attr);
+
+            builder.Add(req, "some-long-name2", entry, offset);
+        }
+
+        auto buffer = builder.Finish();
+
+        //
+        // Butchering the name of the last inode.
+        //
+
+        buffer->Resize(buffer->Size() - 10);
+
+        TVector<ui64> seenInos;
+
+        auto error = ResetAttrTimeout(
+            buffer->Data(),
+            buffer->Size(),
+            [&] (ui64 ino) {
+                seenInos.push_back(ino);
+                return true;
+            });
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            error.GetCode(),
+            FormatError(error));
+
+        //
+        // inode 10002 should still be processed even though the corresponding
+        // dirent is incomplete - we don't see the full name but that's ok.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(2, seenInos.size());
+        UNIT_ASSERT_VALUES_EQUAL(10001, seenInos[0]);
+        UNIT_ASSERT_VALUES_EQUAL(10002, seenInos[1]);
+    }
+
     Y_UNIT_TEST(ShouldDetectGarbage)
     {
         TString garbage(200, 0);

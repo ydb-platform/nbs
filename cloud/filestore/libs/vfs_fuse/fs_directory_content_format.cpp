@@ -97,8 +97,7 @@ NProto::TError ResetAttrTimeout(
             }
         }
 
-        const ui64 fullSize =
-            FUSE_DIRENT_ALIGN(FUSE_NAME_OFFSET_DIRENTPLUS + de->dirent.namelen);
+        const ui64 fullSize = FUSE_DIRENTPLUS_SIZE(de);
 
         if (remainingLen < fullSize) {
             //
