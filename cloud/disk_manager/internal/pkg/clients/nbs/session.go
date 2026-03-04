@@ -38,7 +38,7 @@ type Session struct {
 	mutex            sync.RWMutex
 	client           *nbs_client.Client
 	session          *nbs_client.Session
-	metrics          *sessionMetrics
+	metrics          *clientMetrics
 	volume           *protos.TVolume
 	cancelRediscover func()
 }
