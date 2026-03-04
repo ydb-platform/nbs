@@ -1,8 +1,8 @@
 #pragma once
 
-#include "part_mirror_split_request_helpers.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/libs/common/split_request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>

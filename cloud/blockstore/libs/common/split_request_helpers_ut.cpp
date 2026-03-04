@@ -1,19 +1,13 @@
-#include "part_mirror_split_request_helpers.h"
+#include "split_request_helpers.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/bitmap.h>
+
 namespace NCloud::NBlockStore::NStorage {
-
-using namespace NActors;
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-TActorId MakeActorId(ui32 num)
-{
-    return TActorId(num, num, num, num);
-}
 
 TSgList MergeSglist(const TSgList& sglist)
 {
@@ -260,10 +254,6 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             TBlockRange64::WithLength(0, 3),
         };
 
-        TVector<TVector<TActorId>> actorsForEachRequests{
-            {MakeActorId(0), MakeActorId(1)},
-        };
-
         guardedSglist.Close();
 
         auto splitRequestOrError =
@@ -352,5 +342,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             mergedResponse.GetError().GetMessage());
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage
