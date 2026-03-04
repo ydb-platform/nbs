@@ -36,7 +36,7 @@ NCloud::NProto::TError TUtils::ValidateReadDataRequest(
             if (iovec.GetLength() == 0) {
                 return MakeError(
                     E_ARGUMENT,
-                    "WriteData request contains an Iovec with zero length");
+                    "ReadData request contains an Iovec with zero length");
             }
             totalLength += iovec.GetLength();
         }
