@@ -42,10 +42,9 @@ struct TTabletSetup
 
         Env.UpdateStorageConfig(std::move(storageConfig));
 
-        Env.CreateSubDomain("nfs");
         Env.GetRuntime().SetDispatchedEventsLimit(Max<ui64>());
 
-        ui32 nodeIdx = Env.CreateNode("nfs");
+        ui32 nodeIdx = Env.AddDynamicNode();
         ui64 tabletId = Env.BootIndexTablet(nodeIdx);
 
         TabletClient = std::make_unique<TIndexTabletClient>(
@@ -63,6 +62,14 @@ struct TTabletSetup
         TabletClient->WriteData(Handle, 0, FileSize, '1');
     }
 
+    ~TTabletSetup()
+    {
+        // HACK(svartmetal): awful hack to prevent a crash in 'verify' during
+        // process cleanup:
+        // https://github.com/ydb-platform/nbs/blob/6db376dbf3642aa2d869b67801fbdd929a799731/contrib/ydb/library/actors/util/local_process_key.h#L134
+        _exit(0);
+    }
+
     void DescribeData(ui64 offset, ui64 length)
     {
         auto response = TabletClient->DescribeData(Handle, offset, length);
@@ -72,7 +79,8 @@ struct TTabletSetup
 
 TTabletSetup* GetOrCreateTablet()
 {
-    // Ensure this singleton is destroyed first to avoid a crash
+    // Ensure this singleton is destroyed before any other singletons or static
+    // variables to avoid a crash
     constexpr ui64 Priority = Max<ui64>();
     return SingletonWithPriority<TTabletSetup, Priority>();
 }
