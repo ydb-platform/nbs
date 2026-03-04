@@ -207,8 +207,8 @@ public:
         return Standard.CalculateCurrentSpentBudgetShare(ts);
     }
 
-    double GetCurrentSpentBudgetShare() {
-        return Standard.GetCurrentSpentBudgetShare();
+    double TakeUsedQuotaShare() {
+        return Standard.TakeUsedQuotaShare();
     }
 
     TDuration GetCurrentBoostBudget() const {
