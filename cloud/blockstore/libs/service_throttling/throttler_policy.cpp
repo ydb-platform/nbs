@@ -75,6 +75,11 @@ public:
     {
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
     }
+
+    double GetCurrentSpentBudgetShare() override
+    {
+        return Bucket.GetCurrentSpentBudgetShare();
+    }
 };
 
 }   // namespace

@@ -126,6 +126,11 @@ struct TTestThrottlerPolicy final
 
         return 0.0;
     }
+
+    double GetCurrentSpentBudgetShare() override
+    {
+        return 0.0;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

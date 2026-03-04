@@ -24,6 +24,8 @@ private:
 
     TState State;
 
+    double UsedQuota = 0;
+
 public:
     TLeakyBucket(
             double rate,
@@ -44,6 +46,8 @@ public:
         }
 
         State.LastUpdateTs = ts;
+
+        UsedQuota += update;
 
         if (State.Budget + 1e-10 >= update) {
             State.Budget = Min(
@@ -86,6 +90,13 @@ public:
                     BurstRate);
         }
         return (BurstRate - currentBudget) / BurstRate;
+    }
+
+    double GetCurrentSpentBudgetShare()
+    {
+        auto usedQuota = UsedQuota;
+        UsedQuota = 0;
+        return Min(usedQuota / BurstRate, 1.0);
     }
 };
 
@@ -188,6 +199,10 @@ public:
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const {
         return Standard.CalculateCurrentSpentBudgetShare(ts);
+    }
+
+    double GetCurrentSpentBudgetShare() {
+        return Standard.GetCurrentSpentBudgetShare();
     }
 
     TDuration GetCurrentBoostBudget() const {

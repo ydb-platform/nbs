@@ -23,12 +23,20 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
             TDuration::MicroSeconds(update)                                    \
         )                                                                      \
 // REG_AND_CHECK_D
-#define GET_SHARE_AND_CHECK(currentShare, nowMcs)                              \
+#define CALC_SHARE_AND_CHECK(currentShare, nowMcs)                             \
         UNIT_ASSERT_VALUES_EQUAL(                                              \
             currentShare,                                                      \
             lb.CalculateCurrentSpentBudgetShare(TInstant::MicroSeconds(nowMcs))\
         );                                                                     \
+// CALC_SHARE_AND_CHECK
+#define GET_SHARE_AND_CHECK(currentShare)                                      \
+        UNIT_ASSERT_DOUBLES_EQUAL(                                             \
+            currentShare,                                                      \
+            lb.GetCurrentSpentBudgetShare(),                                   \
+            0.001                                                              \
+        );                                                                     \
 // GET_SHARE_AND_CHECK
+
 
     Y_UNIT_TEST(ShouldRegister)
     {
@@ -64,32 +72,93 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
     {
         TLeakyBucket lb(100, 200, 200);
 
-        GET_SHARE_AND_CHECK(0, 50'000);          // share = (200 - 200) / 200 = 0
+        CALC_SHARE_AND_CHECK(0, 50'000);          // share = (200 - 200) / 200 = 0
         REG_AND_CHECK(0, 100'000, 110);          // budget = 200 - 110 = 90
-        GET_SHARE_AND_CHECK(0.5, 200'000);       // share = (200 - (90 + 0.1 * 100)) / 200 = 0.5
-        GET_SHARE_AND_CHECK(0.475, 250'000);     // share = (200 - (90 + 0.15 * 100)) / 200 = 0.475
+        CALC_SHARE_AND_CHECK(0.5, 200'000);       // share = (200 - (90 + 0.1 * 100)) / 200 = 0.5
+        CALC_SHARE_AND_CHECK(0.475, 250'000);     // share = (200 - (90 + 0.15 * 100)) / 200 = 0.475
         REG_AND_CHECK(0, 500'000, 70);           // budget = 90 + 0.4 * 100 - 70 = 60
-        GET_SHARE_AND_CHECK(0.575, 750'000);     // share = (200 - (60 + 0.25 * 100)) / 200 = 0.575
-        GET_SHARE_AND_CHECK(0, 1'900'000);       // share = (200 - (60 + 1.4 * 100)) / 200 = 0
+        CALC_SHARE_AND_CHECK(0.575, 750'000);     // share = (200 - (60 + 0.25 * 100)) / 200 = 0.575
+        CALC_SHARE_AND_CHECK(0, 1'900'000);       // share = (200 - (60 + 1.4 * 100)) / 200 = 0
         REG_AND_CHECK(0, 2'000'000, 200);        // budget = 60 + 1.4 * 100 - 200 = 0
-        GET_SHARE_AND_CHECK(1, 2'000'000);       // share = (200 - (0 + 0 * 100)) / 200 = 1
-        GET_SHARE_AND_CHECK(0.75, 2'500'000);    // share = (200 - (0 + 0.5 * 100)) = 0.75
+        CALC_SHARE_AND_CHECK(1, 2'000'000);       // share = (200 - (0 + 0 * 100)) / 200 = 1
+        CALC_SHARE_AND_CHECK(0.75, 2'500'000);    // share = (200 - (0 + 0.5 * 100)) = 0.75
     }
 
     Y_UNIT_TEST(ShouldSpentBudgetShareWithCustomInitialBudget)
     {
         TLeakyBucket lb(100, 200, 10);
 
-        GET_SHARE_AND_CHECK(0.95, 50'000);       // share = (200 - 10) / 200 = 0.95
+        CALC_SHARE_AND_CHECK(0.95, 50'000);       // share = (200 - 10) / 200 = 0.95
         REG_AND_CHECK(100, 100'000, 110);        // budget = 10
-        GET_SHARE_AND_CHECK(0.9, 200'000);       // share = (200 - (10 + 0.1 * 100)) / 200 = 0.9
-        GET_SHARE_AND_CHECK(0.875, 250'000);     // share = (200 - (10 + 0.15 * 100)) / 200 = 0.875
+        CALC_SHARE_AND_CHECK(0.9, 200'000);       // share = (200 - (10 + 0.1 * 100)) / 200 = 0.9
+        CALC_SHARE_AND_CHECK(0.875, 250'000);     // share = (200 - (10 + 0.15 * 100)) / 200 = 0.875
         REG_AND_CHECK(20, 500'000, 70);          // budget = 10 + 0.4 * 100 = 50
-        GET_SHARE_AND_CHECK(0.625, 750'000);     // share = (200 - (50 + 0.25 * 100)) / 200 = 0.625
-        GET_SHARE_AND_CHECK(0.05, 1'900'000);    // share = (200 - (50 + 1.4 * 100)) / 200 = 0.05
+        CALC_SHARE_AND_CHECK(0.625, 750'000);     // share = (200 - (50 + 0.25 * 100)) / 200 = 0.625
+        CALC_SHARE_AND_CHECK(0.05, 1'900'000);    // share = (200 - (50 + 1.4 * 100)) / 200 = 0.05
         REG_AND_CHECK(0, 2'000'000, 200);        // budget = 50 + 1.5 * 100 - 200 = 0
-        GET_SHARE_AND_CHECK(1.0, 2'000'000);     // share = (200 - (0 + 0 * 100)) / 200 = 1
-        GET_SHARE_AND_CHECK(0.75, 2'500'000);    // share = (200 - (0 + 0.5 * 100)) / 200 = 0.75
+        CALC_SHARE_AND_CHECK(1.0, 2'000'000);     // share = (200 - (0 + 0 * 100)) / 200 = 1
+        CALC_SHARE_AND_CHECK(0.75, 2'500'000);    // share = (200 - (0 + 0.5 * 100)) / 200 = 0.75
+    }
+
+    Y_UNIT_TEST(ShouldSpentBudgetShare2)
+    {
+        TLeakyBucket lb(100, 200, 200);
+
+        REG_AND_CHECK(0, 100'000, 110);
+        GET_SHARE_AND_CHECK(0.55);
+        REG_AND_CHECK(0, 500'000, 70);
+        GET_SHARE_AND_CHECK(0.35);
+        REG_AND_CHECK(0, 2'000'000, 200);
+        GET_SHARE_AND_CHECK(1);
+    }
+
+    Y_UNIT_TEST(ShouldSpentBudgetShareWithCustomInitialBudget2)
+    {
+        TLeakyBucket lb(100, 200, 10);
+
+        REG_AND_CHECK(100, 100'000, 110);
+        GET_SHARE_AND_CHECK(0.55);
+        REG_AND_CHECK(20, 500'000, 70);
+        GET_SHARE_AND_CHECK(0.35);
+        REG_AND_CHECK(0, 2'000'000, 200);
+        GET_SHARE_AND_CHECK(1.0);
+    }
+
+    Y_UNIT_TEST(ShouldSpentBudgetShareBoosted)
+    {
+        TBoostedTimeBucket lb(
+            TDuration::MilliSeconds(100),
+            11,
+            TDuration::Seconds(2),
+            TDuration::Seconds(20),
+            TDuration::Seconds(2)
+        );
+
+        GET_SHARE_AND_CHECK(0);
+        REG_AND_CHECK_D(0, 100'000, 110);
+        GET_SHARE_AND_CHECK(0.001);
+        REG_AND_CHECK_D(0, 500'000, 70);
+        GET_SHARE_AND_CHECK(0.001);
+        REG_AND_CHECK_D(0, 2'000'000, 200);
+        GET_SHARE_AND_CHECK(0.001);
+    }
+
+    Y_UNIT_TEST(ShouldSpentBudgetShareWithCustomInitialBudgetBoosted)
+    {
+        TBoostedTimeBucket lb(
+            TDuration::MilliSeconds(100),
+            11,
+            TDuration::Seconds(2),
+            TDuration::Seconds(20),
+            TDuration::Seconds(2)
+        );
+
+        REG_AND_CHECK_D(0, 100'000, 110);
+        GET_SHARE_AND_CHECK(0.001);
+        REG_AND_CHECK_D(0, 500'000, 70);
+        GET_SHARE_AND_CHECK(0.0007);
+        REG_AND_CHECK_D(0, 2'000'000, 200);
+        GET_SHARE_AND_CHECK(0.002);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateBoostedTimeBucket)
@@ -220,6 +289,7 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
 
 #undef REG_AND_CHECK
 #undef REG_AND_CHECK_D
+#undef CALC_SHARE_AND_CHECK
 #undef GET_SHARE_AND_CHECK
 #undef TEST_NO_BOOST
 }

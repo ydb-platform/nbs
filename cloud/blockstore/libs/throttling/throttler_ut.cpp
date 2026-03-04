@@ -139,6 +139,11 @@ public:
         return PostponeDelay.GetValue() / 1e6;
     }
 
+    double GetCurrentSpentBudgetShare() override
+    {
+        return 0.0;
+    }
+
     void SetPostponeDelay(TDuration delay)
     {
         PostponeDelay = delay;

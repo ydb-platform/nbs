@@ -17,6 +17,8 @@ struct IThrottlerPolicy
         size_t byteCount) = 0;
 
     virtual double CalculateCurrentSpentBudgetShare(TInstant ts) const = 0;
+
+    virtual double GetCurrentSpentBudgetShare() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
