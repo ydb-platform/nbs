@@ -21,12 +21,12 @@ struct TWriteDataPromiseCompletedEvent
 struct TWriteDataPromiseFailedEvent
 {
     NThreading::TPromise<NProto::TWriteDataResponse> Promise;
-    const NCloud::NProto::TError& Error;
+    NCloud::NProto::TError Error;
 
     void Invoke()
     {
         NProto::TWriteDataResponse response;
-        *response.MutableError() = Error;
+        *response.MutableError() = std::move(Error);
         Promise.SetValue(std::move(response));
     }
 };
@@ -44,11 +44,11 @@ struct TFlushOrReleasePromiseCompletedEvent
 struct TFlushOrReleasePromiseFailedEvent
 {
     NThreading::TPromise<NCloud::NProto::TError> Promise;
-    const NCloud::NProto::TError& Error;
+    NCloud::NProto::TError Error;
 
     void Invoke()
     {
-        Promise.SetValue(Error);
+        Promise.SetValue(std::move(Error));
     }
 };
 

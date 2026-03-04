@@ -16,7 +16,7 @@ namespace NCloud::NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static bool operator == (const NProto::TError& lhs, const NProto::TError& rhs)
+static bool operator == (const TError& lhs, const TError& rhs)
 {
     return lhs.GetCode() == rhs.GetCode() &&
         lhs.GetMessage() == rhs.GetMessage();
