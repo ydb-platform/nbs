@@ -574,7 +574,10 @@ public:
             clientId,
             instanceId);
 
-        return MountVolumeImpl(volume, itr->second, true);
+        return MountVolumeImpl(
+            volume,
+            itr->second,
+            true /* removeByInactivityTimeout */);
     }
 
     void UnmountVolumeImpl(const TString& diskId, const TString& clientId)
@@ -598,23 +601,23 @@ public:
             return;
         }
 
-        const auto& holder = infoIt->second;
+        auto volumeInfo = infoIt->second;
 
-        UnregisterInstance(holder->VolumeBase, holder->RealInstanceId);
+        UnregisterInstance(volumeInfo->VolumeBase, volumeInfo->RealInstanceId);
 
         std::erase_if(
             ClientToRealInstance,
-            [&holder](const auto& client)
+            [&volumeInfo](const auto& client)
             {
                 return TRealInstanceKeyEqual().operator()(
                     client.second,
-                    holder->RealInstanceId);
+                    volumeInfo->RealInstanceId);
             });
 
         infos.erase(infoIt);
 
         if (infos.empty()) {
-            UnregisterVolume(holder->VolumeBase);
+            UnregisterVolume(volumeInfo->VolumeBase);
             Volumes.erase(volumeIt);
         }
     }
