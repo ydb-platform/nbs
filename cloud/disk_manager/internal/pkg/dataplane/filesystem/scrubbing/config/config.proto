@@ -11,5 +11,5 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 message FilesystemScrubbingConfig {
     optional filesystem_traversal.FilesystemTraversalConfig TraversalConfig = 1;
     // default value 0 means no limit on the client size.
-    optional uint32 ListNodesMaxBytes = 2  [default = 4096];
+    optional uint32 ListNodesMaxBytes = 2 [default = 4096];
 }
