@@ -154,9 +154,9 @@ public:
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
     }
 
-    double GetCurrentSpentBudgetShare() override
+    double TakeUsedQuotaShare() override
     {
-        return Bucket.GetCurrentSpentBudgetShare();
+        return Bucket.TakeUsedQuotaShare();
     }
 };
 

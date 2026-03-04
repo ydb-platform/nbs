@@ -29,13 +29,13 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
             lb.CalculateCurrentSpentBudgetShare(TInstant::MicroSeconds(nowMcs))\
         );                                                                     \
 // CALC_SHARE_AND_CHECK
-#define GET_SHARE_AND_CHECK(currentShare)                                      \
+#define TAKE_USED_SHARE_AND_CHECK(currentShare)                                      \
         UNIT_ASSERT_DOUBLES_EQUAL(                                             \
             currentShare,                                                      \
-            lb.GetCurrentSpentBudgetShare(),                                   \
+            lb.TakeUsedQuotaShare(),                                   \
             0.001                                                              \
         );                                                                     \
-// GET_SHARE_AND_CHECK
+// TAKE_USED_SHARE_AND_CHECK
 
 
     Y_UNIT_TEST(ShouldRegister)
@@ -100,28 +100,28 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
         CALC_SHARE_AND_CHECK(0.75, 2'500'000);    // share = (200 - (0 + 0.5 * 100)) / 200 = 0.75
     }
 
-    Y_UNIT_TEST(ShouldSpentBudgetShare2)
+    Y_UNIT_TEST(ShouldTakeUsedQuotaShare)
     {
         TLeakyBucket lb(100, 200, 200);
 
         REG_AND_CHECK(0, 100'000, 110);
-        GET_SHARE_AND_CHECK(0.55);
+        TAKE_USED_SHARE_AND_CHECK(0.55);
         REG_AND_CHECK(0, 500'000, 70);
-        GET_SHARE_AND_CHECK(0.35);
+        TAKE_USED_SHARE_AND_CHECK(0.35);
         REG_AND_CHECK(0, 2'000'000, 200);
-        GET_SHARE_AND_CHECK(1);
+        TAKE_USED_SHARE_AND_CHECK(1);
     }
 
-    Y_UNIT_TEST(ShouldSpentBudgetShareWithCustomInitialBudget2)
+    Y_UNIT_TEST(ShouldTakeUsedQuotaShareWithCustomInitialBudget)
     {
         TLeakyBucket lb(100, 200, 10);
 
         REG_AND_CHECK(100, 100'000, 110);
-        GET_SHARE_AND_CHECK(0.55);
+        TAKE_USED_SHARE_AND_CHECK(0.55);
         REG_AND_CHECK(20, 500'000, 70);
-        GET_SHARE_AND_CHECK(0.35);
+        TAKE_USED_SHARE_AND_CHECK(0.35);
         REG_AND_CHECK(0, 2'000'000, 200);
-        GET_SHARE_AND_CHECK(1.0);
+        TAKE_USED_SHARE_AND_CHECK(1.0);
     }
 
     Y_UNIT_TEST(ShouldSpentBudgetShareBoosted)
@@ -134,13 +134,13 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
             TDuration::Seconds(2)
         );
 
-        GET_SHARE_AND_CHECK(0);
+        TAKE_USED_SHARE_AND_CHECK(0);
         REG_AND_CHECK_D(0, 100'000, 110);
-        GET_SHARE_AND_CHECK(0.55);
+        TAKE_USED_SHARE_AND_CHECK(0.55);
         REG_AND_CHECK_D(0, 500'000, 70);
-        GET_SHARE_AND_CHECK(0.35);
+        TAKE_USED_SHARE_AND_CHECK(0.35);
         REG_AND_CHECK_D(0, 2'000'000, 200);
-        GET_SHARE_AND_CHECK(1.0);
+        TAKE_USED_SHARE_AND_CHECK(1.0);
     }
 
     Y_UNIT_TEST(ShouldSpentBudgetShareWithCustomInitialBudgetBoosted)
@@ -154,11 +154,11 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
         );
 
         REG_AND_CHECK_D(0, 100'000, 110);
-        GET_SHARE_AND_CHECK(0.55);
+        TAKE_USED_SHARE_AND_CHECK(0.55);
         REG_AND_CHECK_D(0, 500'000, 70);
-        GET_SHARE_AND_CHECK(0.35);
+        TAKE_USED_SHARE_AND_CHECK(0.35);
         REG_AND_CHECK_D(0, 2'000'000, 200);
-        GET_SHARE_AND_CHECK(1.0);
+        TAKE_USED_SHARE_AND_CHECK(1.0);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateBoostedTimeBucket)
@@ -290,7 +290,7 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
 #undef REG_AND_CHECK
 #undef REG_AND_CHECK_D
 #undef CALC_SHARE_AND_CHECK
-#undef GET_SHARE_AND_CHECK
+#undef TAKE_USED_SHARE_AND_CHECK
 #undef TEST_NO_BOOST
 }
 

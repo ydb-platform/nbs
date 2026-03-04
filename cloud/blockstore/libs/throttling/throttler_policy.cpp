@@ -31,7 +31,7 @@ public:
         return 0.0;
     }
 
-    double GetCurrentSpentBudgetShare() override
+    double TakeUsedQuotaShare() override
     {
         return 0.0;
     }

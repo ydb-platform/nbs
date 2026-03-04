@@ -47,13 +47,13 @@ public:
 
         State.LastUpdateTs = ts;
 
-        UsedQuota += update;
-
         if (State.Budget + 1e-10 >= update) {
             State.Budget = Min(
                 Max(0., BurstRate - update),
                 State.Budget - update
             );
+
+            UsedQuota += update;
 
             return 0;
         }
@@ -92,7 +92,13 @@ public:
         return (BurstRate - currentBudget) / BurstRate;
     }
 
-    double GetCurrentSpentBudgetShare()
+    // Must be called once per BurstRate.
+    // If the user writes data at a relatively low speed, the
+    // CalculateCurrentSpentBudgetShare function will not show that the quota
+    // has been spent, as the budget will have time to recover. The
+    // TakeUsedQuotaShare function returns the entire used quota for the period
+    // between calls
+    double TakeUsedQuotaShare()
     {
         auto usedQuota = UsedQuota;
         UsedQuota = 0;

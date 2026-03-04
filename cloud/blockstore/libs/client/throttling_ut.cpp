@@ -62,7 +62,7 @@ struct TTestThrottlerPolicy: IThrottlerPolicy
         return PostponeTimeout.GetValue() / 1e6;
     }
 
-    double GetCurrentSpentBudgetShare() override
+    double TakeUsedQuotaShare() override
     {
         return 0.0;
     }
