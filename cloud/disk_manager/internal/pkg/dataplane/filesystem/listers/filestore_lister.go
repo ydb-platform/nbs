@@ -15,7 +15,27 @@ type filestoreLister struct {
 	unsafe            bool
 }
 
-type FilestoreOpener struct {
+func (l *filestoreLister) ListNodes(
+	ctx context.Context,
+	nodeID uint64,
+	cookie string,
+) ([]nfs.Node, string, error) {
+	return l.session.ListNodes(
+		ctx,
+		nodeID,
+		cookie,
+		l.listNodesMaxBytes,
+		l.unsafe,
+	)
+}
+
+func (l *filestoreLister) Close(ctx context.Context) error {
+	return l.session.Close(ctx)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type filestoreOpener struct {
 	nfsClient         nfs.Client
 	listNodesMaxBytes uint32
 	readOnly          bool
@@ -27,8 +47,8 @@ func NewFilestoreOpener(
 	listNodesMaxBytes uint32,
 	readOnly bool,
 	unsafe bool,
-) *FilestoreOpener {
-	return &FilestoreOpener{
+) FilesystemOpener {
+	return &filestoreOpener{
 		nfsClient:         nfsClient,
 		listNodesMaxBytes: listNodesMaxBytes,
 		readOnly:          readOnly,
@@ -36,7 +56,7 @@ func NewFilestoreOpener(
 	}
 }
 
-func (o *FilestoreOpener) OpenFilesystem(
+func (o *filestoreOpener) OpenFilesystem(
 	ctx context.Context,
 	filesystemID string,
 	checkpointID string,
@@ -57,24 +77,4 @@ func (o *FilestoreOpener) OpenFilesystem(
 		readOnly:          o.readOnly,
 		unsafe:            o.unsafe,
 	}, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func (l *filestoreLister) ListNodes(
-	ctx context.Context,
-	nodeID uint64,
-	cookie string,
-) ([]nfs.Node, string, error) {
-	return l.session.ListNodes(
-		ctx,
-		nodeID,
-		cookie,
-		l.listNodesMaxBytes,
-		l.unsafe,
-	)
-}
-
-func (l *filestoreLister) Close(ctx context.Context) error {
-	return l.session.Close(ctx)
 }
