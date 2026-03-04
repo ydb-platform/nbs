@@ -1,6 +1,7 @@
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/facade)
 
 SET_APPEND(RECIPE_ARGS --nemesis)
+SET_APPEND(RECIPE_ARGS --allow-filestore-force-destroy)
 SET_APPEND(RECIPE_ARGS --filesystem-dataplane-enabled)
 SET_APPEND(RECIPE_ARGS --list-nodes-max-bytes=10000)
 SET_APPEND(RECIPE_ARGS --enable-list-nodes-logging)
