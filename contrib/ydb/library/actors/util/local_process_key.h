@@ -131,9 +131,8 @@ public:
 
     static size_t GetIndex(const EnumT key) {
         ui32 index = static_cast<ui32>(key);
-        const auto& enum2Index = Singleton<TEnum2Index>()->Enum2Index;
-        Y_ABORT_UNLESS(index < enum2Index.size());
-        return enum2Index[index];
+        Y_ABORT_UNLESS(index < Enum2Index.size());
+        return Enum2Index[index];
     }
 
 private:
@@ -154,8 +153,5 @@ private:
         return enum2Index;
     }
 
-    struct TEnum2Index
-    {
-        TVector<size_t> Enum2Index = RegisterAll();
-    };
+    inline static TVector<size_t> Enum2Index = RegisterAll();
 };
