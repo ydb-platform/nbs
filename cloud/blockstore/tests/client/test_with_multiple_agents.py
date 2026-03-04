@@ -386,6 +386,7 @@ def test_disk_agent_partial_suspend_cancellation(disk_type: DiskType):
     finally:
         env.cleanup_file_devices()
 
+
 @pytest.mark.parametrize("disk_type", [dt for dt in DiskType], ids=[dt.name for dt in DiskType])
 def test_disk_registry_state_integrity(disk_type: DiskType):
     env = TestWithMultipleAgents(agent_count=disk_type.value["agent_count"])
@@ -405,8 +406,6 @@ def test_disk_registry_state_integrity(disk_type: DiskType):
                              DEFAULT_BLOCK_COUNT_PER_DEVICE)
 
         assert client.ensure_disk_registry_state_integrity() == "\n"
-
-        device = test_client.stat_volume(DISK_ID)["Volume"].Devices[0]
 
         test_client.execute_DiskRegistryChangeState(
             Message="test",
