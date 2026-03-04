@@ -234,7 +234,9 @@ void TFileSystem::ReleaseImpl(
     request->SetHandle(handle);
     Session->DestroyHandle(callContext, std::move(request))
         .Subscribe(
-            [=, ptr = weak_from_this()](const auto& future)
+            [=,
+             writeBackCacheError = writeBackCacheError,
+             ptr = weak_from_this()](const auto& future)
             {
                 auto self = ptr.lock();
                 if (!self) {
