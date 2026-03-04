@@ -6,6 +6,12 @@ REQUIREMENTS(
     ram:16
 )
 
+PEERDIR(
+    cloud/disk_manager/internal/pkg/clients/nfs/mocks
+    cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/mocks
+    cloud/filestore/public/sdk/go/client
+)
+
 IF (RACE)
     SIZE(LARGE)
     TAG(ya:fat ya:force_sandbox ya:sandbox_coverage)

@@ -20,7 +20,7 @@ func (s *StorageMock) SchedulerDirectoryForTraversal(
 	nodeID uint64,
 ) error {
 
-	args := s.Called(ctx, snapshotID)
+	args := s.Called(ctx, snapshotID, nodeID)
 	return args.Error(0)
 }
 
