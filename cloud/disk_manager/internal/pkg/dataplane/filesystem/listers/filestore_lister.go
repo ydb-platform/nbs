@@ -9,7 +9,6 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type filestoreLister struct {
-	nfsClient         nfs.Client
 	session           nfs.Session
 	listNodesMaxBytes uint32
 	readOnly          bool
@@ -53,7 +52,6 @@ func (o *FilestoreOpener) OpenFilesystem(
 	}
 
 	return &filestoreLister{
-		nfsClient:         o.nfsClient,
 		session:           session,
 		listNodesMaxBytes: o.listNodesMaxBytes,
 		readOnly:          o.readOnly,
@@ -68,9 +66,8 @@ func (l *filestoreLister) ListNodes(
 	nodeID uint64,
 	cookie string,
 ) ([]nfs.Node, string, error) {
-	return l.nfsClient.ListNodes(
+	return l.session.ListNodes(
 		ctx,
-		l.session,
 		nodeID,
 		cookie,
 		l.listNodesMaxBytes,
@@ -79,5 +76,5 @@ func (l *filestoreLister) ListNodes(
 }
 
 func (l *filestoreLister) Close(ctx context.Context) error {
-	return l.nfsClient.DestroySession(ctx, l.session)
+	return l.session.Close(ctx)
 }
