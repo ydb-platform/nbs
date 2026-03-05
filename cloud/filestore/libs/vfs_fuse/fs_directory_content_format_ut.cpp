@@ -323,7 +323,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
     Y_UNIT_TEST(ShouldDetectGarbage)
     {
         TString garbage(200, 0);
-        for (ui32 i = 0; i < garbage.Size(); ++i) {
+        for (ui32 i = 0; i < garbage.size(); ++i) {
             garbage[i] = i;
         }
 
@@ -370,7 +370,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             for (ui32 i = 0; i < len; ++i) {
                 name << (i % 10);
             }
-            UNIT_ASSERT_VALUES_EQUAL(name.Size(), strlen(name.c_str()));
+            UNIT_ASSERT_VALUES_EQUAL(name.size(), strlen(name.c_str()));
             builder.Add(req, name, entry, offset);
         }
 
