@@ -1,6 +1,8 @@
 import json
 import xml.etree.ElementTree as ET
 
+import pytest
+
 from scripts.tests import transform_ya_junit as tyj
 
 
@@ -138,3 +140,79 @@ def test_transform_skips_malformed_chunk_name_without_crash(tmp_path):
     parsed_case = tree.getroot().find("./testsuite/testcase")
     assert parsed_case is not None
     assert parsed_case.find("properties") is None
+
+
+@pytest.mark.parametrize(
+    "suite_name,test_name,expected",
+    [
+        (
+            "cloud/filestore/tests/fio_index/mount-kikimr-test",
+            "any.test.name",
+            True,
+        ),
+        (
+            "cloud/storage/core/libs/kikimr/ut",
+            "TConfigInitializerTest.ShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores",
+            True,
+        ),
+        (
+            "cloud/storage/core/libs/kikimr/ut",
+            "TConfigInitializerTest.OtherTest",
+            False,
+        ),
+    ],
+)
+def test_ya_mute_check_loads_real_style_rules(tmp_path, suite_name, test_name, expected):
+    mute_file = tmp_path / "muted_ya.txt"
+    mute_file.write_text(
+        "\n".join(
+            [
+                "cloud/filestore/tests/fio_index/mount-kikimr-test *",
+                "cloud/storage/core/libs/kikimr/ut TConfigInitializerTest.ShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores",
+            ]
+        )
+    )
+
+    check = tyj.YaMuteCheck()
+    check.load(str(mute_file))
+
+    case = ET.Element("testcase", {"classname": suite_name, "name": test_name})
+    assert check(suite_name, test_name, case) is expected
+
+
+def test_ya_mute_check_ignores_invalid_config_lines(tmp_path):
+    mute_file = tmp_path / "muted_ya.txt"
+    mute_file.write_text(
+        "\n".join(
+            [
+                "invalid-line-without-test-name",
+                "cloud/filestore/tests/fio_index/mount-local-test *",
+            ]
+        )
+    )
+
+    check = tyj.YaMuteCheck()
+    check.load(str(mute_file))
+
+    # only one valid rule should be loaded
+    assert len(check.regexps) == 1
+
+
+def test_ya_mute_check_chunk_mode_requires_all_failed_subtests_match():
+    check = tyj.YaMuteCheck()
+    check.populate("cloud/storage/core/libs/kikimr/ut", "TConfigInitializerTest.*")
+
+    suite_name = "cloud/storage/core/libs/kikimr/ut"
+    test_name = "chunk [1/2]"
+    case = ET.Element("testcase", {"classname": suite_name, "name": test_name})
+    failure = ET.SubElement(case, "failure")
+    failure.text = (
+        "List of the tests involved in the launch:\n"
+        "  TConfigInitializerTest::ShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores duration: 0.1\n"
+        "  TConfigInitializerTest::AnotherCase duration: 0.1\n"
+    )
+
+    assert check(suite_name, test_name, case) is True
+
+    failure.text += "  OtherClass::NotMuted duration: 0.1\n"
+    assert check(suite_name, test_name, case) is False
