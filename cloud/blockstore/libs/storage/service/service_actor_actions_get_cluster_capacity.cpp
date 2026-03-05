@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 
@@ -26,12 +27,10 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER)
 
 namespace {
 
-TVector<std::pair<TString, NProto::EStorageMediaKind>> YdbPoolToStorageMediaKind
+THashMap<TString, NProto::EStorageMediaKind> YdbPoolToStorageMediaKind
 {
-    {"NBS:rot", NProto::STORAGE_MEDIA_HDD},
-    {"NBS:rotmirror", NProto::STORAGE_MEDIA_HDD},
-    {"NBS:ssd", NProto::STORAGE_MEDIA_SSD},
-    {"NBS:ssdmirror", NProto::STORAGE_MEDIA_SSD}
+    {"Type:ROT", NProto::STORAGE_MEDIA_HDD},
+    {"Type:SSD", NProto::STORAGE_MEDIA_SSD},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +58,7 @@ private:
         ui64 FreeBytes = 0;
     };
 
+    THashSet<TString> UsedPools;
     THashMap<NProto::EStorageMediaKind, TStoragePoolStats> Stats;
     THashMap<std::pair<ui64, ui64>, NProto::EStorageMediaKind> StorageIdToKind;
     THashMap<ui32, NProto::EStorageMediaKind> GroupIdToKind;
@@ -125,7 +125,25 @@ TGetClusterCapacityActor::TGetClusterCapacityActor(
         TStorageConfigPtr config)
     : RequestInfo(std::move(requestInfo))
     , Config(config)
-{}
+{
+    NProto::EStorageMediaKind kinds[] {
+        NProto::STORAGE_MEDIA_HDD,
+        NProto::STORAGE_MEDIA_SSD,
+        NProto::STORAGE_MEDIA_HYBRID
+    };
+
+    auto prefix = Config->GetSchemeShardDir() + ':';
+
+    for (auto kind: kinds) {
+        const auto pools = GetPoolKinds(*Config, kind, "", "", "");
+        UsedPools.emplace(prefix + pools.Fresh);
+        UsedPools.emplace(prefix + pools.Index);
+        UsedPools.emplace(prefix + pools.Log);
+        UsedPools.emplace(prefix + pools.Merged);
+        UsedPools.emplace(prefix + pools.Mixed);
+        UsedPools.emplace(prefix + pools.System);
+    }
+}
 
 void TGetClusterCapacityActor::Bootstrap(const TActorContext& ctx)
 {
@@ -254,9 +272,19 @@ void TGetClusterCapacityActor::HandleGetStoragePoolsResponse(
     for (const auto& storagePool: record.GetEntries()) {
         const auto& poolKey = storagePool.GetKey();
         const auto& poolInfo = storagePool.GetInfo();
-        auto it = FindIf(YdbPoolToStorageMediaKind, [&] (const auto& pool) {
-            return poolInfo.GetName().EndsWith(pool.first);
-        });
+
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Observed pool " <<
+            poolInfo.GetName() <<
+            " and PDisks " <<
+            poolInfo.GetPDiskFilter());
+
+        if (!UsedPools.contains(poolInfo.GetName())) {
+            continue;
+        }
+        auto it = YdbPoolToStorageMediaKind.find(poolInfo.GetPDiskFilter());
         if (it != YdbPoolToStorageMediaKind.end()) {
             const auto key = std::make_pair(
                 poolKey.GetBoxId(),
