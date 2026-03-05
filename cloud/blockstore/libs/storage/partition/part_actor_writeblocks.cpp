@@ -330,7 +330,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
             .CollectGarbageBarrierAcquired = msg->CollectGarbageBarrierAcquired,
             .AddingUnconfirmedBlobsRequested =
                 msg->AddingUnconfirmedBlobsRequested,
-            .FreshBlocksRequest = false,
+            .IsFreshBlocksRequest = false,
             .BlobsToConfirm = std::move(msg->BlobsToConfirm),
         });
 }
@@ -347,7 +347,7 @@ void TPartitionActor::HandleWriteFreshBlocksCompleted(
         msg->GetError(),
         *msg,
         {
-            .FreshBlocksRequest = true,
+            .IsFreshBlocksRequest = true,
         });
 }
 
@@ -414,7 +414,7 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
             TWellKnownEntityTypes::TABLET,
             TabletID());
         STORAGE_VERIFY(
-            !writeBlocksCompleted.FreshBlocksRequest,
+            !writeBlocksCompleted.IsFreshBlocksRequest,
             TWellKnownEntityTypes::TABLET,
             TabletID());
         // commit & garbage queue barriers will be released when confirmed
@@ -432,7 +432,7 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
             State->GetGarbageQueue().ReleaseBarrier(commitId);
         }
 
-        if (writeBlocksCompleted.FreshBlocksRequest && HasError(error)) {
+        if (writeBlocksCompleted.IsFreshBlocksRequest && HasError(error)) {
             State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
                 commitId,
                 blocksCount);

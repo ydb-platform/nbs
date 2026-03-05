@@ -124,8 +124,8 @@ void TPartitionActor::WriteFreshBlocks(
 
         auto actor = NCloud::Register<TWriteFreshBlocksActor>(
             ctx,
-            SelfId(),
-            SelfId(),
+            SelfId(),   // owner
+            SelfId(),   // actorToAddFreshBlocks
             commitId,
             channel,
             blockCount,
@@ -475,8 +475,8 @@ void TPartitionActor::ZeroFreshBlocks(
 
         auto actor = NCloud::Register<TWriteFreshBlocksActor>(
             ctx,
-            SelfId(),
-            SelfId(),
+            SelfId(),   // owner
+            SelfId(),   // actorToAddFreshBlocks
             commitId,
             channel,
             blockCount,

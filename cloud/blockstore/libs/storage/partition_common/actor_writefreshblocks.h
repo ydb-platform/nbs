@@ -94,26 +94,7 @@ private:
     template <typename TEvent>
     void NotifyCompleted(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<TEvent> ev)
-    {
-        ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
-        ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();
-        ev->CommitId = CommitId;
-        ev->AffectedBlockInfos = std::move(AffectedBlockInfos);
-
-        auto execTime = CyclesToDurationSafe(ev->ExecCycles);
-        auto waitTime =
-            CyclesToDurationSafe(Requests.front().RequestInfo->GetWaitCycles());
-
-        auto& counters = *ev->Stats.MutableUserWriteCounters();
-        counters.SetRequestsCount(Requests.size());
-        counters.SetBatchCount(1);
-        counters.SetBlocksCount(BlockCount);
-        counters.SetExecTime(execTime.MicroSeconds());
-        counters.SetWaitTime(waitTime.MicroSeconds());
-
-        NCloud::Send(ctx, Owner, std::move(ev));
-    }
+        std::unique_ptr<TEvent> ev);
 
     bool HandleError(
         const NActors::TActorContext& ctx,

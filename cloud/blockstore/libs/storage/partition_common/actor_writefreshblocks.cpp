@@ -181,7 +181,7 @@ void TWriteFreshBlocksActor::WriteBlob(const NActors::TActorContext& ctx)
 
 void TWriteFreshBlocksActor::AddBlocks(const NActors::TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(BlobSize > 0);
+    STORAGE_VERIFY(BlobSize > 0, TWellKnownEntityTypes::TABLET, TabletId);
 
     IEventBasePtr request =
         std::make_unique<TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>(
@@ -194,11 +194,35 @@ void TWriteFreshBlocksActor::AddBlocks(const NActors::TActorContext& ctx)
     NCloud::Send(ctx, ActorToAddFreshBlocks, std::move(request));
 }
 
+template <typename TEvent>
+void TWriteFreshBlocksActor::NotifyCompleted(
+    const NActors::TActorContext& ctx,
+    std::unique_ptr<TEvent> ev)
+{
+    ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
+    ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();
+    ev->CommitId = CommitId;
+    ev->AffectedBlockInfos = std::move(AffectedBlockInfos);
+
+    auto execTime = CyclesToDurationSafe(ev->ExecCycles);
+    auto waitTime =
+        CyclesToDurationSafe(Requests.front().RequestInfo->GetWaitCycles());
+
+    auto& counters = *ev->Stats.MutableUserWriteCounters();
+    counters.SetRequestsCount(Requests.size());
+    counters.SetBatchCount(1);
+    counters.SetBlocksCount(BlockCount);
+    counters.SetExecTime(execTime.MicroSeconds());
+    counters.SetWaitTime(waitTime.MicroSeconds());
+
+    NCloud::Send(ctx, Owner, std::move(ev));
+}
+
 bool TWriteFreshBlocksActor::HandleError(
     const NActors::TActorContext& ctx,
     const NProto::TError& error)
 {
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         ReplyAllAndDie(ctx, error);
         return true;
     }
@@ -209,7 +233,6 @@ void TWriteFreshBlocksActor::ReplyWrite(
     const NActors::TActorContext& ctx,
     const NProto::TError& error)
 {
-
     for (const auto& r: Requests) {
         IEventBasePtr response = CreateWriteBlocksResponse(
             r.RequestType == EFreshRequestType::WriteBlocksLocal,
@@ -229,7 +252,6 @@ void TWriteFreshBlocksActor::ReplyZero(
     const NActors::TActorContext& ctx,
     const NProto::TError& error)
 {
-
     for (const auto& r: Requests) {
         IEventBasePtr response =
             std::make_unique<TEvService::TEvZeroBlocksResponse>(error);

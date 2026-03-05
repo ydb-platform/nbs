@@ -694,10 +694,11 @@ private:
         const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    struct TWriteBlocksCompleted {
+    struct TWriteBlocksCompleted
+    {
         bool CollectGarbageBarrierAcquired;
         bool AddingUnconfirmedBlobsRequested;
-        bool FreshBlocksRequest;
+        bool IsFreshBlocksRequest;
         TVector<TBlobToConfirm> BlobsToConfirm;
     };
 
