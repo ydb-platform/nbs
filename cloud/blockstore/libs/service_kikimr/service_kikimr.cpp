@@ -1,7 +1,6 @@
 #include "service_kikimr.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -9,12 +8,16 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
+#include <cloud/storage/core/libs/actors/actor_pool.h>
+#include <cloud/storage/core/libs/actors/pooled_actor.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
 #include <util/datetime/base.h>
 
@@ -50,12 +53,15 @@ BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Per-request actor that sends a request into actor system and fulfills a
+// promise with the response. The actor can be reused for multiple requests.
+//
+// Warning: this object mostly behaves like a regular
+// actor, but c-tor and SendRequest() are called from vhost thread.
 template <typename T>
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<T>>
+class TRequestActor final : public IPooledActor<TRequestActor<T>>
 {
     using TThis = TRequestActor<T>;
-    using TBase = TActorBootstrapped<TThis>;
 
     using TRequest = typename T::TRequest;
     using TRequestProto = typename T::TRequestProto;
@@ -67,64 +73,76 @@ private:
     std::shared_ptr<TRequestProto> Request;
     TPromise<TResponseProto> Response;
     TCallContextPtr CallContext;
+    TDuration RequestTimeout;
+    TString DiskId;
 
-    const TDuration RequestTimeout;
-    const TString DiskId;
-
-    bool RequestCompleted = false;
+    ui64 SeqNumber = 0;
+    NActors::TSchedulerCookieHolder TimeoutCookie;
 
 public:
     static constexpr const char ActorName[] =
         "NCloud::NBlockStore::NServer::TRequestActor<T>";
 
 public:
-    TRequestActor(
-            std::shared_ptr<TRequestProto> request,
-            TPromise<TResponseProto> response,
-            TCallContextPtr callContext,
-            TDuration requestTimeout)
-        : Request(std::move(request))
-        , Response(std::move(response))
-        , CallContext(std::move(callContext))
-        , RequestTimeout(requestTimeout)
-        , DiskId(GetDiskId(*Request))
+    TRequestActor()
+        : IPooledActor<TRequestActor<T>>(&TThis::StateWork)
     {}
 
     ~TRequestActor() override
     {
-        if (!RequestCompleted) {
+        if (this->CurrentStateFunc() == &TThis::StateWork) {
             TResponseProto response;
 
             auto& error = *response.MutableError();
             error.SetCode(E_REJECTED);
+            error.SetMessage("Request actor destroyed");
 
             try {
                 Response.SetValue(std::move(response));
             } catch (...) {
-                // no way to log error message
+                LOG_WARN_S(
+                    *this->GetActorSystem(),
+                    TBlockStoreComponents::SERVICE_PROXY,
+                    TRequestInfo(T::Request, CallContext->RequestId, DiskId)
+                        << " Failed to set response value: "
+                        << CurrentExceptionMessage());
             }
-
-            RequestCompleted = true;
         }
     }
 
-    void Bootstrap(const TActorContext& ctx)
+    void Reset() override
     {
-        TThis::Become(&TThis::StateWork);
-
-        SendRequest(ctx);
+        this->Become(&TThis::StateSleep);
+        Request.reset();
+        Response = {};
+        CallContext.Reset();
+        RequestTimeout = TDuration::Zero();
+        DiskId.clear();
+        SeqNumber++;
+        TimeoutCookie.Detach();
     }
 
-private:
-    void SendRequest(const TActorContext& ctx)
+    void SendRequest(
+        std::shared_ptr<TRequestProto> requestProto,
+        TPromise<TResponseProto> response,
+        TCallContextPtr callContext,
+        TDuration requestTimeout)
     {
-        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
-            TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " sending request");
+        this->Become(&TThis::StateWork);
 
-        auto request = std::make_unique<TRequest>(
-            CallContext,
-            std::move(*Request));
+        Response = std::move(response);
+        CallContext = std::move(callContext);
+        RequestTimeout = requestTimeout;
+        DiskId = GetDiskId(*requestProto);
+
+        LOG_TRACE_S(
+            *this->GetActorSystem(),
+            TBlockStoreComponents::SERVICE_PROXY,
+            TRequestInfo(T::Request, CallContext->RequestId, DiskId)
+                << " sending request");
+
+        auto request =
+            std::make_unique<TRequest>(CallContext, std::move(*requestProto));
 
         LWTRACK(
             RequestSent_Proxy,
@@ -132,16 +150,29 @@ private:
             GetBlockStoreRequestName(T::Request),
             CallContext->RequestId);
 
-        NCloud::Send(
-            ctx,
-            MakeStorageServiceId(),
-            std::move(request));
+        this->GetActorSystem()->Send(
+            std::make_unique<IEventHandle>(
+                MakeStorageServiceId(),   // recipient
+                this->GetSelfId(),        // sender
+                request.release(),
+                0,   // flags
+                SeqNumber));
 
         if (RequestTimeout && RequestTimeout != TDuration::Max()) {
-            ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
+            TimeoutCookie.Reset(ISchedulerCookie::Make2Way());
+            this->GetActorSystem()->Schedule(
+                RequestTimeout,
+                std::make_unique<IEventHandle>(
+                    this->GetSelfId(),   // recipient
+                    this->GetSelfId(),   // sender
+                    new TEvents::TEvWakeup(),
+                    0,   // flags
+                    SeqNumber),
+                TimeoutCookie.Get());
         }
     }
 
+private:
     void CompleteRequest(const TActorContext& ctx, TResponseProto&& response)
     {
         try {
@@ -152,7 +183,7 @@ private:
                 << " exception in callback: " << CurrentExceptionMessage());
         }
 
-        RequestCompleted = true;
+        this->Become(&TThis::StateSleep);
     }
 
 private:
@@ -161,6 +192,23 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(TResponse, HandleResponse);
             HFunc(TEvents::TEvWakeup, HandleTimeout);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::SERVICE_PROXY,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+
+    STFUNC(StateSleep)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvents::TEvWakeup, HandleTimeout);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+            IgnoreFunc(TResponse);
 
             default:
                 HandleUnexpectedEvent(
@@ -175,6 +223,16 @@ private:
         const typename TResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != SeqNumber) {
+            LOG_WARN_S(
+                *this->GetActorSystem(),
+                TBlockStoreComponents::SERVICE_PROXY,
+                TRequestInfo(T::Request, CallContext->RequestId, DiskId)
+                    << " response received for wrong sequence number: "
+                    << ev->Cookie << ", expected: " << SeqNumber);
+            return;
+        }
+
         auto* msg = ev->Get();
 
         LWTRACK(
@@ -189,14 +247,25 @@ private:
 
         CompleteRequest(ctx, std::move(msg->Record));
 
-        TThis::Die(ctx);
+        this->WorkFinished(ctx);
     }
 
     void HandleTimeout(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
-        Y_UNUSED(ev);
+        // TimeoutCookie should guarantee that the wakeup event is for the
+        // correct sequence number
+        Y_DEBUG_ABORT_UNLESS(ev->Cookie == SeqNumber);
+        if (ev->Cookie != SeqNumber) {
+            LOG_WARN_S(
+                *this->GetActorSystem(),
+                TBlockStoreComponents::SERVICE_PROXY,
+                TRequestInfo(T::Request, CallContext->RequestId, DiskId)
+                    << " wakeup received for wrong sequence number: "
+                    << ev->Get()->Tag << ", expected: " << SeqNumber);
+            return;
+        }
 
         LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(T::Request, CallContext->RequestId, DiskId)
@@ -216,6 +285,14 @@ private:
 
         CompleteRequest(ctx, std::move(response));
 
+        this->WorkFinished(ctx);
+    }
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
         TThis::Die(ctx);
     }
 };
@@ -229,16 +306,62 @@ private:
     const IActorSystemPtr ActorSystem;
     const NProto::TKikimrServiceConfig Config;
 
+#define BLOCKSTORE_DECLARE_ACTOR_POOL(name, ...)                               \
+    TIntrusivePtr<TActorPool<TRequestActor<T##name##Method>>> name##ActorPool;
+
+    // BLOCKSTORE_DECLARE_ACTOR_POOL
+
+    BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_ACTOR_POOL)
+
+#undef BLOCKSTORE_DECLARE_ACTOR_POOL
+
+    ui32 GetPoolSize(EBlockStoreRequest request) const
+    {
+        switch (request) {
+            case EBlockStoreRequest::ReadBlocks:
+            case EBlockStoreRequest::WriteBlocks:
+            case EBlockStoreRequest::ZeroBlocks:
+            case EBlockStoreRequest::ReadBlocksLocal:
+            case EBlockStoreRequest::WriteBlocksLocal:
+                return Config.GetHotPoolSize();
+            default:
+                return Config.GetColdPoolSize();
+        }
+    }
+
 public:
     TKikimrService(
-            IActorSystemPtr actorSystem,
-            const NProto::TKikimrServiceConfig& config)
+        IActorSystemPtr actorSystem,
+        const NProto::TKikimrServiceConfig& config)
         : ActorSystem(std::move(actorSystem))
         , Config(config)
-    {}
+    {
+#define BLOCKSTORE_MAKE_ACTOR_POOL(name, ...)                                  \
+    name##ActorPool =                                                          \
+        MakeIntrusive<TActorPool<TRequestActor<T##name##Method>>>(             \
+            ActorSystem,                                                       \
+            GetPoolSize(T##name##Method::Request));
+
+        // BLOCKSTORE_MAKE_ACTOR_POOL
+
+        BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_MAKE_ACTOR_POOL)
+
+#undef BLOCKSTORE_MAKE_ACTOR_POOL
+    }
 
     void Start() override {}
-    void Stop() override {}
+
+    void Stop() override
+    {
+#define BLOCKSTORE_STOP_ACTOR_POOL(name, ...)                                  \
+        name##ActorPool->OnBeforeDestroy();
+
+        // BLOCKSTORE_STOP_ACTOR_POOL
+
+        BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_STOP_ACTOR_POOL)
+
+#undef BLOCKSTORE_STOP_ACTOR_POOL
+    }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -253,7 +376,8 @@ public:
     {                                                                          \
         auto response = NewPromise<NProto::T##name##Response>();               \
         ExecuteRequest<T##name##Method>(                                       \
-            std::move(ctx), std::move(request), response);                     \
+            std::move(ctx), std::move(request), response,                      \
+            name##ActorPool.Get());                                            \
         return response.GetFuture();                                           \
     }                                                                          \
 // BLOCKSTORE_IMPLEMENT_METHOD
@@ -280,20 +404,27 @@ public:
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
 private:
-    template <typename T>
+    template <typename TMethod>
     void ExecuteRequest(
         TCallContextPtr ctx,
-        std::shared_ptr<typename T::TRequestProto> request,
-        TPromise<typename T::TResponseProto> response)
+        std::shared_ptr<typename TMethod::TRequestProto> request,
+        TPromise<typename TMethod::TResponseProto> response,
+        TActorPool<TRequestActor<TMethod>>* pool)
     {
         const auto& headers = request->GetHeaders();
         auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
 
-        ActorSystem->Register(std::make_unique<TRequestActor<T>>(
+        auto* actor = pool->GetPooledActor();
+        if (!actor) {
+            response.SetValue(
+                TErrorResponse(E_REJECTED, "Failed to get actor from pool"));
+            return;
+        }
+        actor->SendRequest(
             std::move(request),
             std::move(response),
             std::move(ctx),
-            timeout));
+            timeout);
     }
 };
 
