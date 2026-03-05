@@ -113,6 +113,7 @@ void TIndexTabletActor::CompleteTx_ListNodeXAttr(
         response->Record.MutableNames()->Reserve(args.Attrs.size());
         for (const auto& attr: args.Attrs) {
             response->Record.AddNames(attr.Name);
+            response->Record.AddValues(attr.Value);
         }
     }
 
