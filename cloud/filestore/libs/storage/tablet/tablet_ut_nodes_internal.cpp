@@ -1468,7 +1468,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     }
 
     TABLET_TEST_4K_ONLY(
-        ShouldNotDeleteResponseLogEntryUponCommitRenameNodeInSourceWithError)
+        ShouldDeleteResponseLogEntryUponCommitRenameNodeInSourceWithError)
     {
         TTestEnv env;
 
@@ -1522,7 +1522,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         //
         // Calling CommitRenameNodeInSource for this node-ref and checking that
-        // the response-log-entry is not deleted for retriable errors.
+        // the response-log-entry is deleted even in case of errors.
         //
 
         {
@@ -1535,50 +1535,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
             *subResponse.MutableError() =
                 MakeError(E_REJECTED, "tablet is dead");
-
-            tablet.SendCommitRenameNodeInSourceRequest(
-                renameNodeRequest->Record,
-                subResponse,
-                opLogEntryId,
-                shardId,
-                tabletRequestId);
-
-            auto response = tablet.RecvCommitRenameNodeInSourceResponse();
-            UNIT_ASSERT_VALUES_EQUAL(
-                FormatError(subResponse.GetError()),
-                FormatError(response->GetError()));
-        }
-
-        {
-            auto response = tablet.GetResponseLogEntry(tabletId, 10);
-            UNIT_ASSERT_VALUES_EQUAL(
-                tabletId,
-                response->Record.GetEntry().GetClientTabletId());
-            UNIT_ASSERT_VALUES_EQUAL(
-                10,
-                response->Record.GetEntry().GetRequestId());
-            const auto& r = response->Record.GetEntry()
-                .GetRenameNodeInDestinationResponse();
-            UNIT_ASSERT_VALUES_EQUAL(shardId, r.GetOldTargetNodeShardId());
-            UNIT_ASSERT_VALUES_EQUAL(
-                shardNodeName,
-                r.GetOldTargetNodeShardNodeName());
-        }
-
-        //
-        // Calling CommitRenameNodeInSource for this node-ref and checking that
-        // the response-log-entry gets deleted for non-retriable errors.
-        //
-
-        {
-            auto renameNodeRequest = tablet.CreateRenameNodeRequest(
-                dir,
-                fileName,
-                dstDir,
-                fileName + ".new");
-
-            NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
-            *subResponse.MutableError() = MakeError(E_ARGUMENT);
 
             tablet.SendCommitRenameNodeInSourceRequest(
                 renameNodeRequest->Record,

@@ -177,6 +177,7 @@ jobs:
           clean: true
           sparse-checkout: '.github'
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: Calculate pr build and test targets matrix

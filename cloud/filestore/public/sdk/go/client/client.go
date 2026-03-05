@@ -74,6 +74,7 @@ type Node struct {
 	Mode       uint32
 	UID        uint64
 	GID        uint64
+	Links      uint32
 	Type       NodeType
 	LinkTarget string
 }
@@ -298,6 +299,8 @@ func (client *Client) ListNodes(
 	session Session,
 	nodeID uint64,
 	cookie string,
+	maxBytes uint32,
+	unsafe bool,
 ) ([]Node, string, error) {
 
 	req := &protos.TListNodesRequest{
@@ -308,8 +311,9 @@ func (client *Client) ListNodes(
 			SessionSeqNo: session.SessionSeqNo,
 			SessionId:    []byte(session.SessionID),
 		},
+		MaxBytes: maxBytes,
+		Unsafe:   unsafe,
 	}
-
 	resp, err := client.Impl.ListNodes(ctx, req)
 	if err != nil {
 		return nil, "", err
@@ -337,6 +341,7 @@ func (client *Client) ListNodes(
 			Mode:     nodes[idx].GetMode(),
 			UID:      uint64(nodes[idx].GetUid()),
 			GID:      uint64(nodes[idx].GetGid()),
+			Links:    nodes[idx].GetLinks(),
 			Type:     NodeType(nodes[idx].GetType()),
 		}
 	}

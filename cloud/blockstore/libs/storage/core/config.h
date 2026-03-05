@@ -770,6 +770,13 @@ public:
     [[nodiscard]] TDuration GetResourceMetricsUpdateInterval() const;
 
     [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
+
+    [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
+
+    [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
+
+    [[nodiscard]] NProto::EOverlappingRequestsPolicy
+    GetOverlappingRequestsPolicy() const;
 };
 
 ui64 GetAllocationUnit(

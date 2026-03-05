@@ -5,6 +5,7 @@ SRCS(
     disk_agent.cpp
     disk_registry.cpp
     disk_registry_proxy.cpp
+    fresh_blocks_writer.cpp
     partition.cpp
     partition2.cpp
     service.cpp

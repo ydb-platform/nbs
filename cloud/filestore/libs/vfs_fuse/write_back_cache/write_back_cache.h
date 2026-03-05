@@ -25,6 +25,52 @@ using IWriteBackCacheStatsPtr =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCacheArgs
+{
+    IFileStorePtr Session;
+    ISchedulerPtr Scheduler;
+    ITimerPtr Timer;
+    NWriteBackCache::IWriteBackCacheStatsPtr Stats;
+    TLog Log;
+    TString FileSystemId;
+    TString ClientId;
+
+    // Path to the file used for persistent storage
+    TString FilePath;
+
+    // Maximum size of persistent storage
+    ui64 CapacityBytes = 0;
+
+    // WriteBackCache calls FlushAllData with the specified period
+    TDuration AutomaticFlushPeriod = TDuration::Zero();
+
+    // Retry period for failed WriteData operations in flush
+    TDuration FlushRetryPeriod = TDuration::Zero();
+
+    // Maximum size (in bytes) of a consolidated WriteData request for flush.
+    // If this limit is exceeded, WriteData requests will be split into multiple
+    // requests, each not exceeding this limit.
+    ui32 FlushMaxWriteRequestSize = 0;
+
+    // Maximum number of consolidated WriteData requests to be executed in
+    // parallel in a flush batch. If this limit is exceeded, flush will execute
+    // a sequence of batches, each not exceeding this limit.
+    // Note: the limit is applied per node.
+    ui32 FlushMaxWriteRequestsCount = 0;
+
+    // Maximum total size (in bytes) of all WriteData requests in a flush batch.
+    // If this limit is exceeded, flush will execute a sequence of batches, each
+    // not exceeding this limit.
+    // Note: the limit is applied per node.
+    ui32 FlushMaxSumWriteRequestsSize = 0;
+
+    // If the flag is enabled, WriteBackCache will generate WriteData requests
+    // with iovecs.
+    bool ZeroCopyWriteEnabled = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBackCache final
 {
 private:
@@ -34,25 +80,9 @@ private:
 
 public:
     TWriteBackCache();
-
-    TWriteBackCache(
-        IFileStorePtr session,
-        ISchedulerPtr scheduler,
-        ITimerPtr timer,
-        NWriteBackCache::IWriteBackCacheStatsPtr stats,
-        TLog log,
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& filePath,
-        ui64 capacityBytes,
-        TDuration automaticFlushPeriod,
-        TDuration flushRetryPeriod,
-        ui32 maxWriteRequestSize,
-        ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled);
-
     ~TWriteBackCache();
+
+    explicit TWriteBackCache(TWriteBackCacheArgs args);
 
     explicit operator bool() const
     {
@@ -79,14 +109,6 @@ public:
 
     ui64 GetCachedNodeSize(ui64 nodeId) const;
     void SetCachedNodeSize(ui64 nodeId, ui64 size);
-
-    struct TPersistentQueueStats;
-
-private:
-    struct TNodeState;
-    struct TFlushState;
-    struct TQueuedOperations;
-    class TContiguousWriteDataEntryPartsReader;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

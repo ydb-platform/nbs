@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "future_helper.h"
+
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <library/cpp/json/writer/json_value.h>
@@ -471,10 +473,10 @@ TResponse SafeExecute(T&& block)
 }
 
 template <typename T>
-T ExtractResponse(NThreading::TFuture<T>& future)
+T ExtractResponse(const NThreading::TFuture<T>& future)
 {
     return SafeExecute<T>([&] {
-        return future.ExtractValue();
+        return UnsafeExtractValue(future);
     });
 }
 

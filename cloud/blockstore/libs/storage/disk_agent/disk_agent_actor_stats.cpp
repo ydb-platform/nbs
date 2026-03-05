@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -268,13 +270,16 @@ void TDiskAgentActor::HandleCollectStats(
 
     auto result = State->CollectStats();
 
-    result.Subscribe([=] (auto future) mutable {
-        try {
-            reply(future.ExtractValue());
-        } catch (...) {
-            reply(MakeError(E_FAIL, CurrentExceptionMessage()));
-        }
-    });
+    result.Subscribe(
+        [reply = std::move(reply)]   //
+        (const TFuture<NProto::TAgentStats>& future) mutable
+        {
+            try {
+                reply(UnsafeExtractValue(future));
+            } catch (...) {
+                reply(MakeError(E_FAIL, CurrentExceptionMessage()));
+            }
+        });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

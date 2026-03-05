@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
+
 #include <util/random/random.h>
 
 #include <utility>
@@ -220,10 +222,11 @@ private:
 
         return future.Apply(
             [damageData,
-             reply = std::move(reply)](NThreading::TFuture<TResponse> f)
+             reply = std::move(reply)]   //
+            (const NThreading::TFuture<TResponse>& f)
                 -> NThreading::TFuture<TResponse>
             {
-                auto originalResponse = f.ExtractValue();
+                auto originalResponse = UnsafeExtractValue(f);
                 if (HasError(originalResponse)) {
                     if (damageData) {
                         NProto::TError* error = originalResponse.MutableError();
@@ -264,11 +267,11 @@ public:
         auto future =
             StorageProvider->CreateStorage(volume, clientId, accessMode);
         return future.Apply(
-            [chaosConfig =
-                 ChaosConfig](NThreading::TFuture<IStoragePtr> f) mutable
+            [chaosConfig = ChaosConfig]   //
+            (const NThreading::TFuture<IStoragePtr>& f) mutable
             {
                 IStoragePtr storage = std::make_shared<TChaosStorage>(
-                    f.ExtractValue(),
+                    UnsafeExtractValue(f),
                     std::move(chaosConfig));
                 return storage;
             });

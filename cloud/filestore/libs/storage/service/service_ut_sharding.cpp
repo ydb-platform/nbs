@@ -442,7 +442,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
@@ -463,7 +463,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         // need to pass deadline instead of timeout here since otherwise the
@@ -643,7 +643,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
 
-        env.GetRuntime().Send(createNodeInShard.Release());
+        env.GetRuntime().Send(createNodeInShard.Release(), nodeIdx);
 
         auto response = service.RecvCreateNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -2909,7 +2909,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         TDispatchOptions options;
@@ -2972,7 +2972,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         options.FinalEvents = {
@@ -3017,7 +3017,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         options.FinalEvents = {
@@ -3042,6 +3042,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 (data1.size() + 2 * data2.size()) / 4_KB,
                 stats.GetMixedBlocksCount());
         }
+
+        // smoke test for GetStorageStats.TimeSumUs metric - it should not show
+        // unnaturally large values
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+        auto tabletCounters = env.GetRuntime().GetAppData().Counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "storage")
+            ->FindSubgroup("type", "hdd");
+        UNIT_ASSERT_LT(
+            tabletCounters->GetCounter("GetStorageStats.TimeSumUs")
+                ->GetAtomic(),
+            10'000'000);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldRetryUnlinkingInShard)
@@ -3102,7 +3115,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT(shardUnlinkResponse);
         intercept = false;
-        env.GetRuntime().Send(shardUnlinkResponse.Release());
+        env.GetRuntime().Send(shardUnlinkResponse.Release(), nodeIdx);
 
         auto unlinkResponse = service.RecvUnlinkNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -3388,7 +3401,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT(shardCreateResponse);
         intercept = false;
-        env.GetRuntime().Send(shardCreateResponse.Release());
+        env.GetRuntime().Send(shardCreateResponse.Release(), nodeIdx);
 
         auto createResponse = service.RecvCreateNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -3591,7 +3604,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT(shardCreateResponse);
         intercept = false;
-        env.GetRuntime().Send(shardCreateResponse.Release());
+        env.GetRuntime().Send(shardCreateResponse.Release(), nodeIdx);
 
         auto createHandleResponse = service.RecvCreateHandleResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -5664,7 +5677,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         TDispatchOptions options;
@@ -6090,7 +6103,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // unblocking the inflight RenameNode op
 
-        env.GetRuntime().Send(evHelper.Event.Release());
+        env.GetRuntime().Send(evHelper.Event.Release(), nodeIdx);
 
         {
             auto renameResponse = service.RecvRenameNodeResponse();
@@ -6462,7 +6475,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         // Resend the GetNodeAttr request
-        env.GetRuntime().Send(getNodeAttrEvent.Release());
+        env.GetRuntime().Send(getNodeAttrEvent.Release(), nodeIdx);
 
         for (ui32 attempt = 0; attempt < 100; ++attempt) {
             env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
@@ -7126,7 +7139,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 completion.release(),
                 0,   // flags
                 0),
-            0);
+            nodeIdx);
     }
 }
 }   // namespace NCloud::NFileStore::NStorage

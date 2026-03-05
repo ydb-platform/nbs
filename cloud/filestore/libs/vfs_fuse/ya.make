@@ -17,6 +17,7 @@ PEERDIR(
 END()
 
 RECURSE(
+    bench
     protos
     vhost
     write_back_cache

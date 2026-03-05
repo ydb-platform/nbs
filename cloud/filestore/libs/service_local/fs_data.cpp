@@ -188,7 +188,11 @@ TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
     }
 
     auto promise = NewPromise<NProto::TWriteDataLocalResponse>();
-    FileIOService->AsyncWriteV(*handle, request.GetOffset(), request.Buffers)
+    FileIOService->AsyncWriteV(
+        *handle,
+        request.GetOffset(),
+        request.Buffers,
+        request.GetFlags())
         .Subscribe(
             [this,
              &logRequest,
@@ -238,7 +242,11 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     auto offset = request.GetBufferOffset();
     TArrayRef<char> data(b.begin() + offset, b.vend());
     auto promise = NewPromise<NProto::TWriteDataResponse>();
-    FileIOService->AsyncWrite(*handle, request.GetOffset(), data)
+    FileIOService->AsyncWrite(
+        *handle,
+        request.GetOffset(),
+        data,
+        request.GetFlags())
         .Subscribe(
             [&logRequest, b = std::move(b), promise](
                 const TFuture<ui32>& f) mutable

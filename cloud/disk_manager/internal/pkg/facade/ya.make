@@ -22,7 +22,9 @@ RECURSE_FOR_TESTS(
     facade_test
     image_service_nemesis_test
     image_service_test
+    filesystem_scrubbing_test
     filesystem_service_nemesis_test
+    filesystem_scrubbing_nemesis_test
     filesystem_service_test
     filesystem_snapshot_service_test
     placement_group_service_nemesis_test

@@ -3,6 +3,7 @@ SRCS(
     directory_handles_stats.cpp
     directory_handles_storage.cpp
     fs.cpp
+    fs_directory_content_format.cpp
     fs_directory_handle.cpp
     fs_impl.cpp
     fs_impl_attr.cpp

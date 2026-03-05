@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +15,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,7 +40,7 @@ func GetEndpoint() string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newFactory(ctx context.Context) nfs.Factory {
+func NewFactory(ctx context.Context) nfs.Factory {
 	clientTimeout := "60s"
 	rootCertsFile := os.Getenv("DISK_MANAGER_RECIPE_ROOT_CERTS_FILE")
 	return nfs.NewFactory(
@@ -45,7 +48,7 @@ func newFactory(ctx context.Context) nfs.Factory {
 		&config.ClientConfig{
 			Zones: map[string]*config.Zone{
 				"zone": {
-					Endpoints: []string{GetEndpoint(), GetEndpoint()},
+					Endpoints: []string{GetEndpoint()},
 				},
 			},
 			RootCertsFile:        &rootCertsFile,
@@ -56,10 +59,17 @@ func newFactory(ctx context.Context) nfs.Factory {
 }
 
 func NewClient(t *testing.T, ctx context.Context) nfs.Client {
-	factory := newFactory(ctx)
+	factory := NewFactory(ctx)
 	client, err := factory.NewClient(ctx, "zone")
 	require.NoError(t, err)
 	return client
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type FilesystemLayerConfig struct {
+	DirsCount  int
+	FilesCount int
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -103,28 +113,27 @@ func Root(children ...Node) Node {
 	}
 }
 
-func RandomDirectory(
+func generateDirectoryRecursive(
 	name string,
-	maxDepth,
-	maxDirsPerDir,
-	maxFilesPerDir int,
+	maxDepth int,
+	countFunc func(maxDepth int) (nDirs int, nFiles int),
+	parentNumber int,
 ) Node {
 
 	if maxDepth <= 0 {
 		return Dir(name)
 	}
 
-	nDirs := rand.Intn(maxDirsPerDir + 1)
-	nFiles := rand.Intn(maxFilesPerDir + 1)
+	nDirs, nFiles := countFunc(maxDepth)
 	children := make([]Node, 0, nDirs+nFiles)
 	for i := 0; i < nDirs; i++ {
 		children = append(
 			children,
-			RandomDirectory(
-				fmt.Sprintf("dir_%d_%d", i, maxDepth),
+			generateDirectoryRecursive(
+				fmt.Sprintf("dir_%d_%d_parent_%d", i, maxDepth, parentNumber),
 				maxDepth-1,
-				maxDirsPerDir,
-				maxFilesPerDir,
+				countFunc,
+				i,
 			),
 		)
 	}
@@ -132,7 +141,14 @@ func RandomDirectory(
 	for i := 0; i < nFiles; i++ {
 		children = append(
 			children,
-			File(fmt.Sprintf("file_%d_%d", i, maxDepth)),
+			File(
+				fmt.Sprintf(
+					"file_%d_%d_parent_%d",
+					i,
+					maxDepth,
+					parentNumber,
+				),
+			),
 		)
 	}
 
@@ -141,7 +157,36 @@ func RandomDirectory(
 
 func RandomDirectoryTree(maxDepth, maxDirsPerDir, maxFilesPerDir int) Node {
 	return Root(
-		RandomDirectory("base", maxDepth, maxDirsPerDir, maxFilesPerDir),
+		generateDirectoryRecursive(
+			"base",
+			maxDepth,
+			func(maxDepth int) (nDirs int, nFiles int) {
+				return rand.Intn(maxDirsPerDir + 1), rand.Intn(maxFilesPerDir + 1)
+			},
+			0,
+		),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func HomogeneousDirectoryTree(layers []FilesystemLayerConfig) Node {
+	maxDepth := len(layers)
+	return Root(
+		generateDirectoryRecursive(
+			"base",
+			maxDepth,
+			func(maxDepth int) (nDirs int, nFiles int) {
+				layerIndex := len(layers) - maxDepth
+				if layerIndex < 0 || layerIndex >= len(layers) {
+					return 0, 0
+				}
+
+				layer := layers[layerIndex]
+				return layer.DirsCount, layer.FilesCount
+			},
+			0,
+		),
 	)
 }
 
@@ -151,7 +196,6 @@ type FileSystemModel struct {
 	root          Node
 	t             *testing.T
 	ctx           context.Context
-	client        nfs.Client
 	session       nfs.Session
 	defaultUid    uint32
 	defaultGid    uint32
@@ -179,7 +223,7 @@ func (f *FileSystemModel) CreateNodesRecursively(
 		GID:        1,
 		LinkTarget: nodeToCreate.Target,
 	}
-	id, err := f.client.CreateNode(f.ctx, f.session, expectedNode)
+	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
 	f.ExpectedNodes = append(f.ExpectedNodes, expectedNode)
 	if !nodeToCreate.FileType.IsDirectory() {
@@ -217,11 +261,12 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 	)
 
 	for {
-		batch, nextCookie, err := f.client.ListNodes(
+		batch, nextCookie, err := f.session.ListNodes(
 			f.ctx,
-			f.session,
 			parentNodeID,
 			cookie,
+			0,     // maxBytes
+			false, // unsafe
 		)
 		require.NoError(f.t, err)
 		for index := range batch {
@@ -229,9 +274,8 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 				continue
 			}
 
-			target, err := f.client.ReadLink(
+			target, err := f.session.ReadLink(
 				f.ctx,
-				f.session,
 				batch[index].NodeID,
 			)
 			require.NoError(f.t, err)
@@ -285,14 +329,22 @@ func (f *FileSystemModel) SetSession(session nfs.Session) {
 }
 
 func (f *FileSystemModel) Close() {
-	err := f.client.DestroySession(f.ctx, f.session)
+	err := f.session.Close(f.ctx)
 	require.NoError(f.t, err)
+}
+
+func (f *FileSystemModel) ExpectedNodeNames() *tasks_common.StringSet {
+	result := tasks_common.NewStringSet()
+	for _, node := range f.ExpectedNodes {
+		result.Add(node.Name)
+	}
+
+	return &result
 }
 
 func NewFileSystemModel(
 	t *testing.T,
 	ctx context.Context,
-	client nfs.Client,
 	session nfs.Session,
 	root Node,
 ) *FileSystemModel {
@@ -301,7 +353,6 @@ func NewFileSystemModel(
 		root:          root,
 		t:             t,
 		ctx:           ctx,
-		client:        client,
 		session:       session,
 		defaultUid:    1,
 		defaultGid:    1,
@@ -319,4 +370,109 @@ func NodeNames(nodes []nfs.Node) []string {
 	}
 
 	return names
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type ParallelFilesystemModel struct {
+	ctx           context.Context
+	session       nfs.Session
+	t             *testing.T
+	rootNode      Node
+	mu            sync.Mutex
+	ExpectedNames *tasks_common.StringSet
+}
+
+func (m *ParallelFilesystemModel) createChildren(
+	parentID uint64,
+	children []Node,
+) {
+
+	var childDirectories []struct {
+		parent   uint64
+		children []Node
+	}
+	eg, ctx := errgroup.WithContext(m.ctx)
+	eg.SetLimit(100)
+	for _, child := range children {
+		child := child
+		eg.Go(func() error {
+			id, err := m.session.CreateNode(
+				ctx,
+				nfs.Node{
+					ParentID:   parentID,
+					Name:       child.Name,
+					Type:       child.FileType,
+					Mode:       0o777,
+					UID:        1,
+					GID:        1,
+					LinkTarget: child.Target,
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			m.ExpectedNames.Add(child.Name)
+			if child.FileType.IsDirectory() {
+				childDirectories = append(
+					childDirectories,
+					struct {
+						parent   uint64
+						children []Node
+					}{
+						parent:   id,
+						children: child.Children,
+					},
+				)
+			}
+
+			return nil
+		})
+	}
+	require.NoError(m.t, eg.Wait())
+
+	for _, dir := range childDirectories {
+		m.createChildren(dir.parent, dir.children)
+	}
+}
+
+func (m *ParallelFilesystemModel) ExpectedNodeNames() *tasks_common.StringSet {
+	return m.ExpectedNames
+}
+
+func (m *ParallelFilesystemModel) CreateAllNodesRecursively() {
+	m.createChildren(nfs.RootNodeID, m.rootNode.Children)
+}
+
+func (m *ParallelFilesystemModel) Close() {
+	err := m.session.Close(m.ctx)
+	require.NoError(m.t, err)
+}
+
+func NewParallelFilesystemModel(
+	t *testing.T,
+	ctx context.Context,
+	session nfs.Session,
+	rootDir Node,
+) *ParallelFilesystemModel {
+
+	set := tasks_common.NewStringSet()
+	return &ParallelFilesystemModel{
+		t:             t,
+		ctx:           ctx,
+		session:       session,
+		rootNode:      rootDir,
+		ExpectedNames: &set,
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type FilesystemModelInterface interface {
+	CreateAllNodesRecursively()
+	ExpectedNodeNames() *tasks_common.StringSet
+	Close()
 }

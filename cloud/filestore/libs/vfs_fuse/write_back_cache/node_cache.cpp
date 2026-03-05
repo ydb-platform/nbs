@@ -145,15 +145,12 @@ bool TNodeCache::HasPendingOrUnflushedRequests() const
     return !PendingRequests.empty() || !UnflushedRequests.empty();
 }
 
-ui64 TNodeCache::GetMinPendingOrUnflushedSequenceId(ui64 defValue) const
+ui64 TNodeCache::GetMinPendingOrUnflushedSequenceId() const
 {
-    if (!UnflushedRequests.empty()) {
-        return UnflushedRequests.front()->GetSequenceId();
-    }
-    if (!PendingRequests.empty()) {
-        return PendingRequests.front()->GetSequenceId();
-    }
-    return defValue;
+    Y_ABORT_UNLESS(!PendingRequests.empty() || !UnflushedRequests.empty());
+    return !UnflushedRequests.empty()
+               ? UnflushedRequests.front()->GetSequenceId()
+               : PendingRequests.front()->GetSequenceId();
 }
 
 ui64 TNodeCache::GetMaxPendingOrUnflushedSequenceId() const
@@ -172,6 +169,12 @@ ui64 TNodeCache::GetMinFlushedSequenceId() const
 {
     Y_ABORT_UNLESS(!FlushedRequests.empty());
     return FlushedRequests.front()->GetSequenceId();
+}
+
+ui64 TNodeCache::GetMaxFlushedSequenceId() const
+{
+    Y_ABORT_UNLESS(!FlushedRequests.empty());
+    return FlushedRequests.back()->GetSequenceId();
 }
 
 void TNodeCache::VisitUnflushedRequests(

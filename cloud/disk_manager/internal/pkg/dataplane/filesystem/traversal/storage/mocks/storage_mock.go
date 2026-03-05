@@ -1,0 +1,61 @@
+package mocks
+
+import (
+	"context"
+
+	"github.com/stretchr/testify/mock"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+type StorageMock struct {
+	mock.Mock
+}
+
+func (s *StorageMock) SchedulerDirectoryForTraversal(
+	ctx context.Context,
+	snapshotID string,
+	nodeID uint64,
+) error {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) SelectNodesToList(
+	ctx context.Context,
+	snapshotID string,
+	nodesToExclude map[uint64]struct{},
+	limit uint64,
+) ([]storage.NodeQueueEntry, error) {
+
+	args := s.Called(ctx, snapshotID, nodesToExclude, limit)
+	return args.Get(0).([]storage.NodeQueueEntry), args.Error(1)
+}
+
+func (s *StorageMock) ScheduleChildNodesForListing(
+	ctx context.Context,
+	snapshotID string,
+	parentNodeID uint64,
+	nextCookie string,
+	children []nfs.Node,
+) error {
+
+	args := s.Called(ctx, snapshotID, parentNodeID, nextCookie, children)
+	return args.Error(0)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func NewStorageMock() *StorageMock {
+	return &StorageMock{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Ensure that StorageMock implements storage.Storage.
+func assertStorageMockIsStorage(arg *StorageMock) storage.Storage {
+	return arg
+}

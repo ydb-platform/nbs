@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -298,28 +299,27 @@ TFuture<NProto::TReadBlocksResponse> TEncryptionClient::ReadBlocks(
 
     auto weakPtr = weak_from_this();
 
-    return future.Apply([
-        weakPtr = std::move(weakPtr),
-        startIndex,
-        blocksCount] (auto f)
-    {
-        auto response = f.ExtractValue();
-        if (HasError(response)) {
-            return response;
-        }
+    return future.Apply(
+        [weakPtr = std::move(weakPtr), startIndex, blocksCount]   //
+        (const TFuture<NProto::TReadBlocksResponse>& f)
+        {
+            auto response = UnsafeExtractValue(f);
+            if (HasError(response)) {
+                return response;
+            }
 
-        auto ptr = weakPtr.lock();
-        if (!ptr) {
-            return static_cast<NProto::TReadBlocksResponse>(TErrorResponse(
-                E_REJECTED,
-                "Encryption client is destroyed after ReadBlocks"));
-        }
+            auto ptr = weakPtr.lock();
+            if (!ptr) {
+                return static_cast<NProto::TReadBlocksResponse>(TErrorResponse(
+                    E_REJECTED,
+                    "Encryption client is destroyed after ReadBlocks"));
+            }
 
-        return ptr->HandleReadBlocksResponse(
-            response,
-            startIndex,
-            blocksCount);
-    });
+            return ptr->HandleReadBlocksResponse(
+                response,
+                startIndex,
+                blocksCount);
+        });
 }
 
 NProto::TReadBlocksResponse TEncryptionClient::HandleReadBlocksResponse(
@@ -854,10 +854,11 @@ private:
                 [client = Client,
                  volume = volume,
                  encryptZeroPolicy = EncryptZeroPolicy,
-                 logging = Logging](auto future) mutable
-                -> TResultOrError<IBlockStorePtr>
+                 logging = Logging]   //
+                (const TFuture<TResultOrError<TEncryptionKey>>& future) mutable
+                    -> TResultOrError<IBlockStorePtr>
                 {
-                    auto [key, error] = future.ExtractValue();
+                    auto [key, error] = UnsafeExtractValue(future);
 
                     if (HasError(error)) {
                         return error;
@@ -1081,9 +1082,11 @@ public:
             [client = std::move(client),
              logging = Logging,
              encryptZeroPolicy = EncryptZeroPolicy,
-             mode = encryptionSpec.GetMode()](auto f) mutable -> TResponse
+             mode = encryptionSpec.GetMode()]   //
+            (const TFuture<TResultOrError<TEncryptionKey>>& f) mutable
+                -> TResponse
             {
-                auto response = f.ExtractValue();
+                auto response = UnsafeExtractValue(f);
                 if (HasError(response)) {
                     return response.GetError();
                 }

@@ -166,9 +166,10 @@ struct TTestFileIO final: public IFileIOService
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset, buffer);
+        Y_UNUSED(file, offset, buffer, flags);
 
         completion->Func(completion, MakeError(E_NOT_IMPLEMENTED), 0);
     }
@@ -177,9 +178,10 @@ struct TTestFileIO final: public IFileIOService
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset, buffers);
+        Y_UNUSED(file, offset, buffers, flags);
 
         completion->Func(completion, MakeError(E_NOT_IMPLEMENTED), 0);
     }
@@ -193,8 +195,8 @@ struct TFixture: public NUnitTest::TBaseFixture
     static constexpr ui64 StorageSize = 93_GB;
     static constexpr ui64 StartIndex = 0;
     static constexpr ui64 BlocksCount = StorageSize / BlockSize;
-    const ui32 ExpectedDeallocations = 93;
-    const ui32 ExpectedReads = BlocksCount / DefaultValidatedBlocksRatio;
+    static constexpr ui32 ExpectedDeallocations = 93;
+    static constexpr ui32 ExpectedReads = BlocksCount / DefaultValidatedBlocksRatio;
 
     const TString Filename = "filename";
 
@@ -398,7 +400,9 @@ Y_UNIT_TEST_SUITE(TSafeDeallocateDeviceTest)
         {
             std::memset(buffer.data(), 0, buffer.size());
 
-            if (offset == StorageSize - BlockSize) {
+            const bool isLastRead =
+                FileIO->ReadRequests.size() == ExpectedReads;
+            if (isLastRead && offset == StorageSize - BlockSize) {
                 buffer[buffer.size() / 2] = 0x42;
             }
 

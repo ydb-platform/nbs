@@ -28,14 +28,14 @@ message TCreateHandleRequest
         E_NONBLOCK = 10;
         E_PATH = 11;
         E_DIRECT = 12;
+        E_DSYNC = 13;
+        E_SYNC = 14;
 
         // TODO: these flags have no meaning or only useful for the local svc
         // E_ASYNC
         // E_CLOEXEC
-        // E_DSYNC
         // E_LARGEFILE
         // E_NOCTTY
-        // E_SYNC
     };
 
     // Optional request headers.
@@ -230,6 +230,9 @@ message TWriteDataRequest
     // For vector I/O, the caller can pass an identifier. Its interpretation
     // is up to the callee.
     uint64 RegionId = 9;
+
+    // Optional linux specific flags for write operation.
+    uint32 Flags = 10;
 }
 
 message TWriteDataResponse
@@ -280,37 +283,6 @@ message TAllocateDataRequest
 }
 
 message TAllocateDataResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// TruncateData request/response
-// XXX unused
-
-message TTruncateDataRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // FileSystem identifier.
-    bytes FileSystemId = 2;
-
-    // Node.
-    uint64 NodeId = 3;
-
-    // IO handle.
-    uint64 Handle = 4;
-
-    // Number of bytes to keep.
-    uint64 Length = 6;
-}
-
-message TTruncateDataResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

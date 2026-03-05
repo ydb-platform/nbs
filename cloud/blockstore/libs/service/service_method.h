@@ -2,6 +2,7 @@
 
 #include "service.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 
@@ -33,6 +34,12 @@ struct TBlockStoreMethodTraits
     static constexpr bool IsMountRequest()
     {
         return std::is_same_v<TRequest, NProto::TMountVolumeRequest>;
+    }
+
+    static constexpr bool IsLocalRequest()
+    {
+        return std::is_same_v<TRequest, NProto::TReadBlocksLocalRequest> ||
+               std::is_same_v<TRequest, NProto::TWriteBlocksLocalRequest>;
     }
 };
 
@@ -165,5 +172,32 @@ struct TBlockStoreAdapter
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBlockRangeHelper
+{
+    static TBlockRange64 GetRange(
+        const NProto::TReadBlocksRequest& request,
+        ui32 blockSize);
+
+    static TBlockRange64 GetRange(
+        const NProto::TReadBlocksLocalRequest& request,
+        ui32 blockSize);
+
+    static TBlockRange64 GetRange(
+        const NProto::TWriteBlocksRequest& request,
+        ui32 blockSize);
+
+    static TBlockRange64 GetRange(
+        const NProto::TWriteBlocksLocalRequest& request,
+        ui32 blockSize);
+
+    static TBlockRange64 GetRange(
+        const NProto::TZeroBlocksRequest& request,
+        ui32 blockSize);
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore

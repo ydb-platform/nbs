@@ -21,6 +21,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -78,9 +79,8 @@ void ToDeviceStats(
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TReadDeviceBlocksResponse ConvertToReadDeviceBlocksResponse(
-    TFuture<NProto::TReadBlocksResponse> future)
+    NProto::TReadBlocksResponse data)
 {
-    auto data = future.ExtractValue();
     NProto::TReadDeviceBlocksResponse response;
 
     response.MutableError()->Swap(data.MutableError());
@@ -340,10 +340,8 @@ NProto::TError CompareConfigs(
 TResultOrError<TDiskAgentState::TPreparePathsResult>
 ProcessConfigsAfterInitialization(
     const TVector<NProto::TDeviceConfig>& deviceConfigs,
-    TFuture<TInitializeStorageResult> future)
+    TInitializeStorageResult result)
 {
-    TInitializeStorageResult result = future.ExtractValue();
-
     if (result.ConfigMismatchErrors) {
         return MakeError(
             E_ARGUMENT,
@@ -525,68 +523,72 @@ ui32 TDiskAgentState::GetDevicesCount() const
 TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 {
     return InitializeSpdk(AgentConfig, Spdk, Allocator)
-        .Apply([this] (auto future) {
-            TInitializeSpdkResult r = future.ExtractValue();
+        .Apply(
+            [this](const TFuture<TInitializeSpdkResult>& future)
+            {
+                TInitializeSpdkResult r = UnsafeExtractValue(future);
 
-            InitErrorsCount = r.Errors.size();
+                InitErrorsCount = r.Errors.size();
 
-            SpdkTarget = std::move(r.SpdkTarget);
+                SpdkTarget = std::move(r.SpdkTarget);
 
-            for (size_t i = 0; i != r.Configs.size(); ++i) {
-                const auto& config = r.Configs[i];
+                for (size_t i = 0; i != r.Configs.size(); ++i) {
+                    const auto& config = r.Configs[i];
 
-                TDeviceState device {
-                    .Config = config,
-                };
+                    TDeviceState device{
+                        .Config = config,
+                    };
 
-                Devices.emplace(
-                    config.GetDeviceUUID(),
-                    std::move(device));
-            }
+                    Devices.emplace(config.GetDeviceUUID(), std::move(device));
+                }
 
-            return TInitializeResult{
-                .Configs = std::move(r.Configs),
-                .Devices = std::move(r.Devices),
-                .Errors = std::move(r.Errors)};
-        });
+                return TInitializeResult{
+                    .Configs = std::move(r.Configs),
+                    .Devices = std::move(r.Devices),
+                    .Errors = std::move(r.Errors)};
+            });
 }
 
 TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 {
     return InitializeStorage(
-            Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
-            StorageConfig,
-            AgentConfig,
-            StorageProvider,
-            NvmeManager)
-        .Apply([=, this] (auto future) {
-            TInitializeStorageResult r = future.ExtractValue();
+               Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+               StorageConfig,
+               AgentConfig,
+               StorageProvider,
+               NvmeManager)
+        .Apply(
+            [this]   //
+            (const TFuture<TInitializeStorageResult>& future)
+            {
+                TInitializeStorageResult r = UnsafeExtractValue(future);
 
-            InitErrorsCount = r.Errors.size();
+                InitErrorsCount = r.Errors.size();
 
-            Y_ABORT_UNLESS(r.Configs.size() == r.Devices.size()
-                  && r.Configs.size() == r.Stats.size());
+                Y_ABORT_UNLESS(
+                    r.Configs.size() == r.Devices.size() &&
+                    r.Configs.size() == r.Stats.size());
 
-            for (size_t i = 0; i != r.Configs.size(); ++i) {
-                const auto& config = r.Configs[i];
+                for (size_t i = 0; i != r.Configs.size(); ++i) {
+                    const auto& config = r.Configs[i];
 
-                TDeviceState device {
-                    .Config = config,
-                    .Stats = std::move(r.Stats[i])
-                };
+                    TDeviceState device{
+                        .Config = config,
+                        .Stats = std::move(r.Stats[i])};
 
-                Devices.emplace(config.GetDeviceUUID(), std::move(device));
-            }
+                    Devices.emplace(config.GetDeviceUUID(), std::move(device));
+                }
 
-            return TInitializeResult{
-                .Configs = std::move(r.Configs),
-                .Devices = std::move(r.Devices),
-                .Errors = std::move(r.Errors),
-                .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
-                .DevicesWithSuspendedIO = std::move(r.DevicesWithSuspendedIO),
-                .LostDevicesIds = std::move(r.LostDevicesIds),
-                .Guard = std::move(r.Guard)};
-        });
+                return TInitializeResult{
+                    .Configs = std::move(r.Configs),
+                    .Devices = std::move(r.Devices),
+                    .Errors = std::move(r.Errors),
+                    .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
+                    .DevicesWithSuspendedIO =
+                        std::move(r.DevicesWithSuspendedIO),
+                    .LostDevicesIds = std::move(r.LostDevicesIds),
+                    .Guard = std::move(r.Guard)};
+            });
 }
 
 void TDiskAgentState::InitRdmaTarget()
@@ -620,9 +622,9 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
     auto future = Spdk ? InitSpdkStorage() : InitAioStorage();
 
     return future.Apply(
-        [this](TFuture<TInitializeResult> future) mutable
+        [this](const TFuture<TInitializeResult>& future) mutable
         {
-            TInitializeResult r = future.ExtractValue();
+            TInitializeResult r = UnsafeExtractValue(future);
 
             TDuration ioTimeout;
             if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
@@ -712,13 +714,17 @@ TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()
             }
         });
 
-        Spdk->GetHistogramBuckets(deviceName).Subscribe([=] (auto future) {
-            try {
-                context->OnBuckets(index, future.ExtractValue());
-            } catch (...) {
-                context->OnError(index);
-            }
-        });
+        Spdk->GetHistogramBuckets(deviceName)
+            .Subscribe(
+                [context, index]   //
+                (const TFuture<TVector<TBucketInfo>>& future)
+                {
+                    try {
+                        context->OnBuckets(index, UnsafeExtractValue(future));
+                    } catch (...) {
+                        context->OnError(index);
+                    }
+                });
     }
 
     return context->Promise;
@@ -775,15 +781,22 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     );
 
     if (!StorageConfig->GetUseTestBlockDigestGenerator()) {
-        return result.Apply(ConvertToReadDeviceBlocksResponse);
+        return result.Apply(
+            [](const TFuture<NProto::TReadBlocksResponse>& future)
+            {
+                return ConvertToReadDeviceBlocksResponse(
+                    UnsafeExtractValue(future));
+            });
     }
 
     return result.Apply(
-        [request, generator = BlockDigestGenerator, profileLog = ProfileLog](
-            auto future)
+        [request,
+         generator = BlockDigestGenerator,
+         profileLog = ProfileLog]   //
+        (const TFuture<NProto::TReadBlocksResponse>& future)
         {
             auto response =
-                ConvertToReadDeviceBlocksResponse(std::move(future));
+                ConvertToReadDeviceBlocksResponse(UnsafeExtractValue(future));
 
             auto blockInfos = ComputeDigest(
                 *generator,
@@ -1029,9 +1042,9 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
     );
 
     return result.Apply(
-        [](auto future)
+        [](const TFuture<NProto::TReadBlocksResponse>& future)
         {
-            auto data = future.ExtractValue();
+            auto data = UnsafeExtractValue(future);
             NProto::TChecksumDeviceBlocksResponse response;
 
             if (HasError(data.GetError())) {
@@ -1363,9 +1376,13 @@ auto TDiskAgentState::PreparePaths(TVector<TString> pathsToAttach)
                 pathsToAttach);
 
             return future.Apply(
-                std::bind_front(
-                    ProcessConfigsAfterInitialization,
-                    std::move(devices)));
+                [devices = std::move(devices)]   //
+                (const NThreading::TFuture<TInitializeStorageResult>& f)
+                {
+                    return ProcessConfigsAfterInitialization(
+                        devices,
+                        UnsafeExtractValue(f));
+                });
         });
 }
 

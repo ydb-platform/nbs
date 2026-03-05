@@ -2,6 +2,9 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <fcntl.h>
+
+#include <util/stream/mem.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -51,6 +54,13 @@ NCloud::NProto::TError TUtils::ValidateWriteDataRequest(
                 request.GetFileSystemId().c_str()));
     }
 
+    if (request.GetFlags() & (O_SYNC | O_DSYNC)) {
+        return MakeError(
+            E_ARGUMENT,
+            "WriteBackCache should not receive requests with O_SYNC or O_DSYNC "
+            "flags");
+    }
+
     if (request.GetIovecs().empty()) {
         if (request.GetBufferOffset() == request.GetBuffer().size()) {
             return MakeError(E_ARGUMENT, "WriteData request has zero length");
@@ -87,6 +97,73 @@ NCloud::NProto::TError TUtils::ValidateWriteDataRequest(
     }
 
     return {};
+}
+
+// static
+bool TUtils::IsFullyCoveredByParts(
+    const TVector<TCachedDataPart>& parts,
+    ui64 byteCount)
+{
+    if (parts.empty() || parts.front().RelativeOffset != 0 ||
+        parts.back().RelativeOffset + parts.back().Data.size() != byteCount)
+    {
+        return false;
+    }
+
+    ui64 offset = 0;
+
+    for (const auto& part: parts) {
+        if (part.RelativeOffset != offset) {
+            return false;
+        }
+        offset += part.Data.size();
+    }
+
+    return true;
+}
+
+// static
+NProto::TReadDataResponse TUtils::BuildReadDataResponse(
+    const TVector<TCachedDataPart>& parts)
+{
+    if (parts.empty()) {
+        return {};
+    }
+
+    const auto length = parts.back().RelativeOffset + parts.back().Data.size();
+
+    auto buf = TString::Uninitialized(length);
+    TMemoryOutput out(buf.begin(), length);
+    for (const auto& part: parts) {
+        out.Write(part.Data);
+    }
+    Y_ABORT_UNLESS(out.Exhausted());
+
+    NProto::TReadDataResponse response;
+    response.SetBuffer(std::move(buf));
+    return response;
+}
+
+// static
+void TUtils::AugmentReadDataResponse(
+    NProto::TReadDataResponse& response,
+    const TCachedData& cachedData)
+{
+    const auto responseData =
+        TStringBuf(response.GetBuffer()).Skip(response.GetBufferOffset());
+
+    if (responseData.size() < cachedData.ReadDataByteCount) {
+        auto tmp = TString(cachedData.ReadDataByteCount, 0);
+        responseData.copy(tmp.begin(), responseData.size());
+        response.SetBuffer(std::move(tmp));
+        response.SetBufferOffset(0);
+    }
+
+    char* dst = response.MutableBuffer()->begin() + response.GetBufferOffset();
+
+    for (const auto& part: cachedData.Parts) {
+        part.Data.copy(dst + part.RelativeOffset, part.Data.size());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

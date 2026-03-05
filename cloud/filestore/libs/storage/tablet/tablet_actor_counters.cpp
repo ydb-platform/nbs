@@ -231,11 +231,13 @@ void TAggregateStatsActor::ReplyAndDie(
         }
         NCloud::Reply(ctx, *RequestInfo, std::move(Response));
     }
+
     auto response = std::make_unique<TCompletion>(
         error,
         std::move(statsForTablet),
         std::move(ShardStats),
-        startedTs);
+        startedTs,
+        !RequestInfo /* isBackgroundRequest */);
     NCloud::Send(ctx, Tablet, std::move(response));
 
     Die(ctx);
@@ -504,12 +506,15 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBackpressureValues(),
         GetHandlesStats());
 
-    // TabletStartTimestamp is intialised once per tablet lifetime and thus it is
-    // acceptable to set it in RegisterStatCounters if it is not set yet.
+    // TabletStartTimestamp and TabletId are intialised once per tablet lifetime
+    // and thus it is acceptable to set it in RegisterStatCounters if it is not
+    // set yet.
     i64 expected = 0;
     Metrics.TabletStartTimestamp.compare_exchange_strong(
         expected,
         now.MicroSeconds());
+    expected = 0;
+    Metrics.TabletId.compare_exchange_strong(expected, TabletID());
 
     Metrics.Register(fsId, fs.GetCloudId(), fs.GetFolderId(), storageMediaKind);
 }
@@ -795,22 +800,27 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    const bool isBackgroundRequest = msg->StartedTs.GetValue() == 0;
-    if (isBackgroundRequest) {
+    TDuration backgroundRequestDuration;
+
+    if (msg->IsBackgroundRequest) {
+        backgroundRequestDuration = ctx.Now() - CachedStatsFetchingStartTs;
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
             "%s Background shard stats fetch completed in %s, ShardsCount: %lu",
             LogTag.c_str(),
-            (ctx.Now() - CachedStatsFetchingStartTs).ToString().c_str(),
+            backgroundRequestDuration.ToString().c_str(),
             msg->ShardStats.size());
         CachedStatsFetchingStartTs = TInstant::Zero();
     }
+
     if (!HasError(msg->Error)) {
-        if (!isBackgroundRequest) {
+        if (msg->IsBackgroundRequest) {
+            Metrics.GetStorageStats.Update(1, 0, backgroundRequestDuration);
+        } else {
             Metrics.StatFileStore.Update(1, 0, ctx.Now() - msg->StartedTs);
+            Metrics.GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
         }
-        Metrics.GetStorageStats.Update(1, 0, ctx.Now() - msg->StartedTs);
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
         UpdateShardBalancer(CachedShardStats);
@@ -822,6 +832,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
             Metrics.AggregateUsedNodesCount,
             CachedAggregateStats.GetUsedNodesCount());
     }
+
     WorkerActors.erase(ev->Sender);
 }
 

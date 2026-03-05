@@ -4,6 +4,8 @@
 
 #include <util/generic/vector.h>
 
+#include <util/system/spinlock.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,6 +30,8 @@ struct TTestReadDataRequestStats
 
 struct TTestWriteBackCacheStats: public IWriteBackCacheStats
 {
+    TAdaptiveLock Lock;
+
     ui64 InProgressFlushCount = 0;
     ui64 CompletedFlushCount = 0;
     ui64 FailedFlushCount = 0;

@@ -33,7 +33,7 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
 {
     return {
         IntegerCast<ui32>(CalculateBytesCount(request.Record, blockSize)),
-        static_cast<ui32>(TVolumeThrottlingPolicy::EOpType::Read),
+        static_cast<ui32>(EVolumeThrottlingOpType::Read),
         policyVersion,
     };
 }
@@ -45,7 +45,7 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
 {
     return {
         IntegerCast<ui32>(CalculateBytesCount(request.Record, blockSize)),
-        static_cast<ui32>(TVolumeThrottlingPolicy::EOpType::Write),
+        static_cast<ui32>(EVolumeThrottlingOpType::Write),
         policyVersion,
     };
 }
@@ -57,7 +57,7 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
 {
     return {
         IntegerCast<ui32>(CalculateBytesCount(request.Record, blockSize)),
-        static_cast<ui32>(TVolumeThrottlingPolicy::EOpType::Zero),
+        static_cast<ui32>(EVolumeThrottlingOpType::Zero),
         policyVersion,
     };
 }
@@ -69,7 +69,7 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
 {
     return {
         blockSize * request.Record.GetBlocksCount(),
-        static_cast<ui32>(TVolumeThrottlingPolicy::EOpType::Read),
+        static_cast<ui32>(EVolumeThrottlingOpType::Read),
         policyVersion,
     };
 }
@@ -81,7 +81,7 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
 {
     return {
         blockSize * request.Record.BlocksCount,
-        static_cast<ui32>(TVolumeThrottlingPolicy::EOpType::Write),
+        static_cast<ui32>(EVolumeThrottlingOpType::Write),
         policyVersion,
     };
 }
@@ -93,7 +93,7 @@ TThrottlingRequestInfo BuildThrottlingRequestInfo(
 {
     return {
         blockSize * request.Record.GetBlocksCountToRead(),
-        static_cast<ui32>(TVolumeThrottlingPolicy::EOpType::Describe),
+        static_cast<ui32>(EVolumeThrottlingOpType::Describe),
         policyVersion,
     };
 }
@@ -115,26 +115,26 @@ bool GetThrottlingEnabled(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::UpdateDelayCounter(
-    TVolumeThrottlingPolicy::EOpType opType,
+    EVolumeThrottlingOpType opType,
     TDuration time)
 {
     if (!VolumeSelfCounters) {
         return;
     }
     switch (opType) {
-        case TVolumeThrottlingPolicy::EOpType::Read:
+        case EVolumeThrottlingOpType::Read:
             VolumeSelfCounters->ThrottlerDelayRequestCounters.ReadBlocks
                 .Increment(time.MicroSeconds());
             return;
-        case TVolumeThrottlingPolicy::EOpType::Write:
+        case EVolumeThrottlingOpType::Write:
             VolumeSelfCounters->ThrottlerDelayRequestCounters.WriteBlocks
                 .Increment(time.MicroSeconds());
             return;
-        case TVolumeThrottlingPolicy::EOpType::Zero:
+        case EVolumeThrottlingOpType::Zero:
             VolumeSelfCounters->ThrottlerDelayRequestCounters.ZeroBlocks
                 .Increment(time.MicroSeconds());
             return;
-        case TVolumeThrottlingPolicy::EOpType::Describe:
+        case EVolumeThrottlingOpType::Describe:
             VolumeSelfCounters->ThrottlerDelayRequestCounters.DescribeBlocks
                 .Increment(time.MicroSeconds());
             return;
@@ -198,8 +198,8 @@ NProto::TError TVolumeActor::Throttle(
         tp.GetVersion()
     );
 
-    if (static_cast<TVolumeThrottlingPolicy::EOpType>(requestInfo.OpType) ==
-            TVolumeThrottlingPolicy::EOpType::Describe &&
+    if (static_cast<EVolumeThrottlingOpType>(requestInfo.OpType) ==
+            EVolumeThrottlingOpType::Describe &&
         requestInfo.ByteCount == 0)
     {
         // DescribeBlocks with zero weight should not be affected by

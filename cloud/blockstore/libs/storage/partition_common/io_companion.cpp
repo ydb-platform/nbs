@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -11,7 +13,7 @@ using namespace NActors;
 TIOCompanion::TIOCompanion(
         TStorageConfigPtr config,
         const NProto::TPartitionConfig& partitionConfig,
-        NKikimr::TTabletStorageInfo* tabletStorageInfo,
+        NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
         ui64 tabletID,
         const NBlockCodecs::ICodec* blobCodec,
         const NActors::TActorId& volumeActorId,
@@ -27,7 +29,7 @@ TIOCompanion::TIOCompanion(
         std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters)
     : Config(std::move(config))
     , PartitionConfig(partitionConfig)
-    , TabletStorageInfo(tabletStorageInfo)
+    , TabletStorageInfo(std::move(tabletStorageInfo))
     , TabletID(tabletID)
     , BlobCodec(blobCodec)
     , VolumeActorId(volumeActorId)
@@ -68,6 +70,51 @@ void TIOCompanion::KillActors(const NActors::TActorContext& ctx)
     for (const auto& actor: Actors.GetActors()) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
+}
+
+bool TIOCompanion::HandleRequests(STFUNC_SIG, const NActors::TActorContext& ctx)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvWriteBlobRequest,
+            HandleWriteBlob,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvWriteBlobCompleted,
+            HandleWriteBlobCompleted,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvLongRunningOperation,
+            HandleLongRunningBlobOperation,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvReadBlobRequest,
+            HandleReadBlob,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted,
+            HandleReadBlobCompleted,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvPatchBlobRequest,
+            HandlePatchBlob,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvPatchBlobCompleted,
+            HandlePatchBlobCompleted,
+            ctx);
+
+        default:
+            return false;
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -14,6 +14,8 @@ void TTestWriteDataRequestStats::ResetNonDerivativeCounters()
 
 void TTestWriteBackCacheStats::ResetNonDerivativeCounters()
 {
+    auto guard = Guard(Lock);
+
     InProgressFlushCount = 0;
     NodeCount = 0;
 
@@ -24,27 +26,38 @@ void TTestWriteBackCacheStats::ResetNonDerivativeCounters()
 
 void TTestWriteBackCacheStats::FlushStarted()
 {
+    auto guard = Guard(Lock);
+
     InProgressFlushCount++;
 }
 
 void TTestWriteBackCacheStats::FlushCompleted()
 {
+    auto guard = Guard(Lock);
+
+
     InProgressFlushCount--;
     CompletedFlushCount++;
 }
 
 void TTestWriteBackCacheStats::FlushFailed()
 {
+    auto guard = Guard(Lock);
+
     FailedFlushCount++;
 }
 
 void TTestWriteBackCacheStats::IncrementNodeCount()
 {
+    auto guard = Guard(Lock);
+
     NodeCount++;
 }
 
 void TTestWriteBackCacheStats::DecrementNodeCount()
 {
+    auto guard = Guard(Lock);
+
     NodeCount--;
 }
 
@@ -58,14 +71,14 @@ TTestWriteDataRequestStats& TTestWriteBackCacheStats::GetWriteStats(
             return UnflushedStats;
         case EWriteDataRequestStatus::Flushed:
             return FlushedStats;
-        default:
-            Y_ABORT("Unknown EWriteDataRequestStatus value");
     }
 }
 
 void TTestWriteBackCacheStats::WriteDataRequestEnteredStatus(
     EWriteDataRequestStatus status)
 {
+    auto guard = Guard(Lock);
+
     auto& stats = GetWriteStats(status);
     stats.InProgressCount++;
 }
@@ -74,6 +87,8 @@ void TTestWriteBackCacheStats::WriteDataRequestExitedStatus(
     EWriteDataRequestStatus status,
     TDuration duration)
 {
+    auto guard = Guard(Lock);
+
     auto& stats = GetWriteStats(status);
     stats.Count++;
     stats.InProgressCount--;
@@ -86,6 +101,8 @@ void TTestWriteBackCacheStats::WriteDataRequestUpdateMinTime(
     EWriteDataRequestStatus status,
     TInstant minTime)
 {
+    auto guard = Guard(Lock);
+
     auto& stats = GetWriteStats(status);
     stats.MinTime = minTime;
 }
@@ -93,6 +110,8 @@ void TTestWriteBackCacheStats::WriteDataRequestUpdateMinTime(
 void TTestWriteBackCacheStats::AddReadDataStats(
     EReadDataRequestCacheStatus status)
 {
+    auto guard = Guard(Lock);
+
     switch (status) {
         case EReadDataRequestCacheStatus::Miss:
             ReadStats.CacheMissCount++;
@@ -103,8 +122,6 @@ void TTestWriteBackCacheStats::AddReadDataStats(
         case EReadDataRequestCacheStatus::FullHit:
             ReadStats.CacheFullHitCount++;
             break;
-        default:
-            Y_ABORT("Unknown EReadDataRequestCacheState value");
     }
 }
 

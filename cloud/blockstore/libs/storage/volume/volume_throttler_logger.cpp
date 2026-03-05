@@ -18,12 +18,14 @@ struct TVolumeThrottlerLogger::TImpl
 {
 private:
     ui64 TabletId;
-    std::function<void(ui32, TDuration)> UpdateDelayCounterFunc;
+    std::function<void(EVolumeThrottlingOpType, TDuration)>
+        UpdateDelayCounterFunc;
 
 public:
     TImpl(
-            ui64 tabletId,
-            std::function<void(ui32, TDuration)> updateDelayCounter)
+        ui64 tabletId,
+        std::function<void(EVolumeThrottlingOpType, TDuration)>
+            updateDelayCounter)
         : TabletId(tabletId)
         , UpdateDelayCounterFunc(std::move(updateDelayCounter))
     {}
@@ -69,7 +71,7 @@ public:
         const NActors::TActorContext& ctx,
         TCallContextBase& callContext,
         const char* methodName,
-        ui32 opType,
+        EVolumeThrottlingOpType opType,
         TDuration delay) const
     {
         TrackAdvancedRequest(callContext, methodName);
@@ -111,7 +113,7 @@ private:
 
 TVolumeThrottlerLogger::TVolumeThrottlerLogger(
         ui64 tabletId,
-        std::function<void(ui32, TDuration)> updateDelayCounter)
+        std::function<void(EVolumeThrottlingOpType, TDuration)> updateDelayCounter)
     : Impl(std::make_unique<TImpl>(tabletId, std::move(updateDelayCounter)))
 {}
 
@@ -155,7 +157,12 @@ void TVolumeThrottlerLogger::LogRequestAdvanced(
     ui32 opType,
     TDuration delay) const
 {
-    Impl->LogRequestAdvanced(ctx, callContext, methodName, opType, delay);
+    Impl->LogRequestAdvanced(
+        ctx,
+        callContext,
+        methodName,
+        static_cast<EVolumeThrottlingOpType>(opType),
+        delay);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -67,6 +67,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             const TFsPath devicePath = GetPCIDevicePath(device);
             NFs::MakeDirectoryRecursive(devicePath);
 
+            (devicePath / "driver_override").Touch();
+
             WriteFileHex(devicePath / "vendor", device.GetVendorId());
             WriteFileHex(devicePath / "device", device.GetDeviceId());
 
@@ -107,7 +109,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         TFsPath path = SysFsRoot / "bus/pci/drivers/" / name;
 
         NFs::MakeDirectoryRecursive(path);
-        for (const TStringBuf sub: {"bind", "unbind", "new_id"}) {
+        for (const TStringBuf sub: {"bind", "unbind"}) {
             (path / sub).Touch();
         }
 
@@ -205,6 +207,9 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 pciAddr,
                 ReadFile(VFIODriverPath / "bind"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "vfio-pci",
+                ReadFile(GetPCIDevicePath(device) / "driver_override"));
         }
 
         {
@@ -230,6 +235,9 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
                 pciAddr,
                 ReadFile(VFIODriverPath / "unbind"));
             UNIT_ASSERT_VALUES_EQUAL("", ReadFile(VFIODriverPath / "bind"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "",
+                ReadFile(GetPCIDevicePath(device) / "driver_override"));
         }
 
         {
@@ -246,6 +254,9 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 pciAddr,
                 ReadFile(VFIODriverPath / "bind"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "vfio-pci",
+                ReadFile(GetPCIDevicePath(device) / "driver_override"));
         }
     }
 

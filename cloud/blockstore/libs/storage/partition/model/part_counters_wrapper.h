@@ -41,4 +41,6 @@ public:
     TPartitionDiskCountersPtr Swap(TPartitionDiskCountersPtr counters);
 };
 
+using TThreadSafePartCountersPtr = std::shared_ptr<TThreadSafePartCounters>;
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

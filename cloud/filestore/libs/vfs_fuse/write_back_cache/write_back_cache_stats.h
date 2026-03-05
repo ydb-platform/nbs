@@ -13,7 +13,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 /**
  * WriteData request life cycle:
- * Initial -> Pending -> Unflushed -> Flushed
+ * [Pending] -> Unflushed -> Flushed
  *
  * For each NodeId it is guaranteed that there are no requests with out-of-order
  * statuses: if two requests A and B have the same NodeId, and the request A was
@@ -22,13 +22,6 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 enum class EWriteDataRequestStatus
 {
-    // The object has just been created and does not hold a request.
-    Initial,
-
-    // Restoration from the persistent buffer was failed.
-    // The request will not be processed further.
-    Corrupted,
-
     // Write request is waiting until there is enough space in the persistent
     // storage to store the request.
     Pending,

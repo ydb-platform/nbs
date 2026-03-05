@@ -7,6 +7,7 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <fcntl.h>
 #include <util/folder/dirut.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/array_ref.h>
@@ -124,6 +125,105 @@ Y_UNIT_TEST_SUITE(TAioTest)
 
         {
             auto result = service->AsyncWriteV(fileData, offset, constBuffers);
+            UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+        }
+
+        for (auto& buffer: buffers) {
+            std::memset(buffer.data(), '.', buffer.size());
+        }
+
+        {
+            auto result = service->AsyncReadV(fileData, offset, buffers);
+            UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
+        }
+
+        for (auto& buffer: buffers) {
+            for (char val: buffer) {
+                UNIT_ASSERT_VALUES_EQUAL('X', val);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReadWriteWithSyncFlags)
+    {
+        auto service = CreateAIOService();
+        service->Start();
+        Y_DEFER { service->Stop(); };
+
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 1024;
+        const auto filePath = TryGetRamDrivePath() / "test_sync_flags";
+
+        // Keep open mode non-sync; sync intent must come from write flags.
+        TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned);
+        fileData.Resize(blockCount * blockSize);
+
+        const ui64 requestStartIndex = 20;
+        const ui64 requestBlockCount = 16;
+        const ui64 length = requestBlockCount * blockSize;
+        const i64 offset = requestStartIndex * blockSize;
+
+        std::shared_ptr<char> memory {
+            static_cast<char*>(std::aligned_alloc(blockSize, length)),
+            std::free
+        };
+
+        TArrayRef<char> buffer {memory.get(), length};
+        std::memset(buffer.data(), 'X', buffer.size());
+
+        for (const ui32 flags: {ui32(O_SYNC), ui32(O_DSYNC), ui32(O_SYNC | O_DSYNC)}) {
+            auto result = service->AsyncWrite(fileData, offset, buffer, flags);
+            UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+        }
+
+        std::memset(buffer.data(), '.', buffer.size());
+        {
+            auto result = service->AsyncRead(fileData, offset, buffer);
+            UNIT_ASSERT_VALUES_EQUAL(buffer.size(), result.GetValueSync());
+        }
+
+        for (char val: buffer) {
+            UNIT_ASSERT_VALUES_EQUAL('X', val);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReadWriteVWithSyncFlags)
+    {
+        auto service = CreateAIOService();
+        service->Start();
+        Y_DEFER { service->Stop(); };
+
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 1024;
+        const auto filePath = TryGetRamDrivePath() / "test_sync_flags_v";
+
+        // Keep open mode non-sync; sync intent must come from write flags.
+        TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned);
+        fileData.Resize(blockCount * blockSize);
+
+        const ui64 requestStartIndex = 20;
+        const ui64 requestBlockCount = 16;
+        const ui64 length = requestBlockCount * blockSize;
+        const i64 offset = requestStartIndex * blockSize;
+
+        std::shared_ptr<char> memory {
+            static_cast<char*>(std::aligned_alloc(blockSize, length)),
+            std::free
+        };
+
+        TVector<TArrayRef<char>> buffers;
+        buffers.emplace_back(memory.get(), 4 * blockSize);
+        buffers.emplace_back(memory.get() + 4 * blockSize, 6 * blockSize);
+        buffers.emplace_back(memory.get() + 10 * blockSize, 6 * blockSize);
+
+        TVector<TArrayRef<const char>> constBuffers;
+        for (auto& buffer: buffers) {
+            std::memset(buffer.data(), 'X', buffer.size());
+            constBuffers.emplace_back(buffer.data(), buffer.size());
+        }
+
+        for (const ui32 flags: {ui32(O_SYNC), ui32(O_DSYNC), ui32(O_SYNC | O_DSYNC)}) {
+            auto result = service->AsyncWriteV(fileData, offset, constBuffers, flags);
             UNIT_ASSERT_VALUES_EQUAL(length, result.GetValueSync());
         }
 

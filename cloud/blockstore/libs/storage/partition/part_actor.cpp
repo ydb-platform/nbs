@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -270,7 +271,8 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 void TPartitionActor::ScheduleYellowStateUpdate(const TActorContext& ctx)
 {
     if (!UpdateYellowStateScheduled) {
-        ctx.Schedule(YellowStateUpdateInterval,
+        ctx.Schedule(
+            YellowStateUpdateInterval,
             new TEvPartitionPrivate::TEvUpdateYellowState());
         UpdateYellowStateScheduled = true;
     }
@@ -407,6 +409,14 @@ void TPartitionActor::BeforeDie(const TActorContext& ctx)
             ctx,
             *Poisoner,
             std::make_unique<TEvents::TEvPoisonTaken>());
+    }
+
+    if (FreshBlocksWriter) {
+        // Fast die for FreshBlocksWriter
+        NCloud::Send(
+            ctx,
+            FreshBlocksWriter,
+            std::make_unique<TEvents::TEvPoisonPill>());
     }
 }
 
@@ -705,7 +715,8 @@ void TPartitionActor::HandleSendBackpressureReport(
         SendBackpressureReport(ctx);
     }
 
-    ctx.Schedule(BackpressureReportSendInterval,
+    ctx.Schedule(
+        BackpressureReportSendInterval,
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 }
 
@@ -1286,9 +1297,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
     Y_UNUSED(ev);
     auto updates = ResourceMetricsQueue->PopAll();
     for (auto& update: updates) {
-        std::visit([&] (auto&& arg) {
-            UpdateResourceMetrics(arg);
-        }, update);
+        std::visit([&](auto&& arg) { UpdateResourceMetrics(arg); }, update);
     }
 
     // Schedule the next update
@@ -1296,6 +1305,31 @@ void TPartitionActor::HandleUpdateResourceMetrics(
         Config->GetResourceMetricsUpdateInterval(),
         std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
             .release());
+}
+
+void TPartitionActor::HandleGetFreshChannelsInfo(
+    const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<
+        TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+
+    response->TabletInfo = MakeIntrusive<NKikimr::TTabletStorageInfo>(*Info());
+    response->ChannelsCount = State->GetChannelCount();
+    response->Generation = Executor()->Generation();
+
+    response->ResourceMetricsQueue = ResourceMetricsQueue;
+    response->PartCounters = IoCompanionCounters;
+    response->GroupDowntimes = GroupDowntimes;
+
+    for (size_t i = 0; i < State->GetChannelCount(); ++i) {
+        response->ChannelPermissions.emplace_back(
+            State->GetChannelPermissions(i));
+    }
+
+    FreshBlocksWriter = ev->Sender;
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

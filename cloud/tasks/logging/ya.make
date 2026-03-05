@@ -1,6 +1,7 @@
 GO_LIBRARY()
 
 SRCS(
+    context_logger.go
     fields.go
     interface.go
     journald_logger.go

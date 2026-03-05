@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 SRCS(
     agent_counters_ut.cpp
     agent_list_ut.cpp
+    agents_paths_ut.cpp
     device_list_ut.cpp
     pending_cleanup_ut.cpp
     replica_table_ut.cpp

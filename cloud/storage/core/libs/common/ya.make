@@ -47,6 +47,7 @@ SRCS(
     thread_pool.cpp
     timer.cpp
     timer_test.cpp
+    write_sync_flags.cpp
     verify.cpp
 )
 

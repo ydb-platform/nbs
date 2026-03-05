@@ -55,7 +55,7 @@ TIndexTabletActor::TIndexTabletActor(
                 time);
         }
     )
-    , Config(std::move(config))
+    , Config(std::make_shared<TStorageConfig>(*config))
     , DiagConfig(std::move(diagConfig))
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
 {

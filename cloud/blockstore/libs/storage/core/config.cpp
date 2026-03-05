@@ -668,6 +668,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
     xxx(ResourceMetricsUpdateInterval,        TDuration,   Seconds(1)         )\
     xxx(SendErrorOnAddClientConflict,         bool,        false              )\
+    xxx(FreshBlocksWriterEnabled,             bool,        false              )\
+                                                                               \
+    xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
+    xxx(OverlappingRequestsPolicy,                                             \
+        NProto::EOverlappingRequestsPolicy,                                    \
+        NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -803,6 +809,13 @@ IOutputStream& operator<<(
     NProto::ENonreplAllocationPolicy pt)
 {
     return out << NProto::ENonreplAllocationPolicy_Name(pt);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::EOverlappingRequestsPolicy orp)
+{
+    return out << NProto::EOverlappingRequestsPolicy_Name(orp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

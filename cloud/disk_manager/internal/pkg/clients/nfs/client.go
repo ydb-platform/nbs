@@ -5,7 +5,6 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	nfs_protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -14,15 +13,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type Node nfs_client.Node
-type Session nfs_client.Session
-
-////////////////////////////////////////////////////////////////////////////////
-
 const (
 	maxConsecutiveRetries = 3
-	InvalidNodeID         = uint64(nfs_protos.ENodeConstants_E_INVALID_NODE_ID)
-	RootNodeID            = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
 )
 
 func getStorageMediaKind(
@@ -242,25 +234,6 @@ func (c *client) DescribeModel(
 	}, nil
 }
 
-func (c *client) CreateCheckpoint(
-	ctx context.Context,
-	session Session,
-	filesystemID string,
-	checkpointID string,
-	nodeID uint64,
-) error {
-
-	return c.nfs.CreateCheckpoint(
-		ctx,
-		nfs_client.Session(session),
-		filesystemID,
-		&nfs_client.CreateCheckpointOpts{
-			CheckpointID: checkpointID,
-			NodeID:       nodeID,
-		},
-	)
-}
-
 func (c *client) DestroyCheckpoint(
 	ctx context.Context,
 	filesystemID string,
@@ -281,55 +254,13 @@ func (c *client) CreateSession(
 	readonly bool,
 ) (Session, error) {
 
-	session, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
-	return Session(session), wrapError(err)
-}
-
-func (c *client) DestroySession(ctx context.Context, session Session) error {
-	return wrapError(c.nfs.DestroySession(ctx, nfs_client.Session(session)))
-}
-
-func (c *client) ListNodes(
-	ctx context.Context,
-	session Session,
-	parentNodeID uint64,
-	cookie string,
-) ([]Node, string, error) {
-
-	nodes, cookie, err := c.nfs.ListNodes(
-		ctx,
-		nfs_client.Session(session),
-		parentNodeID,
-		cookie,
-	)
-	resultNodes := make([]Node, len(nodes))
-	for i := range nodes {
-		resultNodes[i] = Node(nodes[i])
+	s, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
+	if err != nil {
+		return nil, wrapError(err)
 	}
 
-	return resultNodes, cookie, wrapError(err)
-}
-
-func (c *client) CreateNode(
-	ctx context.Context,
-	session Session,
-	node Node,
-) (uint64, error) {
-
-	nodeID, err := c.nfs.CreateNode(
-		ctx,
-		nfs_client.Session(session),
-		nfs_client.Node(node),
-	)
-	return nodeID, wrapError(err)
-}
-
-func (c *client) ReadLink(
-	ctx context.Context,
-	session Session,
-	nodeID uint64,
-) ([]byte, error) {
-
-	data, err := c.nfs.ReadLink(ctx, nfs_client.Session(session), nodeID)
-	return data, wrapError(err)
+	return &session{
+		nfs:     c.nfs,
+		session: s,
+	}, nil
 }

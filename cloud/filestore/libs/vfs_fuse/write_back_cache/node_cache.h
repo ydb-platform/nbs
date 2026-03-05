@@ -70,11 +70,12 @@ public:
     ui64 GetMaxUnflushedSequenceId() const;
 
     bool HasPendingOrUnflushedRequests() const;
-    ui64 GetMinPendingOrUnflushedSequenceId(ui64 defValue) const;
+    ui64 GetMinPendingOrUnflushedSequenceId() const;
     ui64 GetMaxPendingOrUnflushedSequenceId() const;
 
     bool HasFlushedRequests() const;
     ui64 GetMinFlushedSequenceId() const;
+    ui64 GetMaxFlushedSequenceId() const;
 
     void VisitUnflushedRequests(TCachedWriteDataRequestVisitor visitor) const;
 

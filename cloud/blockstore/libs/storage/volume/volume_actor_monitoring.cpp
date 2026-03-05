@@ -2045,27 +2045,27 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                                             TABLEBODY() {
                                                 TABLER() {
                                                     TABLED() { out << "ReadC1"; }
-                                                    TABLED() { out << tp.C1(TVolumeThrottlingPolicy::EOpType::Read); }
+                                                    TABLED() { out << tp.C1(EVolumeThrottlingOpType::Read); }
                                                 }
                                                 TABLER() {
                                                     TABLED() { out << "ReadC2"; }
-                                                    TABLED() { out << FormatByteSize(tp.C2(TVolumeThrottlingPolicy::EOpType::Read)); }
+                                                    TABLED() { out << FormatByteSize(tp.C2(EVolumeThrottlingOpType::Read)); }
                                                 }
                                                 TABLER() {
                                                     TABLED() { out << "WriteC1"; }
-                                                    TABLED() { out << tp.C1(TVolumeThrottlingPolicy::EOpType::Write); }
+                                                    TABLED() { out << tp.C1(EVolumeThrottlingOpType::Write); }
                                                 }
                                                 TABLER() {
                                                     TABLED() { out << "WriteC2"; }
-                                                    TABLED() { out << FormatByteSize(tp.C2(TVolumeThrottlingPolicy::EOpType::Write)); }
+                                                    TABLED() { out << FormatByteSize(tp.C2(EVolumeThrottlingOpType::Write)); }
                                                 }
                                                 TABLER() {
                                                     TABLED() { out << "DescribeC1"; }
-                                                    TABLED() { out << tp.C1(TVolumeThrottlingPolicy::EOpType::Describe); }
+                                                    TABLED() { out << tp.C1(EVolumeThrottlingOpType::Describe); }
                                                 }
                                                 TABLER() {
                                                     TABLED() { out << "DescribeC2"; }
-                                                    TABLED() { out << FormatByteSize(tp.C2(TVolumeThrottlingPolicy::EOpType::Describe)); }
+                                                    TABLED() { out << FormatByteSize(tp.C2(EVolumeThrottlingOpType::Describe)); }
                                                 }
                                             }
                                         }

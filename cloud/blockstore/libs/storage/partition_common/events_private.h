@@ -5,6 +5,10 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
@@ -23,6 +27,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
     xxx(WriteBlob,                 __VA_ARGS__)                                \
     xxx(PatchBlob,                 __VA_ARGS__)                                \
+    xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -237,7 +242,6 @@ struct TEvPartitionCommonPrivate
     //
     // WriteBlob
     //
-
     struct TWriteBlobRequest
     {
         NActors::TActorId Proxy;
@@ -364,6 +368,25 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // GetFreshChannelsInfo
+    //
+    struct TGetFreshChannelsInfoRequest
+    {
+    };
+
+    struct TGetFreshChannelsInfoResponse
+    {
+        NKikimr::TTabletStorageInfoPtr TabletInfo;
+        ui64 ChannelsCount;
+        ui64 Generation;
+
+        TVector<EChannelPermissions> ChannelPermissions;
+
+        NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
+        NPartition::TThreadSafePartCountersPtr PartCounters;
+        NPartition::TGroupDowntimesPtr GroupDowntimes;
+    };
+
     // Events declaration
     //
 

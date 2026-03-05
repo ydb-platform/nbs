@@ -268,6 +268,7 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
 
     REGISTER_LOCAL(TabletStartTimestamp, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(TabletId, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
@@ -342,6 +343,10 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM_EXT(
         ListNodesExtra.PrepareAttempts,
         "ListNodes.PrepareAttempts",
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM_EXT(
+        ListNodesExtra.ResponseNodeRefs,
+        "ListNodes.ResponseNodeRefs",
         EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM_EXT(

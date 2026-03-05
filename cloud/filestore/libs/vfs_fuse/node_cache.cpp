@@ -1,40 +1,69 @@
 #include "node_cache.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/request.h>
 
 #include <util/generic/vector.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNode* TNodeCache::AddNode(const NProto::TNodeAttr& attrs)
+bool TNodeCacheShard::UpdateNode(
+    const NProto::TNodeAttr& attrs,
+    ui64 version)
 {
-    auto [it, inserted] = Nodes.emplace(attrs);
-    Y_ABORT_UNLESS(inserted, "failed to insert %s",
-        DumpMessage(attrs).data());
+    auto g = Guard(Lock);
 
-    auto* node = (TNode*)&*it;
-    return node;
-}
-
-TNode* TNodeCache::TryAddNode(const NProto::TNodeAttr& attrs)
-{
-    auto* node = FindNode(attrs.GetId());
-    if (!node) {
-        node = AddNode(attrs);
+    auto [it, inserted] = Id2Node.emplace(attrs.GetId(), TNode(attrs));
+    auto& node = it->second;
+    bool updated = false;
+    if (inserted) {
+        node.LastUpdateVersion = version;
+        updated = true;
     } else {
-        node->UpdateAttrs(attrs);
-        node->Ref();
+        if (version >= node.LastUpdateVersion) {
+            node.UpdateAttrs(attrs, version);
+
+            if (!node.IsValid()) {
+                ReportNodeCacheInvalidNode(TStringBuilder()
+                    << "fs: " << FileSystemId
+                    << ", attrs: " << attrs.ShortUtf8DebugString()
+                    << ", version: " << version);
+            }
+
+            updated = true;
+        }
+
+        node.Ref();
     }
 
-    return node;
+    return updated;
 }
 
-void TNodeCache::ForgetNode(ui64 ino, size_t count)
+void TNodeCacheShard::InvalidateNode(ui64 ino, ui64 version)
 {
-    auto it = Nodes.find(ino);
-    if (it == Nodes.end()) {
+    auto g = Guard(Lock);
+
+    NProto::TNodeAttr attrs;
+    attrs.SetId(ino);
+    auto [it, inserted] = Id2Node.emplace(ino, TNode(attrs));
+    if (version >= it->second.LastUpdateVersion) {
+        if (!inserted) {
+            it->second.Attrs = std::move(attrs);
+        }
+
+        it->second.LastUpdateVersion = version;
+    }
+}
+
+void TNodeCacheShard::ForgetNode(ui64 ino, size_t count)
+{
+    auto g = Guard(Lock);
+
+    auto it = Id2Node.find(ino);
+    if (it == Id2Node.end()) {
         // we lose our cache after restart, so we should expect forget requests
         // targeting nodes that are absent from our cache
         // see NBS-2102
@@ -42,17 +71,19 @@ void TNodeCache::ForgetNode(ui64 ino, size_t count)
         return;
     }
 
-    count = const_cast<TNode&>(*it).UnRef(count);
+    count = it->second.UnRef(count);
     if (count == 0) {
         // do not pass element itself
-        Nodes.erase(it);
+        Id2Node.erase(it);
     }
 }
 
-TNode* TNodeCache::FindNode(ui64 ino)
+ui64 TNodeCacheShard::GetNodeVersion(ui64 ino) const
 {
-    auto it = Nodes.find(ino);
-    return it != Nodes.end() ? (TNode*)&*it : nullptr;
+    auto g = Guard(Lock);
+
+    const auto* node = Id2Node.FindPtr(ino);
+    return node ? node->LastUpdateVersion : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,7 +94,7 @@ void TXAttrCache::Add(
     const TString& value,
     ui64 version)
 {
-    auto current = Get(ino, name);
+    const auto* current = Get(ino, name);
     if (!current || current->Version < version) {
         Cache.Update(
             TKey{ino, name},

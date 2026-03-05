@@ -9,7 +9,6 @@ SRCS(
     mirror_request_actor_ut.cpp
     part_mirror_lagging_devices_ut.cpp
     part_mirror_resync_ut.cpp
-    part_mirror_split_request_helpers_ut.cpp
     part_mirror_state_ut.cpp
     part_mirror_ut.cpp
     part_nonrepl_common_ut.cpp

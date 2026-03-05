@@ -48,11 +48,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         ui32 nodeIdx = env.AddDynamicNode();
 
         TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
-        ssProxy.ModifyScheme(CreateDir("/local/foo"));
-        ssProxy.ModifyScheme(CreateDir("/local/bar"));
+        ssProxy.ModifyScheme(CreateDir("/local/nfs/foo"));
+        ssProxy.ModifyScheme(CreateDir("/local/nfs/bar"));
 
-        ssProxy.DescribeScheme("/local/foo");
-        ssProxy.DescribeScheme("/local/bar");
+        ssProxy.DescribeScheme("/local/nfs/foo");
+        ssProxy.DescribeScheme("/local/nfs/bar");
     }
 
     Y_UNIT_TEST(ShouldCreateFileStore)

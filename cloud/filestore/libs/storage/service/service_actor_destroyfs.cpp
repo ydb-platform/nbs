@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -28,23 +30,31 @@ private:
     const bool AllowFileStoreDestroyWithOrphanSessions;
     TVector<TString> ShardIds;
     ui32 DestroyedShardCount = 0;
+    ui32 ForceDestroySizeThreshold = 0;
+    NProto::TFileStore FileStore;
 
 public:
     TDestroyFileStoreActor(
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
         bool forceDestroy,
-        bool allowFileStoreDestroyWithOrphanSessions);
+        bool allowFileStoreDestroyWithOrphanSessions,
+        ui32 forceDestroySizeThreshold);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
 
+    void DescribeFileStore(const TActorContext& ctx);
     void DescribeSessions(const TActorContext& ctx);
     void GetFileSystemTopology(const TActorContext& ctx);
     void DestroyShards(const TActorContext& ctx);
     void DestroyFileStore(const TActorContext& ctx);
+
+    void HandleDescribeFileStoreResponse(
+        const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleDescribeSessionsResponse(
         const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
@@ -73,25 +83,76 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
         bool forceDestroy,
-        bool allowFileStoreDestroyWithOrphanSessions)
+        bool allowFileStoreDestroyWithOrphanSessions,
+        ui32 forceDestroySizeThreshold)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)
     , AllowFileStoreDestroyWithOrphanSessions(
         allowFileStoreDestroyWithOrphanSessions)
+    , ForceDestroySizeThreshold(forceDestroySizeThreshold)
 {}
 
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
-    if (ForceDestroy) {
-        GetFileSystemTopology(ctx);
-    } else {
-        DescribeSessions(ctx);
-    }
+    DescribeFileStore(ctx);
     Become(&TThis::StateWork);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TDestroyFileStoreActor::DescribeFileStore(const TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
+        FileSystemId);
+
+    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
+}
+
+void TDestroyFileStoreActor::HandleDescribeFileStoreResponse(
+    const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        if (msg->GetStatus() ==
+            MAKE_SCHEMESHARD_ERROR(
+                NKikimrScheme::EStatus::StatusPathDoesNotExist))
+        {
+            ReplyAndDie(
+                ctx,
+                MakeError(S_FALSE, FileSystemId.Quote() + " does not exist"));
+            return;
+        }
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    const auto& fileStore = msg->PathDescription.GetFileStoreDescription();
+    const auto& config = fileStore.GetConfig();
+
+    Convert(config, FileStore);
+
+    auto bytesSize = FileStore.GetBlockSize() * FileStore.GetBlocksCount();
+    bool isBelowForceDestroyThreshold = bytesSize <= ForceDestroySizeThreshold;
+    if (isBelowForceDestroyThreshold) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] filestore size(%u bytes) less than "
+            "ForceDestroySizeThreshold(%u bytes), force destroying",
+            FileSystemId.c_str(),
+            bytesSize,
+            ForceDestroySizeThreshold);
+    }
+
+    if (ForceDestroy || isBelowForceDestroyThreshold) {
+        GetFileSystemTopology(ctx);
+    } else {
+        DescribeSessions(ctx);
+    }
+}
 
 void TDestroyFileStoreActor::DescribeSessions(const TActorContext& ctx)
 {
@@ -138,7 +199,8 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
 
     if (haveSessions) {
         TStringBuilder message;
-        message << "FileStore has active sessions with client ids:";
+        message << "FileStore " << FileSystemId.Quote()
+                << " has active sessions with client ids:";
         for (const auto& sessionInfo: msg->Record.GetSessions()) {
             message << " " << sessionInfo.GetClientId();
         }
@@ -297,6 +359,10 @@ STFUNC(TDestroyFileStoreActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(
+            TEvSSProxy::TEvDescribeFileStoreResponse,
+            HandleDescribeFileStoreResponse);
+
+        HFunc(
             TEvIndexTablet::TEvDescribeSessionsResponse,
             HandleDescribeSessionsResponse);
 
@@ -365,7 +431,8 @@ void TStorageServiceActor::HandleDestroyFileStore(
         std::move(requestInfo),
         msg->Record.GetFileSystemId(),
         forceDestroy,
-        StorageConfig->GetAllowFileStoreDestroyWithOrphanSessions());
+        StorageConfig->GetAllowFileStoreDestroyWithOrphanSessions(),
+        StorageConfig->GetForceDestroySizeThreshold());
 
     NCloud::Register(ctx, std::move(actor));
 }

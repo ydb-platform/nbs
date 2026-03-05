@@ -736,4 +736,8 @@ message TStorageConfig
 
     // Frequency of tablet regular task runs (e.g. ResponseLogEntry cleanup).
     optional uint32 TabletRegularTasksSchedulePeriod = 486;
+
+    // Allow to destroy filestore with active sessions
+    // with size less than threshold(in bytes)
+    optional uint32 ForceDestroySizeThreshold = 487;
 }

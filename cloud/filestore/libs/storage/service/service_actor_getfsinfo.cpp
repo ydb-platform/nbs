@@ -95,6 +95,7 @@ void TGetFileStoreInfoActor::HandleDescribeFileStoreResponse(
     auto* fs = response->Record.MutableFileStore();
     Convert(config, *fs);
     Convert(config, *fs->MutablePerformanceProfile());
+    fs->SetMainTabletId(fileStore.GetIndexTabletId());
 
     ReplyAndDie(ctx, std::move(response));
 }
