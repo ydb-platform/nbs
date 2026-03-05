@@ -7,7 +7,7 @@ REQUIREMENTS(
 )
 
 PEERDIR(
-    cloud/disk_manager/internal/pkg/dataplane/filesystem/listers/mock
+    cloud/disk_manager/internal/pkg/dataplane/filesystem/listers/mocks
     cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/mocks
     cloud/filestore/public/sdk/go/client
 )

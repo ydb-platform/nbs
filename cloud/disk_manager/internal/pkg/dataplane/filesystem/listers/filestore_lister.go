@@ -11,7 +11,6 @@ import (
 type filestoreLister struct {
 	session           nfs.Session
 	listNodesMaxBytes uint32
-	readOnly          bool
 	unsafe            bool
 }
 
@@ -74,7 +73,6 @@ func (o *filestoreOpener) OpenFilesystem(
 	return &filestoreLister{
 		session:           session,
 		listNodesMaxBytes: o.listNodesMaxBytes,
-		readOnly:          o.readOnly,
 		unsafe:            o.unsafe,
 	}, nil
 }

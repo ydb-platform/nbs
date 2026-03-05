@@ -8,5 +8,5 @@ SRCS(
 END()
 
 RECURSE(
-    mock
+    mocks
 )
