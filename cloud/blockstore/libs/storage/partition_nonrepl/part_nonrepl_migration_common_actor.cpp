@@ -356,6 +356,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            RejectGetDiskRegistryBasedPartCounters);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
         HFunc(
@@ -376,10 +380,6 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvMigrationStateUpdated);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvGetDiskRegistryBasedPartCountersRequest);
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse);
 
