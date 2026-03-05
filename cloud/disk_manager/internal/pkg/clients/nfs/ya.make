@@ -13,6 +13,10 @@ SRCS(
     session.go
 )
 
+PEERDIR(
+    cloud/disk_manager/internal/pkg/clients/metrics
+)
+
 END()
 
 RECURSE(

@@ -10,6 +10,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -38,7 +39,7 @@ type Session struct {
 	mutex            sync.RWMutex
 	client           *nbs_client.Client
 	session          *nbs_client.Session
-	metrics          *clientMetrics
+	metrics          client_metrics.Metrics
 	volume           *protos.TVolume
 	cancelRediscover func()
 }
@@ -410,7 +411,10 @@ func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error)
 		*client,
 		logging.GetLogger(ctx),
 	)
-	s.metrics = newSessionMetrics(s.metricsRegistry, host)
+	s.metrics = client_metrics.New(
+		s.metricsRegistry,
+		map[string]string{"request_host": host},
+	)
 
 	err = s.session.MountVolume(
 		s.withClientID(ctx),

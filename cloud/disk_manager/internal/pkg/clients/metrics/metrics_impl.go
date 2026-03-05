@@ -1,10 +1,9 @@
-package nbs
+package metrics
 
 import (
 	"sync"
 	"time"
 
-	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 )
 
@@ -73,7 +72,7 @@ func (m *clientMetrics) getOrNewRequestStats(
 	return stats
 }
 
-func (m *clientMetrics) OnError(err nbs_client.ClientError) {
+func (m *clientMetrics) OnError(err error) {
 	// TODO: split metrics into types (retriable, fatal, etc.)
 	m.underlyingErrors.Inc()
 }
@@ -90,22 +89,4 @@ func (m *clientMetrics) StatRequest(name string) func(err *error) {
 			stats.recordDuration(time.Since(start))
 		}
 	}
-}
-
-func newClientMetrics(registry metrics.Registry) *clientMetrics {
-	return &clientMetrics{
-		registry:         registry,
-		underlyingErrors: registry.Counter("underlying_errors"),
-		requestStats:     make(map[string]*requestStats),
-	}
-}
-
-func newSessionMetrics(
-	registry metrics.Registry,
-	host string,
-) *clientMetrics {
-
-	return newClientMetrics(registry.WithTags(map[string]string{
-		"request_host": host,
-	}))
 }

@@ -3,6 +3,8 @@ package nfs
 import (
 	"context"
 
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	nfs_protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
@@ -21,8 +23,27 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 type session struct {
-	nfs     *nfs_client.Client
-	session nfs_client.Session
+	nfs             *nfs_client.Client
+	session         nfs_client.Session
+	metrics         client_metrics.Metrics
+	metricsRegistry metrics.Registry
+	filesystemID    string
+	checkpointID    string
+}
+
+func (s *session) initMetrics() {
+	if s.metrics != nil {
+		return
+	}
+
+	s.metrics = client_metrics.New(
+		s.metricsRegistry,
+		map[string]string{
+			"client":        "nfs",
+			"filesystem_id": s.filesystemID,
+			"checkpoint_id": s.checkpointID,
+		},
+	)
 }
 
 func (s *session) CreateCheckpoint(
@@ -30,7 +51,10 @@ func (s *session) CreateCheckpoint(
 	filesystemID string,
 	checkpointID string,
 	nodeID uint64,
-) error {
+) (err error) {
+
+	s.initMetrics()
+	defer s.metrics.StatRequest("CreateCheckpoint")(&err)
 
 	return wrapError(
 		s.nfs.CreateCheckpoint(
@@ -55,7 +79,10 @@ func (s *session) ListNodes(
 	cookie string,
 	maxBytes uint32,
 	unsafe bool,
-) ([]Node, string, error) {
+) (_ []Node, _ string, err error) {
+
+	s.initMetrics()
+	defer s.metrics.StatRequest("ListNodes")(&err)
 
 	nodes, cookie, err := s.nfs.ListNodes(
 		ctx,
@@ -76,7 +103,10 @@ func (s *session) ListNodes(
 func (s *session) CreateNode(
 	ctx context.Context,
 	node Node,
-) (uint64, error) {
+) (_ uint64, err error) {
+
+	s.initMetrics()
+	defer s.metrics.StatRequest("CreateNode")(&err)
 
 	nodeID, err := s.nfs.CreateNode(
 		ctx,
@@ -89,7 +119,10 @@ func (s *session) CreateNode(
 func (s *session) ReadLink(
 	ctx context.Context,
 	nodeID uint64,
-) ([]byte, error) {
+) (_ []byte, err error) {
+
+	s.initMetrics()
+	defer s.metrics.StatRequest("ReadLink")(&err)
 
 	data, err := s.nfs.ReadLink(ctx, s.session, nodeID)
 	return data, wrapError(err)

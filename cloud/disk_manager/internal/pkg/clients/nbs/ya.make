@@ -9,10 +9,13 @@ SRCS(
     client.go
     factory.go
     interface.go
-    metrics.go
     multi_zone_client.go
     session.go
     testing_client.go
+)
+
+PEERDIR(
+    cloud/disk_manager/internal/pkg/clients/metrics
 )
 
 END()

@@ -64,3 +64,83 @@ func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
 	testcommon.WaitOperationEnded(t, ctx, taskID)
 	testcommon.CheckConsistency(t, ctx)
 }
+
+func TestNfsClientReportsMetrics(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	nfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-a")
+	defer nfsClient.Close()
+
+	filesystemID := t.Name()
+
+	operation, err := client.CreateFilesystem(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: filesystemID,
+			},
+			BlockSize: 4096,
+			Size:      1024 * 1024 * 1024,
+			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
+			CloudId:   "cloud",
+			FolderId:  "folder",
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+	defer func() {
+		err := nfsClient.Delete(ctx, filesystemID, true)
+		require.NoError(t, err)
+	}()
+
+	nfsClient.FillFilesystemWithDefaultTree(
+		ctx,
+		filesystemID,
+		1000,
+		5,
+		3,
+	)
+
+	taskID := testcommon.ScheduleFilesystemScrubbing(
+		t,
+		ctx,
+		"zone-a",
+		filesystemID,
+	)
+
+	testcommon.WaitOperationEnded(t, ctx, taskID)
+
+	require.Greater(t, testcommon.GetCounterControlplane(
+		t,
+		"count",
+		map[string]string{"client": "nfs", "request": "Create"},
+	), float64(0))
+
+	require.Greater(t, testcommon.GetCounterDataplane(
+		t,
+		"count",
+		map[string]string{
+			"client":        "nfs",
+			"request":       "CreateSession",
+		},
+	), float64(0))
+
+	require.Greater(t, testcommon.GetCounterDataplane(
+		t,
+		"count",
+		map[string]string{
+			"client":        "nfs",
+			"request":       "ListNodes",
+			"filesystem_id": filesystemID,
+		},
+	), float64(0))
+
+	testcommon.CheckConsistency(t, ctx)
+}

@@ -6,6 +6,7 @@ import (
 
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
@@ -23,7 +24,7 @@ type factory struct {
 	config                 *nbs_config.ClientConfig
 	credentials            auth.Credentials
 	sessionMetricsRegistry metrics.Registry
-	metrics                *clientMetrics
+	metrics                client_metrics.Metrics
 	clients                map[string]client
 	multiZoneClients       map[[2]string]multiZoneClient
 }
@@ -134,7 +135,7 @@ func (f *factory) initClients(
 							tracing.AttributeError(&err),
 						),
 					)
-					f.metrics.OnError(err)
+					f.metrics.OnError(&err)
 				},
 			},
 			&nbs_client.DiscoveryClientOpts{
@@ -295,7 +296,10 @@ func newFactoryWithCreds(
 		config:                 config,
 		credentials:            creds,
 		sessionMetricsRegistry: sessionMetricsRegistry,
-		metrics:                newClientMetrics(clientMetricsRegistry),
+		metrics:                client_metrics.New(
+			clientMetricsRegistry,
+			map[string]string{},
+		),
 	}
 	err := f.initClients(ctx)
 	if err != nil {

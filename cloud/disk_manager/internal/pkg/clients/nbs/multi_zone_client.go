@@ -5,6 +5,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/tracing"
@@ -15,7 +16,7 @@ import (
 type multiZoneClient struct {
 	srcZoneClient *client
 	dstZoneClient *client
-	metrics       *clientMetrics
+	metrics       client_metrics.Metrics
 }
 
 ////////////////////////////////////////////////////////////////////////////////

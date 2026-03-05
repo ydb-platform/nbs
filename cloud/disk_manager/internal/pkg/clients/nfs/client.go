@@ -3,6 +3,7 @@ package nfs
 import (
 	"context"
 
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
@@ -81,22 +82,11 @@ func setupStderrLogger(ctx context.Context) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type clientMetrics struct {
-	registry metrics.Registry
-	errors   metrics.Counter
-}
-
-func (m *clientMetrics) OnError(err nfs_client.ClientError) {
-	// TODO: split metrics into types (retriable, fatal, etc.)
-	m.errors.Inc()
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 type client struct {
-	nfs     *nfs_client.Client
-	metrics clientMetrics
-	zoneID  string
+	nfs             *nfs_client.Client
+	metrics         client_metrics.Metrics
+	metricsRegistry metrics.Registry
+	zoneID          string
 }
 
 func (c *client) ZoneID() string {
@@ -111,7 +101,9 @@ func (c *client) Create(
 	ctx context.Context,
 	filesystemID string,
 	params CreateFilesystemParams,
-) error {
+) (err error) {
+
+	defer c.metrics.StatRequest("Create")(&err)
 
 	mediaKind, err := getStorageMediaKind(params.Kind)
 	if err != nil {
@@ -137,9 +129,11 @@ func (c *client) Delete(
 	ctx context.Context,
 	filesystemID string,
 	force bool,
-) error {
+) (err error) {
 
-	err := c.nfs.DestroyFileStore(ctx, filesystemID, force)
+	defer c.metrics.StatRequest("Delete")(&err)
+
+	err = c.nfs.DestroyFileStore(ctx, filesystemID, force)
 	return wrapError(err)
 }
 
@@ -147,7 +141,9 @@ func (c *client) Resize(
 	ctx context.Context,
 	filesystemID string,
 	size uint64,
-) error {
+) (err error) {
+
+	defer c.metrics.StatRequest("Resize")(&err)
 
 	retries := 0
 	for {
@@ -203,7 +199,9 @@ func (c *client) DescribeModel(
 	blocksCount uint64,
 	blockSize uint32,
 	kind types.FilesystemKind,
-) (FilesystemModel, error) {
+) (_ FilesystemModel, err error) {
+
+	defer c.metrics.StatRequest("DescribeModel")(&err)
 
 	mediaKind, err := getStorageMediaKind(kind)
 	if err != nil {
@@ -238,7 +236,9 @@ func (c *client) DestroyCheckpoint(
 	ctx context.Context,
 	filesystemID string,
 	checkpointID string,
-) error {
+) (err error) {
+
+	defer c.metrics.StatRequest("DestroyCheckpoint")(&err)
 
 	return c.nfs.DestroyCheckpoint(
 		ctx,
@@ -252,7 +252,9 @@ func (c *client) CreateSession(
 	fileSystemID string,
 	checkpointID string,
 	readonly bool,
-) (Session, error) {
+) (_ Session, err error) {
+
+	defer c.metrics.StatRequest("CreateSession")(&err)
 
 	s, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
 	if err != nil {
@@ -260,7 +262,10 @@ func (c *client) CreateSession(
 	}
 
 	return &session{
-		nfs:     c.nfs,
-		session: s,
+		nfs:             c.nfs,
+		session:         s,
+		metricsRegistry: c.metricsRegistry,
+		filesystemID:    fileSystemID,
+		checkpointID:    checkpointID,
 	}, nil
 }
