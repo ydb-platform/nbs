@@ -105,3 +105,36 @@ def test_save_log_applies_truncation(tmp_path):
 
     assert url == "https://logs/a.log"
     assert (out_dir / "a.log").read_bytes() == b"7890"
+
+
+def test_transform_skips_malformed_chunk_name_without_crash(tmp_path):
+    root = ET.Element("testsuites")
+    suite = ET.SubElement(root, "testsuite", {"name": "suite-name"})
+    case = ET.SubElement(
+        suite,
+        "testcase",
+        {"classname": "old.class", "name": "chunk bad format", "time": "1.0"},
+    )
+    failure = ET.SubElement(case, "failure")
+    failure.text = "boom"
+    report = tmp_path / "junit.xml"
+    ET.ElementTree(root).write(report)
+
+    output = tmp_path / "out.xml"
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(tmp_path / "ya-out"),
+            False,
+            "https://logs/",
+            str(tmp_path / "logs-out"),
+            0,
+            str(output),
+            "https://data",
+        )
+
+    tree = ET.parse(output)
+    parsed_case = tree.getroot().find("./testsuite/testcase")
+    assert parsed_case is not None
+    assert parsed_case.find("properties") is None

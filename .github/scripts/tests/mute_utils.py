@@ -2,10 +2,7 @@ import operator
 import re
 import xml.etree.ElementTree as ET
 
-try:
-    from .junit_utils import add_junit_property
-except ImportError:
-    from junit_utils import add_junit_property
+from .junit_utils import add_junit_property
 
 
 def pattern_to_re(pattern):

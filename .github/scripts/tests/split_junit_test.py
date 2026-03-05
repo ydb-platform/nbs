@@ -3,19 +3,11 @@ import xml.etree.ElementTree as ET
 from scripts.tests import split_junit as sj
 
 
-def _build_multi_suite(path):
-    root = ET.Element("testsuites")
-    for suite_name in ("suite-a", "suite-b"):
-        suite = ET.SubElement(root, "testsuite", {"name": suite_name})
-        ET.SubElement(suite, "testcase", {"classname": suite_name, "name": "t"})
-    ET.ElementTree(root).write(path)
-
-
-def test_split_xml_creates_one_file_per_suite(tmp_path):
+def test_split_xml_creates_one_file_per_suite(tmp_path, build_multi_suite_xml):
     report = tmp_path / "junit.xml"
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    _build_multi_suite(report)
+    build_multi_suite_xml(report, ("suite-a", "suite-b"))
 
     with report.open("r") as fp:
         sj.split_xml(fp, str(out_dir))

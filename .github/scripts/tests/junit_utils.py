@@ -79,7 +79,7 @@ def iter_xml_files(folder_or_file):
     if os.path.isfile(folder_or_file):
         files = [folder_or_file]
     else:
-        files = glob.glob(os.path.join(folder_or_file, "*.xml"))
+        files = sorted(glob.glob(os.path.join(folder_or_file, "*.xml")))
 
     for fn in files:
         try:

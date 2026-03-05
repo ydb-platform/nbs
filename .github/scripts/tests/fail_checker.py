@@ -2,10 +2,7 @@
 import argparse
 import os
 
-try:
-    from .junit_utils import iter_xml_files
-except ImportError:
-    from junit_utils import iter_xml_files
+from .junit_utils import iter_xml_files
 
 
 def write_to_file_from_env(key: str, value: str, env_var: str, is_secret: bool = False):
@@ -14,18 +11,10 @@ def write_to_file_from_env(key: str, value: str, env_var: str, is_secret: bool =
         with open(filename, "a") as fp:
             fp.write(f"{key}={value}\n")
 
-        print_with_secret_masked(
-            'echo "%s=%s" >> $%s (%s)',
-            key,
-            value,
-            env_var,
-            filename,
-            is_secret,
-        )
+        print_with_secret_masked(key, value, env_var, filename, is_secret)
 
 
 def print_with_secret_masked(
-    msg: str,
     key: str,
     value: str,
     env_var: str,
@@ -34,7 +23,7 @@ def print_with_secret_masked(
 ):
     if is_secret:
         value = "******"
-    print(f"{msg}: {key}={value} ({env_var} -> {filename})")
+    print(f'echo "{key}={value}" >> ${env_var} ({filename})')
 
 
 def write_to_env(key: str, value: str, is_secret: bool = False):
@@ -97,9 +86,7 @@ def get_fail_dirs(paths: list[str]):
                 error_list.add(test_name)
 
     if failed_list or error_list:
-        for test_name in failed_list:
-            print(test_name)
-        for test_name in error_list:
+        for test_name in sorted(failed_list | error_list):
             print(test_name)
 
 

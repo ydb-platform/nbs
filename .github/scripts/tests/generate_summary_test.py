@@ -1,54 +1,9 @@
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
 from scripts.tests import generate_summary as gs
 
-
-def _mk_testcase(
-    *,
-    classname="suite.case",
-    name="test",
-    time="1.0",
-    failure=None,
-    error=None,
-    skipped=False,
-    props=None,
-):
-    testcase = ET.Element(
-        "testcase", {"classname": classname, "name": name, "time": time}
-    )
-
-    if failure is not None:
-        node = ET.SubElement(testcase, "failure")
-        node.text = failure
-
-    if error is not None:
-        node = ET.SubElement(testcase, "error")
-        node.text = error
-
-    if skipped:
-        ET.SubElement(testcase, "skipped")
-
-    if props:
-        props_node = ET.SubElement(testcase, "properties")
-        for key, value in props.items():
-            ET.SubElement(props_node, "property", {"name": key, "value": value})
-
-    return testcase
-
-
-def _write_xml(path: Path, *cases):
-    suite = ET.Element("testsuite", {"name": "test-suite"})
-    for case in cases:
-        suite.append(case)
-
-    tree = ET.ElementTree(ET.Element("testsuites"))
-    tree.getroot().append(suite)
-    tree.write(path)
-
-
-def test_from_junit_marks_fail_build_timeout_and_logs_directory():
-    case = _mk_testcase(
+def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase):
+    case = mk_testcase(
         failure="Killed by timeout; skipped due to a failed build",
         props={
             "url:logs_directory": "https://logs/path",
@@ -64,13 +19,15 @@ def test_from_junit_marks_fail_build_timeout_and_logs_directory():
     assert result.log_urls["stdout"] == "https://stdout"
 
 
-def test_gen_summary_creates_html_and_aggregates_counters(tmp_path):
+def test_gen_summary_creates_html_and_aggregates_counters(
+    tmp_path, mk_testcase, write_junit_xml
+):
     xml_path = tmp_path / "junit.xml"
-    _write_xml(
+    write_junit_xml(
         xml_path,
-        _mk_testcase(classname="a", name="pass"),
-        _mk_testcase(classname="a", name="fail", failure="boom"),
-        _mk_testcase(classname="a", name="mute", props={"mute": "rule-1"}),
+        mk_testcase(classname="a", name="pass"),
+        mk_testcase(classname="a", name="fail", failure="boom"),
+        mk_testcase(classname="a", name="mute", props={"mute": "rule-1"}),
     )
 
     summary = gs.gen_summary(

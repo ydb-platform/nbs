@@ -2,6 +2,7 @@
 import argparse
 import dataclasses
 import json
+import logging
 import os
 import sys
 from contextlib import nullcontext
@@ -12,10 +13,9 @@ from typing import Dict, Iterable
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-try:
-    from .junit_utils import get_property_value, iter_xml_files
-except ImportError:
-    from junit_utils import get_property_value, iter_xml_files
+from .junit_utils import get_property_value, iter_xml_files
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TestStatus(Enum):
@@ -121,7 +121,7 @@ class TestResult:
             status = TestStatus.FAIL
             text = testcase.find("failure").text
             if text is not None and "Killed by timeout" in text:
-                print(f"{classname}, {name} is_timed_out  = True")
+                LOGGER.info("%s, %s is_timed_out = True", classname, name)
                 is_timed_out = True
             if text is not None and "skipped due to a failed build" in text:
                 status = TestStatus.FAIL_BUILD
@@ -155,8 +155,11 @@ class TestResult:
         try:
             elapsed = float(elapsed)
         except (TypeError, ValueError):
-            print(
-                f"Unable to cast elapsed time for {classname}::{name}  value={elapsed!r}"
+            LOGGER.warning(
+                "Unable to cast elapsed time for %s::%s value=%r",
+                classname,
+                name,
+                elapsed,
             )
             elapsed = 0.0
 
@@ -441,7 +444,7 @@ def update_pr_comment(
 
     for c in pr.get_issue_comments():
         if c.body.startswith(header):
-            print(f"Found comment with id={c.id}")
+            LOGGER.info("Found comment with id=%s", c.id)
             comment = c
             body = [c.body]
             break
@@ -481,10 +484,10 @@ def update_pr_comment(
     body = "\n".join(body)
 
     if comment is None:
-        print("Creating new comment")
+        LOGGER.info("Creating new comment")
         pr.create_issue_comment(body)
     else:
-        print("Updating existing comment")
+        LOGGER.info("Updating existing comment")
         comment.edit(body)
 
 
@@ -496,6 +499,7 @@ def parse_title_html_path_args(args: list[str]) -> list[tuple[str, str, str]]:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary-out-path", required=True)
     parser.add_argument(
@@ -523,7 +527,7 @@ def main() -> None:
     try:
         title_path = parse_title_html_path_args(args.args)
     except ValueError as error:
-        print(str(error))
+        LOGGER.error(str(error))
         raise SystemExit(-1) from error
 
     summary = gen_summary(args.summary_url_prefix, args.summary_out_path, title_path)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import logging
 import os
 import re
 import shutil
@@ -8,16 +9,15 @@ import sys
 import urllib.parse
 from xml.etree import ElementTree as ET
 
-try:
-    from .junit_utils import add_junit_link_property, is_faulty_testcase
-    from .mute_utils import mute_target, pattern_to_re
-except ImportError:
-    from junit_utils import add_junit_link_property, is_faulty_testcase
-    from mute_utils import mute_target, pattern_to_re
+from .junit_utils import add_junit_link_property, is_faulty_testcase
+from .mute_utils import mute_target, pattern_to_re
+
+LOGGER = logging.getLogger(__name__)
 
 
 def log_print(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+    message = " ".join(str(arg) for arg in args)
+    LOGGER.info(message)
 
 
 class YaMuteCheck:
@@ -267,6 +267,11 @@ def transform(
                     chunks_total = 1
                 else:
                     match = re.search(r"\[(\d+)/(\d+)\]", test_name)
+                    if match is None:
+                        log_print(
+                            f"Unable to parse chunk indices from test name: {test_name!r}"
+                        )
+                        continue
                     chunk_idx = int(match.group(1))
                     chunks_total = int(match.group(2))
                 logs = filter_empty_logs(
@@ -350,6 +355,7 @@ def build_parser():
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = build_parser()
     args = parser.parse_args()
 
