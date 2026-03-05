@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
-	nfs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/mocks"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
+	listers_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers/mock"
 	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/mocks"
@@ -319,8 +319,8 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 
 	storageMock := storage_mocks.NewStorageMock()
-	clientMock := nfs_mocks.NewClientMock()
-	sessionMock := nfs_mocks.NewSessionMock()
+	openerMock := listers_mocks.NewFilesystemOpenerMock()
+	listerMock := listers_mocks.NewFilesystemListerMock()
 
 	snapshotID := "test-snapshot"
 	filesystemID := "test-filesystem"
@@ -400,33 +400,28 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 		selectLimit,
 	).Return([]storage.NodeQueueEntry{}, nil)
 
-	// Create session.
-	clientMock.On(
-		"CreateSession",
+	// OpenFilesystem returns lister mock.
+	openerMock.On(
+		"OpenFilesystem",
 		mock.Anything,
 		filesystemID,
 		checkpointID,
-		true, // readonly
-	).Return(sessionMock, nil)
+	).Return(listerMock, nil)
 
 	// ListNodes for root returns children with some invalid node IDs.
-	sessionMock.On(
+	listerMock.On(
 		"ListNodes",
 		mock.Anything,
 		nfs.RootNodeID,
-		"",        // cookie
-		uint32(0), // maxBytes
-		false,     // unsafe
+		"", // cookie
 	).Return(children, "", nil)
 
 	// ListNodes for subdir returns empty.
-	sessionMock.On(
+	listerMock.On(
 		"ListNodes",
 		mock.Anything,
 		validDirNodeID,
-		"",        // cookie
-		uint32(0), // maxBytes
-		false,     // unsafe
+		"", // cookie
 	).Return([]nfs.Node{}, "", nil)
 
 	// ScheduleChildNodesForListing for root — only valid dir expected.
@@ -453,20 +448,19 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 		[]nfs.Node(nil),
 	).Return(nil)
 
-	sessionMock.On("Close", mock.Anything).Return(nil)
+	listerMock.On("Close", mock.Anything).Return(nil)
 
 	traverser := NewFilesystemTraverser(
 		snapshotID,
 		filesystemID,
 		checkpointID,
-		clientMock,
+		openerMock,
 		storageMock,
 		func(ctx context.Context) error {
 			return nil
 		},
 		config,
 		false, // rootNodeAlreadyScheduled
-		0,     // listNodesMaxBytes
 		nfs.RootNodeID,
 	)
 
@@ -475,7 +469,7 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 		func(
 			ctx context.Context,
 			nodes []nfs.Node,
-			session nfs.Session,
+			_ listers.FilesystemLister,
 		) error {
 			return nil
 		},
@@ -483,6 +477,6 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 	require.NoError(t, err)
 
 	storageMock.AssertExpectations(t)
-	clientMock.AssertExpectations(t)
-	sessionMock.AssertExpectations(t)
+	openerMock.AssertExpectations(t)
+	listerMock.AssertExpectations(t)
 }
