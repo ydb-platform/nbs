@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
@@ -11,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -28,6 +31,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(WriteBlob,                 __VA_ARGS__)                                \
     xxx(PatchBlob,                 __VA_ARGS__)                                \
     xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
+    xxx(AddFreshBlocks,            __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,10 +56,15 @@ struct TEvPartitionCommonPrivate
 
     struct TOperationCompleted
     {
+        NProto::TPartitionStats Stats;
+
         ui64 TotalCycles = 0;
         ui64 ExecCycles = 0;
 
         ui64 CommitId = 0;
+
+        TVector<TBlockRange64> AffectedRanges;
+        TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     };
 
     //
@@ -387,6 +396,35 @@ struct TEvPartitionCommonPrivate
         NPartition::TGroupDowntimesPtr GroupDowntimes;
     };
 
+
+    //
+    // AddFreshBlocks
+    //
+
+    struct TAddFreshBlocksRequest
+    {
+        ui64 CommitId;
+        ui64 BlobSize;
+        TVector<TBlockRange32> BlockRanges;
+        TVector<IWriteBlocksHandlerPtr> WriteHandlers;
+
+        TAddFreshBlocksRequest(
+                ui64 commitId,
+                ui64 blobSize,
+                TVector<TBlockRange32> blockRanges,
+                TVector<IWriteBlocksHandlerPtr> writeHandlers)
+            : CommitId(commitId)
+            , BlobSize(blobSize)
+            , BlockRanges(std::move(blockRanges))
+            , WriteHandlers(std::move(writeHandlers))
+        {}
+    };
+
+    struct TAddFreshBlocksResponse
+    {
+    };
+
+
     // Events declaration
     //
 
@@ -406,6 +444,8 @@ struct TEvPartitionCommonPrivate
         EvPartCountersCombined,
         EvPatchBlobCompleted,
         EvWriteBlobCompleted,
+        EvWriteFreshBlocksCompleted,
+        EvZeroFreshBlocksCompleted,
 
         EvEnd
     };
@@ -431,6 +471,12 @@ struct TEvPartitionCommonPrivate
 
     using TEvPatchBlobCompleted =
         TResponseEvent<TPatchBlobCompleted, EvPatchBlobCompleted>;
+
+    using TEvWriteFreshBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvWriteFreshBlocksCompleted>;
+
+    using TEvZeroFreshBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvZeroFreshBlocksCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
