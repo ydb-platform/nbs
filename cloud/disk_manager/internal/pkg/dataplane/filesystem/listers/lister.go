@@ -20,8 +20,8 @@ type FilesystemLister interface {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type FilesystemOpener interface {
-	OpenFilesystem(
+type FilesystemListerFactory interface {
+	CreateLister(
 		ctx context.Context,
 		filesystemID string,
 		checkpointID string,

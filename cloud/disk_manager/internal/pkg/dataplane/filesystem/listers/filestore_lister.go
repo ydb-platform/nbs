@@ -34,20 +34,20 @@ func (l *filestoreLister) Close(ctx context.Context) error {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type filestoreOpener struct {
+type filestoreListerFactory struct {
 	nfsClient         nfs.Client
 	listNodesMaxBytes uint32
 	readOnly          bool
 	unsafe            bool
 }
 
-func NewFilestoreOpener(
+func NewFilestoreListerFactory(
 	nfsClient nfs.Client,
 	listNodesMaxBytes uint32,
 	readOnly bool,
 	unsafe bool,
-) FilesystemOpener {
-	return &filestoreOpener{
+) FilesystemListerFactory {
+	return &filestoreListerFactory{
 		nfsClient:         nfsClient,
 		listNodesMaxBytes: listNodesMaxBytes,
 		readOnly:          readOnly,
@@ -55,7 +55,7 @@ func NewFilestoreOpener(
 	}
 }
 
-func (o *filestoreOpener) OpenFilesystem(
+func (o *filestoreListerFactory) CreateLister(
 	ctx context.Context,
 	filesystemID string,
 	checkpointID string,

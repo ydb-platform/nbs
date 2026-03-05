@@ -48,11 +48,11 @@ func assertFilesystemListerMockIsFilesystemLister(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type FilesystemOpenerMock struct {
+type FilesystemListerFactoryMock struct {
 	mock.Mock
 }
 
-func (m *FilesystemOpenerMock) OpenFilesystem(
+func (m *FilesystemListerFactoryMock) CreateLister(
 	ctx context.Context,
 	filesystemID string,
 	checkpointID string,
@@ -65,16 +65,16 @@ func (m *FilesystemOpenerMock) OpenFilesystem(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewFilesystemOpenerMock() *FilesystemOpenerMock {
-	return &FilesystemOpenerMock{}
+func NewFilesystemListerFactoryMock() *FilesystemListerFactoryMock {
+	return &FilesystemListerFactoryMock{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Ensure that FilesystemOpenerMock implements listers.FilesystemOpener.
-func assertFilesystemOpenerMockIsFilesystemOpener(
-	arg *FilesystemOpenerMock,
-) listers.FilesystemOpener {
+// Ensure that FilesystemListerFactoryMock implements listers.FilesystemListerFactory.
+func assertFilesystemListerFactoryMockIsFilesystemListerFactory(
+	arg *FilesystemListerFactoryMock,
+) listers.FilesystemListerFactory {
 
 	return arg
 }

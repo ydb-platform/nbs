@@ -58,7 +58,7 @@ func (t *scrubFilesystemTask) Run(
 	}
 	defer client.Close()
 
-	filesystemOpener := listers.NewFilestoreOpener(
+	filesystemListerFactory := listers.NewFilestoreListerFactory(
 		client,
 		t.config.GetListNodesMaxBytes(),
 		true, // readOnly
@@ -70,7 +70,7 @@ func (t *scrubFilesystemTask) Run(
 		fmt.Sprintf("scrubbing_%s", execCtx.GetTaskID()),
 		filesystem.GetFilesystemId(),
 		t.request.GetFilesystemCheckpointId(),
-		filesystemOpener,
+		filesystemListerFactory,
 		t.storage,
 		func(ctx context.Context) error {
 			t.state.RootNodeScheduled = true

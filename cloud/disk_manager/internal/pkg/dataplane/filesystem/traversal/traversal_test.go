@@ -143,7 +143,7 @@ func (f *fixture) getFilesAfterTraversal(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
-		listers.NewFilestoreOpener(
+		listers.NewFilestoreListerFactory(
 			f.client,
 			0,     // listNodesMaxBytes
 			true,  // readOnly
@@ -282,7 +282,7 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
-		listers.NewFilestoreOpener(
+		listers.NewFilestoreListerFactory(
 			fixture.client,
 			0,     // listNodesMaxBytes
 			true,  // readOnly
@@ -319,7 +319,7 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 
 	storageMock := storage_mocks.NewStorageMock()
-	openerMock := listers_mocks.NewFilesystemOpenerMock()
+	listerFactoryMock := listers_mocks.NewFilesystemListerFactoryMock()
 	listerMock := listers_mocks.NewFilesystemListerMock()
 
 	snapshotID := "test-snapshot"
@@ -400,9 +400,9 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 		selectLimit,
 	).Return([]storage.NodeQueueEntry{}, nil)
 
-	// OpenFilesystem returns lister mock.
-	openerMock.On(
-		"OpenFilesystem",
+	// CreateLister returns lister mock.
+	listerFactoryMock.On(
+		"CreateLister",
 		mock.Anything,
 		filesystemID,
 		checkpointID,
@@ -454,7 +454,7 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 		snapshotID,
 		filesystemID,
 		checkpointID,
-		openerMock,
+		listerFactoryMock,
 		storageMock,
 		func(ctx context.Context) error {
 			return nil
@@ -477,6 +477,6 @@ func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
 	require.NoError(t, err)
 
 	storageMock.AssertExpectations(t)
-	openerMock.AssertExpectations(t)
+	listerFactoryMock.AssertExpectations(t)
 	listerMock.AssertExpectations(t)
 }

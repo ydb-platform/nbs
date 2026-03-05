@@ -30,7 +30,7 @@ type FilesystemTraverser struct {
 	filesystemSnapshotID     string
 	filesystemID             string
 	filesystemCheckpointID   string
-	filesystemOpener         listers.FilesystemOpener
+	filesystemListerFactory         listers.FilesystemListerFactory
 	storage                  storage.Storage
 	stateSaver               StateSaver
 	config                   *config.FilesystemTraversalConfig
@@ -60,7 +60,7 @@ func NewFilesystemTraverser(
 	filesystemSnapshotID string,
 	filesystemID string,
 	filesystemCheckpointID string,
-	filesystemOpener listers.FilesystemOpener,
+	filesystemListerFactory listers.FilesystemListerFactory,
 	snapshotStorage storage.Storage,
 	stateSaver StateSaver,
 	config *config.FilesystemTraversalConfig,
@@ -74,7 +74,7 @@ func NewFilesystemTraverser(
 		filesystemSnapshotID:     filesystemSnapshotID,
 		filesystemID:             filesystemID,
 		filesystemCheckpointID:   filesystemCheckpointID,
-		filesystemOpener:         filesystemOpener,
+		filesystemListerFactory:         filesystemListerFactory,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
 		config:                   config,
@@ -188,7 +188,7 @@ func (t *FilesystemTraverser) directoryLister(
 	onListedNodes OnListedNodesFunc,
 ) error {
 
-	filesystemLister, err := t.filesystemOpener.OpenFilesystem(
+	filesystemLister, err := t.filesystemListerFactory.CreateLister(
 		ctx,
 		t.filesystemID,
 		t.filesystemCheckpointID,
