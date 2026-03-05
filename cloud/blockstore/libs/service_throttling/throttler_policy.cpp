@@ -15,16 +15,16 @@ class TThrottlerPolicy final
 {
 private:
     TThrottlingServiceConfig Config;
+    const double BurstRate;
     TLeakyBucket Bucket;
 
+    THashMap<NProto::EStorageMediaKind, TDuration> UsedQuota;
+
 public:
-    TThrottlerPolicy(
-            const TThrottlingServiceConfig& config)
+    TThrottlerPolicy(const TThrottlingServiceConfig& config)
         : Config(config)
-        , Bucket(
-            1.0,
-            Config.MaxBurstTime.MicroSeconds() / 1e6,
-            Config.MaxBurstTime.MicroSeconds() / 1e6)
+        , BurstRate(Config.MaxBurstTime.MicroSeconds() / 1e6)
+        , Bucket(1.0, BurstRate, BurstRate)
     {}
 
     TDuration SuggestDelay(
@@ -63,17 +63,25 @@ public:
             return TDuration::Zero();
         }
 
-        return SecondsToDuration(Bucket.Register(
-            now,
-            CostPerIO(
-                maxIops,
-                maxBandwidth,
-                byteCount).MicroSeconds() / 1e6));
+        TDuration update = CostPerIO(maxIops, maxBandwidth, byteCount);
+
+        double delay = Bucket.Register(now, update.MicroSeconds() / 1e6);
+        if (delay == 0) {
+            UsedQuota[mediaKind] += update;
+        }
+        return SecondsToDuration(delay);
     }
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const override
     {
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
+    }
+
+    TUsedQuota TakeUsedQuotaShare() override
+    {
+        TUsedQuota result(UsedQuota, BurstRate);
+        UsedQuota.clear();
+        return result;
     }
 };
 

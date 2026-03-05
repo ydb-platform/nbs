@@ -80,8 +80,8 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         Throttler->Unregister("Disk-1", "Client-2");
         UNIT_ASSERT(!instanceCounter->FindCounter("UsedQuota"));
         UNIT_ASSERT(!instanceCounter->FindCounter("MaxUsedQuota"));
-        UNIT_ASSERT(!TotalGroup->FindCounter("UsedQuota"));
-        UNIT_ASSERT(!TotalGroup->FindCounter("MaxUsedQuota"));
+        UNIT_ASSERT(TotalGroup->FindCounter("UsedQuota"));
+        UNIT_ASSERT(TotalGroup->FindCounter("MaxUsedQuota"));
     }
 
     Y_UNIT_TEST_F(ShouldTrim, TThrottlerFixture)
@@ -99,8 +99,8 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         Throttler->Trim(Timer->Now() + TRIM_THROTTLER_METRICS_INTERVAL);
         UNIT_ASSERT(!instanceCounter->FindCounter("UsedQuota"));
         UNIT_ASSERT(!instanceCounter->FindCounter("MaxUsedQuota"));
-        UNIT_ASSERT(!TotalGroup->FindCounter("UsedQuota"));
-        UNIT_ASSERT(!TotalGroup->FindCounter("MaxUsedQuota"));
+        UNIT_ASSERT(TotalGroup->FindCounter("UsedQuota"));
+        UNIT_ASSERT(TotalGroup->FindCounter("MaxUsedQuota"));
     }
 
     Y_UNIT_TEST_F(ShouldRemountTrim, TThrottlerFixture)
@@ -131,8 +131,8 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         Throttler->Trim(Timer->Now() + TRIM_THROTTLER_METRICS_INTERVAL);
         UNIT_ASSERT(!instanceCounter->FindCounter("UsedQuota"));
         UNIT_ASSERT(!instanceCounter->FindCounter("MaxUsedQuota"));
-        UNIT_ASSERT(!TotalGroup->FindCounter("UsedQuota"));
-        UNIT_ASSERT(!TotalGroup->FindCounter("MaxUsedQuota"));
+        UNIT_ASSERT(TotalGroup->FindCounter("UsedQuota"));
+        UNIT_ASSERT(TotalGroup->FindCounter("MaxUsedQuota"));
     }
 
     Y_UNIT_TEST_F(ShouldUpdateQuota, TThrottlerFixture)
@@ -162,7 +162,11 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         UNIT_ASSERT_VALUES_EQUAL(0, maxQuotaCounter2->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxQuotaCounterTotal->Val());
 
-        Throttler->UpdateUsedQuota(100);
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaMap;
+        quotaMap[NProto::STORAGE_MEDIA_SSD] = TDuration::Seconds(1);
+        TUsedQuota quota(quotaMap, 1.0);
+
+        Throttler->UpdateUsedQuota(quota);
         UNIT_ASSERT_VALUES_EQUAL(100, quotaCounter1->Val());
         UNIT_ASSERT_VALUES_EQUAL(100, quotaCounter2->Val());
         UNIT_ASSERT_VALUES_EQUAL(100, quotaCounterTotal->Val());
@@ -170,18 +174,20 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         UNIT_ASSERT_VALUES_EQUAL(0, maxQuotaCounter2->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxQuotaCounterTotal->Val());
 
-        Throttler->UpdateUsedQuota(42);
-        UNIT_ASSERT_VALUES_EQUAL(42, quotaCounter1->Val());
-        UNIT_ASSERT_VALUES_EQUAL(42, quotaCounter2->Val());
-        UNIT_ASSERT_VALUES_EQUAL(42, quotaCounterTotal->Val());
+        quotaMap[NProto::STORAGE_MEDIA_SSD] = TDuration::Seconds(0.42);
+        quota = std::move(TUsedQuota(quotaMap, 1.0));
+        Throttler->UpdateUsedQuota(quota);
+        UNIT_ASSERT_VALUES_EQUAL(142, quotaCounter1->Val());
+        UNIT_ASSERT_VALUES_EQUAL(142, quotaCounter2->Val());
+        UNIT_ASSERT_VALUES_EQUAL(142, quotaCounterTotal->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxQuotaCounter1->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxQuotaCounter2->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxQuotaCounterTotal->Val());
 
         Throttler->UpdateMaxUsedQuota();
-        UNIT_ASSERT_VALUES_EQUAL(42, quotaCounter1->Val());
-        UNIT_ASSERT_VALUES_EQUAL(42, quotaCounter2->Val());
-        UNIT_ASSERT_VALUES_EQUAL(42, quotaCounterTotal->Val());
+        UNIT_ASSERT_VALUES_EQUAL(142, quotaCounter1->Val());
+        UNIT_ASSERT_VALUES_EQUAL(142, quotaCounter2->Val());
+        UNIT_ASSERT_VALUES_EQUAL(142, quotaCounterTotal->Val());
         UNIT_ASSERT_VALUES_EQUAL(100, maxQuotaCounter1->Val());
         UNIT_ASSERT_VALUES_EQUAL(100, maxQuotaCounter2->Val());
         UNIT_ASSERT_VALUES_EQUAL(100, maxQuotaCounterTotal->Val());

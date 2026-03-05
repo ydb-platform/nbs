@@ -31,7 +31,7 @@ struct TUsedQuotaMetrics::TImpl
         auto guard = TWriteGuard(Mutex);
         if (!AtomicGet(IsInitialized) && counters) {
             Group = std::move(counters);
-            UsedQuota = Group->GetCounter("UsedQuota");
+            UsedQuota = Group->GetCounter("UsedQuota", /*derivative=*/true);
             MaxUsedQuota = Group->GetCounter("MaxUsedQuota");
             AtomicSet(IsInitialized, 1);
         }
@@ -58,7 +58,7 @@ struct TUsedQuotaMetrics::TImpl
         auto guard = TReadGuard(Mutex);
         MaxUsedQuotaCalc.Add(quota);
         if (UsedQuota) {
-            UsedQuota->Set(quota);
+            UsedQuota->Add(quota);
         }
     }
 
