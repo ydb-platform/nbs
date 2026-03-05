@@ -19,6 +19,7 @@ func (l *filestoreLister) ListNodes(
 	nodeID uint64,
 	cookie string,
 ) ([]nfs.Node, string, error) {
+
 	return l.session.ListNodes(
 		ctx,
 		nodeID,
@@ -47,6 +48,7 @@ func NewFilestoreListerFactory(
 	readOnly bool,
 	unsafe bool,
 ) FilesystemListerFactory {
+
 	return &filestoreListerFactory{
 		nfsClient:         nfsClient,
 		listNodesMaxBytes: listNodesMaxBytes,
@@ -60,6 +62,7 @@ func (o *filestoreListerFactory) CreateLister(
 	filesystemID string,
 	checkpointID string,
 ) (FilesystemLister, error) {
+
 	session, err := o.nfsClient.CreateSession(
 		ctx,
 		filesystemID,
