@@ -30,7 +30,7 @@ type FilesystemTraverser struct {
 	filesystemSnapshotID     string
 	filesystemID             string
 	filesystemCheckpointID   string
-	filesystemListerFactory         listers.FilesystemListerFactory
+	filesystemListerFactory  listers.FilesystemListerFactory
 	storage                  storage.Storage
 	stateSaver               StateSaver
 	config                   *config.FilesystemTraversalConfig
@@ -74,7 +74,7 @@ func NewFilesystemTraverser(
 		filesystemSnapshotID:     filesystemSnapshotID,
 		filesystemID:             filesystemID,
 		filesystemCheckpointID:   filesystemCheckpointID,
-		filesystemListerFactory:         filesystemListerFactory,
+		filesystemListerFactory:  filesystemListerFactory,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
 		config:                   config,

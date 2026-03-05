@@ -10,3 +10,7 @@ END()
 RECURSE(
     mocks
 )
+
+RECURSE_FOR_TESTS(
+    tests
+)
