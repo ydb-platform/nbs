@@ -7,14 +7,18 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	nfs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/mocks"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
@@ -300,4 +304,176 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, expectedError)
+}
+
+func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+
+	storageMock := storage_mocks.NewStorageMock()
+	clientMock := nfs_mocks.NewClientMock()
+	sessionMock := nfs_mocks.NewSessionMock()
+
+	snapshotID := "test-snapshot"
+	filesystemID := "test-filesystem"
+	checkpointID := "test-checkpoint"
+	workersCount := uint32(1)
+	selectLimit := uint64(1000)
+
+	config := &traversal_config.FilesystemTraversalConfig{
+		TraversalWorkersCount:  &workersCount,
+		SelectNodesToListLimit: &selectLimit,
+	}
+
+	validDirNodeID := uint64(100)
+	validFileNodeID := uint64(200)
+
+	children := []nfs.Node{
+		nfs.Node(nfs_client.Node{
+			NodeID: validFileNodeID,
+			Name:   "file.txt",
+			Type:   nfs_client.NODE_KIND_FILE,
+		}),
+		nfs.Node(nfs_client.Node{
+			NodeID: validDirNodeID,
+			Name:   "subdir",
+			Type:   nfs_client.NODE_KIND_DIR,
+		}),
+		nfs.Node(nfs_client.Node{
+			NodeID: nfs.InvalidNodeID,
+			Name:   "corrupted_dir_1",
+			Type:   nfs_client.NODE_KIND_DIR,
+		}),
+		nfs.Node(nfs_client.Node{
+			NodeID: nfs.InvalidNodeID,
+			Name:   "corrupted_dir_2",
+			Type:   nfs_client.NODE_KIND_DIR,
+		}),
+	}
+
+	// Schedule root node for traversal.
+	storageMock.On(
+		"SchedulerDirectoryForTraversal",
+		mock.Anything,
+		snapshotID,
+		nfs.RootNodeID,
+	).Return(nil)
+
+	// First SelectNodesToList returns root node.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything, // nodesToExclude
+		selectLimit,
+	).Return(
+		[]storage.NodeQueueEntry{{NodeID: nfs.RootNodeID, Cookie: ""}},
+		nil,
+	).Once()
+
+	// Second SelectNodesToList returns subdir.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything, // nodesToExclude
+		selectLimit,
+	).Return(
+		[]storage.NodeQueueEntry{{NodeID: validDirNodeID, Cookie: ""}},
+		nil,
+	).Once()
+
+	// Third SelectNodesToList returns empty, traversal done.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything, // nodesToExclude
+		selectLimit,
+	).Return([]storage.NodeQueueEntry{}, nil)
+
+	// Create session.
+	clientMock.On(
+		"CreateSession",
+		mock.Anything,
+		filesystemID,
+		checkpointID,
+		true, // readonly
+	).Return(sessionMock, nil)
+
+	// ListNodes for root returns children with some invalid node IDs.
+	sessionMock.On(
+		"ListNodes",
+		mock.Anything,
+		nfs.RootNodeID,
+		"",        // cookie
+		uint32(0), // maxBytes
+		false,     // unsafe
+	).Return(children, "", nil)
+
+	// ListNodes for subdir returns empty.
+	sessionMock.On(
+		"ListNodes",
+		mock.Anything,
+		validDirNodeID,
+		"",        // cookie
+		uint32(0), // maxBytes
+		false,     // unsafe
+	).Return([]nfs.Node{}, "", nil)
+
+	// ScheduleChildNodesForListing for root — only valid dir expected.
+	storageMock.On(
+		"ScheduleChildNodesForListing",
+		mock.Anything,
+		snapshotID,
+		nfs.RootNodeID,
+		"", // nextCookie
+		[]nfs.Node{nfs.Node(nfs_client.Node{
+			NodeID: validDirNodeID,
+			Name:   "subdir",
+			Type:   nfs_client.NODE_KIND_DIR,
+		})},
+	).Return(nil)
+
+	// ScheduleChildNodesForListing for subdir — no children.
+	storageMock.On(
+		"ScheduleChildNodesForListing",
+		mock.Anything,
+		snapshotID,
+		validDirNodeID,
+		"", // nextCookie
+		[]nfs.Node(nil),
+	).Return(nil)
+
+	sessionMock.On("Close", mock.Anything).Return(nil)
+
+	traverser := NewFilesystemTraverser(
+		snapshotID,
+		filesystemID,
+		checkpointID,
+		clientMock,
+		storageMock,
+		func(ctx context.Context) error {
+			return nil
+		},
+		config,
+		false, // rootNodeAlreadyScheduled
+		0,     // listNodesMaxBytes
+		nfs.RootNodeID,
+	)
+
+	err := traverser.Traverse(
+		ctx,
+		func(
+			ctx context.Context,
+			nodes []nfs.Node,
+			session nfs.Session,
+		) error {
+			return nil
+		},
+	)
+	require.NoError(t, err)
+
+	storageMock.AssertExpectations(t)
+	clientMock.AssertExpectations(t)
+	sessionMock.AssertExpectations(t)
 }
