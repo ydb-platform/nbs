@@ -10,52 +10,18 @@ jobs:
     steps:
     - name: README
       run: |
-        echo "This is a test of the GA scripts"
         cat << 'EOF' > README.md
-        To update the test data, run the following commands:
-        export TMP_DIR=$(mktemp -d)
-        export GITHUB_WORKSPACE=$(pwd)
-        export GITHUB_REPOSITORY="ydb-platform/nbs"
-        export ACTIONS_TEST_DATA_VERSION=${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
+        This workflow validates test helper scripts with deterministic pytest cases.
 
-        mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
-        wget "https://storage.${REGION}.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
-        tar zxvf cloud.tar.gz
+        Run locally:
+          export PYTHONPATH=$PWD/.github
+          pip install -r .github/scripts/requirements.txt
+          pip install -r .github/scripts/requirements_dev.txt
+          pytest .github/scripts/tests
 
-        python3 $GITHUB_WORKSPACE/.github/scripts/tests/transform-ya-junit.py \
-          --output "$TMP_DIR/junit.xml" \
-          -m "$GITHUB_WORKSPACE/.github/scripts/tests/test-data/muted_ya.txt" \
-          --ya-out "$GITHUB_WORKSPACE/.github/scripts/tests/test-data/" \
-          --log-url-prefix "LOG_URL_PREFIX" \
-          --log-out-dir "$TMP_DIR" \
-          "$GITHUB_WORKSPACE/.github/scripts/tests/test-data/junit.xml"
-
-        python3 $GITHUB_WORKSPACE/.github/scripts/tests/generate-summary.py \
-          --summary-out-path "$TMP_DIR" \
-          --summary-out-env-path "$TMP_DIR/summary_env" \
-          --summary-url-prefix "SUMMARY_URL_PREFIX" \
-          --build-preset "linux-x64-relwithdebinfo" \
-          --is-dry-run \
-          "Tests" ya-test.html "$TMP_DIR/junit.xml"
-
-        python3 $GITHUB_WORKSPACE/.github/scripts/tests/fail-checker.py "$TMP_DIR/junit.xml" --paths-only | sort | tee -a "$TMP_DIR/fail-checker"
-
-        cd $TMP_DIR
-        find . -type f -exec md5sum {} + | sort -k2,2 | tee ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/MD5SUMS
-        cp $TMP_DIR/{fail-checker,summary_env,ya-test.html} ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
-        cd ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/
-        export NEW_VERSION=$((ACTIONS_TEST_DATA_VERSION + 1))
-        tar zcvf cloud-v${NEW_VERSION}.tar.gz cloud/ MD5SUMS fail-checker  junit.xml summary_env ya-test.html muted_ya.txt
-
-        Upload resulting cloud-v${NEW_VERSION}.tar.gz to the storage.ai.nebius.cloud bucket github-actions-test-data
-        aws s3 cp cloud-v${NEW_VERSION}.tar.gz s3://github-actions-test-data/cloud-v${NEW_VERSION}.tar.gz
-        Bump version in https://github.com/ydb-platform/nbs/settings/variables/actions
+        The test suite does not download canonical artifacts and does not compare md5 snapshots.
         EOF
         cat README.md
-      env:
-        ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
-        REGION: ${{ vars.POOLED_LIGHT_REGION }}
 
     - name: Checkout PR
       uses: actions/checkout@v6
@@ -66,6 +32,7 @@ jobs:
         clean: true
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+
     - name: Rebase PR
       if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
@@ -75,6 +42,7 @@ jobs:
         git config user.name "Robot NBS"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
+
     - name: Checkout
       uses: actions/checkout@v6
       if: github.event.pull_request.head.sha == ''
@@ -82,91 +50,107 @@ jobs:
         submodules: false
         sparse-checkout: '.github'
         clean: true
+
     - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
       if: ${{ always() }}
       run: git config core.sparseCheckout false
       continue-on-error: true
-    - name: Prepare env
-      shell: bash
-      run: |
-        echo "SHELLOPTS=$SHELLOPTS:xtrace" >> $GITHUB_ENV
-        echo "TMP_DIR=$(mktemp -d)" >> $GITHUB_ENV
-    - name: Prepare test data
+
+    - name: set up python environment
+      uses: actions/setup-python@v5.0.0
+      with:
+        python-version: "3.10"
+
+    - name: Prepare s3
+      id: s3
+      uses: ./.github/actions/s3cmd
+      with:
+        s3_bucket: ${{ vars.POOLED_LIGHT_AWS_BUCKET }}
+        s3_endpoint: ${{ vars.POOLED_LIGHT_AWS_ENDPOINT }}
+        s3_website_suffix: ${{ vars.POOLED_LIGHT_AWS_WEBSITE_SUFFIX }}
+        s3_key_id: ${{ secrets.POOLED_LIGHT_AWS_KEY_ID }}
+        s3_key_secret: ${{ secrets.POOLED_LIGHT_AWS_SECRET_KEY }}
+        folder_prefix: nebius-
+        build_preset: "relwithdebinfo"
+        install: false
+
+    - name: set up dependencies
       shell: bash
       run: |
         set -x
-        mkdir -p $GITHUB_WORKSPACE/.github/scripts/tests/test-data/
-        cd $GITHUB_WORKSPACE/.github/scripts/tests/test-data/ || exit
-        wget "https://storage.${REGION}.nebius.cloud/github-actions-test-data/cloud-v${ACTIONS_TEST_DATA_VERSION}.tar.gz" -O cloud.tar.gz
-        tar zxvf cloud.tar.gz
+        pip install -r .github/scripts/requirements.txt
+        pip install -r .github/scripts/requirements_dev.txt
+
+    - name: pytest test scripts
+      id: pytest
+      shell: bash
+      run: |
+        set -x
+        export PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github"
+        pytest --tb=short --disable-warnings --maxfail=1 \
+          --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
+          --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
+          --self-contained-html \
+          .github/scripts/tests
+
+    - name: Upload pytest test results artifact
+      if: ${{ always() }}
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: ga-scripts-pytest-results
+        path: ga-scripts-pytest-results.xml
+
+    - name: Upload pytest html report artifact
+      if: ${{ always() }}
+      id: upload-html
+      uses: actions/upload-artifact@v4
+      with:
+        name: ga-scripts-pytest-report-html
+        path: ga-scripts-pytest-report.html
+
+    - name: upload test results to s3
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        set -x
+        sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
+        sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
+
+    - name: add test report links to summary
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        {
+          echo "### GA Scripts pytest reports"
+          echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
+          echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
+          echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
+          echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: comment on issue (${{ steps.pytest.outcome }})
+      if: ${{ github.event_name == 'pull_request' && always() }}
+      uses: actions/github-script@v7.0.1
       env:
-        ACTIONS_TEST_DATA_VERSION: ${{ vars.NEBIUS_ACTIONS_TEST_DATA_VERSION }}
-        REGION: ${{ vars.POOLED_LIGHT_REGION }}
-    - name: Launch transform-ya-junit.py
-      shell: bash
-      run: |
-        set -x
-        echo "::group::transform-junit"
-        python3 .github/scripts/tests/transform-ya-junit.py \
-          --output "$TMP_DIR/junit.xml" \
-          -m .github/scripts/tests/test-data/muted_ya.txt \
-          --ya-out "$GITHUB_WORKSPACE/.github/scripts/tests/test-data/" \
-          --log-url-prefix "LOG_URL_PREFIX" \
-          --log-out-dir "$TMP_DIR" \
-          ".github/scripts/tests/test-data/junit.xml"
-        echo "::endgroup::"
+        STEP_OUTCOME: ${{ steps.pytest.outcome }}
+        ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
+      with:
+        script: |
+          const outcome = process.env.STEP_OUTCOME;
+          const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
+          const s3_path = process.env.S3_URL_PREFIX;
+          const comment =
+            'status: ' + status_emoji +
+            ' [GA scripts pytest result (artifact)](' + process.env.ARTIFACT_URL + ')' +
+            ' [GA scripts pytest report (artifact)](' + process.env.HTML_ARTIFACT_URL + ')' +
+            ' [GA scripts pytest report (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-report.html)' +
+            ' [GA scripts pytest results (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-results.xml)';
 
-    - name: Launch generate-summary.py
-      shell: bash
-      run: |
-        set -x
-        # you can't override GITHUB_* vars (except token) in step env
-        export GITHUB_REPOSITORY="ydb-platform/nbs"
-        echo "::group::generate-summary"
-        python3 .github/scripts/tests/generate-summary.py \
-          --summary-out-path "$TMP_DIR" \
-          --summary-out-env-path "$TMP_DIR/summary_env" \
-          --summary-url-prefix "SUMMARY_URL_PREFIX" \
-          --build-preset "linux-x64-relwithdebinfo" \
-          --is-dry-run \
-          "Tests" ya-test.html "$TMP_DIR/junit.xml"
-        echo "::endgroup::"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
-    - name: Launch fail-checker.py
-      shell: bash
-      run: |
-        set -x
-        echo "::group::fail-checker"
-        python3 .github/scripts/tests/fail-checker.py "$TMP_DIR/junit.xml" --paths-only | sort | tee -a "$TMP_DIR/fail-checker"
-        echo "::endgroup::"
-    - name: check md5
-      shell: bash
-      run: |
-        echo "::group::check-md5"
-        # find . -type f -exec md5sum {} + > ../test-data/MD5SUMS
-        cp .github/scripts/tests/test-data/MD5SUMS $TMP_DIR/MD5SUMS
-        cd $TMP_DIR || exit
-        md5sum -c MD5SUMS | tee -a RESULT
-        echo "::endgroup::"
-    - name: additional info in case of failure
-      if: failure()
-      shell: bash
-      run: |
-        cd $TMP_DIR || exit
-        grep FAILED RESULT | awk -F: '{print $1}' | while read -r f;
-        do
-          echo "=========="
-          echo $f
-          cat $f
-          grep $f MD5SUMS
-          md5sum $f
-          if [ -f "${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f}" ];
-          then
-            diff -u ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f} ${f}
-          fi
-          echo "=========="
-        done
-
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          })

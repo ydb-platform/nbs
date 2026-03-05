@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 import argparse
 import dataclasses
-import os
 import json
+import os
 import sys
 from contextlib import nullcontext
-from github import Github, Auth as GithubAuth
-from github.PullRequest import PullRequest
 from enum import Enum
 from operator import attrgetter
-from typing import List, Dict
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
-from junit_utils import get_property_value, iter_xml_files
+from pathlib import Path
+from typing import Dict, Iterable
 
-BUILD_FAILED_COUNT = int(os.environ.get("BUILD_FAILED_COUNT", "0"))
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+try:
+    from .junit_utils import get_property_value, iter_xml_files
+except ImportError:
+    from junit_utils import get_property_value, iter_xml_files
 
 
 class TestStatus(Enum):
@@ -27,6 +29,62 @@ class TestStatus(Enum):
     def __lt__(self, other):
         return self.value < other.value
 
+    @property
+    def label(self) -> str:
+        return {
+            TestStatus.PASS: "PASS",
+            TestStatus.FAIL: "FAIL",
+            TestStatus.FAIL_BUILD: "FAIL BUILD",
+            TestStatus.ERROR: "ERROR",
+            TestStatus.SKIP: "SKIP",
+            TestStatus.MUTE: "MUTE",
+        }[self]
+
+    @property
+    def summary_header(self) -> str:
+        return {
+            TestStatus.PASS: "PASSED",
+            TestStatus.ERROR: "ERRORS",
+            TestStatus.FAIL: "FAILED",
+            TestStatus.FAIL_BUILD: "FAILED BUILD",
+            TestStatus.SKIP: "SKIPPED",
+            TestStatus.MUTE: "MUTED",
+        }[self]
+
+    @property
+    def report_anchor(self) -> str:
+        return self.name
+
+    @property
+    def is_failure(self) -> bool:
+        return self in (
+            TestStatus.ERROR,
+            TestStatus.FAIL,
+            TestStatus.FAIL_BUILD,
+        )
+
+    @classmethod
+    def summary_table_order(cls) -> tuple["TestStatus", ...]:
+        return (
+            cls.PASS,
+            cls.ERROR,
+            cls.FAIL,
+            cls.FAIL_BUILD,
+            cls.SKIP,
+            cls.MUTE,
+        )
+
+    @classmethod
+    def html_report_order(cls) -> tuple["TestStatus", ...]:
+        return (
+            cls.ERROR,
+            cls.FAIL,
+            cls.FAIL_BUILD,
+            cls.SKIP,
+            cls.MUTE,
+            cls.PASS,
+        )
+
 
 @dataclasses.dataclass
 class TestResult:
@@ -38,18 +96,11 @@ class TestResult:
     is_timed_out: bool
 
     @property
-    def status_display(self):
-        return {
-            TestStatus.PASS: "PASS",
-            TestStatus.FAIL: "FAIL",
-            TestStatus.FAIL_BUILD: "FAIL BUILD",
-            TestStatus.ERROR: "ERROR",
-            TestStatus.SKIP: "SKIP",
-            TestStatus.MUTE: "MUTE",
-        }[self.status]
+    def status_display(self) -> str:
+        return self.status.label
 
     @property
-    def elapsed_display(self):
+    def elapsed_display(self) -> str:
         m, s = divmod(self.elapsed, 60)
         parts = []
         if m > 0:
@@ -57,11 +108,8 @@ class TestResult:
         parts.append(f"{s:.3f}s")
         return " ".join(parts)
 
-    def __str__(self):
-        return f"{self.full_name:<138} {self.status_display}"
-
     @property
-    def full_name(self):
+    def full_name(self) -> str:
         return f"{self.classname}/{self.name}"
 
     @classmethod
@@ -107,81 +155,84 @@ class TestResult:
         try:
             elapsed = float(elapsed)
         except (TypeError, ValueError):
-            elapsed = 0
             print(
                 f"Unable to cast elapsed time for {classname}::{name}  value={elapsed!r}"
             )
+            elapsed = 0.0
 
         return cls(classname, name, status, log_urls, elapsed, is_timed_out)
 
 
 class TestSummaryLine:
-    def __init__(self, title):
+    def __init__(self, title: str):
         self.title = title
         self.tests = []
         self.is_failed = False
-        self.report_fn = self.report_url = None
+        self.report_fn = None
+        self.report_url = None
         self.counter = {s: 0 for s in TestStatus}
 
-    def add(self, test: TestResult):
-        self.is_failed |= test.status in (
-            TestStatus.ERROR,
-            TestStatus.FAIL,
-            TestStatus.FAIL_BUILD,
-        )
+    def add(self, test: TestResult) -> None:
+        self.is_failed |= test.status.is_failure
         self.counter[test.status] += 1
         self.tests.append(test)
 
-    def add_report(self, fn, url):
+    def add_report(self, fn: str, url: str) -> None:
         self.report_fn = fn
         self.report_url = url
 
     @property
-    def test_count(self):
+    def test_count(self) -> int:
         return len(self.tests)
 
     @property
-    def passed(self):
+    def passed(self) -> int:
         return self.counter[TestStatus.PASS]
 
     @property
-    def errors(self):
+    def errors(self) -> int:
         return self.counter[TestStatus.ERROR]
 
     @property
-    def failed(self):
+    def failed(self) -> int:
         return self.counter[TestStatus.FAIL]
 
     @property
-    def failed_build(self):
+    def failed_build(self) -> int:
         return self.counter[TestStatus.FAIL_BUILD]
 
     @property
-    def skipped(self):
+    def skipped(self) -> int:
         return self.counter[TestStatus.SKIP]
 
     @property
-    def muted(self):
+    def muted(self) -> int:
         return self.counter[TestStatus.MUTE]
+
+    def count(self, status: TestStatus) -> int:
+        return self.counter[status]
 
 
 class TestSummary:
     def __init__(self):
-        self.lines: List[TestSummaryLine] = []
+        self.lines: list[TestSummaryLine] = []
         self.is_failed = False
 
-    def add_line(self, line: TestSummaryLine):
+    def add_line(self, line: TestSummaryLine) -> None:
         self.is_failed |= line.is_failed
         self.lines.append(line)
 
     @property
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return len(self.lines) == 0
 
-    def render_line(self, items):
+    @staticmethod
+    def render_line(items: Iterable[str]) -> str:
         return f"| {' | '.join(items)} |"
 
-    def render(self, add_footnote=False):
+    def render(
+        self, add_footnote: bool = False, build_failed_count: int = 0
+    ) -> list[str]:
         github_srv = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
         repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/nbs")
 
@@ -193,24 +244,18 @@ class TestSummary:
             else f'<sup>[?]({footnote_url} "All mute rules are defined here")</sup>'
         )
 
-        columns = [
-            "TESTS",
-            "PASSED",
-            "ERRORS",
-            "FAILED",
-            "FAILED BUILD",
-            "SKIPPED",
-            f"MUTED{footnote}",
-        ]
+        columns = ["TESTS"]
+        for status in TestStatus.summary_table_order():
+            if status == TestStatus.MUTE:
+                columns.append(f"{status.summary_header}{footnote}")
+            else:
+                columns.append(status.summary_header)
 
         need_first_column = len(self.lines) > 1
-
         if need_first_column:
             columns.insert(0, "")
 
-        result = [
-            self.render_line(columns),
-        ]
+        result = [self.render_line(columns)]
 
         if need_first_column:
             result.append(self.render_line([":---"] + ["---:"] * (len(columns) - 1)))
@@ -223,29 +268,26 @@ class TestSummary:
             if need_first_column:
                 row.append(line.title)
 
-            failed_build = (
-                BUILD_FAILED_COUNT
-                if BUILD_FAILED_COUNT > line.failed_build
-                else line.failed_build
-            )
-
-            row.extend(
-                [
-                    render_pm(line.test_count, f"{report_url}", 0),
-                    render_pm(line.passed, f"{report_url}#PASS", 0),
-                    render_pm(line.errors, f"{report_url}#ERROR", 0),
-                    render_pm(line.failed, f"{report_url}#FAIL", 0),
-                    render_pm(failed_build, f"{report_url}#FAIL_BUILD", 0),
-                    render_pm(line.skipped, f"{report_url}#SKIP", 0),
-                    render_pm(line.muted, f"{report_url}#MUTE", 0),
-                ]
-            )
+            row.append(render_pm(line.test_count, report_url, 0))
+            for status in TestStatus.summary_table_order():
+                count = line.count(status)
+                if status == TestStatus.FAIL_BUILD:
+                    count = max(build_failed_count, count)
+                row.append(render_pm(count, f"{report_url}#{status.report_anchor}", 0))
             result.append(self.render_line(row))
 
         if add_footnote:
             result.append("")
             result.append(f"[^1]: All mute rules are defined [here]({footnote_url}).")
+
         return result
+
+
+def get_build_failed_count() -> int:
+    try:
+        return int(os.environ.get("BUILD_FAILED_COUNT", "0"))
+    except ValueError:
+        return 0
 
 
 def render_pm(value, url, diff=None):
@@ -255,9 +297,7 @@ def render_pm(value, url, diff=None):
         text = str(value)
 
     if diff is not None and diff != 0:
-        if diff == 0:
-            sign = "±"
-        elif diff < 0:
+        if diff < 0:
             sign = "-"
         else:
             sign = "+"
@@ -267,11 +307,11 @@ def render_pm(value, url, diff=None):
     return text
 
 
-def render_testlist_html(rows, fn, summary_url):
-    TEMPLATES_PATH = os.path.join(os.path.dirname(__file__), "templates")
+def render_testlist_html(rows, fn: str, summary_url: str) -> None:
+    templates_path = Path(__file__).with_name("templates")
 
     env = Environment(
-        loader=FileSystemLoader(TEMPLATES_PATH), undefined=StrictUndefined
+        loader=FileSystemLoader(str(templates_path)), undefined=StrictUndefined
     )
 
     status_test = {}
@@ -285,16 +325,7 @@ def render_testlist_html(rows, fn, summary_url):
     for status in status_test.keys():
         status_test[status].sort(key=attrgetter("full_name"))
 
-    status_order = [
-        TestStatus.ERROR,
-        TestStatus.FAIL,
-        TestStatus.FAIL_BUILD,
-        TestStatus.SKIP,
-        TestStatus.MUTE,
-        TestStatus.PASS,
-    ]
-
-    # remove status group without tests
+    status_order = list(TestStatus.html_report_order())
     status_order = [s for s in status_order if s in status_test]
 
     content = env.get_template("summary.html").render(
@@ -308,36 +339,34 @@ def render_testlist_html(rows, fn, summary_url):
         fp.write(content)
 
 
-def write_summary(summary: TestSummary, summary_out_env_path=""):
-    if summary_out_env_path == "":
-        summary_fn = os.environ.get("GITHUB_STEP_SUMMARY")
-    else:
-        summary_fn = summary_out_env_path
+def write_summary(summary: TestSummary, summary_out_env_path: str = "") -> None:
+    summary_fn = summary_out_env_path or os.environ.get("GITHUB_STEP_SUMMARY")
 
     fp_ctx = (
-        open(summary_fn, "at")  # noqa: SIM115
-        if summary_fn
-        else nullcontext(sys.stdout)
-    )
+        open(summary_fn, "at") if summary_fn else nullcontext(sys.stdout)
+    )  # noqa: SIM115
     with fp_ctx as fp:
         if summary.is_empty:
             fp.write(
                 ":red_circle: Test run completed, no test results found. Please check build logs."
             )
         else:
-            for line in summary.render(add_footnote=True):
+            for line in summary.render(
+                add_footnote=True,
+                build_failed_count=get_build_failed_count(),
+            ):
                 fp.write(f"{line}\n")
 
         fp.write("\n")
 
 
-def gen_summary(summary_url_prefix, summary_out_folder, paths):
+def gen_summary(summary_url_prefix: str, summary_out_folder: str, paths):
     summary = TestSummary()
 
     for title, html_fn, path in paths:
         summary_line = TestSummaryLine(title)
 
-        for fn, suite, case in iter_xml_files(path):
+        for _fn, _suite, case in iter_xml_files(path):
             test_result = TestResult.from_junit(case)
             summary_line.add(test_result)
 
@@ -358,20 +387,17 @@ def gen_summary(summary_url_prefix, summary_out_folder, paths):
 
 
 def get_comment_text(
-    pr: PullRequest,
+    pr,
     summary: TestSummary,
     build_preset: str,
     test_history_url: str,
     test_target: str,
     test_time: str,
 ):
-    test_target_message = ""
-    if test_target != "":
-        test_target_message = f" target: **{test_target}**"
-
-    test_time_message = ""
-    if test_time and test_time != "0":
-        test_time_message = f" (test time: {test_time}s)"
+    test_target_message = f" target: **{test_target}**" if test_target else ""
+    test_time_message = (
+        f" (test time: {test_time}s)" if test_time and test_time != "0" else ""
+    )
 
     if summary.is_empty:
         empty_summary = (
@@ -381,7 +407,8 @@ def get_comment_text(
             f" Test run completed, no test results found for commit {pr.head.sha}."
         )
         return [empty_summary, "Please check build logs."]
-    elif summary.is_failed or BUILD_FAILED_COUNT > 0:
+
+    if summary.is_failed or get_build_failed_count() > 0:
         result = f":red_circle: **{build_preset}**{test_target_message}{test_time_message}: some tests FAILED"
     else:
         result = f":green_circle: **{build_preset}**{test_target_message}{test_time_message}: all tests PASSED"
@@ -392,14 +419,14 @@ def get_comment_text(
         body.append("")
         body.append(f"[Test history]({test_history_url})")
 
-    body.extend(summary.render())
+    body.extend(summary.render(build_failed_count=get_build_failed_count()))
 
     return body
 
 
 def update_pr_comment(
     run_number: int,
-    pr: PullRequest,
+    pr,
     summary: TestSummary,
     build_preset: str,
     test_history_url: str,
@@ -461,7 +488,14 @@ def update_pr_comment(
         comment.edit(body)
 
 
-def main():
+def parse_title_html_path_args(args: list[str]) -> list[tuple[str, str, str]]:
+    if len(args) % 3 != 0:
+        raise ValueError("Invalid argument count")
+    it = iter(args)
+    return list(zip(it, it, it))
+
+
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary-out-path", required=True)
     parser.add_argument(
@@ -486,34 +520,41 @@ def main():
     parser.add_argument("args", nargs="+", metavar="TITLE html_out path")
     args = parser.parse_args()
 
-    if len(args.args) % 3 != 0:
-        print("Invalid argument count")
-        raise SystemExit(-1)
-
-    paths = iter(args.args)
-    title_path = list(zip(paths, paths, paths))
+    try:
+        title_path = parse_title_html_path_args(args.args)
+    except ValueError as error:
+        print(str(error))
+        raise SystemExit(-1) from error
 
     summary = gen_summary(args.summary_url_prefix, args.summary_out_path, title_path)
     write_summary(summary, args.summary_out_env_path)
 
-    if os.environ.get("GITHUB_EVENT_NAME") in ("pull_request", "pull_request_target"):
-        gh = Github(auth=GithubAuth.Token(os.environ["GITHUB_TOKEN"]))
+    if os.environ.get("GITHUB_EVENT_NAME") not in (
+        "pull_request",
+        "pull_request_target",
+    ):
+        return
 
-        with open(os.environ["GITHUB_EVENT_PATH"]) as fp:
-            event = json.load(fp)
+    from github import Auth as GithubAuth, Github
+    from github.PullRequest import PullRequest
 
-        run_number = int(os.environ.get("GITHUB_RUN_NUMBER"))
-        pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
-        update_pr_comment(
-            run_number,
-            pr,
-            summary,
-            args.build_preset,
-            args.test_history_url,
-            args.test_target,
-            args.test_time,
-            args.is_dry_run,
-        )
+    gh = Github(auth=GithubAuth.Token(os.environ["GITHUB_TOKEN"]))
+
+    with open(os.environ["GITHUB_EVENT_PATH"]) as fp:
+        event = json.load(fp)
+
+    run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
+    pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
+    update_pr_comment(
+        run_number,
+        pr,
+        summary,
+        args.build_preset,
+        args.test_history_url,
+        args.test_target,
+        args.test_time,
+        args.is_dry_run,
+    )
 
 
 if __name__ == "__main__":
