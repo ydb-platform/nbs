@@ -102,10 +102,12 @@ func newClientMetrics(registry metrics.Registry) *clientMetrics {
 
 func newSessionMetrics(
 	registry metrics.Registry,
-	host string,
+	tags map[string]string,
 ) *clientMetrics {
 
-	return newClientMetrics(registry.WithTags(map[string]string{
-		"request_host": host,
-	}))
+	return &clientMetrics{
+		registry: registry.WithTags(tags),
+		underlyingErrors: registry.Counter("underlying_errors"),
+		requestStats:     make(map[string]*requestStats),
+	}
 }
