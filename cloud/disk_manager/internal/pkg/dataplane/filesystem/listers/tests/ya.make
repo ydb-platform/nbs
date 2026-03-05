@@ -1,4 +1,4 @@
-GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal)
+GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane/filesystem/listers)
 
 SET_APPEND(RECIPE_ARGS --nfs-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
@@ -7,8 +7,7 @@ REQUIREMENTS(
 )
 
 PEERDIR(
-    cloud/disk_manager/internal/pkg/dataplane/filesystem/listers/mocks
-    cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/mocks
+    cloud/disk_manager/internal/pkg/clients/nfs/mocks
     cloud/filestore/public/sdk/go/client
 )
 
