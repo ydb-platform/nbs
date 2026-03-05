@@ -27,6 +27,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -38,6 +39,9 @@
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+
+#include <unordered_map>
+#include <unordered_set>
 
 namespace NCloud::NFileStore::NProto {
 
@@ -196,6 +200,27 @@ struct TBackgroundOpsBackpressureStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Stores deferred ConfirmAddData request info until unconfirmed data is either
+// indexed by AddBlob or rejected.
+struct TPendingConfirmAddData
+{
+    NActors::TActorId Sender;
+    ui64 Cookie = 0;
+    TInstant DeferredTs;
+    TCallContextPtr CallContext;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTrackedUnconfirmedData
+{
+    NProto::TUnconfirmedData Data;
+    TString SessionId;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletState
 {
 private:
@@ -231,6 +256,24 @@ private:
 
 protected:
     TString LogTag;
+
+    // Data for which internal AddDataUnconfirmed tx is still executing.
+    std::unordered_map<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
+    // Data written to local db but not yet confirmed/indexed
+    std::unordered_map<ui64, TTrackedUnconfirmedData> UnconfirmedData;
+    // Data confirmed but not yet added to index
+    std::unordered_map<ui64, TTrackedUnconfirmedData> ConfirmedData;
+
+    // CommitIds scheduled for unconfirmed-data deletion and waiting for
+    // completion.
+    std::unordered_set<ui64> DeletionQueue;
+    // ConfirmAddData requests that arrived before internal AddData completed.
+    // Used for all requests until (#5353)
+    std::unordered_map<ui64, TPendingConfirmAddData> PendingConfirmation;
+
+    // Recovery gate for data operations: true when startup unconfirmed flow
+    // has scheduled AddBlob requests for all recoverable entries.
+    bool UnconfirmedRecoveryReady = false;
 
 public:
     TIndexTabletState();
@@ -708,7 +751,9 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
-    void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
+    TMaybe<TString> OrphanSession(
+        const NActors::TActorId& owner,
+        TInstant inactivityDeadline);
     void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
@@ -916,6 +961,16 @@ public:
         const TBackpressureThresholds& thresholds,
         const TBackpressureValues& values,
         TString* message);
+
+    //
+    // UnconfirmedData / ConfirmedData
+    //
+
+public:
+    void LoadUnconfirmedData(
+        TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries);
+
+    void ConfirmedDataAdded(TIndexTabletDatabase& db, ui64 commitId);
 
     //
     // FreshBytes

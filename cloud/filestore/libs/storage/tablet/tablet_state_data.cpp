@@ -351,6 +351,44 @@ void TIndexTabletState::FindFreshBytes(
         commitId);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// UnconfirmedData
+
+void TIndexTabletState::LoadUnconfirmedData(
+    TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries)
+{
+    for (auto& entry: entries) {
+        AcquireCollectBarrier(entry.CommitId);
+
+        // Skip session id. After restart we add all records to the index
+        UnconfirmedData[entry.CommitId] = {
+            .Data = std::move(entry.Data)};
+    }
+}
+
+void TIndexTabletState::ConfirmedDataAdded(
+    TIndexTabletDatabase& db,
+    ui64 commitId)
+{
+    if (commitId == InvalidCommitId) {
+        return;
+    }
+
+    auto it = ConfirmedData.find(commitId);
+    if (it == ConfirmedData.end()) {
+        return;
+    }
+
+    db.DeleteUnconfirmedData(commitId);
+
+    ConfirmedData.erase(it);
+
+    TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// FreshBytes
+
 NProto::TError TIndexTabletState::CheckFreshBytes(
     ui64 nodeId,
     ui64 commitId,

@@ -690,6 +690,10 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
 
     stats->SetSevenBytesHandlesCount(Metrics.SevenBytesHandlesCount);
+
+    stats->SetUnconfirmedDataCount(
+        UnconfirmedData.size() + UnconfirmedDataInProgress.size());
+    stats->SetConfirmedDataCount(ConfirmedData.size());
 }
 
 void TIndexTabletActor::HandleGetStorageStats(

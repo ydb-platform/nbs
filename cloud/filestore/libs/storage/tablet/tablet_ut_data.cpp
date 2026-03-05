@@ -3856,6 +3856,102 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(
+        ShouldRejectOverlappingWriteWithUnconfirmedDataDuringCompactionMapLoading)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // Persist one unconfirmed write range so it is recovered after reboot.
+        const ui64 commitId =
+            tablet.GenerateBlobIds(id, handle, 0, block)->Record.GetCommitId();
+        Y_UNUSED(commitId);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto stats = GetStorageStats(tablet);
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUnconfirmedDataCount());
+        }
+
+        bool intercepted = false;
+        TAutoPtr<IEventHandle> loadChunk;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::
+                        EvLoadCompactionMapChunkRequest: {
+                        if (!intercepted) {
+                            intercepted = true;
+                            loadChunk = event.Release();
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            });
+
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+        handle = CreateHandle(tablet, id);
+
+        UNIT_ASSERT(loadChunk);
+
+        tablet.SendWriteDataRequest(handle, 0, block, 'a', id);
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "write overlaps with unconfirmed recovery data",
+                response->GetErrorReason());
+        }
+
+        tablet.SendWriteDataRequest(handle, block, block, 'b', id);
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "compaction state not loaded yet",
+                response->GetErrorReason());
+        }
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+    }
+
     TABLET_TEST(ShouldEnqueueAllRangesForCrossBoundaryWriteDuringCompactionLoad)
     {
         const auto block = tabletConfig.BlockSize;

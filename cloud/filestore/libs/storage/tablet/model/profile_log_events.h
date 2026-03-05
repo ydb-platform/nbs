@@ -26,6 +26,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReadBlob,                           __VA_ARGS__)                       \
     xxx(WriteBlob,                          __VA_ARGS__)                       \
     xxx(AddBlob,                            __VA_ARGS__)                       \
+    xxx(AddDataUnconfirmed,                 __VA_ARGS__)                       \
     xxx(TruncateRange,                      __VA_ARGS__)                       \
     xxx(ZeroRange,                          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \

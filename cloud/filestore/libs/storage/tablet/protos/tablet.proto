@@ -8,6 +8,8 @@ import "cloud/filestore/public/api/protos/node.proto";
 
 import "cloud/storage/core/protos/media.proto";
 
+import "contrib/ydb/core/protos/base.proto";
+
 package NCloud.NFileStore.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -237,4 +239,28 @@ message TOpLogEntry
         NProtoPrivate.TUnlinkNodeInShardRequest UnlinkNodeInShardRequest = 104;
         NProtoPrivate.TAbortUnlinkDirectoryNodeInShardRequest AbortUnlinkDirectoryNodeInShardRequest = 105;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Lean storage format for unconfirmed data persisted in the tablet DB.
+// Contains only the fields needed for AddBlobRequest during confirmation
+// and crash recovery.
+message TUnconfirmedData
+{
+    // Node id (resolved from Handle).
+    uint64 NodeId = 1;
+
+    // Starting offset for write (adjusted for unaligned head/tail).
+    uint64 Offset = 2;
+
+    // Data size.
+    uint64 Length = 3;
+
+    // Blob ids to be added. Ordered by the offset in the original data.
+    repeated NKikimrProto.TLogoBlobID BlobIds = 4;
+
+    // Unaligned head/tail data for internal AddData (used when tablet does
+    // AddData internally in the unconfirmed flow).
+    repeated NProtoPrivate.TFreshDataRange UnalignedDataRanges = 5;
 }

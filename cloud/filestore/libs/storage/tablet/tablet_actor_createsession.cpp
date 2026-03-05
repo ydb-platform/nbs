@@ -100,6 +100,9 @@ void FillFeatures(
 
     features->SetReadBlobDisabled(config.GetReadBlobDisabled());
     features->SetWriteBlobDisabled(config.GetWriteBlobDisabled());
+
+    features->SetUnconfirmedFlowEnabled(
+        config.GetAddingUnconfirmedDataEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -230,6 +233,7 @@ void TIndexTabletActor::HandleCreateSession(
     ExecuteTx<TCreateSession>(
         ctx,
         std::move(requestInfo),
+        ev->Recipient,
         std::move(msg->Record));
 }
 
@@ -279,6 +283,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 readOnly,
                 owner,
                 ctx);
+            args.SessionInterrupted = true;
             if (toKill != owner) {
                 LOG_INFO(ctx, TFileStoreComponents::TABLET,
                     "%s CreateSession c:%s, s:%s, seqno:%lu recovered by session",
@@ -325,6 +330,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 readOnly,
                 owner,
                 ctx);
+            args.SessionInterrupted = true;
 
             return;
         }
@@ -368,6 +374,10 @@ void TIndexTabletActor::CompleteTx_CreateSession(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
+    if (args.SessionInterrupted) {
+        ScheduleUnconfirmedDataDeletionForSession(args.SessionId, ctx);
+    }
+
     using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
 
     if (HasError(args.Error)) {
@@ -395,6 +405,9 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
+
+    UnregisterSessionPipeServer(args.SessionId);
+    RegisterSessionPipeServer(args.PipeServerId, args.SessionId);
 
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));

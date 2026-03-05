@@ -6,6 +6,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <algorithm>
+
 #include <library/cpp/iterator/enumerate.h>
 
 #include <util/generic/cast.h>
@@ -42,16 +44,63 @@ TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
     return blobSizes;
 }
 
+NProto::TUnconfirmedData BuildUnconfirmedData(
+    const NProtoPrivate::TGenerateBlobIdsRequest& generateRequest,
+    const NProtoPrivate::TGenerateBlobIdsResponse& generateResponse)
+{
+    NProto::TUnconfirmedData data;
+
+    ui64 offset = generateRequest.GetOffset();
+    ui64 end = generateRequest.GetOffset() + generateRequest.GetLength();
+    for (const auto& part: generateRequest.GetUnalignedDataRanges()) {
+        *data.AddUnalignedDataRanges() = part;
+        offset = std::min(offset, part.GetOffset());
+        end = std::max<ui64>(end, part.GetOffset() + part.GetContent().size());
+    }
+    data.SetOffset(offset);
+    data.SetLength(end - offset);
+    for (const auto& blob: generateResponse.GetBlobs()) {
+        *data.AddBlobIds() = blob.GetBlobId();
+    }
+    return data;
+}
+
+NProto::TError ValidateUnalignedDataRanges(
+    const google::protobuf::RepeatedPtrField<NProtoPrivate::TFreshDataRange>&
+        ranges,
+    ui32 blockSize)
+{
+    for (const auto& part: ranges) {
+        if (part.GetContent().empty()) {
+            return MakeError(
+                E_ARGUMENT,
+                "empty unaligned data part");
+        }
+
+        const ui32 blockIndex = part.GetOffset() / blockSize;
+        const ui32 lastBlockIndex =
+            (part.GetOffset() + part.GetContent().size() - 1) / blockSize;
+        if (blockIndex != lastBlockIndex) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "unaligned part spanning more than one"
+                    << " block: " << part.GetOffset() << ":"
+                    << part.GetContent().size());
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 class TWriteDataActor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_AddData(
-    const TActorContext& ctx,
+bool TIndexTabletActor::ValidateAddDataRequest(
     TTransactionContext& tx,
-    TTxIndexTablet::TAddData& args)
+    TTxIndexTablet::TAddDataBase& args)
 {
     auto* session =
         FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
@@ -86,19 +135,6 @@ bool TIndexTabletActor::PrepareTx_AddData(
     }
     ui64 commitId = GetCurrentCommitId();
 
-    for (auto& part: args.UnalignedDataParts) {
-        part.NodeId = args.NodeId;
-    }
-
-    LOG_TRACE(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s AddData tx %lu @%lu %s",
-        LogTag.c_str(),
-        args.CommitId,
-        args.NodeId,
-        args.ByteRange.Describe().c_str());
-
     TIndexTabletDatabase db(tx.DB);
 
     if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
@@ -115,6 +151,37 @@ bool TIndexTabletActor::PrepareTx_AddData(
         args.Error = ErrorNoSpaceLeft();
         return true;
     }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_AddData(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TAddData& args)
+{
+    if (!ValidateAddDataRequest(tx, args)) {
+        return false;
+    }
+
+    if (HasError(args.Error)) {
+        return true;
+    }
+
+    for (auto& part: args.UnalignedDataParts) {
+        part.NodeId = args.NodeId;
+    }
+
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s AddData tx %lu @%lu %s",
+        LogTag.c_str(),
+        args.CommitId,
+        args.NodeId,
+        args.ByteRange.Describe().c_str());
 
     return true;
 }
@@ -271,13 +338,32 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateBlobIds");
     }
 
+    // TODO consider take into account isOverloaded
+    const bool canUseUnconfirmed = CanUseUnconfirmedData();
+
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
     {
-        return ValidateWriteRequest(
+        auto error = ValidateWriteRequest(
             ctx,
             request,
             range,
             !Config->GetAllowHandlelessIO());
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (canUseUnconfirmed) {
+            error = IsDataOperationAllowed();
+            if (HasError(error)) {
+                return error;
+            }
+
+            return ValidateUnalignedDataRanges(
+                request.GetUnalignedDataRanges(),
+                GetBlockSize());
+        }
+
+        return NProto::TError{};
     };
 
     const bool accepted = AcceptRequest<TEvIndexTablet::TGenerateBlobIdsMethod>(
@@ -295,11 +381,15 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return;
     }
 
-    // We schedule this event for the case if the client does not call AddData.
-    // Thus we ensure that the collect barrier will be released eventually.
-    ctx.Schedule(
-        Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
-        new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
+    if (!canUseUnconfirmed) {
+        // We schedule this event for the case if the client does not call
+        // AddData. Thus we ensure that the collect barrier will be released
+        // eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
+    }
+
     AcquireCollectBarrier(commitId);
 
     auto response =
@@ -333,18 +423,68 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     }
 
     response->Record.SetCommitId(commitId);
+
+    response->Record.SetUnconfirmedFlowEnabled(canUseUnconfirmed);
+
     CompleteResponse<TEvIndexTablet::TGenerateBlobIdsMethod>(
         response->Record,
         msg->CallContext,
         ctx);
 
+    NProto::TUnconfirmedData unconfirmedData;
+    if (canUseUnconfirmed) {
+        unconfirmedData = BuildUnconfirmedData(
+            msg->Record,
+            response->Record);
+    }
+
     Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);
+    ui64 generateBlobIdsBytes = msg->Record.GetLength();
+    if (canUseUnconfirmed) {
+        for (const auto& part: msg->Record.GetUnalignedDataRanges()) {
+            generateBlobIdsBytes += part.GetContent().size();
+        }
+    }
     Metrics.GenerateBlobIds.RequestBytes.fetch_add(
-        msg->Record.GetLength(),
+        generateBlobIdsBytes,
         std::memory_order_relaxed);
     Metrics.GenerateBlobIds.Time.Record(ctx.Now() - startedTs);
 
     NCloud::Reply(ctx, *ev, std::move(response));
+
+    if (canUseUnconfirmed) {
+        const TByteRange byteRange(
+            unconfirmedData.GetOffset(),
+            unconfirmedData.GetLength(),
+            GetBlockSize());
+
+        auto [inProgressIt, inserted] = UnconfirmedDataInProgress.emplace(
+            commitId,
+            TTrackedUnconfirmedData{
+                .Data = std::move(unconfirmedData),
+                .SessionId = GetSessionId(msg->Record)});
+        TABLET_VERIFY(inserted);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitTabletProfileLogRequestInfo(
+            profileLogRequest,
+            EFileStoreSystemRequest::AddDataUnconfirmed,
+            ctx.Now());
+
+        auto requestInfo = CreateRequestInfo(
+            SelfId(),
+            commitId,
+            MakeIntrusive<TCallContext>());
+        requestInfo->StartedTs = ctx.Now();
+
+        ExecuteTx<TAddDataUnconfirmed>(
+            ctx,
+            std::move(requestInfo),
+            msg->Record,
+            commitId,
+            byteRange,
+            std::move(profileLogRequest));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -397,12 +537,13 @@ void TIndexTabletActor::HandleAddData(
     // We acquire the collect barrier for the second time in order to prolong
     // the already acquired lease
     AcquireCollectBarrier(commitId);
-    bool txStarted = false;
+
+    bool dispatched = false;
     Y_DEFER
     {
         // Until the tx is started, it is this method's responsibility to
         // release the collect barrier
-        if (!txStarted) {
+        if (!dispatched) {
             TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
             // The second one is used to release the barrier, acquired in
             // GenerateBlobIds method. Though it will be eventually released
@@ -452,27 +593,17 @@ void TIndexTabletActor::HandleAddData(
         return;
     }
 
+    auto unalignedError = ValidateUnalignedDataRanges(
+        msg->Record.GetUnalignedDataRanges(),
+        GetBlockSize());
+    if (HasError(unalignedError)) {
+        replyError(unalignedError);
+        return;
+    }
+
     TVector<TBlockBytesMeta> unalignedDataParts;
     for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
-        if (part.GetContent().empty()) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                "empty unaligned data part"));
-            return;
-        }
-
         const ui32 blockIndex = part.GetOffset() / GetBlockSize();
-        const ui32 lastBlockIndex =
-            (part.GetOffset() + part.GetContent().size() - 1) / GetBlockSize();
-        if (blockIndex != lastBlockIndex) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "unaligned part spanning more than one"
-                    << " block: " << part.GetOffset() << ":"
-                    << part.GetContent().size()));
-            return;
-        }
-
         const ui32 offsetInBlock =
             part.GetOffset() - static_cast<ui64>(blockIndex) * GetBlockSize();
 
@@ -507,20 +638,7 @@ void TIndexTabletActor::HandleAddData(
         blobIds.size(),
         unalignedMsg().c_str());
 
-    const auto evPutResultCount =
-        Min<ui32>(blobIds.size(), msg->Record.StorageStatusFlagsSize());
-    for (ui32 i = 0; i < evPutResultCount; ++i) {
-        const double approximateFreeSpaceShare =
-            i < msg->Record.ApproximateFreeSpaceSharesSize()
-            ? msg->Record.GetApproximateFreeSpaceShares(i)
-            : 0;
-        RegisterEvPutResult(
-            ctx,
-            blobIds[i].Generation(),
-            blobIds[i].Channel(),
-            msg->Record.GetStorageStatusFlags(i),
-            approximateFreeSpaceShare);
-    }
+    ProcessStorageStatusFlags(ctx, msg->Record.GetBlobIds(), msg->Record);
 
     AddInFlightRequest<TEvIndexTablet::TAddDataMethod>(*requestInfo);
 
@@ -533,7 +651,7 @@ void TIndexTabletActor::HandleAddData(
         std::move(unalignedDataParts),
         msg->Record.GetCommitId(),
         std::move(profileLogRequest));
-    txStarted = true;
+    dispatched = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

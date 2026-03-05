@@ -52,6 +52,10 @@ public:
                 Execute_AddBlob_Write(ctx, db, args);
                 break;
 
+            case EAddBlobMode::WriteUnconfirmed:
+                Execute_AddBlob_WriteUnconfirmed(ctx, db, args);
+                break;
+
             case EAddBlobMode::WriteBatch:
                 Execute_AddBlob_WriteBatch(ctx, db, args);
                 break;
@@ -167,6 +171,108 @@ private:
         }
 
         UpdateNodeAttrs(db, args);
+    }
+
+    void Execute_AddBlob_WriteUnconfirmed(
+        const TActorContext& ctx,
+        TIndexTabletDatabase& db,
+        TTxIndexTablet::TAddBlob& args)
+    {
+        Y_UNUSED(ctx);
+
+        TABLET_VERIFY(!args.SrcBlobs);
+        TABLET_VERIFY(!args.MixedBlobs);
+
+        // TODO(#5353) Support immediate response before Tx
+        Tablet.SendPendingConfirmAddDataResponse(
+            ctx,
+            args.ConfirmedDataRefCommitId,
+            args.Error);
+
+        args.CommitId = Tablet.GenerateCommitId();
+        if (args.CommitId == InvalidCommitId) {
+            args.OnCommitIdOverflow();
+            args.CommitIdOverflowMessage = "AddBlobWriteUnconfirmed";
+            return;
+        }
+
+        AddBlobsInfo(
+            Tablet.GetBlockSize(),
+            args.MergedBlobs,
+            args.ProfileLogRequest);
+
+        for (const auto& part: args.UnalignedDataParts) {
+            const auto offset =
+                part.OffsetInBlock +
+                static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            auto error = Tablet.CheckFreshBytes(
+                part.NodeId,
+                args.CommitId,
+                offset,
+                part.Data);
+
+            if (HasError(error)) {
+                ReportCheckFreshBytesFailed(error.GetMessage());
+                args.Error = std::move(error);
+                return;
+            }
+        }
+
+        for (auto& blob: args.MergedBlobs) {
+            auto& block = blob.Block;
+
+            if (!args.Nodes.contains(block.NodeId)) {
+                // already deleted
+                continue;
+            }
+
+            TABLET_VERIFY(
+                block.MinCommitId == InvalidCommitId &&
+                block.MaxCommitId == InvalidCommitId);
+            block.MinCommitId = args.CommitId;
+
+            Tablet.MarkFreshBlocksDeleted(
+                db,
+                block.NodeId,
+                args.CommitId,
+                block.BlockIndex,
+                blob.BlocksCount);
+
+            Tablet.MarkMixedBlocksDeleted(
+                db,
+                block.NodeId,
+                args.CommitId,
+                block.BlockIndex,
+                blob.BlocksCount);
+
+            Tablet.WriteMixedBlocks(
+                db,
+                blob.BlobId,
+                blob.Block,
+                blob.BlocksCount);
+
+            ui32 rangeId = Tablet.GetMixedRangeIndex(
+                block.NodeId,
+                block.BlockIndex,
+                blob.BlocksCount);
+            AccessCompactionRangeInfo(rangeId).BlobsCount += 1;
+        }
+
+        for (const auto& part: args.UnalignedDataParts) {
+            const auto offset =
+                part.OffsetInBlock +
+                static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            Tablet.WriteFreshBytes(
+                db,
+                part.NodeId,
+                args.CommitId,
+                offset,
+                part.Data);
+        }
+
+        UpdateNodeAttrs(db, args);
+
+        Tablet.ConfirmedDataAdded(db, args.ConfirmedDataRefCommitId);
     }
 
     void Execute_AddBlob_WriteBatch(
@@ -472,7 +578,8 @@ void TIndexTabletActor::HandleAddBlob(
         std::move(msg->MixedBlobs),
         std::move(msg->MergedBlobs),
         std::move(msg->WriteRanges),
-        std::move(msg->UnalignedDataParts));
+        std::move(msg->UnalignedDataParts),
+        msg->ConfirmedDataCommitId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -539,6 +646,14 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         ResponseSent_Tablet,
         args.RequestInfo->CallContext,
         "AddBlob");
+
+    // For ConfirmedData we already Released barrier and Answered to the client,
+    // nothing left to do and we can skip event
+    if (args.ConfirmedDataRefCommitId != InvalidCommitId) {
+        EnqueueCollectGarbageIfNeeded(ctx);
+        EnqueueBlobIndexOpIfNeeded(ctx);
+        return;
+    }
 
     auto response =
         std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);

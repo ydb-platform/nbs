@@ -27,6 +27,18 @@ NProto::TError MakeSchemeShardError(
 NProto::TError MakeDescribeSchemeError(
     const NKikimrScheme::TEvDescribeSchemeResult& result);
 
+inline bool IsUnrecoverable(const NKikimrProto::EReplyStatus status)
+{
+    switch (status) {
+        case NKikimrProto::NODATA:
+        case NKikimrProto::ERROR:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 inline void PipeSend(
     const NActors::TActorContext& ctx,
     const NActors::TActorId& pipe,

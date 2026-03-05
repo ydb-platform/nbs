@@ -434,7 +434,29 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
         return MakeError(E_REJECTED, "compaction state not loaded yet");
     }
 
+    if (!UnconfirmedRecoveryReady) {
+        return MakeError(E_REJECTED, "unconfirmed recovery not ready yet");
+    }
+
     return {};
+}
+
+bool TIndexTabletActor::CanUseUnconfirmedData() const
+{
+    if (!Config->GetAddingUnconfirmedDataEnabled()) {
+        return false;
+    }
+
+    const ui32 hardLimit = Config->GetUnconfirmedDataCountHardLimit();
+    const size_t unconfirmedDataCount =
+        UnconfirmedData.size() +
+        ConfirmedData.size() +
+        UnconfirmedDataInProgress.size();
+    if (hardLimit && unconfirmedDataCount >= hardLimit) {
+        return false;
+    }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -703,16 +725,65 @@ void TIndexTabletActor::HandleTabletMetrics(
     Y_UNUSED(ctx);
 }
 
+void TIndexTabletActor::RegisterSessionPipeServer(
+    const TActorId& pipeServer,
+    const TString& sessionId)
+{
+    if (!pipeServer || sessionId.Empty()) {
+        return;
+    }
+
+    auto [it, itEnd] = SessionIdsByPipeServer.equal_range(pipeServer);
+    for (; it != itEnd; ++it) {
+        if (it->second == sessionId) {
+            return;
+        }
+    }
+
+    SessionIdsByPipeServer.emplace(pipeServer, sessionId);
+}
+
+void TIndexTabletActor::UnregisterSessionPipeServer(const TString& sessionId)
+{
+    for (auto it = SessionIdsByPipeServer.begin();
+         it != SessionIdsByPipeServer.end();)
+    {
+        if (it->second == sessionId) {
+            it = SessionIdsByPipeServer.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Server disconnected, ev->Sender: %s",
-        LogTag.c_str(),
-        ev->Sender.ToString().c_str());
+    const auto& msg = *ev->Get();
 
-    OrphanSession(ev->Sender, ctx.Now());
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Server disconnected, sender: %s, client: %s, server: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str(),
+        msg.ClientId.ToString().c_str(),
+        msg.ServerId.ToString().c_str());
+
+    const auto orphanedSessionId = OrphanSession(ev->Sender, ctx.Now());
+    if (orphanedSessionId) {
+        ScheduleUnconfirmedDataDeletionForSession(*orphanedSessionId, ctx);
+    }
+
+    // TODO (#4962) use proper session id
+    auto [it, itEnd] = SessionIdsByPipeServer.equal_range(msg.ServerId);
+    for (; it != itEnd; ++it) {
+        if (orphanedSessionId && *orphanedSessionId == it->second) {
+            continue;
+        }
+
+        ScheduleUnconfirmedDataDeletionForSession(it->second, ctx);
+    }
+    SessionIdsByPipeServer.erase(msg.ServerId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1153,12 +1224,15 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
             HandleEnqueueBlobIndexOpIfNeeded);
+        HFunc(
+            TEvIndexTabletPrivate::TEvConfirmBlobsCompleted,
+            HandleConfirmBlobsCompleted);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
@@ -1211,6 +1285,8 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
+
+        IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -1286,6 +1362,8 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
+
+        IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

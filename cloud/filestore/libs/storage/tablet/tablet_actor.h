@@ -40,6 +40,7 @@
 #include <util/generic/string.h>
 
 #include <atomic>
+#include <unordered_map>
 
 namespace NBlockCodecs {
 
@@ -179,6 +180,8 @@ private:
 
     TVector<ui32> RangesWithEmptyCompactionScore;
 
+    std::unordered_multimap<NActors::TActorId, TString> SessionIdsByPipeServer;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -200,6 +203,11 @@ public:
         const NActors::TActorContext& ctx,
         const TString& request);
 
+    void SendPendingConfirmAddDataResponse(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TError& error);
+
 private:
     void Enqueue(STFUNC_SIG) override;
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
@@ -211,6 +219,29 @@ private:
         ui32 channel,
         const NKikimr::TStorageStatusFlags flags,
         double freeSpaceShare);
+
+    template <typename TBlobIds, typename TRecord>
+    void ProcessStorageStatusFlags(
+        const NActors::TActorContext& ctx,
+        const TBlobIds& blobIds,
+        const TRecord& record)
+    {
+        const auto& flags = record.GetStorageStatusFlags();
+        const auto& shares = record.GetApproximateFreeSpaceShares();
+        const auto count = Min<int>(blobIds.size(), flags.size());
+        for (int i = 0; i < count; ++i) {
+            const auto blobId =
+                NKikimr::LogoBlobIDFromLogoBlobID(blobIds.Get(i));
+            const double share = i < shares.size() ? shares.Get(i) : 0;
+            RegisterEvPutResult(
+                ctx,
+                blobId.Generation(),
+                blobId.Channel(),
+                flags.Get(i),
+                share);
+        }
+    }
+
     void ReassignDataChannelsIfNeeded(const NActors::TActorContext& ctx);
     bool OnRenderAppHtmlPage(
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,
@@ -500,6 +531,7 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    bool CanUseUnconfirmedData() const;
 
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
@@ -540,6 +572,10 @@ private:
     void HandleSessionDisconnected(
         const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
         const NActors::TActorContext& ctx);
+    void RegisterSessionPipeServer(
+        const NActors::TActorId& pipeServer,
+        const TString& sessionId);
+    void UnregisterSessionPipeServer(const TString& sessionId);
 
     void HandleTabletMetrics(
         const NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
@@ -576,6 +612,10 @@ private:
     void HandleAddDataCompleted(
         const TEvIndexTabletPrivate::TEvAddDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    bool ValidateAddDataRequest(
+        NKikimr::NTabletFlatExecutor::TTransactionContext& tx,
+        TTxIndexTablet::TAddDataBase& args);
 
     void HandleForcedRangeOperationProgress(
         const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
@@ -642,6 +682,31 @@ private:
     void HandleFakeDescribeData(
         const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    std::unique_ptr<TEvIndexTabletPrivate::TEvAddBlobRequest>
+    BuildAddBlobRequest(ui64 commitId, const NProto::TUnconfirmedData& entry);
+
+    void ScheduleConfirmedDataAddBlob(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TUnconfirmedData& entry);
+
+    void ConfirmData(ui64 commitId, const NActors::TActorContext& ctx);
+    void ScheduleUnconfirmedDataDeletionForSession(
+        const TString& sessionId,
+        const NActors::TActorContext& ctx);
+    void SendDeferredConfirmAddDataResponse(
+        const NActors::TActorContext& ctx,
+        TPendingConfirmAddData pending,
+        const NProto::TError& error);
+
+    void ConfirmBlobs(const NActors::TActorContext& ctx);
+    void HandleConfirmBlobsCompleted(
+        const TEvIndexTabletPrivate::TEvConfirmBlobsCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void BlobsConfirmed(
+        const NActors::TActorContext& ctx,
+        size_t confirmedEntriesCount);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 

@@ -283,14 +283,18 @@ TSession* TIndexTabletState::FindSession(
     return nullptr;
 }
 
-void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
+TMaybe<TString> TIndexTabletState::OrphanSession(
+    const TActorId& owner,
+    TInstant deadline)
 {
     auto it = Impl->SessionByOwner.find(owner);
     if (it == Impl->SessionByOwner.end()) {
-        return; // not a session pipe
+        return {};   // not a session pipe
     }
 
     auto* session = it->second;
+
+    TString sessionId = session->GetSessionId();
 
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
         "%s orphaning session c: %s, s: %s, owner: %s",
@@ -314,6 +318,8 @@ void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
             session->GetSessionId().c_str(),
             owner.ToString().c_str());
     }
+
+    return sessionId;
 }
 
 void TIndexTabletState::ResetSession(

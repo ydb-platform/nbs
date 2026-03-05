@@ -74,6 +74,9 @@ TTabletCountersPtr CreateIndexTabletCounters();
     xxx(DescribeData,                                   __VA_ARGS__)           \
     xxx(GenerateBlobIds,                                __VA_ARGS__)           \
     xxx(AddData,                                        __VA_ARGS__)           \
+    xxx(AddDataUnconfirmed,                             __VA_ARGS__)           \
+    xxx(ConfirmAddData,                                 __VA_ARGS__)           \
+    xxx(CancelAddData,                                  __VA_ARGS__)           \
     xxx(GetStorageStats,                                __VA_ARGS__)           \
     xxx(GetNodeAttrBatch,                               __VA_ARGS__)           \
     xxx(RenameNodeInDestination,                        __VA_ARGS__)           \
@@ -260,6 +263,11 @@ struct TTabletMetrics
         std::atomic<i64> PrepareAttempts{0};
         std::atomic<i64> ResponseNodeRefs{0};
     } ListNodesExtra;
+
+    struct TExtraConfirmAddDataMetrics
+    {
+        std::atomic<i64> DeferredCount{0};
+    } ConfirmAddDataExtra;
 
     i64 LastNetworkMetric = 0;
 

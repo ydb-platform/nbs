@@ -25,6 +25,27 @@ void TIndexTabletActor::HandleWriteData(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto hasUnconfirmedDataOverlap =
+        [&](const ui64 nodeId, const TByteRange& requestRange)
+    {
+        for (const auto& [_, trackedEntry]: UnconfirmedData) {
+            const auto& trackedDataRecord = trackedEntry.Data;
+            if (trackedDataRecord.GetNodeId() != nodeId) {
+                continue;
+            }
+
+            const TByteRange trackedRange(
+                trackedDataRecord.GetOffset(),
+                trackedDataRecord.GetLength(),
+                GetBlockSize());
+
+            if (requestRange.Overlaps(trackedRange)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
 
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
@@ -69,6 +90,17 @@ void TIndexTabletActor::HandleWriteData(
             ProfileLog);
     };
 
+    const ui64 nodeId = msg->Record.GetNodeId();
+
+    if (!UnconfirmedRecoveryReady || !CompactionStateLoadStatus.Finished) {
+        if (hasUnconfirmedDataOverlap(nodeId, range)) {
+            replyError(MakeError(
+                E_REJECTED,
+                "write overlaps with unconfirmed recovery data"));
+            return;
+        }
+    }
+
     if (!CompactionStateLoadStatus.Finished) {
         const ui32 limitInQueue =
             Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
@@ -80,7 +112,7 @@ void TIndexTabletActor::HandleWriteData(
                 b < range.FirstBlock() + range.BlockCount();
                 ++b)
         {
-            const auto rangeId = GetMixedRangeIndex(msg->Record.GetNodeId(), b);
+            const auto rangeId = GetMixedRangeIndex(nodeId, b);
 
             if (rangeId > s.MaxLoadedInOrderRangeId
                     && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
