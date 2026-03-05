@@ -29,10 +29,10 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
             lb.CalculateCurrentSpentBudgetShare(TInstant::MicroSeconds(nowMcs))\
         );                                                                     \
 // CALC_SHARE_AND_CHECK
-#define TAKE_USED_SHARE_AND_CHECK(currentShare)                                      \
+#define TAKE_USED_SHARE_AND_CHECK(currentShare)                                \
         UNIT_ASSERT_DOUBLES_EQUAL(                                             \
             currentShare,                                                      \
-            lb.TakeUsedQuotaShare(),                                   \
+            lb.TakeUsedQuotaShare(),                                           \
             0.001                                                              \
         );                                                                     \
 // TAKE_USED_SHARE_AND_CHECK
