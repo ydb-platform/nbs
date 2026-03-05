@@ -392,6 +392,9 @@ public:
     [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
 
     ui32 GetForceDestroySizeThreshold() const;
+
+    [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
+    [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

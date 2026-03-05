@@ -208,6 +208,11 @@ public:
         ui64 commitId,
         const NProto::TError& error);
 
+    void UnconfirmedAddBlobSafePointReached(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TError& error);
+
 private:
     void Enqueue(STFUNC_SIG) override;
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
@@ -704,9 +709,7 @@ private:
     void HandleConfirmBlobsCompleted(
         const TEvIndexTabletPrivate::TEvConfirmBlobsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
-    void BlobsConfirmed(
-        const NActors::TActorContext& ctx,
-        size_t confirmedEntriesCount);
+    void BlobsConfirmed(const NActors::TActorContext& ctx);
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 

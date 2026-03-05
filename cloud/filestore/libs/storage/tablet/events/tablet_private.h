@@ -408,7 +408,7 @@ struct TEvIndexTabletPrivate
         TVector<TWriteRange> WriteRanges;
         TVector<TBlockBytesMeta> UnalignedDataParts;
         // Used only in unconfirmed data flow
-        ui64 ConfirmedDataCommitId = InvalidCommitId;
+        ui64 ConfirmedDataRefCommitId = InvalidCommitId;
     };
 
     struct TAddBlobResponse

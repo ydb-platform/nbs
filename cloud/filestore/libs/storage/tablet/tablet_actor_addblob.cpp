@@ -184,7 +184,7 @@ private:
         TABLET_VERIFY(!args.MixedBlobs);
 
         // TODO(#5353) Support immediate response before Tx
-        Tablet.SendPendingConfirmAddDataResponse(
+        Tablet.UnconfirmedAddBlobSafePointReached(
             ctx,
             args.ConfirmedDataRefCommitId,
             args.Error);
@@ -579,7 +579,7 @@ void TIndexTabletActor::HandleAddBlob(
         std::move(msg->MergedBlobs),
         std::move(msg->WriteRanges),
         std::move(msg->UnalignedDataParts),
-        msg->ConfirmedDataCommitId);
+        msg->ConfirmedDataRefCommitId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

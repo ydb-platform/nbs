@@ -805,6 +805,73 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
     }
 
+    Y_UNIT_TEST(ShouldNotAllowReadingIfConfirmationNotReady)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        auto& runtime = env.GetRuntime();
+
+        ui32 blockedConfirmBlobsCompleted = 0;
+        bool holdBlockedConfirmBlobsCompleted = true;
+        TAutoPtr<IEventHandle> heldConfirmBlobsCompleted;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() !=
+                        TEvIndexTabletPrivate::EvConfirmBlobsCompleted ||
+                    blockedConfirmBlobsCompleted >= 3)
+                {
+                    return false;
+                }
+
+                ++blockedConfirmBlobsCompleted;
+                if (holdBlockedConfirmBlobsCompleted) {
+                    heldConfirmBlobsCompleted = ev.Release();
+                    holdBlockedConfirmBlobsCompleted = false;
+                }
+
+                return true;
+            });
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, 4_KB, 'a');
+        WaitForTabletCommit(env);
+        GenerateBlobIdsAndPutBlob(env, tablet, id, handle, block, block, 'b');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 2, 0);
+
+        handle = RebootTabletAndCreateHandle(tablet, id);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !!heldConfirmBlobsCompleted; }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT(heldConfirmBlobsCompleted);
+        AssertStorageStats(tablet, 2, 0);
+
+        // ConfirmBlobsCompleted is blocked, so overlapping reads must be
+        // rejected until confirmation recovery is ready.
+        tablet.SendReadDataRequest(handle, 0, block);
+        auto readResponse = tablet.AssertReadDataResponse(E_REJECTED);
+        UNIT_ASSERT_C(
+            readResponse->GetErrorReason().find(
+                "read overlaps with unconfirmed recovery data") !=
+                TString::npos,
+            readResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(
         ShouldDeleteUnconfirmedDataOnSessionInterruptionDuringCreateSession)
     {

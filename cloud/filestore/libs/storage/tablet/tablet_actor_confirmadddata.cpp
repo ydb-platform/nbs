@@ -2,6 +2,7 @@
 
 #include "model/split_range.h"
 
+#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 
@@ -64,6 +65,25 @@ void TIndexTabletActor::SendPendingConfirmAddDataResponse(
     Metrics.ConfirmAddData.Update(1, 0, ctx.Now() - pending.DeferredTs);
 
     SendDeferredConfirmAddDataResponse(ctx, std::move(pending), error);
+}
+
+void TIndexTabletActor::UnconfirmedAddBlobSafePointReached(
+    const TActorContext& ctx,
+    ui64 commitId,
+    const NProto::TError& error)
+{
+    if (commitId == InvalidCommitId) {
+        Y_DEBUG_ABORT_UNLESS(false);
+        return;
+    }
+
+    ConfirmedData.erase(commitId);
+
+    if (UnconfirmedRecoveryReady) {
+        SendPendingConfirmAddDataResponse(ctx, commitId, error);
+    } else if (ConfirmedData.empty()) {
+        BlobsConfirmed(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,13 +155,15 @@ void TIndexTabletActor::HandleConfirmAddData(
     if (auto unconfirmedIt = UnconfirmedData.find(commitId);
         unconfirmedIt != UnconfirmedData.end())
     {
-        deferReply();
         ProcessStorageStatusFlags(
             ctx,
             unconfirmedIt->second.Data.GetBlobIds(),
             msg->Record);
 
-        if (!DeletionQueue.contains(commitId)) {
+        if (DeletionQueue.contains(commitId)) {
+            reply(ErrorUnconfirmedDataDeleted());
+        } else {
+            deferReply();
             ConfirmData(commitId, ctx);
         }
         return;
@@ -157,7 +179,7 @@ void TIndexTabletActor::HandleConfirmAddData(
         return;
     }
 
-    reply(MakeError(E_REJECTED, "unconfirmed data not found"));
+    reply(ErrorUnconfirmedDataNotFound());
 }
 
 void TIndexTabletActor::HandleCancelAddData(
@@ -222,7 +244,7 @@ void TIndexTabletActor::HandleCancelAddData(
     if (!UnconfirmedData.contains(commitId) &&
         !UnconfirmedDataInProgress.contains(commitId))
     {
-        reply(MakeError(E_REJECTED, "unconfirmed data not found"));
+        reply(ErrorUnconfirmedDataNotFound());
         return;
     }
 
@@ -250,7 +272,7 @@ TIndexTabletActor::BuildAddBlobRequest(
         std::make_unique<TEvIndexTabletPrivate::TEvAddBlobRequest>(
             MakeIntrusive<TCallContext>());
     addBlobRequest->Mode = EAddBlobMode::WriteUnconfirmed;
-    addBlobRequest->ConfirmedDataCommitId = commitId;
+    addBlobRequest->ConfirmedDataRefCommitId = commitId;
 
     const TByteRange byteRange(
         entry.GetOffset(),
@@ -330,7 +352,7 @@ void TIndexTabletActor::ScheduleConfirmedDataAddBlob(
         std::move(addBlobRequest->MergedBlobs),
         std::move(addBlobRequest->WriteRanges),
         std::move(addBlobRequest->UnalignedDataParts),
-        addBlobRequest->ConfirmedDataCommitId);
+        addBlobRequest->ConfirmedDataRefCommitId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -456,7 +478,7 @@ void TIndexTabletActor::CompleteTx_DeleteUnconfirmedData(
         SendDeferredConfirmAddDataResponse(
             ctx,
             std::move(pending),
-            MakeError(E_REJECTED, "UnconfirmedData deleted"));
+            ErrorUnconfirmedDataDeleted());
     }
 
     LOG_DEBUG(

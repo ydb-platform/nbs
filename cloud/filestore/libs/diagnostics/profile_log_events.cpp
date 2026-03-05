@@ -318,6 +318,22 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TConfirmAddDataRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TCancelAddDataRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TWriteDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
@@ -672,6 +688,8 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(ConfirmAddData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(CancelAddData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
     IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
 

@@ -477,6 +477,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             MakeIntrusive<TCallContext>());
         requestInfo->StartedTs = ctx.Now();
 
+        // TODO (#5404) Use batching instead of single Tx
         ExecuteTx<TAddDataUnconfirmed>(
             ctx,
             std::move(requestInfo),

@@ -272,7 +272,7 @@ protected:
     std::unordered_map<ui64, TPendingConfirmAddData> PendingConfirmation;
 
     // Recovery gate for data operations: true when startup unconfirmed flow
-    // has scheduled AddBlob requests for all recoverable entries.
+    // has completed recovery confirmation.
     bool UnconfirmedRecoveryReady = false;
 
 public:
@@ -969,6 +969,10 @@ public:
 public:
     void LoadUnconfirmedData(
         TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries);
+
+    bool HasDataOverlapWithUnconfirmed(
+        ui64 nodeId,
+        const TByteRange& requestRange) const;
 
     void ConfirmedDataAdded(TIndexTabletDatabase& db, ui64 commitId);
 

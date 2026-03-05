@@ -25,27 +25,6 @@ void TIndexTabletActor::HandleWriteData(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    auto hasUnconfirmedDataOverlap =
-        [&](const ui64 nodeId, const TByteRange& requestRange)
-    {
-        for (const auto& [_, trackedEntry]: UnconfirmedData) {
-            const auto& trackedDataRecord = trackedEntry.Data;
-            if (trackedDataRecord.GetNodeId() != nodeId) {
-                continue;
-            }
-
-            const TByteRange trackedRange(
-                trackedDataRecord.GetOffset(),
-                trackedDataRecord.GetLength(),
-                GetBlockSize());
-
-            if (requestRange.Overlaps(trackedRange)) {
-                return true;
-            }
-        }
-
-        return false;
-    };
 
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
@@ -93,7 +72,7 @@ void TIndexTabletActor::HandleWriteData(
     const ui64 nodeId = msg->Record.GetNodeId();
 
     if (!UnconfirmedRecoveryReady || !CompactionStateLoadStatus.Finished) {
-        if (hasUnconfirmedDataOverlap(nodeId, range)) {
+        if (HasDataOverlapWithUnconfirmed(nodeId, range)) {
             replyError(MakeError(
                 E_REJECTED,
                 "write overlaps with unconfirmed recovery data"));

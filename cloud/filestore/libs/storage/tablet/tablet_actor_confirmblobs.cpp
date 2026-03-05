@@ -2,6 +2,7 @@
 
 #include "model/split_range.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
@@ -15,6 +16,7 @@
 
 #include <util/generic/cast.h>
 #include <util/generic/hash_set.h>
+#include <util/string/builder.h>
 #include <util/stream/str.h>
 #include <util/system/datetime.h>
 
@@ -192,7 +194,7 @@ STFUNC(TConfirmBlobsActor::StateWork)
 void TIndexTabletActor::ConfirmBlobs(const TActorContext& ctx)
 {
     if (UnconfirmedData.empty()) {
-        BlobsConfirmed(ctx, 0);
+        BlobsConfirmed(ctx);
         return;
     }
 
@@ -233,7 +235,7 @@ void TIndexTabletActor::ConfirmBlobs(const TActorContext& ctx)
             UnconfirmedData.size());
 
         UnconfirmedData.clear();
-        BlobsConfirmed(ctx, 0);
+        BlobsConfirmed(ctx);
         return;
     }
 
@@ -256,12 +258,16 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     WorkerActors.erase(ev->Sender);
 
     if (HasError(error)) {
+        const auto errorMessage = FormatError(error);
         LOG_ERROR(
             ctx,
             TFileStoreComponents::TABLET,
             "%s ConfirmBlobs failed: %s",
             LogTag.c_str(),
-            FormatError(error).c_str());
+            errorMessage.c_str());
+        ReportConfirmBlobsFailed(
+            TStringBuilder()
+            << "tabletId: " << TabletID() << ", error: " << errorMessage);
         Suicide(ctx);
         return;
     }
@@ -311,22 +317,20 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     std::sort(recoverableCommitIds.begin(), recoverableCommitIds.end());
 
     for (ui64 commitId: recoverableCommitIds) {
+        // TODO(#5353) Support out of order insertion to unblock here imeadeately
         ConfirmData(commitId, ctx);
     }
 
-    BlobsConfirmed(ctx, recoverableCommitIds.size());
+    BlobsConfirmed(ctx);
 }
 
-void TIndexTabletActor::BlobsConfirmed(
-    const TActorContext& ctx,
-    size_t confirmedEntriesCount)
+void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
 {
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s ConfirmBlobs: recovery confirmation completed for %zu entries",
-        LogTag.c_str(),
-        confirmedEntriesCount);
+        "%s ConfirmBlobs: recovery confirmation completed",
+        LogTag.c_str());
 
     UnconfirmedRecoveryReady = true;
 }

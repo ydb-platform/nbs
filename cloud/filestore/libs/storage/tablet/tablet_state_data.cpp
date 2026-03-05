@@ -366,6 +366,36 @@ void TIndexTabletState::LoadUnconfirmedData(
     }
 }
 
+bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
+    const ui64 nodeId,
+    const TByteRange& requestRange) const
+{
+    auto hasDataOverlap = [&](const auto& trackedDataMap)
+    {
+        for (const auto& [_, trackedEntry]: trackedDataMap) {
+            const auto& trackedDataRecord = trackedEntry.Data;
+            if (trackedDataRecord.GetNodeId() != nodeId) {
+                continue;
+            }
+
+            const TByteRange trackedRange(
+                trackedDataRecord.GetOffset(),
+                trackedDataRecord.GetLength(),
+                GetBlockSize());
+
+            if (requestRange.Overlaps(trackedRange)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    // Intentionally without DataInProgress as wee need it currently only for
+    // recovery phase.
+    return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
+}
+
 void TIndexTabletState::ConfirmedDataAdded(
     TIndexTabletDatabase& db,
     ui64 commitId)
@@ -374,14 +404,7 @@ void TIndexTabletState::ConfirmedDataAdded(
         return;
     }
 
-    auto it = ConfirmedData.find(commitId);
-    if (it == ConfirmedData.end()) {
-        return;
-    }
-
     db.DeleteUnconfirmedData(commitId);
-
-    ConfirmedData.erase(it);
 
     TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
 }
