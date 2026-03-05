@@ -788,18 +788,15 @@ public:
             // attached to a single DownDisksCounters (e.g. HYBRID attached to
             // HDD counters, see MediaKindToStatsString())
 
-            for (auto& c: DownDisksCounters) {
-                if (c) {
-                    *c = 0;
+            for (size_t i = 0; i < DownDisksCounters.size(); i++) {
+                if (DownDisksCounters[i]) {
+                    *DownDisksCounters[i] = 0;
                 }
             }
 
-            for (int mk = NProto::EStorageMediaKind_MIN;
-                 mk < NProto::EStorageMediaKind_ARRAYSIZE;
-                 mk++)
-            {
-                if (DownDisksCounters[mk]) {
-                    *DownDisksCounters[mk] += downDisksCounters[mk];
+            for (size_t i = 0; i < DownDisksCounters.size(); i++) {
+                if (DownDisksCounters[i]) {
+                    *DownDisksCounters[i] += downDisksCounters[i];
                 }
             }
         }
