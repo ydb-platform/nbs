@@ -585,6 +585,8 @@ message TListNodeXAttrResponse
     // Attribute names.
     repeated bytes Names = 2;
 
+    repeated bytes Values = 3;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }

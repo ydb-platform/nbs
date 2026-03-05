@@ -821,9 +821,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         {
             auto response = tablet.ListNodeXAttr(id);
             const auto& names = response->Record.GetNames();
+            const auto& values = response->Record.GetValues();
             UNIT_ASSERT(names.size() == 2);
             UNIT_ASSERT(names[0] == "user.name1");
+            UNIT_ASSERT_EQUAL("value1", values[0]);
             UNIT_ASSERT(names[1] == "user.name3");
+            UNIT_ASSERT_EQUAL("value3", values[1]);
         }
 
         // should fail if attribute doesn't exist, but differently to an invalid attr
