@@ -1263,3 +1263,93 @@ func TestDiskServiceDeleteNonExistentDisk(t *testing.T) {
 func TestDiskServiceDeleteNonExistentDiskSync(t *testing.T) {
 	testDiskServiceDeleteNonExistentDisk(t, true /* sync */)
 }
+
+func TestNbsClientReportsMetrics(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskSize := uint64(32 * 1024 * 4096)
+	diskID1 := t.Name() + "1"
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID1,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	_, err = nbsClient.FillDisk(ctx, diskID1, diskSize)
+	require.NoError(t, err)
+
+	snapshotID := t.Name()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID1,
+		},
+		SnapshotId: snapshotID,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	diskID2 := t.Name() + "2"
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
+			SrcSnapshotId: snapshotID,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID2,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	require.Greater(t, testcommon.GetCounterControlplane(
+		t,
+		"count",
+		map[string]string{"client": "nbs", "request": "Create"},
+	), float64(0))
+
+	require.Greater(t, testcommon.GetCounterDataplane(
+		t,
+		"count",
+		map[string]string{"client": "nbs", "request": "Read"},
+	), float64(0))
+
+	require.Greater(t, testcommon.GetCounterDataplane(
+		t,
+		"count",
+		map[string]string{"client": "nbs", "request": "Write"},
+	), float64(0))
+
+	testcommon.DeleteDisk(t, ctx, client, diskID1)
+	testcommon.DeleteDisk(t, ctx, client, diskID2)
+
+	testcommon.CheckConsistency(t, ctx)
+}

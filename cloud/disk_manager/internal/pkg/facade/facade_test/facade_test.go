@@ -64,7 +64,7 @@ func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 		&disk_manager.ListPlacementGroupsRequest{ZoneId: "zone-a"},
 	)
 	require.NoError(t, err)
-	errorsCount := testcommon.GetCounter(
+	errorsCount := testcommon.GetCounterControlplane(
 		t,
 		"errors",
 		map[string]string{
@@ -88,7 +88,7 @@ func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	newErrorsCount := testcommon.GetCounter(
+	newErrorsCount := testcommon.GetCounterControlplane(
 		t,
 		"errors",
 		map[string]string{
