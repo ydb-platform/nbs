@@ -7073,7 +7073,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             E_FS_NOSPC,
             service.RecvCreateNodeResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            0,
+            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
@@ -7089,7 +7089,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             E_FS_NOSPC,
             service.RecvCreateHandleResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            0,
+            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
@@ -7100,7 +7100,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         ShouldShardedFileSystemHitNodesCountLimit)
     {
         DoShouldShardedFileSystemHitNodesCountLimit(config, true);
-        // DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
