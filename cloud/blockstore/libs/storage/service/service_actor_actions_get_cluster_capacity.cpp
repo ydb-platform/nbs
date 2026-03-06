@@ -60,7 +60,7 @@ private:
         ui64 BoxId = 0;
         ui64 StoragePoolId = 0;
 
-        auto operator <=> (const TPoolId& other) const = default;
+        bool operator == (const TPoolId& other) const = default;
     };
 
     struct TPoolIdIdHash
