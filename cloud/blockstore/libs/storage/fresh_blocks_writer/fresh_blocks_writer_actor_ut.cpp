@@ -63,6 +63,7 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
     config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
     config.SetFreshChannelWriteRequestsEnabled(true);
     config.SetFreshChannelZeroRequestsEnabled(true);
+    config.SetFreshBlocksWriterEnabled(true);
 
     return config;
 }
@@ -458,10 +459,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 {
     Y_UNIT_TEST(ShouldWaitReady)
     {
-        auto config = DefaultConfig();
-        config.SetFreshBlocksWriterEnabled(true);
-
-        auto testEnv = PrepareTestActorRuntime(config);
+        auto testEnv = PrepareTestActorRuntime();
 
         TPartitionClient partition(*testEnv.Runtime);
         partition.WaitReady();
@@ -483,10 +481,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldAddFreshBlocksBeforeReply)
     {
-        auto config = DefaultConfig();
-        config.SetFreshBlocksWriterEnabled(true);
-
-        auto testEnv = PrepareTestActorRuntime(config);
+        auto testEnv = PrepareTestActorRuntime();
         auto& runtime = *testEnv.Runtime;
 
         bool wasAddFreshBlocksRequest = false;
@@ -530,10 +525,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldWriteFreshBlocks)
     {
-        auto config = DefaultConfig();
-        config.SetFreshBlocksWriterEnabled(true);
-
-        auto testEnv = PrepareTestActorRuntime(config);
+        auto testEnv = PrepareTestActorRuntime();
         auto& runtime = *testEnv.Runtime;
 
         // TODO(issue-4875): remove trim events dropping after adding trim
@@ -587,10 +579,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldPassLargeWritesToPartition)
     {
-        auto config = DefaultConfig();
-        config.SetFreshBlocksWriterEnabled(true);
-
-        auto testEnv = PrepareTestActorRuntime(config);
+        auto testEnv = PrepareTestActorRuntime();
         auto& runtime = *testEnv.Runtime;
 
         // TODO(issue-4875): remove trim events dropping after adding trim
@@ -631,10 +620,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldWriteBlocksWithCorrectCommitId)
     {
-        auto config = DefaultConfig();
-        config.SetFreshBlocksWriterEnabled(true);
-
-        auto testEnv = PrepareTestActorRuntime(config, 2048);
+        auto testEnv = PrepareTestActorRuntime(DefaultConfig(), 2048);
         auto& runtime = *testEnv.Runtime;
 
         // TODO(issue-4875): remove trim events dropping after adding trim
