@@ -87,7 +87,7 @@ void TEnsureDiskRegistryStateIntegrityActor::ReplyAndDie(
         RequestInfo->CallContext->RequestId);
 
     auto response = std::make_unique<
-        TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse>(error);
+        TEvService::TEvExecuteActionResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
