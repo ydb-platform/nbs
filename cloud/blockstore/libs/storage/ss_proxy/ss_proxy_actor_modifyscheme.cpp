@@ -147,6 +147,7 @@ void TModifySchemeActor::HandleStatus(
                     MakeError(
                         E_REJECTED,
                         (TStringBuilder()
+                         << "Transaction is in progress, but txId is zero. "
                          << NKikimrSchemeOp::EOperationType_Name(
                                 ModifyScheme.GetOperationType())
                          << ": " << SchemeShardReason)));
