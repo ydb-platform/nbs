@@ -49,13 +49,12 @@ func nodeRefStructValue(
 	node nfs.Node,
 ) persistence.Value {
 
-	n := nfs_client.Node(node)
 	return persistence.StructValue(
 		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(n.ParentID)),
-		persistence.StructFieldValue("name", persistence.UTF8Value(n.Name)),
-		persistence.StructFieldValue("child_node_id", persistence.Uint64Value(n.NodeID)),
-		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(n.Type))),
+		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentID)),
+		persistence.StructFieldValue("name", persistence.UTF8Value(node.Name)),
+		persistence.StructFieldValue("child_node_id", persistence.Uint64Value(node.NodeID)),
+		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 	)
 }
 
@@ -79,19 +78,18 @@ func nodeStructValue(
 	node nfs.Node,
 ) persistence.Value {
 
-	n := nfs_client.Node(node)
 	return persistence.StructValue(
 		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.StructFieldValue("node_id", persistence.Uint64Value(n.NodeID)),
-		persistence.StructFieldValue("mode", persistence.Uint32Value(n.Mode)),
-		persistence.StructFieldValue("uid", persistence.Uint32Value(uint32(n.UID))),
-		persistence.StructFieldValue("gid", persistence.Uint32Value(uint32(n.GID))),
-		persistence.StructFieldValue("atime", persistence.Uint64Value(n.Atime)),
-		persistence.StructFieldValue("mtime", persistence.Uint64Value(n.Mtime)),
-		persistence.StructFieldValue("ctime", persistence.Uint64Value(n.Ctime)),
-		persistence.StructFieldValue("size", persistence.Uint64Value(n.Size)),
-		persistence.StructFieldValue("links", persistence.Uint32Value(n.Links)),
-		persistence.StructFieldValue("symlink_target", persistence.UTF8Value(n.LinkTarget)),
+		persistence.StructFieldValue("node_id", persistence.Uint64Value(node.NodeID)),
+		persistence.StructFieldValue("mode", persistence.Uint32Value(node.Mode)),
+		persistence.StructFieldValue("uid", persistence.Uint32Value(uint32(node.UID))),
+		persistence.StructFieldValue("gid", persistence.Uint32Value(uint32(node.GID))),
+		persistence.StructFieldValue("atime", persistence.Uint64Value(node.Atime)),
+		persistence.StructFieldValue("mtime", persistence.Uint64Value(node.Mtime)),
+		persistence.StructFieldValue("ctime", persistence.Uint64Value(node.Ctime)),
+		persistence.StructFieldValue("size", persistence.Uint64Value(node.Size)),
+		persistence.StructFieldValue("links", persistence.Uint32Value(node.Links)),
+		persistence.StructFieldValue("symlink_target", persistence.UTF8Value(node.LinkTarget)),
 	)
 }
 
@@ -108,12 +106,11 @@ func hardlinkStructValue(
 	node nfs.Node,
 ) persistence.Value {
 
-	n := nfs_client.Node(node)
 	return persistence.StructValue(
 		persistence.StructFieldValue("filesystem_snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.StructFieldValue("node_id", persistence.Uint64Value(n.NodeID)),
-		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(n.ParentID)),
-		persistence.StructFieldValue("name", persistence.UTF8Value(n.Name)),
+		persistence.StructFieldValue("node_id", persistence.Uint64Value(node.NodeID)),
+		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentID)),
+		persistence.StructFieldValue("name", persistence.UTF8Value(node.Name)),
 	)
 }
 
@@ -157,12 +154,12 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 		return nfs.Node{}, err
 	}
 
-	return nfs.Node(nfs_client.Node{
+	return nfs.Node{
 		ParentID: parentID,
 		NodeID:   childNodeID,
 		Name:     name,
 		Type:     nfs_client.NodeType(nodeType),
-	}), nil
+	}, nil
 }
 
 func scanNodeRefs(
@@ -184,61 +181,40 @@ func scanNodeRefs(
 	return nodes, nil
 }
 
-func scanNode(result persistence.Result) (nfs_client.Node, error) {
-	var (
-		nodeID        uint64
-		mode          uint32
-		uid           uint32
-		gid           uint32
-		atime         uint64
-		mtime         uint64
-		ctime         uint64
-		size          uint64
-		links         uint32
-		symlinkTarget string
-	)
+func scanNode(result persistence.Result) (nfs.Node, error) {
+	var node nfs.Node
 	err := result.ScanNamed(
-		persistence.OptionalWithDefault("node_id", &nodeID),
-		persistence.OptionalWithDefault("mode", &mode),
-		persistence.OptionalWithDefault("uid", &uid),
-		persistence.OptionalWithDefault("gid", &gid),
-		persistence.OptionalWithDefault("atime", &atime),
-		persistence.OptionalWithDefault("mtime", &mtime),
-		persistence.OptionalWithDefault("ctime", &ctime),
-		persistence.OptionalWithDefault("size", &size),
-		persistence.OptionalWithDefault("links", &links),
-		persistence.OptionalWithDefault("symlink_target", &symlinkTarget),
+		persistence.OptionalWithDefault("node_id", &node.NodeID),
+		persistence.OptionalWithDefault("mode", &node.Mode),
+		persistence.OptionalWithDefault("uid", &node.UID),
+		persistence.OptionalWithDefault("gid", &node.GID),
+		persistence.OptionalWithDefault("atime", &node.Atime),
+		persistence.OptionalWithDefault("mtime", &node.Mtime),
+		persistence.OptionalWithDefault("ctime", &node.Ctime),
+		persistence.OptionalWithDefault("size", &node.Size),
+		persistence.OptionalWithDefault("links", &node.Links),
+		persistence.OptionalWithDefault("symlink_target", &node.LinkTarget),
 	)
 	if err != nil {
-		return nfs_client.Node{}, err
+		return nfs.Node{}, err
 	}
 
-	return nfs_client.Node{
-		NodeID:     nodeID,
-		Mode:       mode,
-		UID:        uint64(uid),
-		GID:        uint64(gid),
-		Atime:      atime,
-		Mtime:      mtime,
-		Ctime:      ctime,
-		Size:       size,
-		Links:      links,
-		LinkTarget: symlinkTarget,
-	}, nil
+	return node, nil
 }
 
 func scanNodes(
 	ctx context.Context,
 	res persistence.Result,
-) (map[uint64]nfs_client.Node, error) {
+) (map[uint64]nfs.Node, error) {
 
-	attrs := make(map[uint64]nfs_client.Node)
+	attrs := make(map[uint64]nfs.Node)
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			node, err := scanNode(res)
 			if err != nil {
 				return nil, err
 			}
+
 			attrs[node.NodeID] = node
 		}
 	}
@@ -309,8 +285,7 @@ func (s *storageYDB) saveHardlinks(
 
 	values := make([]persistence.Value, 0)
 	for _, node := range nodes {
-		n := nfs_client.Node(node)
-		if n.Links >= 2 {
+		if node.Links >= 2 {
 			values = append(values, hardlinkStructValue(snapshotID, node))
 		}
 	}
@@ -387,7 +362,7 @@ func (s *storageYDB) listNodeRefs(
 
 	var nextCookie string
 	if len(nodes) > limit {
-		lastNode := nfs_client.Node(nodes[len(nodes)-1])
+		lastNode := nodes[len(nodes)-1]
 		nextCookie = lastNode.Name
 		nodes = nodes[:limit]
 	}
@@ -400,7 +375,7 @@ func (s *storageYDB) fetchNodeAttrs(
 	session *persistence.Session,
 	snapshotID string,
 	nodeIDs []uint64,
-) (map[uint64]nfs_client.Node, error) {
+) (map[uint64]nfs.Node, error) {
 
 	if len(nodeIDs) == 0 {
 		return nil, nil
@@ -468,7 +443,7 @@ func (s *storageYDB) listNodes(
 
 	nodeIDs := make([]uint64, 0, len(nodes))
 	for _, node := range nodes {
-		nodeIDs = append(nodeIDs, nfs_client.Node(node).NodeID)
+		nodeIDs = append(nodeIDs, node.NodeID)
 	}
 
 	attrs, err := s.fetchNodeAttrs(ctx, session, snapshotID, nodeIDs)
@@ -476,19 +451,18 @@ func (s *storageYDB) listNodes(
 		return nil, "", err
 	}
 
-	for i := range nodes {
-		n := nfs_client.Node(nodes[i])
-		if a, ok := attrs[n.NodeID]; ok {
-			n.Mode = a.Mode
-			n.UID = a.UID
-			n.GID = a.GID
-			n.Atime = a.Atime
-			n.Mtime = a.Mtime
-			n.Ctime = a.Ctime
-			n.Size = a.Size
-			n.Links = a.Links
-			n.LinkTarget = a.LinkTarget
-			nodes[i] = nfs.Node(n)
+	for i, node := range nodes {
+		if a, ok := attrs[node.NodeID]; ok {
+			node.Mode = a.Mode
+			node.UID = a.UID
+			node.GID = a.GID
+			node.Atime = a.Atime
+			node.Mtime = a.Mtime
+			node.Ctime = a.Ctime
+			node.Size = a.Size
+			node.Links = a.Links
+			node.LinkTarget = a.LinkTarget
+			nodes[i] = nfs.Node(node)
 		}
 	}
 
@@ -508,24 +482,25 @@ func (s *storageYDB) deleteSnapshotData(
 		"hardlinks",
 	}
 
-	totalDeleted := uint64(0)
+	deletedCount := uint64(0)
 
 	for _, table := range tables {
 		deleted, err := s.deleteFromTable(ctx, session, snapshotID, table)
 		if err != nil {
 			return false, err
 		}
-		totalDeleted += deleted
+
+		deletedCount += deleted
 	}
 
 	logging.Debug(
 		ctx,
 		"Deleted %v rows for snapshot %v",
-		totalDeleted,
+		deletedCount,
 		snapshotID,
 	)
 
-	return totalDeleted == 0, nil
+	return deletedCount == 0, nil
 }
 
 func (s *storageYDB) deleteFromTable(

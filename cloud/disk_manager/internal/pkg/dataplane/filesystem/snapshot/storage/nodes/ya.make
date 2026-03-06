@@ -5,6 +5,10 @@ SRCS(
     storage_ydb.go
 )
 
+GO_TEST_SRCS(
+    storage_ydb_test.go
+)
+
 END()
 
 RECURSE(
