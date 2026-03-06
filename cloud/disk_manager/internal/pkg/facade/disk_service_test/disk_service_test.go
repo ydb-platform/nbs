@@ -1333,19 +1333,19 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 	require.Greater(t, testcommon.GetCounterControlplane(
 		t,
 		"count",
-		map[string]string{"client": "nbs", "request": "Create"},
+		map[string]string{"component": "nbs_client", "request": "Create"},
 	), float64(0))
 
 	require.Greater(t, testcommon.GetCounterDataplane(
 		t,
 		"count",
-		map[string]string{"client": "nbs", "request": "Read"},
+		map[string]string{"component": "nbs_session", "request": "Read"},
 	), float64(0))
 
 	require.Greater(t, testcommon.GetCounterDataplane(
 		t,
 		"count",
-		map[string]string{"client": "nbs", "request": "Write"},
+		map[string]string{"component": "nbs_session", "request": "Write"},
 	), float64(0))
 
 	testcommon.DeleteDisk(t, ctx, client, diskID1)
