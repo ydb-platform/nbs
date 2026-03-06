@@ -173,11 +173,10 @@ public:
         const auto pinId = State.PinCachedData(request->GetNodeId());
 
         TReadResponseBuilder responseBuilder(*request, State);
-        if (responseBuilder.CanFullyServeFromCache()) {
-            auto response = responseBuilder.FullyServeFromCache();
+        if (auto response = responseBuilder.TryFullyServeFromCache()) {
             State.UnpinCachedData(request->GetNodeId(), pinId);
             Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
-            return MakeFuture(std::move(response));
+            return MakeFuture(std::move(*response));
         }
 
         auto callback = [ptr = weak_from_this(), request, pinId](

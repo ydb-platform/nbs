@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
+#include <optional>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,11 +26,10 @@ public:
     // Used to calculate statistics (e.g. hit/miss ratio)
     bool HasCachedData() const;
 
-    // Check if cached data parts fully cover the requested range
+    // Check if cached data parts fully cover the requested range.
     // In this case, the response can be served entirely from cache
     // without requesting the backend
-    bool CanFullyServeFromCache() const;
-    NProto::TReadDataResponse FullyServeFromCache() const;
+    std::optional<NProto::TReadDataResponse> TryFullyServeFromCache() const;
 
     // Apply cached data on top of the response returned from backend
     void AugmentResponseWithCachedData(

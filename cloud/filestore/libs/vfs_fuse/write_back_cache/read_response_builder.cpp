@@ -1,5 +1,7 @@
 #include "read_response_builder.h"
 
+#include <cloud/storage/core/libs/common/byte_range.h>
+
 #include <util/stream/mem.h>
 #include <util/string/builder.h>
 
@@ -239,6 +241,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TByteRange ToRange(const TCachedDataPart& part)
+{
+    return {part.RelativeOffset, part.Data.size(), 1};
+}
+
 // originalResponseLength is the length of the response returned from backend
 // (without cached data parts)
 ui64 WriteResponse(
@@ -280,32 +287,37 @@ void Validate(const TCachedData& cachedData, ui64 requestedLength)
     // All parts should be ordered, non-empty, non-overlapping and lie in
     // [0, cachedData.ReadDataByteCount) range
 
+    const TByteRange validRange(0, cachedData.ReadDataByteCount, 1);
+
     for (const auto& part: cachedData.Parts) {
         Y_ABORT_UNLESS(
             !part.Data.empty(),
             "Empty cached data parts are not allowed");
 
+        const auto range = ToRange(part);
+
         Y_ABORT_UNLESS(
-            part.RelativeOffset < cachedData.ReadDataByteCount &&
-                part.Data.size() <=
-                    cachedData.ReadDataByteCount - part.RelativeOffset,
-            "Cached data part [%lu, %lu) lie outside [0, %lu)",
-            part.RelativeOffset,
-            part.RelativeOffset + part.Data.size(),
-            cachedData.ReadDataByteCount);
+            validRange.Contains(range),
+            "Cached data part %s lies outside %s",
+            range.Describe().c_str(),
+            validRange.Describe().c_str());
     }
 
     for (size_t i = 1; i < cachedData.Parts.size(); i++) {
-        const auto& prev = cachedData.Parts[i - 1];
-        const auto& next = cachedData.Parts[i];
+        const auto prev = ToRange(cachedData.Parts[i - 1]);
+        const auto next = ToRange(cachedData.Parts[i]);
 
         Y_ABORT_UNLESS(
-            prev.RelativeOffset < next.RelativeOffset,
-            "Cached data parts are not ordered");
+            prev.End() <= next.Offset,
+            "Cached data parts %s and %s are not ordered",
+            prev.Describe().c_str(),
+            next.Describe().c_str());
 
         Y_ABORT_UNLESS(
-            prev.Data.size() <= next.RelativeOffset - prev.RelativeOffset,
-            "Cached data parts overlap");
+            !prev.Overlaps(next),
+            "Cached data parts %s and %s overlap",
+            prev.Describe().c_str(),
+            next.Describe().c_str());
     }
 }
 
@@ -337,14 +349,12 @@ bool TReadResponseBuilder::HasCachedData() const
     return !CachedData.Parts.empty();
 }
 
-bool TReadResponseBuilder::CanFullyServeFromCache() const
+std::optional<NProto::TReadDataResponse>
+TReadResponseBuilder::TryFullyServeFromCache() const
 {
-    return ContiguousCachedDataByteCount == Request.GetLength();
-}
-
-NProto::TReadDataResponse TReadResponseBuilder::FullyServeFromCache() const
-{
-    Y_ABORT_UNLESS(CanFullyServeFromCache(), "Cannot fully serve from cache");
+    if (ContiguousCachedDataByteCount != Request.GetLength()) {
+        return {};
+    }
 
     NProto::TReadDataResponse response;
     AugmentResponseWithCachedData(response);
