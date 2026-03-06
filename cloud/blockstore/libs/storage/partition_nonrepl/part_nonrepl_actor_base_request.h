@@ -34,7 +34,6 @@ private:
     const TString RequestName;
     const ui64 RequestId;
     const TRequestTimeoutPolicy TimeoutPolicy;
-    NActors::TSchedulerCookieHolder TimeoutCookie;
 
     TInstant StartTime;
 
