@@ -609,7 +609,7 @@ public:
             ClientToRealInstance,
             [&volumeInfo](const auto& client)
             {
-                return TRealInstanceKeyEqual().operator()(
+                return TRealInstanceKeyEqual()(
                     client.second,
                     volumeInfo->RealInstanceId);
             });
@@ -733,11 +733,14 @@ public:
                 UnregisterInstance(
                     info.VolumeBase,
                     info.RealInstanceId);
-                std::erase_if(ClientToRealInstance, [&info](const auto& client){
-                    return TRealInstanceKeyEqual().operator()(
-                        client.second,
-                        info.RealInstanceId);
-                });
+                std::erase_if(
+                    ClientToRealInstance,
+                    [&info](const auto& client)
+                    {
+                        return TRealInstanceKeyEqual()(
+                            client.second,
+                            info.RealInstanceId);
+                    });
                 return true;
             }
             return false;
