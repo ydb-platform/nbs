@@ -109,10 +109,10 @@ runs:
         # creating symlink /coredumps -> /var/lib/apport/coredump
         # and /var/tmp/cores -> /var/lib/apport/coredump
         # because ya looks for cores within this directory
-        if [ -d /coredumps ]; then
+        if [ ! -d /coredumps ]; then
           ln -s /var/lib/apport/coredump /coredumps
         fi
-        if [ -d /var/tmp/cores ]; then
+        if [ ! -d /var/tmp/cores ]; then
           ln -s /var/lib/apport/coredump /var/tmp/cores
         fi
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
