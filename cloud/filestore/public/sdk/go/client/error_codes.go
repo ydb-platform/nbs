@@ -101,13 +101,13 @@ var (
 	E_UNAUTHORIZED        = makeError(7)
 	E_NOT_IMPLEMENTED     = makeError(8)
 	E_ABORTED             = makeError(9)
-    E_TRY_AGAIN           = makeError(10)
-    E_IO                  = makeError(11)
-    E_CANCELLED           = makeError(12)
-    E_IO_SILENT           = makeError(13)
-    E_RETRY_TIMEOUT       = makeError(14)
-    E_PRECONDITION_FAILED = makeError(15)
-    E_TRANSPORT_ERROR     = makeError(16)
+	E_TRY_AGAIN           = makeError(10)
+	E_IO                  = makeError(11)
+	E_CANCELLED           = makeError(12)
+	E_IO_SILENT           = makeError(13)
+	E_RETRY_TIMEOUT       = makeError(14)
+	E_PRECONDITION_FAILED = makeError(15)
+	E_TRANSPORT_ERROR     = makeError(16)
 
 	E_GRPC_CANCELLED           = makeGrpcError(1)
 	E_GRPC_UNKNOWN             = makeGrpcError(2)
@@ -128,7 +128,7 @@ var (
 
 	E_FS_INVALID_SESSION = makeFileStoreError(100)
 	E_FS_OUT_OF_SPACE    = makeFileStoreError(101)
-    E_FS_THROTTLED       = makeFileStoreError(102)
+	E_FS_THROTTLED       = makeFileStoreError(102)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -164,8 +164,8 @@ var resultMap = map[uint32]string{
 	E_CANCELLED:           "E_CANCELLED",
 	E_IO_SILENT:           "E_IO_SILENT",
 	E_RETRY_TIMEOUT:       "E_RETRY_TIMEOUT",
-    E_PRECONDITION_FAILED: "E_PRECONDITION_FAILED",
-    E_TRANSPORT_ERROR:     "E_TRANSPORT_ERROR",
+	E_PRECONDITION_FAILED: "E_PRECONDITION_FAILED",
+	E_TRANSPORT_ERROR:     "E_TRANSPORT_ERROR",
 
 	E_GRPC_CANCELLED:           "E_GRPC_CANCELLED",
 	E_GRPC_UNKNOWN:             "E_GRPC_UNKNOWN",
@@ -186,7 +186,7 @@ var resultMap = map[uint32]string{
 
 	E_FS_INVALID_SESSION: "E_FS_INVALID_SESSION",
 	E_FS_OUT_OF_SPACE:    "E_FS_OUT_OF_SPACE",
-	E_FS_THROTTLED:	      "E_FS_THROTTLED",
+	E_FS_THROTTLED:       "E_FS_THROTTLED",
 }
 
 func getSeverityString(code uint32) string {

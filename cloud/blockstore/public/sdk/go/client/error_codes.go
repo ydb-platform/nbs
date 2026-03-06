@@ -108,7 +108,7 @@ var (
 	E_IO_SILENT           = makeError(13)
 	E_RETRY_TIMEOUT       = makeError(14)
 	E_PRECONDITION_FAILED = makeError(15)
-    E_TRANSPORT_ERROR     = makeError(16)
+	E_TRANSPORT_ERROR     = makeError(16)
 
 	E_GRPC_CANCELLED           = makeGrpcError(1)
 	E_GRPC_UNKNOWN             = makeGrpcError(2)
@@ -134,7 +134,7 @@ var (
 	E_DISK_ALLOCATION_FAILED = makeServiceError(5)
 	E_MOUNT_CONFLICT         = makeServiceError(6)
 
-    E_RDMA_UNAVAILABLE = makeRdmaError(1)
+	E_RDMA_UNAVAILABLE = makeRdmaError(1)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -170,8 +170,8 @@ var resultMap = map[uint32]string{
 	E_CANCELLED:           "E_CANCELLED",
 	E_IO_SILENT:           "E_IO_SILENT",
 	E_RETRY_TIMEOUT:       "E_RETRY_TIMEOUT",
-    E_PRECONDITION_FAILED: "E_PRECONDITION_FAILED",
-    E_TRANSPORT_ERROR:     "E_TRANSPORT_ERROR",
+	E_PRECONDITION_FAILED: "E_PRECONDITION_FAILED",
+	E_TRANSPORT_ERROR:     "E_TRANSPORT_ERROR",
 
 	E_GRPC_CANCELLED:           "E_GRPC_CANCELLED",
 	E_GRPC_UNKNOWN:             "E_GRPC_UNKNOWN",
