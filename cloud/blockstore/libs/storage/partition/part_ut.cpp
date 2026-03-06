@@ -7261,7 +7261,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvAddFreshBlocksRequest: {
+                    case TEvPartitionCommonPrivate::EvAddFreshBlocksRequest: {
                         if (!addFreshBlocks) {
                             addFreshBlocks = event.Release();
                             return TTestActorRuntime::EEventAction::DROP;
@@ -7326,7 +7326,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvAddFreshBlocksRequest: {
+                    case TEvPartitionCommonPrivate::EvAddFreshBlocksRequest: {
                         if (!addFreshBlocks) {
                             addFreshBlocks = event.Release();
                             return TTestActorRuntime::EEventAction::DROP;
