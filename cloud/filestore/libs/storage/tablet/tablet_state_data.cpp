@@ -890,6 +890,7 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
                 {nodeId, commitId, blockIndex, blocksCount}
             );
         } else {
+            TABLET_VERIFY(commitId < GetCurrentCommitId());
             Impl->MixedBlocks.AddDeletionMarkerOutOfOrder(
                 rangeId,
                 {nodeId, commitId, blockIndex, blocksCount}

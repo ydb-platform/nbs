@@ -246,13 +246,13 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
                 blocksCount);
 
             auto blocks = visitor.Finish();
-            UNIT_ASSERT_VALUES_EQUAL(blocks.size(), blocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, blocks.size());
 
             for (ui32 i = 0; i < blocksCount; ++i) {
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, 10);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MaxCommitId, 20);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, blocks[i].NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blockIndex + i, blocks[i].BlockIndex);
+                UNIT_ASSERT_VALUES_EQUAL(10, blocks[i].MinCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(20, blocks[i].MaxCommitId);
             }
         }
 
@@ -267,15 +267,15 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
                 blocksCount);
 
             auto blocks = visitor.Finish();
-            UNIT_ASSERT_VALUES_EQUAL(blocks.size(), blocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, blocks.size());
 
             for (ui32 i = 0; i < blocksCount; ++i) {
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].NodeId, nodeId);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].BlockIndex, blockIndex + i);
-                UNIT_ASSERT_VALUES_EQUAL(blocks[i].MinCommitId, 20);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, blocks[i].NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blockIndex + i, blocks[i].BlockIndex);
+                UNIT_ASSERT_VALUES_EQUAL(20, blocks[i].MinCommitId);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    blocks[i].MaxCommitId,
-                    InvalidCommitId);
+                    InvalidCommitId,
+                    blocks[i].MaxCommitId);
             }
         }
     }
@@ -329,16 +329,16 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
             .FindBlocks(visitor, rangeId, nodeId, 20, blockIndex, blocksCount);
 
         auto blocks = visitor.Finish();
-        UNIT_ASSERT_VALUES_EQUAL(blocks.size(), blocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, blocks.size());
 
         bool seen[blocksCount] = {};
         ui64 minCommitId[blocksCount] = {};
         ui64 maxCommitId[blocksCount] = {};
 
         for (const auto& block: blocks) {
-            UNIT_ASSERT_VALUES_EQUAL(block.NodeId, nodeId);
-            UNIT_ASSERT(block.BlockIndex >= blockIndex);
-            UNIT_ASSERT(block.BlockIndex < blockIndex + blocksCount);
+            UNIT_ASSERT_VALUES_EQUAL(nodeId, block.NodeId);
+            UNIT_ASSERT_GE(block.BlockIndex, blockIndex);
+            UNIT_ASSERT_LT(block.BlockIndex, blockIndex + blocksCount);
 
             const ui32 idx = block.BlockIndex - blockIndex;
             UNIT_ASSERT(!seen[idx]);
@@ -348,17 +348,17 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
         }
 
         for (ui32 i = 0; i < blocksCount; ++i) {
-            UNIT_ASSERT(seen[i]);
+            UNIT_ASSERT_VALUES_EQUAL(true, seen[i]);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(minCommitId[0], 10);
-        UNIT_ASSERT_VALUES_EQUAL(maxCommitId[0], InvalidCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(minCommitId[1], 20);
-        UNIT_ASSERT_VALUES_EQUAL(maxCommitId[1], InvalidCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(minCommitId[2], 20);
-        UNIT_ASSERT_VALUES_EQUAL(maxCommitId[2], InvalidCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(minCommitId[3], 10);
-        UNIT_ASSERT_VALUES_EQUAL(maxCommitId[3], InvalidCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(10, minCommitId[0]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[0]);
+        UNIT_ASSERT_VALUES_EQUAL(20, minCommitId[1]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[1]);
+        UNIT_ASSERT_VALUES_EQUAL(20, minCommitId[2]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[2]);
+        UNIT_ASSERT_VALUES_EQUAL(10, minCommitId[3]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[3]);
     }
 
     Y_UNIT_TEST(ShouldRefCountRanges)
