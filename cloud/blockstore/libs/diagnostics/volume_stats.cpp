@@ -23,6 +23,7 @@
 #include <util/generic/hash_set.h>
 #include <util/system/rwlock.h>
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace NCloud::NBlockStore {
@@ -847,12 +848,21 @@ public:
                 *TotalDownDisksCounter = totalDownDisks;
             }
 
-            ui32 mk = NProto::EStorageMediaKind_MIN;
-            while (mk < NProto::EStorageMediaKind_ARRAYSIZE) {
-                if (DownDisksCounters[mk]) {
-                    *DownDisksCounters[mk] = downDisksCounters[mk];
+            // Two-phase set to combine counters instead of overwriting them
+            // (and hide prev value) in case of some NProto::EStorageMediaKind
+            // attached to a single DownDisksCounters (e.g. HYBRID attached to
+            // HDD counters, see MediaKindToStatsString())
+
+            for (size_t i = 0; i < DownDisksCounters.size(); i++) {
+                if (DownDisksCounters[i]) {
+                    *DownDisksCounters[i] = 0;
                 }
-                ++mk;
+            }
+
+            for (size_t i = 0; i < DownDisksCounters.size(); i++) {
+                if (DownDisksCounters[i]) {
+                    *DownDisksCounters[i] += downDisksCounters[i];
+                }
             }
         }
     }
@@ -1030,8 +1040,10 @@ private:
                 while (mk < NProto::EStorageMediaKind_ARRAYSIZE) {
                     DownDisksCounters[mk] =
                         Counters->GetSubgroup("component", "server")
-                            ->GetSubgroup("type", MediaKindToStatsString(
-                                static_cast<NProto::EStorageMediaKind>(mk)))
+                            ->GetSubgroup(
+                                "type",
+                                MediaKindToStatsString(
+                                    static_cast<NProto::EStorageMediaKind>(mk)))
                             ->GetCounter("DownDisks");
                     ++mk;
                 }
