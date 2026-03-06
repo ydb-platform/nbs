@@ -28,6 +28,7 @@ const (
 	FACILITY_BLOCKSTORE
 	FACILITY_TXPROXY
 	FACILITY_FILESTORE
+	FACILITY_RDMA
 )
 
 func succeeded(code uint32) bool {
@@ -91,16 +92,22 @@ var (
 	S_FALSE   = makeSuccess(1)
 	S_ALREADY = makeSuccess(2)
 
-	E_FAIL            = makeError(0)
-	E_ARGUMENT        = makeError(1)
-	E_REJECTED        = makeError(2)
-	E_IO              = makeError(3)
-	E_INVALID_STATE   = makeError(4)
-	E_TIMEOUT         = makeError(5)
-	E_NOT_FOUND       = makeError(6)
-	E_UNAUTHORIZED    = makeError(7)
-	E_NOT_IMPLEMENTED = makeError(8)
-	E_ABORTED         = makeError(9)
+	E_FAIL                = makeError(0)
+	E_ARGUMENT            = makeError(1)
+	E_REJECTED            = makeError(2)
+	E_INVALID_STATE       = makeError(4)
+	E_TIMEOUT             = makeError(5)
+	E_NOT_FOUND           = makeError(6)
+	E_UNAUTHORIZED        = makeError(7)
+	E_NOT_IMPLEMENTED     = makeError(8)
+	E_ABORTED             = makeError(9)
+    E_TRY_AGAIN           = makeError(10)
+    E_IO                  = makeError(11)
+    E_CANCELLED           = makeError(12)
+    E_IO_SILENT           = makeError(13)
+    E_RETRY_TIMEOUT       = makeError(14)
+    E_PRECONDITION_FAILED = makeError(15)
+    E_TRANSPORT_ERROR     = makeError(16)
 
 	E_GRPC_CANCELLED           = makeGrpcError(1)
 	E_GRPC_UNKNOWN             = makeGrpcError(2)
@@ -121,6 +128,7 @@ var (
 
 	E_FS_INVALID_SESSION = makeFileStoreError(100)
 	E_FS_OUT_OF_SPACE    = makeFileStoreError(101)
+    E_FS_THROTTLED       = makeFileStoreError(102)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,6 +142,7 @@ var facilityMap = map[uint32]string{
 	FACILITY_BLOCKSTORE:  "FACILITY_BLOCKSTORE",
 	FACILITY_TXPROXY:     "FACILITY_TXPROXY",
 	FACILITY_FILESTORE:   "FACILITY_FILESTORE",
+	FACILITY_RDMA:        "FACILITY_RDMA",
 }
 
 var resultMap = map[uint32]string{
@@ -141,15 +150,22 @@ var resultMap = map[uint32]string{
 	S_FALSE:   "S_FALSE",
 	S_ALREADY: "S_ALREADY",
 
-	E_FAIL:            "E_FAIL",
-	E_ARGUMENT:        "E_ARGUMENT",
-	E_REJECTED:        "E_REJECTED",
-	E_IO:              "E_IO",
-	E_INVALID_STATE:   "E_INVALID_STATE",
-	E_TIMEOUT:         "E_TIMEOUT",
-	E_NOT_FOUND:       "E_NOT_FOUND",
-	E_UNAUTHORIZED:    "E_UNAUTHORIZED",
-	E_NOT_IMPLEMENTED: "E_NOT_IMPLEMENTED",
+	E_FAIL:                "E_FAIL",
+	E_ARGUMENT:            "E_ARGUMENT",
+	E_REJECTED:            "E_REJECTED",
+	E_INVALID_STATE:       "E_INVALID_STATE",
+	E_TIMEOUT:             "E_TIMEOUT",
+	E_NOT_FOUND:           "E_NOT_FOUND",
+	E_UNAUTHORIZED:        "E_UNAUTHORIZED",
+	E_NOT_IMPLEMENTED:     "E_NOT_IMPLEMENTED",
+	E_ABORTED:             "E_ABORTED",
+	E_TRY_AGAIN:           "E_TRY_AGAIN",
+	E_IO:                  "E_IO",
+	E_CANCELLED:           "E_CANCELLED",
+	E_IO_SILENT:           "E_IO_SILENT",
+	E_RETRY_TIMEOUT:       "E_RETRY_TIMEOUT",
+    E_PRECONDITION_FAILED: "E_PRECONDITION_FAILED",
+    E_TRANSPORT_ERROR:     "E_TRANSPORT_ERROR",
 
 	E_GRPC_CANCELLED:           "E_GRPC_CANCELLED",
 	E_GRPC_UNKNOWN:             "E_GRPC_UNKNOWN",
@@ -170,6 +186,7 @@ var resultMap = map[uint32]string{
 
 	E_FS_INVALID_SESSION: "E_FS_INVALID_SESSION",
 	E_FS_OUT_OF_SPACE:    "E_FS_OUT_OF_SPACE",
+	E_FS_THROTTLED:	      "E_FS_THROTTLED",
 }
 
 func getSeverityString(code uint32) string {

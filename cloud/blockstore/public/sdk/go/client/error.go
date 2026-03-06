@@ -40,7 +40,7 @@ func (e *ClientError) Error() string {
 
 func (e *ClientError) IsRetriable() bool {
 	switch e.Code {
-	case E_REJECTED, E_TIMEOUT, E_THROTTLED, E_OUT_OF_SPACE:
+	case E_REJECTED, E_TIMEOUT, E_THROTTLED, E_OUT_OF_SPACE, E_RDMA_UNAVAILABLE:
 		// special error code for retries
 		// NOTE: do not add E_TRY_AGAIN here - it is not retriable for a reason
 		return true
