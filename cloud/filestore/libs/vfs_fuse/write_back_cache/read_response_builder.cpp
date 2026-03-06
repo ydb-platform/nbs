@@ -11,12 +11,12 @@ namespace {
 
 // Sequentially applies cached data on top of the response returned from backend
 // (named OriginalResponse)
-struct IBufferWriter
+struct IResponseWriter
 {
-    virtual ~IBufferWriter() = default;
+    virtual ~IResponseWriter() = default;
 
-    // Copy data from the response returned from backend
-    // Skip bytes if the response is constructed in-place
+    // Copy data from the response returned from backend from the same position
+    // Skip bytes if the response is being constructed in-place
     virtual void TakeBytesFromOriginalResponse(ui64 byteCount) = 0;
 
     // Copy cached data from the write-back cache
@@ -52,7 +52,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInPlaceBufferWriter: public IBufferWriter
+class TInPlaceBufferWriter: public IResponseWriter
 {
 private:
     TExtendedMemoryOutput Out;
@@ -80,24 +80,24 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBufferWriter: public IBufferWriter
+class TBufferWriter: public IResponseWriter
 {
 private:
     TExtendedMemoryOutput Out;
-    TStringBuf OriginalResponse;
+    TStringBuf OriginalResponseBuffer;
 
 public:
-    TBufferWriter(TStringBuf originalResponse, TString& buffer)
+    TBufferWriter(TStringBuf originalResponseBuffer, TString& buffer)
         : Out(buffer.begin(), buffer.size())
-        , OriginalResponse(originalResponse)
+        , OriginalResponseBuffer(originalResponseBuffer)
     {}
 
     void TakeBytesFromOriginalResponse(ui64 byteCount) override
     {
         const ui64 offset = Out.Len();
-        Y_ABORT_UNLESS(offset < OriginalResponse.size());
-        Y_ABORT_UNLESS(byteCount <= OriginalResponse.size() - offset);
-        Out.Write(OriginalResponse.SubStr(offset, byteCount));
+        Y_ABORT_UNLESS(offset < OriginalResponseBuffer.size());
+        Y_ABORT_UNLESS(byteCount <= OriginalResponseBuffer.size() - offset);
+        Out.Write(OriginalResponseBuffer.SubStr(offset, byteCount));
     }
 
     void TakeBytesFromCache(TStringBuf data) override
@@ -118,7 +118,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInPlaceIovecWriter: public IBufferWriter
+class TInPlaceIovecWriter: public IResponseWriter
 {
 private:
     using TIovecVector = ::google::protobuf::RepeatedPtrField<NProto::TIovec>;
@@ -196,15 +196,18 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Wrapper over IResponseWriter that combines TakeBytesFromOriginalResponse and
+// TakeBytesFromCache into TakeNonCachedDataUpToOffset - it takes bytes from
+// original response until it is exhaused and then writes zeroes
 class TResponseWriter
 {
 private:
     const ui64 OriginalResponseLength;
-    IBufferWriter& Writer;
+    IResponseWriter& Writer;
     ui64 Offset = 0;
 
 public:
-    TResponseWriter(ui64 originalResponseLength, IBufferWriter& writer)
+    TResponseWriter(ui64 originalResponseLength, IResponseWriter& writer)
         : OriginalResponseLength(originalResponseLength)
         , Writer(writer)
     {}
@@ -215,7 +218,6 @@ public:
         Offset += data.size();
     }
 
-    // Take bytes from original response until it is exhaused then take zeroes
     void TakeNonCachedDataUpToOffset(ui64 newOffset)
     {
         Y_ABORT_UNLESS(Offset <= newOffset);
@@ -237,22 +239,28 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// originalResponseLength is the length of the response returned from backend
+// (without cached data parts)
 ui64 WriteResponse(
     ui64 originalResponseLength,
     const TCachedData& cachedData,
-    IBufferWriter& bufferWriter)
+    IResponseWriter& writer)
 {
-    auto writer = TResponseWriter(originalResponseLength, bufferWriter);
+    // Single-pass algorithm that minimizes data copying: no data is written
+    // twice, only the necessary data is copied, everything is written
+    // sequentially.
+
+    auto responseWriter = TResponseWriter(originalResponseLength, writer);
 
     for (const auto& part: cachedData.Parts) {
-        writer.TakeNonCachedDataUpToOffset(part.RelativeOffset);
-        writer.TakeCachedData(part.Data);
+        responseWriter.TakeNonCachedDataUpToOffset(part.RelativeOffset);
+        responseWriter.TakeCachedData(part.Data);
     }
 
     const ui64 expectedResponseLength =
         Max(originalResponseLength, cachedData.ReadDataByteCount);
 
-    writer.TakeNonCachedDataUpToOffset(expectedResponseLength);
+    responseWriter.TakeNonCachedDataUpToOffset(expectedResponseLength);
 
     return expectedResponseLength;
 }
