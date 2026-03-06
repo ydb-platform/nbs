@@ -107,6 +107,7 @@ PEERDIR(
     cloud/blockstore/libs/discovery
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/kikimr
+    cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos

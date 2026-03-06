@@ -137,7 +137,13 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
 
         case EBlockStoreRequest::CreateVolumeLink:
         case EBlockStoreRequest::DestroyVolumeLink:
-                return CreatePermissionList({EPermission::Update});
+            return CreatePermissionList({EPermission::Update});
+
+        case EBlockStoreRequest::ListNVMeDevices:
+            return CreatePermissionList({EPermission::List});
+        case EBlockStoreRequest::AcquireNVMeDevice:
+        case EBlockStoreRequest::ReleaseNVMeDevice:
+            return CreatePermissionList({EPermission::Update});
 
         case EBlockStoreRequest::RemoveVolumeClient:
             return CreatePermissionList({EPermission::Delete});

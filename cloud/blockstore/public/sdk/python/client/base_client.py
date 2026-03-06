@@ -48,6 +48,9 @@ NBS_CLIENT_METHODS = [
     "describe_disk_registry_config",
     "query_agents_info",
     "list_disk_states",
+    "list_nvme_devices",
+    "acquire_nvme_device",
+    "release_nvme_device",
 ]
 
 

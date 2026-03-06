@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
-#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
@@ -1997,17 +1996,16 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        const auto response = service.ExecuteAction("ListNVMeDevices", TString());
+        const auto response =
+            service.ExecuteAction("ListNVMeDevices", TString());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-        NProto::TNVMeDeviceList list;
-        UNIT_ASSERT(
-            google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &list)
-                .ok());
-        UNIT_ASSERT_VALUES_EQUAL(1, list.DevicesSize());
-        UNIT_ASSERT_VALUES_EQUAL("NVME_0", list.GetDevices(0).GetSerialNumber());
+        NJson::TJsonValue value;
+        UNIT_ASSERT(NJson::ReadJsonTree(response->Record.GetOutput(), &value));
+        const auto& devices = value["Devices"].GetArray();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+        UNIT_ASSERT_VALUES_EQUAL("NVME_0", devices[0]["SerialNumber"]);
     }
 
     Y_UNIT_TEST(ShouldAcquireNVMeDevice)

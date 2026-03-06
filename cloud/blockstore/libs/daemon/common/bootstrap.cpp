@@ -43,6 +43,7 @@
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
 #include <cloud/blockstore/libs/local_nvme/device_provider.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
+#include <cloud/blockstore/libs/local_nvme/service_proxy.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
@@ -676,6 +677,11 @@ void TBootstrapBase::Init()
             clientInactivityTimeout);
 
         STORAGE_INFO("ValidationService initialized");
+    }
+
+    if (LocalNVMeService) {
+        Service =
+            CreateLocalNVMeServiceProxy(std::move(Service), LocalNVMeService);
     }
 
     Server = CreateServer(
