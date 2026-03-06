@@ -511,6 +511,27 @@ private:
                     State.GetUsedBlocks().Capacity()
                 )
             );
+
+            // TODO:_ initialize estimate on compaction map load?
+            const auto previousZeroAndUsedBlocksEstimate =
+                State.GetCompactionMap().Get(kv.first).UsedOrZeroBlocksEstimate;
+            auto zeroAndUsedBlocksEstimate = usedBlockCount;
+            if (Args.Mode != ADD_COMPACTION_RESULT) {
+                zeroAndUsedBlocksEstimate = std::max(
+                    static_cast<ui32>(previousZeroAndUsedBlocksEstimate),
+                    static_cast<ui32>(usedBlockCount));
+            }
+
+            if (zeroAndUsedBlocksEstimate > previousZeroAndUsedBlocksEstimate) {
+                State.IncrementUsedOrZeroBlocksEstimate(
+                    zeroAndUsedBlocksEstimate -
+                    previousZeroAndUsedBlocksEstimate);
+            } else {
+                State.DecrementUsedOrZeroBlocksEstimate(
+                    previousZeroAndUsedBlocksEstimate -
+                    zeroAndUsedBlocksEstimate);
+            }
+
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
@@ -521,6 +542,7 @@ private:
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
+                zeroAndUsedBlocksEstimate,
                 Args.Mode == ADD_COMPACTION_RESULT
             );
         }

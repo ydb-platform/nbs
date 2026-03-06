@@ -67,6 +67,7 @@ public:
         ui32 blobCount,
         ui32 blockCount,
         ui32 usedBlockCount,
+        ui32 zeroAndUsedBlocksEstimate,
         bool compacted);
     void RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCount);
     void Clear();
