@@ -234,7 +234,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
 
             // validate there are enough free inodes
-            if (GetUsedNodesCount() >= GetNodesCount()) {
+            if (!HasNodesLeft()) {
                 args.Error = ErrorNoSpaceLeft();
                 return true;
             }

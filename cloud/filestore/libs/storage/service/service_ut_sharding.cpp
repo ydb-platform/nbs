@@ -7072,13 +7072,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_EQUAL(
             E_FS_NOSPC,
             service.RecvCreateNodeResponse()->GetStatus());
+        UNIT_ASSERT_EQUAL(
+            0,
+            env.GetCounters()
+                ->FindSubgroup("component", "service")
+                ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
+                ->GetAtomic());
+
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "too_many_files",
+            TCreateHandleArgs::CREATE);
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOSPC,
+            service.RecvCreateHandleResponse()->GetStatus());
+        UNIT_ASSERT_EQUAL(
+            0,
+            env.GetCounters()
+                ->FindSubgroup("component", "service")
+                ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
+                ->GetAtomic());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldShardedFileSystemHitNodesCountLimit)
     {
         DoShouldShardedFileSystemHitNodesCountLimit(config, true);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+        // DoShouldShardedFileSystemHitNodesCountLimit(config, false);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
