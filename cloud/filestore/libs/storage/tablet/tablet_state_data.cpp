@@ -683,6 +683,36 @@ void TIndexTabletState::WriteMixedBlocks(
     InvalidateReadAheadCache(block.NodeId);
 }
 
+TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocksCommitOrderAware(
+    TIndexTabletDatabase& db,
+    const TPartialBlobId& blobId,
+    const TBlock& block,
+    ui32 blocksCount)
+{
+    if (block.MinCommitId == GetCurrentCommitId()) {
+        WriteMixedBlocks(db, blobId, block, blocksCount);
+        return {.GarbageBlocksCount = 0, .NewBlob = true};
+    }
+
+    ui32 rangeId = GetMixedRangeIndex(block.NodeId, block.BlockIndex, blocksCount);
+
+    TVector<TBlock> blocks;
+    blocks.reserve(blocksCount);
+    for (ui32 i = 0; i < blocksCount; ++i) {
+        blocks.emplace_back(
+            block.NodeId,
+            block.BlockIndex + i,
+            block.MinCommitId,
+            block.MaxCommitId);
+    }
+
+    auto result = WriteMixedBlocks(db, rangeId, blobId, blocks);
+    if (result.NewBlob) {
+        AddNewBlob(db, blobId);
+    }
+    return result;
+}
+
 TWriteMixedBlocksResult TIndexTabletState::WriteMixedBlocks(
     TIndexTabletDatabase& db,
     const TPartialBlobId& blobId,
@@ -854,9 +884,17 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
     IncrementDeletionMarkersCount(db, blocksCount);
 
     if (Impl->MixedBlocks.IsLoaded(rangeId)) {
-        Impl->MixedBlocks.AddDeletionMarker(
-            rangeId, {nodeId, commitId, blockIndex, blocksCount}
-        );
+        if (commitId == GetCurrentCommitId()) {
+            Impl->MixedBlocks.AddDeletionMarker(
+                rangeId,
+                {nodeId, commitId, blockIndex, blocksCount}
+            );
+        } else {
+            Impl->MixedBlocks.AddDeletionMarkerOutOfOrder(
+                rangeId,
+                {nodeId, commitId, blockIndex, blocksCount}
+            );
+        }
     }
 
     const auto stats = GetCompactionStats(rangeId);

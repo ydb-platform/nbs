@@ -83,7 +83,13 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         TFreshBlocks freshBlocks(TDefaultAllocator::Instance());
         freshBlocks.AddBlock(nodeId, blockIndex, "x", 1, 1);
 
-        ui64 minCommitId = freshBlocks.MarkBlockDeleted(nodeId, blockIndex, 2);
+        auto deleted = freshBlocks.MarkBlocksDeleted(
+            nodeId,
+            blockIndex,
+            1,
+            2);
+        UNIT_ASSERT_VALUES_EQUAL(deleted.size(), 1);
+        ui64 minCommitId = deleted[0].second;
         UNIT_ASSERT_VALUES_EQUAL(minCommitId, 1);
 
         freshBlocks.AddBlock(nodeId, blockIndex, "y", 1, 2);
@@ -105,6 +111,82 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 2);
         UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, InvalidCommitId);
         UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "y");
+    }
+
+    Y_UNIT_TEST(ShouldOverwriteBlocksOutOfOrder)
+    {
+        ui64 nodeId = 1;
+        ui32 blockIndex = 123;
+
+        TFreshBlocks freshBlocks(TDefaultAllocator::Instance());
+
+        freshBlocks.AddBlock(nodeId, blockIndex + 0, "a", 1, 1);
+        freshBlocks.AddBlock(nodeId, blockIndex + 1, "b", 1, 1);
+        freshBlocks.AddBlock(nodeId, blockIndex + 2, "c", 1, 1);
+
+        auto deleted = freshBlocks.MarkBlocksDeleted(
+            nodeId,
+            blockIndex,
+            3,
+            10);
+        UNIT_ASSERT_VALUES_EQUAL(deleted.size(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[0].first, blockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[0].second, 1);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[1].first, blockIndex + 1);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[1].second, 1);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[2].first, blockIndex + 2);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[2].second, 1);
+
+        freshBlocks.AddBlock(nodeId, blockIndex + 0, "A", 1, 10);
+        freshBlocks.AddBlock(nodeId, blockIndex + 1, "B", 1, 10);
+        freshBlocks.AddBlock(nodeId, blockIndex + 2, "C", 1, 10);
+
+        deleted = freshBlocks.MarkBlocksDeleted(
+            nodeId,
+            blockIndex + 1,
+            2,
+            5);
+        UNIT_ASSERT_VALUES_EQUAL(deleted.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[0].first, blockIndex + 1);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[0].second, 1);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[1].first, blockIndex + 2);
+        UNIT_ASSERT_VALUES_EQUAL(deleted[1].second, 1);
+
+        auto block = freshBlocks.FindBlock(nodeId, blockIndex + 0, 6);
+        UNIT_ASSERT(block);
+        UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 1);
+        UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, 10);
+        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "a");
+
+        block = freshBlocks.FindBlock(nodeId, blockIndex + 1, 4);
+        UNIT_ASSERT(block);
+        UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 1);
+        UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, 5);
+        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "b");
+
+        block = freshBlocks.FindBlock(nodeId, blockIndex + 1, 6);
+        UNIT_ASSERT(!block);
+
+        block = freshBlocks.FindBlock(nodeId, blockIndex + 2, 6);
+        UNIT_ASSERT(!block);
+
+        block = freshBlocks.FindBlock(nodeId, blockIndex + 0, 10);
+        UNIT_ASSERT(block);
+        UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 10);
+        UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, InvalidCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "A");
+
+        block = freshBlocks.FindBlock(nodeId, blockIndex + 1, 10);
+        UNIT_ASSERT(block);
+        UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 10);
+        UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, InvalidCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "B");
+
+        block = freshBlocks.FindBlock(nodeId, blockIndex + 2, 10);
+        UNIT_ASSERT(block);
+        UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 10);
+        UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, InvalidCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "C");
     }
 
     Y_UNIT_TEST(ShouldFindBlocks)
