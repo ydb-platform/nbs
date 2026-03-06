@@ -46,9 +46,6 @@ class TGetClusterCapacityActor final
     : public TActorBootstrapped<TGetClusterCapacityActor>
 {
 private:
-    using TPoolToKindMapping =
-        THashMap<TString, NProto::EStorageMediaKind>;
-
     struct TStoragePoolStats
     {
         ui64 TotalBytes = 0;
@@ -99,17 +96,6 @@ private:
     void HandleEmptyClusterCapacity(
         const TActorContext& ctx,
         const TString& component);
-
-    const TPoolToKindMapping& GetYdbPoolToStorageMediaKind() const
-    {
-        static const TPoolToKindMapping PoolToKind
-        {
-            {"Type:ROT", NProto::STORAGE_MEDIA_HDD},
-            {"Type:SSD", NProto::STORAGE_MEDIA_SSD},
-        };
-
-        return PoolToKind;
-    }
 
 private:
     STFUNC(StateGetDiskRegistryBasedCapacity);
@@ -309,8 +295,8 @@ void TGetClusterCapacityActor::HandleGetStoragePoolsResponse(
             continue;
         }
 
-        const auto& YdbPoolToStorageMediaKind = GetYdbPoolToStorageMediaKind();
-        auto it = YdbPoolToStorageMediaKind.find(poolInfo.GetPDiskFilter());
+        const auto YdbPoolToStorageMediaKind = Config->GetPoolKindToMediaKindMapping();
+        auto it = YdbPoolToStorageMediaKind.find(poolInfo.GetKind());
         if (it != YdbPoolToStorageMediaKind.end()) {
             const auto key = TPoolId{
                 poolKey.GetBoxId(),

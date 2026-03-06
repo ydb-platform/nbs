@@ -108,6 +108,17 @@ enum EOverlappingRequestsPolicy
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+message TPoolKindToMediaKindMapping
+{
+    // YDB storage pool kind.
+    optional string PoolKind = 1;
+
+    // Corresponding NBS storage media kind
+    optional NCloud.NProto.EStorageMediaKind MediaKind = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
 //  Even though StorageServiceConfig is usually stored in textual format, it may
@@ -1455,4 +1466,8 @@ message TStorageServiceConfig
     // It is preferable to enable handling overlapping requests via
     // EnableOverlappingRequestsGuard in the Storage config.
     optional EOverlappingRequestsPolicy OverlappingRequestsPolicy = 486;
+
+    // Pool kind to storage media kind mapping.
+    // Used for cluster capacity estimation (getclustercapacity private api).
+    repeated TPoolKindToMediaKindMapping PoolKindToMediaKindMapping = 487;
 }

@@ -28,6 +28,10 @@ struct TLinkedDiskFillBandwidth
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+using TPoolKindToMediaKindMapping =
+    THashMap<TString, NCloud::NProto::EStorageMediaKind>;
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TStorageConfig
 {
@@ -777,6 +781,9 @@ public:
 
     [[nodiscard]] NProto::EOverlappingRequestsPolicy
     GetOverlappingRequestsPolicy() const;
+
+    [[nodiscard]] TPoolKindToMediaKindMapping
+    GetPoolKindToMediaKindMapping() const;
 };
 
 ui64 GetAllocationUnit(
