@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
@@ -39,6 +40,9 @@ bool IsThreeStageWriteEnabled(const NProto::TFileStore& fs)
         fs.GetFeatures().GetThreeStageWriteDisabledForHDD();
     return !disabledAsHdd && fs.GetFeatures().GetThreeStageWriteEnabled();
 }
+
+constexpr ui32 ProxyCriticalRetryThreshold = 10;
+static_assert(ProxyCriticalRetryThreshold > 0);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -97,6 +101,13 @@ void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 private:
+    enum class ETabletRetryRequest
+    {
+        None,
+        ConfirmAddData,
+        CancelAddData
+    };
+
     // Original request
     NProto::TWriteDataRequest WriteRequest;
     const TByteRange Range;
@@ -114,15 +125,22 @@ private:
 
     // WriteData state
     ui32 RemainingBlobsToWrite = 0;
-    bool WriteDataFallbackEnabled = false;
+    bool UseUnconfirmedFlow = false;
+    NProto::TError WriteBlobError;
+
+    ui32 TabletProxyRetries = 0;
+    ETabletRetryRequest TabletRetryRequest = ETabletRetryRequest::None;
+    TBackoffDelayProvider TabletProxyRetryDelayProvider{
+        TDuration::MilliSeconds(50),
+        TDuration::Seconds(1)};
 
     // Metrics / logging
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
     ITraceSerializerPtr TraceSerializer;
 
-    // Refers to GenerateBlobIds or AddData request, depending on which one is
-    // in flight
+    // Refers to GenerateBlobIds/AddData/ConfirmAddData/CancelAddData request,
+    // depending on which one is in flight
     TMaybe<TInFlightRequest> InFlightRequest;
     TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
     TVector<ui32> StorageStatusFlags;
@@ -137,6 +155,7 @@ public:
             TRequestInfoPtr requestInfo,
             TString logTag,
             bool writeBlobDisabled,
+            bool useUnconfirmedFlow,
             IRequestStatsPtr requestStats,
             IProfileLogPtr profileLog,
             ITraceSerializerPtr traceSerializer,
@@ -147,6 +166,7 @@ public:
         , RequestInfo(std::move(requestInfo))
         , LogTag(std::move(logTag))
         , WriteBlobDisabled(writeBlobDisabled)
+        , UseUnconfirmedFlow(useUnconfirmedFlow)
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
@@ -171,6 +191,10 @@ public:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(BlobRange.Offset);
         request->Record.SetLength(BlobRange.Length);
+
+        if (UseUnconfirmedFlow) {
+            FillUnalignedDataRanges(*request->Record.MutableUnalignedDataRanges());
+        }
 
         auto genCallContext = MakeIntrusive<TCallContext>(
             RequestInfo->CallContext->FileSystemId,
@@ -216,6 +240,7 @@ private:
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+            HFunc(TEvents::TEvWakeup, HandleWakeup);
 
             HFunc(
                 TEvIndexTablet::TEvGenerateBlobIdsResponse,
@@ -224,6 +249,9 @@ private:
             HFunc(TEvBlobStorage::TEvPutResult, HandleWriteBlobResponse);
 
             HFunc(TEvIndexTablet::TEvAddDataResponse, HandleAddDataResponse);
+
+            HFunc(TEvIndexTablet::TEvConfirmAddDataResponse, HandleConfirmAddDataResponse);
+            HFunc(TEvIndexTablet::TEvCancelAddDataResponse, HandleCancelAddDataResponse);
 
             HFunc(TEvService::TEvWriteDataResponse, HandleWriteDataResponse);
 
@@ -274,13 +302,25 @@ private:
             LogTag.c_str(),
             GenerateBlobIdsResponse.DebugString().Quote().c_str());
 
+        TABLET_VERIFY_C(
+            UseUnconfirmedFlow ||
+                !GenerateBlobIdsResponse.GetUnconfirmedFlowEnabled(),
+            "Tablet enabled unconfirmed flow while service disabled it");
+
+        UseUnconfirmedFlow &=
+            GenerateBlobIdsResponse.GetUnconfirmedFlowEnabled();
+
         if (WriteBlobDisabled) {
             // Pretend that the blobs were written and trigger a critical event
             // to alert the on-call engineer, as fake blobs should never be
             // written in production
             ReportFakeBlobWasWritten();
             // Proceed to the final part: adding fake blobs to the index
-            AddData(ctx);
+            if (UseUnconfirmedFlow) {
+                ConfirmAddData(ctx);
+            } else {
+                AddData(ctx);
+            }
             return;
         }
 
@@ -391,7 +431,7 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (WriteDataFallbackEnabled) {
+        if (HasError(WriteBlobError)) {
             return;
         }
 
@@ -401,6 +441,7 @@ private:
         if (msg->Status != NKikimrProto::OK) {
             const auto error =
                 MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason);
+            WriteBlobError = error;
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
@@ -414,6 +455,11 @@ private:
                     inFlight->Complete(ctx.Now(), error);
                 }
             }
+
+            if (UseUnconfirmedFlow) {
+                return CancelAddData(ctx);
+            }
+
             return WriteData(ctx, error);
         }
 
@@ -439,7 +485,25 @@ private:
 
         --RemainingBlobsToWrite;
         if (RemainingBlobsToWrite == 0) {
-            AddData(ctx);
+            if (UseUnconfirmedFlow) {
+                ConfirmAddData(ctx);
+            } else {
+                AddData(ctx);
+            }
+        }
+    }
+
+    template <typename TRecord>
+    void AddStorageStatusInfo(TRecord& record)
+    {
+        record.MutableStorageStatusFlags()->Reserve(StorageStatusFlags.size());
+        for (const auto flags: StorageStatusFlags) {
+            record.AddStorageStatusFlags(flags);
+        }
+        record.MutableApproximateFreeSpaceShares()->Reserve(
+            ApproximateFreeSpaceShares.size());
+        for (const auto share: ApproximateFreeSpaceShares) {
+            record.AddApproximateFreeSpaceShares(share);
         }
     }
 
@@ -458,52 +522,14 @@ private:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
         request->Record.SetLength(CalculateByteCount(WriteRequest));
-        for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
-            request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
+        for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
+            *request->Record.AddBlobIds() = blob.GetBlobId();
         }
         request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
-        request->Record.MutableStorageStatusFlags()->Reserve(
-            StorageStatusFlags.size());
-        for (const auto flags: StorageStatusFlags) {
-            request->Record.AddStorageStatusFlags(flags);
-        }
-        request->Record.MutableApproximateFreeSpaceShares()->Reserve(
-            ApproximateFreeSpaceShares.size());
-        for (const auto share: ApproximateFreeSpaceShares) {
-            request->Record.AddApproximateFreeSpaceShares(share);
-        }
 
-        if (Range.Offset < BlobRange.Offset) {
-            auto& unalignedHead = *request->Record.AddUnalignedDataRanges();
-            unalignedHead.SetOffset(Range.Offset);
-            const auto length = BlobRange.Offset - Range.Offset;
-            if (WriteRequest.GetIovecs().empty()) {
-                unalignedHead.SetContent(
-                    WriteRequest.GetBuffer().substr(0, length));
-            } else {
-                TString buffer;
-                auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
-                TABLET_VERIFY(bytesCopied == length);
-                unalignedHead.SetContent(std::move(buffer));
-            }
-        }
+        FillUnalignedDataRanges(*request->Record.MutableUnalignedDataRanges());
 
-        if (Range.End() > BlobRange.End()) {
-            auto& unalignedTail = *request->Record.AddUnalignedDataRanges();
-            unalignedTail.SetOffset(BlobRange.End());
-            const auto offset = BlobRange.End() - Range.Offset;
-            const auto length = Range.End() - BlobRange.End();
-            if (WriteRequest.GetIovecs().empty()) {
-                unalignedTail.SetContent(
-                    WriteRequest.GetBuffer().substr(offset, length));
-            } else {
-                TString buffer;
-                auto bytesCopied =
-                    CopyBufferFromRope(Rope, buffer, offset, length);
-                TABLET_VERIFY(bytesCopied == length);
-                unalignedTail.SetContent(std::move(buffer));
-            }
-        }
+        AddStorageStatusInfo(request->Record);
 
         auto addCallContext = MakeIntrusive<TCallContext>(
             RequestInfo->CallContext->FileSystemId,
@@ -564,6 +590,257 @@ private:
         ReplyAndDie(ctx, {} /* record */);
     }
 
+    void ConfirmAddData(const TActorContext& ctx)
+    {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "ConfirmAddData");
+
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvConfirmAddDataRequest>();
+
+        request->Record.MutableHeaders()->CopyFrom(WriteRequest.GetHeaders());
+        request->Record.SetFileSystemId(WriteRequest.GetFileSystemId());
+        request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
+
+        // Add storage status info (now available after WriteBlobs completed)
+        AddStorageStatusInfo(request->Record);
+
+        auto confirmCallContext = MakeIntrusive<TCallContext>(
+            RequestInfo->CallContext->FileSystemId,
+            RequestInfo->CallContext->RequestId);
+        confirmCallContext->SetRequestStartedCycles(GetCycleCount());
+        confirmCallContext->RequestType = EFileStoreRequest::ConfirmAddData;
+        InFlightRequest.ConstructInPlace(
+            TRequestInfo(
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
+                std::move(confirmCallContext)),
+            ProfileLog,
+            MediaKind,
+            RequestStats);
+        InFlightRequest->Start(ctx.Now());
+        InitProfileLogRequestInfo(
+            InFlightRequest->AccessProfileLogRequest(),
+            request->Record);
+
+        auto* rangeInfo =
+            InFlightRequest->AccessProfileLogRequest().AddRanges();
+        rangeInfo->SetNodeId(WriteRequest.GetNodeId());
+        rangeInfo->SetHandle(WriteRequest.GetHandle());
+        rangeInfo->SetOffset(WriteRequest.GetOffset());
+        rangeInfo->SetBytes(CalculateByteCount(WriteRequest));
+
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s Sending ConfirmAddData request, commitId=%lu",
+            LogTag.c_str(),
+            GenerateBlobIdsResponse.GetCommitId());
+
+        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+    }
+
+    void CancelAddData(const TActorContext& ctx)
+    {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "CancelAddData");
+
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvCancelAddDataRequest>();
+
+        request->Record.MutableHeaders()->CopyFrom(WriteRequest.GetHeaders());
+        request->Record.SetFileSystemId(WriteRequest.GetFileSystemId());
+        request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
+
+        auto cancelCallContext = MakeIntrusive<TCallContext>(
+            RequestInfo->CallContext->FileSystemId,
+            RequestInfo->CallContext->RequestId);
+        cancelCallContext->SetRequestStartedCycles(GetCycleCount());
+        cancelCallContext->RequestType = EFileStoreRequest::CancelAddData;
+        InFlightRequest.ConstructInPlace(
+            TRequestInfo(
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
+                std::move(cancelCallContext)),
+            ProfileLog,
+            MediaKind,
+            RequestStats);
+        InFlightRequest->Start(ctx.Now());
+        InitProfileLogRequestInfo(
+            InFlightRequest->AccessProfileLogRequest(),
+            request->Record);
+
+        auto* rangeInfo =
+            InFlightRequest->AccessProfileLogRequest().AddRanges();
+        rangeInfo->SetNodeId(WriteRequest.GetNodeId());
+        rangeInfo->SetHandle(WriteRequest.GetHandle());
+        rangeInfo->SetOffset(WriteRequest.GetOffset());
+        rangeInfo->SetBytes(CalculateByteCount(WriteRequest));
+
+        auto* trace =
+            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s Sending CancelAddData request, commitId=%lu",
+            LogTag.c_str(),
+            GenerateBlobIdsResponse.GetCommitId());
+
+        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+    }
+
+    void HandleConfirmAddDataResponse(
+        const TEvIndexTablet::TEvConfirmAddDataResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+
+        TABLET_VERIFY(InFlightRequest);
+        FinalizeProfileLogRequestInfo(
+            InFlightRequest->AccessProfileLogRequest(),
+            msg->Record);
+        InFlightRequest->Complete(ctx.Now(), msg->GetError());
+        HandleServiceTraceInfo(
+            "ConfirmAddData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
+
+        if (HasError(msg->GetError())) {
+            if (ev->Sender == MakeIndexTabletProxyServiceId()) {
+                ScheduleTabletProxyRetry(
+                    ctx,
+                    ETabletRetryRequest::ConfirmAddData,
+                    msg->GetError());
+                return;
+            }
+
+            ResetTabletProxyRetryState();
+            return WriteData(ctx, msg->GetError());
+        }
+
+        ResetTabletProxyRetryState();
+        ReplyAndDie(ctx, {});
+    }
+
+    void HandleCancelAddDataResponse(
+        const TEvIndexTablet::TEvCancelAddDataResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+
+        TABLET_VERIFY(InFlightRequest);
+        FinalizeProfileLogRequestInfo(
+            InFlightRequest->AccessProfileLogRequest(),
+            msg->Record);
+        InFlightRequest->Complete(ctx.Now(), msg->GetError());
+        HandleServiceTraceInfo(
+            "CancelAddData",
+            ctx,
+            TraceSerializer,
+            RequestInfo->CallContext,
+            msg->Record);
+
+        if (HasError(msg->GetError())) {
+            if (ev->Sender == MakeIndexTabletProxyServiceId()) {
+                ScheduleTabletProxyRetry(
+                    ctx,
+                    ETabletRetryRequest::CancelAddData,
+                    msg->GetError());
+                return;
+            }
+        }
+
+        ResetTabletProxyRetryState();
+        WriteData(ctx, WriteBlobError);
+    }
+
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        if (TabletRetryRequest == ETabletRetryRequest::None) {
+            return;
+        }
+
+        const auto retryRequest = TabletRetryRequest;
+        TabletRetryRequest = ETabletRetryRequest::None;
+
+        switch (retryRequest) {
+            case ETabletRetryRequest::ConfirmAddData:
+                ConfirmAddData(ctx);
+                return;
+
+            case ETabletRetryRequest::CancelAddData:
+                CancelAddData(ctx);
+                return;
+
+            case ETabletRetryRequest::None:
+                return;
+        }
+    }
+
+    void ScheduleTabletProxyRetry(
+        const TActorContext& ctx,
+        ETabletRetryRequest retryRequest,
+        const NProto::TError& error)
+    {
+        const auto delay = TabletProxyRetryDelayProvider.GetDelayAndIncrease();
+        ++TabletProxyRetries;
+
+        if (TabletProxyRetries % ProxyCriticalRetryThreshold == 0) {
+            TABLET_VERIFY(retryRequest != ETabletRetryRequest::None);
+            switch (retryRequest) {
+                case ETabletRetryRequest::ConfirmAddData:
+                    ReportUnconfirmedFlowProxyRetryThresholdReached(
+                        TStringBuilder() << "retry=" << TabletProxyRetries
+                                         << ", request="
+                                         << GetFileStoreRequestName(
+                                                EFileStoreRequest::ConfirmAddData)
+                                         << ", error=" << FormatError(error));
+                    break;
+
+                case ETabletRetryRequest::CancelAddData:
+                    ReportUnconfirmedFlowProxyRetryThresholdReached(
+                        TStringBuilder() << "retry=" << TabletProxyRetries
+                                         << ", request="
+                                         << GetFileStoreRequestName(
+                                                EFileStoreRequest::CancelAddData)
+                                         << ", error=" << FormatError(error));
+                    break;
+
+                case ETabletRetryRequest::None:
+                    break;
+            }
+        }
+
+        TabletRetryRequest = retryRequest;
+        ctx.Schedule(delay, new TEvents::TEvWakeup());
+    }
+
+    void ResetTabletProxyRetryState()
+    {
+        TabletProxyRetries = 0;
+        TabletRetryRequest = ETabletRetryRequest::None;
+        TabletProxyRetryDelayProvider.Reset();
+    }
+
     /**
      * @brief Fallback to regular write if two-stage write fails for any reason
      */
@@ -574,7 +851,6 @@ private:
             RequestInfo->CallContext,
             "WriteData");
 
-        WriteDataFallbackEnabled = true;
         MoveIovecsToBuffer(WriteRequest);
 
         LOG_WARN(
@@ -662,6 +938,43 @@ private:
     {
         Y_UNUSED(ev);
         HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
+    }
+
+    void FillUnalignedDataRanges(
+        google::protobuf::RepeatedPtrField<NProtoPrivate::TFreshDataRange>&
+            ranges)
+    {
+        if (Range.Offset < BlobRange.Offset) {
+            auto& unalignedHead = *ranges.Add();
+            unalignedHead.SetOffset(Range.Offset);
+            const auto length = BlobRange.Offset - Range.Offset;
+            if (WriteRequest.GetIovecs().empty()) {
+                unalignedHead.SetContent(
+                    WriteRequest.GetBuffer().substr(0, length));
+            } else {
+                TString buffer;
+                auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedHead.SetContent(std::move(buffer));
+            }
+        }
+
+        if (Range.End() > BlobRange.End()) {
+            auto& unalignedTail = *ranges.Add();
+            unalignedTail.SetOffset(BlobRange.End());
+            const auto offset = BlobRange.End() - Range.Offset;
+            const auto length = Range.End() - BlobRange.End();
+            if (WriteRequest.GetIovecs().empty()) {
+                unalignedTail.SetContent(
+                    WriteRequest.GetBuffer().substr(offset, length));
+            } else {
+                TString buffer;
+                auto bytesCopied =
+                    CopyBufferFromRope(Rope, buffer, offset, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedTail.SetContent(std::move(buffer));
+            }
+        }
     }
 };
 
@@ -789,6 +1102,7 @@ void TStorageServiceActor::HandleWriteData(
             std::move(requestInfo),
             std::move(logTag),
             filestore.GetFeatures().GetWriteBlobDisabled(),
+            filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
             session->RequestStats,
             ProfileLog,
             TraceSerializer,

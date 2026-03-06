@@ -1,5 +1,6 @@
 #include "service.h"
 #include "service_private.h"
+#include "service_ut_helpers.h"
 #include "service_ut_sharding.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
@@ -25,15 +26,6 @@ using namespace NKikimr;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-TString GenerateValidateData(ui32 size, ui32 seed = 0)
-{
-    TString data(size, 0);
-    for (ui32 i = 0; i < size; ++i) {
-        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
-    }
-    return data;
-}
 
 NProto::TStorageConfig MakeStorageConfig()
 {
