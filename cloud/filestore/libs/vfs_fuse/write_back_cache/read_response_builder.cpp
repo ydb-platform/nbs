@@ -9,104 +9,116 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IResponseWriter
+// Sequentially applies cached data on top of the response returned from backend
+// (named OriginalResponse)
+struct IBufferWriter
 {
-    virtual ~IResponseWriter() = default;
+    virtual ~IBufferWriter() = default;
 
-    virtual void TakeBytesFromOriginalResponse(ui64 offset, ui64 byteCount) = 0;
+    // Copy data from the response returned from backend
+    // Skip bytes if the response is constructed in-place
+    virtual void TakeBytesFromOriginalResponse(ui64 byteCount) = 0;
+
+    // Copy cached data from the write-back cache
     virtual void TakeBytesFromCache(TStringBuf data) = 0;
+
+    // Write zero bytes - used when response returned from backend is shorter
+    // than when taking into account unflushed data
     virtual void WriteZeroBytes(ui64 byteCount) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TExtendedMemoryOutput: public TMemoryOutput
+class TExtendedMemoryOutput: public TMemoryWriteBuffer
 {
 public:
-    using TMemoryOutput::TMemoryOutput;
+    TExtendedMemoryOutput(void* buf, size_t len)
+        : TMemoryWriteBuffer(buf, len)
+    {}
 
     void Skip(ui64 byteCount)
     {
         Y_ABORT_UNLESS(byteCount <= Avail());
-        Buf_ += byteCount;
+        SetPos(Len() + byteCount);
     }
 
     void WriteZeroBytes(ui64 byteCount)
     {
         Y_ABORT_UNLESS(byteCount <= Avail());
-        memset(Buf_, 0, byteCount);
-        Buf_ += byteCount;
+        memset(Buf(), 0, byteCount);
+        SetPos(Len() + byteCount);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBufferWriterBase
-    : protected TExtendedMemoryOutput
-    , public IResponseWriter
+class TInPlaceBufferWriter: public IBufferWriter
 {
-protected:
-    explicit TBufferWriterBase(char* buf, size_t len)
-        : TExtendedMemoryOutput(buf, len)
-    {}
+private:
+    TExtendedMemoryOutput Out;
 
 public:
+    explicit TInPlaceBufferWriter(char* buf, size_t len)
+        : Out(buf, len)
+    {}
+
+    void TakeBytesFromOriginalResponse(ui64 byteCount) override
+    {
+        Out.Skip(byteCount);
+    }
+
     void TakeBytesFromCache(TStringBuf data) override
     {
-        Write(data);
+        Out.Write(data);
     }
 
     void WriteZeroBytes(ui64 byteCount) override
     {
-        TExtendedMemoryOutput::WriteZeroBytes(byteCount);
+        Out.WriteZeroBytes(byteCount);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInPlaceBufferWriter: public TBufferWriterBase
-{
-public:
-    explicit TInPlaceBufferWriter(char* buf, size_t len)
-        : TBufferWriterBase(buf, len)
-    {}
-
-    void TakeBytesFromOriginalResponse(ui64 offset, ui64 byteCount) override
-    {
-        Y_UNUSED(offset);
-        Skip(byteCount);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TBufferWriter: public TBufferWriterBase
+class TBufferWriter: public IBufferWriter
 {
 private:
+    TExtendedMemoryOutput Out;
     TStringBuf OriginalResponse;
 
 public:
     TBufferWriter(TStringBuf originalResponse, TString& buffer)
-        : TBufferWriterBase(buffer.begin(), buffer.size())
+        : Out(buffer.begin(), buffer.size())
         , OriginalResponse(originalResponse)
     {}
 
-    void TakeBytesFromOriginalResponse(ui64 offset, ui64 byteCount) override
+    void TakeBytesFromOriginalResponse(ui64 byteCount) override
     {
+        const ui64 offset = Out.Len();
         Y_ABORT_UNLESS(offset < OriginalResponse.size());
         Y_ABORT_UNLESS(byteCount <= OriginalResponse.size() - offset);
-        Write(OriginalResponse.SubStr(offset, byteCount));
+        Out.Write(OriginalResponse.SubStr(offset, byteCount));
+    }
+
+    void TakeBytesFromCache(TStringBuf data) override
+    {
+        Out.Write(data);
+    }
+
+    void WriteZeroBytes(ui64 byteCount) override
+    {
+        Out.WriteZeroBytes(byteCount);
     }
 
     bool Exhausted() const
     {
-        return TMemoryOutput::Exhausted();
+        return Out.Exhausted();
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInPlaceIovecWriter: public IResponseWriter
+class TInPlaceIovecWriter: public IBufferWriter
 {
 private:
     using TIovecVector = ::google::protobuf::RepeatedPtrField<NProto::TIovec>;
@@ -122,10 +134,9 @@ public:
         , EndIovec(iovecs.end())
     {}
 
-    void TakeBytesFromOriginalResponse(ui64 offset, ui64 byteCount) override
+    void TakeBytesFromOriginalResponse(ui64 byteCount) override
     {
         // Skip byteCount bytes
-        Y_UNUSED(offset);
         while (byteCount > 0) {
             const ui64 len = Min(byteCount, PrepareWriteAndGetAvail());
             Y_ABORT_UNLESS(len > 0);
@@ -185,40 +196,65 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void WriteResponse(
-    ui64 originalResponseLength,
-    const TCachedData& cachedData,
-    IResponseWriter& writer)
+class TResponseWriter
 {
-    ui64 ofs = 0;
-    for (const auto& part: cachedData.Parts) {
-        if (ofs < part.RelativeOffset) {
-            if (originalResponseLength <= ofs) {
-                writer.WriteZeroBytes(part.RelativeOffset - ofs);
-            } else if (part.RelativeOffset <= originalResponseLength) {
-                writer.TakeBytesFromOriginalResponse(
-                    ofs,
-                    part.RelativeOffset - ofs);
-            } else {
-                // offset < actualLength < part.RelativeOffset
-                writer.TakeBytesFromOriginalResponse(
-                    ofs,
-                    originalResponseLength - ofs);
-                writer.WriteZeroBytes(
-                    part.RelativeOffset - originalResponseLength);
-            }
-        }
-        writer.TakeBytesFromCache(part.Data);
-        ofs = part.RelativeOffset + part.Data.size();
+private:
+    const ui64 OriginalResponseLength;
+    IBufferWriter& Writer;
+    ui64 Offset = 0;
+
+public:
+    TResponseWriter(ui64 originalResponseLength, IBufferWriter& writer)
+        : OriginalResponseLength(originalResponseLength)
+        , Writer(writer)
+    {}
+
+    void TakeCachedData(TStringBuf data)
+    {
+        Writer.TakeBytesFromCache(data);
+        Offset += data.size();
     }
 
-    if (ofs < originalResponseLength) {
-        writer.TakeBytesFromOriginalResponse(ofs, originalResponseLength - ofs);
-        ofs = originalResponseLength;
+    // Take bytes from original response until it is exhaused then take zeroes
+    void TakeNonCachedDataUpToOffset(ui64 newOffset)
+    {
+        Y_ABORT_UNLESS(Offset <= newOffset);
+
+        // Take bytes from original response if it is not exhaused
+        const ui64 ofs = Min(OriginalResponseLength, newOffset);
+        if (Offset < ofs) {
+            Writer.TakeBytesFromOriginalResponse(ofs - Offset);
+            Offset = ofs;
+        }
+
+        // Zero fill the remaining bytes
+        if (Offset < newOffset) {
+            Writer.WriteZeroBytes(newOffset - Offset);
+            Offset = newOffset;
+        }
     }
-    if (ofs < cachedData.ReadDataByteCount) {
-        writer.WriteZeroBytes(cachedData.ReadDataByteCount - ofs);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui64 WriteResponse(
+    ui64 originalResponseLength,
+    const TCachedData& cachedData,
+    IBufferWriter& bufferWriter)
+{
+    auto writer = TResponseWriter(originalResponseLength, bufferWriter);
+
+    for (const auto& part: cachedData.Parts) {
+        writer.TakeNonCachedDataUpToOffset(part.RelativeOffset);
+        writer.TakeCachedData(part.Data);
     }
+
+    const ui64 expectedResponseLength =
+        Max(originalResponseLength, cachedData.ReadDataByteCount);
+
+    writer.TakeNonCachedDataUpToOffset(expectedResponseLength);
+
+    return expectedResponseLength;
 }
 
 void Validate(const TCachedData& cachedData, ui64 requestedLength)
@@ -316,9 +352,8 @@ void TReadResponseBuilder::AugmentResponseWithCachedData(
 
     if (useIovecs) {
         auto writer = TInPlaceIovecWriter(Request.GetIovecs());
-        WriteResponse(response.GetLength(), CachedData, writer);
-        response.SetLength(
-            Max(response.GetLength(), CachedData.ReadDataByteCount));
+        ui64 len = WriteResponse(response.GetLength(), CachedData, writer);
+        response.SetLength(len);
         return;
     }
 
@@ -346,6 +381,7 @@ void TReadResponseBuilder::AugmentResponseWithCachedData(
         WriteResponse(originalResponseLength, CachedData, writer);
         Y_ABORT_UNLESS(writer.Exhausted());
 
+        response.SetLength(newBuffer.size());
         response.SetBuffer(std::move(newBuffer));
         response.SetBufferOffset(0);
     }

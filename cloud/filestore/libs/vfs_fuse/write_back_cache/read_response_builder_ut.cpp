@@ -116,7 +116,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TReadResponseBufferTest)
+Y_UNIT_TEST_SUITE(TReadResponseBuilderTest)
 {
     Y_UNIT_TEST(Simple)
     {
