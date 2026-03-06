@@ -38,9 +38,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        std::unique_ptr<TEvService::TEvExecuteActionResponse> response);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
 private:
     STFUNC(StateEnsureDiskRegistryStateIntegrity);
@@ -69,9 +67,7 @@ void TEnsureDiskRegistryStateIntegrityActor::Bootstrap(const TActorContext& ctx)
              .ok())
     {
         NProto::TError error = MakeError(E_ARGUMENT, "Failed to parse input");
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvExecuteActionResponse>(error));
+        ReplyAndDie(ctx, error);
         return;
     }
 
@@ -82,13 +78,16 @@ void TEnsureDiskRegistryStateIntegrityActor::Bootstrap(const TActorContext& ctx)
 
 void TEnsureDiskRegistryStateIntegrityActor::ReplyAndDie(
     const TActorContext& ctx,
-    std::unique_ptr<TEvService::TEvExecuteActionResponse> response)
+    const NProto::TError& error)
 {
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
         "ExecuteAction_ensurediskregistrystateintegrity",
         RequestInfo->CallContext->RequestId);
+
+    auto response = std::make_unique<
+        TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -104,9 +103,7 @@ void TEnsureDiskRegistryStateIntegrityActor::
 {
     const auto* msg = ev->Get();
 
-    auto response =
-        std::make_unique<TEvService::TEvExecuteActionResponse>(msg->GetError());
-    ReplyAndDie(ctx, std::move(response));
+    ReplyAndDie(ctx, msg->GetError());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
