@@ -201,7 +201,7 @@ private:
 // Wrapper over IResponseWriter that combines TakeBytesFromOriginalResponse and
 // TakeBytesFromCache into TakeNonCachedDataUpToOffset - it takes bytes from
 // original response until it is exhaused and then writes zeroes
-class TResponseWriter
+class TResponseWriterWrapper
 {
 private:
     const ui64 OriginalResponseLength;
@@ -209,7 +209,7 @@ private:
     ui64 Offset = 0;
 
 public:
-    TResponseWriter(ui64 originalResponseLength, IResponseWriter& writer)
+    TResponseWriterWrapper(ui64 originalResponseLength, IResponseWriter& writer)
         : OriginalResponseLength(originalResponseLength)
         , Writer(writer)
     {}
@@ -257,7 +257,7 @@ ui64 WriteResponse(
     // twice, only the necessary data is copied, everything is written
     // sequentially.
 
-    auto responseWriter = TResponseWriter(originalResponseLength, writer);
+    TResponseWriterWrapper responseWriter(originalResponseLength, writer);
 
     for (const auto& part: cachedData.Parts) {
         responseWriter.TakeNonCachedDataUpToOffset(part.RelativeOffset);
