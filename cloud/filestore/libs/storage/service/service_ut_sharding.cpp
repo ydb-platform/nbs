@@ -7238,13 +7238,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         /* Now the initial SetNodeAttr should complete */
         {
             auto response = service.RecvSetNodeAttrResponse();
-            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         /* The GetNodeAttr should also complete */
         {
             auto response = service.RecvGetNodeAttrResponse();
-            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         /* The second GetNodeAttr should also complete, now at this point the
@@ -7269,15 +7275,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             /* Error will be received here because of the stale cache record for
                "dst" this is a bug that should be fixed */
             auto response = service.RecvGetNodeAttrResponse();
-            UNIT_ASSERT_C(
-                HasError(response->GetError()),
-                FormatError(response->GetError()));
+            UNIT_ASSERT(HasError(response->GetError()));
         }
 
         /* Now the sent modifying operation is expected to complete */
         {
             auto response = service.RecvRenameNodeResponse();
-            UNIT_ASSERT(!HasError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         {
