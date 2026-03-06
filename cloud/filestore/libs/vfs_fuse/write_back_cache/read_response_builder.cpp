@@ -224,7 +224,7 @@ public:
     {
         Y_ABORT_UNLESS(Offset <= newOffset);
 
-        // Take bytes from original response if it is not exhaused
+        // Take bytes from original response if it is not exhausted
         const ui64 ofs = Min(OriginalResponseLength, newOffset);
         if (Offset < ofs) {
             Writer.TakeBytesFromOriginalResponse(ofs - Offset);
@@ -353,7 +353,7 @@ std::optional<NProto::TReadDataResponse>
 TReadResponseBuilder::TryFullyServeFromCache() const
 {
     if (ContiguousCachedDataByteCount != Request.GetLength()) {
-        return {};
+        return std::nullopt;
     }
 
     NProto::TReadDataResponse response;

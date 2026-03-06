@@ -26,9 +26,9 @@ public:
     // Used to calculate statistics (e.g. hit/miss ratio)
     bool HasCachedData() const;
 
-    // Check if cached data parts fully cover the requested range.
-    // In this case, the response can be served entirely from cache
-    // without requesting the backend
+    // Attempt to build a complete TReadDataResponse using only data from cache.
+    // If the entire requested byte range is available in the cache, returns
+    // a populated TReadDataResponse or std::nullopt otherwise
     std::optional<NProto::TReadDataResponse> TryFullyServeFromCache() const;
 
     // Apply cached data on top of the response returned from backend
