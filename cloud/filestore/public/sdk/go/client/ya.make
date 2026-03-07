@@ -2,6 +2,7 @@ GO_LIBRARY(filestore-public-sdk-go-client)
 
 SRCS(
     client.go
+    client_interface.go
     credentials.go
     durable.go
     error.go
@@ -25,4 +26,7 @@ GO_TEST_SRCS(
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(
+    mocks
+    ut
+)

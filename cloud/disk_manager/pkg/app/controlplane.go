@@ -405,11 +405,13 @@ func initControlplane(
 	}
 
 	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
+	nfsSessionMetricsRegistry := mon.NewRegistry("nfs_session")
 	nfsFactory := nfs.NewFactoryWithCreds(
 		ctx,
 		config.GetNfsConfig(),
 		creds,
 		nfsClientMetricsRegistry,
+		nfsSessionMetricsRegistry,
 	)
 
 	poolService := pools.NewService(taskScheduler, poolStorage)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
@@ -101,9 +102,10 @@ func NewNfsClientLog(level nfs_client.LogLevel) nfs_client.Log {
 ////////////////////////////////////////////////////////////////////////////////
 
 type factory struct {
-	config            *nfs_config.ClientConfig
-	clientCredentials *nfs_client.ClientCredentials
-	metrics           clientMetrics
+	config                 *nfs_config.ClientConfig
+	clientCredentials      *nfs_client.ClientCredentials
+	metrics                client_metrics.Metrics
+	sessionMetricsRegistry metrics.Registry
 	// map from zone
 	endpointPickers map[string]*endpointPicker
 }
@@ -156,7 +158,7 @@ func (f *factory) NewClient(
 		&nfs_client.DurableClientOpts{
 			Timeout: &durableClientTimeout,
 			OnError: func(err nfs_client.ClientError) {
-				f.metrics.OnError(err)
+				f.metrics.OnError(&err)
 			},
 		},
 		NewNfsClientLog(nfs_client.LOG_DEBUG),
@@ -166,9 +168,10 @@ func (f *factory) NewClient(
 	}
 
 	return &client{
-		nfs:     nfs,
-		metrics: f.metrics,
-		zoneID:  zoneID,
+		nfs:                    nfs,
+		metrics:                f.metrics,
+		sessionMetricsRegistry: f.sessionMetricsRegistry,
+		zoneID:                 zoneID,
 	}, nil
 }
 
@@ -193,14 +196,11 @@ func NewFactoryWithCreds(
 	ctx context.Context,
 	config *nfs_config.ClientConfig,
 	credentials auth.Credentials,
-	metricsRegistry metrics.Registry,
+	clientMetricsRegistry metrics.Registry,
+	sessionMetricsRegistry metrics.Registry,
 ) Factory {
 
-	clientMetrics := clientMetrics{
-		registry: metricsRegistry,
-		errors:   metricsRegistry.Counter("errors"),
-	}
-
+	clientMetrics := client_metrics.NewClientMetrics(clientMetricsRegistry)
 	if config.GetDisableAuthentication() {
 		credentials = nil
 	}
@@ -222,18 +222,20 @@ func NewFactoryWithCreds(
 	}
 
 	return &factory{
-		config:            config,
-		clientCredentials: clientCredentials,
-		metrics:           clientMetrics,
-		endpointPickers:   endpointPickers,
+		config:                 config,
+		clientCredentials:      clientCredentials,
+		metrics:                clientMetrics,
+		sessionMetricsRegistry: sessionMetricsRegistry,
+		endpointPickers:        endpointPickers,
 	}
 }
 
 func NewFactory(
 	ctx context.Context,
 	config *nfs_config.ClientConfig,
-	metricsRegistry metrics.Registry,
+	clientMetricsRegistry metrics.Registry,
+	sessionMetricsRegistry metrics.Registry,
 ) Factory {
 
-	return NewFactoryWithCreds(ctx, config, nil, metricsRegistry)
+	return NewFactoryWithCreds(ctx, config, nil, clientMetricsRegistry, sessionMetricsRegistry)
 }
