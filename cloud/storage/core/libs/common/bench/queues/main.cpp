@@ -197,7 +197,7 @@ struct TDequeWithAdaptiveLock
     Y_CPU_BENCHMARK(TQueue##_##producers##_##consumers, iface)                 \
     {                                                                          \
         TQueue q;                                                              \
-        RunBench(q, iface.Iterations(), 1, 1);                                 \
+        RunBench(q, iface.Iterations(), producers, consumers);                 \
     }                                                                          \
 // Q_BENCH
 
@@ -223,11 +223,9 @@ struct TDequeWithAdaptiveLock
 
 Q_BENCH_SET(TLFStackSingleConsumerDequeueAll, 1)
 Q_BENCH_SET(TLFStackDequeueAll, 1)
-Q_BENCH_SET(TLFStackDequeueAll, 16)
 Q_BENCH_SET(TLFQueue, 1)
 Q_BENCH_SET(TLFQueueDequeueAll, 1)
 Q_BENCH_SET(TLFQueue, 16)
-Q_BENCH_SET(TLFQueueDequeueAll, 16)
 Q_BENCH_SET(TDequeWithMutex, 1)
 Q_BENCH_SET(TDequeWithAdaptiveLock, 1)
 Q_BENCH_SET(TDequeWithMutex, 16)
