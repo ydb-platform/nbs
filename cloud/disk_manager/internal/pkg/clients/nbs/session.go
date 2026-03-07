@@ -410,7 +410,7 @@ func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error)
 		*client,
 		logging.GetLogger(ctx),
 	)
-	s.metrics = newSessionMetrics(
+	s.metrics = NewSessionMetrics(
 		s.metricsRegistry,
 		map[string]string{"request_host": host},
 	)

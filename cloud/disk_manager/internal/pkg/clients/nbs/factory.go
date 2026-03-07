@@ -295,7 +295,7 @@ func newFactoryWithCreds(
 		config:                 config,
 		credentials:            creds,
 		sessionMetricsRegistry: sessionMetricsRegistry,
-		metrics:                newClientMetrics(clientMetricsRegistry),
+		metrics:                NewClientMetrics(clientMetricsRegistry),
 	}
 	err := f.initClients(ctx)
 	if err != nil {
