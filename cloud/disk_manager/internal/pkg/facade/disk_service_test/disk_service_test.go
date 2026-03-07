@@ -1263,4 +1263,3 @@ func TestDiskServiceDeleteNonExistentDisk(t *testing.T) {
 func TestDiskServiceDeleteNonExistentDiskSync(t *testing.T) {
 	testDiskServiceDeleteNonExistentDisk(t, true /* sync */)
 }
-
