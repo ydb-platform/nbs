@@ -75,7 +75,7 @@ void RunBench(TQueue& q, ui64 iters, ui32 producers, ui32 consumers)
 struct TLFStackSingleConsumerDequeueAll
 {
     TLockFreeStack<ui64> Data;
-    TVector<ui64> Dequeued;
+    thread_local static TVector<ui64> Dequeued;
 
     void Enqueue(ui64 x)
     {
@@ -91,10 +91,12 @@ struct TLFStackSingleConsumerDequeueAll
     }
 };
 
+thread_local TVector<ui64> TLFStackSingleConsumerDequeueAll::Dequeued;
+
 struct TLFStackDequeueAll
 {
     TLockFreeStack<ui64> Data;
-    TVector<ui64> Dequeued;
+    thread_local static TVector<ui64> Dequeued;
 
     void Enqueue(ui64 x)
     {
@@ -109,6 +111,8 @@ struct TLFStackDequeueAll
         return haveData;
     }
 };
+
+thread_local TVector<ui64> TLFStackDequeueAll::Dequeued;
 
 struct TLFQueue
 {
@@ -129,7 +133,7 @@ struct TLFQueue
 struct TLFQueueDequeueAll
 {
     TLockFreeQueue<ui64> Data;
-    TVector<ui64> Dequeued;
+    thread_local static TVector<ui64> Dequeued;
 
     void Enqueue(ui64 x)
     {
@@ -144,6 +148,8 @@ struct TLFQueueDequeueAll
         return haveData;
     }
 };
+
+thread_local TVector<ui64> TLFQueueDequeueAll::Dequeued;
 
 struct TDequeWithMutex
 {
@@ -240,8 +246,10 @@ struct TConcurrentQueue
 
 Q_BENCH_SET(TLFStackSingleConsumerDequeueAll, 1)
 Q_BENCH_SET(TLFStackDequeueAll, 1)
+Q_BENCH_SET(TLFStackDequeueAll, 16)
 Q_BENCH_SET(TLFQueue, 1)
 Q_BENCH_SET(TLFQueueDequeueAll, 1)
+Q_BENCH_SET(TLFQueueDequeueAll, 16)
 Q_BENCH_SET(TLFQueue, 16)
 Q_BENCH_SET(TDequeWithMutex, 1)
 Q_BENCH_SET(TDequeWithAdaptiveLock, 1)
