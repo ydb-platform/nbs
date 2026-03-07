@@ -8,8 +8,10 @@
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 
+#include <util/generic/deque.h>
+#include <util/system/guard.h>
 #include <util/system/spin_wait.h>
-#include <util/thread/lfqueue.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud {
 
@@ -23,17 +25,18 @@ template <typename TActor>
 class TPooledActorHolder
 
 {
+private:
     template <typename>
     friend class TActorPool;
 
-private:
     TActor* Actor = nullptr;
     std::atomic<int>* InFlightSends = nullptr;
 
-    TPooledActorHolder(TActor* actor, std::atomic<int>* counter)
-        : Actor(actor)
-        , InFlightSends(counter)
-    {}
+    explicit TPooledActorHolder(std::atomic<int>* counter)
+        : InFlightSends(counter)
+    {
+        InFlightSends->fetch_add(1);
+    }
 
 public:
     TPooledActorHolder() = default;
@@ -80,10 +83,15 @@ private:
     void Release()
     {
         if (InFlightSends) {
-            InFlightSends->fetch_sub(1, std::memory_order_seq_cst);
+            InFlightSends->fetch_sub(1);
             InFlightSends = nullptr;
         }
         Actor = nullptr;
+    }
+
+    void SetActor(TActor* actor)
+    {
+        Actor = actor;
     }
 };
 
@@ -107,9 +115,11 @@ private:
         IPooledActor<TActor>* Actor = nullptr;
     };
 
-    TLockFreeQueue<TActorEntry> FreePooledActors;
-    TLockFreeQueue<NActors::TActorId> PooledActors;
-    std::atomic<ui32> PooledActorsCount = 0;
+    TDeque<TActorEntry> FreePooledActors;
+    TAdaptiveLock FreePooledActorsLock;
+    TDeque<NActors::TActorId> PooledActors;
+    TAdaptiveLock PooledActorsLock;
+
     std::atomic_flag Stopped = ATOMIC_FLAG_INIT;
     std::atomic<int> InFlightSends{0};
 
@@ -123,39 +133,44 @@ public:
 
     void OnBeforeDestroy()
     {
-        Stopped.test_and_set(std::memory_order_seq_cst);
+        Stopped.test_and_set();
 
         TSpinWait sw;
-        while (InFlightSends.load(std::memory_order_seq_cst) > 0) {
+        while (InFlightSends.load() > 0) {
             sw.Sleep();
         }
 
-        TVector<NActors::TActorId> actors;
-        actors.reserve(MaxActors);
-        PooledActors.DequeueAll(&actors);
+        TDeque<NActors::TActorId> actors;
+        with_lock (PooledActorsLock) {
+            actors.swap(PooledActors);
+        }
+
         for (const auto& actorId: actors) {
             ActorSystem->Send(
                 actorId,
                 std::make_unique<NActors::TEvents::TEvPoisonPill>());
         }
 
-        TVector<TActorEntry> freeActors;
-        freeActors.reserve(actors.size());
-        FreePooledActors.DequeueAll(&freeActors);
+        with_lock (FreePooledActorsLock) {
+            FreePooledActors.clear();
+        }
     }
 
     TPooledActorHolder<TActor> GetPooledActor()
     {
-        InFlightSends.fetch_add(1, std::memory_order_seq_cst);
-
+        TPooledActorHolder<TActor> holder(&InFlightSends);
         if (Stopped.test()) {
-            InFlightSends.fetch_sub(1, std::memory_order_seq_cst);
-            return {};
+            return holder;
         }
 
         TActorEntry entry;
-        if (FreePooledActors.Dequeue(&entry)) {
-            return {static_cast<TActor*>(entry.Actor), &InFlightSends};
+        with_lock (FreePooledActorsLock) {
+            if (!FreePooledActors.empty()) {
+                entry = std::move(FreePooledActors.front());
+                FreePooledActors.pop_front();
+                holder.SetActor(static_cast<TActor*>(entry.Actor));
+                return holder;
+            }
         }
 
         TActor* actorRawPtr;
@@ -163,25 +178,20 @@ public:
         {
             auto actorPtr = std::make_unique<TActor>();
             actorRawPtr = actorPtr.get();
+            holder.SetActor(actorRawPtr);
             actorId = ActorSystem->Register(std::move(actorPtr));
             actorRawPtr->SetSelfId(actorId);
             actorRawPtr->SetActorSystem(ActorSystem);
         }
 
-        ui32 count = PooledActorsCount.load(std::memory_order_relaxed);
-        while (count < MaxActors) {
-            if (PooledActorsCount.compare_exchange_weak(
-                    count,
-                    count + 1,
-                    std::memory_order_relaxed))
-            {
+        with_lock (PooledActorsLock) {
+            if (PooledActors.size() < MaxActors) {
                 actorRawPtr->SetReturnQueue(this);
-                PooledActors.Enqueue(actorId);
-                break;
+                PooledActors.push_back(actorId);
             }
         }
 
-        return {actorRawPtr, &InFlightSends};
+        return holder;
     }
 
     void OnWorkFinished(IPooledActor<TActor>* actor) override
@@ -193,7 +203,8 @@ private:
     void PutActorToQueue(IPooledActor<TActor>* actor, NActors::TActorId actorId)
     {
         if (!Stopped.test()) {
-            FreePooledActors.Enqueue({.ActorId = actorId, .Actor = actor});
+            auto g = Guard(FreePooledActorsLock);
+            FreePooledActors.push_back({.ActorId = actorId, .Actor = actor});
         }
     }
 };
