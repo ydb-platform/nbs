@@ -105,12 +105,14 @@ class Platform(object):
         self.is_armv7 = self.arch in ('armv7', 'armv7a', 'armv7ahf', 'armv7a_neon', 'arm', 'armv7a_cortex_a9', 'armv7ahf_cortex_a35', 'armv7ahf_cortex_a53')
         self.is_armv8 = self.arch in ('armv8', 'armv8a', 'arm64', 'aarch64', 'armv8a_cortex_a35', 'armv8a_cortex_a53')
         self.is_armv8m = self.arch in ('armv8m_cortex_m33', 'armv8m_cortex_m23')
+        self.is_armv9a = self.arch in ('armv9a', 'armv9a_grace')
         self.is_armv7em = self.arch in ('armv7em_cortex_m4', 'armv7em_cortex_m7')
         self.is_arm64 = self.arch in ('arm64',)
-        self.is_arm = self.is_armv7 or self.is_armv8 or self.is_armv8m or self.is_armv7em
+        self.is_arm = self.is_armv7 or self.is_armv8 or self.is_armv9a or self.is_armv8m or self.is_armv7em
         self.is_armv7_neon = self.arch in ('armv7a_neon', 'armv7ahf', 'armv7a_cortex_a9', 'armv7ahf_cortex_a35', 'armv7ahf_cortex_a53')
         self.is_armv7hf = self.arch in ('armv7ahf', 'armv7ahf_cortex_a35', 'armv7ahf_cortex_a53')
         self.is_armv5te = self.arch in ('armv5te_arm968e_s')
+        self.is_grace = self.arch in ('armv9a_grace')
 
         self.is_rv32imc = self.arch in ('riscv32_esp',)
         self.is_riscv32 = self.is_rv32imc
@@ -146,13 +148,14 @@ class Platform(object):
         self.is_wasm = self.is_wasm64
 
         self.is_32_bit = self.is_x86 or self.is_armv5te or self.is_armv7 or self.is_armv8m or self.is_riscv32 or self.is_nds32 or self.is_armv7em or self.is_xtensa or self.is_tc32
-        self.is_64_bit = self.is_x86_64 or self.is_armv8 or self.is_powerpc or self.is_wasm64
+        self.is_64_bit = self.is_x86_64 or self.is_armv8 or self.is_armv9a or self.is_powerpc or self.is_wasm64
 
         assert self.is_32_bit or self.is_64_bit
         assert not (self.is_32_bit and self.is_64_bit)
 
         self.is_linux = self.os == 'linux' or 'yocto' in self.os
         self.is_linux_x86_64 = self.is_linux and self.is_x86_64
+        self.is_linux_armv9a = self.is_linux and self.is_armv9a
         self.is_linux_armv8 = self.is_linux and self.is_armv8
         self.is_linux_armv7 = self.is_linux and self.is_armv7
         self.is_linux_power8le = self.is_linux and self.is_power8le
@@ -216,11 +219,15 @@ class Platform(object):
             (self.is_armv7, 'ARCH_ARM7'),
             (self.is_armv7_neon, 'ARCH_ARM7_NEON'),
             (self.is_armv8, 'ARCH_ARM64'),
+            (self.is_armv9a, 'ARCH_ARM64'),
             (self.is_armv8m, 'ARCH_ARM8M'),
             (self.is_armv7em, 'ARCH_ARM7EM'),
             (self.is_armv5te, 'ARCH_ARM5TE'),
             (self.is_arm, 'ARCH_ARM'),
-            (self.is_linux_armv8 or self.is_macos_arm64, 'ARCH_AARCH64'),
+            (self.is_linux_armv8, 'ARCH_AARCH64'),
+            (self.is_linux_armv9a, 'ARCH_AARCH64'),
+            (self.is_macos_arm64, 'ARCH_AARCH64'),
+            (self.is_grace, 'ARCH_ARMV9A_GRACE'),
             (self.is_powerpc, 'ARCH_PPC64LE'),
             (self.is_power8le, 'ARCH_POWER8LE'),
             (self.is_power9le, 'ARCH_POWER9LE'),
@@ -1110,7 +1117,7 @@ class GnuToolchainOptions(ToolchainOptions):
 
     def _default_os_sdk(self):
         if self.target.is_linux:
-            if self.target.is_armv8:
+            if self.target.is_armv8 or self.target.is_armv9a:
                 return 'ubuntu-16'
 
             if self.target.is_armv7 and self.target.armv7_float_abi == 'hard':
@@ -1175,6 +1182,7 @@ class GnuToolchain(Toolchain):
         host = build.host
         target = build.target
 
+        self.target = target
         self.c_flags_platform = list(tc.target_opt)
 
         self.default_os_sdk_root = get_os_sdk(target)
@@ -1223,7 +1231,7 @@ class GnuToolchain(Toolchain):
             if not target_triple:
                 target_triple = select(default=None, selectors=[
                     (target.is_linux and target.is_x86_64, 'x86_64-linux-gnu'),
-                    (target.is_linux and target.is_armv8, 'aarch64-linux-gnu'),
+                    (target.is_linux and (target.is_armv8 or target.is_armv9a), 'aarch64-linux-gnu'),
                     (target.is_linux and target.is_armv7 and target.armv7_float_abi == 'hard', 'armv7-linux-gnueabihf'),
                     (target.is_linux and target.is_armv7 and target.armv7_float_abi == 'softfp', 'armv7-linux-gnueabi'),
                     (target.is_linux and target.is_powerpc, 'powerpc64le-linux-gnu'),
@@ -1339,7 +1347,7 @@ class GnuToolchain(Toolchain):
                             self.setup_tools(project='build/platform/binutils', var='$BINUTILS_ROOT_RESOURCE_GLOBAL', bin='x86_64-linux-gnu/bin', ldlibs=None)
                     elif target.is_powerpc:
                         self.setup_tools(project='build/platform/linux_sdk', var='$OS_SDK_ROOT_RESOURCE_GLOBAL', bin='usr/bin', ldlibs='usr/x86_64-linux-gnu/powerpc64le-linux-gnu/lib')
-                    elif target.is_armv8:
+                    elif target.is_armv8 or target.is_armv9a:
                         self.setup_tools(project='build/platform/linux_sdk', var='$OS_SDK_ROOT_RESOURCE_GLOBAL', bin='usr/bin', ldlibs='usr/lib/x86_64-linux-gnu')
 
                 if target.is_yocto:
@@ -1399,12 +1407,23 @@ class GnuToolchain(Toolchain):
             for lib_path in self.build.host.library_path_variables:
                 self.env.setdefault(lib_path, []).append('{}/{}'.format(var, ldlibs))
 
+    # FIXME(ak0rz): workaround for USE_LLVM_BC14(), refactor when we drop llvm 14 support
+    def grace_platform_flags_opt(self, llvm_bc14=False):
+        if self.target.is_grace:
+            # clang <16 or gcc <13 doesn't support neoverse-v2, so we use armv9-a with all available extensions to mimic Grace as close as possible
+            if llvm_bc14 or not (self.tc.is_clang and self.tc.version_at_least(16)) and not (self.tc.is_gcc and self.tc.version_at_least(13)):
+                return ['-march=armv9-a+crypto+sve2+sve2-bitperm+bf16+i8mm+fp16fml+sve2-aes+sve2-sha3+sve2-sm4+sha3+sm4+crc+dotprod+lse+rcpc+rdm+nossbs+noras+norng', '-mtune=neoverse-n2']
+            else:
+                return ['-mcpu=neoverse-v2+norng+crypto+sve2-sm4+sve2-aes+sve2-sha3']
+        return []
+
     def print_toolchain(self):
         super(GnuToolchain, self).print_toolchain()
 
         emit('TOOLCHAIN_ENV', format_env(self.env, list_separator=':'))
         emit('_GO_TOOLCHAIN_ENV_PATH', format_env(self.env_go, list_separator=':'))
-        emit('C_FLAGS_PLATFORM', self.c_flags_platform)
+        emit('C_FLAGS_PLATFORM', self.grace_platform_flags_opt() + self.c_flags_platform)
+        emit('C_FLAGS_PLATFORM_LLVM_14', self.grace_platform_flags_opt(llvm_bc14=True) + self.c_flags_platform) # FIXME(ak0rz): workaround for USE_LLVM_BC14()
         emit('SWIFT_FLAGS_PLATFORM', self.swift_flags_platform)
         emit('SWIFT_LD_FLAGS', '-L{}'.format(self.swift_lib_path) if self.swift_lib_path else '')
 
@@ -2453,14 +2472,14 @@ class Cuda(object):
             return False
 
         if host != target:
-            if not (host.is_linux_x86_64 and target.is_linux_armv8):
+            if not (host.is_linux_x86_64 and (target.is_linux_armv8 or target.is_linux_armv9a)):
                 return False
             if not self.cuda_version.from_user:
                 return False
 
         if self.cuda_version.value in ('11.4', '11.8', '12.1', '12.2'):
             return True
-        elif self.cuda_version.value in ('10.2',) and target.is_linux_armv8:
+        elif self.cuda_version.value in ('10.2',) and (target.is_linux_armv8 or target.is_linux_armv9a):
             return True
         else:
             raise ConfigureError('CUDA version {} is not supported in Arcadia'.format(self.cuda_version.value))
@@ -2540,6 +2559,7 @@ class Cuda(object):
         return select((
             (host.is_linux_x86_64 and target.is_linux_x86_64, '$CUDA_HOST_TOOLCHAIN_RESOURCE_GLOBAL/bin/clang'),
             (host.is_linux_x86_64 and target.is_linux_armv8, '$CUDA_HOST_TOOLCHAIN_RESOURCE_GLOBAL/bin/clang'),
+            (host.is_linux_x86_64 and target.is_linux_armv9a, '$CUDA_HOST_TOOLCHAIN_RESOURCE_GLOBAL/bin/clang'),
         ))
 
     def cuda_windows_host_compiler(self):
