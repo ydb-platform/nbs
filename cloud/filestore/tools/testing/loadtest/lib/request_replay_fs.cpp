@@ -747,10 +747,7 @@ private:
                 break;
             }
             case NProto::E_SYMLINK_NODE: {
-                const auto targetNode =
-                    GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
-                const auto targetFullName = PathByNode(targetNode);
-                NFs::SymLink(targetFullName, logRequest.GetNodeInfo().GetNewNodeName());
+                NFs::SymLink(logRequest.GetNodeInfo().GetNodeName(), fullName);
                 break;
             }
             case NProto::E_SOCK_NODE: {
