@@ -394,6 +394,8 @@ void InitProfileLogRequestInfo(
         nodeInfo->SetType(NProto::E_SOCK_NODE);
     } else if (request.HasSymLink()) {
         nodeInfo->SetType(NProto::E_SYMLINK_NODE);
+        nodeInfo->SetNewNodeName(request.GetSymLink().GetTargetPath());
+        nodeInfo->SetNodeName(request.GetName());
     } else if (request.HasFifo()) {
         nodeInfo->SetType(NProto::E_FIFO_NODE);
     } else if (request.HasCharDevice()) {

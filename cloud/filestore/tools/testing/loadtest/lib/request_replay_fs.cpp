@@ -750,7 +750,7 @@ private:
                 const auto targetNode =
                     GetLocalNodeId(logRequest.GetNodeInfo().GetNodeId());
                 const auto targetFullName = PathByNode(targetNode);
-                NFs::SymLink(targetFullName, fullName);
+                NFs::SymLink(targetFullName, logRequest.GetNodeInfo().GetNewNodeName());
                 break;
             }
             case NProto::E_SOCK_NODE: {
