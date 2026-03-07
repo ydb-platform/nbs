@@ -1,6 +1,7 @@
 core/libs/aio/ut/cloud-storage-core-libs-aio-ut
 core/libs/auth/ut/cloud-storage-core-libs-auth-ut
 core/libs/common/bench/compressed_bitmap/compressed_bitmap
+core/libs/common/bench/queues/queues
 core/libs/common/ut/cloud-storage-core-libs-common-ut
 core/libs/coroutine/ut/cloud-storage-core-libs-coroutine-ut
 core/libs/diagnostics/ut/cloud-storage-core-libs-diagnostics-ut
