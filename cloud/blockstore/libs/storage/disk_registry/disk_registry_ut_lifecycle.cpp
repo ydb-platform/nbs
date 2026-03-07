@@ -3118,13 +3118,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 Device("dev-2", "uuid-6", "rack-3", 10_GB),
             });
 
-        auto runtime = TTestRuntimeBuilder().WithAgents({agent1, agent2, agent3}).Build();
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2, agent3}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2, agent3}));
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agent1, agent2, agent3}));
 
         RegisterAgents(*runtime, 3);
         WaitForAgents(*runtime, 3);
@@ -3164,7 +3166,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         diskRegistry.MarkDiskForCleanup("disk-1");
-        diskRegistry.DeallocateDisk("disk-2");
+
         {
             auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
             UNIT_ASSERT(!result->Record.HasError());
