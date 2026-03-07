@@ -2065,6 +2065,77 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         service.ExecuteAction("ReleaseNVMeDevice", R"({"SerialNumber":"NVME_0"})");
     }
+
+    Y_UNIT_TEST(ShouldHandleBscPipeDisconnectInGetClusterCapacity)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto makeFilter = [&] (auto eventCode) {
+            return
+            [&, eventCode = eventCode]
+            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletPipe::EvSend: {
+                        if (event->Type != eventCode) {
+                            return false;
+                        }
+                        auto response =
+                            std::make_unique<TEvTabletPipe::TEvClientDestroyed>(
+                                0,
+                                TActorId{},
+                                TActorId{});
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return true;
+                    }
+                }
+                return false;
+            };
+        };
+
+        constexpr ui32 lostEvent[] = {
+            NSysView::TEvSysView::EvGetStoragePoolsRequest,
+            NSysView::TEvSysView::EvGetGroupsRequest,
+            NSysView::TEvSysView::EvGetVSlotsRequest
+        };
+
+        for (auto e: lostEvent) {
+            env.GetRuntime().SetEventFilter(makeFilter(e));
+
+            service.SendExecuteActionRequest("getclustercapacity", "{}");
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReturnClusterCapacity)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto response = service.ExecuteAction("getclustercapacity", "{}");
+        NPrivateProto::TGetClusterCapacityResponse output;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &output)
+                .ok());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, output.GetCapacity().size());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
