@@ -73,7 +73,6 @@ private:
     std::shared_ptr<TRequestProto> Request;
     TPromise<TResponseProto> Response;
     TCallContextPtr CallContext;
-    TDuration RequestTimeout;
     TString DiskId;
 
     ui64 SeqNumber = 0;
@@ -116,7 +115,6 @@ public:
         Request.reset();
         Response = {};
         CallContext.Reset();
-        RequestTimeout = TDuration::Zero();
         DiskId.clear();
         SeqNumber++;
         TimeoutCookie.Detach();
@@ -132,7 +130,6 @@ public:
 
         Response = std::move(response);
         CallContext = std::move(callContext);
-        RequestTimeout = requestTimeout;
         DiskId = GetDiskId(*requestProto);
 
         LOG_TRACE_S(
@@ -158,10 +155,10 @@ public:
                 0,   // flags
                 SeqNumber));
 
-        if (RequestTimeout && RequestTimeout != TDuration::Max()) {
+        if (requestTimeout && requestTimeout != TDuration::Max()) {
             TimeoutCookie.Reset(ISchedulerCookie::Make2Way());
             this->GetActorSystem()->Schedule(
-                RequestTimeout,
+                requestTimeout,
                 std::make_unique<IEventHandle>(
                     this->GetSelfId(),   // recipient
                     this->GetSelfId(),   // sender
@@ -415,13 +412,13 @@ private:
         const auto& headers = request->GetHeaders();
         auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
 
-        auto* actor = pool->GetPooledActor();
-        if (!actor) {
+        auto actorHolder = pool->GetPooledActor();
+        if (!actorHolder) {
             response.SetValue(
                 TErrorResponse(E_REJECTED, "Failed to get actor from pool"));
             return;
         }
-        actor->SendRequest(
+        actorHolder->SendRequest(
             std::move(request),
             std::move(response),
             std::move(ctx),
