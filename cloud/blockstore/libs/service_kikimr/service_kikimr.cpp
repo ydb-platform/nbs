@@ -112,11 +112,11 @@ public:
     void Reset() override
     {
         this->Become(&TThis::StateSleep);
+        SeqNumber++;
         Request.reset();
         Response = {};
         CallContext.Reset();
         DiskId.clear();
-        SeqNumber++;
         TimeoutCookie.Detach();
     }
 
@@ -131,9 +131,10 @@ public:
         Response = std::move(response);
         CallContext = std::move(callContext);
         DiskId = GetDiskId(*requestProto);
+        auto* actorSystem = this->GetActorSystem();
 
         LOG_TRACE_S(
-            *this->GetActorSystem(),
+            *actorSystem,
             TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(T::Request, CallContext->RequestId, DiskId)
                 << " sending request");
@@ -147,17 +148,9 @@ public:
             GetBlockStoreRequestName(T::Request),
             CallContext->RequestId);
 
-        this->GetActorSystem()->Send(
-            std::make_unique<IEventHandle>(
-                MakeStorageServiceId(),   // recipient
-                this->GetSelfId(),        // sender
-                request.release(),
-                0,   // flags
-                SeqNumber));
-
         if (requestTimeout && requestTimeout != TDuration::Max()) {
             TimeoutCookie.Reset(ISchedulerCookie::Make2Way());
-            this->GetActorSystem()->Schedule(
+            actorSystem->Schedule(
                 requestTimeout,
                 std::make_unique<IEventHandle>(
                     this->GetSelfId(),   // recipient
@@ -167,6 +160,17 @@ public:
                     SeqNumber),
                 TimeoutCookie.Get());
         }
+
+        // Warning: Since this method execution does not happen on the actor
+        // system's thread, Send() may trigger a response that will be executed
+        // concurrently on another thread.
+        actorSystem->Send(
+            std::make_unique<IEventHandle>(
+                MakeStorageServiceId(),   // recipient
+                this->GetSelfId(),        // sender
+                request.release(),
+                0,   // flags
+                SeqNumber));
     }
 
 private:
@@ -224,8 +228,7 @@ private:
             LOG_WARN_S(
                 *this->GetActorSystem(),
                 TBlockStoreComponents::SERVICE_PROXY,
-                TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-                    << " response received for wrong sequence number: "
+                "response received for wrong sequence number: "
                     << ev->Cookie << ", expected: " << SeqNumber);
             return;
         }
@@ -251,16 +254,12 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
-        // TimeoutCookie should guarantee that the wakeup event is for the
-        // correct sequence number
-        Y_DEBUG_ABORT_UNLESS(ev->Cookie == SeqNumber);
         if (ev->Cookie != SeqNumber) {
             LOG_WARN_S(
                 *this->GetActorSystem(),
                 TBlockStoreComponents::SERVICE_PROXY,
-                TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-                    << " wakeup received for wrong sequence number: "
-                    << ev->Get()->Tag << ", expected: " << SeqNumber);
+                "wakeup received for wrong sequence number: "
+                    << ev->Cookie << ", expected: " << SeqNumber);
             return;
         }
 
