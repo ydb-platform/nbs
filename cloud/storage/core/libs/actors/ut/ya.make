@@ -1,6 +1,7 @@
 UNITTEST_FOR(cloud/storage/core/libs/actors)
 
 SRCS(
+    actor_pool_ut.cpp
     poison_pill_helper_ut.cpp
 )
 
