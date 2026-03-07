@@ -411,6 +411,8 @@ def start(argv):
             ERR_LOG_FILE_NAMES_FILE, disk_manager.disk_manager.stderr_file_name
         )
 
+    set_env("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT", str(disk_managers[-1].monitoring_port))
+
     # First node is always control plane.
     set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_PORT", str(disk_managers[0].port))
     set_env("DISK_MANAGER_RECIPE_SERVER_CONFIG", disk_managers[0].server_config)

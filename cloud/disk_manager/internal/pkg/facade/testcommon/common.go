@@ -951,11 +951,17 @@ func httpGetWithRetries(url string) (*http.Response, error) {
 	return retryableClient.Get(url)
 }
 
-func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
+func GetCounter(
+	t *testing.T,
+	port string,
+	name string,
+	labels map[string]string,
+) float64 {
+
 	resp, err := httpGetWithRetries(
 		fmt.Sprintf(
 			"http://localhost:%s/metrics/",
-			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+			port,
 		),
 	)
 	require.NoError(t, err)
@@ -999,4 +1005,32 @@ func metricMatchesLabel(
 	}
 
 	return true
+}
+
+func GetCounterControlplane(
+	t *testing.T,
+	name string,
+	labels map[string]string,
+) float64 {
+
+	return GetCounter(
+		t,
+		os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+		name,
+		labels,
+	)
+}
+
+func GetCounterDataplane(
+	t *testing.T,
+	name string,
+	labels map[string]string,
+) float64 {
+
+	return GetCounter(
+		t,
+		os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
+		name,
+		labels,
+	)
 }
