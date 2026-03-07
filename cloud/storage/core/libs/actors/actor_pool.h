@@ -8,9 +8,84 @@
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 
+#include <util/system/spin_wait.h>
 #include <util/thread/lfqueue.h>
 
 namespace NCloud {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// RAII holder for a pooled actor. Prevents OnBeforeDestroy() from sending
+// PoisonPill while the caller is still using the actor (e.g. inside
+// SendRequest). The in-flight counter is decremented when the holder is
+// destroyed or moved-from.
+template <typename TActor>
+class TPooledActorHolder
+
+{
+    template <typename>
+    friend class TActorPool;
+
+private:
+    TActor* Actor = nullptr;
+    std::atomic<int>* InFlightSends = nullptr;
+
+    TPooledActorHolder(TActor* actor, std::atomic<int>* counter)
+        : Actor(actor)
+        , InFlightSends(counter)
+    {}
+
+public:
+    TPooledActorHolder() = default;
+
+    ~TPooledActorHolder()
+    {
+        Release();
+    }
+
+    TPooledActorHolder(TPooledActorHolder&& other) noexcept
+        : Actor(std::exchange(other.Actor, nullptr))
+        , InFlightSends(std::exchange(other.InFlightSends, nullptr))
+    {}
+
+    TPooledActorHolder& operator=(TPooledActorHolder&& other) noexcept
+    {
+        if (this != &other) {
+            Release();
+            Actor = std::exchange(other.Actor, nullptr);
+            InFlightSends = std::exchange(other.InFlightSends, nullptr);
+        }
+        return *this;
+    }
+
+    TPooledActorHolder(const TPooledActorHolder&) = delete;
+    TPooledActorHolder& operator=(const TPooledActorHolder&) = delete;
+
+    explicit operator bool() const
+    {
+        return Actor != nullptr;
+    }
+
+    TActor* operator->() const
+    {
+        return Actor;
+    }
+
+    TActor* Get() const
+    {
+        return Actor;
+    }
+
+private:
+    void Release()
+    {
+        if (InFlightSends) {
+            InFlightSends->fetch_sub(1, std::memory_order_seq_cst);
+            InFlightSends = nullptr;
+        }
+        Actor = nullptr;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,22 +107,11 @@ private:
         IPooledActor<TActor>* Actor = nullptr;
     };
 
-    struct TCounter: TAtomicCounter
-    {
-        void IncCount(const NActors::TActorId& /*unused*/)
-        {
-            Inc();
-        }
-
-        void DecCount(const NActors::TActorId& /*unused*/)
-        {
-            Dec();
-        }
-    };
-
     TLockFreeQueue<TActorEntry> FreePooledActors;
-    TLockFreeQueue<NActors::TActorId, TCounter> PooledActors;
+    TLockFreeQueue<NActors::TActorId> PooledActors;
+    std::atomic<ui32> PooledActorsCount = 0;
     std::atomic_flag Stopped = ATOMIC_FLAG_INIT;
+    std::atomic<int> InFlightSends{0};
 
 public:
     TActorPool(IActorSystemPtr actorSystem, ui32 maxActors)
@@ -59,7 +123,12 @@ public:
 
     void OnBeforeDestroy()
     {
-        Stopped.test_and_set();
+        Stopped.test_and_set(std::memory_order_seq_cst);
+
+        TSpinWait sw;
+        while (InFlightSends.load(std::memory_order_seq_cst) > 0) {
+            sw.Sleep();
+        }
 
         TVector<NActors::TActorId> actors;
         actors.reserve(MaxActors);
@@ -75,15 +144,18 @@ public:
         FreePooledActors.DequeueAll(&freeActors);
     }
 
-    TActor* GetPooledActor()
+    TPooledActorHolder<TActor> GetPooledActor()
     {
+        InFlightSends.fetch_add(1, std::memory_order_seq_cst);
+
         if (Stopped.test()) {
-            return nullptr;
+            InFlightSends.fetch_sub(1, std::memory_order_seq_cst);
+            return {};
         }
 
         TActorEntry entry;
         if (FreePooledActors.Dequeue(&entry)) {
-            return static_cast<TActor*>(entry.Actor);
+            return {static_cast<TActor*>(entry.Actor), &InFlightSends};
         }
 
         TActor* actorRawPtr;
@@ -96,12 +168,20 @@ public:
             actorRawPtr->SetActorSystem(ActorSystem);
         }
 
-        if (PooledActors.GetCounter().Val() < MaxActors) {
-            actorRawPtr->SetReturnQueue(this);
-            PooledActors.Enqueue(actorId);
+        ui32 count = PooledActorsCount.load(std::memory_order_relaxed);
+        while (count < MaxActors) {
+            if (PooledActorsCount.compare_exchange_weak(
+                    count,
+                    count + 1,
+                    std::memory_order_relaxed))
+            {
+                actorRawPtr->SetReturnQueue(this);
+                PooledActors.Enqueue(actorId);
+                break;
+            }
         }
 
-        return actorRawPtr;
+        return {actorRawPtr, &InFlightSends};
     }
 
     void OnWorkFinished(IPooledActor<TActor>* actor) override
@@ -110,9 +190,7 @@ public:
     }
 
 private:
-    void PutActorToQueue(
-        IPooledActor<TActor>* actor,
-        NActors::TActorId actorId)
+    void PutActorToQueue(IPooledActor<TActor>* actor, NActors::TActorId actorId)
     {
         if (!Stopped.test()) {
             FreePooledActors.Enqueue({.ActorId = actorId, .Actor = actor});

@@ -10,6 +10,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <thread>
+
 using namespace NActors;
 
 namespace NCloud::NBlockStore::NStorage {
@@ -276,20 +278,20 @@ Y_UNIT_TEST_SUITE(TActorPoolTest)
         std::array<ui32, 3> deadCounters{};
         std::array<ui32, 3> resetCounters{};
 
-        auto* actor1 = actorPool->GetPooledActor();
+        auto actor1 = actorPool->GetPooledActor();
         actor1->SetOnDestroyCallback([&deadCounters]() { deadCounters[0]++; });
         actor1->SetOnResetCallback([&resetCounters]() { resetCounters[0]++; });
-        auto* actor2 = actorPool->GetPooledActor();
+        actor1->SendPing(testEnv.Sender);
+
+        auto actor2 = actorPool->GetPooledActor();
         actor2->SetOnDestroyCallback([&deadCounters]() { deadCounters[1]++; });
         actor2->SetOnResetCallback([&resetCounters]() { resetCounters[1]++; });
+        actor2->SendPing(testEnv.Sender);
 
         // This actor should be destroyed after its work is finished.
-        auto* actor3 = actorPool->GetPooledActor();
+        auto actor3 = actorPool->GetPooledActor();
         actor3->SetOnDestroyCallback([&deadCounters]() { deadCounters[2]++; });
         actor3->SetOnResetCallback([&resetCounters]() { resetCounters[2]++; });
-
-        actor1->SendPing(testEnv.Sender);
-        actor2->SendPing(testEnv.Sender);
         actor3->SendPing(testEnv.Sender);
 
         for (int i = 0; i < 3; ++i) {
@@ -326,9 +328,8 @@ Y_UNIT_TEST_SUITE(TActorPoolTest)
 
         ui32 deadCounter = 0;
         // This actor should be destroyed after its work is finished.
-        auto* actor = actorPool->GetPooledActor();
+        auto actor = actorPool->GetPooledActor();
         actor->SetOnDestroyCallback([&deadCounter]() { deadCounter++; });
-
         actor->SendPing(testEnv.Sender);
         auto pingEvent = testEnv.GrabPingEvent(TDuration::Seconds(1));
         testEnv.Send(
@@ -351,15 +352,27 @@ Y_UNIT_TEST_SUITE(TActorPoolTest)
         std::array<ui32, 3> deadCounters{};
         std::array<ui32, 3> resetCounters{};
 
-        auto* actor1 = actorPool->GetPooledActor();
-        actor1->SetOnDestroyCallback([&deadCounters]() { deadCounters[0]++; });
-        actor1->SetOnResetCallback([&resetCounters]() { resetCounters[0]++; });
-        auto* actor2 = actorPool->GetPooledActor();
-        actor2->SetOnDestroyCallback([&deadCounters]() { deadCounters[1]++; });
-        actor2->SetOnResetCallback([&resetCounters]() { resetCounters[1]++; });
-        auto* actor3 = actorPool->GetPooledActor();
-        actor3->SetOnDestroyCallback([&deadCounters]() { deadCounters[2]++; });
-        actor3->SetOnResetCallback([&resetCounters]() { resetCounters[2]++; });
+        TTestActor* actor3Raw = nullptr;
+        {
+            auto actor1 = actorPool->GetPooledActor();
+            actor1->SetOnDestroyCallback(
+                [&deadCounters]() { deadCounters[0]++; });
+            actor1->SetOnResetCallback(
+                [&resetCounters]() { resetCounters[0]++; });
+
+            auto actor2 = actorPool->GetPooledActor();
+            actor2->SetOnDestroyCallback(
+                [&deadCounters]() { deadCounters[1]++; });
+            actor2->SetOnResetCallback(
+                [&resetCounters]() { resetCounters[1]++; });
+
+            auto actor3 = actorPool->GetPooledActor();
+            actor3->SetOnDestroyCallback(
+                [&deadCounters]() { deadCounters[2]++; });
+            actor3->SetOnResetCallback(
+                [&resetCounters]() { resetCounters[2]++; });
+            actor3Raw = actor3.Get();
+        }
 
         actorPool->OnBeforeDestroy();
 
@@ -374,7 +387,42 @@ Y_UNIT_TEST_SUITE(TActorPoolTest)
         UNIT_ASSERT_VALUES_EQUAL(0, resetCounters[2]);
         UNIT_ASSERT_VALUES_EQUAL(1, actorPool->RefCount());
 
-        actor3->SetOnDestroyCallback({});
+        actor3Raw->SetOnDestroyCallback({});
+    }
+
+    Y_UNIT_TEST(OnBeforeDestroyWaitsForInFlightSends)
+    {
+        TTestEnv testEnv;
+        auto actorPool =
+            MakeIntrusive<TActorPool<TTestActor>>(testEnv.GetActorSystem(), 2u);
+
+        auto holder = actorPool->GetPooledActor();
+        UNIT_ASSERT(holder);
+
+        std::atomic<bool> destroyStarted{false};
+        std::atomic<bool> destroyFinished{false};
+        std::thread destroyThread(
+            [&]
+            {
+                destroyStarted.store(true);
+                actorPool->OnBeforeDestroy();
+                destroyFinished.store(true);
+            });
+
+        while (!destroyStarted.load()) {
+            std::this_thread::yield();
+        }
+        // Destroy thread should not finish until the holder is released.
+        std::this_thread::sleep_for(50ms);
+        UNIT_ASSERT(!destroyFinished.load());
+
+        holder = {};
+        destroyThread.join();
+        UNIT_ASSERT(destroyFinished.load());
+
+        // OnBeforeDestroy should forbid new actors from being created.
+        holder = actorPool->GetPooledActor();
+        UNIT_ASSERT(!holder);
     }
 }
 }   // namespace NCloud::NBlockStore::NStorage
