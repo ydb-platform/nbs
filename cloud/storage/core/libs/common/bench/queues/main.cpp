@@ -1,3 +1,5 @@
+#include <cloud/storage/core/libs/common/concurrent_queue.h>
+
 #include <library/cpp/testing/benchmark/bench.h>
 
 #include <util/generic/deque.h>
@@ -189,6 +191,21 @@ struct TDequeWithAdaptiveLock
     }
 };
 
+struct TConcurrentQueue
+{
+    NCloud::TConcurrentQueue<ui64> Data;
+
+    void Enqueue(ui64 x)
+    {
+        Data.Enqueue(std::make_unique<ui64>(x));
+    }
+
+    bool Dequeue()
+    {
+        return !!Data.Dequeue();
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -230,3 +247,5 @@ Q_BENCH_SET(TDequeWithMutex, 1)
 Q_BENCH_SET(TDequeWithAdaptiveLock, 1)
 Q_BENCH_SET(TDequeWithMutex, 16)
 Q_BENCH_SET(TDequeWithAdaptiveLock, 16)
+Q_BENCH_SET(TConcurrentQueue, 1)
+Q_BENCH_SET(TConcurrentQueue, 16)
