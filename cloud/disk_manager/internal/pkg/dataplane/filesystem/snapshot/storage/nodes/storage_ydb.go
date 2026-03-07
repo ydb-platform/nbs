@@ -593,52 +593,65 @@ func (s *storageYDB) updateRestorationNodeIDMapping(
 	return err
 }
 
-func (s *storageYDB) getDestinationNodeID(
+func (s *storageYDB) getDestinationNodeIDs(
 	ctx context.Context,
 	session *persistence.Session,
 	srcSnapshotID string,
 	dstFilesystemID string,
-	srcNodeID uint64,
-) (uint64, bool, error) {
+	srcNodeIDs []uint64,
+) (map[uint64]uint64, error) {
+
+	if len(srcNodeIDs) == 0 {
+		return map[uint64]uint64{}, nil
+	}
+
+	nodeIDValues := make([]persistence.Value, 0, len(srcNodeIDs))
+	for _, id := range srcNodeIDs {
+		nodeIDValues = append(nodeIDValues, persistence.Uint64Value(id))
+	}
 
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $src_snapshot_id as Utf8;
 		declare $dst_filesystem_id as Utf8;
-		declare $src_node_id as Uint64;
+		declare $src_node_ids as List<Uint64>;
 
-		select destination_node_id
+		select source_node_id, destination_node_id
 		from restoration_node_ids_mapping
 		where source_snapshot_id = $src_snapshot_id
 			and destination_filesystem_id = $dst_filesystem_id
-			and source_node_id = $src_node_id
+			and source_node_id in $src_node_ids
 	`, s.tablesPath),
 		persistence.ValueParam("$src_snapshot_id", persistence.UTF8Value(srcSnapshotID)),
 		persistence.ValueParam("$dst_filesystem_id", persistence.UTF8Value(dstFilesystemID)),
-		persistence.ValueParam("$src_node_id", persistence.Uint64Value(srcNodeID)),
+		persistence.ValueParam("$src_node_ids", persistence.ListValue(nodeIDValues...)),
 	)
 	if err != nil {
-		return 0, false, err
+		return nil, err
 	}
 	defer res.Close()
 
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return 0, false, nil
+	result := make(map[uint64]uint64)
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var srcNodeID, dstNodeID uint64
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("source_node_id", &srcNodeID),
+				persistence.OptionalWithDefault("destination_node_id", &dstNodeID),
+			)
+			if err != nil {
+				return nil, errors.NewNonRetriableErrorf(
+					"getDestinationNodeIDs: failed to parse row: %w",
+					err,
+				)
+			}
+
+			result[srcNodeID] = dstNodeID
+		}
 	}
 
-	var dstNodeID uint64
-	err = res.ScanNamed(
-		persistence.OptionalWithDefault("destination_node_id", &dstNodeID),
-	)
-	if err != nil {
-		return 0, false, errors.NewNonRetriableErrorf(
-			"getDestinationNodeID: failed to parse row: %w",
-			err,
-		)
-	}
-
-	return dstNodeID, true, nil
+	return result, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -745,29 +758,133 @@ func (s *storageYDB) UpdateRestorationNodeIDMapping(
 	)
 }
 
-func (s *storageYDB) GetDestinationNodeID(
+func (s *storageYDB) GetDestinationNodeIDs(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstFilesystemID string,
-	srcNodeID uint64,
-) (uint64, bool, error) {
+	srcNodeIDs []uint64,
+) (map[uint64]uint64, error) {
 
-	var dstNodeID uint64
-	var ok bool
+	var result map[uint64]uint64
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			dstNodeID, ok, err = s.getDestinationNodeID(
+			result, err = s.getDestinationNodeIDs(
 				ctx,
 				session,
 				srcSnapshotID,
 				dstFilesystemID,
-				srcNodeID,
+				srcNodeIDs,
 			)
 			return err
 		},
 	)
-	return dstNodeID, ok, err
+	return result, err
+}
+
+func (s *storageYDB) listHardLinks(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	limit int,
+	offset int,
+) ([]nfs.Node, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $limit as Uint64;
+		declare $offset as Uint64;
+
+		select node_id, parent_node_id, name
+		from hardlinks
+		where filesystem_snapshot_id = $snapshot_id
+		order by node_id, parent_node_id, name
+		limit $limit
+		offset $offset
+	`, s.tablesPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$offset", persistence.Uint64Value(uint64(offset))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var nodes []nfs.Node
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var node nfs.Node
+			err := res.ScanNamed(
+				persistence.OptionalWithDefault("node_id", &node.NodeID),
+				persistence.OptionalWithDefault("parent_node_id", &node.ParentID),
+				persistence.OptionalWithDefault("name", &node.Name),
+			)
+			if err != nil {
+				return nil, errors.NewNonRetriableErrorf(
+					"listHardLinks: failed to parse row: %w",
+					err,
+				)
+			}
+
+			nodes = append(nodes, node)
+		}
+	}
+
+	nodeIDs := make([]uint64, 0, len(nodes))
+	for _, node := range nodes {
+		nodeIDs = append(nodeIDs, node.NodeID)
+	}
+
+	attrs, err := s.fetchNodeAttrs(ctx, session, snapshotID, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, node := range nodes {
+		if a, ok := attrs[node.NodeID]; ok {
+			node.Mode = a.Mode
+			node.UID = a.UID
+			node.GID = a.GID
+			node.Atime = a.Atime
+			node.Mtime = a.Mtime
+			node.Ctime = a.Ctime
+			node.Size = a.Size
+			node.Links = a.Links
+			node.LinkTarget = a.LinkTarget
+			nodes[i] = nfs.Node(node)
+		}
+	}
+
+	return nodes, nil
+}
+
+func (s *storageYDB) ListHardLinks(
+	ctx context.Context,
+	snapshotID string,
+	limit int,
+	offset int,
+) ([]nfs.Node, error) {
+
+	var result []nfs.Node
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			result, err = s.listHardLinks(
+				ctx,
+				session,
+				snapshotID,
+				limit,
+				offset,
+			)
+			return err
+		},
+	)
+	return result, err
 }

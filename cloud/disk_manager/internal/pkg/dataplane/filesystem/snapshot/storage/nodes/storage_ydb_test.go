@@ -250,22 +250,22 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.Empty(t, nextCookie)
 }
 
-func TestGetDestinationNodeID(t *testing.T) {
+func TestGetDestinationNodeIDs(t *testing.T) {
 	f := createFixture(t, 100)
 	defer f.teardown()
 
 	srcSnapshotID := "src-snapshot"
 	dstFilesystemID := "dst-filesystem"
 
-	// Get from empty table returns ok=false.
-	_, ok, err := f.storage.GetDestinationNodeID(
+	// Get from empty table returns empty map.
+	result, err := f.storage.GetDestinationNodeIDs(
 		f.ctx,
 		srcSnapshotID,
 		dstFilesystemID,
-		42,
+		[]uint64{42},
 	)
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.Empty(t, result)
 
 	// Save some mappings.
 	srcNodeIds := []uint64{100, 200, 300}
@@ -280,26 +280,129 @@ func TestGetDestinationNodeID(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Get nonexistent id from populated table returns ok=false.
-	_, ok, err = f.storage.GetDestinationNodeID(
+	// Get nonexistent id from populated table returns empty map.
+	result, err = f.storage.GetDestinationNodeIDs(
 		f.ctx,
 		srcSnapshotID,
 		dstFilesystemID,
-		999,
+		[]uint64{999},
 	)
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.Empty(t, result)
 
-	// Get each saved mapping returns correct destination node id.
+	// Get all saved mappings at once.
+	result, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		srcSnapshotID,
+		dstFilesystemID,
+		srcNodeIds,
+	)
+	require.NoError(t, err)
+	require.Len(t, result, 3)
 	for i, srcNodeID := range srcNodeIds {
-		dstNodeID, ok, err := f.storage.GetDestinationNodeID(
-			f.ctx,
-			srcSnapshotID,
-			dstFilesystemID,
-			srcNodeID,
-		)
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.Equal(t, dstNodeIds[i], dstNodeID)
+		require.Equal(t, dstNodeIds[i], result[srcNodeID])
 	}
+
+	result, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		srcSnapshotID,
+		dstFilesystemID,
+		[]uint64{100, 999, 300},
+	)
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	require.Equal(t, uint64(1000), result[100])
+	require.Equal(t, uint64(3000), result[300])
+
+	result, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		srcSnapshotID,
+		dstFilesystemID,
+		[]uint64{},
+	)
+	require.NoError(t, err)
+	require.Empty(t, result)
+}
+
+func makeHardlinkNode(
+	parentID uint64,
+	nodeID uint64,
+	name string,
+	links uint32,
+) nfs.Node {
+
+	return nfs.Node(nfs_client.Node{
+		ParentID: parentID,
+		NodeID:   nodeID,
+		Name:     name,
+		Type:     nfs_client.NODE_KIND_FILE,
+		Mode:     0o755,
+		UID:      1000,
+		GID:      1000,
+		Atime:    100,
+		Mtime:    200,
+		Ctime:    300,
+		Size:     4096,
+		Links:    links,
+	})
+}
+
+func compareNodes(
+	t *testing.T,
+	expected []nfs.Node,
+	actual []nfs.Node,
+) {
+
+	require.Equal(t, len(expected), len(actual))
+	for i := range expected {
+		e := expected[i]
+		// nodeType is not stored in the hardlinks table, it is deduced by
+		// order of creation, so we won't check it in this test.
+		e.Type = 0
+		a := actual[i]
+		a.Type = 0
+		require.Equal(t, e, a)
+	}
+}
+
+func TestListHardLinks(t *testing.T) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-hardlinks"
+
+	// List of nodes, ordered by (node_id, parent_node_id, name).
+	nodes := []nfs.Node{
+		makeHardlinkNode(1, 10, "hardlink_a", 2),
+		makeHardlinkNode(2, 10, "hardlink_b", 2),
+		makeHardlinkNode(1, 20, "hardlink_c", 3),
+		makeHardlinkNode(2, 20, "hardlink_d", 3),
+		makeHardlinkNode(3, 20, "hardlink_e", 3),
+		makeHardlinkNode(1, 30, "regular_file", 1),
+	}
+
+	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
+	require.NoError(t, err)
+
+	// Expected hardlinks: all nodes except the last one (links=1).
+	expected := nodes[:len(nodes)-1]
+
+	allHardlinks, err := f.storage.ListHardLinks(f.ctx, snapshotID, 100, 0)
+	require.NoError(t, err)
+	compareNodes(t, expected, allHardlinks)
+
+	// Select one by one with limit=1 and increasing offset.
+	var collected []nfs.Node
+	for offset := 0; ; offset++ {
+		batch, err := f.storage.ListHardLinks(f.ctx, snapshotID, 1, offset)
+		require.NoError(t, err)
+
+		if len(batch) == 0 {
+			break
+		}
+
+		collected = append(collected, batch...)
+	}
+
+	compareNodes(t, expected, collected)
 }

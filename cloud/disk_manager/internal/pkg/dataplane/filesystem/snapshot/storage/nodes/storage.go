@@ -34,10 +34,17 @@ type Storage interface {
 		dstNodeIds []uint64,
 	) error
 
-	GetDestinationNodeID(
+	GetDestinationNodeIDs(
 		ctx context.Context,
 		srcSnapshotID string,
 		dstFilesystemID string,
-		srcNodeID uint64,
-	) (dstNodeID uint64, ok bool, err error)
+		srcNodeIDs []uint64,
+	) (map[uint64]uint64, error)
+
+	ListHardLinks(
+		ctx context.Context,
+		snapshotID string,
+		limit int,
+		offset int,
+	) ([]nfs.Node, error)
 }

@@ -58,15 +58,28 @@ func (s *StorageMock) UpdateRestorationNodeIDMapping(
 	return args.Error(0)
 }
 
-func (s *StorageMock) GetDestinationNodeID(
+func (s *StorageMock) GetDestinationNodeIDs(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstFilesystemID string,
-	srcNodeID uint64,
-) (uint64, bool, error) {
+	srcNodeIDs []uint64,
+) (map[uint64]uint64, error) {
 
-	args := s.Called(ctx, srcSnapshotID, dstFilesystemID, srcNodeID)
-	return args.Get(0).(uint64), args.Bool(1), args.Error(2)
+	args := s.Called(ctx, srcSnapshotID, dstFilesystemID, srcNodeIDs)
+	res, _ := args.Get(0).(map[uint64]uint64)
+	return res, args.Error(1)
+}
+
+func (s *StorageMock) ListHardLinks(
+	ctx context.Context,
+	snapshotID string,
+	limit int,
+	offset int,
+) ([]nfs.Node, error) {
+
+	args := s.Called(ctx, snapshotID, limit, offset)
+	res, _ := args.Get(0).([]nfs.Node)
+	return res, args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
