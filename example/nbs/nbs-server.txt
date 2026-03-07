@@ -26,8 +26,3 @@ ServerConfig {
   # UseFakeRdmaClient: true
   EnableOverlappingRequestsGuard: true
 }
-
-KikimrServiceConfig {
-  HotPoolSize: 10
-  ColdPoolSize: 1
-}

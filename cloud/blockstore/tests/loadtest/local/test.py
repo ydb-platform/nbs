@@ -132,8 +132,7 @@ def __run_test(test_case):
     server.ServerConfig.CopyFrom(TServerConfig())
     server.ServerConfig.ThreadsCount = thread_count()
     server.ServerConfig.StrictContractValidation = True
-    server.KikimrServiceConfig.CopyFrom(
-        TKikimrServiceConfig(HotPoolSize=100, ColdPoolSize=1))
+    server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
     backups_folder = get_unique_path_for_current_test(
         output_path=common.output_path(),

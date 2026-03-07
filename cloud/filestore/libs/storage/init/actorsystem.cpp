@@ -316,11 +316,7 @@ public:
     TActorId Register(IActorPtr actor, TStringBuf executorName) override;
     bool Send(const TActorId& recipient, IEventBasePtr event) override;
     bool Send(IEventHandlePtr ev) override;
-    bool Send(TAutoPtr<NActors::IEventHandle> ev) override;
-    void Schedule(
-        TDuration delta,
-        std::unique_ptr<NActors::IEventHandle> ev,
-        NActors::ISchedulerCookie* cookie) override;
+
     TLog CreateLog(const TString& component) override;
 
     IMonPagePtr RegisterIndexPage(const TString& path, const TString& title) override;
@@ -329,7 +325,6 @@ public:
     TDynamicCountersPtr GetCounters() override;
 
     TProgramShouldContinue& GetProgramShouldContinue() override;
-    NActors::NLog::TSettings* LoggerSettings() const override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -461,24 +456,6 @@ bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
 bool TActorSystem::Send(IEventHandlePtr ev)
 {
     return ActorSystem->Send(ev.release());
-}
-
-bool TActorSystem::Send(TAutoPtr<NActors::IEventHandle> ev)
-{
-    return ActorSystem->Send(ev);
-}
-
-void TActorSystem::Schedule(
-    TDuration delta,
-    std::unique_ptr<NActors::IEventHandle> ev,
-    NActors::ISchedulerCookie* cookie)
-{
-    ActorSystem->Schedule(delta, ev.release(), cookie);
-}
-
-NActors::NLog::TSettings* TActorSystem::LoggerSettings() const
-{
-    return ActorSystem->LoggerSettings();
 }
 
 TLog TActorSystem::CreateLog(const TString& componentName)

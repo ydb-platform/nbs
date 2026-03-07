@@ -65,11 +65,9 @@ void TDiskAgentBaseRequestActor::Bootstrap(const TActorContext& ctx)
         devices);
 
     StartTime = ctx.Now();
-    TimeoutCookie.Reset(ISchedulerCookie::Make2Way());
     ctx.Schedule(
         TimeoutPolicy.Timeout,
-        new TEvNonreplPartitionPrivate::TEvCancelRequest(EReason::TimedOut),
-        TimeoutCookie.Get());
+        new TEvNonreplPartitionPrivate::TEvCancelRequest(EReason::TimedOut));
 
     SendRequest(ctx);
 }

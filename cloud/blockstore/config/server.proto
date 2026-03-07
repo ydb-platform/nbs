@@ -296,10 +296,6 @@ message TLocalServiceConfig
 
 message TKikimrServiceConfig
 {
-    // Maximum number of actors in the hot pool.
-    optional uint32 HotPoolSize = 1;
-    // Maximum number of actors in the cold pool.
-    optional uint32 ColdPoolSize = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
