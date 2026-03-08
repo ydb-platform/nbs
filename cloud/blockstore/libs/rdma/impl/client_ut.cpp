@@ -14,6 +14,8 @@
 
 #include <util/stream/printf.h>
 
+#include <thread>
+
 namespace NCloud::NBlockStore::NRdma {
 
 using namespace std::chrono_literals;
@@ -533,6 +535,18 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             client->Stop();
         };
 
+        with_lock(testContext->CompletionLock) {
+            testContext->ModifyQP = [&](auto* qp, auto* attr, int mask) {
+                Y_UNUSED(qp);
+                Y_UNUSED(attr);
+                Y_UNUSED(mask);
+
+                // reschedule in the middle of the FlushQueues to let CQ trigger
+                // the race
+                std::this_thread::yield();
+            };
+        }
+
         auto clientEndpoint = client->StartEndpoint(
             "::",
             10020);
@@ -623,7 +637,6 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto clientConfig = std::make_shared<TClientConfig>();
         clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
         clientConfig->MaxResponseDelay = TDuration::Seconds(1);
-        clientConfig->WaitMode = EWaitMode::AdaptiveWait;
 
         auto logging =
             CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -692,7 +705,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         auto active = counters->GetCounter("ActiveRecv");
         auto errors = counters->GetCounter("Errors");
-        ibv_qp_state state = IBV_QPS_RESET;
+        std::atomic<ibv_qp_state> state = IBV_QPS_RESET;
 
         ibv_recv_wr* wr = context->RecvEvents.back();
         ibv_recv_wr* wr2 = context->RecvEvents.front();
