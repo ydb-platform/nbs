@@ -70,7 +70,7 @@ runs:
         BUILD_PRESET: ${{ inputs.build_preset }}
         USER: ${{ inputs.user || 'github'}}
       run: |
-        MIME_TYPES_PLAINTEXT_LINE="text/plain out err log stderr stdout trace jsonl"
+        MIME_TYPES_PLAINTEXT_LINE="text/plain out err log stderr stdout trace jsonl backtrace args"
         MIME_TYPES_FILE='/etc/mime.types'
         grep -qF -- "$MIME_TYPES_PLAINTEXT_LINE" "$MIME_TYPES_FILE" || echo "$MIME_TYPES_PLAINTEXT_LINE" | tee -a "$MIME_TYPES_FILE" || true
 
