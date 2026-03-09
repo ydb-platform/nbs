@@ -107,6 +107,7 @@ runs:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
         mkdir -p /coredumps
+        chmod 1777 /coredumps
         echo "kernel.core_pattern='/coredumps/core.%e.%u.%b.%p.%t'" | sudo tee -a /etc/sysctl.conf
         sudo sysctl -p
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
