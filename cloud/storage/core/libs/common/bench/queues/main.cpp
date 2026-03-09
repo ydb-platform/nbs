@@ -11,6 +11,7 @@
 #include <util/thread/lfstack.h>
 #include <util/thread/lfqueue.h>
 #include <util/thread/factory.h>
+#include <thread>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -23,9 +24,12 @@ void RunBench(TQueue& q, ui64 iters, ui32 producers, ui32 consumers)
 {
     struct TContext
     {
-        TManualEvent Ev;
+        TManualEvent ThreadFinished;
         std::atomic<ui32> Producers;
         std::atomic<ui32> Consumers;
+
+        TManualEvent CanStartProducers;
+        std::atomic<ui32> ReadyConsumers;
     };
 
     auto context = std::make_shared<TContext>();
@@ -34,39 +38,51 @@ void RunBench(TQueue& q, ui64 iters, ui32 producers, ui32 consumers)
 
     for (ui32 i = 0; i < producers; ++i) {
         SystemThreadFactory()->Run(
-            [&q, iters, producers, context] ()
+            [&q, iters, producers, context]()
             {
+                context->CanStartProducers.WaitI();
                 for (size_t i = 0; i < iters / producers; ++i) {
                     q.Enqueue(i);
                 }
 
                 context->Producers.fetch_sub(1, std::memory_order_release);
-                context->Ev.Signal();
+                context->ThreadFinished.Signal();
             });
     }
 
     for (ui32 i = 0; i < consumers; ++i) {
         SystemThreadFactory()->Run(
-            [&q, context] ()
+            [&q, context]()
             {
+                context->ReadyConsumers.fetch_add(1, std::memory_order_relaxed);
                 while (true) {
-                    if (!q.Dequeue()
-                        && !context->Producers.load(std::memory_order_acquire))
+                    if (!q.Dequeue() &&
+                        !context->Producers.load(std::memory_order_acquire))
                     {
-                        break;
+                        if (!q.Dequeue()) {
+                            break;
+                        }
                     }
                 }
 
                 context->Consumers.fetch_sub(1, std::memory_order_release);
-                context->Ev.Signal();
+                context->ThreadFinished.Signal();
             });
     }
 
-    while (context->Producers.load(std::memory_order_acquire)
-            || context->Consumers.load(std::memory_order_acquire))
+    // Wait for all consumers to start consuming
+    while (context->ReadyConsumers.load(std::memory_order_relaxed) < consumers)
     {
-        context->Ev.WaitI();
-        context->Ev.Reset();
+        std::this_thread::yield();
+    }
+    // Signal consumers to start consuming
+    context->CanStartProducers.Signal();
+
+    while (context->Producers.load(std::memory_order_acquire) ||
+           context->Consumers.load(std::memory_order_acquire))
+    {
+        context->ThreadFinished.WaitI();
+        context->ThreadFinished.Reset();
     }
 }
 
