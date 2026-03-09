@@ -379,7 +379,7 @@ def start(argv):
 
     set_env(
         "DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT",
-        ",".join([str(port) for port in controlplane_mon_ports]),
+        ",".join(map(str, controlplane_mon_ports)),
     )
 
     dataplane_disk_managers_count = 1
@@ -420,7 +420,7 @@ def start(argv):
 
     set_env(
         "DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT",
-        ",".join([str(port) for port in dataplane_monitoring_ports]),
+        ",".join(map(str, dataplane_monitoring_ports)),
     )
 
     # First node is always control plane.

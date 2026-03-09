@@ -969,7 +969,7 @@ func GetCounters(
 			name,
 			labels,
 		)
-		if ok{
+		if ok {
 			result = append(result, value)
 		}
 	}
