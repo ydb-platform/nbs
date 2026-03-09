@@ -122,7 +122,7 @@ func TestNfsClientReportsMetrics(t *testing.T) {
 		"count",
 		map[string]string{
 			"component": "nfs_client",
-			"request": "Create",
+			"request":   "CreateFileStore",
 		},
 	)[0], float64(0))
 
@@ -131,7 +131,7 @@ func TestNfsClientReportsMetrics(t *testing.T) {
 		"count",
 		map[string]string{
 			"component": "nfs_client_dataplane",
-			"request":       "CreateSession",
+			"request":   "CreateSession",
 		},
 	)[0], float64(0))
 
@@ -139,9 +139,9 @@ func TestNfsClientReportsMetrics(t *testing.T) {
 		t,
 		"count",
 		map[string]string{
-			"component": "nfs_session_dataplane",
-			"request":       "ListNodes",
-			"filesystem_id": filesystemID,
+			"component":  "nfs_session_dataplane",
+			"request":    "ListNodes",
+			"filesystem": filesystemID,
 			"checkpoint": "",
 		},
 	)[0], float64(0))

@@ -975,7 +975,13 @@ func GetCounters(
 		}
 	}
 
-	require.NotEmpty(t, result, "No counter with name %s", name)
+	require.NotEmpty(
+		t,
+		result,
+		"No counter with name %s, labels %v",
+		name,
+		labels,
+	)
 	return result
 }
 
