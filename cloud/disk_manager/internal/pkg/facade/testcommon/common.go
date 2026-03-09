@@ -951,12 +951,39 @@ func httpGetWithRetries(url string) (*http.Response, error) {
 	return retryableClient.Get(url)
 }
 
+func parseMetricsPorts(envVariable string) []string {
+	return strings.Split(envVariable, ",")
+}
+
+func GetCounters(
+	t *testing.T,
+	ports []string,
+	name string,
+	labels map[string]string,
+) []float64 {
+	result := make([]float64, 0)
+	for _, port := range ports {
+		value, ok := GetCounter(
+			t,
+			port,
+			name,
+			labels,
+		)
+		if ok{
+			result = append(result, value)
+		}
+	}
+
+	require.NotEmpty(t, result, "No counter with name %s", name)
+	return result
+}
+
 func GetCounter(
 	t *testing.T,
 	port string,
 	name string,
 	labels map[string]string,
-) float64 {
+) (float64, bool) {
 
 	resp, err := httpGetWithRetries(
 		fmt.Sprintf(
@@ -975,12 +1002,11 @@ func GetCounter(
 	require.True(t, ok)
 	for _, metricValue := range retrievedMetrics.GetMetric() {
 		if metricMatchesLabel(labels, metricValue) {
-			return metricValue.GetCounter().GetValue()
+			return metricValue.GetCounter().GetValue(), true
 		}
 	}
 
-	require.Failf(t, "No counter with name %s", name)
-	return 0
+	return 0, false
 }
 
 func metricMatchesLabel(
@@ -1011,11 +1037,13 @@ func GetCounterControlplane(
 	t *testing.T,
 	name string,
 	labels map[string]string,
-) float64 {
+) []float64 {
 
-	return GetCounter(
+	return GetCounters(
 		t,
-		os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+		parseMetricsPorts(
+			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+		),
 		name,
 		labels,
 	)
@@ -1025,11 +1053,13 @@ func GetCounterDataplane(
 	t *testing.T,
 	name string,
 	labels map[string]string,
-) float64 {
+) []float64 {
 
-	return GetCounter(
+	return GetCounters(
 		t,
-		os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
+		parseMetricsPorts(
+			os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
+		),
 		name,
 		labels,
 	)

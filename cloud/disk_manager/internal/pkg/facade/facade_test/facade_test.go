@@ -71,7 +71,7 @@ func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 			"component": "grpc_facade",
 			"request":   "DiskService.Create",
 		},
-	)
+	)[0]
 
 	diskID := t.Name()
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -95,7 +95,7 @@ func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 			"component": "grpc_facade",
 			"request":   "DiskService.Create",
 		},
-	)
+	)[0]
 	require.GreaterOrEqual(
 		t,
 		newErrorsCount-errorsCount,

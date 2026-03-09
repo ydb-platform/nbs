@@ -82,19 +82,19 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 		t,
 		"count",
 		map[string]string{"component": "nbs_client", "request": "Create"},
-	), float64(0))
+	)[0], float64(0))
 
 	require.Greater(t, testcommon.GetCounterDataplane(
 		t,
 		"count",
 		map[string]string{"component": "nbs_session", "request": "Read"},
-	), float64(0))
+	)[0], float64(0))
 
 	require.Greater(t, testcommon.GetCounterDataplane(
 		t,
 		"count",
 		map[string]string{"component": "nbs_session", "request": "Write"},
-	), float64(0))
+	)[0], float64(0))
 
 	testcommon.DeleteDisk(t, ctx, client, diskID1)
 	testcommon.DeleteDisk(t, ctx, client, diskID2)
@@ -146,7 +146,7 @@ func TestNbsClientReportsErrorMetrics(t *testing.T) {
 		t,
 		"errors",
 		map[string]string{"component": "nbs_client", "request": "Resize"},
-	), float64(0))
+	)[0], float64(0))
 
 	testcommon.DeleteDisk(t, ctx, client, diskID)
 }
