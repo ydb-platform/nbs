@@ -109,6 +109,8 @@ runs:
         mkdir -p /coredumps
         chmod 1777 /coredumps
         echo "kernel.core_pattern='/coredumps/core.%e.%u.%b.%p.%t'" | sudo tee -a /etc/sysctl.conf
+        echo "kernel.core_uses_pid=1" | sudo tee -a /etc/sysctl.conf
+        echo "fs.suid_dumpable=2" | sudo tee -a /etc/sysctl.conf
         sudo sysctl -p
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
