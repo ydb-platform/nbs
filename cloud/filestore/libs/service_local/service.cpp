@@ -326,6 +326,7 @@ private:
         NProto::TProfileLogRequestInfo& logRequest,
         const typename T::TRequest& request)
     {
+        return;
         logRequest.SetRequestType(static_cast<ui32>(T::RequestType));
         logRequest.SetTimestampMcs(Now().MicroSeconds());
         InitProfileLogRequestInfo(logRequest, request);
@@ -337,6 +338,7 @@ private:
         const typename T::TResponse& response,
         TString&& fsId)
     {
+        return;
         FinalizeProfileLogRequestInfo(logRequest, response);
         logRequest.SetDurationMcs(
             Now().MicroSeconds() - logRequest.GetTimestampMcs());
@@ -359,6 +361,7 @@ private:
         TCallContextPtr callContext,
         typename T::TRequest& request)
     {
+        Y_UNUSED(callContext);
         NProto::TProfileLogRequestInfo logRequest;
         logRequest.SetLoopThreadId(callContext->LoopThreadId);
         ProfileLogInit<T>(logRequest, request);
@@ -386,6 +389,7 @@ private:
         TCallContextPtr callContext,
         typename T::TRequest& request)
     {
+        Y_UNUSED(callContext);
         auto logRequest = std::make_shared<NProto::TProfileLogRequestInfo>();
         logRequest->SetLoopThreadId(callContext->LoopThreadId);
         ProfileLogInit<T>(*logRequest, request);

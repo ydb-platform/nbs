@@ -260,8 +260,8 @@ void TFileSystem::ReadLocal(
     fuse_file_info* fi)
 {
 
-    ReplyBuf(*callContext, {}, req, nullptr, size);
-    return;
+    // ReplyBuf(*callContext, {}, req, nullptr, size);
+    // return;
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(size, Config->GetBlockSize());
 
@@ -605,8 +605,8 @@ void TFileSystem::WriteBufLocal(
         << " offset:" << offset
         << " size:" << size);
 
-    ReplyWrite(*callContext, {}, req, size);
-    return;
+    // ReplyWrite(*callContext, {}, req, size);
+    // return;
     auto request = StartRequest<NProto::TWriteDataLocalRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
