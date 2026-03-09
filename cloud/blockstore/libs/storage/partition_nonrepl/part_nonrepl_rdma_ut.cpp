@@ -1744,6 +1744,42 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, response->Error.GetCode());
         }
     }
+
+    Y_UNIT_TEST(ShouldStopEndpoints)
+    {
+        constexpr size_t blocksPerDevice = 512;
+        constexpr size_t agentsCount = 3;
+
+        TDevices devices;
+        for (size_t i = 0; i < agentsCount; i++) {
+            TTestEnv::AddDevice(i, blocksPerDevice, "device", devices);
+        }
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, NProto::VOLUME_IO_OK, std::move(devices), true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        ui32 stopCount = 0;
+        env.Rdma().SetStopObserver([&stopCount]() {
+            stopCount++;
+        });
+
+        client.SendWriteBlocksLocalRequest(
+            TBlockRange64::WithLength(0, blocksPerDevice * 3),
+            TString(DefaultBlockSize, 'A'));
+
+        runtime.Send(new IEventHandle(
+            env.ActorId,
+            runtime.AllocateEdgeActor(),
+            new TEvents::TEvPoisonPill()));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stopCount);
+
+        env.Rdma().InitAllEndpoints();
+
+        UNIT_ASSERT_VALUES_EQUAL(agentsCount, stopCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

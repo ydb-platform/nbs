@@ -57,6 +57,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     NProto::TError ResponseError;
     TMessageObserver MessageObserver;
     TForceReconnectObserver ForceReconnectObserver;
+    TStopObserver StopObserver;
 
     ui64 NextRequestId = 0;
     THashMap<ui64, NRdma::TClientRequestPtr> Requests;
@@ -309,6 +310,9 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 
     TFuture<void> Stop() override
     {
+        if (StopObserver) {
+            StopObserver();
+        }
         return MakeFuture();
     }
 
@@ -409,6 +413,13 @@ void TRdmaClientTest::SetForceReconnectObserver(
 {
     for (auto& [_, endpointInfo]: Endpoints) {
         endpointInfo.Endpoint->ForceReconnectObserver = forceReconnectObserver;
+    }
+}
+
+void TRdmaClientTest::SetStopObserver(const TStopObserver& stopObserver)
+{
+    for (auto& [_, endpointInfo]: Endpoints) {
+        endpointInfo.Endpoint->StopObserver = stopObserver;
     }
 }
 
