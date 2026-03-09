@@ -19,6 +19,56 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+struct TReadDataLocalCompletion final
+    : TFileIOCompletion
+{
+    TPromise<NProto::TReadDataLocalResponse> Promise;
+    NProto::TProfileLogRequestInfo* LogRequest = nullptr;
+
+    TReadDataLocalCompletion(
+            TPromise<NProto::TReadDataLocalResponse> promise,
+            NProto::TProfileLogRequestInfo* logRequest)
+        : TFileIOCompletion{.Func = &TReadDataLocalCompletion::Complete}
+        , Promise(std::move(promise))
+        , LogRequest(logRequest)
+    {}
+
+    static void Complete(
+        TFileIOCompletion* self,
+        const NProto::TError& error,
+        ui32 bytesTransferred)
+    {
+        std::unique_ptr<TReadDataLocalCompletion> completion{
+            static_cast<TReadDataLocalCompletion*>(self)
+        };
+
+        NProto::TReadDataLocalResponse response;
+        try {
+            if (HasError(error)) {
+                TServiceError serviceError(error);
+                *response.MutableError() = MakeError(
+                    MAKE_FILESTORE_ERROR(ErrnoToFileStoreError(
+                        STATUS_FROM_CODE(serviceError.GetCode()))),
+                    TString(serviceError.GetMessage()));
+            } else {
+                response.BytesRead = bytesTransferred;
+            }
+        } catch (...) {
+            *response.MutableError() =
+                MakeError(E_IO, CurrentExceptionMessage());
+        }
+
+        FinalizeProfileLogRequestInfo(*completion->LogRequest, response);
+        completion->Promise.SetValue(std::move(response));
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     const NProto::TCreateHandleRequest& request)
 {
@@ -109,26 +159,17 @@ TFuture<NProto::TReadDataLocalResponse> TLocalFileSystem::ReadDataLocalAsync(
     }
 
     auto promise = NewPromise<NProto::TReadDataLocalResponse>();
-    FileIOService->AsyncReadV(*handle, request.GetOffset(), request.Buffers)
-        .Subscribe(
-            [&logRequest, promise](const TFuture<ui32>& f) mutable
-            {
-                NProto::TReadDataLocalResponse response;
-                try {
-                    auto bytesRead = f.GetValue();
-                    response.BytesRead = bytesRead;
-                } catch (const TServiceError& e) {
-                    *response.MutableError() = MakeError(
-                        MAKE_FILESTORE_ERROR(ErrnoToFileStoreError(
-                            STATUS_FROM_CODE(e.GetCode()))),
-                        TString(e.GetMessage()));
-                } catch (...) {
-                    *response.MutableError() =
-                        MakeError(E_IO, CurrentExceptionMessage());
-                }
-                FinalizeProfileLogRequestInfo(logRequest, response);
-                promise.SetValue(std::move(response));
-            });
+    auto completion = std::make_unique<TReadDataLocalCompletion>(
+        promise,
+        &logRequest);
+
+    FileIOService->AsyncReadV(
+        *handle,
+        request.GetOffset(),
+        request.Buffers,
+        completion.get());
+
+    Y_UNUSED(completion.release());
     return promise;
 }
 

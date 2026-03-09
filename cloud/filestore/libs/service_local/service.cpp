@@ -351,6 +351,7 @@ private:
         NProto::TProfileLogRequestInfo&& logRequest,
         TString&& fsId)
     {
+        return;
         logRequest.SetDurationMcs(
             Now().MicroSeconds() - logRequest.GetTimestampMcs());
         ProfileLog->Write({std::move(fsId), std::move(logRequest)});
