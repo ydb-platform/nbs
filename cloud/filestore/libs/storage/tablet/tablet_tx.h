@@ -1615,13 +1615,15 @@ struct TTxIndexTablet
 
         TGetNodeAttrBatch(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TGetNodeAttrBatchRequest request,
-                NProtoPrivate::TGetNodeAttrBatchResponse response)
+                NProtoPrivate::TGetNodeAttrBatchRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
-            , Response(std::move(response))
-        {}
+        {
+            for (ui32 i = 0; i < Request.NamesSize(); ++i) {
+                Response.AddResponses();
+            }
+        }
 
         void Clear() override
         {
@@ -1630,6 +1632,9 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             ParentNode.Clear();
+            for (auto& response : *Response.MutableResponses()) {
+                response.Clear();
+            }
         }
     };
 

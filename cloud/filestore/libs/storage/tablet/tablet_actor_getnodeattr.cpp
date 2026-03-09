@@ -67,32 +67,6 @@ void TIndexTabletActor::HandleGetNodeAttr(
     auto& requestMetrics = BehaveAsShard(msg->Record.GetHeaders())
         ? Metrics.GetNodeAttrInShard : Metrics.GetNodeAttr;
 
-    if (msg->Record.GetName()) {
-        // access by parentId/name is a more common case. Try to get the result
-        // from cache.
-        NProto::TNodeAttr result;
-
-        if (TryFillGetNodeAttrResult(
-                msg->Record.GetNodeId(),
-                msg->Record.GetName(),
-                &result))
-        {
-            auto response =
-                std::make_unique<TEvService::TEvGetNodeAttrResponse>();
-            response->Record.MutableNode()->Swap(&result);
-
-            CompleteResponse<TMethod>(response->Record, msg->CallContext, ctx);
-
-            Metrics.NodeIndexCacheHitCount.fetch_add(
-                1,
-                std::memory_order_relaxed);
-            requestMetrics.Update(1, 0, TDuration::Zero());
-
-            NCloud::Reply(ctx, *requestInfo, std::move(response));
-            return;
-        }
-    }
-
     AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttr>(
@@ -212,14 +186,6 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
                 args.TargetNode->Attrs);
         }
 
-        if (args.Name) {
-            // cache the result for future access
-            RegisterGetNodeAttrResult(
-                args.ParentNode->NodeId,
-                args.Name,
-                *node);
-        }
-
         args.RequestMetrics.Update(
             1,
             0,
@@ -255,48 +221,12 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    ui32 cacheHits = 0;
-    NProtoPrivate::TGetNodeAttrBatchResponse result;
-    for (ui32 i = 0; i < msg->Record.NamesSize(); ++i) {
-        auto* nodeResult = result.AddResponses();
-
-        if (TryFillGetNodeAttrResult(
-                msg->Record.GetNodeId(),
-                msg->Record.GetNames(i),
-                nodeResult->MutableNode()))
-        {
-            ++cacheHits;
-        }
-    }
-
-    Metrics.NodeIndexCacheHitCount.fetch_add(
-        cacheHits,
-        std::memory_order_relaxed);
-
-    if (cacheHits == msg->Record.NamesSize()) {
-        auto response =
-            std::make_unique<TEvIndexTablet::TEvGetNodeAttrBatchResponse>();
-        response->Record = std::move(result);
-
-        CompleteResponse<TEvIndexTablet::TGetNodeAttrBatchMethod>(
-            response->Record,
-            msg->CallContext,
-            ctx);
-
-        Metrics.GetNodeAttrInShard.Update(cacheHits, 0, TDuration::Zero());
-        Metrics.GetNodeAttrBatch.Update(1, 0, TDuration::Zero());
-
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
-        return;
-    }
-
     AddInFlightRequest<TEvIndexTablet::TGetNodeAttrBatchMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttrBatch>(
         ctx,
         std::move(requestInfo),
-        std::move(msg->Record),
-        std::move(result));
+        std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -436,16 +366,6 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     auto response = std::make_unique<TResponse>(args.Error);
     TABLET_VERIFY(args.Response.ResponsesSize() == args.Request.NamesSize());
     if (!HasError(args.Error)) {
-        for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
-            const auto& nodeResult = args.Response.GetResponses(i);
-            if (!HasError(nodeResult.GetError())) {
-                RegisterGetNodeAttrResult(
-                    args.ParentNode->NodeId,
-                    args.Request.GetNames(i),
-                    nodeResult.GetNode());
-            }
-        }
-
         response->Record = std::move(args.Response);
 
         Metrics.GetNodeAttrInShard.Update(

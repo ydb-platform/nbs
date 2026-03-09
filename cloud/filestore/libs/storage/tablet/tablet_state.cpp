@@ -148,7 +148,6 @@ void TIndexTabletState::LoadState(
         config.GetReadAheadCacheRangeSize(),
         config.GetReadAheadMaxGapPercentage(),
         config.GetReadAheadCacheMaxHandlesPerNode());
-    Impl->NodeIndexCache.Reset(config.GetNodeIndexCacheMaxNodes());
     Impl->InMemoryIndexState.Reset(
         CalculateInMemoryIndexCacheCapacity(
             config.GetInMemoryIndexCacheNodesCapacity(),

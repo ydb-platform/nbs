@@ -310,7 +310,7 @@ void TIndexTabletActor::CompleteTx_AbortUnlinkDirectoryNode(
         args.SessionId.c_str(),
         FormatError(args.Error).c_str());
 
-    InvalidateNodeCaches(args.Request.GetNodeId());
+    InvalidateReadAheadCache(args.Request.GetNodeId());
 
     RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);

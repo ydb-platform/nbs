@@ -245,7 +245,7 @@ void TIndexTabletActor::CompleteTx_AllocateData(
     const TActorContext& ctx,
     TTxIndexTablet::TAllocateData& args)
 {
-    InvalidateNodeCaches(args.NodeId);
+    InvalidateReadAheadCache(args.NodeId);
 
     RemoveInFlightRequest(*args.RequestInfo);
 

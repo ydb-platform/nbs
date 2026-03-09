@@ -389,7 +389,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
-    InvalidateNodeCaches(args.NodeId);
+    InvalidateReadAheadCache(args.NodeId);
 
     RemoveInFlightRequest(*args.RequestInfo);
 

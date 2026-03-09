@@ -237,7 +237,6 @@ private:
         const TSessionsStats& sessionsStats,
         const TChannelsStats& channelsStats,
         const TReadAheadCacheStats& readAheadStats,
-        const TNodeIndexCacheStats& nodeIndexCacheStats,
         const TNodeToSessionCounters& nodeToSessionCounters,
         const TMiscNodeStats& miscNodeStats,
         const TInMemoryIndexStateStats& inMemoryIndexStateStats,
