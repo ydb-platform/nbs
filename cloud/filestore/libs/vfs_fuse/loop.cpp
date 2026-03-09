@@ -1312,16 +1312,18 @@ private:
         const NProto::TError& error)
     {
         if (HasError(error)) {
-            ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache::FlushAllData "
-                "failed: %s",
+            STORAGE_WARN(
+                "[f:%s][c:%s] WriteBackCache::FlushAllData failed at "
+                "DestroySession, unflushed data will be lost. Error: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
-                FormatError(error).c_str()));
-        } else {
-            Y_ABORT_UNLESS(
-                WriteBackCache && WriteBackCache.IsEmpty(),
-                "WriteBackCache was not emptied after successful FlushAllData");
+                FormatError(error).c_str());
+        } else if (WriteBackCache && WriteBackCache.IsEmpty()) {
+            ReportWriteBackCacheDataLossError(Sprintf(
+                "[f:%s][c:%s] WriteBackCache was not emptied after successful "
+                "FlushAllData at DestroySession, possible data loss",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str()));
         }
 
         STORAGE_INFO(
@@ -1391,14 +1393,6 @@ private:
 
         // We need to cleanup WriteBackCache file and directories
         if (WriteBackCache) {
-            if (!WriteBackCache.IsEmpty()) {
-                ReportWriteBackCacheDataLossError(Sprintf(
-                    "[f:%s][c:%s] (DestroySession) Non-empty WriteBackCache "
-                    "state file is deleted, unflushed data is lost",
-                    Config->GetFileSystemId().Quote().c_str(),
-                    Config->GetClientId().Quote().c_str()));
-            }
-
             WriteBackCache = {};
 
             auto error = UnlockAndDeleteFile(

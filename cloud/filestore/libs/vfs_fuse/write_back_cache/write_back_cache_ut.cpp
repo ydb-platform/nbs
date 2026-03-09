@@ -47,6 +47,8 @@ constexpr ui32 DefaultMaxSumWriteRequestsSize = 32_MB;
 
 constexpr ui64 NodeToHandleOffset = 1000;
 
+constexpr TDuration FlushRetryPeriod = TDuration::MilliSeconds(100);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void SleepForRandomDurationMs(ui32 maxDurationMs)
@@ -216,7 +218,7 @@ struct TBootstrap
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
     {
-        CacheFlushRetryPeriod = TDuration::MilliSeconds(100);
+        CacheFlushRetryPeriod = FlushRetryPeriod;
 
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
@@ -1222,9 +1224,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(FullyRandomizedWithWriteFailures)
     {
         const ui32 NodeCount = 4;
-        const ui32 RecreationProbability = 10;
-        const ui32 FlushProbability = 10;
-        const ui32 WriteDataFailureProbability = 20;
+        const ui32 RecreationProbabilityPercentage = 10;
+        const ui32 FlushProbabilityPercentage = 10;
+        const ui32 WriteDataFailureProbabilityPercentage = 20;
         const ui32 Iterations = 10000;
         const ui32 MaxOffset = 1000;
         const ui32 MaxLength = 100;
@@ -1244,7 +1246,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             [prevHandler = std::move(b.Session->WriteDataHandler),
              &writeDataFailedCount](auto context, auto request)
         {
-            if (RandomNumber(100u) < WriteDataFailureProbability) {
+            if (RandomNumber(100u) < WriteDataFailureProbabilityPercentage) {
                 writeDataFailedCount++;
                 return MakeFuture<NProto::TWriteDataResponse>(
                     TErrorResponse(E_REJECTED, "Simulated WriteData failure"));
@@ -1273,7 +1275,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 }
             }
 
-            if (RandomNumber(100u) < FlushProbability) {
+            if (RandomNumber(100u) < FlushProbabilityPercentage) {
                 const ui32 nodeId = RandomNumber(NodeCount);
                 auto future = b.Cache.FlushNodeData(nodeId);
                 while (!future.HasValue()) {
@@ -1319,7 +1321,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                         << offset << " and length " << length);
             }
 
-            if (RandomNumber(100u) < RecreationProbability) {
+            if (RandomNumber(100u) < RecreationProbabilityPercentage) {
                 b.RecreateCache();
             }
         }
@@ -1344,6 +1346,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_LT(0, writeDataFailedCount);
         UNIT_ASSERT_LT(0, flushSucceededCount);
         UNIT_ASSERT_LT(0, flushFailedCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->WriteDataRequestDroppedCount);
 
         // Check data integrity
         b.ValidateCacheIsFlushed();
@@ -1556,11 +1559,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // WriteData request from Flush succeeds after WriteAttemptsThreshold
         // attempts.
         for (int i = 1; i < WriteAttemptsThreshold; i++) {
-            b.Timer->Sleep(TDuration::Seconds(1));
+            b.Timer->Sleep(FlushRetryPeriod);
             b.RunAllScheduledTasks();
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(writeAttempts.load(), WriteAttemptsThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(WriteAttemptsThreshold, writeAttempts.load());
     }
 
     Y_UNIT_TEST(ShouldSplitLargeWriteRequestsAtFlush)

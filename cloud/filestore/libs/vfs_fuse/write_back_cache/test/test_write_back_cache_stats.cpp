@@ -61,6 +61,13 @@ void TTestWriteBackCacheStats::DecrementNodeCount()
     NodeCount--;
 }
 
+void TTestWriteBackCacheStats::WriteDataRequestDropped()
+{
+    auto guard = Guard(Lock);
+
+    WriteDataRequestDroppedCount++;
+}
+
 TTestWriteDataRequestStats& TTestWriteBackCacheStats::GetWriteStats(
     EWriteDataRequestStatus status)
 {

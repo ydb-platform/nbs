@@ -40,7 +40,7 @@ bool TWriteBackCacheState::Init(IPersistentStoragePtr persistentStorage)
 
 bool TWriteBackCacheState::HasUnflushedRequests() const
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     return RequestManager.HasPendingOrUnflushedRequests();
 }
@@ -48,7 +48,7 @@ bool TWriteBackCacheState::HasUnflushedRequests() const
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     std::shared_ptr<TWriteDataRequest> request)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto variant = RequestManager.AddRequest(std::move(request));
 
@@ -59,7 +59,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
 
 TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
     if (nodeState == nullptr ||
@@ -79,7 +79,7 @@ TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
 
 TFuture<TError> TWriteBackCacheState::AddFlushAllRequest()
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     if (!RequestManager.HasPendingOrUnflushedRequests()) {
         return MakeFuture<TError>();
@@ -95,7 +95,7 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
     ui64 nodeId,
     ui64 handle)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
     if (nodeState == nullptr) {
@@ -112,7 +112,7 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
     }
 
     handleState->ReadyToReleasePromise = NewPromise<TError>();
-    nodeState->HandleReleaseCount++;
+    nodeState->HandleToReleaseCount++;
 
     UpdateFlushStatus(nodeId, *nodeState);
 
@@ -121,7 +121,7 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
 
 void TWriteBackCacheState::TriggerPeriodicFlushAll()
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     TriggerFlushAll(false);
 }
@@ -131,7 +131,7 @@ TCachedData TWriteBackCacheState::GetCachedData(
     ui64 offset,
     ui64 byteCount) const
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     const auto* nodeState = Nodes.GetNodeState(nodeId);
     if (nodeState == nullptr) {
@@ -143,7 +143,7 @@ TCachedData TWriteBackCacheState::GetCachedData(
 
 ui64 TWriteBackCacheState::GetCachedNodeSize(ui64 nodeId) const
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     const auto* nodeState =
         Nodes.GetNodeState(nodeId, /* includeDeleted = */ true);
@@ -153,7 +153,7 @@ ui64 TWriteBackCacheState::GetCachedNodeSize(ui64 nodeId) const
 
 void TWriteBackCacheState::SetCachedNodeSize(ui64 nodeId, ui64 size)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto* nodeState = Nodes.GetNodeState(nodeId, true);
     if (nodeState) {
@@ -163,7 +163,7 @@ void TWriteBackCacheState::SetCachedNodeSize(ui64 nodeId, ui64 size)
 
 TWriteBackCacheState::TPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
@@ -182,7 +182,7 @@ TWriteBackCacheState::TPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
 
 void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted= */ false);
     Y_ABORT_UNLESS(nodeState, "Node %lu not found", nodeId);
@@ -201,14 +201,14 @@ void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TPin pinId)
 
 TWriteBackCacheState::TPin TWriteBackCacheState::PinNodeStates()
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     return Nodes.Pin();
 }
 
 void TWriteBackCacheState::UnpinNodeStates(TPin pinId)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     Nodes.Unpin(pinId);
 }
@@ -217,7 +217,7 @@ void TWriteBackCacheState::VisitUnflushedRequests(
     ui64 nodeId,
     const TEntryVisitor& visitor) const
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     const auto* nodeState = Nodes.GetNodeState(nodeId);
     if (nodeState == nullptr) {
@@ -229,7 +229,7 @@ void TWriteBackCacheState::VisitUnflushedRequests(
 
 void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
@@ -246,7 +246,9 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
         auto* cachedRequest =
             nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
         RequestManager.SetFlushed(cachedRequest);
-        DecrementHandleCount(cachedRequest->GetHandle(), nodeState);
+        RemoveActiveRequestFromHandleState(
+            nodeState,
+            cachedRequest->GetHandle());
     }
 
     // Trigger Flush completions
@@ -283,7 +285,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
     ui64 nodeId,
     const TError& error)
 {
-    auto guard = Guard(QueuedOperations);
+    auto guard = LockStateAndPostponeQueuedOperations();
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
@@ -308,45 +310,22 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
     nodeState.FlushRequests.clear();
     FlushAllRequestQueue.clear();
 
-    if (nodeState.Handles.size() != nodeState.HandleReleaseCount) {
-        // Keep status ENodeFlushStatus::FlushRequested if flush is retried
-        return EFlushRetryStatus::ShouldRetry;
+    if (nodeState.Handles.size() == nodeState.HandleToReleaseCount) {
+        // All handles with active WriteData requests are to be released
+        // Drop node data on flush failure
+        nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+        DropCachedData(nodeId, nodeState, error);
+        return EFlushRetryStatus::ShouldNotRetry;
     }
 
-    nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+    // Keep status ENodeFlushStatus::FlushRequested if flush is retried
+    return EFlushRetryStatus::ShouldRetry;
+}
 
-    // Drop node data - pending and unflushed requests
-    while (nodeState.Cache.HasPendingRequests()) {
-        auto request = nodeState.Cache.DequeuePendingRequest();
-        QueuedOperations.FailWriteDataPromise(
-            std::move(request->AccessPromise()),
-            error);
-    }
-
-    if (nodeState.Cache.HasUnflushedRequests()) {
-        ReportWriteBackCacheDataLossError(
-            TStringBuilder()
-            << LogTag << " Unflushed requests for node " << nodeId
-            << " are dropped due to flush error: " << error);
-    }
-
-    while (nodeState.Cache.HasUnflushedRequests()) {
-        auto* request = nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
-        RequestManager.SetFlushed(request);
-    }
-
-    for (auto& it: nodeState.Handles) {
-        QueuedOperations.FailFlushOrReleasePromise(
-            std::move(it.second.ReadyToReleasePromise),
-            error);
-    }
-
-    nodeState.Handles.clear();
-    nodeState.HandleReleaseCount = 0;
-
-    EvictUnpinnedFlushedEntries(nodeId, nodeState);
-
-    return EFlushRetryStatus::ShouldNotRetry;
+TGuard<TQueuedOperations>
+TWriteBackCacheState::LockStateAndPostponeQueuedOperations() const
+{
+    return Guard(QueuedOperations);
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
@@ -358,7 +337,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     auto& nodeState =
         Nodes.GetOrCreateNodeState(request->GetRequest().GetNodeId());
 
-    nodeState.Handles[request->GetRequest().GetHandle()].RequestCount++;
+    AddActiveRequestToHandleState(nodeState, request->GetRequest().GetHandle());
     nodeState.Cache.EnqueuePendingRequest(std::move(request));
 
     return future;
@@ -370,7 +349,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     const ui64 nodeId = request->GetNodeId();
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-    nodeState.Handles[request->GetHandle()].RequestCount++;
+    AddActiveRequestToHandleState(nodeState, request->GetHandle());
     nodeState.CachedNodeSize = Max(nodeState.CachedNodeSize, request->GetEnd());
     nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
 
@@ -488,21 +467,65 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     }
 }
 
-void TWriteBackCacheState::DecrementHandleCount(
-    ui64 handle,
-    TNodeState& nodeState)
+void TWriteBackCacheState::AddActiveRequestToHandleState(
+    TNodeState& nodeState,
+    ui64 handle)
 {
     auto& handleState = nodeState.Handles[handle];
-    Y_ABORT_UNLESS(handleState.RequestCount > 0);
-    if (--handleState.RequestCount == 0) {
+    handleState.ActiveWriteDataRequestCount++;
+}
+
+void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
+    TNodeState& nodeState,
+    ui64 handle)
+{
+    auto& handleState = nodeState.Handles[handle];
+    Y_ABORT_UNLESS(handleState.ActiveWriteDataRequestCount > 0);
+
+    if (--handleState.ActiveWriteDataRequestCount == 0) {
         if (handleState.ReadyToReleasePromise.Initialized()) {
-            Y_ABORT_UNLESS(nodeState.HandleReleaseCount > 0);
-            nodeState.HandleReleaseCount--;
+            Y_ABORT_UNLESS(nodeState.HandleToReleaseCount > 0);
+            nodeState.HandleToReleaseCount--;
             QueuedOperations.CompleteFlushOrReleasePromise(
                 std::move(handleState.ReadyToReleasePromise));
         }
         nodeState.Handles.erase(handle);
     }
+}
+
+void TWriteBackCacheState::DropCachedData(
+    ui64 nodeId,
+    TNodeState& nodeState,
+    const NCloud::NProto::TError& error)
+{
+    while (nodeState.Cache.HasPendingRequests()) {
+        auto request = nodeState.Cache.DequeuePendingRequest();
+        QueuedOperations.FailWriteDataPromise(
+            std::move(request->AccessPromise()),
+            error);
+    }
+
+    if (nodeState.Cache.HasUnflushedRequests()) {
+        // ToDo(#1751): Implement logging for dropped unflushed requests
+        // similar to STORAGE_WARN macro
+    }
+
+    while (nodeState.Cache.HasUnflushedRequests()) {
+        auto* request = nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
+        RequestManager.SetFlushed(request);
+        Stats->WriteDataRequestDropped();
+    }
+
+    for (auto& it: nodeState.Handles) {
+        QueuedOperations.FailFlushOrReleasePromise(
+            std::move(it.second.ReadyToReleasePromise),
+            error);
+    }
+
+    nodeState.Handles.clear();
+    nodeState.HandleToReleaseCount = 0;
+
+    EvictUnpinnedFlushedEntries(nodeId, nodeState);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

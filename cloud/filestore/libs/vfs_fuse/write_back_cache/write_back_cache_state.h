@@ -26,10 +26,14 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 enum class EFlushRetryStatus
 {
-    // Flusher should stop trying to flush data - the error is unrecoverable
+    // Flusher should stop trying to flush data and wait for the next
+    // IQueuedOperationProcessor::ScheduleFlushNode call.
+    // This may happen when a client has requested to release all handles with
+    // active requests and flush fails.
     ShouldNotRetry,
 
-    // Flusher should retry attempts to flush data
+    // TNodeState::FlushStatus remains in ENodeFlushStatus::FlushRequested
+    // state, the flusher should retry attempts to flush data
     ShouldRetry
 };
 
@@ -119,6 +123,9 @@ public:
         const NCloud::NProto::TError& error);
 
 private:
+    // Combines acquiring mutex and executing queued operations on mutex release
+    TGuard<TQueuedOperations> LockStateAndPostponeQueuedOperations() const;
+
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TPendingWriteDataRequest> request);
 
@@ -132,7 +139,13 @@ private:
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
 
-    void DecrementHandleCount(ui64 handle, TNodeState& nodeState);
+    void AddActiveRequestToHandleState(TNodeState& nodeState, ui64 handle);
+    void RemoveActiveRequestFromHandleState(TNodeState& nodeState, ui64 handle);
+
+    void DropCachedData(
+        ui64 nodeId,
+        TNodeState& nodeState,
+        const NCloud::NProto::TError& error);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

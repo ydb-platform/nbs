@@ -360,6 +360,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->FlushSucceeded(1, 3);
         b.State->FlushSucceeded(2, 1);
         UNIT_ASSERT(!b.State->HasUnflushedRequests());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->WriteDataRequestDroppedCount);
     }
 
     Y_UNIT_TEST(HandleReleaseFailures)
@@ -411,6 +412,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!c2.HasValue());
 
         // Cache should be emptied and pending requests should be failed
+        // Two requests are dropped
         b.State->FlushFailed(1, error);
 
         UNIT_ASSERT(w2.HasValue());
@@ -422,6 +424,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(error, c3.GetValue());
 
         UNIT_ASSERT(!b.State->HasUnflushedRequests());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->WriteDataRequestDroppedCount);
     }
 }
 

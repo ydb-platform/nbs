@@ -16,8 +16,8 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 struct THandleState
 {
-    // Number of pending and unflushed requests
-    ui64 RequestCount = 0;
+    // Number of pending and unflushed requests associated with the handle
+    ui64 ActiveWriteDataRequestCount = 0;
 
     // The promise is fulfilled when |RequestCount| hits 0
     NThreading::TPromise<NCloud::NProto::TError> ReadyToReleasePromise;
@@ -77,13 +77,14 @@ struct TNodeState
     TDeque<TFlushRequest> FlushRequests;
 
     // Holds active request handles and tracks handle release
+    // Key: handle
     THashMap<ui64, THandleState> Handles;
 
     // Number of handles that have been requested for release.
-    // When HandleReleaseCount == Handles.size(), the next flush failure
+    // When HandleToReleaseCount == Handles.size(), the next flush failure
     // will cause all pending requests to be failed and cached data to be
     // dropped
-    size_t HandleReleaseCount = 0;
+    size_t HandleToReleaseCount = 0;
 
     // Cached data extends the node size but until the data is flushed,
     // the changes are not visible to the tablet. FileSystem requests that
@@ -97,7 +98,7 @@ struct TNodeState
             Y_ABORT_UNLESS(FlushRequests.empty());
             Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
             Y_ABORT_UNLESS(Handles.empty());
-            Y_ABORT_UNLESS(HandleReleaseCount == 0);
+            Y_ABORT_UNLESS(HandleToReleaseCount == 0);
             return true;
         }
         return false;
