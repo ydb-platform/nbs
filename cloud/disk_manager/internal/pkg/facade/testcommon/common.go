@@ -1033,7 +1033,7 @@ func metricMatchesLabel(
 	return true
 }
 
-func GetCounterControlplane(
+func GetCountersControlplane(
 	t *testing.T,
 	name string,
 	labels map[string]string,
@@ -1049,7 +1049,7 @@ func GetCounterControlplane(
 	)
 }
 
-func GetCounterDataplane(
+func GetCountersDataplane(
 	t *testing.T,
 	name string,
 	labels map[string]string,

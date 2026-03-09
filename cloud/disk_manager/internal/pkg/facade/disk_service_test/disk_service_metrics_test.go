@@ -78,19 +78,21 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	require.Greater(t, testcommon.GetCounterControlplane(
+	createRequestCounters := testcommon.GetCountersControlplane(
 		t,
 		"count",
 		map[string]string{"component": "nbs_client", "request": "Create"},
-	)[0], float64(0))
+	)
+	require.Len(t, createRequestCounters, 1)
+	require.Greater(t, createRequestCounters[0], float64(0))
 
-	require.Greater(t, testcommon.GetCounterDataplane(
+	require.Greater(t, testcommon.GetCountersDataplane(
 		t,
 		"count",
 		map[string]string{"component": "nbs_session", "request": "Read"},
 	)[0], float64(0))
 
-	require.Greater(t, testcommon.GetCounterDataplane(
+	require.Greater(t, testcommon.GetCountersDataplane(
 		t,
 		"count",
 		map[string]string{"component": "nbs_session", "request": "Write"},
@@ -142,7 +144,7 @@ func TestNbsClientReportsErrorMetrics(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.Error(t, err)
 
-	require.Greater(t, testcommon.GetCounterControlplane(
+	require.Greater(t, testcommon.GetCountersControlplane(
 		t,
 		"errors",
 		map[string]string{"component": "nbs_client", "request": "Resize"},
