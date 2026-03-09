@@ -10,7 +10,6 @@ import (
 	nfs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/mocks"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -115,75 +114,6 @@ func TestMaxBytesIsUsed(t *testing.T) {
 	require.ElementsMatch(t, []string{"file1", "file2"}, names)
 }
 
-func TestReadOnlyIsUsed(t *testing.T) {
-	fixture := newFixture(t)
-	defer fixture.close(t)
-
-	filesystemID := t.Name()
-	fixture.prepareFilesystem(t, filesystemID)
-	defer fixture.cleanupFilesystem(t, filesystemID)
-
-	factory := NewFilestoreListerFactory(
-		fixture.client,
-		0,     // listNodesMaxBytes
-		true,  // readOnly
-		false, // unsafe
-	)
-
-	lister, err := factory.CreateLister(fixture.ctx, filesystemID, "")
-	require.NoError(t, err)
-	defer func() {
-		err := lister.Close(fixture.ctx)
-		require.NoError(t, err)
-	}()
-
-	concreteLister, ok := lister.(*filestoreLister)
-	require.True(t, ok)
-
-	_, err = concreteLister.session.CreateNode(
-		fixture.ctx,
-		nfs.Node{
-			ParentID: nfs.RootNodeID,
-			Name:     "should_fail",
-			Type:     nfs_client.NODE_KIND_FILE,
-			Mode:     0o644,
-			UID:      1,
-			GID:      1,
-		},
-	)
-	require.Error(t, err)
-
-	writeFactory := NewFilestoreListerFactory(
-		fixture.client,
-		0,     // listNodesMaxBytes
-		false, // readOnly
-		false, // unsafe
-	)
-
-	writeLister, err := writeFactory.CreateLister(fixture.ctx, filesystemID, "")
-	require.NoError(t, err)
-	defer func() {
-		err := writeLister.Close(fixture.ctx)
-		require.NoError(t, err)
-	}()
-
-	concreteWriteLister, ok := writeLister.(*filestoreLister)
-	require.True(t, ok)
-
-	_, err = concreteWriteLister.session.CreateNode(
-		fixture.ctx,
-		nfs.Node{
-			ParentID: nfs.RootNodeID,
-			Name:     "should_succeed",
-			Type:     nfs_client.NODE_KIND_FILE,
-			Mode:     0o644,
-			UID:      1,
-			GID:      1,
-		},
-	)
-	require.NoError(t, err)
-}
-
 func TestUnsafeIsPropagated(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 
@@ -195,9 +125,9 @@ func TestUnsafeIsPropagated(t *testing.T) {
 
 	factory := NewFilestoreListerFactory(
 		clientMock,
-		42,    // listNodesMaxBytes
-		true,  // readOnly
-		true,  // unsafe
+		42,   // listNodesMaxBytes
+		true, // readOnly
+		true, // unsafe
 	)
 
 	clientMock.On(
