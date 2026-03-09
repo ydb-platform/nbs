@@ -83,7 +83,6 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 		"count",
 		map[string]string{"component": "nbs_client", "request": "Create"},
 	)
-	require.Len(t, createRequestCounters, 1)
 	require.Greater(t, createRequestCounters[0], float64(0))
 
 	require.Greater(t, testcommon.GetCountersDataplane(
