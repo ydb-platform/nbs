@@ -246,7 +246,7 @@ void TReadBlobActor::HandleGetResult(
             auto& response = msg->Responses[i];
 
             if (response.Status != NKikimrProto::OK) {
-                if (IsUnrecoverable(response.Status)
+                if (NCloud::IsUnrecoverable(response.Status)
                         && StorageAccessMode == EStorageAccessMode::Repair)
                 {
                     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
