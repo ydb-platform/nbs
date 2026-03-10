@@ -5823,6 +5823,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // unlinking the file in subdir
         service.UnlinkNode(headers, subdirId, "file", false);
 
+        // unlinking subdir should fail if UnlinkDirectory==false
+        unlinkResponse = service.SendAndRecvUnlinkNode(
+            headers,
+            dirId,
+            "subdir",
+            false);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_ISDIR,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
         // unlinking subdir should now succeed
         service.UnlinkNode(headers, dirId, "subdir", true);
 

@@ -10,3 +10,5 @@ DirectoryHandlesTableSize: 10000
 TwoStageReadEnabled: true
 TwoStageReadThreshold: 65536
 MaxFuseLoopThreads: 8
+DirectoryCreationInShardsEnabled: true
+ShardIdSelectionInLeaderEnabled: true
