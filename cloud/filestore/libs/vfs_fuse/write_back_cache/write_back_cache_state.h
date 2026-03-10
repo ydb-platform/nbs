@@ -124,6 +124,10 @@ public:
 
 private:
     // Combines acquiring mutex and executing queued operations on mutex release
+    // TQueuedOperations has custom Release method that:
+    // 1. Copies the accumulated operations to a temporary vector.
+    // 2. Releases mutex.
+    // 3. Executes the operations from the temporary vector.
     TGuard<TQueuedOperations> LockStateAndPostponeQueuedOperations() const;
 
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(

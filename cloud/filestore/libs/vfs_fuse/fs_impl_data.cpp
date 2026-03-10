@@ -572,34 +572,6 @@ void TFileSystem::DoWrite(
     FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     if (wbcState == EServerWriteBackCacheState::Disabled) {
-        if (WriteBackCache) {
-            // Sync writes must include all previously cached data for
-            // the same node, so flush the node cache first and only then submit
-            // this write directly to the session.
-            // For O_DIRECT same file can be opened without O_DIRECT so we try
-            // to flush here as well
-            WriteBackCache.FlushNodeData(request->GetNodeId())
-                .Subscribe(
-                    [ptr = weak_from_this(),
-                     callback = std::move(callback),
-                     callContext = std::move(callContext),
-                     request = std::move(request)](const auto& f) mutable
-                    {
-                        const NProto::TError& error = f.GetValue();
-                        if (HasError(error)) {
-                            // Propagate flush error to the WriteData response
-                            NProto::TWriteDataResponse response;
-                            *response.MutableError() = error;
-                            callback(MakeFuture(std::move(response)));
-                        } else if (auto self = ptr.lock()) {
-                            self->Session
-                                ->WriteData(callContext, std::move(request))
-                                .Subscribe(std::move(callback));
-                        }
-                    });
-            return;
-        }
-
         Session->WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
@@ -610,6 +582,11 @@ void TFileSystem::DoWrite(
         "Invalid EServerWriteBackCacheState value = %d",
         wbcState);
 
+    // Sync writes must include all previously cached data for
+    // the same node, so flush the node cache first and only then submit
+    // this write directly to the session.
+    // For O_DIRECT same file can be opened without O_DIRECT so we try
+    // to flush here as well
     auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
     flushFuture.Subscribe(
         [ptr = weak_from_this(),
@@ -1129,16 +1106,16 @@ EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheState(
         return EServerWriteBackCacheState::Disabled;
     }
 
+    if (!Config->GetServerWriteBackCacheEnabled()) {
+        return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
+                                        : EServerWriteBackCacheState::Draining;
+    }
+
     if (fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)) {
-        return EServerWriteBackCacheState::Disabled;
+        return EServerWriteBackCacheState::Draining;
     }
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
-        return EServerWriteBackCacheState::Enabled;
-    }
-
-    return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
-                                    : EServerWriteBackCacheState::Draining;
+    return EServerWriteBackCacheState::Enabled;
 }
 
 }   // namespace NCloud::NFileStore::NFuse

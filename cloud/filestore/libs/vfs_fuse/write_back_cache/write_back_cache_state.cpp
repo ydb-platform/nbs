@@ -291,7 +291,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     Y_ABORT_UNLESS(
         nodeState.FlushStatus == ENodeFlushStatus::FlushRequested,
-        "Flush wasn't requested for a node %lu",
+        "Flush wasn't requested for node %lu",
         nodeId);
 
     // Fail Flush and FlushAll requests
@@ -484,6 +484,7 @@ void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
 
     if (--handleState.ActiveWriteDataRequestCount == 0) {
         if (handleState.ReadyToReleasePromise.Initialized()) {
+            // The promise is initialized when ReleaseHandle was requested
             Y_ABORT_UNLESS(nodeState.HandleToReleaseCount > 0);
             nodeState.HandleToReleaseCount--;
             QueuedOperations.CompleteFlushOrReleasePromise(
@@ -506,7 +507,7 @@ void TWriteBackCacheState::DropCachedData(
     }
 
     if (nodeState.Cache.HasUnflushedRequests()) {
-        // ToDo(#1751): Implement logging for dropped unflushed requests
+        // TODO(#1751): Implement logging for dropped unflushed requests
         // similar to STORAGE_WARN macro
     }
 

@@ -60,14 +60,14 @@ struct TReleaseRequest
 
 enum class EServerWriteBackCacheState
 {
-    // Requests should bypass WriteBackCache and go directly to the session
-    // (even if WriteBackCache is initialized)
+    // WriteBackCache is turned off
     Disabled,
 
     // Requests should go to the WriteBackCache
     Enabled,
 
-    // WriteBackCache is in the transition from Enabled to Disabled state.
+    // WriteBackCache is being turned off or a request with
+    // O_DIRECT/O_SYNC/O_DSYNC is made.
     // Requests should wait until WriteBackCache is flushed and then go
     // directly to the session
     Draining

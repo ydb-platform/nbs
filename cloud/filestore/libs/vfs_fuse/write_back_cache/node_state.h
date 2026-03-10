@@ -20,6 +20,7 @@ struct THandleState
     ui64 ActiveWriteDataRequestCount = 0;
 
     // The promise is fulfilled when |RequestCount| hits 0
+    // Not initialized by default unless ReleaseHandle is requested
     NThreading::TPromise<NCloud::NProto::TError> ReadyToReleasePromise;
 };
 
