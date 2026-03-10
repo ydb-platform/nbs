@@ -567,10 +567,10 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         FormatError(args.Error).c_str());
 
     if (args.ParentNodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ParentNodeId);
+        InvalidateReadAheadCache(args.ParentNodeId);
     }
     if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ChildNode->NodeId);
+        InvalidateReadAheadCache(args.ChildNode->NodeId);
     }
 
     if (!HasError(args.Error) && !args.ChildRef &&
@@ -772,10 +772,10 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         FormatError(args.Error).c_str());
 
     if (args.ParentNodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ParentNodeId);
+        InvalidateReadAheadCache(args.ParentNodeId);
     }
     if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ChildNode->NodeId);
+        InvalidateReadAheadCache(args.ChildNode->NodeId);
     }
 
     if (!HasError(args.Error)) {

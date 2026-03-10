@@ -275,7 +275,6 @@ void TIndexTabletActor::UpdateMetrics(
     const TSessionsStats& sessionsStats,
     const TChannelsStats& channelsStats,
     const TReadAheadCacheStats& readAheadStats,
-    const TNodeIndexCacheStats& nodeIndexCacheStats,
     const TNodeToSessionCounters& nodeToSessionCounters,
     const TMiscNodeStats& miscNodeStats,
     const TInMemoryIndexStateStats& inMemoryIndexStateStats,
@@ -391,7 +390,6 @@ void TIndexTabletActor::UpdateMetrics(
     Store(Metrics.UnwritableChannelCount, channelsStats.UnwritableChannelCount);
     Store(Metrics.ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
     Store(Metrics.ReadAheadCacheNodeCount, readAheadStats.NodeCount);
-    Store(Metrics.NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
 
     Store(
         Metrics.InMemoryIndexStateNodesCount,
@@ -497,7 +495,6 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         CalculateSessionsStats(),
         CalculateChannelsStats(),
         CalculateReadAheadCacheStats(),
-        CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
         GetInMemoryIndexStateStats(),
@@ -588,7 +585,6 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateSessionsStats(),
         CalculateChannelsStats(),
         CalculateReadAheadCacheStats(),
-        CalculateNodeIndexCacheStats(),
         GetNodeToSessionCounters(),
         GetMiscNodeStats(),
         GetInMemoryIndexStateStats(),

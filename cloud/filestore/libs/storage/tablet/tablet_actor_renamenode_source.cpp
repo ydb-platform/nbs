@@ -516,12 +516,12 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
     const TActorContext& ctx,
     TTxIndexTablet::TPrepareRenameNodeInSource& args)
 {
-    InvalidateNodeCaches(args.ParentNodeId);
+    InvalidateReadAheadCache(args.ParentNodeId);
     if (args.ChildRef) {
-        InvalidateNodeCaches(args.ChildRef->ChildNodeId);
+        InvalidateReadAheadCache(args.ChildRef->ChildNodeId);
     }
     if (args.ParentNode) {
-        InvalidateNodeCaches(args.ParentNode->NodeId);
+        InvalidateReadAheadCache(args.ParentNode->NodeId);
     }
 
     if (!HasError(args.Error) && !args.ChildRef) {
@@ -763,7 +763,7 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
     const TActorContext& ctx,
     TTxIndexTablet::TCommitRenameNodeInSource& args)
 {
-    InvalidateNodeCaches(args.Request.GetNodeId());
+    InvalidateReadAheadCache(args.Request.GetNodeId());
     CommitDupCacheEntry(args.SessionId, args.RequestId);
 
     Y_DEFER {

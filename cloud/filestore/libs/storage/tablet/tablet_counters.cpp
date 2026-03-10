@@ -189,12 +189,6 @@ void TTabletMetrics::Register(
         EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheHitCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheNodeCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
         InMemoryIndexStateROCacheHitCount,
         EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(

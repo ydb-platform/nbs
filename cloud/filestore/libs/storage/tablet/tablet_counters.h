@@ -157,9 +157,6 @@ struct TTabletMetrics
     std::atomic<i64> ReadAheadCacheHitCount{0};
     std::atomic<i64> ReadAheadCacheNodeCount{0};
 
-    // Node index cache
-    std::atomic<i64> NodeIndexCacheHitCount{0};
-    std::atomic<i64> NodeIndexCacheNodeCount{0};
     // Read-only transactions that used fast path (in-memory index state)
     std::atomic<i64> InMemoryIndexStateROCacheHitCount{0};
     // Read-only transactions that used slow path

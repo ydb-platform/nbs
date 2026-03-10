@@ -524,7 +524,7 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     TTxIndexTablet::TAddBlob& args)
 {
     for (auto [nodeId, _]: args.WriteRanges) {
-        InvalidateNodeCaches(nodeId);
+        InvalidateReadAheadCache(nodeId);
     }
 
     // log request

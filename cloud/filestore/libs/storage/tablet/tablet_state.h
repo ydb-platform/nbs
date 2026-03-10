@@ -17,7 +17,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
-#include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
@@ -1444,12 +1444,8 @@ private:
 public:
 
     ////////////////////////////////////////////////////////////////////////////
-    // Caching: ReadAhead, NodeIndexCache, InMemoryIndexState
+    // Caching: ReadAhead, InMemoryIndexState
     ////////////////////////////////////////////////////////////////////////////
-
-    // Upon any completion of the RW operation this function is supposed to be
-    // called in order to invalidate potentially cached data
-    void InvalidateNodeCaches(ui64 nodeId);
 
     //
     // ReadAhead.
@@ -1473,19 +1469,8 @@ public:
     TReadAheadCacheStats CalculateReadAheadCacheStats() const;
 
     //
-    // Node index cache
+    // In-memory index state.
     //
-    bool TryFillGetNodeAttrResult(
-        ui64 parentNodeId,
-        const TString& name,
-        NProto::TNodeAttr* response);
-    void InvalidateNodeIndexCache(ui64 parentNodeId, const TString& name);
-    void InvalidateNodeIndexCache(ui64 nodeId);
-    void RegisterGetNodeAttrResult(
-        ui64 parentNodeId,
-        const TString& name,
-        const NProto::TNodeAttr& result);
-    TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
 
     IIndexTabletDatabase& AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(

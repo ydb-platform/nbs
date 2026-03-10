@@ -786,12 +786,12 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
     UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
     CommitResponseLogEntry(std::move(args.ResponseLogEntry));
 
-    InvalidateNodeCaches(args.NewParentNodeId);
+    InvalidateReadAheadCache(args.NewParentNodeId);
     if (args.NewChildRef) {
-        InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
+        InvalidateReadAheadCache(args.NewChildRef->ChildNodeId);
     }
     if (args.NewParentNode) {
-        InvalidateNodeCaches(args.NewParentNode->NodeId);
+        InvalidateReadAheadCache(args.NewParentNode->NodeId);
     }
 
     if (!HasError(args.Error)) {

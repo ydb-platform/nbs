@@ -15,7 +15,6 @@
 #include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/large_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
-#include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/read_ahead.h>
@@ -63,7 +62,6 @@ struct TIndexTabletState::TImpl
     TGarbageQueue GarbageQueue;
     TTruncateQueue TruncateQueue;
     TReadAheadCache ReadAheadCache;
-    TNodeIndexCache NodeIndexCache;
     TInMemoryIndexState InMemoryIndexState;
     TSet<ui64> OrphanNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
@@ -90,7 +88,6 @@ struct TIndexTabletState::TImpl
         , CompactionMap(registry.GetAllocator(EAllocatorTag::CompactionMap))
         , GarbageQueue(registry.GetAllocator(EAllocatorTag::GarbageQueue))
         , ReadAheadCache(registry.GetAllocator(EAllocatorTag::ReadAheadCache))
-        , NodeIndexCache(registry.GetAllocator(EAllocatorTag::NodeIndexCache))
         , InMemoryIndexState(registry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache))
         , ThrottlingPolicy(TThrottlerConfig())
     {}

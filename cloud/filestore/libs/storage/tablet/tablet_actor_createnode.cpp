@@ -877,10 +877,10 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateNode& args)
 {
-    InvalidateNodeCaches(args.TargetNodeId);
-    InvalidateNodeCaches(args.ChildNodeId);
+    InvalidateReadAheadCache(args.TargetNodeId);
+    InvalidateReadAheadCache(args.ChildNodeId);
     if (args.ParentNode) {
-        InvalidateNodeCaches(args.ParentNode->NodeId);
+        InvalidateReadAheadCache(args.ParentNode->NodeId);
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {

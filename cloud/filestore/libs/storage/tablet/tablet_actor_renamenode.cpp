@@ -736,19 +736,19 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     UnlockNodeRef({args.ParentNodeId, args.Name});
     UnlockNodeRef({args.NewParentNodeId, args.NewName});
 
-    InvalidateNodeCaches(args.ParentNodeId);
-    InvalidateNodeCaches(args.NewParentNodeId);
+    InvalidateReadAheadCache(args.ParentNodeId);
+    InvalidateReadAheadCache(args.NewParentNodeId);
     if (args.ChildRef) {
-        InvalidateNodeCaches(args.ChildRef->ChildNodeId);
+        InvalidateReadAheadCache(args.ChildRef->ChildNodeId);
     }
     if (args.NewChildRef) {
-        InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
+        InvalidateReadAheadCache(args.NewChildRef->ChildNodeId);
     }
     if (args.ParentNode) {
-        InvalidateNodeCaches(args.ParentNode->NodeId);
+        InvalidateReadAheadCache(args.ParentNode->NodeId);
     }
     if (args.NewParentNode) {
-        InvalidateNodeCaches(args.NewParentNode->NodeId);
+        InvalidateReadAheadCache(args.NewParentNode->NodeId);
     }
 
     if (!HasError(args.Error) && !args.ChildRef) {
