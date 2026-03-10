@@ -6,6 +6,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 type Storage interface {
 	SaveNodes(
 		ctx context.Context,

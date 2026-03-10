@@ -157,7 +157,6 @@ func TestSavedNodesAreListed(t *testing.T) {
 	err := f.storage.SaveNodes(f.ctx, snapshotID, expected)
 	require.NoError(t, err)
 
-	// List with small limit (5) in a loop using cookie pagination.
 	limit := 5
 	var collected []nfs.Node
 	cookie := ""
@@ -180,7 +179,6 @@ func TestSavedNodesAreListed(t *testing.T) {
 		cookie = nextCookie
 	}
 
-	// Sort both slices and compare.
 	sortNodes(expected)
 	sortNodes(collected)
 
@@ -210,10 +208,11 @@ func TestDeleteSnapshotData(t *testing.T) {
 	defer f.teardown()
 
 	snapshotID := "snapshot-delete"
+	dstFilesystemID := "dst-filesystem"
 	parentNodeID := uint64(1)
 
 	nodes := make([]nfs.Node, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 8; i++ {
 		nodes = append(
 			nodes,
 			makeNode(
@@ -225,8 +224,48 @@ func TestDeleteSnapshotData(t *testing.T) {
 		)
 	}
 
+	nodes = append(nodes,
+		makeHardlinkNode(parentNodeID, 200, "hardlink-a", 2),
+		makeHardlinkNode(parentNodeID, 200, "hardlink-b", 2),
+	)
+
 	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
 	require.NoError(t, err)
+
+	srcNodeIds := []uint64{100, 101}
+	dstNodeIds := []uint64{1000, 1001}
+	err = f.storage.UpdateRestorationNodeIDMapping(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcNodeIds,
+		dstNodeIds,
+	)
+	require.NoError(t, err)
+
+	hardlinks, err := f.storage.ListHardLinks(f.ctx, snapshotID, 100, 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, hardlinks)
+
+	mapping, err := f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcNodeIds,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, mapping)
+
+	listed, _, err := f.storage.ListNodes(
+		f.ctx,
+		snapshotID,
+		parentNodeID,
+		"",
+		100,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, listed)
+
 	for i := 0; i < 5; i++ {
 		done, err := f.storage.DeleteSnapshotData(f.ctx, snapshotID)
 		require.NoError(t, err)
@@ -237,7 +276,6 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, done)
 
-	// Verify listing returns nothing.
 	listed, nextCookie, err := f.storage.ListNodes(
 		f.ctx,
 		snapshotID,
@@ -248,6 +286,19 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, listed)
 	require.Empty(t, nextCookie)
+
+	hardlinks, err = f.storage.ListHardLinks(f.ctx, snapshotID, 100, 0)
+	require.NoError(t, err)
+	require.Empty(t, hardlinks)
+
+	mapping, err = f.storage.GetDestinationNodeIDs(
+		f.ctx,
+		snapshotID,
+		dstFilesystemID,
+		srcNodeIds,
+	)
+	require.NoError(t, err)
+	require.Empty(t, mapping)
 }
 
 func TestGetDestinationNodeIDs(t *testing.T) {

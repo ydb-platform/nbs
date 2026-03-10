@@ -330,11 +330,7 @@ func (s *storageYDB) listNodeRefs(
 		declare $last_child_name as Utf8;
 		declare $limit as Uint64;
 
-		select
-			parent_node_id,
-			name,
-			child_node_id,
-			node_type
+		select *
 		from node_refs
 		where filesystem_snapshot_id = $snapshot_id
 			and parent_node_id = $parent_node_id
@@ -392,16 +388,7 @@ func (s *storageYDB) fetchNodeAttrs(
 		declare $snapshot_id as Utf8;
 		declare $node_ids as List<Uint64>;
 
-		select node_id,
-			mode,
-			uid,
-			gid,
-			atime,
-			mtime,
-			ctime,
-			size,
-			links,
-			symlink_target
+		select *
 		from nodes
 		where filesystem_snapshot_id = $snapshot_id
 			and node_id in $node_ids
@@ -462,7 +449,7 @@ func (s *storageYDB) listNodes(
 			node.Size = a.Size
 			node.Links = a.Links
 			node.LinkTarget = a.LinkTarget
-			nodes[i] = nfs.Node(node)
+			nodes[i] = node
 		}
 	}
 
@@ -799,7 +786,7 @@ func (s *storageYDB) listHardLinks(
 		declare $limit as Uint64;
 		declare $offset as Uint64;
 
-		select node_id, parent_node_id, name
+		select *
 		from hardlinks
 		where filesystem_snapshot_id = $snapshot_id
 		order by node_id, parent_node_id, name
