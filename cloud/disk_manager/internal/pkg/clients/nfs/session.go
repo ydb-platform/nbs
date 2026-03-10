@@ -19,6 +19,10 @@ const (
 	RootNodeID    = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
 )
 
+const (
+	NodeKindLink = nfs_client.NodeType(nfs_client.NODE_KIND_LINK)
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type session struct {

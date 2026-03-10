@@ -215,14 +215,11 @@ func TestDeleteSnapshotData(t *testing.T) {
 	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
 	require.NoError(t, err)
 
-	srcNodeIds := []uint64{100, 101}
-	dstNodeIds := []uint64{1000, 1001}
 	err = f.storage.UpdateRestorationNodeIDMapping(
 		f.ctx,
 		snapshotID,
 		dstFilesystemID,
-		srcNodeIds,
-		dstNodeIds,
+		map[uint64]uint64{100: 1000, 101: 1001},
 	)
 	require.NoError(t, err)
 
@@ -234,7 +231,7 @@ func TestDeleteSnapshotData(t *testing.T) {
 		f.ctx,
 		snapshotID,
 		dstFilesystemID,
-		srcNodeIds,
+		[]uint64{100, 101},
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, mapping)
@@ -278,7 +275,7 @@ func TestDeleteSnapshotData(t *testing.T) {
 		f.ctx,
 		snapshotID,
 		dstFilesystemID,
-		srcNodeIds,
+		[]uint64{100, 101},
 	)
 	require.NoError(t, err)
 	require.Empty(t, mapping)
@@ -300,15 +297,11 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, result)
 
-	srcNodeIds := []uint64{100, 200, 300}
-	dstNodeIds := []uint64{1000, 2000, 3000}
-
 	err = f.storage.UpdateRestorationNodeIDMapping(
 		f.ctx,
 		srcSnapshotID,
 		dstFilesystemID,
-		srcNodeIds,
-		dstNodeIds,
+		map[uint64]uint64{100: 1000, 200: 2000, 300: 3000},
 	)
 	require.NoError(t, err)
 
@@ -325,13 +318,13 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 		f.ctx,
 		srcSnapshotID,
 		dstFilesystemID,
-		srcNodeIds,
+		[]uint64{100, 200, 300},
 	)
 	require.NoError(t, err)
 	require.Len(t, result, 3)
-	for i, srcNodeID := range srcNodeIds {
-		require.Equal(t, dstNodeIds[i], result[srcNodeID])
-	}
+	require.Equal(t, uint64(1000), result[uint64(100)])
+	require.Equal(t, uint64(2000), result[uint64(200)])
+	require.Equal(t, uint64(3000), result[uint64(300)])
 
 	result, err = f.storage.GetDestinationNodeIDs(
 		f.ctx,
@@ -435,4 +428,62 @@ func TestListHardLinks(t *testing.T) {
 	}
 
 	compareNodes(t, expected, collected)
+}
+
+func testNodeStorageListerWithLimit(t *testing.T, limit int) {
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "lister-snapshot"
+	parentNodeID := uint64(1)
+
+	allNodes := []nfs.Node{
+		makeNode(parentNodeID, 10, "file1", nfs_client.NODE_KIND_FILE),
+		makeNode(parentNodeID, 11, "dir1", nfs_client.NODE_KIND_DIR),
+		makeNode(parentNodeID, 12, "link1", nfs_client.NODE_KIND_SYMLINK),
+	}
+
+	err := f.storage.SaveNodes(f.ctx, snapshotID, allNodes)
+	require.NoError(t, err)
+
+	factory := NewNodeStorageListerFactory(f.storage, limit)
+	lister, err := factory.CreateLister(f.ctx, "", snapshotID)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, lister.Close(f.ctx))
+	}()
+
+	var collected []nfs.Node
+	cookie := ""
+	iterations := 0
+	for {
+		nodes, nextCookie, err := lister.ListNodes(
+			f.ctx,
+			parentNodeID,
+			cookie,
+		)
+		require.NoError(t, err)
+		collected = append(collected, nodes...)
+		iterations++
+
+		if nextCookie == "" {
+			break
+		}
+
+		require.LessOrEqual(t, len(nodes), limit)
+		require.NotEmpty(t, nextCookie)
+		cookie = nextCookie
+	}
+
+	sortNodes(allNodes)
+	sortNodes(collected)
+	require.ElementsMatch(t, allNodes, collected)
+}
+
+func TestNodeStorageListerWithLimit1(t *testing.T) {
+	testNodeStorageListerWithLimit(t, 1)
+}
+
+func TestNodeStorageListerWithLimit100(t *testing.T) {
+	testNodeStorageListerWithLimit(t, 100)
 }

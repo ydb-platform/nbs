@@ -7,7 +7,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
+	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
+	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
@@ -102,10 +105,26 @@ func initFilesystemDataplane(
 		return nil
 	}
 
+	err := initFilesystemScrubbing(taskRegistry, nfsFactory, filesystemDB, filesystemConfig)
+	if err != nil {
+		return err
+	}
+
+	return initFilesystemSnapshot(taskRegistry, nfsFactory, filesystemDB, filesystemConfig)
+}
+
+func initFilesystemScrubbing(
+	taskRegistry *tasks.Registry,
+	nfsFactory nfs.Factory,
+	filesystemDB *persistence.YDBClient,
+	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
+) error {
+
 	scrubbingConfig := filesystemConfig.GetScrubbingConfig()
 	if scrubbingConfig == nil {
 		return nil
 	}
+
 	traversalConfig := scrubbingConfig.GetTraversalConfig()
 	if traversalConfig == nil {
 		return nil
@@ -121,5 +140,42 @@ func initFilesystemDataplane(
 		scrubbingConfig,
 		nfsFactory,
 		traversalStorage,
+	)
+}
+
+func initFilesystemSnapshot(
+	taskRegistry *tasks.Registry,
+	nfsFactory nfs.Factory,
+	filesystemDB *persistence.YDBClient,
+	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
+) error {
+
+	snapshotConfig := filesystemConfig.GetSnapshotConfig()
+	if snapshotConfig == nil {
+		return nil
+	}
+
+	traversalConfig := snapshotConfig.GetTraversalConfig()
+	if traversalConfig == nil {
+		return nil
+	}
+
+	traversalStorage := traversal_storage.NewStorage(
+		filesystemDB,
+		traversalConfig.GetStorageFolder(),
+	)
+
+	nodesStorage := nodes_storage.NewStorage(
+		filesystemDB,
+		snapshotConfig.GetNodesStorageFolder(),
+		0, // deleteLimit, not used during creation.
+	)
+
+	return filesystem_snapshot.RegisterForExecution(
+		taskRegistry,
+		snapshotConfig,
+		nfsFactory,
+		traversalStorage,
+		nodesStorage,
 	)
 }

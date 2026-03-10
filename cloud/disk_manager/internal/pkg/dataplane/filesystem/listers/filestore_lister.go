@@ -8,19 +8,19 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type filestoreLister struct {
-	session           nfs.Session
+type FilestoreLister struct {
+	Session           nfs.Session
 	listNodesMaxBytes uint32
 	unsafe            bool
 }
 
-func (l *filestoreLister) ListNodes(
+func (l *FilestoreLister) ListNodes(
 	ctx context.Context,
 	nodeID uint64,
 	cookie string,
 ) ([]nfs.Node, string, error) {
 
-	return l.session.ListNodes(
+	return l.Session.ListNodes(
 		ctx,
 		nodeID,
 		cookie,
@@ -29,8 +29,8 @@ func (l *filestoreLister) ListNodes(
 	)
 }
 
-func (l *filestoreLister) Close(ctx context.Context) error {
-	return l.session.Close(ctx)
+func (l *FilestoreLister) Close(ctx context.Context) error {
+	return l.Session.Close(ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,8 +73,8 @@ func (o *filestoreListerFactory) CreateLister(
 		return nil, err
 	}
 
-	return &filestoreLister{
-		session:           session,
+	return &FilestoreLister{
+		Session:           session,
 		listNodesMaxBytes: o.listNodesMaxBytes,
 		unsafe:            o.unsafe,
 	}, nil

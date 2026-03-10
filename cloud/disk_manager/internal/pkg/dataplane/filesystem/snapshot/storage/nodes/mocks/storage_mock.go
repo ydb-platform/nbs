@@ -50,12 +50,20 @@ func (s *StorageMock) UpdateRestorationNodeIDMapping(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstSnapshotID string,
-	srcNodeIds []uint64,
-	dstNodeIds []uint64,
+	mapping map[uint64]uint64,
 ) error {
 
-	args := s.Called(ctx, srcSnapshotID, dstSnapshotID, srcNodeIds, dstNodeIds)
+	args := s.Called(ctx, srcSnapshotID, dstSnapshotID, mapping)
 	return args.Error(0)
+}
+
+func (s *StorageMock) DeleteRestorationMapping(
+	ctx context.Context,
+	srcSnapshotID string,
+) (bool, error) {
+
+	args := s.Called(ctx, srcSnapshotID)
+	return args.Bool(0), args.Error(1)
 }
 
 func (s *StorageMock) GetDestinationNodeIDs(

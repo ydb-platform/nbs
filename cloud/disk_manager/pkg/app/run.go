@@ -16,6 +16,7 @@ import (
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -193,6 +194,12 @@ func run(
 		err = scrubbing.Register(taskRegistry)
 		if err != nil {
 			logging.Error(ctx, "Failed to register scrubbing tasks: %v", err)
+			return err
+		}
+
+		err = filesystem_snapshot.Register(taskRegistry)
+		if err != nil {
+			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
 			return err
 		}
 	} else {
