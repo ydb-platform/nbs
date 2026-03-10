@@ -310,6 +310,7 @@ public:
     TString GetPathDescriptionBackupFilePath() const;
 
     TVector<TString> GetDestroyFilestoreDenyList() const;
+    TVector<ui64> GetTabletBootAllowList() const;
 
     bool GetSSProxyFallbackMode() const;
 

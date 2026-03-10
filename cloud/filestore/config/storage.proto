@@ -738,4 +738,7 @@ message TStorageConfig
     // Allow to destroy filestore with active sessions
     // with size less than threshold(in bytes)
     optional uint32 ForceDestroySizeThreshold = 487;
+
+    // Reject all tablets except in filter
+    repeated uint64 TabletBootAllowList = 488;
 }

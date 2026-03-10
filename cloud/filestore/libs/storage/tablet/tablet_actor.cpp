@@ -135,6 +135,28 @@ void TIndexTabletActor::OnActivateExecutor(const TActorContext& ctx)
 {
     BecomeAux(ctx, STATE_INIT);
 
+    constexpr auto RejectedBootSuicideDelay = TDuration::Seconds(2);
+
+    const auto& tabletBootAllowList = Config->GetTabletBootAllowList();
+    if (!tabletBootAllowList.empty() &&
+        std::find(
+            tabletBootAllowList.begin(),
+            tabletBootAllowList.end(),
+            TabletID()) == tabletBootAllowList.end())
+    {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Tablet startup rejected before InitSchema: "
+            "tabletId=%lu not found in TabletBootAllowList, "
+            "suicide in %lu seconds",
+            LogTag.c_str(),
+            TabletID(),
+            RejectedBootSuicideDelay.Seconds());
+        ctx.Schedule(RejectedBootSuicideDelay, new TEvents::TEvPoisonPill());
+        return;
+    }
+
     RegisterCounters(ctx);
 
     if (!Executor()->GetStats().IsFollower) {
