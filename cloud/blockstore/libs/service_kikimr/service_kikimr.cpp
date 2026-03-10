@@ -1,7 +1,6 @@
 #include "service_kikimr.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -9,6 +8,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
@@ -17,6 +17,11 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/hash.h>
+#include <util/generic/vector.h>
+#include <util/thread/lfstack.h>
+
+#include <variant>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -28,6 +33,10 @@ using namespace NCloud::NBlockStore::NStorage;
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 DequeuePendingRequestsTag = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,117 +59,153 @@ BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<T>>
+template <typename TMethod>
+struct TRequestContext
 {
-    using TThis = TRequestActor<T>;
-    using TBase = TActorBootstrapped<TThis>;
+    using TRequestProto = typename TMethod::TRequestProto;
+    using TResponseProto = typename TMethod::TResponseProto;
 
-    using TRequest = typename T::TRequest;
-    using TRequestProto = typename T::TRequestProto;
-
-    using TResponse = typename T::TResponse;
-    using TResponseProto = typename T::TResponseProto;
-
-private:
     std::shared_ptr<TRequestProto> Request;
     TPromise<TResponseProto> Response;
     TCallContextPtr CallContext;
+    TDuration RequestTimeout;
+    TString DiskId;
+};
 
-    const TDuration RequestTimeout;
-    const TString DiskId;
+#define BLOCKSTORE_DECLARE_ITEM(name, ...)                                     \
+    , TRequestContext<T##name##Method>                                         \
+// BLOCKSTORE_DECLARE_ITEM
 
-    bool RequestCompleted = false;
+// Each BLOCKSTORE_DECLARE_ITEM expands with a leading comma,
+// so we pass a dummy `void` as the first argument and discard it here.
+template <typename, typename ... Ts>
+using TRequestImpl = std::variant<Ts...>;
+
+using TRequest = TRequestImpl<
+    void
+    BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_ITEM)
+>;
+
+#undef BLOCKSTORE_DECLARE_ITEM
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPendingRequests
+{
+private:
+    const IActorSystemPtr ActorSystem;
+
+    TActorId TargetActorId;
+    TLockFreeStack<TRequest> Requests;
+
+    std::atomic_bool WakeupInProgress = false;
+
+public:
+    explicit TPendingRequests(IActorSystemPtr actorSystem)
+        : ActorSystem(std::move(actorSystem))
+    {}
+
+    ~TPendingRequests()
+    {
+        Y_DEBUG_ABORT_UNLESS(Requests.IsEmpty());
+    }
+
+    void SetTarget(const TActorId& actorId)
+    {
+        TargetActorId = actorId;
+    }
+
+    void Shutdown()
+    {
+        ActorSystem->Send(
+            TargetActorId,
+            std::make_unique<TEvents::TEvPoisonPill>());
+    }
+
+    TVector<TRequest> DequeueAllSingleConsumer()
+    {
+        WakeupInProgress.store(false);
+
+        TVector<TRequest> requests;
+        Requests.DequeueAllSingleConsumer(&requests);
+
+        return requests;
+    }
+
+    template <typename T>
+    void PostRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename T::TRequestProto> request,
+        TPromise<typename T::TResponseProto> response)
+    {
+        Y_ABORT_UNLESS(TargetActorId);
+
+        auto diskId = GetDiskId(*request);
+
+        const auto& headers = request->GetHeaders();
+        auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
+
+        Requests.Enqueue(
+            TRequestContext<T>{
+                .Request = std::move(request),
+                .Response = std::move(response),
+                .CallContext = std::move(callContext),
+                .RequestTimeout = timeout,
+                .DiskId = std::move(diskId),
+            });
+
+        if (!WakeupInProgress.exchange(true)) {
+            ActorSystem->Send(
+                TargetActorId,
+                std::make_unique<TEvents::TEvWakeup>(
+                    DequeuePendingRequestsTag));
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TRequestActor final
+    : public TActor<TRequestActor>
+{
+    using TRequestsInFlight = THashMap<ui64, TRequest>;
+
+private:
+    ui64 NextRequestId = 1;
+
+    std::shared_ptr<TPendingRequests> PendingRequests;
+    TRequestsInFlight RequestsInFlight;
 
 public:
     static constexpr const char ActorName[] =
-        "NCloud::NBlockStore::NServer::TRequestActor<T>";
+        "NCloud::NBlockStore::NServer::TRequestActor";
 
 public:
-    TRequestActor(
-            std::shared_ptr<TRequestProto> request,
-            TPromise<TResponseProto> response,
-            TCallContextPtr callContext,
-            TDuration requestTimeout)
-        : Request(std::move(request))
-        , Response(std::move(response))
-        , CallContext(std::move(callContext))
-        , RequestTimeout(requestTimeout)
-        , DiskId(GetDiskId(*Request))
+    explicit TRequestActor(std::shared_ptr<TPendingRequests> pendingRequests)
+        : TActor(&TThis::StateWork)
+        , PendingRequests(std::move(pendingRequests))
     {}
 
-    ~TRequestActor() override
+    ~TRequestActor()
     {
-        if (!RequestCompleted) {
-            TResponseProto response;
-
-            auto& error = *response.MutableError();
-            error.SetCode(E_REJECTED);
-
-            try {
-                Response.SetValue(std::move(response));
-            } catch (...) {
-                // no way to log error message
-            }
-
-            RequestCompleted = true;
-        }
-    }
-
-    void Bootstrap(const TActorContext& ctx)
-    {
-        TThis::Become(&TThis::StateWork);
-
-        SendRequest(ctx);
-    }
-
-private:
-    void SendRequest(const TActorContext& ctx)
-    {
-        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
-            TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " sending request");
-
-        auto request = std::make_unique<TRequest>(
-            CallContext,
-            std::move(*Request));
-
-        LWTRACK(
-            RequestSent_Proxy,
-            CallContext->LWOrbit,
-            GetBlockStoreRequestName(T::Request),
-            CallContext->RequestId);
-
-        NCloud::Send(
-            ctx,
-            MakeStorageServiceId(),
-            std::move(request));
-
-        if (RequestTimeout && RequestTimeout != TDuration::Max()) {
-            ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
-        }
-    }
-
-    void CompleteRequest(const TActorContext& ctx, TResponseProto&& response)
-    {
-        try {
-            Response.SetValue(std::move(response));
-        } catch (...) {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
-                TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-                << " exception in callback: " << CurrentExceptionMessage());
-        }
-
-        RequestCompleted = true;
+        Y_DEBUG_ABORT_UNLESS(RequestsInFlight.empty());
     }
 
 private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TResponse, HandleResponse);
-            HFunc(TEvents::TEvWakeup, HandleTimeout);
+
+#define BLOCKSTORE_DECLARE_HFUNC(name, ...)                                    \
+            HFunc(TEvService::TEv##name##Response, HandleResponse<T##name##Method>);\
+// BLOCKSTORE_DECLARE_ITEM
+
+    BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_HFUNC)
+
+#undef BLOCKSTORE_DECLARE_HFUNC
+
+            HFunc(TEvents::TEvWakeup, HandleWakeup);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
                 HandleUnexpectedEvent(
@@ -171,52 +216,182 @@ private:
         }
     }
 
-    void HandleResponse(
-        const typename TResponse::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        auto* msg = ev->Get();
-
-        LWTRACK(
-            ResponseReceived_Proxy,
-            CallContext->LWOrbit,
-            GetBlockStoreRequestName(T::Request),
-            CallContext->RequestId);
-
-        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
-            TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " response received");
-
-        CompleteRequest(ctx, std::move(msg->Record));
-
-        TThis::Die(ctx);
-    }
-
-    void HandleTimeout(
-        const TEvents::TEvWakeup::TPtr& ev,
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
 
-        LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
-            TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " request wakeup timer hit");
+        for (auto& [_, req]: RequestsInFlight) {
+            std::visit(
+                [&]<typename T>(T&& req)
+                {
+                    typename T::TResponseProto response;
 
-        if constexpr (IsWriteRequest(T::Request)) {
-            ReportServiceProxyWakeupTimerHit(
-                {{"disk", DiskId}, {"RequestId", CallContext->RequestId}});
+                    auto& error = *response.MutableError();
+                    error.SetCode(E_REJECTED);
+
+                    CompleteRequest(ctx, std::move(req), std::move(response));
+                },
+                std::move(req));
+        }
+
+        RequestsInFlight.clear();
+
+        Die(ctx);
+    }
+
+    template <typename T>
+    void CompleteRequest(
+        const TActorContext& ctx,
+        TRequestContext<T>&& req,
+        typename T::TResponseProto&& response)
+    {
+        try {
+            req.Response.SetValue(std::move(response));
+        } catch (...) {
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::SERVICE_PROXY,
+                TRequestInfo(T::Request, req.CallContext->RequestId, req.DiskId)
+                    << " exception in callback: " << CurrentExceptionMessage());
+        }
+    }
+
+    template <typename T>
+    void HandleResponse(
+        const typename T::TResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+        const ui64 requestId = ev->Cookie;
+        auto it = RequestsInFlight.find(requestId);
+        if (it == RequestsInFlight.end()) {
             return;
         }
 
-        TResponseProto response;
+        auto* req = std::get_if<TRequestContext<T>>(&it->second);
+        Y_DEBUG_ABORT_UNLESS(req);
+
+        if (req) {
+            LWTRACK(
+                ResponseReceived_Proxy,
+                req->CallContext->LWOrbit,
+                GetBlockStoreRequestName(T::Request),
+                req->CallContext->RequestId);
+
+            LOG_TRACE_S(
+                ctx,
+                TBlockStoreComponents::SERVICE_PROXY,
+                TRequestInfo(
+                    T::Request,
+                    req->CallContext->RequestId,
+                    req->DiskId)
+                    << " response received");
+
+            CompleteRequest(ctx, std::move(*req), std::move(msg->Record));
+        }
+
+        RequestsInFlight.erase(it);
+    }
+
+    template <typename T>
+    void HandleTimeout(const TActorContext& ctx, TRequestContext<T>&& req)
+    {
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::SERVICE_PROXY,
+            TRequestInfo(T::Request, req.CallContext->RequestId, req.DiskId)
+                << " request wakeup timer hit");
+
+        if constexpr (IsWriteRequest(T::Request)) {
+            ReportServiceProxyWakeupTimerHit(
+                {{"disk", req.DiskId},
+                 {"RequestId", req.CallContext->RequestId}});
+            return;
+        }
+
+        typename T::TResponseProto response;
 
         auto& error = *response.MutableError();
         error.SetCode(E_TIMEOUT);
         error.SetMessage("Timeout");
 
-        CompleteRequest(ctx, std::move(response));
+        CompleteRequest(ctx, std::move(req), std::move(response));
+    }
 
-        TThis::Die(ctx);
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        if (ev->Get()->Tag == DequeuePendingRequestsTag) {
+            SendPendingRequests(ctx);
+            return;
+        }
+
+        // Timeout
+
+        const ui64 requestId = ev->Cookie;
+
+        auto it = RequestsInFlight.find(requestId);
+        if (it == RequestsInFlight.end()) {
+            return;
+        }
+
+        TRequest req = std::move(it->second);
+        RequestsInFlight.erase(it);
+
+        std::visit(
+            [&](auto&& req) { HandleTimeout(ctx, std::move(req)); },
+            std::move(req));
+    }
+
+    template <typename T>
+    void SendRequest(const TActorContext& ctx, TRequestContext<T>&& req)
+    {
+        const ui64 requestId = NextRequestId++;
+
+        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+            TRequestInfo(T::Request, req.CallContext->RequestId, req.DiskId)
+            << " sending request");
+
+        auto request = std::make_unique<typename T::TRequest>(
+            req.CallContext,
+            std::move(*req.Request));
+
+        LWTRACK(
+            RequestSent_Proxy,
+            req.CallContext->LWOrbit,
+            GetBlockStoreRequestName(T::Request),
+            req.CallContext->RequestId);
+
+        NCloud::Send(
+            ctx,
+            MakeStorageServiceId(),
+            std::move(request),
+            requestId);
+
+        if (req.RequestTimeout && req.RequestTimeout != TDuration::Max()) {
+            ctx.Schedule(
+                req.RequestTimeout,
+                std::make_unique<IEventHandle>(
+                    ctx.SelfID,
+                    ctx.SelfID,
+                    new TEvents::TEvWakeup(),
+                    0,  // flags
+                    requestId));
+        }
+
+        RequestsInFlight[requestId] = std::move(req);
+    }
+
+    void SendPendingRequests(const TActorContext& ctx)
+    {
+        for (auto& req: PendingRequests->DequeueAllSingleConsumer()) {
+            std::visit(
+                [&](auto&& req) { SendRequest(ctx, std::move(req)); },
+                std::move(req));
+        }
     }
 };
 
@@ -228,6 +403,7 @@ class TKikimrService final
 private:
     const IActorSystemPtr ActorSystem;
     const NProto::TKikimrServiceConfig Config;
+    TVector<std::shared_ptr<TPendingRequests>> PendingRequests;
 
 public:
     TKikimrService(
@@ -237,8 +413,28 @@ public:
         , Config(config)
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {
+        // XXX
+        const ui32 count = 10; // Max<ui32>(1, Config.GetLongLiveRequestActorsCount());
+
+        PendingRequests.reserve(count);
+
+        for (ui32 i = 0; i != count; ++i) {
+            auto& pr = PendingRequests.emplace_back(
+                std::make_shared<TPendingRequests>(ActorSystem));
+            auto actorId =
+                ActorSystem->Register(std::make_unique<TRequestActor>(pr));
+            pr->SetTarget(actorId);
+        }
+    }
+
+    void Stop() override
+    {
+        for (auto& pr: PendingRequests) {
+            pr->Shutdown();
+        }
+    }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -287,14 +483,14 @@ private:
         std::shared_ptr<typename T::TRequestProto> request,
         TPromise<typename T::TResponseProto> response)
     {
-        const auto& headers = request->GetHeaders();
-        auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
+        Y_DEBUG_ABORT_UNLESS(!PendingRequests.empty());
 
-        ActorSystem->Register(std::make_unique<TRequestActor<T>>(
-            std::move(request),
-            std::move(response),
+        const auto i = ctx->RequestId % PendingRequests.size();
+
+        PendingRequests[i]->template PostRequest<T>(
             std::move(ctx),
-            timeout));
+            std::move(request),
+            std::move(response));
     }
 };
 

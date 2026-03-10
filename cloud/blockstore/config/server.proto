@@ -296,6 +296,7 @@ message TLocalServiceConfig
 
 message TKikimrServiceConfig
 {
+    optional uint32 LongLiveRequestActorsCount = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

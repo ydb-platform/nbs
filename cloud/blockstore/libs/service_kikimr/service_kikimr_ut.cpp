@@ -106,6 +106,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         auto service = CreateKikimrService(
             actorSystem,
             DefaultConfig());
+        service->Start();
 
         auto request = std::make_shared<NProto::TPingRequest>();
 
@@ -117,6 +118,9 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(response));
+
+        service->Stop();
+        actorSystem->Stop();
     }
 
     Y_UNIT_TEST(ShouldHandleWriteAndZeroRequestTimeout)
@@ -150,6 +154,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         auto service = CreateKikimrService(
             actorSystem,
             DefaultConfig());
+        service->Start();
 
         {
             auto request = std::make_shared<NProto::TWriteBlocksRequest>();
@@ -212,6 +217,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         auto service = CreateKikimrService(
             actorSystem,
             DefaultConfig());
+        service->Start();
 
         auto request = std::make_shared<NProto::TPingRequest>();
         auto& headers = *request->MutableHeaders();
@@ -243,6 +249,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
         auto service = CreateKikimrService(
             actorSystem,
             DefaultConfig());
+        service->Start();
 
         auto request = std::make_shared<NProto::TPingRequest>();
 
@@ -250,6 +257,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
             MakeIntrusive<TCallContext>(),
             std::move(request));
 
+        service->Stop();
         actorSystem->Stop();
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
