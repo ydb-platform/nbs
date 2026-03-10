@@ -6,6 +6,7 @@
 #include "tablet_state_iface.h"
 
 #include <cloud/filestore/config/storage.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
@@ -562,6 +563,24 @@ public:
         TMaybe<NProtoPrivate::TResponseLogEntry>& entry);
     bool ReadResponseLog(
         TVector<NProtoPrivate::TResponseLogEntry>& responseLog);
+
+    //
+    // UnconfirmedData
+    //
+
+    struct TUnconfirmedDataEntry
+    {
+        ui64 CommitId = 0;
+        NProto::TUnconfirmedData Data;
+    };
+
+    void WriteUnconfirmedData(
+        ui64 commitId,
+        const NProto::TUnconfirmedData& data);
+
+    void DeleteUnconfirmedData(ui64 commitId);
+
+    bool ReadUnconfirmedData(TVector<TUnconfirmedDataEntry>& entries);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
