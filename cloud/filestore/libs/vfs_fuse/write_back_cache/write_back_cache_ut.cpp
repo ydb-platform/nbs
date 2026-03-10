@@ -62,6 +62,11 @@ TStringBuf ToStringBuf(const NProto::TIovec& iovec)
     return {reinterpret_cast<const char*>(iovec.GetBase()), iovec.GetLength()};
 }
 
+TMemoryOutput ToMemoryOutput(const NProto::TIovec& iovec)
+{
+    return {reinterpret_cast<char*>(iovec.GetBase()), iovec.GetLength()};
+}
+
 void Write(TString& data, ui64 offset, TStringBuf buffer)
 {
     auto newSize = Max(data.size(), offset + buffer.size());
@@ -257,12 +262,25 @@ struct TBootstrap
             data = data.Skip(Min(request->GetOffset(), data.size()));
             data = data.Trunc(Min(request->GetLength(), data.size()));
 
-            auto responseOffset = RandomNumber(10u);
-            auto responseBuffer = TString(data.size() + responseOffset, 0);
-            data.copy(responseBuffer.begin() + responseOffset, data.size());
+            if (!request->GetIovecs().empty()) {
+                response.SetLength(data.size());
+                for (const auto& iovec: request->GetIovecs()) {
+                    if (data.empty()) {
+                        break;
+                    }
+                    auto out = ToMemoryOutput(iovec);
+                    auto len = Min(data.size(), out.Avail());
+                    out.Write(data.Head(len));
+                    data.Skip(len);
+                }
+            } else {
+                auto responseOffset = RandomNumber(10u);
+                auto responseBuffer = TString(data.size() + responseOffset, 0);
+                data.copy(responseBuffer.begin() + responseOffset, data.size());
 
-            response.SetBuffer(std::move(responseBuffer));
-            response.SetBufferOffset(responseOffset);
+                response.SetBuffer(std::move(responseBuffer));
+                response.SetBufferOffset(responseOffset);
+            }
 
             return MakeFuture(response);
         };
@@ -1916,6 +1934,65 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
+    }
+
+    Y_UNIT_TEST(ShouldHandleReadDataRequestsWithIovecs)
+    {
+        TBootstrap b;
+
+        // Mix of cached and flushed data
+        b.WriteToCache(1, 1, "abcd");
+        b.FlushCache(1);
+        b.WriteToCache(1, 9, "1234");
+
+        auto buffer = TString(100, 0);
+        const ui64 base = reinterpret_cast<ui64>(buffer.data());
+
+        {
+            // Read flushed data ("abcd")
+            auto request = std::make_shared<NProto::TReadDataRequest>();
+            request->SetNodeId(1);
+            request->SetOffset(1);
+            request->SetLength(4);
+
+            auto* iovec1 = request->AddIovecs();
+            iovec1->SetBase(base + 2);
+            iovec1->SetLength(2);  // "ab";
+
+            auto* iovec2 = request->AddIovecs();
+            iovec2->SetBase(base);
+            iovec2->SetLength(2);  // "cd"
+
+            auto response =
+                b.Cache.ReadData(b.CallContext, request).GetValueSync();
+
+            UNIT_ASSERT(response.GetBuffer().empty());
+            UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL("cdab", buffer.substr(0, 4));
+        }
+
+        {
+            // Read flushed data + zeroes ("cd\0\0")
+            auto request = std::make_shared<NProto::TReadDataRequest>();
+            request->SetNodeId(1);
+            request->SetOffset(3);
+            request->SetLength(4);
+
+            auto* iovec1 = request->AddIovecs();
+            iovec1->SetBase(base + 3);
+            iovec1->SetLength(1);  // "c";
+
+            auto* iovec2 = request->AddIovecs();
+            iovec2->SetBase(base);
+            iovec2->SetLength(3);  // "d\0\0"
+
+            auto response =
+                b.Cache.ReadData(b.CallContext, request).GetValueSync();
+
+            UNIT_ASSERT(response.GetBuffer().empty());
+            UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(TString("d\0\0c", 4), buffer.substr(0, 4));
+        }
     }
 
     Y_UNIT_TEST(ShouldAutomaticallyFlushOnlyCachedRequests)
