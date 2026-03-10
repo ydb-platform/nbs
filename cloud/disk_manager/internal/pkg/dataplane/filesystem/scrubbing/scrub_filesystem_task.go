@@ -111,7 +111,7 @@ func (t *scrubFilesystemTask) Cancel(
 	return t.storage.ClearDirectoryListingQueue(
 		ctx,
 		t.getSnapshotID(execCtx),
-		1000,
+		t.config.GetTraversalQueueDeletionLimit(),
 	)
 }
 

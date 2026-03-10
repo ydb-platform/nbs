@@ -173,7 +173,7 @@ func TestNodesScheduling(t *testing.T) {
 		f.ctx,
 		filesystemSnapshotID,
 		emptyNodesToExclude, // nodesToExclude
-		100,                   // limit
+		100,                 // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
@@ -192,7 +192,7 @@ func TestNodesScheduling(t *testing.T) {
 		f.ctx,
 		filesystemSnapshotID,
 		emptyNodesToExclude, // nodesToExclude
-		1,                     // limit
+		1,                   // limit
 	)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
@@ -221,7 +221,7 @@ func TestNodesScheduling(t *testing.T) {
 		f.ctx,
 		otherSnapshot,
 		emptyNodesToExclude, // nodesToExclude
-		100,                   // limit
+		100,                 // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 100, 101})
@@ -337,6 +337,7 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 			return err
 		},
 	)
+	require.True(t, remains)
 	require.NoError(t, err)
 
 	entries1, err = f.storage.SelectNodesToList(

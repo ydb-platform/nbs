@@ -215,7 +215,7 @@ func (s *storageYDB) clearDirectoryListingQueue(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
-	deletionLimit int,
+	deletionLimit uint64,
 ) (bool, error) {
 
 	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
@@ -239,7 +239,7 @@ func (s *storageYDB) clearDirectoryListingQueue(
 		limit 1;
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(deletionLimit))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(deletionLimit)),
 	)
 	if err != nil {
 		return false, err
@@ -328,7 +328,7 @@ func (s *storageYDB) ScheduleChildNodesForListing(
 func (s *storageYDB) ClearDirectoryListingQueue(
 	ctx context.Context,
 	snapshotID string,
-	deletionLimit int,
+	deletionLimit uint64,
 ) error {
 	err := s.db.Execute(
 		ctx,
