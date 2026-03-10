@@ -22,6 +22,8 @@ Each VM<->filesystem connection is stateful and is represented by a "session" st
 filestore-vhost communicates with the filesystem backend represented by a set of "tablets" running on a logically separate set of servers which store their state in a distributed storage (YDB BlobStorage, NOT YDB database).
 filestore-vhost exchanges mostly metadata information with the tablets and tries to read/write the actual filedata directly from/to YDB BlobStorage groups.
 
+See a detailed description of `virtiofs <-> filestore-vhost` communication [here](./virtiofs-vhost-communication.md)
+
 ### filestore-server
 Runs tablet code. A non-sharded filesystem is represented by a single tablet which manages the whole persistent state of the filesystem.
 A sharded filesystem is represented by N + 1 tablets:
