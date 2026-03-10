@@ -89,15 +89,17 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
 
         auto context = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
+        request->SetFileSystemId("fs");
 
-        auto future = service->CreateFileStore(
-            std::move(context),
-            std::move(request));
+        auto future = service->CreateFileStore(std::move(context), request);
 
         actorSystem->DispatchEvents(WaitTimeout);
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT(!HasError(response));
+
+        // service shouldn't move/clear request contents
+        UNIT_ASSERT_VALUES_EQUAL("fs", request->GetFileSystemId());
 
         service->Stop();
     }
