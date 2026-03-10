@@ -11,7 +11,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
+func TestNfsClientReportsMetrics(t *testing.T) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -62,5 +62,35 @@ func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
 	)
 
 	testcommon.WaitOperationEnded(t, ctx, taskID)
+
+	require.Greater(t, testcommon.GetCountersControlplane(
+		t,
+		"count",
+		map[string]string{
+			"component": "nfs_client",
+			"request":   "CreateFileStore",
+		},
+	)[0], float64(0))
+
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t,
+		"count",
+		map[string]string{
+			"component": "nfs_client_dataplane",
+			"request":   "CreateSession",
+		},
+	)[0], float64(0))
+
+	require.Greater(t, testcommon.GetCountersDataplane(
+		t,
+		"count",
+		map[string]string{
+			"component":  "nfs_session_dataplane",
+			"request":    "ListNodes",
+			"filesystem": filesystemID,
+			"checkpoint": "",
+		},
+	)[0], float64(0))
+
 	testcommon.CheckConsistency(t, ctx)
 }

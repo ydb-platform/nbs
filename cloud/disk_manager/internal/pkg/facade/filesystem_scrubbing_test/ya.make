@@ -6,6 +6,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common
 
 GO_XTEST_SRCS(
     filesystem_scrubbing_test.go
+    filesystem_scrubbing_metrics_test.go
 )
 
 END()
