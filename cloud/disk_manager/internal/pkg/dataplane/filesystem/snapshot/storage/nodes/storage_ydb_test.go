@@ -182,24 +182,7 @@ func TestSavedNodesAreListed(t *testing.T) {
 	sortNodes(expected)
 	sortNodes(collected)
 
-	require.Equal(t, len(expected), len(collected))
-	for i := range expected {
-		e := nfs_client.Node(expected[i])
-		c := nfs_client.Node(collected[i])
-		require.Equal(t, e.ParentID, c.ParentID)
-		require.Equal(t, e.NodeID, c.NodeID)
-		require.Equal(t, e.Name, c.Name)
-		require.Equal(t, e.Type, c.Type)
-		require.Equal(t, e.Mode, c.Mode)
-		require.Equal(t, e.UID, c.UID)
-		require.Equal(t, e.GID, c.GID)
-		require.Equal(t, e.Atime, c.Atime)
-		require.Equal(t, e.Mtime, c.Mtime)
-		require.Equal(t, e.Ctime, c.Ctime)
-		require.Equal(t, e.Size, c.Size)
-		require.Equal(t, e.Links, c.Links)
-		require.Equal(t, e.LinkTarget, c.LinkTarget)
-	}
+	require.ElementsMatch(t, expected, collected)
 }
 
 func TestDeleteSnapshotData(t *testing.T) {
@@ -308,7 +291,6 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 	srcSnapshotID := "src-snapshot"
 	dstFilesystemID := "dst-filesystem"
 
-	// Get from empty table returns empty map.
 	result, err := f.storage.GetDestinationNodeIDs(
 		f.ctx,
 		srcSnapshotID,
@@ -318,7 +300,6 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, result)
 
-	// Save some mappings.
 	srcNodeIds := []uint64{100, 200, 300}
 	dstNodeIds := []uint64{1000, 2000, 3000}
 
@@ -331,7 +312,6 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Get nonexistent id from populated table returns empty map.
 	result, err = f.storage.GetDestinationNodeIDs(
 		f.ctx,
 		srcSnapshotID,
@@ -341,7 +321,6 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, result)
 
-	// Get all saved mappings at once.
 	result, err = f.storage.GetDestinationNodeIDs(
 		f.ctx,
 		srcSnapshotID,
