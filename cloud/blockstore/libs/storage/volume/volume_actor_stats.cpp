@@ -616,8 +616,9 @@ void TVolumeActor::DoSendPartStatsToService(
     NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
 }
 
-std::optional<TEvStatsService::TVolumePartCounters>
-TVolumeActor::GetPartCounters(const TString& diskId){
+TMaybe<TEvStatsService::TVolumePartCounters> TVolumeActor::GetPartCounters(
+    const TString& diskId)
+{
     auto stats = CreatePartitionDiskCounters(
         State->CountersPolicy(),
         DiagnosticsConfig->GetHistogramCounterOptions());
@@ -658,7 +659,7 @@ TVolumeActor::GetPartCounters(const TString& diskId){
     }
 
     if (!partStatFound) {
-        return std::nullopt;
+        return Nothing();
     }
     stats->Simple.ChannelHistorySize.Set(channelsHistorySize);
     // having 2 metrics with the same meaning is pointless - will need to get

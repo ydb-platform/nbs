@@ -374,7 +374,9 @@ void TStatsServiceActor::UpdateVolumePartCounters(
     auto* volume = State.GetVolume(partCounters.DiskId);
 
     if (!volume) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::STATS_SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
             "Volume %s for counters not found",
             partCounters.DiskId.Quote().data());
         return;
@@ -384,18 +386,26 @@ void TStatsServiceActor::UpdateVolumePartCounters(
     volume->PerfCounters.VolumeUserCpu += partCounters.VolumeUserCpu;
     volume->PerfCounters.HasCheckpoint = partCounters.HasCheckpoint;
 
+    volume->OffsetBlobMetrics = partCounters.BlobLoadMetrics;
+
+    if (!partCounters.DiskCounters) {
+        return;
+    }
+
     volume->PerfCounters.DiskCounters.Add(*partCounters.DiskCounters);
     volume->PerfCounters.YdbDiskCounters.Add(*partCounters.DiskCounters);
-    volume->OffsetBlobMetrics = partCounters.BlobLoadMetrics;
 
     State.GetTotalCounters().UpdatePartCounters(*partCounters.DiskCounters);
 
-    State.GetCounters(volume->VolumeInfo).UpdatePartCounters(*partCounters.DiskCounters);
+    State.GetCounters(volume->VolumeInfo)
+        .UpdatePartCounters(*partCounters.DiskCounters);
 
     if (volume->VolumeActorId.NodeId() == SelfId().NodeId()) {
-        State.GetLocalVolumesCounters().UpdateCounters(*partCounters.DiskCounters);
+        State.GetLocalVolumesCounters().UpdateCounters(
+            *partCounters.DiskCounters);
     } else {
-        State.GetNonlocalVolumesCounters().UpdateCounters(*partCounters.DiskCounters);
+        State.GetNonlocalVolumesCounters().UpdateCounters(
+            *partCounters.DiskCounters);
     }
 }
 
