@@ -1855,6 +1855,89 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // Check that statistics was updated
         UNIT_ASSERT(statUpdated);
     }
+
+    Y_UNIT_TEST(ShouldNotCrashWhenDiskCountersIsNullptr)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetAcquireNonReplicatedDevices(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        TActorId recipient;
+        TActorId sender;
+        TString diskId;
+
+        bool isGrabResponse = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (ev->GetTypeRewrite() ==
+                        TEvNonreplPartitionPrivate::
+                            EvGetDiskRegistryBasedPartCountersResponse &&
+                    !isGrabResponse)
+                {
+                    recipient = ev->Recipient;
+                    sender = ev->Sender;
+                    diskId = ev->Get<TEvNonreplPartitionPrivate::
+                            TEvGetDiskRegistryBasedPartCountersResponse>()->DiskId;
+                    isGrabResponse = true;
+                    return true;
+                }
+
+                return false;
+            });
+
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+        runtime->DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !!recipient;
+                };
+                return options;
+            }());
+
+        auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvGetDiskRegistryBasedPartCountersResponse>(
+                sender,
+                diskId,
+                TPartNonreplCountersData{});
+        Send(*runtime, recipient, sender, std::move(request));
+
+        volume.SendToPipe(
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
+        TDispatchOptions options;
+
+        options.FinalEvents.emplace_back(TEvVolumePrivate::EvPartStatsSaved);
+        runtime->DispatchEvents(options);
+
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

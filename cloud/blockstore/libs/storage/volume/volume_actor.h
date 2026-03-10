@@ -718,7 +718,7 @@ private:
 
     const TString& GetDiskId() const;
 
-    TMaybe<TEvStatsService::TVolumePartCounters> GetPartCounters(
+    std::optional<TEvStatsService::TVolumePartCounters> GetPartCounters(
         const TString& diskId);
 
     TEvStatsService::TVolumeSelfCounters GetVolumeSelfCounters(
