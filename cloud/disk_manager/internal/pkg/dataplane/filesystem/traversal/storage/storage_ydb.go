@@ -211,6 +211,53 @@ func (s *storageYDB) scheduleChildNodesForListing(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *storageYDB) clearDirectoryListingQueue(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	deletionLimit int,
+) (bool, error) {
+
+	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $limit as Uint64;
+
+		$to_delete = (
+			select filesystem_snapshot_id, node_id
+			from directory_listing_queue
+			where filesystem_snapshot_id = $snapshot_id
+			limit $limit
+		);
+
+		delete from directory_listing_queue on
+		select * from $to_delete;
+
+		select node_id from directory_listing_queue
+		where filesystem_snapshot_id = $snapshot_id
+		limit 1;
+	`, s.tablesPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(deletionLimit))),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	var remains bool
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			remains = true
+		}
+	}
+
+	return remains, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func (s *storageYDB) SchedulerDirectoryForTraversal(
 	ctx context.Context,
 	snapshotID string,
@@ -276,4 +323,29 @@ func (s *storageYDB) ScheduleChildNodesForListing(
 			)
 		},
 	)
+}
+
+func (s *storageYDB) ClearDirectoryListingQueue(
+	ctx context.Context,
+	snapshotID string,
+	deletionLimit int,
+) error {
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			remains := true
+			for remains {
+				remains, err = s.clearDirectoryListingQueue(
+					ctx,
+					session,
+					snapshotID,
+					deletionLimit,
+				)
+			}
+			return err
+		},
+	)
+
+	return err
 }

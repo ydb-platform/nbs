@@ -289,3 +289,7 @@ func (t *FilesystemTraverser) listNode(
 		cookie = nextCookie
 	}
 }
+
+func (t *FilesystemTraverser) Cleanup(ctx context.Context) error {
+	return t.storage.ClearDirectoryListingQueue(ctx, t.filesystemSnapshotID, 0)
+}

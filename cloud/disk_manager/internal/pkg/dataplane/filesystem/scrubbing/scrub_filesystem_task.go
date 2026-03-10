@@ -31,6 +31,13 @@ type scrubFilesystemTask struct {
 	callback OnScrubbedCallback
 }
 
+func (t *scrubFilesystemTask) getSnapshotID(
+	execCtx tasks.ExecutionContext,
+) string {
+
+	return fmt.Sprintf("scrubbing_%s", execCtx.GetTaskID())
+}
+
 func (t *scrubFilesystemTask) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
@@ -67,7 +74,7 @@ func (t *scrubFilesystemTask) Run(
 
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()
 	traverser := traversal.NewFilesystemTraverser(
-		fmt.Sprintf("scrubbing_%s", execCtx.GetTaskID()),
+		t.getSnapshotID(execCtx),
 		filesystem.GetFilesystemId(),
 		t.request.GetFilesystemCheckpointId(),
 		filesystemListerFactory,
@@ -101,7 +108,11 @@ func (t *scrubFilesystemTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return nil
+	return t.storage.ClearDirectoryListingQueue(
+		ctx,
+		t.getSnapshotID(execCtx),
+		1000,
+	)
 }
 
 func (t *scrubFilesystemTask) GetMetadata(
