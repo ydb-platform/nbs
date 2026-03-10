@@ -265,6 +265,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(PathDescriptionBackupFilePath,  TString,  {}                          )\
                                                                                \
     xxx(DestroyFilestoreDenyList,       TVector<TString>,          {}         )\
+    xxx(TabletBootAllowList,            TVector<ui64>,            {}          )\
                                                                                \
     xxx(SSProxyFallbackMode,            bool,      false                      )\
                                                                                \
@@ -352,6 +353,12 @@ bool IsEmpty(const google::protobuf::RepeatedPtrField<T>& value)
     return value.empty();
 }
 
+template <typename T>
+bool IsEmpty(const google::protobuf::RepeatedField<T>& value)
+{
+    return value.empty();
+}
+
 template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
@@ -375,6 +382,13 @@ TVector<TString> ConvertValue(
     const google::protobuf::RepeatedPtrField<TString>& value)
 {
     return TVector<TString>(value.begin(), value.end());
+}
+
+template <>
+TVector<ui64> ConvertValue(
+    const google::protobuf::RepeatedField<ui64>& value)
+{
+    return TVector<ui64>(value.begin(), value.end());
 }
 
 IOutputStream& operator <<(
@@ -440,6 +454,17 @@ void DumpImpl(const TAliases& value, IOutputStream& os)
 
 template <>
 void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << value[i];
+    }
+}
+
+template <>
+void DumpImpl(const TVector<ui64>& value, IOutputStream& os)
 {
     for (size_t i = 0; i < value.size(); ++i) {
         if (i) {

@@ -21,6 +21,8 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
             TDuration::Seconds(777).MilliSeconds());
         storageConfig.SetPipeClientMaxRetryTime(
             TDuration::Seconds(888).MilliSeconds());
+        storageConfig.AddTabletBootAllowList(111);
+        storageConfig.AddTabletBootAllowList(222);
 
         TStorageConfig config(storageConfig);
 
@@ -36,6 +38,9 @@ Y_UNIT_TEST_SUITE(TStorageConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(888),
             config.GetPipeClientMaxRetryTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({111, 222}),
+            config.GetTabletBootAllowList());
 
         // feature-overridden values
         NCloud::NProto::TFeaturesConfig featuresConfigProto;
