@@ -123,14 +123,14 @@ public:
 class TInPlaceIovecWriter: public IResponseWriter
 {
 private:
-    using TIovecVector = ::google::protobuf::RepeatedPtrField<NProto::TIovec>;
+    using TArrayRefIterator = TVector<TArrayRef<char>>::const_iterator;
 
     TExtendedMemoryOutput CurrentIovecWriter;
-    TIovecVector::const_iterator CurrentIovec;
-    TIovecVector::const_iterator EndIovec;
+    TArrayRefIterator CurrentIovec;
+    TArrayRefIterator EndIovec;
 
 public:
-    explicit TInPlaceIovecWriter(const TIovecVector& iovecs)
+    explicit TInPlaceIovecWriter(const TVector<TArrayRef<char>>& iovecs)
         : CurrentIovecWriter(nullptr, 0)
         , CurrentIovec(iovecs.begin())
         , EndIovec(iovecs.end())
@@ -184,9 +184,8 @@ private:
             CurrentIovec != EndIovec,
             "No more iovecs left to write");
 
-        CurrentIovecWriter = TExtendedMemoryOutput(
-            reinterpret_cast<char*>(CurrentIovec->GetBase()),
-            CurrentIovec->GetLength());
+        CurrentIovecWriter =
+            TExtendedMemoryOutput(CurrentIovec->data(), CurrentIovec->size());
 
         CurrentIovec++;
 
@@ -326,51 +325,67 @@ void Validate(const TCachedData& cachedData, ui64 requestedLength)
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadResponseBuilder::TReadResponseBuilder(
-    const NProto::TReadDataRequest& request,
-    const TWriteBackCacheState& state)
-    : Request(request)
-    , CachedData(state.GetCachedData(
-          request.GetNodeId(),
-          request.GetOffset(),
-          request.GetLength()))
+    const NProto::TReadDataRequest& request)
+    : NodeId(request.GetNodeId())
+    , Offset(request.GetOffset())
+    , Length(request.GetLength())
 {
-    Validate(CachedData, request.GetLength());
-
-    for (const auto& part: CachedData.Parts) {
-        if (part.RelativeOffset != ContiguousCachedDataByteCount) {
-            break;
+    if (!request.GetIovecs().empty()) {
+        Iovecs.reserve(request.GetIovecs().size());
+        for (const auto& iovec: request.GetIovecs()) {
+            Iovecs.emplace_back(
+                reinterpret_cast<char*>(iovec.GetBase()),
+                iovec.GetLength());
         }
-        ContiguousCachedDataByteCount += part.Data.size();
     }
-}
-
-bool TReadResponseBuilder::HasCachedData() const
-{
-    return !CachedData.Parts.empty();
 }
 
 std::optional<NProto::TReadDataResponse>
-TReadResponseBuilder::TryFullyServeFromCache() const
+TReadResponseBuilder::TryFullyServeFromCache(TWriteBackCacheState& state) const
 {
-    if (ContiguousCachedDataByteCount != Request.GetLength()) {
-        return std::nullopt;
+    auto cachedData = state.GetCachedData(NodeId, Offset, Length);
+    Validate(cachedData, Length);
+
+    ui64 contiguousCachedDataByteCount = 0;
+    for (const auto& part: cachedData.Parts) {
+        if (part.RelativeOffset != contiguousCachedDataByteCount) {
+            break;
+        }
+        contiguousCachedDataByteCount += part.Data.size();
     }
 
-    NProto::TReadDataResponse response;
-    AugmentResponseWithCachedData(response);
-    return response;
+    if (contiguousCachedDataByteCount == Length) {
+        NProto::TReadDataResponse response;
+        AugmentResponseWithCachedData(response, cachedData);
+        return response;
+    }
+
+    return std::nullopt;
+}
+
+bool TReadResponseBuilder::AugmentResponseWithCachedData(
+    NProto::TReadDataResponse& response,
+    TWriteBackCacheState& state) const
+{
+    auto cachedData = state.GetCachedData(NodeId, Offset, Length);
+    Validate(cachedData, Length);
+
+    AugmentResponseWithCachedData(response, cachedData);
+
+    return !cachedData.Parts.empty();
 }
 
 void TReadResponseBuilder::AugmentResponseWithCachedData(
-    NProto::TReadDataResponse& response) const
+    NProto::TReadDataResponse& response,
+    const TCachedData& cachedData) const
 {
     // The backend may ignore iovecs in the request and respond with a buffer
     const bool useIovecs =
-        response.GetBuffer().empty() && !Request.GetIovecs().empty();
+        response.GetBuffer().empty() && !Iovecs.empty();
 
     if (useIovecs) {
-        auto writer = TInPlaceIovecWriter(Request.GetIovecs());
-        ui64 len = WriteResponse(response.GetLength(), CachedData, writer);
+        auto writer = TInPlaceIovecWriter(Iovecs);
+        ui64 len = WriteResponse(response.GetLength(), cachedData, writer);
         response.SetLength(len);
         return;
     }
@@ -378,14 +393,14 @@ void TReadResponseBuilder::AugmentResponseWithCachedData(
     const ui64 originalResponseLength =
         response.GetBuffer().size() - response.GetBufferOffset();
 
-    if (CachedData.ReadDataByteCount <= originalResponseLength) {
+    if (cachedData.ReadDataByteCount <= originalResponseLength) {
         // No need to reallocate buffer - just write cached data parts on top of
         // the existing buffer
         auto writer = TInPlaceBufferWriter(
             response.MutableBuffer()->begin() + response.GetBufferOffset(),
             originalResponseLength);
 
-        WriteResponse(originalResponseLength, CachedData, writer);
+        WriteResponse(originalResponseLength, cachedData, writer);
     } else {
         // We need to reallocate buffer and merge response data with cached
         // data parts. Also we need to ensure that the client does not receive
@@ -393,10 +408,10 @@ void TReadResponseBuilder::AugmentResponseWithCachedData(
         auto originalBuffer =
             TStringBuf(response.GetBuffer()).Skip(response.GetBufferOffset());
 
-        auto newBuffer = TString::Uninitialized(CachedData.ReadDataByteCount);
+        auto newBuffer = TString::Uninitialized(cachedData.ReadDataByteCount);
 
         auto writer = TBufferWriter(originalBuffer, newBuffer);
-        WriteResponse(originalResponseLength, CachedData, writer);
+        WriteResponse(originalResponseLength, cachedData, writer);
         Y_ABORT_UNLESS(writer.Exhausted());
 
         response.SetLength(newBuffer.size());

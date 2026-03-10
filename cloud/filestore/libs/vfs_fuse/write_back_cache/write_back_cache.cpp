@@ -172,24 +172,27 @@ public:
         // the response is completed
         const auto pinId = State.PinCachedData(request->GetNodeId());
 
-        TReadResponseBuilder responseBuilder(*request, State);
-        if (auto response = responseBuilder.TryFullyServeFromCache()) {
+        TReadResponseBuilder responseBuilder(*request);
+        if (auto response = responseBuilder.TryFullyServeFromCache(State)) {
             State.UnpinCachedData(request->GetNodeId(), pinId);
             Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
             return MakeFuture(std::move(*response));
         }
 
-        auto callback = [ptr = weak_from_this(), request, pinId](
-                            TFuture<NProto::TReadDataResponse> future)
+        auto callback = [ptr = weak_from_this(),
+                         responseBuilder = std::move(responseBuilder),
+                         pinId](TFuture<NProto::TReadDataResponse> future)
         {
             auto response = future.ExtractValue();
 
             if (auto self = ptr.lock()) {
                 if (!HasError(response)) {
-                    TReadResponseBuilder responseBuilder(*request, self->State);
-                    responseBuilder.AugmentResponseWithCachedData(response);
+                    bool cachedDataApplied =
+                        responseBuilder.AugmentResponseWithCachedData(
+                            response,
+                            self->State);
 
-                    if (responseBuilder.HasCachedData()) {
+                    if (cachedDataApplied) {
                         self->Stats->AddReadDataStats(
                             EReadDataRequestCacheStatus::PartialHit);
                     } else {
@@ -197,7 +200,7 @@ public:
                             EReadDataRequestCacheStatus::Miss);
                     }
                 }
-                self->State.UnpinCachedData(request->GetNodeId(), pinId);
+                self->State.UnpinCachedData(responseBuilder.GetNodeId(), pinId);
             }
             return response;
         };

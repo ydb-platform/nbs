@@ -4,6 +4,9 @@
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
+#include <util/generic/array_ref.h>
+#include <util/generic/vector.h>
+
 #include <optional>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -13,27 +16,36 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 class TReadResponseBuilder
 {
 private:
-    const NProto::TReadDataRequest& Request;
-    const TCachedData CachedData;
-    ui64 ContiguousCachedDataByteCount = 0;
+    ui64 NodeId = 0;
+    ui64 Offset = 0;
+    ui64 Length = 0;
+    TVector<TArrayRef<char>> Iovecs;
 
 public:
-    TReadResponseBuilder(
-        const NProto::TReadDataRequest& request,
-        const TWriteBackCacheState& state);
+    explicit TReadResponseBuilder(const NProto::TReadDataRequest& request);
 
-    // Check if there are cached data parts in the requested range
-    // Used to calculate statistics (e.g. hit/miss ratio)
-    bool HasCachedData() const;
+    ui64 GetNodeId() const
+    {
+        return NodeId;
+    }
 
     // Attempt to build a complete TReadDataResponse using only data from cache.
     // If the entire requested byte range is available in the cache, returns
     // a populated TReadDataResponse or std::nullopt otherwise
-    std::optional<NProto::TReadDataResponse> TryFullyServeFromCache() const;
+    std::optional<NProto::TReadDataResponse> TryFullyServeFromCache(
+        TWriteBackCacheState& state) const;
 
-    // Apply cached data on top of the response returned from backend
+    // Apply cached data on top of the response returned from backend.
+    // Returns true if the response was augmented with cached data.
+    // Returns false if no cached data was applied to the response.
+    bool AugmentResponseWithCachedData(
+        NProto::TReadDataResponse& response,
+        TWriteBackCacheState& state) const;
+
+private:
     void AugmentResponseWithCachedData(
-        NProto::TReadDataResponse& response) const;
+        NProto::TReadDataResponse& response,
+        const TCachedData& cachedData) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
