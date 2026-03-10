@@ -327,7 +327,7 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 	require.ElementsMatch(t, getNodeIDs(entries2), snapshot2ExpectedIDs)
 
 	// 5. Delete 2 elements from snapshot2, check snapshot1 unchanged,
-	//    save snapshot2 entries. Require remains = false (6 - 2 = 4, limit 2 == deleted 2).
+	//    save snapshot2 entries. Require remains = true (6 - 2 = 4, limit 2 == deleted 2).
 	err = s.db.Execute(
 		f.ctx,
 		func(ctx context.Context, session *persistence.Session) error {
