@@ -288,8 +288,8 @@ void TGetClusterCapacityActor::HandleGetStoragePoolsResponse(
             TBlockStoreComponents::SERVICE,
             "Observed pool " <<
             poolInfo.GetName() <<
-            " and PDisks " <<
-            poolInfo.GetPDiskFilter());
+            " and kind " <<
+            poolInfo.GetKind());
 
         if (!UsedPools.contains(poolInfo.GetName())) {
             continue;
