@@ -738,4 +738,10 @@ message TStorageConfig
     // Allow to destroy filestore with active sessions
     // with size less than threshold(in bytes)
     optional uint32 ForceDestroySizeThreshold = 487;
+
+    // Enable adding unconfirmed data for write operations
+    optional bool AddingUnconfirmedDataEnabled = 488;
+
+    // Limits unconfirmed (and confirmed but not added to the index) data count.
+    optional uint32 UnconfirmedDataCountHardLimit = 489;
 }
