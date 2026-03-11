@@ -3042,9 +3042,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         reqWrite->In->Body.flags |= O_WRONLY;
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
 
-        while (writeDataCalled.load() == 0) {
-            bootstrap.Timer->Sleep(TDuration::MilliSeconds(1));
-        }
+        auto reqFlush =
+            bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+
+        UNIT_ASSERT(reqFlush.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
 
     Y_UNIT_TEST(ShouldSupportZeroCopyWriteByWriteBackCache)
