@@ -148,6 +148,8 @@ enum class EFileStoreRequest
     AddData,
     ReadBlob,
     WriteBlob,
+    ConfirmAddData,
+    CancelAddData,
     MAX
 };
 
