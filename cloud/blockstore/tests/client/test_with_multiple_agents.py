@@ -21,6 +21,7 @@ from cloud.blockstore.tests.python.lib.test_base import (
     wait_for_secure_erase,
     files_equal
 )
+from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
     setup_nonreplicated,
     create_devices,
@@ -109,6 +110,8 @@ class TestWithMultipleAgents(object):
         self.storage_config.MaxMigrationBandwidth = 1024 * 1024 * 1024
         self.storage_config.UseMirrorResync = True
         self.storage_config.MirroredMigrationStartAllowed = True
+        self.storage_config.NonReplicatedAgentMinTimeout = 1000  # 10s
+        self.storage_config.NonReplicatedAgentMaxTimeout = 1000
         self.storage_config.NodeType = 'main'
 
     def run_disk_agent(self, index, temporary=False):
@@ -380,5 +383,37 @@ def test_disk_agent_partial_suspend_cancellation(disk_type: DiskType):
         client.read_blocks(DISK_ID, 0, BLOCK_COUNT, "read3.data")
         assert files_equal(DATA_FILE, "read3.data")
 
+    finally:
+        env.cleanup_file_devices()
+
+
+@pytest.mark.parametrize("disk_type", [dt for dt in DiskType], ids=[dt.name for dt in DiskType])
+def test_disk_registry_state_integrity(disk_type: DiskType):
+    env = TestWithMultipleAgents(agent_count=disk_type.value["agent_count"])
+    try:
+        env.setup()
+        for i in range(disk_type.value["agent_count"]):
+            env.run_disk_agent(i)
+        wait_for_secure_erase(env.nbs.mon_port)
+
+        client = NbsClient(env.nbs.nbs_port)
+        test_client = CreateTestClient(f"localhost:{env.nbs.nbs_port}")
+
+        assert client.ensure_disk_registry_state_integrity() == "\n"
+
+        DISK_ID = "diskid"
+        client.create_volume(DISK_ID, disk_type.value["storage_media_kind"],
+                             DEFAULT_BLOCK_COUNT_PER_DEVICE)
+
+        assert client.ensure_disk_registry_state_integrity() == "\n"
+
+        test_client.execute_DiskRegistryChangeState(
+            Message="test",
+            ChangeAgentState={
+                "AgentId": make_agent_id(0),
+                "State": 1,    # AGENT_STATE_WARNING
+            })
+
+        assert client.ensure_disk_registry_state_integrity() == "\n"
     finally:
         env.cleanup_file_devices()
