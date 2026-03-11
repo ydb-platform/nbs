@@ -96,6 +96,13 @@ type ClientInterface interface {
 		session Session,
 		nodeID uint64,
 	) ([]byte, error)
+
+	GetNodeAttr(
+		ctx context.Context,
+		session Session,
+		parentNodeID uint64,
+		name string,
+	) (Node, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

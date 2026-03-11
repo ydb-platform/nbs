@@ -320,6 +320,22 @@ func (client *durableClient) ReadLink(
 	return resp.(*protos.TReadLinkResponse), err
 }
 
+func (client *durableClient) GetNodeAttr(
+	ctx context.Context,
+	req *protos.TGetNodeAttrRequest,
+) (*protos.TGetNodeAttrResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.GetNodeAttr(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TGetNodeAttrResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type durableEndpointClient struct {

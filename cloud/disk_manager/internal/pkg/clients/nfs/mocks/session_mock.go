@@ -56,6 +56,17 @@ func (s *SessionMock) ReadLink(
 	return res, args.Error(1)
 }
 
+func (s *SessionMock) GetNodeAttr(
+	ctx context.Context,
+	parentNodeID uint64,
+	name string,
+) (nfs.Node, error) {
+
+	args := s.Called(ctx, parentNodeID, name)
+	res, _ := args.Get(0).(nfs.Node)
+	return res, args.Error(1)
+}
+
 func (s *SessionMock) Close(ctx context.Context) error {
 	args := s.Called(ctx)
 	return args.Error(0)

@@ -59,6 +59,12 @@ type Session interface {
 		nodeID uint64,
 	) ([]byte, error)
 
+	GetNodeAttr(
+		ctx context.Context,
+		parentNodeID uint64,
+		name string,
+	) (Node, error)
+
 	Close(ctx context.Context) error
 }
 

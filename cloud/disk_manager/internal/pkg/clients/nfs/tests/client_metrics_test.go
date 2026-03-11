@@ -619,6 +619,47 @@ func TestSessionReadLinkError(t *testing.T) {
 	registryMock.AssertAllExpectations(t)
 }
 
+func TestSessionGetNodeAttrSuccess(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "GetNodeAttr", true)
+
+	expectedNode := nfs_client.Node{NodeID: 42, Name: "testfile"}
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetNodeAttr", mock.Anything, testSession, uint64(1), "testfile").
+		Return(expectedNode, nil)
+
+	s := newTestSession(nfsMock, registryMock, testSession)
+
+	node, err := s.GetNodeAttr(ctx, 1, "testfile")
+	require.NoError(t, err)
+	require.Equal(t, uint64(42), node.NodeID)
+	require.Equal(t, "testfile", node.Name)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestSessionGetNodeAttrError(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "GetNodeAttr", false)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetNodeAttr", mock.Anything, testSession, uint64(1), "testfile").
+		Return(nfs_client.Node{}, testError)
+
+	s := newTestSession(nfsMock, registryMock, testSession)
+
+	_, err := s.GetNodeAttr(ctx, 1, "testfile")
+	require.Error(t, err)
+	require.ErrorIs(t, err, testError)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestClientCreateFileStoreWrappedError(t *testing.T) {
@@ -937,6 +978,33 @@ func TestSessionReadLinkWrappedError(t *testing.T) {
 	s := newTestSessionWithMetricsMock(nfsMock, metricsMock, testSession)
 
 	_, err := s.ReadLink(ctx, 42)
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.ErrorIs(t, err, retriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
+func TestSessionGetNodeAttrWrappedError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On("StatRequest", "GetNodeAttr").Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.ErrorIs(t, *err, retriableError)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetNodeAttr", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nfs_client.Node{}, testNfsClientError)
+
+	s := newTestSessionWithMetricsMock(nfsMock, metricsMock, testSession)
+
+	_, err := s.GetNodeAttr(ctx, 1, "testfile")
 	require.Error(t, err)
 	var clientErr *nfs_client.ClientError
 	require.ErrorAs(t, err, &clientErr)
@@ -1275,6 +1343,34 @@ func TestSessionReadLinkNonRetriableError(t *testing.T) {
 	s := newTestSessionWithMetricsMock(nfsMock, metricsMock, testSession)
 
 	_, err := s.ReadLink(ctx, 42)
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.NotErrorIs(t, err, retriableError)
+	require.ErrorIs(t, err, testNfsClientNonRetriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
+func TestSessionGetNodeAttrNonRetriableError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On("StatRequest", "GetNodeAttr").Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.NotErrorIs(t, *err, retriableError)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetNodeAttr", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nfs_client.Node{}, testNfsClientNonRetriableError)
+
+	s := newTestSessionWithMetricsMock(nfsMock, metricsMock, testSession)
+
+	_, err := s.GetNodeAttr(ctx, 1, "testfile")
 	require.Error(t, err)
 	var clientErr *nfs_client.ClientError
 	require.ErrorAs(t, err, &clientErr)
