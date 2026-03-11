@@ -124,12 +124,11 @@ void TStatsServiceActor::HandleWakeup(
     if (Config->GetUsePullSchemeForVolumeStatistics() &&
         State.GetVolumes().size())
     {
-        ScheduleCountersUpdate(ctx);
         RegisterStatisticsCollectorActor(ctx);
-        return;
+    } else {
+        UpdateVolumeSelfCounters(ctx);
     }
 
-    UpdateVolumeSelfCounters(ctx);
     ScheduleCountersUpdate(ctx);
 }
 
