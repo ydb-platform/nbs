@@ -16,7 +16,9 @@ TServiceStatisticsCollectorActor::TServiceStatisticsCollectorActor(
     TVector<TActorId> volumeActorIds)
     : Owner(owner)
     , VolumeActorIds(std::move(volumeActorIds))
-{}
+{
+    Y_DEBUG_ABORT_UNLESS(!volumeActorIds.empty())
+}
 
 void TServiceStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
 {
