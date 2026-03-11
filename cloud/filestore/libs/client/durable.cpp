@@ -262,6 +262,21 @@ class TDurableFileStoreClient final
             std::move(request),
             std::move(responseHandler));
     }
+
+    // Shared memory transport methods: pass through without retry
+    // (E_TRANSPORT_ERROR is non-retriable, and GetRequestInfo is not defined for these types)
+#define FILESTORE_SHM_PASSTHROUGH(name, ...)                                   \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                            \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        return Client->name(std::move(callContext), std::move(request));       \
+    }                                                                          \
+// FILESTORE_SHM_PASSTHROUGH
+
+    FILESTORE_SHAREDMEM_METHODS(FILESTORE_SHM_PASSTHROUGH)
+
+#undef FILESTORE_SHM_PASSTHROUGH
 };
 
 ////////////////////////////////////////////////////////////////////////////////

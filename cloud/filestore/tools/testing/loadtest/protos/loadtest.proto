@@ -122,6 +122,27 @@ message TReplaySpec
     string ReplayTimeTill = 15;
 }
 
+message TSharedMemoryLoadSpec
+{
+    message TAction
+    {
+        EAction Action = 1;
+        uint32 Rate = 2;
+    }
+
+    uint32 BlockSize = 1;
+    uint32 ReadBytes = 2;
+    uint32 WriteBytes = 3;
+    uint64 InitialFileSize = 4;
+    repeated TAction Actions = 5;
+
+    // Full path to the shared memory file (must be accessible to the server)
+    string SharedMemoryFilePath = 6;
+
+    // Size of the shared memory region in bytes
+    uint64 SharedMemorySizeBytes = 7;
+}
+
 message TMigrationSpec
 {
     uint32 MigrationPeriod = 1;
@@ -147,6 +168,7 @@ message TLoadTest
         TDataLoadSpec DataLoadSpec = 5;
         TReplaySpec ReplayFsSpec = 17;
         TReplaySpec ReplayGrpcSpec = 18;
+        TSharedMemoryLoadSpec SharedMemoryLoadSpec = 20;
     }
 
     uint32 IODepth = 10;

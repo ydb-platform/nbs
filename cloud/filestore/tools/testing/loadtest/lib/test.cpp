@@ -3,6 +3,7 @@
 #include "client.h"
 #include "context.h"
 #include "request.h"
+#include "shm_client.h"
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
@@ -21,6 +22,7 @@
 #include <library/cpp/protobuf/json/proto2json.h>
 
 #include <util/datetime/base.h>
+#include <util/folder/path.h>
 #include <util/generic/deque.h>
 #include <util/generic/guid.h>
 #include <util/generic/map.h>
@@ -255,6 +257,7 @@ private:
 
     TLog Log;
     IFileStoreServicePtr Client;
+    IFileStoreServicePtr ShmClient_;
     ISessionPtr Session;
 
     TString FileSystemId;
@@ -554,6 +557,31 @@ private:
                     FileSystemId,
                     headers);
                 break;
+            case NProto::TLoadTest::kSharedMemoryLoadSpec: {
+                const auto& shmSpec = Config.GetSharedMemoryLoadSpec();
+                TFsPath fullPath(shmSpec.GetSharedMemoryFilePath());
+                ShmClient_ = CreateSharedMemoryClient(
+                    shmSpec.GetSharedMemoryFilePath(),
+                    fullPath.GetName(),
+                    shmSpec.GetSharedMemorySizeBytes(),
+                    std::max(
+                        (ui64)shmSpec.GetReadBytes(),
+                        (ui64)shmSpec.GetWriteBytes()),
+                    Client,
+                    Session,
+                    Scheduler,
+                    Timer,
+                    Logging);
+                ShmClient_->Start();
+                RequestGenerator = CreateSharedMemoryRequestGenerator(
+                    shmSpec,
+                    Logging,
+                    Session,
+                    ShmClient_,
+                    FileSystemId,
+                    headers);
+                break;
+            }
             default:
                 ythrow yexception()
                     << MakeTestTag()
@@ -732,6 +760,11 @@ private:
             if (cmd.Complete.Initialized()) {
                 cmd.Complete.SetValue(true);
             }
+        }
+
+        if (ShmClient_) {
+            ShmClient_->Stop();
+            ShmClient_.reset();
         }
 
         if (Client) {

@@ -86,4 +86,12 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     TString filesystemId,
     NProto::THeaders headers);
 
+IRequestGeneratorPtr CreateSharedMemoryRequestGenerator(
+    NProto::TSharedMemoryLoadSpec spec,
+    ILoggingServicePtr logging,
+    NClient::ISessionPtr session,
+    IFileStoreServicePtr client,
+    TString filesystemId,
+    NProto::THeaders headers);
+
 }   // namespace NCloud::NFileStore::NLoadTest
