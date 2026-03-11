@@ -210,10 +210,12 @@ void TFreshBlocksWriterActor::HandleWriteBlocksRequest(
     }
 
     const auto requestSize = writeRange.Size() * PartitionConfig.GetBlockSize();
-    const auto writeBlobThreshold =
-        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
 
-    if (requestSize >= writeBlobThreshold) {
+    if (!IsFreshRequest(
+            *Config,
+            PartitionConfig.GetStorageMediaKind(),
+            requestSize))
+    {
         ForwardMessageToActor(ev, ctx, PartitionActorId);
         return;
     }

@@ -85,7 +85,7 @@ struct TTestPartitionInfo
     ui64 TabletId = TestTabletId;
     ui64 BaseTabletId = 0;
     NCloud::NProto::EStorageMediaKind MediaKind =
-        NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+        NCloud::NProto::STORAGE_MEDIA_SSD;
     TMaybe<ui32> MaxBlocksInBlob;
 };
 
@@ -583,7 +583,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
     Y_UNIT_TEST(ShouldPassLargeWritesToPartition)
     {
-        auto testEnv = PrepareTestActorRuntime();
+        auto config = DefaultConfig();
+        config.SetWriteBlobThresholdSSD(128_KB);
+
+        auto testEnv = PrepareTestActorRuntime(config);
         auto& runtime = *testEnv.Runtime;
 
         // TODO(issue-4875): remove trim events dropping after adding trim
