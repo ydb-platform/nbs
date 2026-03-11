@@ -52,6 +52,7 @@ func (s *StorageMock) ClearDirectoryListingQueue(
 	snapshotID string,
 	deletionLimit uint64,
 ) error {
+
 	args := s.Called(ctx, snapshotID, deletionLimit)
 	return args.Error(0)
 }

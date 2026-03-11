@@ -330,6 +330,7 @@ func (s *storageYDB) ClearDirectoryListingQueue(
 	snapshotID string,
 	deletionLimit uint64,
 ) error {
+
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {

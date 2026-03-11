@@ -362,5 +362,5 @@ func TestScrubFilesystemTaskCancel(t *testing.T) {
 		100,                   // limit
 	)
 	require.NoError(t, err)
-	require.Len(t, entries, 0)
+	require.Empty(t, entries)
 }
