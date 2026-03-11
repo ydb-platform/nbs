@@ -592,4 +592,14 @@ void TIndexTabletActor::HandleAddDataCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
 }
 
+void TIndexTabletActor::HandleConfirmAddData(
+    const TEvIndexTablet::TEvConfirmAddDataRequest::TPtr&,
+    const TActorContext&)
+{}
+
+void TIndexTabletActor::HandleCancelAddData(
+    const TEvIndexTablet::TEvCancelAddDataRequest::TPtr&,
+    const TActorContext&)
+{}
+
 }   // namespace NCloud::NFileStore::NStorage

@@ -26,6 +26,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DescribeSessions,           __VA_ARGS__)                               \
     xxx(GenerateBlobIds,            __VA_ARGS__)                               \
     xxx(AddData,                    __VA_ARGS__)                               \
+    xxx(ConfirmAddData,             __VA_ARGS__)                               \
+    xxx(CancelAddData,              __VA_ARGS__)                               \
     xxx(ForcedOperation,            __VA_ARGS__)                               \
     xxx(ConfigureShards,            __VA_ARGS__)                               \
     xxx(ConfigureAsShard,           __VA_ARGS__)                               \
@@ -184,6 +186,12 @@ struct TEvIndexTablet
 
         EvWriteResponseLogEntryRequest = EvBegin + 75,
         EvWriteResponseLogEntryResponse,
+
+        EvConfirmAddDataRequest = EvBegin + 77,
+        EvConfirmAddDataResponse,
+
+        EvCancelAddDataRequest = EvBegin + 79,
+        EvCancelAddDataResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out
