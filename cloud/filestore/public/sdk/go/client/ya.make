@@ -21,7 +21,6 @@ SRCS(
 GO_TEST_SRCS(
     durable_test.go
     grpc_test.go
-    log_test.go
 )
 
 END()

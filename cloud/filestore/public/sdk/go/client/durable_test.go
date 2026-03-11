@@ -38,8 +38,8 @@ func TestRetryUndeliveredRequests(t *testing.T) {
 		TimeoutIncrement: &timeoutIncrement,
 	}
 
-	log := NewStderrLog(LOG_DEBUG)
-	durable := NewDurableClient(client, opts, log)
+	logger := NewStderrLog(LOG_DEBUG)
+	durable := NewDurableClient(client, opts, logger)
 
 	_, err := durable.Ping(context.TODO(), &protos.TPingRequest{})
 	if err != nil {
@@ -69,8 +69,8 @@ func TestNoRetryUnretriableRequests(t *testing.T) {
 		},
 	}
 
-	log := NewStderrLog(LOG_DEBUG)
-	durable := NewDurableClient(client, &DurableClientOpts{}, log)
+	logger := NewStderrLog(LOG_DEBUG)
+	durable := NewDurableClient(client, &DurableClientOpts{}, logger)
 
 	_, err := durable.Ping(context.TODO(), &protos.TPingRequest{})
 	if err == nil {
