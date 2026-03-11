@@ -690,9 +690,39 @@ private:
         const TEvPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleWriteFreshBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    struct TWriteBlocksCompleted
+    {
+        bool CollectGarbageBarrierAcquired;
+        bool AddingUnconfirmedBlobsRequested;
+        bool IsFreshBlocksRequest;
+        TVector<TBlobToConfirm> BlobsToConfirm;
+    };
+
+    void HandleWriteBlocksCompletedImpl(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        NProto::TError error,
+        const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+        TWriteBlocksCompleted writeBlocksCompleted);
+
     void HandleZeroBlocksCompleted(
         const TEvPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleZeroFreshBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleZeroBlocksCompletedImpl(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        NProto::TError error,
+        const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+        bool freshBlocksRequest);
 
     void HandleFlushCompleted(
         const TEvPartitionPrivate::TEvFlushCompleted::TPtr& ev,
@@ -771,6 +801,10 @@ private:
         const TVector<TAddMergedBlob>& mergedBlobs) const;
 
     void HandleGetPartCountersRequest(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectGetPartCountersRequest(
         const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 

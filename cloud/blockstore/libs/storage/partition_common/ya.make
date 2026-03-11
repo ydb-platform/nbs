@@ -8,6 +8,7 @@ SRCS(
     actor_describe_base_disk_blocks.cpp
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
+    actor_writefreshblocks.cpp
     commit_ids_state.cpp
     drain_actor_companion.cpp
     fresh_blocks_companion_initfreshblocks.cpp

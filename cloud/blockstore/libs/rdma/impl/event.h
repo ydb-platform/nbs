@@ -8,14 +8,6 @@ namespace NCloud::NBlockStore::NRdma {
 
 constexpr uintptr_t EVENT_MASK = 3;   // low bits unused because of alignment
 
-enum EPollerEvent
-{
-    Completion = 0,
-    Request = 1,
-    Disconnect = 2,
-    CancelRequest = 3,
-};
-
 template <typename T>
 void* PtrEventTag(T* ptr, int event)
 {

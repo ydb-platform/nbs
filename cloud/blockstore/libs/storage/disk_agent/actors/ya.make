@@ -10,6 +10,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/protos
 

@@ -761,6 +761,20 @@ public:
             #name " has not failed as expected " + dbg);                       \
         return response;                                                       \
     }                                                                          \
+                                                                               \
+    void Assert##name##NoResponse()                                            \
+    {                                                                          \
+        Runtime.DispatchEvents({}, TDuration::Zero());                         \
+        auto evList = Runtime.CaptureEvents();                                 \
+                                                                               \
+        for (auto& ev: evList) {                                               \
+            UNIT_ASSERT(                                                       \
+                ev->GetTypeRewrite() != ns::TEv##name##Response::EventType     \
+            );                                                                 \
+        }                                                                      \
+                                                                               \
+        Runtime.PushEventsFront(evList);                                       \
+    }                                                                          \
 // FILESTORE_DECLARE_METHOD
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD, TEvService)

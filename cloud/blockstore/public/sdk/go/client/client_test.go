@@ -122,3 +122,20 @@ func TestResumeDevice(t *testing.T) {
 	)
 	require.NoError(t, err)
 }
+
+func TestLocalNVMeMethods(t *testing.T) {
+	ctx := context.Background()
+	port := os.Getenv("LOCAL_NULL_INSECURE_NBS_SERVER_PORT")
+
+	client, err := createTestClient(port)
+	require.NoError(t, err)
+
+	_, err = client.ListNVMeDevices(ctx)
+	require.NoError(t, err)
+
+	err = client.AcquireNVMeDevice(ctx, "sn")
+	require.NoError(t, err)
+
+	err = client.ReleaseNVMeDevice(ctx, "sn")
+	require.NoError(t, err)
+}

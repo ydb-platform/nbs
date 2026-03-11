@@ -9,13 +9,14 @@
 #include <cloud/blockstore/public/api/protos/disk.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+#include <cloud/blockstore/public/api/protos/local_nvme.pb.h>
 #include <cloud/blockstore/public/api/protos/local_ssd.pb.h>
 #include <cloud/blockstore/public/api/protos/metrics.pb.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
 #include <cloud/blockstore/public/api/protos/placement.pb.h>
-#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 
@@ -124,9 +125,16 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(RefreshEndpoint,                    __VA_ARGS__)                       \
 // BLOCKSTORE_ENDPOINT_SERVICE
 
+#define BLOCKSTORE_LOCAL_NVME_SERVICE(xxx, ...)                                \
+    xxx(ListNVMeDevices,                    __VA_ARGS__)                       \
+    xxx(AcquireNVMeDevice,                  __VA_ARGS__)                       \
+    xxx(ReleaseNVMeDevice,                  __VA_ARGS__)                       \
+// BLOCKSTORE_LOCAL_NVME_SERVICE
+
 #define BLOCKSTORE_GRPC_SERVICE(xxx, ...)                                      \
     BLOCKSTORE_GRPC_STORAGE_SERVICE(xxx,    __VA_ARGS__)                       \
     BLOCKSTORE_ENDPOINT_SERVICE(xxx,        __VA_ARGS__)                       \
+    BLOCKSTORE_LOCAL_NVME_SERVICE(xxx,      __VA_ARGS__)                       \
 // BLOCKSTORE_GRPC_SERVICE
 
 #define BLOCKSTORE_GRPC_DATA_SERVICE(xxx, ...)                                 \
@@ -151,6 +159,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
 #define BLOCKSTORE_SERVICE(xxx, ...)                                           \
     BLOCKSTORE_STORAGE_SERVICE(xxx,         __VA_ARGS__)                       \
     BLOCKSTORE_ENDPOINT_SERVICE(xxx,        __VA_ARGS__)                       \
+    BLOCKSTORE_LOCAL_NVME_SERVICE(xxx,      __VA_ARGS__)                       \
 // BLOCKSTORE_SERVICE
 
 #define BLOCKSTORE_DATA_SERVICE(xxx, ...)                                      \

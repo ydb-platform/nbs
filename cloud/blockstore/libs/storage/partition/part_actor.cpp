@@ -1107,8 +1107,16 @@ STFUNC(TPartitionActor::StateWork)
             TEvPartitionCommonPrivate::TEvPatchBlobCompleted,
             IOCompanion->HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
-        HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,
+            HandleWriteFreshBlocksCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlocksCompleted,
+            HandleWriteBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
+            HandleZeroFreshBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvFlushCompleted, HandleFlushCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
         HFunc(TEvPartitionPrivate::TEvCompactionCompleted, HandleCompactionCompleted);
@@ -1170,7 +1178,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
-        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersRequest);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            RejectGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
@@ -1178,7 +1188,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildCompleted);

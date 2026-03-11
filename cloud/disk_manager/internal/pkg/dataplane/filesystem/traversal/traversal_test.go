@@ -1,4 +1,4 @@
-package filesystemtraversal
+package traversal
 
 import (
 	"context"
@@ -7,14 +7,19 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
+	listers_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers/mocks"
 	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
@@ -138,7 +143,12 @@ func (f *fixture) getFilesAfterTraversal(
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
-		f.client,
+		listers.NewFilestoreListerFactory(
+			f.client,
+			0,     // listNodesMaxBytes
+			true,  // readOnly
+			false, // unsafe
+		),
 		f.storage,
 		func(ctx context.Context) error {
 			return nil
@@ -148,7 +158,6 @@ func (f *fixture) getFilesAfterTraversal(
 			SelectNodesToListLimit: &selectNodesToListLimit,
 		},
 		false,
-		0,
 		nfs.RootNodeID,
 	)
 
@@ -159,7 +168,7 @@ func (f *fixture) getFilesAfterTraversal(
 		func(
 			ctx context.Context,
 			nodes []nfs.Node,
-			_ nfs.Session,
+			_ listers.FilesystemLister,
 		) error {
 
 			nodesMutex.Lock()
@@ -273,7 +282,12 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		fmt.Sprintf("snapshot_%v", filesystemID),
 		filesystemID,
 		"",
-		fixture.client,
+		listers.NewFilestoreListerFactory(
+			fixture.client,
+			0,     // listNodesMaxBytes
+			true,  // readOnly
+			false, // unsafe
+		),
 		fixture.storage,
 		func(ctx context.Context) error {
 			return nil
@@ -283,7 +297,6 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 			SelectNodesToListLimit: &selectNodesToListLimit,
 		},
 		false,
-		0,
 		nfs.RootNodeID,
 	)
 
@@ -293,11 +306,177 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 		func(
 			ctx context.Context,
 			nodes []nfs.Node,
-			_ nfs.Session,
+			_ listers.FilesystemLister,
 		) error {
 			return expectedError
 		},
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, expectedError)
+}
+
+func TestTraversalFiltersInvalidNodeIDs(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+
+	storageMock := storage_mocks.NewStorageMock()
+	listerFactoryMock := listers_mocks.NewFilesystemListerFactoryMock()
+	listerMock := listers_mocks.NewFilesystemListerMock()
+
+	snapshotID := "test-snapshot"
+	filesystemID := "test-filesystem"
+	checkpointID := "test-checkpoint"
+	workersCount := uint32(1)
+	selectLimit := uint64(1000)
+
+	config := &traversal_config.FilesystemTraversalConfig{
+		TraversalWorkersCount:  &workersCount,
+		SelectNodesToListLimit: &selectLimit,
+	}
+
+	validDirNodeID := uint64(100)
+	validFileNodeID := uint64(200)
+
+	children := []nfs.Node{
+		nfs.Node(nfs_client.Node{
+			NodeID: validFileNodeID,
+			Name:   "file.txt",
+			Type:   nfs_client.NODE_KIND_FILE,
+		}),
+		nfs.Node(nfs_client.Node{
+			NodeID: validDirNodeID,
+			Name:   "subdir",
+			Type:   nfs_client.NODE_KIND_DIR,
+		}),
+		nfs.Node(nfs_client.Node{
+			NodeID: nfs.InvalidNodeID,
+			Name:   "corrupted_dir_1",
+			Type:   nfs_client.NODE_KIND_DIR,
+		}),
+		nfs.Node(nfs_client.Node{
+			NodeID: nfs.InvalidNodeID,
+			Name:   "corrupted_dir_2",
+			Type:   nfs_client.NODE_KIND_DIR,
+		}),
+	}
+
+	// Schedule root node for traversal.
+	storageMock.On(
+		"SchedulerDirectoryForTraversal",
+		mock.Anything,
+		snapshotID,
+		nfs.RootNodeID,
+	).Return(nil)
+
+	// First SelectNodesToList returns root node.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything, // nodesToExclude
+		selectLimit,
+	).Return(
+		[]storage.NodeQueueEntry{{NodeID: nfs.RootNodeID, Cookie: ""}},
+		nil,
+	).Once()
+
+	// Second SelectNodesToList returns subdir.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything, // nodesToExclude
+		selectLimit,
+	).Return(
+		[]storage.NodeQueueEntry{{NodeID: validDirNodeID, Cookie: ""}},
+		nil,
+	).Once()
+
+	// Third SelectNodesToList returns empty, traversal done.
+	storageMock.On(
+		"SelectNodesToList",
+		mock.Anything,
+		snapshotID,
+		mock.Anything, // nodesToExclude
+		selectLimit,
+	).Return([]storage.NodeQueueEntry{}, nil)
+
+	// CreateLister returns lister mock.
+	listerFactoryMock.On(
+		"CreateLister",
+		mock.Anything,
+		filesystemID,
+		checkpointID,
+	).Return(listerMock, nil)
+
+	// ListNodes for root returns children with some invalid node IDs.
+	listerMock.On(
+		"ListNodes",
+		mock.Anything,
+		nfs.RootNodeID,
+		"", // cookie
+	).Return(children, "", nil)
+
+	// ListNodes for subdir returns empty.
+	listerMock.On(
+		"ListNodes",
+		mock.Anything,
+		validDirNodeID,
+		"", // cookie
+	).Return([]nfs.Node{}, "", nil)
+
+	// ScheduleChildNodesForListing for root — only valid dir expected.
+	storageMock.On(
+		"ScheduleChildNodesForListing",
+		mock.Anything,
+		snapshotID,
+		nfs.RootNodeID,
+		"", // nextCookie
+		[]nfs.Node{nfs.Node(nfs_client.Node{
+			NodeID: validDirNodeID,
+			Name:   "subdir",
+			Type:   nfs_client.NODE_KIND_DIR,
+		})},
+	).Return(nil)
+
+	// ScheduleChildNodesForListing for subdir — no children.
+	storageMock.On(
+		"ScheduleChildNodesForListing",
+		mock.Anything,
+		snapshotID,
+		validDirNodeID,
+		"", // nextCookie
+		[]nfs.Node(nil),
+	).Return(nil)
+
+	listerMock.On("Close", mock.Anything).Return(nil)
+
+	traverser := NewFilesystemTraverser(
+		snapshotID,
+		filesystemID,
+		checkpointID,
+		listerFactoryMock,
+		storageMock,
+		func(ctx context.Context) error {
+			return nil
+		},
+		config,
+		false, // rootNodeAlreadyScheduled
+		nfs.RootNodeID,
+	)
+
+	err := traverser.Traverse(
+		ctx,
+		func(
+			ctx context.Context,
+			nodes []nfs.Node,
+			_ listers.FilesystemLister,
+		) error {
+			return nil
+		},
+	)
+	require.NoError(t, err)
+
+	storageMock.AssertExpectations(t)
+	listerFactoryMock.AssertExpectations(t)
+	listerMock.AssertExpectations(t)
 }

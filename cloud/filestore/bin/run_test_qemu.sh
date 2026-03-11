@@ -26,7 +26,7 @@ QEMU_FIRMWARE_REL=/usr/share/qemu
 
 : ${QMP_PORT:=4444}
 : ${NET_PORT:=3389}
-: ${DISK_IMAGE:=$QEMU_DIR/image-plucky/rootfs.img}
+: ${DISK_IMAGE:=$BIN_DIR/rootfs.img}
 : ${VHOST_SOCKET_PATH:=/tmp/vhost.sock}
 
 : ${MEM_SIZE:=32G}

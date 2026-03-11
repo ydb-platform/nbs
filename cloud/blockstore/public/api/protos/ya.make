@@ -14,6 +14,7 @@ SRCS(
     endpoints.proto
     headers.proto
     io.proto
+    local_nvme.proto
     local_ssd.proto
     metrics.proto
     mount.proto

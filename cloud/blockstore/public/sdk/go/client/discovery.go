@@ -991,6 +991,30 @@ func (client *discoveryClient) QueryAgentsInfo(
 	return resp.(*protos.TQueryAgentsInfoResponse), err
 }
 
+func (client *discoveryClient) ListNVMeDevices(
+	ctx context.Context,
+	req *protos.TListNVMeDevicesRequest,
+) (*protos.TListNVMeDevicesResponse, error) {
+
+	panic("not implemented")
+}
+
+func (client *discoveryClient) AcquireNVMeDevice(
+	ctx context.Context,
+	req *protos.TAcquireNVMeDeviceRequest,
+) (*protos.TAcquireNVMeDeviceResponse, error) {
+
+	panic("not implemented")
+}
+
+func (client *discoveryClient) ReleaseNVMeDevice(
+	ctx context.Context,
+	req *protos.TReleaseNVMeDeviceRequest,
+) (*protos.TReleaseNVMeDeviceResponse, error) {
+
+	panic("not implemented")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func createDurableClient(

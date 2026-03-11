@@ -339,6 +339,7 @@ def start(argv):
     disk_managers = []
 
     controlplane_disk_manager_count = 2 if args.multiple_disk_managers else 1
+    controlplane_mon_ports = []
     for _ in range(0, controlplane_disk_manager_count):
         idx = len(disk_managers)
         disk_manager = DiskManagerLauncher(
@@ -374,10 +375,15 @@ def start(argv):
         append_recipe_err_files(
             ERR_LOG_FILE_NAMES_FILE, disk_manager.disk_manager.stderr_file_name
         )
+        controlplane_mon_ports.append(disk_manager.monitoring_port)
 
-    set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT", str(disk_managers[0].monitoring_port))
+    set_env(
+        "DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT",
+        ",".join(map(str, controlplane_mon_ports)),
+    )
 
     dataplane_disk_managers_count = 1
+    dataplane_monitoring_ports = []
     for _ in range(0, dataplane_disk_managers_count):
         idx = len(disk_managers)
         disk_manager = DiskManagerLauncher(
@@ -410,6 +416,12 @@ def start(argv):
         append_recipe_err_files(
             ERR_LOG_FILE_NAMES_FILE, disk_manager.disk_manager.stderr_file_name
         )
+        dataplane_monitoring_ports.append(disk_manager.monitoring_port)
+
+    set_env(
+        "DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT",
+        ",".join(map(str, dataplane_monitoring_ports)),
+    )
 
     # First node is always control plane.
     set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_PORT", str(disk_managers[0].port))

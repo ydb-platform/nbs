@@ -370,6 +370,33 @@ func (c *NbsClientMock) QueryAgentsInfo(
 	return args.Get(0).(*protos.TQueryAgentsInfoResponse), args.Error(1)
 }
 
+func (c *NbsClientMock) ListNVMeDevices(
+	ctx context.Context,
+	req *protos.TListNVMeDevicesRequest,
+) (*protos.TListNVMeDevicesResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TListNVMeDevicesResponse), args.Error(1)
+}
+
+func (c *NbsClientMock) AcquireNVMeDevice(
+	ctx context.Context,
+	req *protos.TAcquireNVMeDeviceRequest,
+) (*protos.TAcquireNVMeDeviceResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TAcquireNVMeDeviceResponse), args.Error(1)
+}
+
+func (c *NbsClientMock) ReleaseNVMeDevice(
+	ctx context.Context,
+	req *protos.TReleaseNVMeDeviceRequest,
+) (*protos.TReleaseNVMeDeviceResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TReleaseNVMeDeviceResponse), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNbsClientMock() *NbsClientMock {

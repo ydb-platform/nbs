@@ -44,6 +44,16 @@ class TTestVolumeInfo final
 public:
     NProto::TVolume Volume;
 
+    void SetRemoveByInactivityTimeoutEnabled(bool enabled) override
+    {
+        Y_UNUSED(enabled);
+    }
+
+    bool GetRemoveByInactivityTimeoutEnabled() const override
+    {
+        return true;
+    }
+
     const NProto::TVolume& GetInfo() const override
     {
         return Volume;

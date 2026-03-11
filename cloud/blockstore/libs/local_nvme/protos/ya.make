@@ -1,0 +1,10 @@
+PROTO_LIBRARY()
+
+SRCS(
+    local_nvme.proto
+)
+
+INCLUDE_TAGS(GO_PROTO)
+EXCLUDE_TAGS(JAVA_PROTO)
+
+END()

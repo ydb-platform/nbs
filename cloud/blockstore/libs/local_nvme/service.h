@@ -2,8 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/local_nvme/protos/local_nvme.pb.h>
 #include <cloud/blockstore/libs/nvme/public.h>
-#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>

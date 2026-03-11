@@ -6,7 +6,7 @@ from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.local_nvme_pb2 import TLocalNVMeConfig
-from cloud.blockstore.libs.storage.protos.local_nvme_pb2 import \
+from cloud.blockstore.libs.local_nvme.protos.local_nvme_pb2 import \
     TNVMeDevice, TNVMeDeviceList, TLocalNVMeServiceState
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
@@ -119,3 +119,11 @@ def test_local_nvme(ydb, nbs):
         assert lhs.VendorId == rhs['VendorId']
         assert lhs.DeviceId == rhs['DeviceId']
         assert lhs.Model == rhs['Model']
+
+    response = client.list_nvme_devices()
+    assert len(response.Devices) == len(devices)
+
+    for lhs, rhs in zip(response.Devices, devices):
+        assert lhs.SerialNumber == rhs['SerialNumber']
+        assert lhs.PCIAddress == rhs['PCIAddress']
+        assert lhs.IOMMUGroup == rhs['IOMMUGroup']
