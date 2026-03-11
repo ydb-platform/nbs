@@ -303,11 +303,13 @@ func run(
 			}
 			logging.Info(ctx, "Initializing filesystem dataplane")
 			nfsClientMetricsRegistry := mon.NewRegistry("nfs_client_dataplane")
+			nfsSessionMetricsRegistry := mon.NewRegistry("nfs_session_dataplane")
 			nfsFactory := nfs.NewFactoryWithCreds(
 				ctx,
 				config.GetNfsConfig(),
 				creds,
 				nfsClientMetricsRegistry,
+				nfsSessionMetricsRegistry,
 			)
 
 			filesystemDB, err := persistence.NewYDBClient(

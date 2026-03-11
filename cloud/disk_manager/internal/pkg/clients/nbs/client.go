@@ -12,6 +12,7 @@ import (
 	private_protos "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos"
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
@@ -562,7 +563,7 @@ func canBeBaseDisk(volume *protos.TVolume) bool {
 type client struct {
 	nbs                           *nbs_client.DiscoveryClient
 	sessionMetricsRegistry        metrics.Registry
-	metrics                       *clientMetrics
+	metrics                       client_metrics.Metrics
 	enableThrottlingForMediaKinds []core_protos.EStorageMediaKind
 	sessionRediscoverPeriodMin    time.Duration
 	sessionRediscoverPeriodMax    time.Duration

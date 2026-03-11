@@ -1,4 +1,5 @@
 RECURSE(
+    metrics
     nbs
     nfs
 )
