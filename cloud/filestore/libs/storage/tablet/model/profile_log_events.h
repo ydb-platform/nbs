@@ -31,6 +31,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
     xxx(PrepareUnlinkDirectoryNodeInShard,  __VA_ARGS__)                       \
     xxx(AbortUnlinkDirectoryNodeInShard,    __VA_ARGS__)                       \
+    xxx(AddDataUnconfirmed,                 __VA_ARGS__)                       \
 // FILESTORE_SYSTEM_REQUESTS
 
 #define FILESTORE_MATERIALIZE_REQUEST(name, ...) name,
