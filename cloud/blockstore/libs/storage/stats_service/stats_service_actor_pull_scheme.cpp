@@ -22,7 +22,7 @@ void TServiceStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    if(VolumeActorIds.empty()){
+    if (VolumeActorIds.empty()) {
         Die(ctx);
     }
 
