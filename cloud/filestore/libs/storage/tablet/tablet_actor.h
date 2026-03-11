@@ -211,6 +211,29 @@ private:
         ui32 channel,
         const NKikimr::TStorageStatusFlags flags,
         double freeSpaceShare);
+
+    template <typename TBlobIds, typename TRecord>
+    void ProcessStorageStatusFlags(
+        const NActors::TActorContext& ctx,
+        const TBlobIds& blobIds,
+        const TRecord& record)
+    {
+        const auto& flags = record.GetStorageStatusFlags();
+        const auto& shares = record.GetApproximateFreeSpaceShares();
+        const auto count = Min<int>(blobIds.size(), flags.size());
+        for (int i = 0; i < count; ++i) {
+            const auto blobId =
+                NKikimr::LogoBlobIDFromLogoBlobID(blobIds.Get(i));
+            const double share = i < shares.size() ? shares.Get(i) : 0;
+            RegisterEvPutResult(
+                ctx,
+                blobId.Generation(),
+                blobId.Channel(),
+                flags.Get(i),
+                share);
+        }
+    }
+
     void ReassignDataChannelsIfNeeded(const NActors::TActorContext& ctx);
     bool OnRenderAppHtmlPage(
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,
@@ -575,6 +598,10 @@ private:
     void HandleAddDataCompleted(
         const TEvIndexTabletPrivate::TEvAddDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    bool ValidateAddDataRequest(
+        NKikimr::NTabletFlatExecutor::TTransactionContext& tx,
+        TTxIndexTablet::TAddDataBase& args);
 
     void HandleForcedRangeOperationProgress(
         const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,

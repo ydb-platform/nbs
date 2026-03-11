@@ -42,16 +42,42 @@ TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
     return blobSizes;
 }
 
+NProto::TError ValidateUnalignedDataRanges(
+    const google::protobuf::RepeatedPtrField<NProtoPrivate::TFreshDataRange>&
+        ranges,
+    ui32 blockSize)
+{
+    for (const auto& part: ranges) {
+        if (part.GetContent().empty()) {
+            return MakeError(
+                E_ARGUMENT,
+                "empty unaligned data part");
+        }
+
+        const ui32 blockIndex = part.GetOffset() / blockSize;
+        const ui32 lastBlockIndex =
+            (part.GetOffset() + part.GetContent().size() - 1) / blockSize;
+        if (blockIndex != lastBlockIndex) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "unaligned part spanning more than one"
+                    << " block: " << part.GetOffset() << ":"
+                    << part.GetContent().size());
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 class TWriteDataActor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_AddData(
-    const TActorContext& ctx,
+bool TIndexTabletActor::ValidateAddDataRequest(
     TTransactionContext& tx,
-    TTxIndexTablet::TAddData& args)
+    TTxIndexTablet::TAddDataBase& args)
 {
     auto* session =
         FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
@@ -86,19 +112,6 @@ bool TIndexTabletActor::PrepareTx_AddData(
     }
     ui64 commitId = GetCurrentCommitId();
 
-    for (auto& part: args.UnalignedDataParts) {
-        part.NodeId = args.NodeId;
-    }
-
-    LOG_TRACE(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s AddData tx %lu @%lu %s",
-        LogTag.c_str(),
-        args.CommitId,
-        args.NodeId,
-        args.ByteRange.Describe().c_str());
-
     TIndexTabletDatabase db(tx.DB);
 
     if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
@@ -115,6 +128,37 @@ bool TIndexTabletActor::PrepareTx_AddData(
         args.Error = ErrorNoSpaceLeft();
         return true;
     }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_AddData(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TAddData& args)
+{
+    if (!ValidateAddDataRequest(tx, args)) {
+        return false;
+    }
+
+    if (HasError(args.Error)) {
+        return true;
+    }
+
+    for (auto& part: args.UnalignedDataParts) {
+        part.NodeId = args.NodeId;
+    }
+
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s AddData tx %lu @%lu %s",
+        LogTag.c_str(),
+        args.CommitId,
+        args.NodeId,
+        args.ByteRange.Describe().c_str());
 
     return true;
 }
@@ -397,12 +441,13 @@ void TIndexTabletActor::HandleAddData(
     // We acquire the collect barrier for the second time in order to prolong
     // the already acquired lease
     AcquireCollectBarrier(commitId);
-    bool txStarted = false;
+
+    bool dispatched = false;
     Y_DEFER
     {
         // Until the tx is started, it is this method's responsibility to
         // release the collect barrier
-        if (!txStarted) {
+        if (!dispatched) {
             TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
             // The second one is used to release the barrier, acquired in
             // GenerateBlobIds method. Though it will be eventually released
@@ -452,27 +497,17 @@ void TIndexTabletActor::HandleAddData(
         return;
     }
 
+    auto unalignedError = ValidateUnalignedDataRanges(
+        msg->Record.GetUnalignedDataRanges(),
+        GetBlockSize());
+    if (HasError(unalignedError)) {
+        replyError(unalignedError);
+        return;
+    }
+
     TVector<TBlockBytesMeta> unalignedDataParts;
     for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
-        if (part.GetContent().empty()) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                "empty unaligned data part"));
-            return;
-        }
-
         const ui32 blockIndex = part.GetOffset() / GetBlockSize();
-        const ui32 lastBlockIndex =
-            (part.GetOffset() + part.GetContent().size() - 1) / GetBlockSize();
-        if (blockIndex != lastBlockIndex) {
-            replyError(MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "unaligned part spanning more than one"
-                    << " block: " << part.GetOffset() << ":"
-                    << part.GetContent().size()));
-            return;
-        }
-
         const ui32 offsetInBlock =
             part.GetOffset() - static_cast<ui64>(blockIndex) * GetBlockSize();
 
@@ -507,20 +542,7 @@ void TIndexTabletActor::HandleAddData(
         blobIds.size(),
         unalignedMsg().c_str());
 
-    const auto evPutResultCount =
-        Min<ui32>(blobIds.size(), msg->Record.StorageStatusFlagsSize());
-    for (ui32 i = 0; i < evPutResultCount; ++i) {
-        const double approximateFreeSpaceShare =
-            i < msg->Record.ApproximateFreeSpaceSharesSize()
-            ? msg->Record.GetApproximateFreeSpaceShares(i)
-            : 0;
-        RegisterEvPutResult(
-            ctx,
-            blobIds[i].Generation(),
-            blobIds[i].Channel(),
-            msg->Record.GetStorageStatusFlags(i),
-            approximateFreeSpaceShare);
-    }
+    ProcessStorageStatusFlags(ctx, msg->Record.GetBlobIds(), msg->Record);
 
     AddInFlightRequest<TEvIndexTablet::TAddDataMethod>(*requestInfo);
 
@@ -533,7 +555,7 @@ void TIndexTabletActor::HandleAddData(
         std::move(unalignedDataParts),
         msg->Record.GetCommitId(),
         std::move(profileLogRequest));
-    txStarted = true;
+    dispatched = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -2163,10 +2163,10 @@ struct TTxIndexTablet
     };
 
     //
-    // AddData
+    // AddDataBase - common fields for AddData validation
     //
 
-    struct TAddData
+    struct TAddDataBase
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
@@ -2175,9 +2175,6 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
         const TByteRange ByteRange;
-        TVector<NKikimr::TLogoBlobID> BlobIds;
-        TVector<TBlockBytesMeta> UnalignedDataParts;
-        ui64 CommitId;
         // Used when we want to access a specific node, not the node
         // inferred from the handle.
         const ui64 ExplicitNodeId = InvalidNodeId;
@@ -2185,22 +2182,17 @@ struct TTxIndexTablet
         ui64 NodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
-        TAddData(
+        template <typename TRequest>
+        TAddDataBase(
                 TRequestInfoPtr requestInfo,
-                const NProtoPrivate::TAddDataRequest& request,
+                const TRequest& request,
                 TByteRange byteRange,
-                TVector<NKikimr::TLogoBlobID> blobIds,
-                TVector<TBlockBytesMeta> unalignedDataParts,
-                ui64 commitId,
                 NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
-            , BlobIds(std::move(blobIds))
-            , UnalignedDataParts(std::move(unalignedDataParts))
-            , CommitId(commitId)
             , ExplicitNodeId(request.GetNodeId())
         {}
 
@@ -2213,6 +2205,36 @@ struct TTxIndexTablet
 
             // deliberately not calling TProfileAware::Clear()
         }
+    };
+
+    //
+    // AddData
+    //
+
+    struct TAddData
+        : TAddDataBase
+    {
+        TVector<NKikimr::TLogoBlobID> BlobIds;
+        TVector<TBlockBytesMeta> UnalignedDataParts;
+        ui64 CommitId;
+
+        TAddData(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TAddDataRequest& request,
+                TByteRange byteRange,
+                TVector<NKikimr::TLogoBlobID> blobIds,
+                TVector<TBlockBytesMeta> unalignedDataParts,
+                ui64 commitId,
+                NProto::TProfileLogRequestInfo profileLogRequest)
+            : TAddDataBase(
+                  std::move(requestInfo),
+                  request,
+                  byteRange,
+                  std::move(profileLogRequest))
+            , BlobIds(std::move(blobIds))
+            , UnalignedDataParts(std::move(unalignedDataParts))
+            , CommitId(commitId)
+        {}
     };
 
     //
