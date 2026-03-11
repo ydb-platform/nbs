@@ -351,6 +351,23 @@ void TIndexTabletState::FindFreshBytes(
         commitId);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// UnconfirmedData
+
+void TIndexTabletState::ConfirmedDataAdded(
+    TIndexTabletDatabase& db,
+    ui64 commitId)
+{
+    if (commitId == InvalidCommitId) {
+        return;
+    }
+
+    db.DeleteUnconfirmedData(commitId);
+
+    TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
+}
+
+
 NProto::TError TIndexTabletState::CheckFreshBytes(
     ui64 nodeId,
     ui64 commitId,

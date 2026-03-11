@@ -200,6 +200,16 @@ public:
         const NActors::TActorContext& ctx,
         const TString& request);
 
+    void SendPendingConfirmAddDataResponse(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TError& error);
+
+    void UnconfirmedAddBlobSafePointReached(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TError& error);
+
 private:
     void Enqueue(STFUNC_SIG) override;
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
@@ -522,6 +532,7 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    bool CanUseUnconfirmedData() const;
 
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
@@ -669,6 +680,18 @@ private:
         const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    std::unique_ptr<TEvIndexTabletPrivate::TEvAddBlobRequest>
+    BuildAddBlobRequest(ui64 commitId, const NProto::TUnconfirmedData& entry);
+
+    void ScheduleConfirmedDataAddBlob(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TUnconfirmedData& entry);
+    void ConfirmData(ui64 commitId, const NActors::TActorContext& ctx);
+    void SendDeferredConfirmAddDataResponse(
+        const NActors::TActorContext& ctx,
+        TPendingConfirmAddData pending,
+        const NProto::TError& error);
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

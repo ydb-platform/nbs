@@ -83,6 +83,13 @@ NProto::TError ErrorInvalidSession(
 NProto::TError ErrorInvalidCheckpoint(const TString& checkpointId);
 NProto::TError ErrorDuplicate();
 
+//
+// UnconfirmedData.
+//
+
+NProto::TError ErrorUnconfirmedDataDeleted();
+NProto::TError ErrorUnconfirmedDataNotFound();
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int FileStoreErrorToErrno(int error);

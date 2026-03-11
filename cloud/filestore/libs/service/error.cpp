@@ -334,6 +334,18 @@ NProto::TError ErrorDuplicate()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError ErrorUnconfirmedDataDeleted()
+{
+    return MakeError(E_REJECTED, "UnconfirmedData deleted");
+}
+
+NProto::TError ErrorUnconfirmedDataNotFound()
+{
+    return MakeError(E_REJECTED, "unconfirmed data not found");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 int FileStoreErrorToErrno(int error)
 {
     auto it = FindIf(

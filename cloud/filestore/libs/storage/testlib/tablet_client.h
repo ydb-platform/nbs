@@ -930,6 +930,22 @@ public:
         return request;
     }
 
+    auto CreateConfirmAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvConfirmAddDataRequest>();
+        request->Record.SetCommitId(commitId);
+        return request;
+    }
+
+    auto CreateCancelAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvCancelAddDataRequest>();
+        request->Record.SetCommitId(commitId);
+        return request;
+    }
+
     auto CreateAcquireLockRequest(
         ui64 handle,
         ui64 owner,
