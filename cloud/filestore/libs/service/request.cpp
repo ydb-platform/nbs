@@ -111,6 +111,30 @@ ui64 CreateRequestId()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <>
+ui64 CalculateRequestSize<NProto::TReadDataRequest>(
+    const NProto::TReadDataRequest& request)
+{
+    return request.GetLength();
+}
+
+template <>
+ui64 CalculateRequestSize<NProto::TWriteDataRequest>(
+    const NProto::TWriteDataRequest& request)
+{
+    if (!request.GetBuffer().empty()) {
+        return request.GetBuffer().size();
+    }
+
+    ui64 byteCount = 0;
+    for (const auto& iovec: request.GetIovecs()) {
+        byteCount += iovec.GetLength();
+    }
+    return byteCount;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define FILESTORE_DECLARE_REQUEST(name, ...) #name,
 
 static const TString RequestNames[] = {
