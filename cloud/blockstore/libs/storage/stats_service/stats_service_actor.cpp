@@ -122,7 +122,7 @@ void TStatsServiceActor::HandleWakeup(
     Y_UNUSED(ev);
 
     if (Config->GetUsePullSchemeForVolumeStatistics() &&
-        State.GetVolumes().size())
+        !State.GetVolumes().empty())
     {
         RegisterStatisticsCollectorActor(ctx);
     } else {
