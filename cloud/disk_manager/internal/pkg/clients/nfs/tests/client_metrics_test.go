@@ -764,6 +764,7 @@ func TestClientDestroyCheckpointWrappedError(t *testing.T) {
 	require.Error(t, err)
 	var clientErr *nfs_client.ClientError
 	require.ErrorAs(t, err, &clientErr)
+	require.ErrorIs(t, err, retriableError)
 
 	nfsMock.AssertExpectations(t)
 	metricsMock.AssertExpectations(t)
