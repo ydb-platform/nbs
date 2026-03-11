@@ -213,7 +213,7 @@ void TFreshBlocksWriterActor::HandleWriteBlocksRequest(
     const auto writeBlobThreshold =
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
 
-    if (requestSize > writeBlobThreshold) {
+    if (requestSize >= writeBlobThreshold) {
         ForwardMessageToActor(ev, ctx, PartitionActorId);
         return;
     }

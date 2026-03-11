@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "part_counters.h"
 #include "part_database.h"
 #include "part_schema.h"
 
@@ -26,7 +27,6 @@
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
-#include <cloud/blockstore/libs/storage/partition/part_counters.h>
 #include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>

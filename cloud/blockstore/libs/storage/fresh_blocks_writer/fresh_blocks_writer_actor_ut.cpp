@@ -484,15 +484,17 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         auto testEnv = PrepareTestActorRuntime();
         auto& runtime = *testEnv.Runtime;
 
-        bool wasAddFreshBlocksRequest = false;
+        bool addFreshBlocksRequestObserved = false;
 
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
+                Y_UNUSED(runtime);
+
                 if (event->GetTypeRewrite() ==
                     TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
                 {
-                    wasAddFreshBlocksRequest = true;
+                    addFreshBlocksRequestObserved = true;
                 }
 
                 // Drop add fresh blocks response to be sure that we don't wait
@@ -500,14 +502,16 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                 if (event->GetTypeRewrite() ==
                     TEvPartitionCommonPrivate::EvAddFreshBlocksResponse)
                 {
-                    return TTestActorRuntime::EEventAction::DROP;
+                    return true;
                 }
 
                 if (event->GetTypeRewrite() ==
                     TEvService::EvWriteBlocksResponse) {
-                    UNIT_ASSERT(wasAddFreshBlocksRequest);
+                    UNIT_ASSERT(addFreshBlocksRequestObserved);
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+
+                return event->GetTypeRewrite() ==
+                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
 
         TPartitionClient partition(runtime);
@@ -616,6 +620,13 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             GetBlocksContent('A', 1024),
             GetBlocksContent(
                 fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 1024))));
+
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(0, 32), 'B');
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('B', 32),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 32))));
     }
 
     Y_UNIT_TEST(ShouldWriteBlocksWithCorrectCommitId)

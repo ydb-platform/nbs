@@ -195,7 +195,8 @@ void TFreshBlocksWriterActor::RebootOnCommitIdOverflow(
     LOG_ERROR(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s CommitId overflow in %s. Restarting partition",
+        "%s CommitId overflow in %s. Restarting fresh blocks writer and "
+        "partition",
         LogTitle.GetWithTime().c_str(),
         ToString(requestName).c_str());
     ReportTabletCommitIdOverflow({{"disk", PartitionConfig.GetDiskId()}});
