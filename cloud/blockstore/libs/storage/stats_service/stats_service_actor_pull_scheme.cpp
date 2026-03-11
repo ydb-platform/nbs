@@ -16,13 +16,15 @@ TServiceStatisticsCollectorActor::TServiceStatisticsCollectorActor(
     TVector<TActorId> volumeActorIds)
     : Owner(owner)
     , VolumeActorIds(std::move(volumeActorIds))
-{
-    Y_DEBUG_ABORT_UNLESS(!volumeActorIds.empty())
-}
+{}
 
 void TServiceStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
+
+    if(VolumeActorIds.empty()){
+        Die(ctx);
+    }
 
     for (const auto& volumeActorId: VolumeActorIds) {
         auto request =

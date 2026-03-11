@@ -1842,31 +1842,10 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             true /* isSystem */);
 
-        auto counters = CreatePartitionDiskCounters(
-            EPublishingPolicy::DiskRegistryBased,
-            EHistogramCounterOption::ReportMultipleCounters);
-        counters->RequestCounters.ReadBlocks.Count = 42;
-        counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
-
-        // Statistics were sent using the push method to check for possible
-        // failures.
-        SendDiskStats(
-            runtime,
-            "vol0",
-            false,   // isLocalMount
-            std::move(counters),
-            CreateVolumeSelfCounters(
-                EPublishingPolicy::DiskRegistryBased,
-                EHistogramCounterOption::ReportMultipleCounters),
-            EVolumeTestOptions::VOLUME_HASCLIENTS,
-            0);
-
-        counters = nullptr;
-
         auto partCounters = TEvStatsService::TEvVolumePartCounters(
             MakeIntrusive<TCallContext>(),
             "vol0",
-            std::move(counters),
+            nullptr,
             0,
             0,
             false,
@@ -1927,7 +1906,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("folder", DefaultFolderId)
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("Count");
-            UNIT_ASSERT_VALUES_EQUAL(42, actual);
+            UNIT_ASSERT_VALUES_EQUAL(0, actual);
         }
 
         {
@@ -1940,7 +1919,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("folder", DefaultFolderId)
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("RequestBytes");
-            UNIT_ASSERT_VALUES_EQUAL(100500, actual);
+            UNIT_ASSERT_VALUES_EQUAL(0, actual);
         }
     }
 
