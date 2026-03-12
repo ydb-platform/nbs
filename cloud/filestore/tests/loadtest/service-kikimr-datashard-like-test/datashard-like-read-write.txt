@@ -1,0 +1,27 @@
+Tests {
+    LoadTest {
+        Name: "datashard-like-read-write"
+        CreateFileStoreRequest: {
+            FileSystemId: "datashard-like-read-write"
+            FolderId: "folder"
+            CloudId: "cloud"
+            BlocksCount: 1000000
+            BlockSize: 4096
+        }
+        DatashardLikeLoadSpec {
+            Actions {
+                Action: ACTION_READ
+                Rate: 50
+            }
+            Actions {
+                Action: ACTION_WRITE
+                Rate: 50
+            }
+            ReadBytes: 4096
+            WriteBytes: 4096
+            InitialFileSize: 4194304
+        }
+        IODepth: 4
+        TestDuration: 30
+    }
+}

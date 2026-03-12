@@ -554,6 +554,15 @@ private:
                     FileSystemId,
                     headers);
                 break;
+            case NProto::TLoadTest::kDatashardLikeLoadSpec:
+                RequestGenerator = CreateDatashardLikeRequestGenerator(
+                    Config.GetDatashardLikeLoadSpec(),
+                    Logging,
+                    Session,
+                    Client,
+                    FileSystemId,
+                    headers);
+                break;
             default:
                 ythrow yexception()
                     << MakeTestTag()
