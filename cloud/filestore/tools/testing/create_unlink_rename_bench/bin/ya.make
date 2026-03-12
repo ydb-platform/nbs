@@ -10,6 +10,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     library/cpp/getopt
+    library/cpp/json
 
     util
 )
