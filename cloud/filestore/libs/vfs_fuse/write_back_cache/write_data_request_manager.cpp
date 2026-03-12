@@ -1,6 +1,6 @@
 #include "write_data_request_manager.h"
 
-#include <cloud/filestore/libs/storage/core/helpers.h>
+#include <cloud/filestore/libs/service/request.h>
 
 #include <util/stream/mem.h>
 
@@ -43,8 +43,8 @@ std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInPersistentStorage(
     const NProto::TWriteDataRequest& request,
     IPersistentStorage& storage)
 {
-    const ui64 byteCount =
-        NStorage::CalculateByteCount(request) - request.GetBufferOffset();
+    const ui64 byteCount = NCloud::NFileStore::CalculateRequestSize(request) -
+                           request.GetBufferOffset();
 
     const ui64 allocationSize =
         sizeof(TSerializedWriteDataRequestHeader) + byteCount;

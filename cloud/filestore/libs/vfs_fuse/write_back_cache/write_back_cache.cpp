@@ -10,7 +10,7 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
-#include <cloud/filestore/libs/storage/core/helpers.h>
+#include <cloud/filestore/libs/service/request.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -304,8 +304,9 @@ private:
             auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
 
             callContext->RequestType = EFileStoreRequest::WriteData;
-            callContext->RequestSize = NStorage::CalculateByteCount(*request) -
-                                       request->GetBufferOffset();
+            callContext->RequestSize =
+                NCloud::NFileStore::CalculateRequestSize(*request) -
+                request->GetBufferOffset();
 
             auto callback = [ptr = weak_from_this(), flushState, i](
                                 const auto& future) mutable
