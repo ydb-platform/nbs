@@ -346,7 +346,7 @@ message TStorageConfig
     // Allow to destroy filestore with active sessions
     optional bool AllowFileStoreForceDestroy = 357;
 
-    reserved 358;
+    optional bool GetNodeAttrBatchEnabled = 358 [deprecated = true];
 
     // Max number of items to delete during TrimBytes.
     optional uint64 TrimBytesItemCount = 359;
