@@ -1054,11 +1054,15 @@ func (s *nodeService) cleanupNbsEndpoint(ctx context.Context, instanceId string,
 
 func (s *nodeService) getNfsClient(fileSystemId string, nfsClientIndex uint) nfsclient.EndpointClientIface {
 	_, ok := s.externalFsOverrides[fileSystemId]
-	if !ok {
-		return s.nfsClients[nfsClientIndex]
+	if ok {
+		return s.nfsLocalClient
 	}
 
-	return s.nfsLocalClient
+	if len(s.nfsClients) < int(nfsClientIndex) {
+		return nil
+	}
+
+	return s.nfsClients[nfsClientIndex]
 }
 
 func (s *nodeService) nodePublishFileStoreAsVhostSocket(
