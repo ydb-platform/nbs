@@ -705,7 +705,6 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         auto active = counters->GetCounter("ActiveRecv");
         auto errors = counters->GetCounter("Errors");
-        std::atomic<ibv_qp_state> state = IBV_QPS_RESET;
 
         ibv_recv_wr* wr = context->RecvEvents.back();
         ibv_recv_wr* wr2 = context->RecvEvents.front();
@@ -726,7 +725,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             context->ModifyQP = [&](auto* qp, auto* attr, int mask) {
                 Y_UNUSED(qp);
                 Y_UNUSED(mask);
-                state = attr->qp_state;
+                UNIT_ASSERT_EQUAL(attr->qp_state, IBV_QPS_ERR);
             };
             // good id, good opcode, error status
             completion.push_back({
@@ -779,8 +778,6 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         wait(errors, 6);
         wait(active, 6);
-
-        UNIT_ASSERT_EQUAL(state, IBV_QPS_ERR);
     }
 };
 
