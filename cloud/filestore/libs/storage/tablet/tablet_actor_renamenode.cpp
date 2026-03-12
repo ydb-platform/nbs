@@ -205,10 +205,18 @@ void TIndexTabletActor::HandleRenameNode(
 
     //
     // NewParent is also managed by this shard, we need to lock the destination
-    // NodeRef as well.
+    // NodeRef as well (unless it's the same ref as the source).
     //
 
-    if (!TryLockNodeRef({
+    const bool isSelfRename =
+        msg->Record.GetNodeId() == msg->Record.GetNewParentId()
+        && msg->Record.GetName() == msg->Record.GetNewName();
+
+    // Note that in case of self-rename, the old ref and the new ref are the
+    // same, so we will lock it only once. However, we will try to unlock it
+    // twice upon completion of the tx, but that's not a problem, see the
+    // implementation of UnlockNodeRef.
+    if (!isSelfRename && !TryLockNodeRef({
             msg->Record.GetNewParentId(),
             msg->Record.GetNewName()}))
     {

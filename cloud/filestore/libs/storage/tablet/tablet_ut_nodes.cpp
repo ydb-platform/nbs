@@ -580,6 +580,57 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+    Y_UNIT_TEST(ShouldProperlyHandleSelfRename)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        // Self-rename of a non-existent file should return E_FS_NOENT.
+        {
+            auto response = tablet.AssertRenameNodeFailed(
+                RootNodeId,
+                "file1",
+                RootNodeId,
+                "file1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOENT,
+                response->GetError().GetCode());
+        }
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file1"));
+
+        // Self-rename of an existing file is a no-op and should return
+        // S_ALREADY without causing a deadlock (the source and destination
+        // node refs are identical, so only one lock is needed).
+        {
+            auto response = tablet.RenameNode(
+                RootNodeId,
+                "file1",
+                RootNodeId,
+                "file1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                response->GetError().GetCode());
+        }
+
+        // Rename to a non-existent destination should succeed.
+        {
+            auto response = tablet.RenameNode(
+                RootNodeId,
+                "file1",
+                RootNodeId,
+                "file2");
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->GetError().GetCode());
+        }
+    }
+
     Y_UNIT_TEST(ShouldListNodes)
     {
         TTestEnv env;

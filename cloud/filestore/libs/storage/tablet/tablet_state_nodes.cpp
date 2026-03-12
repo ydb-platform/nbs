@@ -589,6 +589,9 @@ bool TIndexTabletState::TryLockNodeRef(TNodeRefKey key)
 
 void TIndexTabletState::UnlockNodeRef(const TNodeRefKey& key)
 {
+    // Note that in some cases it is expected that the key is not present in
+    // LockedNodeRefs (e.g. upon self-rename, we may lock the node ref once, but
+    // then try to unlock it twice
     Impl->LockedNodeRefs.erase(key);
 }
 
