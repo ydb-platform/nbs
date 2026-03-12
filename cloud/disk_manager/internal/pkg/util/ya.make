@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     json.go
     mlock.go
+    nemesis.go
     proto.go
 )
 

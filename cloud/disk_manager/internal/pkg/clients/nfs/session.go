@@ -19,6 +19,10 @@ const (
 	RootNodeID    = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
 )
 
+const (
+	NodeKindLink = nfs_client.NodeType(nfs_client.NODE_KIND_LINK)
+)
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type session struct {
@@ -106,6 +110,35 @@ func (s *session) CreateNode(
 		s.session,
 		nfs_client.Node(node),
 	)
+	return nodeID, wrapError(err)
+}
+
+func (s *session) SafeCreateNode(
+	ctx context.Context,
+	node Node,
+) (_ uint64, err error) {
+
+	defer s.metrics.StatRequest("SafeCreateNode")(&err)
+
+	nodeID, err := s.nfs.CreateNode(
+		ctx,
+		s.session,
+		nfs_client.Node(node),
+	)
+	if err != nil && isAlreadyExistsError(err) {
+		existing, err := s.nfs.GetNodeAttr(
+			ctx,
+			s.session,
+			node.ParentID,
+			node.Name,
+		)
+		if err != nil {
+			return 0, wrapError(err)
+		}
+
+		return existing.NodeID, nil
+	}
+
 	return nodeID, wrapError(err)
 }
 

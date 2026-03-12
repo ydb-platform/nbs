@@ -340,3 +340,41 @@ func TestGetNodeAttr(t *testing.T) {
 	require.True(t, dirNode.Type.IsDirectory())
 	require.NotZero(t, dirNode.NodeID)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestSafeCreateNode(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	node := nfs.Node{
+		ParentID: nfs.RootNodeID,
+		Name:     "testfile",
+		Mode:     0644,
+		UID:      1,
+		GID:      1,
+	}
+
+	createdID, err := session.CreateNode(ctx, node)
+	require.NoError(t, err)
+	require.NotZero(t, createdID)
+
+	safeID, err := session.SafeCreateNode(ctx, node)
+	require.NoError(t, err)
+	require.Equal(t, createdID, safeID)
+}

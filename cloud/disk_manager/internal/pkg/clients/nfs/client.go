@@ -73,6 +73,17 @@ func isNotFoundError(err error) bool {
 	return false
 }
 
+func isAlreadyExistsError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_EXIST {
+			return true
+		}
+	}
+
+	return false
+}
+
 func setupStderrLogger(ctx context.Context) context.Context {
 	return logging.SetLogger(
 		ctx,

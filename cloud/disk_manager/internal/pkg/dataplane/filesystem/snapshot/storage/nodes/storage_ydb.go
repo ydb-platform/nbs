@@ -552,17 +552,16 @@ func (s *storageYDB) updateRestorationNodeIDMapping(
 	session *persistence.Session,
 	srcSnapshotID string,
 	dstSnapshotID string,
-	srcNodeIds []uint64,
-	dstNodeIds []uint64,
+	mapping map[uint64]uint64,
 ) error {
 
-	values := make([]persistence.Value, 0, len(srcNodeIds))
-	for i := range srcNodeIds {
+	values := make([]persistence.Value, 0, len(mapping))
+	for srcNodeID, dstNodeID := range mapping {
 		values = append(values, restoreMappingStructValue(
 			srcSnapshotID,
 			dstSnapshotID,
-			srcNodeIds[i],
-			dstNodeIds[i],
+			srcNodeID,
+			dstNodeID,
 		))
 	}
 
@@ -714,21 +713,35 @@ func (s *storageYDB) DeleteSnapshotData(
 	return done, err
 }
 
+func (s *storageYDB) DeleteRestorationMapping(
+	ctx context.Context,
+	srcSnapshotID string,
+) (bool, error) {
+
+	var deleted uint64
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			deleted, err = s.deleteFromTable(
+				ctx,
+				session,
+				srcSnapshotID,
+				"restoration_node_ids_mapping",
+			)
+			return err
+		},
+	)
+	return deleted == 0, err
+}
+
 func (s *storageYDB) UpdateRestorationNodeIDMapping(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstSnapshotID string,
-	srcNodeIds []uint64,
-	dstNodeIds []uint64,
+	mapping map[uint64]uint64,
 ) error {
-
-	if len(srcNodeIds) != len(dstNodeIds) {
-		return errors.NewNonRetriableErrorf(
-			"srcNodeIds and dstNodeIds must have the same length, got %v and %v",
-			len(srcNodeIds),
-			len(dstNodeIds),
-		)
-	}
 
 	return s.db.Execute(
 		ctx,
@@ -738,8 +751,7 @@ func (s *storageYDB) UpdateRestorationNodeIDMapping(
 				session,
 				srcSnapshotID,
 				dstSnapshotID,
-				srcNodeIds,
-				dstNodeIds,
+				mapping,
 			)
 		},
 	)

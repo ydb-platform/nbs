@@ -193,11 +193,96 @@ func HomogeneousDirectoryTree(layers []FilesystemLayerConfig) Node {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type NodeLister struct {
+	t       *testing.T
+	ctx     context.Context
+	session nfs.Session
+}
+
+func (l *NodeLister) ListAllNodes(parentNodeID uint64) []nfs.Node {
+	var (
+		nodes  []nfs.Node
+		cookie string
+	)
+
+	for {
+		batch, nextCookie, err := l.session.ListNodes(
+			l.ctx,
+			parentNodeID,
+			cookie,
+			0,     // maxBytes
+			false, // unsafe
+		)
+		require.NoError(l.t, err)
+		for index := range batch {
+			if !batch[index].Type.IsSymlink() {
+				continue
+			}
+
+			target, err := l.session.ReadLink(
+				l.ctx,
+				batch[index].NodeID,
+			)
+			require.NoError(l.t, err)
+			batch[index].LinkTarget = string(target)
+		}
+
+		nodes = append(nodes, batch...)
+		if len(batch) == 0 {
+			break
+		}
+
+		if nextCookie == "" {
+			break
+		}
+
+		cookie = nextCookie
+	}
+
+	return nodes
+}
+
+func (l *NodeLister) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
+	nodes := l.ListAllNodes(parentNodeID)
+	// Sort nodes by name to have a deterministic order
+	slices.SortFunc(
+		nodes,
+		func(i, j nfs.Node) int {
+			return strings.Compare(i.Name, j.Name)
+		},
+	)
+	result := make([]nfs.Node, 0)
+	for _, node := range nodes {
+		result = append(result, node)
+		if !node.Type.IsDirectory() {
+			continue
+		}
+
+		children := l.ListNodesRecursively(node.NodeID)
+		result = append(result, children...)
+	}
+
+	return result
+}
+
+func (l *NodeLister) ListAllNodesRecursively() []nfs.Node {
+	return l.ListNodesRecursively(nfs.RootNodeID)
+}
+
+func (l *NodeLister) SetSession(session nfs.Session) {
+	l.session = session
+}
+
+func (l *NodeLister) Close() {
+	err := l.session.Close(l.ctx)
+	require.NoError(l.t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type FileSystemModel struct {
+	NodeLister
 	root          Node
-	t             *testing.T
-	ctx           context.Context
-	session       nfs.Session
 	defaultUid    uint32
 	defaultGid    uint32
 	directoryMode uint32
@@ -255,85 +340,6 @@ func (f *FileSystemModel) CreateAllNodesRecursively() {
 	}
 }
 
-func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
-	var (
-		nodes  []nfs.Node
-		cookie string
-	)
-
-	for {
-		batch, nextCookie, err := f.session.ListNodes(
-			f.ctx,
-			parentNodeID,
-			cookie,
-			0,     // maxBytes
-			false, // unsafe
-		)
-		require.NoError(f.t, err)
-		for index := range batch {
-			if !batch[index].Type.IsSymlink() {
-				continue
-			}
-
-			target, err := f.session.ReadLink(
-				f.ctx,
-				batch[index].NodeID,
-			)
-			require.NoError(f.t, err)
-			batch[index].LinkTarget = string(target)
-		}
-
-		nodes = append(nodes, batch...)
-		if len(batch) == 0 {
-			break
-		}
-
-		if nextCookie == "" {
-			break
-		}
-
-		cookie = nextCookie
-	}
-
-	return nodes
-}
-
-func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
-	nodes := f.ListAllNodes(parentNodeID)
-	// Sort nodes by name to have a deterministic order
-	slices.SortFunc(
-		nodes,
-		func(i, j nfs.Node) int {
-			return strings.Compare(i.Name, j.Name)
-		},
-	)
-	result := make([]nfs.Node, 0)
-	for _, node := range nodes {
-		result = append(result, node)
-		if !node.Type.IsDirectory() {
-			continue
-		}
-
-		children := f.ListNodesRecursively(node.NodeID)
-		result = append(result, children...)
-	}
-
-	return result
-}
-
-func (f *FileSystemModel) ListAllNodesRecursively() []nfs.Node {
-	return f.ListNodesRecursively(nfs.RootNodeID)
-}
-
-func (f *FileSystemModel) SetSession(session nfs.Session) {
-	f.session = session
-}
-
-func (f *FileSystemModel) Close() {
-	err := f.session.Close(f.ctx)
-	require.NoError(f.t, err)
-}
-
 func (f *FileSystemModel) ExpectedNodeNames() *tasks_common.StringSet {
 	result := tasks_common.NewStringSet()
 	for _, node := range f.ExpectedNodes {
@@ -351,10 +357,12 @@ func NewFileSystemModel(
 ) *FileSystemModel {
 
 	return &FileSystemModel{
+		NodeLister: NodeLister{
+			t:       t,
+			ctx:     ctx,
+			session: session,
+		},
 		root:          root,
-		t:             t,
-		ctx:           ctx,
-		session:       session,
 		defaultUid:    1,
 		defaultGid:    1,
 		directoryMode: 0o755,
@@ -376,9 +384,7 @@ func NodeNames(nodes []nfs.Node) []string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type ParallelFilesystemModel struct {
-	ctx           context.Context
-	session       nfs.Session
-	t             *testing.T
+	NodeLister
 	rootNode      Node
 	mu            sync.Mutex
 	ExpectedNames *tasks_common.StringSet
@@ -448,11 +454,6 @@ func (m *ParallelFilesystemModel) CreateAllNodesRecursively() {
 	m.createChildren(nfs.RootNodeID, m.rootNode.Children)
 }
 
-func (m *ParallelFilesystemModel) Close() {
-	err := m.session.Close(m.ctx)
-	require.NoError(m.t, err)
-}
-
 func NewParallelFilesystemModel(
 	t *testing.T,
 	ctx context.Context,
@@ -462,9 +463,11 @@ func NewParallelFilesystemModel(
 
 	set := tasks_common.NewStringSet()
 	return &ParallelFilesystemModel{
-		t:             t,
-		ctx:           ctx,
-		session:       session,
+		NodeLister: NodeLister{
+			t:       t,
+			ctx:     ctx,
+			session: session,
+		},
 		rootNode:      rootDir,
 		ExpectedNames: &set,
 	}
