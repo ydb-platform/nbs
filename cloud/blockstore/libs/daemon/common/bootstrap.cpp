@@ -245,7 +245,7 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("Service initialized");
 
-    if (Configs->ServerConfig->GetEnableRequestsSplitter()) {
+    if (Configs->ServerConfig->GetEnableRequestSplitter()) {
         Service = CreateSplitRequestService(std::move(Service));
     }
 

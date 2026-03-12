@@ -13,7 +13,7 @@
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 
 #include <util/generic/hash.h>
-#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 
 using namespace NThreading;
 
@@ -31,7 +31,7 @@ TVector<std::shared_ptr<TRequest>> CreateSubRequests(
     TVector<std::shared_ptr<TRequest>> result;
     result.reserve(subRanges.size());
 
-    for (auto subRange: subRanges) {
+    for (const auto& subRange: subRanges) {
         auto subRequest = std::make_shared<TRequest>(*request);
         subRequest->SetStartIndex(subRange.Start);
         subRequest->SetBlocksCount(subRange.Size());
@@ -56,7 +56,7 @@ TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
     const auto& srcSgList = guard.Get();
 
     result.reserve(subRanges.size());
-    for (auto subRange: subRanges) {
+    for (const auto& subRange: subRanges) {
         auto subRequest = std::make_shared<NProto::TReadBlocksLocalRequest>();
         subRequest->CopyFrom(*request);
         subRequest->SetStartIndex(subRange.Start);
@@ -87,13 +87,14 @@ TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
     NProto::TIOVector srcBuffers;
     srcBuffers.Swap(request->MutableBlocks());
 
-    for (auto subRange: subRanges) {
+    for (const auto& subRange: subRanges) {
         auto subRequest =
             std::make_shared<NProto::TWriteBlocksRequest>(*request);
         subRequest->SetStartIndex(subRange.Start);
         auto& buffers = *subRequest->MutableBlocks()->MutableBuffers();
         for (size_t i = 0; i < subRange.Size(); ++i) {
-            size_t srcIndx = subRange.Start + i - request->GetStartIndex();
+            Y_ABORT_UNLESS(subRange.Start + i >= request->GetStartIndex());
+            const size_t srcIndx = subRange.Start + i - request->GetStartIndex();
             buffers.Add(
                 std::move(*srcBuffers.MutableBuffers()->Mutable(srcIndx)));
         }
@@ -118,7 +119,7 @@ TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> CreateSubRequests(
     const auto& srcSgList = guard.Get();
 
     result.reserve(subRanges.size());
-    for (auto subRange: subRanges) {
+    for (const auto& subRange: subRanges) {
         auto subRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         subRequest->CopyFrom(*request);
         subRequest->SetStartIndex(subRange.Start);
@@ -146,20 +147,18 @@ class TCompositeRequest
           TCompositeRequest<TRequest, TResponse>>
 {
 private:
-    const std::shared_ptr<TRequest> Request;
     const TVector<std::shared_ptr<TRequest>> SubRequests;
     TVector<TResponse> SubResponses;
     TPromise<TResponse> Promise = NewPromise<TResponse>();
 
-    TMutex Lock;
+    TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
 
 public:
     explicit TCompositeRequest(
         std::shared_ptr<TRequest> request,
         const TVector<TBlockRange64>& subRanges)
-        : Request(std::move(request))
-        , SubRequests(CreateSubRequests(Request, subRanges))
+        : SubRequests(CreateSubRequests(std::move(request), subRanges))
     {
         SubResponses.resize(SubRequests.size());
     }
@@ -288,7 +287,7 @@ private:
     const IBlockStorePtr Service;
 
     // Updating Registry should be done under lock to avoid races.
-    TMutex Lock;
+    TAdaptiveLock Lock;
     THotSwap<TSplitConfigRegistry> Registry;
 
 public:
@@ -516,6 +515,9 @@ void TSplitRequestService::OnMountVolume(
             return;
         }
 
+        // Expect that the count of mounted disks during the server reboots will
+        // never be very large, and the hashmap search is close to O(1), so we
+        // do not clean up.
         auto currentConfigs = currentRegistry->GetAllConfigs();
         currentConfigs.emplace(
             diskId,

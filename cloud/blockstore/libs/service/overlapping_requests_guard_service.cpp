@@ -6,7 +6,7 @@
 
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 
-#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 
 using namespace NThreading;
 
@@ -57,7 +57,7 @@ private:
     const IBlockStorePtr Service;
 
     // Updating ServicesRegistry should be done under lock to avoid races.
-    TMutex Lock;
+    TAdaptiveLock Lock;
     THotSwap<TOverlappingRequestsServicesRegistry> ServicesRegistry;
 
 public:

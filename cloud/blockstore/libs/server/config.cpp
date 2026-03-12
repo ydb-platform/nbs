@@ -114,7 +114,7 @@ constexpr TDuration Seconds(int s)
     xxx(VhostPteFlushByteThreshold,  ui64,                   0                )\
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
     xxx(EnableOverlappingRequestsGuard,  bool,               false            )\
-    xxx(EnableRequestsSplitter,      bool,                   false            )\
+    xxx(EnableRequestSplitter,       bool,                   false            )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on
