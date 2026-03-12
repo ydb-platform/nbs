@@ -9,17 +9,24 @@ import tempfile
 def prepare_img(args):
     if args.image is None:
         args.image = "{release}-server-cloudimg-{arch}.img".format(**vars(args))
-        img_url = ("{cloud_images_mirror}/{release}/current/"
-                   "{release}-server-cloudimg-{arch}.img".format(**vars(args)))
 
-        print("Downloading", img_url, end='', flush=True)
+        # Download image only if it doesn't already exist
+        if not os.path.exists(args.image):
+            img_url = (
+                "{cloud_images_mirror}/{release}/current/"
+                "{release}-server-cloudimg-{arch}.img".format(**vars(args))
+            )
 
-        def progress(blocknum, bs, size):
-            if blocknum * bs % (10 << 20) < bs:
-                print('.', end='', flush=True)
+            print("Downloading", img_url, end="", flush=True)
 
-        urlretrieve(img_url, filename=args.image, reporthook=progress)
-        print("done", flush=True)
+            def progress(blocknum, bs, size):
+                if blocknum * bs % (10 << 20) < bs:
+                    print(".", end="", flush=True)
+
+            urlretrieve(img_url, filename=args.image, reporthook=progress)
+            print("done", flush=True)
+        else:
+            print("Using existing image file:", args.image, flush=True)
 
     if args.no_resize:
         subprocess.check_call("cp {} {}".format(args.image, args.out))
@@ -61,45 +68,53 @@ def ssh_pubkey_blob(ssh_privkey):
 def write_user_data(filename, args):
     pubkey_blob = ssh_pubkey_blob(args.ssh_key)
 
+    if args.packages:
+        packages = args.packages.split(",")
+    else:
+        packages = [
+            "acl",
+            "btop",
+            "fio",
+            "iotop",
+            "mc",
+            "mysql-server",
+            "nfs-common",
+            "postgresql",
+            "sysbench",
+            "tmux",
+            "xattr",
+        ]
+
+    if args.additional_packages:
+        packages.extend(args.additional_packages.split(","))
+
     user_data = {
-        'users': [
+        "users": [
             {
-                'name': args.user,
-                'lock_passwd': False,
-                'plain_text_passwd': 'qemupass' if args.plain_pwd else None,
-                'ssh_pwauth': args.plain_pwd,
-                'ssh_authorized_keys': [pubkey_blob],
-                'sudo': ['ALL=(ALL) NOPASSWD:ALL'],
-                'shell': '/bin/bash',
+                "name": args.user,
+                "lock_passwd": False,
+                "plain_text_passwd": "qemupass" if args.plain_pwd else None,
+                "ssh_pwauth": args.plain_pwd,
+                "ssh_authorized_keys": [pubkey_blob],
+                "sudo": ["ALL=(ALL) NOPASSWD:ALL"],
+                "shell": "/bin/bash",
             },
         ],
-        'apt': {
-            'primary': [
+        "apt": {
+            "primary": [
                 {
-                    'arches': ['default'],
-                    'uri': args.repo_mirror,
+                    "arches": ["default"],
+                    "uri": args.repo_mirror,
                 },
             ],
         },
-        'packages': [
-            'acl',
-            'btop',
-            'fio',
-            'iotop',
-            'mc',
-            'mysql-server',
-            'nfs-common',
-            'postgresql',
-            'sysbench',
-            'tmux',
-            'xattr'
-        ],
-        'power_state': {
-            'delay': 'now',
-            'mode': 'poweroff',
+        "packages": packages,
+        "power_state": {
+            "delay": "now",
+            "mode": "poweroff",
         },
-        'write_files': [],
-        'runcmd' : [],
+        "write_files": [],
+        "runcmd": [],
     }
 
     if args.release not in ["focal", "bionic"]:
@@ -231,8 +246,7 @@ def main(args):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", help="output file path", default="rootfs.img")
-    parser.add_argument("--release", help="Ubuntu release name",
-                        default="plucky")
+    parser.add_argument("--release", help="Ubuntu release name", default="noble")
     parser.add_argument("--arch", help="Ubuntu architecture", default="amd64")
     parser.add_argument("--image", help="image file path to use instead of downloading", default=None)
     parser.add_argument("--cloud-images-mirror",
@@ -246,6 +260,16 @@ def parse_args():
     parser.add_argument("--plain-pwd", help="Use password for user login", action='store_true')
     parser.add_argument("--no-resize", help="do not attempt to resize partitions", action='store_true')
     parser.add_argument("--with-rdma", help="Install rdma packages", action='store_true')
+    parser.add_argument(
+        "--packages",
+        help="Comma-separated list of packages to install (overrides default package list)",
+        default=None,
+    )
+    parser.add_argument(
+        "--additional-packages",
+        help="Comma-separated list of additional packages to install",
+        default=None,
+    )
 
     return parser.parse_args()
 
