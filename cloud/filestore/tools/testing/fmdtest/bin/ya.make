@@ -1,4 +1,4 @@
-PROGRAM(filestore-create-unlink-rename-bench)
+PROGRAM(fmdtest)
 
 SRCS(
     app.cpp
