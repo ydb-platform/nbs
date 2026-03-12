@@ -71,7 +71,7 @@ void TIndexTabletActor::HandleWriteData(
 
     const ui64 nodeId = msg->Record.GetNodeId();
 
-    if (!UnconfirmedRecoveryReady || !CompactionStateLoadStatus.Finished) {
+    if (!UnconfirmedRecoveryReady) {
         if (HasDataOverlapWithUnconfirmed(nodeId, range)) {
             replyError(MakeError(
                 E_REJECTED,
