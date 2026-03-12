@@ -390,9 +390,8 @@ func TestTransferFromFilesystemToSnapshotCancelDeletesData(t *testing.T) {
 	defer f.cleanupFilesystem(t, filesystemID)
 
 	layers := []nfs_testing.FilesystemLayerConfig{
-		{DirsCount: 10, FilesCount: 100},
-		{DirsCount: 5, FilesCount: 100},
-		{DirsCount: 0, FilesCount: 10},
+		{DirsCount: 1000, FilesCount: 10},
+		{DirsCount: 5, FilesCount: 1},
 	}
 	root := nfs_testing.HomogeneousDirectoryTree(layers)
 	fsModel := f.fillFilesystemParallel(t, filesystemID, root)
