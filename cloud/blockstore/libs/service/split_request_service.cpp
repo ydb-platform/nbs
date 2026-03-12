@@ -515,7 +515,7 @@ void TSplitRequestService::OnMountVolume(
             return;
         }
 
-        // Expect that the count of mounted disks during the server reboots will
+        // Expect that the count of mounted disks during the server runtime will
         // never be very large, and the hashmap search is close to O(1), so we
         // do not clean up.
         auto currentConfigs = currentRegistry->GetAllConfigs();
