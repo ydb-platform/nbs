@@ -1,4 +1,5 @@
 #include "service_ut_sharding.h"
+#include "service_ut_helpers.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -16,23 +17,6 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString GenerateValidateData(ui32 size)
-{
-    TString data(size, 0);
-    for (ui32 i = 0; i < size; ++i) {
-        data[i] = 'A' + (i % ('Z' - 'A' + 1));
-    }
-    return data;
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TStorageServiceParentlessTest)
 {
