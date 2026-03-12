@@ -1058,7 +1058,7 @@ func (s *nodeService) getNfsClient(fileSystemId string, nfsClientIndex uint) nfs
 		return s.nfsLocalClient
 	}
 
-	if len(s.nfsClients) < int(nfsClientIndex) {
+	if len(s.nfsClients) <= int(nfsClientIndex) {
 		return nil
 	}
 
