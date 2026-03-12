@@ -195,6 +195,12 @@ func NewDriver(cfg Config) (*Driver, error) {
 				cfg.StartEndpointRequestTimeout, cfg.GrpcRequestTimeout)
 	}
 
+	if cfg.NfsVhostReplicaCountOnNode > cfg.NfsVhostReplicaCount {
+		return nil,
+			fmt.Errorf("Invalid nfs-vhost replica count values. NfsVhostReplicaCountOnNode %q must be less than NfsVhostReplicaCount %q",
+				cfg.NfsVhostReplicaCountOnNode, cfg.NfsVhostReplicaCount)
+	}
+
 	clients, err := createClients(cfg)
 	if err != nil {
 		return nil, err
