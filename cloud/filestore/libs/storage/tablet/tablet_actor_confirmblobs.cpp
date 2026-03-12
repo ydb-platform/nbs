@@ -1,7 +1,5 @@
 #include "tablet_actor.h"
 
-#include "model/split_range.h"
-
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 
@@ -12,12 +10,11 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
-#include <algorithm>
-
+#include <util/generic/algorithm.h>
 #include <util/generic/cast.h>
 #include <util/generic/hash_set.h>
-#include <util/string/builder.h>
 #include <util/stream/str.h>
+#include <util/string/builder.h>
 #include <util/system/datetime.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -47,7 +44,8 @@ class TConfirmBlobsActor final: public TActorBootstrapped<TConfirmBlobsActor>
 {
 private:
     const ui64 StartCycleCount = GetCycleCount();
-    const ui64 TabletId = 0;
+    const TString LogTag;
+    const ui64 TabletId;
     const TActorId Tablet;
     const TVector<TBlobRequest> Requests;
 
@@ -85,7 +83,8 @@ TConfirmBlobsActor::TConfirmBlobsActor(
     ui64 tabletId,
     const TActorId& tablet,
     TVector<TBlobRequest> requests)
-    : TabletId(tabletId)
+    : LogTag(TStringBuilder() << "[t:" << tabletId << "]")
+    , TabletId(tabletId)
     , Tablet(tablet)
     , Requests(std::move(requests))
 {}
@@ -147,13 +146,13 @@ void TConfirmBlobsActor::HandleGetResult(
 
     if (NCloud::IsUnrecoverable(msg->Responses[0].Status)) {
         ui32 requestIndex = ev->Cookie;
-        Y_ABORT_UNLESS(requestIndex < Requests.size());
+        TABLET_VERIFY(requestIndex < Requests.size());
 
         const auto& blobId = Requests[requestIndex].BlobId;
         UnrecoverableBlobs.push_back(blobId);
     }
 
-    Y_DEBUG_ABORT_UNLESS(RequestsCompleted < Requests.size());
+    TABLET_VERIFY(RequestsCompleted < Requests.size());
     if (++RequestsCompleted < Requests.size()) {
         return;
     }
@@ -230,7 +229,8 @@ void TIndexTabletActor::ConfirmBlobs(const TActorContext& ctx)
         LOG_ERROR(
             ctx,
             TFileStoreComponents::TABLET,
-            "%s ConfirmBlobs: request list is empty for %zu unconfirmed entries",
+            "%s ConfirmBlobs: request list is empty for %zu unconfirmed "
+            "entries",
             LogTag.c_str(),
             UnconfirmedData.size());
 
@@ -259,16 +259,11 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
 
     if (HasError(error)) {
         const auto errorMessage = FormatError(error);
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s ConfirmBlobs failed: %s",
-            LogTag.c_str(),
-            errorMessage.c_str());
         ReportConfirmBlobsFailed(
             TStringBuilder()
             << "tabletId: " << TabletID() << ", error: " << errorMessage);
-        Suicide(ctx);
+
+        BecomeAux(ctx, STATE_BROKEN);
         return;
     }
 
@@ -284,7 +279,7 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
             unrecoverableCommitIdsSet.insert(blobId.CommitId());
         }
 
-        LOG_WARN(
+        LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET,
             "%s %s",
@@ -306,18 +301,24 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     }
 
     if (!unrecoverableCommitIds.empty()) {
+        // This Tx doesn't read from db and can't have page faults, so it's safe
+        // to rely that it will succeed before any other write operations.
         ExecuteTx<TDeleteUnconfirmedData>(
             ctx,
-            CreateRequestInfo(SelfId(), 0 /* cookie */, MakeIntrusive<TCallContext>()),
+            CreateRequestInfo(
+                SelfId(),
+                0 /* cookie */,
+                MakeIntrusive<TCallContext>()),
             std::move(unrecoverableCommitIds));
     }
 
-    // Recovery must replay confirms in commitId order to preserve write order
-    // for overlapping ranges.
-    std::sort(recoverableCommitIds.begin(), recoverableCommitIds.end());
+    // Recovery must replay confirmations in commitId order to preserve write
+    // order for overlapping ranges.
+    Sort(recoverableCommitIds);
 
     for (ui64 commitId: recoverableCommitIds) {
-        // TODO(#5353) Support out of order insertion to unblock here imeadeately
+        // TODO(#5353) Support out of order insertion to unblock here
+        // imeadeately
         ConfirmData(commitId, ctx);
     }
 

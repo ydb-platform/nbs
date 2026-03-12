@@ -404,7 +404,7 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
         return false;
     };
 
-    // Intentionally without DataInProgress as wee need it currently only for
+    // Intentionally without DataInProgress as we need it currently only for
     // recovery phase.
     return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
 }
