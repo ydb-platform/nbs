@@ -42,6 +42,27 @@ TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
     return blobSizes;
 }
 
+NProto::TUnconfirmedData BuildUnconfirmedData(
+    const NProtoPrivate::TGenerateBlobIdsRequest& generateRequest,
+    const NProtoPrivate::TGenerateBlobIdsResponse& generateResponse)
+{
+    NProto::TUnconfirmedData data;
+
+    ui64 offset = generateRequest.GetOffset();
+    ui64 end = generateRequest.GetOffset() + generateRequest.GetLength();
+    for (const auto& part: generateRequest.GetUnalignedDataRanges()) {
+        *data.AddUnalignedDataRanges() = part;
+        offset = Min(offset, part.GetOffset());
+        end = Max(end, part.GetOffset() + static_cast<ui64>(part.GetContent().size()));
+    }
+    data.SetOffset(offset);
+    data.SetLength(end - offset);
+    for (const auto& blob: generateResponse.GetBlobs()) {
+        *data.AddBlobIds() = blob.GetBlobId();
+    }
+    return data;
+}
+
 NProto::TError ValidateUnalignedDataRanges(
     const google::protobuf::RepeatedPtrField<NProtoPrivate::TFreshDataRange>&
         ranges,
@@ -315,13 +336,32 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateBlobIds");
     }
 
+    // TODO (#5468) consider take into account isOverloaded
+    const bool canUseUnconfirmed = CanUseUnconfirmedData();
+
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
     {
-        return ValidateWriteRequest(
+        auto error = ValidateWriteRequest(
             ctx,
             request,
             range,
             !Config->GetAllowHandlelessIO());
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (canUseUnconfirmed) {
+            error = IsDataOperationAllowed();
+            if (HasError(error)) {
+                return error;
+            }
+
+            return ValidateUnalignedDataRanges(
+                request.GetUnalignedDataRanges(),
+                GetBlockSize());
+        }
+
+        return NProto::TError{};
     };
 
     const bool accepted = AcceptRequest<TEvIndexTablet::TGenerateBlobIdsMethod>(
@@ -339,11 +379,15 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return;
     }
 
-    // We schedule this event for the case if the client does not call AddData.
-    // Thus we ensure that the collect barrier will be released eventually.
-    ctx.Schedule(
-        Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
-        new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
+    if (!canUseUnconfirmed) {
+        // We schedule this event for the case if the client does not call
+        // AddData. Thus we ensure that the collect barrier will be released
+        // eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
+    }
+
     AcquireCollectBarrier(commitId);
 
     auto response =
@@ -377,18 +421,69 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     }
 
     response->Record.SetCommitId(commitId);
+
+    response->Record.SetUnconfirmedFlowEnabled(canUseUnconfirmed);
+
     CompleteResponse<TEvIndexTablet::TGenerateBlobIdsMethod>(
         response->Record,
         msg->CallContext,
         ctx);
 
+    NProto::TUnconfirmedData unconfirmedData;
+    if (canUseUnconfirmed) {
+        unconfirmedData = BuildUnconfirmedData(
+            msg->Record,
+            response->Record);
+    }
+
     Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);
+    ui64 generateBlobIdsBytes = msg->Record.GetLength();
+    if (canUseUnconfirmed) {
+        for (const auto& part: msg->Record.GetUnalignedDataRanges()) {
+            generateBlobIdsBytes += part.GetContent().size();
+        }
+    }
     Metrics.GenerateBlobIds.RequestBytes.fetch_add(
-        msg->Record.GetLength(),
+        generateBlobIdsBytes,
         std::memory_order_relaxed);
     Metrics.GenerateBlobIds.Time.Record(ctx.Now() - startedTs);
 
     NCloud::Reply(ctx, *ev, std::move(response));
+
+    if (canUseUnconfirmed) {
+        const TByteRange byteRange(
+            unconfirmedData.GetOffset(),
+            unconfirmedData.GetLength(),
+            GetBlockSize());
+
+        auto [inProgressIt, inserted] = UnconfirmedDataInProgress.emplace(
+            commitId,
+            TTrackedUnconfirmedData{
+                .Data = std::move(unconfirmedData),
+                .SessionId = GetSessionId(msg->Record)});
+        TABLET_VERIFY(inserted);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitTabletProfileLogRequestInfo(
+            profileLogRequest,
+            EFileStoreSystemRequest::AddDataUnconfirmed,
+            ctx.Now());
+
+        auto requestInfo = CreateRequestInfo(
+            SelfId(),
+            commitId,
+            MakeIntrusive<TCallContext>());
+        requestInfo->StartedTs = ctx.Now();
+
+        // TODO (#5404) Use batching instead of single Tx
+        ExecuteTx<TAddDataUnconfirmed>(
+            ctx,
+            std::move(requestInfo),
+            msg->Record,
+            commitId,
+            byteRange,
+            std::move(profileLogRequest));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -591,15 +686,5 @@ void TIndexTabletActor::HandleAddDataCompleted(
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
 }
-
-void TIndexTabletActor::HandleConfirmAddData(
-    const TEvIndexTablet::TEvConfirmAddDataRequest::TPtr&,
-    const TActorContext&)
-{}
-
-void TIndexTabletActor::HandleCancelAddData(
-    const TEvIndexTablet::TEvCancelAddDataRequest::TPtr&,
-    const TActorContext&)
-{}
 
 }   // namespace NCloud::NFileStore::NStorage

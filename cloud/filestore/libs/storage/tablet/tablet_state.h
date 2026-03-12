@@ -27,6 +27,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -35,6 +36,8 @@
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -196,6 +199,27 @@ struct TBackgroundOpsBackpressureStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Stores deferred ConfirmAddData request info until unconfirmed data is either
+// indexed by AddBlob or rejected.
+struct TPendingConfirmAddData
+{
+    NActors::TActorId Sender;
+    ui64 Cookie = 0;
+    TInstant DeferredTs;
+    TCallContextPtr CallContext;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTrackedUnconfirmedData
+{
+    NProto::TUnconfirmedData Data;
+    TString SessionId;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletState
 {
 private:
@@ -231,6 +255,20 @@ private:
 
 protected:
     TString LogTag;
+
+    // Data for which internal AddDataUnconfirmed tx is still executing.
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
+    // Data written to local db but not yet confirmed/indexed
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedData;
+    // Data confirmed but not yet added to index
+    THashMap<ui64, TTrackedUnconfirmedData> ConfirmedData;
+
+    // CommitIds scheduled for unconfirmed-data deletion and waiting for
+    // completion.
+    THashSet<ui64> DeletionQueue;
+    // ConfirmAddData requests that arrived before internal AddData completed.
+    // Used for all requests until (#5353)
+    THashMap<ui64, TPendingConfirmAddData> PendingConfirmation;
 
 public:
     TIndexTabletState();
@@ -916,6 +954,13 @@ public:
         const TBackpressureThresholds& thresholds,
         const TBackpressureValues& values,
         TString* message);
+
+    //
+    // UnconfirmedData / ConfirmedData
+    //
+
+public:
+    void ConfirmedDataAdded(TIndexTabletDatabase& db, ui64 commitId);
 
     //
     // FreshBytes

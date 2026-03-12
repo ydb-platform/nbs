@@ -82,6 +82,8 @@ namespace NCloud::NFileStore{
     xxx(InvalidShardIdx)                                                       \
     xxx(MissingOpLogEntryId)                                                   \
     xxx(BrokenProfileLogRequest)                                               \
+    xxx(UnconfirmedDataNotInProgress)                                          \
+    xxx(InvalidCommitIdInUnconfirmedAddBlobSafePoint)                          \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

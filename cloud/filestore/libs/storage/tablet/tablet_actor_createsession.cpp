@@ -100,6 +100,9 @@ void FillFeatures(
 
     features->SetReadBlobDisabled(config.GetReadBlobDisabled());
     features->SetWriteBlobDisabled(config.GetWriteBlobDisabled());
+
+    features->SetUnconfirmedFlowEnabled(
+        config.GetAddingUnconfirmedDataEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -437,6 +437,24 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
     return {};
 }
 
+bool TIndexTabletActor::CanUseUnconfirmedData() const
+{
+    if (!Config->GetAddingUnconfirmedDataEnabled()) {
+        return false;
+    }
+
+    const ui32 hardLimit = Config->GetUnconfirmedDataCountHardLimit();
+    const size_t unconfirmedDataCount =
+        UnconfirmedData.size() +
+        ConfirmedData.size() +
+        UnconfirmedDataInProgress.size();
+    if (hardLimit && unconfirmedDataCount >= hardLimit) {
+        return false;
+    }
+
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ui32 TIndexTabletActor::ScaleCompactionThreshold(ui32 t) const

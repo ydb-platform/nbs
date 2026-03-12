@@ -131,6 +131,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AddData,                            __VA_ARGS__)                       \
+    xxx(AddDataUnconfirmed,                 __VA_ARGS__)                       \
+    xxx(DeleteUnconfirmedData,              __VA_ARGS__)                       \
     xxx(WriteBatch,                         __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
@@ -2238,6 +2240,51 @@ struct TTxIndexTablet
     };
 
     //
+    // AddDataUnconfirmed
+    //
+
+    struct TAddDataUnconfirmed
+        : TAddDataBase
+    {
+        const ui64 CommitId;
+
+        TAddDataUnconfirmed(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TGenerateBlobIdsRequest& request,
+                ui64 commitId,
+                TByteRange byteRange,
+                NProto::TProfileLogRequestInfo profileLogRequest)
+            : TAddDataBase(
+                  std::move(requestInfo),
+                  request,
+                  byteRange,
+                  std::move(profileLogRequest))
+            , CommitId(commitId)
+        {}
+    };
+
+    //
+    // DeleteUnconfirmedData
+    //
+
+    struct TDeleteUnconfirmedData
+        : TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        TVector<ui64> CommitIds;
+
+        TDeleteUnconfirmedData(
+                TRequestInfoPtr requestInfo,
+                TVector<ui64> commitIds)
+            : RequestInfo(std::move(requestInfo))
+            , CommitIds(std::move(commitIds))
+        {}
+
+        void Clear() override
+        {}
+    };
+
+    //
     // WriteBatch
     //
 
@@ -2336,6 +2383,9 @@ struct TTxIndexTablet
         const TVector<TBlockBytesMeta> UnalignedDataParts;
 
         ui64 CommitId = InvalidCommitId;
+        // Original commitId from GenerateBlobIds, used to clean up
+        // ConfirmedData entries after successful indexing
+        ui64 ConfirmedDataRefCommitId = InvalidCommitId;
         TNodeSet Nodes;
 
         TAddBlob(
@@ -2346,7 +2396,8 @@ struct TTxIndexTablet
                 TVector<TMixedBlobMeta> mixedBlobs,
                 TVector<TMergedBlobMeta> mergedBlobs,
                 TVector<TWriteRange> writeRanges,
-                TVector<TBlockBytesMeta> unalignedDataParts)
+                TVector<TBlockBytesMeta> unalignedDataParts,
+                ui64 confirmedDataRefCommitId = InvalidCommitId)
             : TProfileAware(EFileStoreSystemRequest::AddBlob)
             , RequestInfo(std::move(requestInfo))
             , Mode(mode)
@@ -2356,6 +2407,7 @@ struct TTxIndexTablet
             , MergedBlobs(std::move(mergedBlobs))
             , WriteRanges(std::move(writeRanges))
             , UnalignedDataParts(std::move(unalignedDataParts))
+            , ConfirmedDataRefCommitId(confirmedDataRefCommitId)
         {}
 
         void Clear() override

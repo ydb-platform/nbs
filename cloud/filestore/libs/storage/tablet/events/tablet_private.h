@@ -143,6 +143,7 @@ struct TWriteBlob
 enum class EAddBlobMode
 {
     Write,
+    WriteUnconfirmed,
     WriteBatch,
     Flush,
     FlushBytes,
@@ -406,6 +407,8 @@ struct TEvIndexTabletPrivate
         TVector<TMergedBlobMeta> MergedBlobs;
         TVector<TWriteRange> WriteRanges;
         TVector<TBlockBytesMeta> UnalignedDataParts;
+        // Used only in unconfirmed data flow
+        ui64 ConfirmedDataRefCommitId = InvalidCommitId;
     };
 
     struct TAddBlobResponse
