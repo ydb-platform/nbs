@@ -226,6 +226,7 @@ func (f *FileSystemModel) CreateNodesRecursively(
 	}
 	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
+	expectedNode.NodeID = id
 	f.ExpectedNodes = append(f.ExpectedNodes, expectedNode)
 	if !nodeToCreate.FileType.IsDirectory() {
 		return
