@@ -761,29 +761,18 @@ void TRdmaDataEndpoint::HandleResponse(
     ui32 status,
     size_t responseBytes)
 {
-    auto self = shared_from_this();
-    TaskQueue->ExecuteSimple(
-        [
-            responseBytes = responseBytes,
-            status = status,
-            Log = Log,
-            self = std::move(self),
-            req = std::move(req)
-        ] () mutable
-    {
-        auto* handler = static_cast<IRequestHandler*>(req->Context.get());
-        try {
-            auto buffer = req->ResponseBuffer.Head(responseBytes);
-            if (status == 0) {
-                handler->HandleResponse(buffer);
-            } else {
-                auto error = NRdma::ParseError(buffer);
-                handler->HandleError(error.GetCode(), error.GetMessage());
-            }
-        } catch (...) {
-            STORAGE_ERROR("Exception in callback: " << CurrentExceptionMessage());
+    auto* handler = static_cast<IRequestHandler*>(req->Context.get());
+    try {
+        auto buffer = req->ResponseBuffer.Head(responseBytes);
+        if (status == 0) {
+            handler->HandleResponse(buffer);
+        } else {
+            auto error = NRdma::ParseError(buffer);
+            handler->HandleError(error.GetCode(), error.GetMessage());
         }
-    });
+    } catch (...) {
+        STORAGE_ERROR("Exception in callback: " << CurrentExceptionMessage());
+    }
 }
 
 void TRdmaDataEndpoint::DoStopEndpoint()
