@@ -96,8 +96,8 @@ def write_user_data(filename, args):
                 'plain_text_passwd': 'qemupass' if args.plain_pwd else None,
                 'ssh_pwauth': args.plain_pwd,
                 'ssh_authorized_keys': [pubkey_blob],
-                'sudo': ["ALL=(ALL) NOPASSWD:ALL"],
-                'shell': "/bin/bash",
+                'sudo': ['ALL=(ALL) NOPASSWD:ALL'],
+                'shell': '/bin/bash',
             },
         ],
         'apt': {
