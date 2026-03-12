@@ -2,12 +2,14 @@
 
 #include "model/split_range.h"
 
-#include <cloud/filestore/libs/service/error.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 
 #include <util/generic/cast.h>
 #include <util/generic/vector.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -34,7 +36,7 @@ void TIndexTabletActor::SendDeferredConfirmAddDataResponse(
         pending.Sender,
         ctx.SelfID,
         response.release(),
-        0,
+        0 /* flags */,
         pending.Cookie));
 
     FinalizeProfileLogRequestInfo(
@@ -50,10 +52,6 @@ void TIndexTabletActor::SendPendingConfirmAddDataResponse(
     ui64 commitId,
     const NProto::TError& error)
 {
-    if (commitId == InvalidCommitId) {
-        return;
-    }
-
     auto pendingIt = PendingConfirmation.find(commitId);
     if (pendingIt == PendingConfirmation.end()) {
         return;
@@ -73,6 +71,10 @@ void TIndexTabletActor::UnconfirmedAddBlobSafePointReached(
     const NProto::TError& error)
 {
     if (commitId == InvalidCommitId) {
+        ReportInvalidCommitIdInUnconfirmedAddBlobSafePoint(
+            TStringBuilder()
+                << "tabletId: " << TabletID()
+                << ", commitId: " << commitId);
         Y_DEBUG_ABORT_UNLESS(false);
         return;
     }
@@ -248,7 +250,10 @@ void TIndexTabletActor::HandleCancelAddData(
         DeletionQueue.emplace(commitId);
         ExecuteTx<TDeleteUnconfirmedData>(
             ctx,
-            CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+            CreateRequestInfo(
+                SelfId(),
+                0 /* cookie */,
+                MakeIntrusive<TCallContext>()),
             TVector<ui64>{commitId});
     }
 
@@ -323,14 +328,16 @@ TIndexTabletActor::BuildAddBlobRequest(
     return addBlobRequest;
 }
 
-void TIndexTabletActor::ScheduleConfirmedDataAddBlob(
+void TIndexTabletActor::AddBlobForUnconfirmedData(
     const TActorContext& ctx,
     ui64 commitId,
     const NProto::TUnconfirmedData& entry)
 {
     auto addBlobRequest = BuildAddBlobRequest(commitId, entry);
-    auto requestInfo =
-        CreateRequestInfo(SelfId(), 0, addBlobRequest->CallContext);
+    auto requestInfo = CreateRequestInfo(
+        SelfId(),
+        0 /* cookie */,
+        addBlobRequest->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -355,17 +362,19 @@ void TIndexTabletActor::ScheduleConfirmedDataAddBlob(
 
 void TIndexTabletActor::ConfirmData(ui64 commitId, const TActorContext& ctx)
 {
-    auto it = UnconfirmedData.find(commitId);
-    Y_ABORT_UNLESS(it != UnconfirmedData.end());
+    auto unconfirmedIt = UnconfirmedData.find(commitId);
+    TABLET_VERIFY(unconfirmedIt != UnconfirmedData.end());
 
-    auto [pos, inserted, _] = ConfirmedData.insert(UnconfirmedData.extract(it));
-    Y_ABORT_UNLESS(inserted);
+    auto [pos, inserted] =
+        ConfirmedData.emplace(commitId, std::move(unconfirmedIt->second));
+    TABLET_VERIFY(inserted);
+    UnconfirmedData.erase(unconfirmedIt);
 
     const auto& entry = pos->second;
 
     // Submit AddBlob tx immediately to keep confirmation ordering in tx queue
     // (assuming no page-fault/restart).
-    ScheduleConfirmedDataAddBlob(ctx, commitId, entry.Data);
+    AddBlobForUnconfirmedData(ctx, commitId, entry.Data);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

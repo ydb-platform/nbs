@@ -367,7 +367,6 @@ void TIndexTabletState::ConfirmedDataAdded(
     TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
 }
 
-
 NProto::TError TIndexTabletState::CheckFreshBytes(
     ui64 nodeId,
     ui64 commitId,

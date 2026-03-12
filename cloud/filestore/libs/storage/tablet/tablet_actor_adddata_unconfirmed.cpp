@@ -1,5 +1,6 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
@@ -19,6 +20,9 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
     Y_UNUSED(ctx);
 
     if (!UnconfirmedDataInProgress.contains(args.CommitId)) {
+        ReportUnconfirmedDataNotInProgress(TStringBuilder()
+            << "tabletId: " << TabletID()
+            << ", commitId: " << args.CommitId);
         args.Error = MakeError(E_FAIL, "Unconfirmed data not in progress");
         LOG_ERROR(
             ctx,
@@ -109,8 +113,12 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
 
         TABLET_VERIFY(TryReleaseCollectBarrier(args.CommitId));
     } else {
-        UnconfirmedData.insert(
-            UnconfirmedDataInProgress.extract(args.CommitId));
+        auto inProgressIt = UnconfirmedDataInProgress.find(args.CommitId);
+        TABLET_VERIFY(inProgressIt != UnconfirmedDataInProgress.end());
+        UnconfirmedData.emplace(
+            args.CommitId,
+            std::move(inProgressIt->second));
+        UnconfirmedDataInProgress.erase(inProgressIt);
 
         if (deleteOnTxComplete) {
             ExecuteTx<TDeleteUnconfirmedData>(

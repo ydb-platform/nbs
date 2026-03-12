@@ -6,8 +6,6 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
-#include <algorithm>
-
 #include <library/cpp/iterator/enumerate.h>
 
 #include <util/generic/cast.h>
@@ -54,8 +52,8 @@ NProto::TUnconfirmedData BuildUnconfirmedData(
     ui64 end = generateRequest.GetOffset() + generateRequest.GetLength();
     for (const auto& part: generateRequest.GetUnalignedDataRanges()) {
         *data.AddUnalignedDataRanges() = part;
-        offset = std::min(offset, part.GetOffset());
-        end = std::max<ui64>(end, part.GetOffset() + part.GetContent().size());
+        offset = Min(offset, part.GetOffset());
+        end = Max(end, part.GetOffset() + static_cast<ui64>(part.GetContent().size()));
     }
     data.SetOffset(offset);
     data.SetLength(end - offset);
@@ -338,7 +336,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateBlobIds");
     }
 
-    // TODO consider take into account isOverloaded
+    // TODO (#5468) consider take into account isOverloaded
     const bool canUseUnconfirmed = CanUseUnconfirmedData();
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)

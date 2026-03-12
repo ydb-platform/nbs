@@ -683,7 +683,7 @@ private:
     std::unique_ptr<TEvIndexTabletPrivate::TEvAddBlobRequest>
     BuildAddBlobRequest(ui64 commitId, const NProto::TUnconfirmedData& entry);
 
-    void ScheduleConfirmedDataAddBlob(
+    void AddBlobForUnconfirmedData(
         const NActors::TActorContext& ctx,
         ui64 commitId,
         const NProto::TUnconfirmedData& entry);

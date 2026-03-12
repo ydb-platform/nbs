@@ -36,12 +36,11 @@
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-
-#include <unordered_map>
-#include <unordered_set>
 
 namespace NCloud::NFileStore::NProto {
 
@@ -258,18 +257,18 @@ protected:
     TString LogTag;
 
     // Data for which internal AddDataUnconfirmed tx is still executing.
-    std::unordered_map<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
     // Data written to local db but not yet confirmed/indexed
-    std::unordered_map<ui64, TTrackedUnconfirmedData> UnconfirmedData;
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedData;
     // Data confirmed but not yet added to index
-    std::unordered_map<ui64, TTrackedUnconfirmedData> ConfirmedData;
+    THashMap<ui64, TTrackedUnconfirmedData> ConfirmedData;
 
     // CommitIds scheduled for unconfirmed-data deletion and waiting for
     // completion.
-    std::unordered_set<ui64> DeletionQueue;
+    THashSet<ui64> DeletionQueue;
     // ConfirmAddData requests that arrived before internal AddData completed.
     // Used for all requests until (#5353)
-    std::unordered_map<ui64, TPendingConfirmAddData> PendingConfirmation;
+    THashMap<ui64, TPendingConfirmAddData> PendingConfirmation;
 
 public:
     TIndexTabletState();
