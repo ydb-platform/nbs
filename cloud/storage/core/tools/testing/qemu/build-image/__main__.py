@@ -89,32 +89,32 @@ def write_user_data(filename, args):
         packages.extend(args.additional_packages.split(","))
 
     user_data = {
-        "users": [
+        'users': [
             {
-                "name": args.user,
-                "lock_passwd": False,
-                "plain_text_passwd": "qemupass" if args.plain_pwd else None,
-                "ssh_pwauth": args.plain_pwd,
-                "ssh_authorized_keys": [pubkey_blob],
-                "sudo": ["ALL=(ALL) NOPASSWD:ALL"],
-                "shell": "/bin/bash",
+                'name': args.user,
+                'lock_passwd': False,
+                'plain_text_passwd': 'qemupass' if args.plain_pwd else None,
+                'ssh_pwauth': args.plain_pwd,
+                'ssh_authorized_keys': [pubkey_blob],
+                'sudo': ["ALL=(ALL) NOPASSWD:ALL"],
+                'shell': "/bin/bash",
             },
         ],
-        "apt": {
-            "primary": [
+        'apt': {
+            'primary': [
                 {
-                    "arches": ["default"],
-                    "uri": args.repo_mirror,
+                    'arches': ['default'],
+                    'uri': args.repo_mirror,
                 },
             ],
         },
-        "packages": packages,
-        "power_state": {
-            "delay": "now",
-            "mode": "poweroff",
+        'packages': packages,
+        'power_state': {
+            'delay': 'now',
+            'mode': 'poweroff',
         },
-        "write_files": [],
-        "runcmd": [],
+        'write_files': [],
+        'runcmd': [],
     }
 
     if args.release not in ["focal", "bionic"]:
