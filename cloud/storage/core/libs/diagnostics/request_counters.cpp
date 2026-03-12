@@ -427,6 +427,9 @@ struct TRequestCounters::TStatCounters
     TAdaptiveTimeHist PostponedTimeHist;
     TRequestPercentiles<TAdaptiveTimeHist> PostponedTimePercentiles;
 
+    TAdaptiveTimeHist BackoffTimeHist;
+    TRequestPercentiles<TAdaptiveTimeHist> BackoffTimePercentiles;
+
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTotalTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxSizeCalc;
@@ -458,6 +461,8 @@ struct TRequestCounters::TStatCounters
         , RequestCompletionTimePercentiles(RequestCompletionTimeHist)
         , PostponedTimeHist("ThrottlerDelay", histogramCounterOptions)
         , PostponedTimePercentiles(PostponedTimeHist)
+        , BackoffTimeHist("BackoffTime", histogramCounterOptions)
+        , BackoffTimePercentiles(BackoffTimeHist)
         , MaxTimeCalc(timer)
         , MaxTotalTimeCalc(timer)
         , MaxSizeCalc(timer)
@@ -559,6 +564,7 @@ struct TRequestCounters::TStatCounters
                 SizePercentiles.Register(counters);
                 ExecutionTimePercentiles.Register(counters);
                 PostponedTimePercentiles.Register(counters);
+                BackoffTimePercentiles.Register(counters);
                 TimePercentiles.Register(counters);
             }
 
@@ -580,6 +586,7 @@ struct TRequestCounters::TStatCounters
                 : TCountableBase::EVisibility::Private;
 
             PostponedTimeHist.Register(counters, visibleHistogram);
+            BackoffTimeHist.Register(counters, visibleHistogram);
             TimeHist.Register(counters, visibleHistogram);
 
             // Always enough only percentiles.
@@ -627,11 +634,15 @@ struct TRequestCounters::TStatCounters
         TDuration requestTime,
         TDuration requestCompletionTime,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         bool unaligned,
         ECalcMaxTime calcMaxTime)
     {
+        Y_UNUSED(shapingTime);
+
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
                 || !IsReadWriteRequest);
@@ -674,7 +685,7 @@ struct TRequestCounters::TStatCounters
         }
 
         const auto time = requestTime - requestCompletionTime;
-        const auto execTime = time - postponedTime;
+        const auto execTime = time - postponedTime - backoffTime;
 
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(execTime.MicroSeconds());
@@ -713,6 +724,7 @@ struct TRequestCounters::TStatCounters
                 { it->second.Value->ExecutionTimeHist.Increment(execTime); });
 
             PostponedTimeHist.Increment(postponedTime);
+            BackoffTimeHist.Increment(backoffTime);
         }
     }
 
@@ -857,6 +869,7 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimePercentiles.Update();
                 RequestCompletionTimePercentiles.Update();
                 PostponedTimePercentiles.Update();
+                BackoffTimePercentiles.Update();
 
                 for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
                     sizeClass.Value->ExecutionTimePercentiles.Update();
@@ -957,6 +970,8 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     TRequestType requestType,
     ui64 requestStarted,
     TDuration postponedTime,
+    TDuration backoffTime,
+    TDuration shapingTime,
     ui64 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
@@ -978,6 +993,8 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
         requestTime,
         requestCompletionTime,
         postponedTime,
+        backoffTime,
+        shapingTime,
         requestBytes,
         errorKind,
         errorFlags,
@@ -1131,6 +1148,8 @@ void TRequestCounters::RequestCompletedImpl(
     TDuration requestTime,
     TDuration requestCompletionTime,
     TDuration postponedTime,
+    TDuration backoffTime,
+    TDuration shapingTime,
     ui64 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
@@ -1148,6 +1167,8 @@ void TRequestCounters::RequestCompletedImpl(
             requestTime,
             requestCompletionTime,
             postponedTime,
+            backoffTime,
+            shapingTime,
             requestBytes,
             errorKind,
             unaligned,
@@ -1159,6 +1180,8 @@ void TRequestCounters::RequestCompletedImpl(
         requestTime,
         requestCompletionTime,
         postponedTime,
+        backoffTime,
+        shapingTime,
         requestBytes,
         errorKind,
         errorFlags,

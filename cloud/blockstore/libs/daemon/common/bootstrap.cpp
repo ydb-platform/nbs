@@ -41,7 +41,9 @@
 #include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/local_nvme/device_provider.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
+#include <cloud/blockstore/libs/local_nvme/service_proxy.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
@@ -53,6 +55,7 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/overlapping_requests_guard_service.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
@@ -240,6 +243,10 @@ void TBootstrapBase::Init()
     }
 
     STORAGE_INFO("Service initialized");
+
+    if (Configs->ServerConfig->GetEnableOverlappingRequestsGuard()) {
+        Service = CreateOverlappingRequestsGuardsService(std::move(Service));
+    }
 
     if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
         InitRdmaRequestServer();
@@ -672,6 +679,11 @@ void TBootstrapBase::Init()
         STORAGE_INFO("ValidationService initialized");
     }
 
+    if (LocalNVMeService) {
+        Service =
+            CreateLocalNVMeServiceProxy(std::move(Service), LocalNVMeService);
+    }
+
     Server = CreateServer(
         Configs->ServerConfig,
         Logging,
@@ -784,6 +796,7 @@ void TBootstrapBase::InitLocalService()
         CreateSingleFileIOServiceProvider(CreateAIOService());
 
     NvmeManager = CreateNvmeManager(
+        Logging,
         Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
     Service = CreateLocalService(
@@ -931,6 +944,7 @@ void TBootstrapBase::Start()
 
     START_KIKIMR_COMPONENT(AsyncLogger);
     START_COMMON_COMPONENT(Logging);
+    START_COMMON_COMPONENT(NvmeManager);
     START_KIKIMR_COMPONENT(LogbrokerService);
     START_KIKIMR_COMPONENT(NotifyService);
     START_COMMON_COMPONENT(Monitoring);
@@ -963,6 +977,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
+    START_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     START_COMMON_COMPONENT(LocalNVMeService);
 
     // we need to start scheduler after all other components for 2 reasons:
@@ -1017,6 +1032,7 @@ void TBootstrapBase::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(LocalNVMeService);
+    STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
@@ -1053,6 +1069,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(ProfileLog);
     STOP_COMMON_COMPONENT(Monitoring);
     STOP_KIKIMR_COMPONENT(LogbrokerService);
+    STOP_COMMON_COMPONENT(NvmeManager);
     STOP_COMMON_COMPONENT(Logging);
     STOP_KIKIMR_COMPONENT(AsyncLogger);
 

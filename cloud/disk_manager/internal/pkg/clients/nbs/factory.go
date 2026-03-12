@@ -2,11 +2,11 @@ package nbs
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
@@ -20,96 +20,11 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type errorLogger struct {
-}
-
-func (l *errorLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Error(ctx, fmt.Sprint(v...))
-}
-
-func (l *errorLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Error(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type warnLogger struct {
-}
-
-func (l *warnLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Warn(ctx, fmt.Sprint(v...))
-}
-
-func (l *warnLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Warn(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type infoLogger struct {
-}
-
-func (l *infoLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Info(ctx, fmt.Sprint(v...))
-}
-
-func (l *infoLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Info(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type debugLogger struct {
-}
-
-func (l *debugLogger) Print(ctx context.Context, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Debug(ctx, fmt.Sprint(v...))
-}
-
-func (l *debugLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	ctx = logging.AddCallerSkip(ctx, 1)
-	logging.Debug(ctx, fmt.Sprintf(format, v...))
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type nbsClientLogWrapper struct {
-	level   nbs_client.LogLevel
-	loggers []nbs_client.Logger
-}
-
-func (w *nbsClientLogWrapper) Logger(level nbs_client.LogLevel) nbs_client.Logger {
-	if level <= w.level {
-		return w.loggers[level]
-	}
-
-	return nil
-}
-
-func NewNbsClientLog(level nbs_client.LogLevel) nbs_client.Log {
-	loggers := []nbs_client.Logger{
-		&errorLogger{},
-		&warnLogger{},
-		&infoLogger{},
-		&debugLogger{},
-	}
-	return &nbsClientLogWrapper{level, loggers}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 type factory struct {
 	config                 *nbs_config.ClientConfig
 	credentials            auth.Credentials
 	sessionMetricsRegistry metrics.Registry
-	metrics                *clientMetrics
+	metrics                client_metrics.Metrics
 	clients                map[string]client
 	multiZoneClients       map[[2]string]multiZoneClient
 }
@@ -220,14 +135,14 @@ func (f *factory) initClients(
 							tracing.AttributeError(&err),
 						),
 					)
-					f.metrics.OnError(err)
+					f.metrics.OnError(&err)
 				},
 			},
 			&nbs_client.DiscoveryClientOpts{
 				HardTimeout: discoveryClientHardTimeout,
 				SoftTimeout: discoveryClientSoftTimeout,
 			},
-			NewNbsClientLog(nbs_client.LOG_DEBUG),
+			logging.GetLogger(ctx),
 		)
 		if err != nil {
 			return err
@@ -381,7 +296,7 @@ func newFactoryWithCreds(
 		config:                 config,
 		credentials:            creds,
 		sessionMetricsRegistry: sessionMetricsRegistry,
-		metrics:                newClientMetrics(clientMetricsRegistry),
+		metrics:                client_metrics.NewClientMetrics(clientMetricsRegistry),
 	}
 	err := f.initClients(ctx)
 	if err != nil {

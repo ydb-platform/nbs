@@ -46,6 +46,7 @@ private:
     TString DstShardId;
     TString DstShardNodeName;
     TEvIndexTabletPrivate::TDoRenameNodeInDestination Result;
+    const bool IsLocalRename;
 
     static constexpr ui64 SourceCookie = 1;
     static constexpr ui64 DstCookie = 2;
@@ -65,7 +66,8 @@ public:
         NProtoPrivate::TRenameNodeInDestinationRequest request,
         NProto::TProfileLogRequestInfo profileLogRequest,
         TString dstShardId,
-        TString dstShardNodeName);
+        TString dstShardNodeName,
+        bool isLocalRename);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -112,7 +114,8 @@ TGetNodeInfoAndPrepareUnlinkActor::TGetNodeInfoAndPrepareUnlinkActor(
         NProtoPrivate::TRenameNodeInDestinationRequest request,
         NProto::TProfileLogRequestInfo profileLogRequest,
         TString dstShardId,
-        TString dstShardNodeName)
+        TString dstShardNodeName,
+        bool isLocalRename)
     : LogTag(std::move(logTag))
     , ParentId(parentId)
     , DstShardId(std::move(dstShardId))
@@ -121,6 +124,7 @@ TGetNodeInfoAndPrepareUnlinkActor::TGetNodeInfoAndPrepareUnlinkActor(
         std::move(requestInfo),
         std::move(request),
         std::move(profileLogRequest))
+    , IsLocalRename(isLocalRename)
 {}
 
 void TGetNodeInfoAndPrepareUnlinkActor::Bootstrap(const TActorContext& ctx)
@@ -135,8 +139,14 @@ void TGetNodeInfoAndPrepareUnlinkActor::SendRequest(
     const TString& shardNodeName,
     ui64 cookie)
 {
+    if (shardId.empty()) {
+        ++ResultCount;
+        return;
+    }
+
     auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
     request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     request->Record.SetFileSystemId(shardId);
     request->Record.SetNodeId(RootNodeId);
     request->Record.SetName(shardNodeName);
@@ -169,6 +179,10 @@ void TGetNodeInfoAndPrepareUnlinkActor::SendRequests(const TActorContext& ctx)
         DstShardId,
         DstShardNodeName,
         DstCookie);
+
+    if (ResultCount == 2) {
+        ReplyAndDie(ctx, MakeError(S_FALSE));
+    }
 }
 
 void TGetNodeInfoAndPrepareUnlinkActor::LogAbort(
@@ -177,6 +191,7 @@ void TGetNodeInfoAndPrepareUnlinkActor::LogAbort(
     NProto::TOpLogEntry entry;
     auto* abortRequest = entry.MutableAbortUnlinkDirectoryNodeInShardRequest();
     abortRequest->MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    abortRequest->MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     abortRequest->SetFileSystemId(DstShardId);
     abortRequest->SetNodeId(Result.DestinationNodeAttr.GetId());
     abortRequest->MutableOriginalRequest()->CopyFrom(Result.Request);
@@ -199,6 +214,7 @@ void TGetNodeInfoAndPrepareUnlinkActor::PrepareUnlink(
 {
     auto request = std::make_unique<TEvPrepareUnlinkRequest>();
     request->Record.MutableHeaders()->CopyFrom(Result.Request.GetHeaders());
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     request->Record.SetFileSystemId(DstShardId);
     request->Record.SetNodeId(Result.DestinationNodeAttr.GetId());
     request->Record.MutableOriginalRequest()->CopyFrom(Result.Request);
@@ -308,11 +324,19 @@ void TGetNodeInfoAndPrepareUnlinkActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    using TResponse = TEvIndexTabletPrivate::TEvDoRenameNodeInDestination;
-    Result.Error = std::move(error);
-    ctx.Send(
-        ParentId,
-        std::make_unique<TResponse>(std::move(Result)));
+    if (IsLocalRename) {
+        using TResponse = TEvIndexTabletPrivate::TEvDoRenameNode;
+        Result.Error = std::move(error);
+        ctx.Send(
+            ParentId,
+            std::make_unique<TResponse>(std::move(Result)));
+    } else {
+        using TResponse = TEvIndexTabletPrivate::TEvDoRenameNodeInDestination;
+        Result.Error = std::move(error);
+        ctx.Send(
+            ParentId,
+            std::make_unique<TResponse>(std::move(Result)));
+    }
 
     Die(ctx);
 }
@@ -363,36 +387,46 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
         EFileStoreSystemRequest::RenameNodeInDestination,
         msg->Record,
         ctx.Now());
+    auto onReply = [&] (const NProto::TError& error) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
+    };
 
-    // TODO(#2674): DupCache
-    // DupCache is necessary not only to implement the non-idempotent checks
-    // but to prevent the following race:
-    // 1. source directory shard sends RenameNodeInDestinationRequest
-    // 2. the request is successfully processed
-    // 3. network connectivity breaks, source directory shard gets E_REJECTED
-    // 4. meanwhile <NewParentNodeId, NewChildName> pair gets unlinked in the
-    //  destination shard and then a completely new file is created under the
-    //  same name in NewParentId
-    // 5. source directory shard retries the RenameNodeInDestinationRequest
-    //  leading to the deletion of the file created in p.4 and the
-    //  <NewParentNodeId, NewChildName> now points to the file unlinked in p.4
-    //  So both the new and the old file are now deleted plus we have a NodeRef
-    //  pointing to a deleted file
-    //
-    //  A more reliable way to prevent such a race is to lock the affected
-    //  NodeRef in destination shard and unlock it after
-    //  CommitRenameNodeInSource
-    /*
-    const auto requestId = GetRequestId(msg->Record);
-    if (const auto* e = session->LookupDupEntry(requestId)) {
-        auto response = std::make_unique<TMethod::TResponse>();
-        if (GetDupCacheEntry(e, response->Record)) {
-            return NCloud::Reply(ctx, *ev, std::move(response));
-        }
+    const ui64 clientTabletId =
+        msg->Record.GetHeaders().GetInternal().GetClientTabletId();
+    const ui64 requestId = msg->Record.GetHeaders().GetRequestId();
 
-        session->DropDupEntry(requestId);
+    if (!clientTabletId || !requestId) {
+        auto error = MakeError(E_ARGUMENT, TStringBuilder() << "both "
+            << " ClientTabletId and RequestId should be nonzero: "
+            << clientTabletId << ", " << requestId);
+        auto response = std::make_unique<TMethod::TResponse>(error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
+        return;
     }
-    */
+
+    if (const auto* e = LookupResponseLogEntry(clientTabletId, requestId)) {
+        auto response = std::make_unique<TMethod::TResponse>();
+        if (e->HasRenameNodeInDestinationResponse()) {
+            response->Record = e->GetRenameNodeInDestinationResponse();
+        } else {
+            auto message = ReportInvalidResponseLogEntry(TStringBuilder()
+                << TMethod::Name << ": " << msg->Record.ShortUtf8DebugString()
+                << ", entry: " << e->ShortUtf8DebugString());
+            *response->Record.MutableError() = MakeError(
+                E_INVALID_STATE,
+                message);
+        }
+        auto error = response->GetError();
+        NCloud::Reply(ctx, *ev, std::move(response));
+        onReply(error);
+        return;
+    }
 
     const bool locked = TryLockNodeRef({
         msg->Record.GetNewParentId(),
@@ -404,12 +438,7 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
             << " is locked for RenameNodeInDestination");
         auto response = std::make_unique<TMethod::TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
-        FinalizeProfileLogRequestInfo(
-            std::move(profileLogRequest),
-            ctx.Now(),
-            GetFileSystemId(),
-            error,
-            ProfileLog);
+        onReply(error);
         return;
     }
 
@@ -469,9 +498,6 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
 {
     Y_UNUSED(ctx);
 
-    // TODO(#2674): DupCache
-    // FILESTORE_VALIDATE_DUPTX_SESSION(RenameNode, args);
-
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
@@ -515,7 +541,7 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
                     && args.NewChildRef->ShardNodeName
                     == args.Request.GetSourceNodeShardNodeName())
             {
-                // just an extra precaution for the case of DupCache-related
+                // just an extra precaution for the case of ResponseLog-related
                 // bugs
                 args.Error = MakeError(S_ALREADY);
             } else {
@@ -688,15 +714,14 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
         return;
     }
 
-    // TODO(#2674): DupCache
-    /*
-    AddDupCacheEntry(
-        db,
-        session,
-        args.RequestId,
-        NProto::TRenameNodeResponse{},
-        Config->GetDupCacheEntryCount());
-        */
+    args.ResponseLogEntry.SetClientTabletId(
+        args.Request.GetHeaders().GetInternal().GetClientTabletId());
+    args.ResponseLogEntry.SetRequestId(
+        args.Request.GetHeaders().GetRequestId());
+    args.ResponseLogEntry.SetTimestampMs(ctx.Now().MilliSeconds());
+    *args.ResponseLogEntry.MutableRenameNodeInDestinationResponse() =
+        args.Response;
+    WriteResponseLogEntry(db, args.ResponseLogEntry);
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -707,18 +732,14 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 {
     if (args.SecondPassRequired) {
         if (args.NewChildRef) {
-            using TActor = TGetNodeInfoAndPrepareUnlinkActor;
-            auto actor = std::make_unique<TActor>(
-                LogTag,
+            RegisterGetNodeInfoAndPrepareUnlinkActor(
+                ctx,
                 args.RequestInfo,
-                ctx.SelfID,
                 args.Request,
                 std::move(args.ProfileLogRequest),
-                args.NewChildRef->ShardId,
-                args.NewChildRef->ShardNodeName);
-
-            auto actorId = NCloud::Register(ctx, std::move(actor));
-            WorkerActors.insert(actorId);
+                std::move(args.NewChildRef->ShardId),
+                std::move(args.NewChildRef->ShardNodeName),
+                false /* isLocalRename */);
             return;
         }
 
@@ -740,7 +761,8 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
                 args.Error,
                 args.NewChildRef->ShardId,
                 args.DestinationNodeAttr.GetId(),
-                args.AbortUnlinkOpLogEntryId);
+                args.AbortUnlinkOpLogEntryId,
+                false /* isLocalRename */);
             return;
         }
 
@@ -751,14 +773,25 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
 
-    UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
+    //
+    // It's ok to unlock node ref & commit response log entry here because all
+    // externally visible effects of this operation have been applied and
+    // committed. We may still need to unlink the old dst node in its shard but
+    // the unlink actor will either complete its job by retrying all retriable
+    // errors or fail because of a non-retriable error (can happen only because
+    // of bugs in the code) or fail because of tablet restart (but in this case
+    // the tablet will recreate the unlink actor after restart).
+    //
 
-    InvalidateNodeCaches(args.NewParentNodeId);
+    UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
+    CommitResponseLogEntry(std::move(args.ResponseLogEntry));
+
+    InvalidateReadAheadCache(args.NewParentNodeId);
     if (args.NewChildRef) {
-        InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
+        InvalidateReadAheadCache(args.NewChildRef->ChildNodeId);
     }
     if (args.NewParentNode) {
-        InvalidateNodeCaches(args.NewParentNode->NodeId);
+        InvalidateReadAheadCache(args.NewParentNode->NodeId);
     }
 
     if (!HasError(args.Error)) {
@@ -785,8 +818,6 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 
             return;
         }
-
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         // TODO(#1350): support session events for external nodes
     }
@@ -847,23 +878,79 @@ void TIndexTabletActor::HandleUnlinkDirectoryNodeAbortedInShard(
 
     RemoveInFlightRequest(*msg->RequestInfo);
 
-    Metrics.RenameNodeInDestination.Update(
-        1,
-        0,
-        ctx.Now() - msg->RequestInfo->StartedTs);
-
     if (!HasError(msg->Error)) {
         msg->Error = std::move(msg->OriginalError);
     }
 
-    using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
-    auto response = std::make_unique<TMethod::TResponse>(msg->Error);
-    CompleteResponse<TMethod>(
-        response->Record,
-        msg->RequestInfo->CallContext,
-        ctx);
+    if (msg->IsLocalRename) {
+        //
+        // Source NodeRef unlocking should be done only if we have a RequestInfo
+        // It means that we're currently processing a RenameNode request which
+        // in turn means that the affected source NodeRef was locked at the
+        // start of this request.
+        //
+        // An AbortUnlinkDirectoryNodeInShard request which is replayed via OpLog
+        // doesn't need to take a source NodeRef lock - it just cleans up the
+        // PreparedForUnlink flag for the directory pointed to by the
+        // destination NodeRef that could've been set before a crash.
+        //
 
-    NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        const auto& renameNodeRequest = msg->Request.GetOriginalRequest();
+        UnlockNodeRef({
+            renameNodeRequest.GetNodeId(),
+            renameNodeRequest.GetName()});
+
+        Metrics.RenameNode.Update(
+            1,
+            0,
+            ctx.Now() - msg->RequestInfo->StartedTs);
+
+        using TMethod = TEvService::TRenameNodeMethod;
+        auto response = std::make_unique<TMethod::TResponse>(msg->Error);
+        CompleteResponse<TMethod>(
+            response->Record,
+            msg->RequestInfo->CallContext,
+            ctx);
+        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+    } else {
+        Metrics.RenameNodeInDestination.Update(
+            1,
+            0,
+            ctx.Now() - msg->RequestInfo->StartedTs);
+
+        using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
+        auto response = std::make_unique<TMethod::TResponse>(msg->Error);
+        CompleteResponse<TMethod>(
+            response->Record,
+            msg->RequestInfo->CallContext,
+            ctx);
+        NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::RegisterGetNodeInfoAndPrepareUnlinkActor(
+    const NActors::TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    NProtoPrivate::TRenameNodeInDestinationRequest request,
+    NProto::TProfileLogRequestInfo profileLogRequest,
+    TString dstShardId,
+    TString dstShardNodeName,
+    bool isLocalRename)
+{
+    auto actor = std::make_unique<TGetNodeInfoAndPrepareUnlinkActor>(
+        LogTag,
+        std::move(requestInfo),
+        ctx.SelfID,
+        std::move(request),
+        std::move(profileLogRequest),
+        std::move(dstShardId),
+        std::move(dstShardNodeName),
+        isLocalRename);
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -135,6 +135,8 @@ message TStorageStats
     uint64 DeletedFreshBytesCount = 113;
     uint64 LargeDeletionMarkersCount = 114;
     uint64 FreshBytesItemCount = 115;
+    uint64 UnconfirmedDataCount = 116;
+    uint64 ConfirmedDataCount = 117;
 
     // channel stats
     uint64 TabletChannelCount = 1000;
@@ -442,6 +444,10 @@ message TGenerateBlobIdsRequest
 
     // Length of data to write. Expected to be aligned to the block size.
     uint64 Length = 6;
+
+    // Unaligned head/tail data for internal AddData (used when tablet does
+    // AddData internally in the unconfirmed flow).
+    repeated TFreshDataRange UnalignedDataRanges = 7;
 }
 
 message TGeneratedBlob
@@ -466,6 +472,11 @@ message TGenerateBlobIdsResponse
 
     // AcquireCollectBarrier has been executed for this commit id.
     uint64 CommitId = 4;
+
+    // If true, the tablet has enabled the unconfirmed data flow.
+    // The service should skip sending AddData and proceed directly to
+    // WriteBlobs + ConfirmAddData.
+    bool UnconfirmedFlowEnabled = 5;
 
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
@@ -512,6 +523,60 @@ message TAddDataRequest
 }
 
 message TAddDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfirmAddData request/response.
+
+message TConfirmAddDataRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Commit id to confirm.
+    uint64 CommitId = 3;
+
+    // Storage group status flags (from TEvPutResult), per blob.
+    repeated uint32 StorageStatusFlags = 4;
+
+    // Approximate free space share (from TEvPutResult), per blob.
+    repeated double ApproximateFreeSpaceShares = 5;
+}
+
+message TConfirmAddDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CancelAddData request/response.
+
+message TCancelAddDataRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Commit id to cancel.
+    uint64 CommitId = 3;
+}
+
+message TCancelAddDataResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
@@ -991,6 +1056,100 @@ message TAbortUnlinkDirectoryNodeInShardResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ResponseLogEntry ops
+
+message TResponseLogEntry
+{
+    uint64 ClientTabletId = 1;
+    uint64 RequestId = 2;
+
+    // Entry creation timestamp
+    uint64 TimestampMs = 3;
+
+    oneof Response {
+        TRenameNodeInDestinationResponse RenameNodeInDestinationResponse = 101;
+    }
+}
+
+message TDeleteResponseLogEntryRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem (shard) identifier.
+    string FileSystemId = 2;
+
+    // Client tablet (the tablet that issued the original request) identifier.
+    uint64 ClientTabletId = 3;
+
+    // Request id of that request.
+    uint64 RequestId = 4;
+}
+
+message TDeleteResponseLogEntryResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+message TGetResponseLogEntryRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem (shard) identifier.
+    string FileSystemId = 2;
+
+    // Client tablet (the tablet that issued the original request) identifier.
+    uint64 ClientTabletId = 3;
+
+    // Request id of that request.
+    uint64 RequestId = 4;
+}
+
+message TGetResponseLogEntryResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // The entry.
+    TResponseLogEntry Entry = 2;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+message TWriteResponseLogEntryRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem (shard) identifier.
+    string FileSystemId = 2;
+
+    // Client tablet (the tablet that issued the original request) identifier.
+    uint64 ClientTabletId = 3;
+
+    // Request id of that request.
+    uint64 RequestId = 4;
+
+    // The entry.
+    TResponseLogEntry Entry = 5;
+}
+
+message TWriteResponseLogEntryResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // UnlinkNodeInShard request
 
 message TUnlinkNodeInShardRequest
@@ -1029,7 +1188,6 @@ message TReadNodeRefsRequest
     // Limit on the number of entries within the response.
     uint32 Limit = 4;
 }
-
 
 message TReadNodeRefsResponse
 {

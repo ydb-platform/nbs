@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/config/storage.pb.h>
 
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/features/public.h>
 
 #include <util/datetime/base.h>
@@ -26,8 +27,7 @@ class TStorageConfig
 private:
     NProto::TStorageConfig ProtoConfig;
 
-    // Some of the fields can be overridden by feature config
-    NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    NFeatures::TFeaturesConfig FeaturesConfig;
 
 public:
     struct TValueByName
@@ -56,7 +56,7 @@ public:
         : ProtoConfig(config)
     {}
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
+    void SetFeaturesConfig(NFeatures::TFeaturesConfig featuresConfig);
 
     void SetCloudFolderEntity(
         const TString& cloudId,
@@ -241,8 +241,6 @@ public:
 
     ui32 GetNodeIndexCacheMaxNodes() const;
 
-    bool GetNewLocalDBCompactionPolicyEnabled() const;
-
     bool GetMultiTabletForwardingEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
@@ -388,6 +386,14 @@ public:
     bool GetGidPropagationEnabled() const;
 
     bool GetNodeRefsNoAutoPrecharge() const;
+
+    [[nodiscard]] TDuration GetTabletRegularTasksSchedulePeriod() const;
+    [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
+
+    ui32 GetForceDestroySizeThreshold() const;
+
+    [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
+    [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

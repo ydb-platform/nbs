@@ -14,6 +14,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// clang-format off
+
 #define BLOCKSTORE_VOLUME_REQUESTS(xxx, ...)                                   \
     xxx(AddClient,                                                 __VA_ARGS__)\
     xxx(RemoveClient,                                              __VA_ARGS__)\
@@ -39,6 +41,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(LinkLeaderVolumeToFollower,                                __VA_ARGS__)\
     xxx(UnlinkLeaderVolumeFromFollower,                            __VA_ARGS__)\
     xxx(UpdateLinkOnFollower,                                      __VA_ARGS__)\
+    xxx(GetLinkStatus,                                             __VA_ARGS__)\
     xxx(CheckRange,                                                __VA_ARGS__)\
 
 // BLOCKSTORE_VOLUME_REQUESTS
@@ -85,6 +88,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadBlocksLocal,      __VA_ARGS__)                                     \
     xxx(WriteBlocksLocal,     __VA_ARGS__)                                     \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE
+
+// clang-format on
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -386,6 +391,9 @@ struct TEvVolume
         EvUpdateLinkOnFollowerResponse = EvBegin + 70,
 
         EvRetryAcquireReleaseDisk = EvBegin + 71,
+
+        EvGetLinkStatusRequest = EvBegin + 72,
+        EvGetLinkStatusResponse = EvBegin + 73,
 
         EvEnd
     };

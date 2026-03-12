@@ -140,13 +140,15 @@ func requiresPermissionChange(rootDir string, fsGroup *int64, readonly bool) boo
 	// We also need to check if setgid bits are set in permissions of the directory.
 	if unixPerms&filePerm != unixPerms {
 		klog.InfoS("Performing recursive ownership change on rootDir because of mismatching mode",
-			"path", rootDir, "unixPerms", unixPerms, "filePerm", filePerm)
+			"path", rootDir,
+			"unixPerms", unixPerms,
+			"filePerm", filePerm)
 		return true
 	}
 
 	if fsInfo.Mode()&os.ModeSetgid == 0 {
-		klog.InfoS("Performing recursive ownership change on rootDir because of ",
-			"missing setgit bits in permissions of the root directory", "path", rootDir)
+		klog.InfoS("Performing recursive ownership change on rootDir because of missing setgit bits in permissions of the root directory",
+			"path", rootDir)
 		return true
 	}
 	return false

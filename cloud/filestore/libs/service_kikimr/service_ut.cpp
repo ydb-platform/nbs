@@ -71,34 +71,47 @@ struct TTestServiceActor final
 
 Y_UNIT_TEST_SUITE(TKikimrFileStore)
 {
-    Y_UNIT_TEST(ShouldHandleRequests)
+    void DoTestShouldHandleRequests(bool usePermanentActor)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->CreateFileStoreHandler =
             [] (const TEvService::TEvCreateFileStoreRequest::TPtr& ev) {
                 Y_UNUSED(ev);
-                return std::make_unique<TEvService::TEvCreateFileStoreResponse>();
+                using TResponse = TEvService::TEvCreateFileStoreResponse;
+                return std::make_unique<TResponse>();
             };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(actorSystem);
+        auto service = CreateKikimrFileStore(actorSystem, usePermanentActor);
         service->Start();
 
         auto context = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
+        request->SetFileSystemId("fs");
 
-        auto future = service->CreateFileStore(
-            std::move(context),
-            std::move(request));
+        auto future = service->CreateFileStore(std::move(context), request);
 
         actorSystem->DispatchEvents(WaitTimeout);
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT(!HasError(response));
 
+        // service shouldn't move/clear request contents
+        UNIT_ASSERT_VALUES_EQUAL("fs", request->GetFileSystemId());
+
         service->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldHandleRequests)
+    {
+        DoTestShouldHandleRequests(false);
+    }
+
+    Y_UNIT_TEST(ShouldHandleRequestsWithPermanentActor)
+    {
+        DoTestShouldHandleRequests(true);
     }
 
     Y_UNIT_TEST(ShouldHandleFsyncRequestsOutsideActorSystem)
@@ -108,7 +121,7 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(actorSystem);
+        auto service = CreateKikimrFileStore(actorSystem, false);
         service->Start();
 
         {
@@ -163,7 +176,7 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(actorSystem);
+        auto service = CreateKikimrFileStore(actorSystem, false);
         service->Start();
 
         auto context = MakeIntrusive<TCallContext>();

@@ -9,7 +9,7 @@
 
 #include <util/folder/tempdir.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NBlockStore {
 
 namespace {
 
@@ -82,4 +82,4 @@ Y_UNIT_TEST_SUITE(TLocalNVMeDeviceProviderTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore

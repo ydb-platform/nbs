@@ -38,6 +38,9 @@ struct IVolumeInfo
     virtual const NProto::TVolume& GetInfo() const = 0;
     virtual TDuration GetPossiblePostponeDuration() const = 0;
 
+    virtual void SetRemoveByInactivityTimeoutEnabled(bool enabled) = 0;
+    virtual bool GetRemoveByInactivityTimeoutEnabled() const = 0;
+
     virtual ui64 RequestStarted(
         EBlockStoreRequest requestType,
         ui64 requestBytes) = 0;
@@ -46,6 +49,8 @@ struct IVolumeInfo
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,

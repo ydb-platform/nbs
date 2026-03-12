@@ -172,7 +172,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 type,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,
@@ -188,7 +190,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 type,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,
@@ -469,7 +473,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 errorKind,
                 NCloud::NProto::EF_NONE,
@@ -568,7 +574,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1024 * 1024,
                 errorKind,
                 errorFlags,
@@ -807,7 +815,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             now - Min(now, durationInCycles),
-            {},
+            TDuration::Zero(),  // postponedTime
+            TDuration::Zero(),  // backoffTime
+            TDuration::Zero(),  // shapingTime
             1_MB,
             {},
             NCloud::NProto::EF_NONE,
@@ -866,7 +876,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 now - Min(now, fastRequestCyclesCount),
-                {},
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1_MB,
                 {},
                 NCloud::NProto::EF_NONE,
@@ -898,7 +910,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 now - Min(now, slowRequestCyclesCount),
-                {},
+                TDuration::Zero(),  // postponedTime
+                TDuration::Zero(),  // backoffTime
+                TDuration::Zero(),  // shapingTime
                 1_MB,
                 {},
                 NCloud::NProto::EF_NONE,
@@ -979,6 +993,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
             postponeDuration,
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
             1024,
             {},
             NCloud::NProto::EF_NONE,
@@ -1004,6 +1020,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
             postponeDuration,
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
             1024,
             {},
             NCloud::NProto::EF_NONE,
@@ -1071,7 +1089,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volumeInfo->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
-            TDuration(),
+            TDuration::Zero(),   // postponedTime
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
             1024,
             {},
             NCloud::NProto::EF_NONE,
@@ -1225,6 +1245,216 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRemoveVolumeInfoByTimeoutIfEnabled)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        Mount(
+            volumeStats,
+            "disk-1",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+        }
+
+        Timer->AdvanceTime(inactivityTimeout * 0.5);
+
+        Mount(
+            volumeStats,
+            "disk-2",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-1")
+                             ->GetSubgroup("instance", "instance-1")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-2")
+                             ->GetSubgroup("instance", "instance-2")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotRemoveVolumeInfoByTimeoutIfDisabled)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        Mount(
+            volumeStats,
+            "disk-1",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+        }
+        volumeStats->GetVolumeInfo("disk-1", "client-1")
+            ->SetRemoveByInactivityTimeoutEnabled(false);
+
+        Timer->AdvanceTime(inactivityTimeout * 0.5);
+
+        Mount(
+            volumeStats,
+            "disk-2",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+        volumeStats->GetVolumeInfo("disk-2", "client-2")
+            ->SetRemoveByInactivityTimeoutEnabled(false);
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        volumeStats->UnmountVolume("disk-1", "client-1");
+        volumeStats->UnmountVolume("disk-2", "client-2");
+
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-1")
+                             ->GetSubgroup("instance", "instance-1")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-2")
+                             ->GetSubgroup("instance", "instance-2")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+    }
+
     Y_UNIT_TEST(ShouldMountSeveralClientsOnOneInstance)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
@@ -1332,7 +1562,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume->RequestCompleted(
                 type,
                 started,
-                TDuration::Zero(),
+                TDuration::Zero(),   // postponedTime
+                TDuration::Zero(),   // backoffTime
+                TDuration::Zero(),   // shapingTime
                 1024 * 1024,
                 EDiagnosticsErrorKind::Success,
                 NCloud::NProto::EF_NONE,

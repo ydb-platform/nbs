@@ -504,8 +504,9 @@ void TBootstrapYdb::InitDiskAgentBackend()
     Y_ABORT_IF(NvmeManager);
     Y_ABORT_IF(FileIOServiceProvider);
     Y_ABORT_IF(LocalStorageProvider);
+    Y_ABORT_UNLESS(Logging);
 
-    auto r = CreateDiskAgentBackendComponents(config);
+    auto r = CreateDiskAgentBackendComponents(Logging, config);
     NvmeManager = std::move(r.NvmeManager);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);
@@ -827,7 +828,7 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("PartitionBudgetManager initialized")
 
     if (Configs->LocalNVMeConfig->GetDevicesSourceUri()) {
-        auto deviceProvider =
+        LocalNVMeDeviceProvider =
             ServerModuleFactories->LocalNVMeDeviceProviderFactory(
                 logging,
                 Configs->LocalNVMeConfig->GetDevicesSourceUri());
@@ -835,10 +836,11 @@ void TBootstrapYdb::InitKikimrService()
         LocalNVMeService = CreateLocalNVMeService(
             Configs->LocalNVMeConfig,
             logging,
-            std::move(deviceProvider),
+            LocalNVMeDeviceProvider,
             NvmeManager,
             Executor);
     } else {
+        LocalNVMeDeviceProvider = CreateLocalNVMeDeviceProviderStub();
         LocalNVMeService = CreateLocalNVMeServiceStub();
     }
 

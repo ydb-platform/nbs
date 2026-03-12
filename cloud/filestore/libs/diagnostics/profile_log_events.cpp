@@ -318,6 +318,22 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TConfirmAddDataRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TCancelAddDataRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TWriteDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
@@ -348,17 +364,6 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetNodeId(request.GetNodeId());
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.GetLength());
-}
-
-template <>
-void InitProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TTruncateDataRequest& request)
-{
-    auto* rangeInfo = profileLogRequest.AddRanges();
-    rangeInfo->SetNodeId(request.GetNodeId());
-    rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetBytes(request.GetLength());
 }
 
@@ -405,6 +410,7 @@ void InitProfileLogRequestInfo(
         nodeInfo->SetType(NProto::E_SOCK_NODE);
     } else if (request.HasSymLink()) {
         nodeInfo->SetType(NProto::E_SYMLINK_NODE);
+        nodeInfo->SetNodeName(request.GetSymLink().GetTargetPath());
     } else if (request.HasFifo()) {
         nodeInfo->SetType(NProto::E_FIFO_NODE);
     } else if (request.HasCharDevice()) {
@@ -683,6 +689,8 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(ConfirmAddData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(CancelAddData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
     IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
 

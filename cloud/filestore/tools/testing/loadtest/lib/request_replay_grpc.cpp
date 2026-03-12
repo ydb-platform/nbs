@@ -580,8 +580,8 @@ private:
                 break;
             }
             case NProto::E_SYMLINK_NODE:
-                // TODO(proller):
-                //  request->MutableSymlink()->SetTargetPath();
+                request->MutableSymLink()->SetTargetPath(
+                    logRequest.GetNodeInfo().GetNodeName());
                 break;
             case NProto::E_SOCK_NODE:
                 request->MutableSocket()->SetMode(

@@ -31,7 +31,10 @@ namespace {
 Y_HAS_MEMBER(SetDeprecatedThrottlerDelay);
 
 template <typename TMethod>
-void StoreThrottlerDelay(typename TMethod::TResponse& response, TDuration delay)
+void StoreThrottlerDelay(
+    typename TMethod::TResponse& response,
+    TDuration delay,
+    TDuration shapingDelay)
 {
     using TProtoType = decltype(TMethod::TResponse::Record);
     static_assert(
@@ -41,6 +44,8 @@ void StoreThrottlerDelay(typename TMethod::TResponse& response, TDuration delay)
         response.Record.SetDeprecatedThrottlerDelay(delay.MicroSeconds());
         response.Record.MutableHeaders()->MutableThrottler()->SetDelay(
             delay.MicroSeconds());
+        response.Record.MutableHeaders()->MutableThrottler()->SetShapingDelay(
+            shapingDelay.MicroSeconds());
     }
 }
 
@@ -59,7 +64,8 @@ void RejectVolumeRequest(
 
     StoreThrottlerDelay<TMethod>(
         *response,
-        callContext.Time(EProcessingStage::Postponed));
+        callContext.Time(EProcessingStage::Postponed),
+        callContext.Time(EProcessingStage::Shaping));
 
     NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
@@ -111,7 +117,14 @@ void TVolumeActor::UpdateIngestTimeStats(
         return;
     }
 
-    const auto& headers = ev->Get()->Record.GetHeaders();
+    const auto* msg = ev->Get();
+    // If the request was postponed, it has already been taken into account in
+    // the ingest time stats.
+    if (msg->CallContext->GetPostponeTs() != TInstant::Zero()) {
+        return;
+    }
+
+    const auto& headers = msg->Record.GetHeaders();
     if (headers.GetRetryNumber() > 0) {
         return;
     }
@@ -321,7 +334,8 @@ void TVolumeActor::FillResponse(
 
     StoreThrottlerDelay<TMethod>(
         response,
-        callContext.Time(EProcessingStage::Postponed));
+        callContext.Time(EProcessingStage::Postponed),
+        callContext.Time(EProcessingStage::Shaping));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -945,44 +959,61 @@ void TVolumeActor::ForwardRequest(
      *  to the underlying (storage) layer.
      */
     if constexpr (IsWriteMethod<TMethod>) {
-        auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
-            volumeRequestId,
-            blockRange);
+        const auto policy = Config->GetOverlappingRequestsPolicy();
 
-        if (!addResult.Added) {
-            if (addResult.DuplicateRequestId
-                    == TRequestsInFlight::InvalidRequestId)
-            {
-                replyError(MakeError(E_REJECTED, TStringBuilder()
-                    << "Request " << TMethod::Name
-                    << " intersects with inflight write or zero request"
-                    << " (block range: " << DescribeRange(blockRange) << ")"));
+        if (policy != NProto::EOverlappingRequestsPolicy::ORP_DISABLE) {
+            auto addResult = WriteAndZeroRequestsInFlight.TryAddRequest(
+                volumeRequestId,
+                blockRange);
+
+            if (!addResult.Added) {
+                if (policy == NProto::EOverlappingRequestsPolicy::
+                                  ORP_ENABLE_WITH_CRIT_EVENT)
+                {
+                    ReportOverlappingRequestsDetected(
+                        {{"disk", State->GetDiskId()},
+                         {"Inflight", *addResult.InflightRange},
+                         {"New", blockRange}});
+                }
+
+                if (addResult.DuplicateRequestId ==
+                    TRequestsInFlight::InvalidRequestId)
+                {
+                    replyError(MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "Request " << TMethod::Name
+                            << " intersects with inflight write or zero request"
+                            << " (block range: " << DescribeRange(blockRange)
+                            << ")"));
+                    return;
+                }
+
+                LWTRACK(
+                    DuplicatedRequestReceived_Volume,
+                    msg->CallContext->LWOrbit,
+                    TMethod::Name,
+                    msg->CallContext->RequestId,
+                    addResult.DuplicateRequestId);
+
+                DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId]
+                    .push_back(
+                        {ev->Get()->CallContext,
+                         static_cast<TEvService::EEvents>(
+                             TMethod::TRequest::EventType),
+                         NActors::IEventHandlePtr(ev.Release()),
+                         now});
+                ++DuplicateRequestCount;
+
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s DuplicateRequestCount=%lu",
+                    LogTitle.GetWithTime().c_str(),
+                    DuplicateRequestCount);
+
                 return;
             }
-
-            LWTRACK(
-                DuplicatedRequestReceived_Volume,
-                msg->CallContext->LWOrbit,
-                TMethod::Name,
-                msg->CallContext->RequestId,
-                addResult.DuplicateRequestId);
-
-            DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId].push_back({
-                ev->Get()->CallContext,
-                static_cast<TEvService::EEvents>(TMethod::TRequest::EventType),
-                NActors::IEventHandlePtr(ev.Release()),
-                now
-            });
-            ++DuplicateRequestCount;
-
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s DuplicateRequestCount=%lu",
-                LogTitle.GetWithTime().c_str(),
-                DuplicateRequestCount);
-
-            return;
         }
     }
 

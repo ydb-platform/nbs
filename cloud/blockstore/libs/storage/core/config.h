@@ -28,6 +28,10 @@ struct TLinkedDiskFillBandwidth
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+using TPoolKindToMediaKindMapping =
+    THashMap<TString, NCloud::NProto::EStorageMediaKind>;
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TStorageConfig
 {
@@ -492,6 +496,7 @@ public:
     bool GetRemoteMountOnly() const;
     ui32 GetMaxLocalVolumes() const;
 
+    [[nodiscard]] TDuration GetEnsureDiskRegistryStateIntegrityInterval() const;
     TDuration GetDiskRegistryVolumeConfigUpdatePeriod() const;
     bool GetDiskRegistryAlwaysAllocatesLocalDisks() const;
     bool GetDiskRegistryCleanupConfigOnRemoveHost() const;
@@ -765,6 +770,20 @@ public:
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
 
     [[nodiscard]] TDuration GetAttachDetachPathRequestTimeout() const;
+
+    [[nodiscard]] TDuration GetResourceMetricsUpdateInterval() const;
+
+    [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
+
+    [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
+
+    [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
+
+    [[nodiscard]] NProto::EOverlappingRequestsPolicy
+    GetOverlappingRequestsPolicy() const;
+
+    [[nodiscard]] TPoolKindToMediaKindMapping
+    GetPoolKindToMediaKindMapping() const;
 };
 
 ui64 GetAllocationUnit(

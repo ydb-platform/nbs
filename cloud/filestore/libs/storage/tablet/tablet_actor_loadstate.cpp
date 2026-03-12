@@ -4,6 +4,7 @@
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -112,6 +113,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadSessionHistoryEntries(args.SessionHistory),
         db.ReadOpLog(args.OpLog),
+        db.ReadResponseLog(args.ResponseLog),
         db.ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
         db.ReadOrphanNodes(args.OrphanNodeIds),
     };
@@ -202,7 +204,6 @@ void TIndexTabletActor::CompleteTx_LoadState(
 {
     if (args.StorageConfig.Defined()) {
         StorageConfigOverride = *args.StorageConfig;
-        Config = std::make_shared<TStorageConfig>(*Config);
         Config->Merge(*args.StorageConfig.Get());
         LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
             LogTag << " Merge StorageConfig with config from tablet database");
@@ -265,8 +266,11 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.ResponseLog,
         config);
     UpdateLogTag();
+
+    NMetrics::Store(Metrics.ResponseLogEntryCount, GetResponseLogEntryCount());
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");
@@ -384,6 +388,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Scheduling OpLog ops");
     ReplayOpLog(ctx, args.OpLog);
+    RunRegularTasks(ctx);
 
     LOG_INFO_S(
         ctx,

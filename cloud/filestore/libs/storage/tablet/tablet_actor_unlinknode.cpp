@@ -295,12 +295,15 @@ void TIndexTabletActor::HandleUnlinkNode(
 
     auto* msg = ev->Get();
 
+    const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
+
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreRequest::UnlinkNode,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        behaveAsShard);
 
     auto onReply = [&] (const NProto::TError& error) {
         FinalizeProfileLogRequestInfo(
@@ -312,7 +315,7 @@ void TIndexTabletActor::HandleUnlinkNode(
     };
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
-    if (!BehaveAsShard(msg->Record.GetHeaders())) {
+    if (!behaveAsShard) {
         auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(
             ev,
             ctx,
@@ -324,7 +327,8 @@ void TIndexTabletActor::HandleUnlinkNode(
 
         const auto requestId = GetRequestId(msg->Record);
         if (const auto* e = session->LookupDupEntry(requestId)) {
-            auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
+            auto response =
+                std::make_unique<TEvService::TEvUnlinkNodeResponse>();
             if (GetDupCacheEntry(e, response->Record)) {
                 NCloud::Reply(ctx, *ev, std::move(response));
                 onReply(MakeError(S_ALREADY));
@@ -484,9 +488,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         // unlocked and not removed until the confirmation from the shard is
         // received that the node is unlinked.
 
-        if (!args.Request.GetUnlinkDirectory() ||
-            !GetFileSystem().GetDirectoryCreationInShardsEnabled())
-        {
+        if (!GetFileSystem().GetDirectoryCreationInShardsEnabled()) {
             UnlinkExternalNode(
                 db,
                 args.ParentNodeId,
@@ -563,10 +565,10 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         FormatError(args.Error).c_str());
 
     if (args.ParentNodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ParentNodeId);
+        InvalidateReadAheadCache(args.ParentNodeId);
     }
     if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ChildNode->NodeId);
+        InvalidateReadAheadCache(args.ChildNode->NodeId);
     }
 
     if (!HasError(args.Error) && !args.ChildRef &&
@@ -578,14 +580,12 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     bool shouldUnlockUponCompletion = true;
-    // If the node is external and it's a directory and creation of
-    // directories is enabled for this filesystem and the request is to be
-    // forwarded to the shard, then the nodeRef is not unlocked here as it
-    // is possible that the shard will reject the request. In this case the
-    // nodeRef will be unlocked afterwards
+    // If the node is external and creation of directories in shards is enabled
+    // for this filesystem and the request is to be forwarded to the shard, then
+    // the nodeRef is not unlocked here as it is possible that the shard will
+    // reject the request. In this case the nodeRef will be unlocked afterwards.
     if (HasError(args.Error) ||
         (args.ChildRef && !args.ChildRef.GetOrElse({}).IsExternal()) ||
-        !args.Request.GetUnlinkDirectory() ||
         !GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
         UnlockNodeRef({args.ParentNodeId, args.Name});
@@ -631,7 +631,9 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.UnlinkNode.Update(
+    auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
+        ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+    requestMetrics.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
@@ -766,10 +768,10 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         FormatError(args.Error).c_str());
 
     if (args.ParentNodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ParentNodeId);
+        InvalidateReadAheadCache(args.ParentNodeId);
     }
     if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ChildNode->NodeId);
+        InvalidateReadAheadCache(args.ChildNode->NodeId);
     }
 
     if (!HasError(args.Error)) {
@@ -798,7 +800,9 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         return;
     }
 
-    Metrics.UnlinkNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
+    auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
+        ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+    requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
         FAILED(args.Error.GetCode()) ? args.Error : args.Response.GetError());
@@ -827,6 +831,15 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
     auto& res = msg->Result;
 
     NProto::TError error;
+    if (auto* x = std::get_if<NProto::TRenameNodeResponse>(&res)) {
+        error = x->GetError();
+    } else if (auto* x = std::get_if<
+            NProtoPrivate::TRenameNodeInDestinationResponse>(&res))
+    {
+        error = x->GetError();
+    } else if (auto* x = std::get_if<NProto::TUnlinkNodeResponse>(&res)) {
+        error = x->GetError();
+    }
 
     if (msg->RequestInfo) {
         RemoveInFlightRequest(*msg->RequestInfo);
@@ -841,8 +854,6 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
-
-            error = response->GetError();
 
             Metrics.RenameNode.Update(
                 1,
@@ -861,8 +872,6 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 response->Record,
                 msg->RequestInfo->CallContext,
                 ctx);
-
-            error = response->GetError();
 
             Metrics.RenameNode.Update(
                 1,
@@ -884,9 +893,9 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                     msg->RequestInfo->CallContext,
                     ctx);
 
-                error = response->GetError();
-
-                Metrics.UnlinkNode.Update(
+                auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
+                    ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+                requestMetrics.Update(
                     1,
                     0,
                     ctx.Now() - msg->RequestInfo->StartedTs);
@@ -900,7 +909,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
         }
     }
 
-    // only if it is unlik operation and we should unlock node ref upon
+    // only if it is unlink operation and we should unlock node ref upon
     // completion
     WorkerActors.erase(ev->Sender);
     if (std::holds_alternative<NProto::TUnlinkNodeResponse>(res) &&

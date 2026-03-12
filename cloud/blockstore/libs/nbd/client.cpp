@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/random.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -244,6 +245,7 @@ using TConnectionPtr = TIntrusivePtr<TConnection>;
 
 class TEndpoint final
     : public TEndpointBase
+    , public std::enable_shared_from_this<TEndpoint>
 {
 private:
     const TExecutorPtr Executor;
@@ -347,28 +349,37 @@ public:
     {
         auto future = EnsureClientConnected(*callContext);
 
-        const auto& volumeClient = VolumeClient;
-        const auto& connection = Connection;
+        return future.Apply(
+            [self = shared_from_this(),
+             volumeClient = VolumeClient,
+             connection = Connection,
+             callContext = std::move(callContext),
+             request = std::move(request)]   //
+            (const TFuture<NProto::TError>& f) mutable
+                -> TFuture<NProto::TMountVolumeResponse>
+            {
+                auto error = UnsafeExtractValue(f);
 
-        return future.Apply([=, this, request = std::move(request)] (auto f) mutable {
-            auto error = f.ExtractValue();
+                if (HasError(error)) {
+                    NProto::TMountVolumeResponse response;
+                    response.MutableError()->CopyFrom(std::move(error));
+                    return MakeFuture(response);
+                }
 
-            if (HasError(error)) {
-                NProto::TMountVolumeResponse response;
-                response.MutableError()->CopyFrom(std::move(error));
-                return MakeFuture(response);
-            }
+                auto future = volumeClient->MountVolume(
+                    std::move(callContext),
+                    std::move(request));
 
-            auto future = volumeClient->MountVolume(
-                std::move(callContext),
-                std::move(request));
-
-            return future.Apply([=, this] (const auto& f) {
-                return HandleMountVolumeResponse(
-                    f.GetValue(),
-                    connection->GetExportInfo().GetValue());
+                return future.Apply(
+                    [self = self,
+                     connection = connection]   //
+                    (const TFuture<NProto::TMountVolumeResponse>& f)
+                    {
+                        return self->HandleMountVolumeResponse(
+                            f.GetValue(),
+                            connection->GetExportInfo().GetValue());
+                    });
             });
-        });
     }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(

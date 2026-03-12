@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -112,7 +113,7 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
     EBlockStoreRequest requestType,
     ui64 requestStarted,
     ui64 requestCompleted,
-    ui64 postponedTime,
+    ui64 waitTime,
     ui32 requestBytes)
 {
     bool isRead = IsReadRequest(requestType);
@@ -130,8 +131,8 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
         }
         auto requestTime = requestCompleted - requestStarted;
         auto execTime = 0;
-        if (requestTime > postponedTime) {
-            execTime = requestTime - postponedTime;
+        if (requestTime > waitTime) {
+            execTime = requestTime - waitTime;
         }
         AtomicAdd(CurrentScore, CyclesToDurationSafe(execTime).MicroSeconds());
     }
@@ -213,46 +214,31 @@ void TSufferCounters::PublishCounters()
 {
     ui64 total = 0;
 
-    total += UpdateCounter(
-        Ssd,
-        "ssd",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD]);
+    auto doUpdateCounter =
+        [&](TDynamicCounterPtr& counter, NProto::EStorageMediaKind mediaKind)
+    {
+        total += UpdateCounter(
+            counter,
+            MediaKindToString(mediaKind),
+            RunCounters[mediaKind]);
+    };
+
+    // clang-format off
+    doUpdateCounter(Ssd,        NProto::STORAGE_MEDIA_SSD);
+    doUpdateCounter(SsdNonrepl, NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    doUpdateCounter(HddNonrepl, NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
+    doUpdateCounter(SsdMirror2, NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    doUpdateCounter(SsdMirror3, NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    doUpdateCounter(SsdLocal,   NProto::STORAGE_MEDIA_SSD_LOCAL);
+    doUpdateCounter(HddLocal,   NProto::STORAGE_MEDIA_HDD_LOCAL);
 
     total += UpdateCounter(
-        SsdNonrepl,
-        "ssd_nonrepl",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED]);
-
-    total += UpdateCounter(
-        HddNonrepl,
-        "hdd_nonrepl",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED]);
-
-    total += UpdateCounter(
-        SsdMirror2,
-        "ssd_mirror2",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2]);
-
-    total += UpdateCounter(
-        SsdMirror3,
-        "ssd_mirror3",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3]);
-
-    total += UpdateCounter(
-        SsdLocal,
-        "ssd_local",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL]);
-
-    total += UpdateCounter(
-        HddLocal,
-        "hdd_local",
-        RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL]);
-
-    ui64 hddCount = RunCounters[NCloud::NProto::STORAGE_MEDIA_DEFAULT] +
-                    RunCounters[NCloud::NProto::STORAGE_MEDIA_HYBRID] +
-                    RunCounters[NCloud::NProto::STORAGE_MEDIA_HDD];
-
-    total += UpdateCounter(Hdd, "hdd", hddCount);
+        Hdd,
+        MediaKindToString(NProto::STORAGE_MEDIA_HDD),
+        RunCounters      [NProto::STORAGE_MEDIA_HDD] +
+        RunCounters      [NProto::STORAGE_MEDIA_HYBRID] +
+        RunCounters      [NProto::STORAGE_MEDIA_DEFAULT]);
+    // clang-format on
 
     if (!Total && !total) {
         return;

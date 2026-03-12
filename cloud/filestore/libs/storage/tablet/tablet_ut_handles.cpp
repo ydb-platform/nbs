@@ -17,10 +17,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetGuestKeepCacheAllowed(true);
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
         auto registry = env.GetRegistry();
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -66,10 +65,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetGuestKeepCacheAllowed(true);
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
         auto registry = env.GetRegistry();
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -107,10 +105,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         storageConfig.SetSessionHandleOffloadedStatsCapacity(2);
         storageConfig.SetGuestCachingType(NProto::GCT_ANY_READ);
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
         auto registry = env.GetRegistry();
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -158,9 +155,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());

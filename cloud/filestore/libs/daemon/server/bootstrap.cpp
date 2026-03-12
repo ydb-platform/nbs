@@ -40,6 +40,14 @@ using namespace NKikimr;
 
 using namespace NCloud::NStorage;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TString ServerMetricsComponent = "server";
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrapServer::TBootstrapServer(std::shared_ptr<NKikimr::TModuleFactories> moduleFactories)
@@ -102,7 +110,9 @@ void TBootstrapServer::InitComponents()
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
+        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent),
         ProfileLog,
+        Scheduler,
         Service);
     RegisterServer(Server);
 
@@ -139,7 +149,7 @@ void TBootstrapServer::InitLWTrace()
 void TBootstrapServer::InitKikimrService()
 {
     Y_ABORT_UNLESS(ActorSystem, "Actor system MUST be initialized to create kikimr filestore");
-    Service = CreateKikimrFileStore(ActorSystem);
+    Service = CreateKikimrFileStore(ActorSystem, false /* usePermanentActor */);
 
     Service = CreateAuthService(
         std::move(Service),

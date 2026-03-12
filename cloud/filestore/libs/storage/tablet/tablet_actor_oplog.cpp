@@ -26,11 +26,21 @@ void TIndexTabletActor::ReplayOpLog(
             LogTag.c_str(),
             op.ShortUtf8DebugString().Quote().c_str());
 
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        const auto& serializedRequest = op.GetProfileLogRequest();
+        if (serializedRequest
+                && !profileLogRequest.ParseFromString(serializedRequest))
+        {
+            ReportBrokenProfileLogRequest(TStringBuilder() << "Replayed"
+                << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
+        }
+
         if (op.HasCreateNodeRequest()) {
             RegisterCreateNodeInShardActor(
                 ctx,
                 nullptr, // requestInfo
                 op.GetCreateNodeRequest(),
+                std::move(profileLogRequest),
                 op.GetRequestId(), // needed for DupCache update (only for
                                    // shard requests originating from
                                    // CreateNode requests)
@@ -62,7 +72,6 @@ void TIndexTabletActor::ReplayOpLog(
             );
         } else if (op.HasUnlinkNodeInShardRequest()) {
             bool shouldUnlockUponCompletion =
-                op.GetUnlinkNodeInShardRequest().GetUnlinkDirectory() &&
                 GetFileSystem().GetDirectoryCreationInShardsEnabled();
             if (shouldUnlockUponCompletion) {
                 // There is a need to unlock the node ref after the operation is
@@ -76,15 +85,6 @@ void TIndexTabletActor::ReplayOpLog(
                         TStringBuilder()
                         << "Request: " << op.ShortUtf8DebugString());
                 }
-            }
-
-            NProto::TProfileLogRequestInfo profileLogRequest;
-            const auto& serializedRequest = op.GetProfileLogRequest();
-            if (serializedRequest
-                    && !profileLogRequest.ParseFromString(serializedRequest))
-            {
-                ReportBrokenProfileLogRequest(TStringBuilder() << "Replayed"
-                    << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
             }
 
             RegisterUnlinkNodeInShardActor(
@@ -111,7 +111,8 @@ void TIndexTabletActor::ReplayOpLog(
                 profileLogRequest,
                 EFileStoreRequest::RenameNode,
                 request.GetOriginalRequest(),
-                ctx.Now());
+                ctx.Now(),
+                false /* behaveAsShard */);
 
             RegisterRenameNodeInDestinationActor(
                 ctx,
@@ -147,7 +148,9 @@ void TIndexTabletActor::ReplayOpLog(
                 {}, // originalError, doesn't matter w/o requestInfo
                 request.GetFileSystemId(),
                 request.GetNodeId(),
-                op.GetEntryId());
+                op.GetEntryId(),
+                false // isLocalRename - doesn't matter w/o requestInfo
+            );
         } else {
             const TString message = ReportUnknownOpLogEntry(
                 TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());

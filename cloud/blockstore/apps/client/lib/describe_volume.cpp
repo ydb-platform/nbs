@@ -19,14 +19,21 @@ class TDescribeVolumeCommand final
 {
 private:
     TString DiskId;
+    bool ExactDiskIdMatch = false;
 
 public:
-    TDescribeVolumeCommand(IBlockStorePtr client)
+    explicit TDescribeVolumeCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {
         Opts.AddLongOption("disk-id", "volume identifier")
             .RequiredArgument("STR")
             .StoreResult(&DiskId);
+
+        Opts.AddLongOption(
+                "exact-disk-id-match",
+                "Requires an exact match of the DiskId.  When set it does not "
+                "allow to find copied disk with mangled name.")
+            .StoreTrue(&ExactDiskIdMatch);
     }
 
 protected:
@@ -45,6 +52,7 @@ protected:
             ParseFromTextFormat(input, *request);
         } else {
             request->SetDiskId(DiskId);
+            request->MutableHeaders()->SetExactDiskIdMatch(ExactDiskIdMatch);
         }
 
         STORAGE_DEBUG("Sending DescribeVolume request");

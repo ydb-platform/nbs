@@ -140,6 +140,12 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
         true   // forceAll
     );
 
+    auto ioCounters = IoCompanionCounters->Swap(CreatePartitionDiskCounters(
+        EPublishingPolicy::Repl,
+        DiagnosticsConfig->GetHistogramCounterOptions()));
+
+    PartCounters->AggregateWith(*ioCounters);
+
     TPartitionStatisticsCounters counters(
         sysCpuConsumption - SysCPUConsumption,
         UserCPUConsumption,
@@ -211,6 +217,17 @@ void TPartitionActor::HandleGetPartCountersRequest(
             std::move(metrics));
 
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TPartitionActor::RejectGetPartCountersRequest(
+    const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
+            MakeError(E_REJECTED)));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

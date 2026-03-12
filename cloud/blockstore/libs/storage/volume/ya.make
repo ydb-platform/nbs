@@ -17,6 +17,7 @@ SRCS(
     volume_actor_initschema.cpp
     volume_actor_lagging_agents.cpp
     volume_actor_leader.cpp
+    volume_actor_link_status.cpp
     volume_actor_loadstate.cpp
     volume_actor_migration.cpp
     volume_actor_monitoring_checkpoint.cpp
@@ -54,6 +55,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/bootstrapper
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/fresh_blocks_writer
     cloud/blockstore/libs/storage/partition
     cloud/blockstore/libs/storage/partition2
     cloud/blockstore/libs/storage/partition_nonrepl

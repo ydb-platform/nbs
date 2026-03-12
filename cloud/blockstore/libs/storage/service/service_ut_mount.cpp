@@ -5104,7 +5104,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             0 // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
+            S_ALREADY,
             response->GetStatus(),
             response->GetErrorReason()
         );

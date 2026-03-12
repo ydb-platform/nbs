@@ -20,6 +20,7 @@ struct TRdmaClientTest: NRdma::IClient
     using TMessageObserver =
         std::function<void(NRdma::TProtoMessageSerializer::TParseResult&)>;
     using TForceReconnectObserver = std::function<void()>;
+    using TStopObserver = std::function<void()>;
 
     struct TEndpointInfo
     {
@@ -61,6 +62,7 @@ struct TRdmaClientTest: NRdma::IClient
     void SetMessageObserver(const TMessageObserver& messageObserver);
     void SetForceReconnectObserver(
         const TForceReconnectObserver& forceReconnectObserver);
+    void SetStopObserver(const TStopObserver& stopObserver);
     void InjectFutureToWaitBeforeRequestProcessing(
         const NThreading::TFuture<void>& future);
 };

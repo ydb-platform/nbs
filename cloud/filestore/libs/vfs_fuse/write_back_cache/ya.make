@@ -1,11 +1,21 @@
 LIBRARY()
 
 SRCS(
+    disjoint_interval_builder.cpp
+    node_cache.cpp
+    node_flush_state.cpp
+    node_state_holder.cpp
     overlapping_interval_set.cpp
-    read_write_range_lock.cpp
+    persistent_storage.cpp
+    queued_operations.cpp
+    read_response_builder.cpp
+    sequence_id_generator.cpp
+    utils.cpp
     write_back_cache.cpp
+    write_back_cache_state.cpp
     write_back_cache_stats.cpp
-    write_back_cache_util.cpp
+    write_data_request_builder.cpp
+    write_data_request_manager.cpp
 )
 
 PEERDIR(

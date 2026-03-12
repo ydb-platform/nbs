@@ -45,20 +45,32 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
+    InitialBackupProto.emplace();
+
     // Load backup even if in read-only mode to warm up BS group connections.
-    if (!LoadFromBinaryFormat(ctx) && !LoadFromTextFormat(ctx)) {
+    if (!LoadFromBinaryFormat(ctx, *InitialBackupProto) &&
+        !LoadFromTextFormat(ctx, *InitialBackupProto))
+    {
         LOG_WARN_S(
             ctx,
             LogComponent,
             "TabletBootInfoBackup: can't load backup file: "
                 << BackupFilePath.GetPath().Quote());
+        InitialBackupProto.reset();
     }
 
-    if (!ReadOnlyMode) {
+    if (ReadOnlyMode) {
+        if (InitialBackupProto) {
+            BackupProto = std::move(*InitialBackupProto);
+            InitialBackupProto.reset();
+        }
+    } else {
         ScheduleBackup(ctx);
     }
 
-    LOG_INFO_S(ctx, LogComponent,
+    LOG_INFO_S(
+        ctx,
+        LogComponent,
         "TabletBootInfoBackup: started with ReadOnlyMode=" << ReadOnlyMode);
 }
 
@@ -70,6 +82,14 @@ void TTabletBootInfoBackup::ScheduleBackup(const TActorContext& ctx)
 NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
 {
     Y_DEBUG_ABORT_UNLESS(!ReadOnlyMode);
+
+    if (!BackupProtoHasChanged) {
+        return MakeError(S_FALSE, "backup file is not changed");
+    }
+    BackupProtoHasChanged = false;
+
+    // We don't need this anymore, because backup file will be overwritten.
+    InitialBackupProto.reset();
 
     NProto::TError error;
 
@@ -103,6 +123,9 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
         LOG_DEBUG_S(ctx, LogComponent,
             "TabletBootInfoBackup: backup completed");
     } else {
+        // We should retry the backup in case of failure.
+        BackupProtoHasChanged = true;
+
         ReportBackupTabletBootInfosFailure();
 
         LOG_ERROR_S(ctx, LogComponent,
@@ -121,16 +144,18 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
     return error;
 }
 
-bool TTabletBootInfoBackup::LoadFromTextFormat(const NActors::TActorContext& ctx)
+bool TTabletBootInfoBackup::LoadFromTextFormat(
+    const TActorContext& ctx,
+    NHiveProxy::NProto::TTabletBootInfoBackup& backupProto)
 {
-    LOG_WARN_S(
+    LOG_INFO_S(
         ctx,
         LogComponent,
         "TabletBootInfoBackup: loading from text format: "
             << BackupFilePath.GetPath().Quote());
     try {
         TInstant start = TInstant::Now();
-        MergeFromTextFormat(BackupFilePath, BackupProto);
+        MergeFromTextFormat(BackupFilePath, backupProto);
 
         LOG_INFO_S(
             ctx,
@@ -139,6 +164,7 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(const NActors::TActorContext& ctx
                 << FormatDuration(TInstant::Now() - start));
         return true;
     } catch (...) {
+        backupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
         LOG_WARN_S(
             ctx,
             LogComponent,
@@ -148,9 +174,11 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(const NActors::TActorContext& ctx
     return false;
 }
 
-bool TTabletBootInfoBackup::LoadFromBinaryFormat(const NActors::TActorContext& ctx)
+bool TTabletBootInfoBackup::LoadFromBinaryFormat(
+    const TActorContext& ctx,
+    NHiveProxy::NProto::TTabletBootInfoBackup& backupProto)
 {
-    LOG_WARN_S(
+    LOG_INFO_S(
         ctx,
         LogComponent,
         "TabletBootInfoBackup: loading from binary format: "
@@ -159,16 +187,18 @@ bool TTabletBootInfoBackup::LoadFromBinaryFormat(const NActors::TActorContext& c
         TInstant start = TInstant::Now();
         TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
         TUnbufferedFileInput input(file);
-        const bool success = BackupProto.MergeFromString(input.ReadAll());
+        const bool success = backupProto.MergeFromString(input.ReadAll());
 
         LOG_WARN_S(
             ctx,
             LogComponent,
-            "TabletBootInfoBackup: loading from binary format finished "
+            "TabletBootInfoBackup: loading from binary format finished with "
+                << (success ? "success in " : "failure in ")
                 << FormatDuration(TInstant::Now() - start));
 
         return success;
     } catch (...) {
+        backupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
         LOG_WARN_S(
             ctx,
             LogComponent,
@@ -198,28 +228,33 @@ void TTabletBootInfoBackup::HandleReadTabletBootInfoBackup(
 
     auto* msg = ev->Get();
 
-    bool found = false;
-    NHiveProxy::NProto::TTabletBootInfo tabletBootInfo;
-
+    std::optional<NHiveProxy::NProto::TTabletBootInfo> tabletBootInfo;
     {
-        auto it = BackupProto.GetData().find(msg->TabletId);
-        if (it != BackupProto.GetData().end()) {
-            found = true;
+        // Not using "value_or()" because it copies the value.
+        const auto& backupProto =
+            InitialBackupProto ? *InitialBackupProto : BackupProto;
+        const auto it = backupProto.GetData().find(msg->TabletId);
+        if (it != backupProto.GetData().end()) {
             tabletBootInfo = it->second;
         }
     }
 
     std::unique_ptr<TResponse> response;
 
-    if (found) {
-        LOG_DEBUG_S(ctx, LogComponent,
+    if (tabletBootInfo) {
+        LOG_DEBUG_S(
+            ctx,
+            LogComponent,
             "TabletBootInfoBackup: found data for tablet " << msg->TabletId);
 
         response = std::make_unique<TResponse>(
-            NKikimr::TabletStorageInfoFromProto(std::move(tabletBootInfo.GetStorageInfo())),
-            tabletBootInfo.GetSuggestedGeneration());
+            NKikimr::TabletStorageInfoFromProto(
+                tabletBootInfo->GetStorageInfo()),
+            tabletBootInfo->GetSuggestedGeneration());
     } else {
-        LOG_DEBUG_S(ctx, LogComponent,
+        LOG_DEBUG_S(
+            ctx,
+            LogComponent,
             "TabletBootInfoBackup: no data for tablet " << msg->TabletId);
         response = std::make_unique<TResponse>(MakeError(E_NOT_FOUND));
     }
@@ -232,16 +267,21 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    auto& data = *BackupProto.MutableData();
+    Y_ABORT_UNLESS(msg->StorageInfo);
 
     NHiveProxy::NProto::TTabletBootInfo tabletBootInfo;
     NKikimr::TabletStorageInfoToProto(
-        *msg->StorageInfo, tabletBootInfo.MutableStorageInfo());
+        *msg->StorageInfo,
+        tabletBootInfo.MutableStorageInfo());
     tabletBootInfo.SetSuggestedGeneration(msg->SuggestedGeneration);
 
+    BackupProtoHasChanged = true;
+    auto& data = *BackupProto.MutableData();
     data[msg->StorageInfo->TabletID] = std::move(tabletBootInfo);
 
-    LOG_DEBUG_S(ctx, LogComponent,
+    LOG_DEBUG_S(
+        ctx,
+        LogComponent,
         "TabletBootInfoBackup: updated data for tablet "
             << msg->StorageInfo->TabletID);
 }
@@ -268,7 +308,10 @@ void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
     const TActorContext& ctx)
 {
     TVector<TTabletBootInfo> tabletBootInfos;
-    for (const auto& [_, tabletBootInfo]: BackupProto.GetData()) {
+    // Not using "value_or()" because it copies the value.
+    const auto& backupProto =
+        InitialBackupProto ? *InitialBackupProto : BackupProto;
+    for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
         tabletBootInfos.emplace_back(
             tabletBootInfo.GetStorageInfo(),
             tabletBootInfo.GetSuggestedGeneration());

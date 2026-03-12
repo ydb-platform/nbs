@@ -4,7 +4,9 @@
 #include "ydbauth.h"
 
 #include <cloud/blockstore/libs/kikimr/events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
@@ -401,10 +403,11 @@ void TYdbNativeStorage::Start()
     }
 
     IamClient->GetTokenAsync().Subscribe(
-        [weak = weak_from_this()](auto futureToken) mutable
+        [weak = weak_from_this()]   //
+        (const TFuture<TResultOrError<TTokenInfo>>& futureToken) mutable
         {
             TTokenInfo token;
-            auto result = futureToken.ExtractValue();
+            auto result = UnsafeExtractValue(futureToken);
             if (!HasError(result)) {
                 token = result.ExtractResult();
             }

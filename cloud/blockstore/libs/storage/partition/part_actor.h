@@ -12,9 +12,9 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
-#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
@@ -26,8 +26,12 @@
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/io_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -57,6 +61,11 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFreshBlocksCompanionClient;
+
+struct TIOCompanionClient;
+
+////////////////////////////////////////////////////////////////////////////////
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
     , public TTabletBase<TPartitionActor>
@@ -105,6 +114,10 @@ class TPartitionActor final
 
     static constexpr ui64 BootWakeupEventTag = 1;
 
+    friend TFreshBlocksCompanionClient;
+
+    friend TIOCompanionClient;
+
 private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
@@ -146,6 +159,9 @@ private:
 
     TPartitionDiskCountersPtr PartCounters;
 
+    std::shared_ptr<TThreadSafePartCounters> IoCompanionCounters =
+        std::make_shared<TThreadSafePartCounters>();
+
     ui64 SysCPUConsumption = 0;
     ui64 UserCPUConsumption = 0;
 
@@ -161,6 +177,22 @@ private:
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
+
+    std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue =
+        std::make_shared<TResourceMetricsQueue>();
+
+    std::shared_ptr<TGroupDowntimes> GroupDowntimes =
+        std::make_shared<TGroupDowntimes>();
+
+    std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
+    std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
+
+    std::unique_ptr<TIOCompanionClient> IOCompanionClient;
+    std::unique_ptr<TIOCompanion> IOCompanion;
+
+    NActors::TActorId FreshBlocksWriter;
+
+    TRequestInfoPtr Poisoner;
 
 public:
     TPartitionActor(
@@ -214,7 +246,6 @@ private:
     void SendGetUsedBlocksFromBaseDisk(const NActors::TActorContext& ctx);
     void FinalizeLoadState(const NActors::TActorContext& ctx);
 
-    void LoadFreshBlobs(const NActors::TActorContext& ctx);
     void FreshBlobsLoaded(const NActors::TActorContext& ctx);
 
     void ConfirmBlobs(const NActors::TActorContext& ctx);
@@ -338,7 +369,6 @@ private:
         TBlockRange32 writeRange,
         ui64 commitId);
 
-    void ProcessIOQueue(const NActors::TActorContext& ctx, ui32 channel);
     void ClearWriteQueue(const NActors::TActorContext& ctx);
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
     void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
@@ -399,6 +429,12 @@ private:
 
     void UpdateStorageStat(i64 value);
     void UpdateCPUUsageStat(TInstant now, ui64 value);
+
+    void UpdateResourceMetrics(TUpdateWriteThroughput& writeThroughput);
+    void UpdateResourceMetrics(TUpdateReadThroughput& readThroughput);
+    void UpdateResourceMetrics(TUpdateNetworkStat& networkStat);
+    void UpdateResourceMetrics(TUpdateStorageStat& storageStat);
+    void UpdateResourceMetrics(TUpdateCPUUsageStat& cpuUsageStat);
 
     void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
     void UpdateYellowState(const NActors::TActorContext& ctx);
@@ -478,6 +514,10 @@ private:
         TBlockBuffer blockBuffer);
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+
+    void CreateFreshBlocksCompanionClient();
+
+    void CreateIOCompanionClient();
 
 private:
     STFUNC(StateBoot);
@@ -634,12 +674,8 @@ private:
         const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleWriteBlobCompleted(
-        const TEvPartitionPrivate::TEvWriteBlobCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandlePatchBlobCompleted(
-        const TEvPartitionPrivate::TEvPatchBlobCompleted::TPtr& ev,
+        const TEvPartitionCommonPrivate::TEvPatchBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadBlocksCompleted(
@@ -654,9 +690,39 @@ private:
         const TEvPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleWriteFreshBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    struct TWriteBlocksCompleted
+    {
+        bool CollectGarbageBarrierAcquired;
+        bool AddingUnconfirmedBlobsRequested;
+        bool IsFreshBlocksRequest;
+        TVector<TBlobToConfirm> BlobsToConfirm;
+    };
+
+    void HandleWriteBlocksCompletedImpl(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        NProto::TError error,
+        const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+        TWriteBlocksCompleted writeBlocksCompleted);
+
     void HandleZeroBlocksCompleted(
         const TEvPartitionPrivate::TEvZeroBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleZeroFreshBlocksCompleted(
+        const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleZeroBlocksCompletedImpl(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId sender,
+        NProto::TError error,
+        const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
+        bool freshBlocksRequest);
 
     void HandleFlushCompleted(
         const TEvPartitionPrivate::TEvFlushCompleted::TPtr& ev,
@@ -698,10 +764,6 @@ private:
         const TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleLongRunningBlobOperation(
-        const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleDescribeBlocksCompleted(
         const TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -740,6 +802,14 @@ private:
 
     void HandleGetPartCountersRequest(
         const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectGetPartCountersRequest(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateResourceMetrics(
+        const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

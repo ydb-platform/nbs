@@ -126,7 +126,6 @@ struct TStorageOptions
     TString CheckpointId;
     bool UnalignedRequestsDisabled = false;
     bool SendMinBlockSize = false;
-    bool CheckBufferModificationDuringWriting = false;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     ui32 MaxZeroBlocksSubRequestSize = 0;
 };

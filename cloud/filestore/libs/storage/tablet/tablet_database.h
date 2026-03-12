@@ -10,6 +10,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -71,7 +72,7 @@ public:
         : NKikimr::NIceDb::TNiceDb(database)
     {}
 
-    void InitSchema(bool useNoneCompactionPolicy);
+    void InitSchema();
 
     //
     // FileSystem
@@ -549,6 +550,37 @@ public:
     void DeleteOpLogEntry(ui64 entryId);
     bool ReadOpLogEntry(ui64 entryId, TMaybe<NProto::TOpLogEntry>& entry);
     bool ReadOpLog(TVector<NProto::TOpLogEntry>& opLog);
+
+    //
+    // ResponseLog
+    //
+
+    void WriteResponseLogEntry(const NProtoPrivate::TResponseLogEntry& entry);
+    void DeleteResponseLogEntry(ui64 clientTabletId, ui64 requestId);
+    bool ReadResponseLogEntry(
+        ui64 clientTabletId,
+        ui64 requestId,
+        TMaybe<NProtoPrivate::TResponseLogEntry>& entry);
+    bool ReadResponseLog(
+        TVector<NProtoPrivate::TResponseLogEntry>& responseLog);
+
+    //
+    // UnconfirmedData
+    //
+
+    struct TUnconfirmedDataEntry
+    {
+        ui64 CommitId = 0;
+        NProto::TUnconfirmedData Data;
+    };
+
+    void WriteUnconfirmedData(
+        ui64 commitId,
+        const NProto::TUnconfirmedData& data);
+
+    void DeleteUnconfirmedData(ui64 commitId);
+
+    bool ReadUnconfirmedData(TVector<TUnconfirmedDataEntry>& entries);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

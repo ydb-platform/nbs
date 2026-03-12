@@ -828,6 +828,34 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             DefaultBlocksCount,
             checkRangeCounter * blocksPerRequest);
     }
+
+    Y_UNIT_TEST(BackupVolumeShouldNotCrashIfVolumeWasNotMounted)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        client->DescribeVolumeHandler = [&](auto...)
+        {
+            NProto::TDescribeVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(4096);
+            response.MutableVolume()->SetBlocksCount(1024);
+            return MakeFuture(response);
+        };
+
+        client->CreateVolumeHandler = [&](auto...)
+        {
+            NProto::TCreateVolumeResponse response;
+            *response.MutableError() =
+                MakeError(E_FAIL, "unable to create volume");
+            return MakeFuture(response);
+        };
+
+        TVector<TString> argv;
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back(TStringBuilder() << "--disk-id=" << DefaultDiskId);
+        argv.emplace_back(TStringBuilder() << "--backup-disk-id=" << DefaultDiskId);
+
+        UNIT_ASSERT(!ExecuteRequest("backupvolume", argv, client));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

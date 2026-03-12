@@ -44,6 +44,16 @@ class TTestVolumeInfo final
 public:
     NProto::TVolume Volume;
 
+    void SetRemoveByInactivityTimeoutEnabled(bool enabled) override
+    {
+        Y_UNUSED(enabled);
+    }
+
+    bool GetRemoveByInactivityTimeoutEnabled() const override
+    {
+        return true;
+    }
+
     const NProto::TVolume& GetInfo() const override
     {
         return Volume;
@@ -67,6 +77,8 @@ public:
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
@@ -76,6 +88,8 @@ public:
         Y_UNUSED(requestType);
         Y_UNUSED(requestStarted);
         Y_UNUSED(postponedTime);
+        Y_UNUSED(backoffTime);
+        Y_UNUSED(shapingTime);
         Y_UNUSED(requestBytes);
         Y_UNUSED(errorKind);
         Y_UNUSED(errorFlags);

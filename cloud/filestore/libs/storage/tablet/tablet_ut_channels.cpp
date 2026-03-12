@@ -22,9 +22,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
     Y_UNIT_TEST(ShouldSwitchToBrokenStateIfTabletChannelCountDecreased)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TDynamicCountersPtr counters = new TDynamicCounters();
@@ -62,9 +61,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         storageConfig.SetWriteBlobThreshold(16_KB);
 
         TTestEnv env({ .ChannelCount = 4 }, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         // only one mixed channel
@@ -215,9 +213,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         storageConfig.SetWriteBlobThreshold(16_KB);
 
         TTestEnv env({ .ChannelCount = 5 }, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         // two mixed channels
@@ -264,9 +261,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         storageConfig.SetCollectGarbageThreshold(1);
 
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -355,7 +351,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         storageConfig.SetEnableCollectGarbageAtStart(true);
 
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
 
         bool collectGarbageObserved = false;
         bool deleteGarbageObserved = false;
@@ -377,7 +372,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
             }
         );
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);

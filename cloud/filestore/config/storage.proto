@@ -311,23 +311,9 @@ message TStorageConfig
     optional uint32 ReadAheadMaxGapPercentage = 350;
     optional uint32 ReadAheadCacheMaxHandlesPerNode = 351;
 
-    // If set to true, tablets will use the compaction policy, described in their
-    // schemas. If set to false, tablets will use the old compaction policy, which
-    // is None, thus making the table use schema, set for this table beforehand.
-    // If no schema is set, the table will use the default schema.
-    //
-    // Thus, enabling `NewLocalDBCompactionPolicyEnabled` flag will make some
-    // tables use the new, three-generations compaction policy, for all the tablets,
-    // that have been restarted after the flag was set to true.
-    //
-    // Disabling this flag afterwards is not supposed to affect these tables, as
-    // they will return to using the None compaction policy, which does not trigger
-    // `SetCompactionPolicy` alter operation.
-    optional bool NewLocalDBCompactionPolicyEnabled = 352;
+    optional bool NewLocalDBCompactionPolicyEnabled = 352 [deprecated = true];
 
-    // If greater than 0, the node index cache will be used. It caches
-    // GetNodeAttrRequests to avoid executing GetNodeAttr tx for hot nodes.
-    optional uint32 NodeIndexCacheMaxNodes = 353;
+    optional uint32 NodeIndexCacheMaxNodes = 353 [deprecated = true];
 
     // By default, the blocksize, provided by the GetNodeAttr request, is set to
     // the filestore blocksize. Due to the fact that every 64 blocks are stored in
@@ -739,4 +725,21 @@ message TStorageConfig
     // Mode for calculating byte size in ListNodes when applying MaxBytes limit.
     // TODO(#5148): consider other size calculation modes
     optional EListNodesSizeMode ListNodesSizeMode = 484;
+
+    // Tablet ResponseLogEntry TTL in ms before it gets deleted by a regular
+    // tablet operation.
+    optional uint32 ResponseLogEntryTTL = 485;
+
+    // Frequency of tablet regular task runs (e.g. ResponseLogEntry cleanup).
+    optional uint32 TabletRegularTasksSchedulePeriod = 486;
+
+    // Allow to destroy filestore with active sessions
+    // with size less than threshold(in bytes)
+    optional uint32 ForceDestroySizeThreshold = 487;
+
+    // Enable adding unconfirmed data for write operations
+    optional bool AddingUnconfirmedDataEnabled = 488;
+
+    // Limits unconfirmed (and confirmed but not added to the index) data count.
+    optional uint32 UnconfirmedDataCountHardLimit = 489;
 }

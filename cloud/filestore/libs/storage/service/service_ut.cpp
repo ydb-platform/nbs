@@ -11,13 +11,16 @@
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
+#include <contrib/ydb/core/base/hive.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
-
-#include <contrib/ydb/core/base/hive.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -151,6 +154,32 @@ TString GetBufferFromIovecs(const TVector<TString>& iovecs, size_t length)
     return buf;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TTabletStorageInfoPtr GetTabletStorageInfo(
+    TTestActorRuntime& runtime,
+    ui64 tabletId)
+{
+    using TEvHiveProxy = NCloud::NStorage::TEvHiveProxy;
+
+    auto sender = runtime.AllocateEdgeActor();
+    runtime.Send(new IEventHandle(
+        NCloud::NStorage::MakeHiveProxyServiceId(),
+        sender,
+        new TEvHiveProxy::TEvGetStorageInfoRequest(tabletId)));
+
+    TAutoPtr<IEventHandle> handle;
+    auto* event =
+        runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetStorageInfoResponse>(
+            handle);
+    UNIT_ASSERT(event);
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetError().GetCode());
+
+    auto storageInfo = event->StorageInfo;
+    UNIT_ASSERT(storageInfo);
+    return storageInfo;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -160,9 +189,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldCreateFileStore)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -174,6 +202,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1'000, response.GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, response.GetBlockSize());
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetConfigVersion());
+        UNIT_ASSERT(response.GetMainTabletId() != 0);
 
         const auto& profile = response.GetPerformanceProfile();
         UNIT_ASSERT(!profile.GetThrottlingEnabled());
@@ -206,9 +235,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldAlterFileStore)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -250,9 +278,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldResizeFileStore)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -297,9 +324,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldDownsizeFileStore)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 100'000'000);
@@ -356,9 +382,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldResizeFileStoreWithCustomPerformanceProfile)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const char* fsId = "test";
@@ -418,8 +443,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldResizeFileStoreAndAddChannels)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         auto& runtime = env.GetRuntime();
 
@@ -470,8 +494,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldFailAlterIfDescribeFails)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         auto& runtime = env.GetRuntime();
 
@@ -505,9 +528,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldDescribeModel)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const auto size1 = 1_GB/DefaultBlockSize;
@@ -564,9 +586,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldCreateSession)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -580,9 +601,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldReturnFileStoreInfoWhenCreateSession)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000, DefaultBlockSize, NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
@@ -598,9 +618,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldRestoreSessionIfPipeFailed)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -640,9 +659,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldRestoreSessionIfPipeDisconnected)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -690,9 +708,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldRestoreSessionIfCreateFailed)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -736,9 +753,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldFailIfCreateSessionFailed)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -782,9 +798,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldCleanUpIfSessionFailed)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         auto& runtime = env.GetRuntime();
 
         ui64 tabletId = -1;
@@ -847,9 +862,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldRestoreClientSession)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -884,9 +898,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldNotPingAndDestroyInvalidSession)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -911,9 +924,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldForwardRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -935,9 +947,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldNotForwardRequestsWithInvalidSession)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -961,9 +972,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldGetSessionEvents)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -982,9 +992,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldGetSessionEventsStream)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -1017,9 +1026,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldListFileStores)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         TVector<TString> expected = {"dir/fs1", "dir/fs2", "dir1/fs", "dir2/fs"};
@@ -1047,9 +1055,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldFailListFileStoresIfDescribeSchemeFails)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("fs1", 10000);
@@ -1086,9 +1093,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         const auto profileLog = std::make_shared<TTestProfileLog>();
         TTestEnv env({}, {}, {}, profileLog);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -1118,7 +1124,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"));
         UNIT_ASSERT_VALUES_EQUAL(6, profileLog->Requests.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            2,
             profileLog->Requests[static_cast<ui32>(EFileStoreRequest::CreateNode)].size());
 
         service.ListNodes(headers, 1);
@@ -1142,10 +1148,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         cfg.StaticNodes = 1;
         cfg.DynamicNodes = 2;
         TTestEnv env(cfg);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx1 = env.CreateNode("nfs");
-        ui32 nodeIdx2 = env.CreateNode("nfs");
+        ui32 nodeIdx1 = env.AddDynamicNode();
+        ui32 nodeIdx2 = env.AddDynamicNode();
 
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
         TServiceClient service2(env.GetRuntime(), nodeIdx2);
@@ -1175,9 +1180,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldSupportIntraHostMigration)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -1205,9 +1209,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldProperlyDeleteSubsessions)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -1229,7 +1232,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldProperlyDeleteCounters)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
         auto counters = env.GetCounters();
         counters = counters->FindSubgroup("component", "service_fs");
@@ -1237,7 +1239,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -1289,9 +1291,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldRejectParallelCreateOrDestroyRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -1337,9 +1338,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldNotDestroyWholeSessionIfSubSessionFailes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -1393,9 +1393,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldUpdateSessionStateWhenRestoringSession)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -1431,9 +1430,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TStorageConfig config;
         config.SetCompactionThreshold(1000);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -1493,9 +1491,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldChangeStorageConfig)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -1580,9 +1577,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // should be true.
 
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         const char* fsId = "test";
@@ -1629,9 +1625,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TStorageConfig config;
         config.SetLazyXAttrsEnabled(true);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
         const TString fsId = "test";
         const TString clientId = "client";
 
@@ -1659,9 +1653,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TStorageConfig config;
         config.SetCompactionThreshold(1000);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         // delaying pipe creation response
         ui64 tabletId = -1;
@@ -1808,9 +1801,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldValidateBlockSize)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const ui32 blocks = 1024 * 1024;
@@ -1852,9 +1844,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TStorageConfig config;
         config.SetIdleSessionTimeout(5'000); // 5s
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         auto& runtime = env.GetRuntime();
 
@@ -1946,9 +1937,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TStorageConfig config;
         config.SetIdleSessionTimeout(5'000); // 5s
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         auto& runtime = env.GetRuntime();
 
@@ -2034,9 +2024,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TStorageConfig config;
         config.SetIdleSessionTimeout(5'000); // 5s
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         auto& runtime = env.GetRuntime();
 
@@ -2114,9 +2103,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
@@ -2142,9 +2130,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     void CheckTwoStageReads(NProto::EStorageMediaKind mediaKind, bool disableForHdd)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -2278,9 +2265,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -2383,9 +2369,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         storageConfig.SetCpuLackOverloadThreshold(50);
 
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         auto systemCounters = env.GetSystemCounters();
 
@@ -2490,9 +2475,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -2566,9 +2550,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldFallbackToReadDataIfEvGetFails)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -2668,15 +2651,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetCompactionThreshold(1000);
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
+        // At least three groups are required, because in the worst case two
+        // different channels may use two different groups
+        TTestEnv env({.Groups = 3}, config);
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        auto& runtime = env.GetRuntime();
+
+        ui32 nodeIdx = env.AddDynamicNode();
 
         ui64 tabletId = 0;
-        ui64 reassignedTabletId = 0;
-        TVector<ui32> reassignedChannels;
-        env.GetRuntime().SetEventFilter(
+        runtime.SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvSSProxy::EvDescribeFileStoreResponse: {
@@ -2685,18 +2669,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     const auto& desc =
                         msg->PathDescription.GetFileStoreDescription();
                     tabletId = desc.GetIndexTabletId();
-
-                    break;
-                }
-
-                case NKikimr::TEvHive::EvReassignTablet: {
-                    const auto* msg =
-                        event->Get<NKikimr::TEvHive::TEvReassignTablet>();
-                    reassignedTabletId = msg->Record.GetTabletID();
-                    reassignedChannels = {
-                        msg->Record.GetChannels().begin(),
-                        msg->Record.GetChannels().end()};
-
                     break;
                 }
             }
@@ -2711,30 +2683,152 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT(headers.SessionId);
         UNIT_ASSERT(tabletId);
 
-        NProtoPrivate::TReassignTabletRequest request;
-        request.SetTabletId(tabletId);
-        request.AddChannels(1);
-        request.AddChannels(4);
+        // The first part of the test: select groups for reassignment,
+        // emulating a high occupancy scenario - since Hive only allows
+        // reassignment to less occupied groups
 
-        TString buf;
-        google::protobuf::util::MessageToJsonString(request, &buf);
-        auto jsonResponse = service.ExecuteAction("reassigntablet", buf);
-        NProtoPrivate::TReassignTabletResponse response;
-        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
+        TVector<ui32> channelsToReassign = {1, 4};
+        TVector<ui32> groupsToReassign;
+
+        auto storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        UNIT_ASSERT(storageInfo->Channels.size() > channelsToReassign.size());
+
+        // Find which groups correspond to the channels being reassigned
+        for (size_t idx = 0; idx < storageInfo->Channels.size(); idx++) {
+            const auto& channel = storageInfo->Channels[idx];
+
+            auto it = Find(channelsToReassign, idx);
+            if (it != channelsToReassign.end()) {
+                UNIT_ASSERT_VALUES_EQUAL(1, channel.History.size());
+                const auto groupId = channel.History.back().GroupID;
+                groupsToReassign.push_back(groupId);
+            }
+        }
+
+        ui32 selectGroupsHappened = 0;
+        ui64 reassignedTabletId = 0;
+        TVector<ui32> reassignedChannels;
+
+        runtime.SetEventFilter([&] (auto&, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvControllerSelectGroupsResult: {
+                    selectGroupsHappened++;
+
+                    auto* msg = event->Get<
+                        TEvBlobStorage::TEvControllerSelectGroupsResult>();
+                    auto& record = msg->Record;
+                    for (auto& matchingGroups: *record.MutableMatchingGroups()) {
+                        for (auto& group: *matchingGroups.MutableGroups()) {
+                            auto it = FindIf(
+                                groupsToReassign,
+                                [=](ui32 groupId) {
+                                    return groupId == group.GetGroupID();
+                                });
+                            if (it != groupsToReassign.end()) {
+                                // Set a large occupancy to make reassignment from
+                                // this group possible
+                                group.MutableCurrentResources()->SetOccupancy(
+                                    0.7);
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                case TEvHive::EvReassignTablet: {
+                    const auto* msg =
+                        event->Get<NKikimr::TEvHive::TEvReassignTablet>();
+                    reassignedTabletId = msg->Record.GetTabletID();
+                    reassignedChannels = {
+                        msg->Record.GetChannels().begin(),
+                        msg->Record.GetChannels().end()};
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        env.RebootHive();
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(1, selectGroupsHappened);
+
+        {
+            NProtoPrivate::TReassignTabletRequest request;
+            request.SetTabletId(tabletId);
+            for (auto channel: channelsToReassign) {
+                request.AddChannels(channel);
+            }
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("reassigntablet", buf);
+            NProtoPrivate::TReassignTabletResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
 
         UNIT_ASSERT_VALUES_EQUAL(tabletId, reassignedTabletId);
-        UNIT_ASSERT_VALUES_EQUAL(2, reassignedChannels.size());
-        UNIT_ASSERT_VALUES_EQUAL(1, reassignedChannels[0]);
-        UNIT_ASSERT_VALUES_EQUAL(4, reassignedChannels[1]);
+        UNIT_ASSERT_VALUES_EQUAL(channelsToReassign, reassignedChannels);
+
+        ui32 reassignedToGroupId = 0;
+
+        storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        UNIT_ASSERT(storageInfo->Channels.size() > reassignedChannels.size());
+
+        // Ensure that the reassign did happen
+        for (size_t idx = 0; idx < reassignedChannels.size(); idx++) {
+            const auto& channel = storageInfo->Channels[reassignedChannels[idx]];
+            UNIT_ASSERT_VALUES_EQUAL(2, channel.History.size());
+            reassignedToGroupId = channel.History.back().GroupID;
+
+            // Validate that the reassigned group is not selected as the target
+            // for reassignment
+            const auto groupIt = Find(groupsToReassign, reassignedToGroupId);
+            UNIT_ASSERT(groupIt == groupsToReassign.end());
+        }
+
+        UNIT_ASSERT_VALUES_UNEQUAL(0, reassignedToGroupId);
+
+        // The second part of the test: attempt to reassign a previously
+        // reassigned channel and verify that no reassignment occurs
+
+        ui32 reassignedToChannel = reassignedChannels.back();
+
+        {
+            NProtoPrivate::TReassignTabletRequest request;
+            request.SetTabletId(tabletId);
+            request.AddChannels(reassignedToChannel);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("reassigntablet", buf);
+
+            TAutoPtr<IEventHandle> handle;
+            auto* event =
+                runtime.GrabEdgeEvent<TEvService::TEvExecuteActionResponse>(
+                    handle,
+                    TDuration::Seconds(5));
+            // Expect that the reassignment response did not occur
+            UNIT_ASSERT(event == nullptr);
+        }
+
+        storageInfo = GetTabletStorageInfo(runtime, tabletId);
+        UNIT_ASSERT(storageInfo->Channels.size() > reassignedChannels.size());
+        {
+            auto channel = storageInfo->Channels[reassignedToChannel];
+            // Expect that the group was not reassigned
+            UNIT_ASSERT_VALUES_EQUAL(
+                reassignedToGroupId,
+                channel.History.back().GroupID);
+        }
     }
 
     void CheckThreeStageWrites(NProto::EStorageMediaKind kind, bool disableForHdd)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -2910,9 +3004,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnalignedRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -2975,9 +3068,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteThreshold(4_KB);
         config.SetUnalignedThreeStageWriteEnabled(true);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -3043,10 +3135,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteThreshold(64_KB);
         config.SetUnalignedThreeStageWriteEnabled(true);
         const auto profileLog = std::make_shared<TTestProfileLog>();
-        TTestEnv env({}, config, {}, profileLog);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        TTestEnv env({}, config, {}, profileLog);
+
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -3105,9 +3197,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -3254,9 +3345,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldWriteDataWhenWriteBlobDisabled)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -3335,9 +3425,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetMultipleStageRequestThrottlingEnabled(true);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -3426,9 +3515,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldSendBSGroupFlagsToTabletViaAddDataRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -3497,9 +3585,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(DestroyFileStoreWithActiveSessionShouldFail)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const auto initialBlockCount = 1'000;
@@ -3529,12 +3616,78 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetForceDestroySizeThreshold(1_GB);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        // Size less than ForceDestroySizeThreshold
+        const auto initialBlockCount = 80_MB / DefaultBlockSize;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldNotDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetForceDestroySizeThreshold(1_GB);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        // Size more than ForceDestroySizeThreshold
+        const auto initialBlockCount = 2_GB / DefaultBlockSize;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+        service.AssertDestroyFileStoreFailed(fsId);
+
+        headers.SessionId =
+            createSessionResponse->Record.GetSession().GetSessionId();
+        auto destroySessionResponse = service.DestroySession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroySessionResponse->GetStatus(),
+            destroySessionResponse->GetErrorReason());
+
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(DestroyDestroyedFileStoreShouldNotFail)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const TString fsId2 = "test2";
@@ -3578,10 +3731,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.MutableDestroyFilestoreDenyList()->Add("test");
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const auto initialBlockCount = 1'000;
@@ -3605,9 +3758,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetAllowFileStoreForceDestroy(true);
+
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
-        ui32 nodeIdx = env.CreateNode("nfs");
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
         const TString fsId = "test";
         const auto initialBlockCount = 1'000;
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -3629,8 +3784,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ForceDestroyWithoutAllowFileStoreForceDestroyFlagShouldFail)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
-        ui32 nodeIdx = env.CreateNode("nfs");
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
         const TString fsId = "test";
         const auto initialBlockCount = 1'000;
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -3660,10 +3816,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.MutableFilestoreAliases()->Swap(&aliases);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
-
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(originalFs, 1000);
@@ -3714,9 +3868,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldWriteCompactionMap)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         ui64 tabletId = -1;
         ui32 lastCompactionMapRangeId = 0;
@@ -3777,9 +3930,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     void CheckDisableMultistageReadWritesForHdd(NProto::EStorageMediaKind kind)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -3911,9 +4063,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldUpdateFileSystemAndTabletCountersOnRegisterAndUnregister)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -4031,9 +4182,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetAllowHandlelessIO(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4161,9 +4311,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         NProto::TStorageConfig config;
         config.SetTwoStageReadEnabled(true);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4204,9 +4353,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const std::vector<ui64>& iovecSizes)
     {
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4363,9 +4511,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetZeroCopyWriteEnabled(true);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4393,9 +4540,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4447,9 +4593,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldHandleToggleServiceState)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4480,9 +4625,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldReadFakeDataWhenReadBlobDisabled)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4534,9 +4678,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldReadFakeDataWhenFakeDescribeDataEnabled)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -4627,9 +4770,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const TString fsId = "test";
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, fsSize);

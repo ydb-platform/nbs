@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+package scrubbing;
+
+import "cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config/config.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message FilesystemScrubbingConfig {
+    optional filesystem_traversal.FilesystemTraversalConfig TraversalConfig = 1;
+    // 0 disables the limit.
+    optional uint32 ListNodesMaxBytes = 2 [default = 4096];
+    optional uint64 TraversalQueueDeletionLimit = 3 [default = 1000];
+}

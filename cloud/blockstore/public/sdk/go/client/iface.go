@@ -264,4 +264,23 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TQueryAgentsInfoRequest,
 	) (*protos.TQueryAgentsInfoResponse, error)
+
+	//
+	// Local NVMe
+	//
+
+	ListNVMeDevices(
+		ctx context.Context,
+		req *protos.TListNVMeDevicesRequest,
+	) (*protos.TListNVMeDevicesResponse, error)
+
+	AcquireNVMeDevice(
+		ctx context.Context,
+		req *protos.TAcquireNVMeDeviceRequest,
+	) (*protos.TAcquireNVMeDeviceResponse, error)
+
+	ReleaseNVMeDevice(
+		ctx context.Context,
+		req *protos.TReleaseNVMeDeviceRequest,
+	) (*protos.TReleaseNVMeDeviceResponse, error)
 }

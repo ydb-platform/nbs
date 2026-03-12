@@ -68,7 +68,7 @@ public:
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         ui64 requestCompleted,
-        ui64 postponedTime,
+        ui64 waitTime,
         ui32 requestBytes);
 
     bool UpdateStats();

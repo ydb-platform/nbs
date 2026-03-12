@@ -136,7 +136,7 @@ void TConfirmBlobsActor::HandleGetResult(
         return;
     }
 
-    if (IsUnrecoverable(msg->Responses[0].Status)) {
+    if (NCloud::IsUnrecoverable(msg->Responses[0].Status)) {
         ui32 requestIndex = ev->Cookie;
         Y_ABORT_UNLESS(requestIndex < Requests.size());
 

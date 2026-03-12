@@ -67,6 +67,10 @@ constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
 constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
+// sizeof(ui64) comes from the name "." aligned up to ui64
+constexpr ui64 dotSize = sizeof(fuse_direntplus) + sizeof(ui64);
+constexpr ui64 dotDotSize = dotSize;
+
 static const TString FileSystemId = "fs1";
 static const TString SessionId = CreateGuidAsString();
 
@@ -356,6 +360,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -417,7 +422,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         CheckWriteRequestWithFSyncQueue(true);
     }
 
-    void CheckCreateOpenHandleRequest(bool isCreate, bool isWriteBackCacheEnabled)
+    void CheckCreateOpenHandleRequest(
+        bool isCreate,
+        bool isWriteBackCacheEnabled,
+        int systemFlags = O_WRONLY,
+        ui32 expectedFlags = ProtoFlag(NProto::TCreateHandleRequest::E_WRITE))
     {
         NProto::TFileStoreFeatures features;
         if (isWriteBackCacheEnabled) {
@@ -444,14 +453,27 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     request->GetFlags(),
                     NProto::TCreateHandleRequest::E_READ));
             }
-            UNIT_ASSERT(HasFlag(
-                request->GetFlags(),
-                NProto::TCreateHandleRequest::E_WRITE));
+            for (ui32 flag = NProto::TCreateHandleRequest::EFlags_MIN;
+                 flag < NProto::TCreateHandleRequest::EFlags_ARRAYSIZE;
+                 ++flag)
+            {
+                if (HasFlag(
+                        expectedFlags,
+                        static_cast<NProto::TCreateHandleRequest::EFlags>(
+                            flag)))
+                {
+                    UNIT_ASSERT(HasFlag(
+                        request->GetFlags(),
+                        static_cast<NProto::TCreateHandleRequest::EFlags>(
+                            flag)));
+                }
+            }
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -461,13 +483,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         auto req = std::make_shared<TCreateHandleRequest>("/file1", RootNodeId);
-        req->In->Body.flags |= O_WRONLY;
+        req->In->Body.flags |= systemFlags;
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(req);
         UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
 
         if (!isCreate) {
             auto req = std::make_shared<TOpenHandleRequest>(handleId);
-            req->In->Body.flags |= O_WRONLY;
+            req->In->Body.flags |= systemFlags;
             auto handle = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(req);
             UNIT_ASSERT_VALUES_EQUAL(handle.GetValue(WaitTimeout), handleId);
         }
@@ -497,6 +519,27 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldHandleSyncFlagsInCreateAndOpenRequests)
+    {
+        const ui32 writeSyncFlags =
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_SYNC);
+        const ui32 writeDataSyncFlags =
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_DSYNC);
+
+        CheckCreateOpenHandleRequest(
+            true,   // Create Handle
+            false,  // no guest writeback cache
+            O_WRONLY | O_SYNC,
+            writeSyncFlags);
+        CheckCreateOpenHandleRequest(
+            false,  // Open Handle
+            false,  // no guest writeback cache
+            O_WRONLY | O_DSYNC,
+            writeDataSyncFlags);
+    }
+
     Y_UNIT_TEST(ShouldPassSessionId)
     {
         TBootstrap bootstrap;
@@ -519,6 +562,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handleId);
                 result.MutableNodeAttr()->SetId(nodeId);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
             return MakeFuture(result);
         };
@@ -576,6 +620,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handle++);
                 result.MutableNodeAttr()->SetId(100500);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
 
             return MakeFuture(result);
@@ -671,6 +716,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             } else {
                 result.SetHandle(handle);
                 result.MutableNodeAttr()->SetId(100500);
+                result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             }
 
             return MakeFuture(result);
@@ -1253,6 +1299,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse response;
             response.SetHandle(handleId);
             response.MutableNodeAttr()->SetId(nodeId);
+            response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
 
             return MakeFuture(response);
         };
@@ -1918,6 +1965,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TCreateHandleResponse result;
             result.SetHandle(handleId);
             result.MutableNodeAttr()->SetId(nodeId);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
             return MakeFuture(result);
         };
 
@@ -2502,7 +2550,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     // TODO: create and use metrics for write cache https://github.com/ydb-platform/nbs/issues/4154
     Y_UNIT_TEST(
-        ShouldNotUseServerWriteBackCacheForDirectHandles)
+        ShouldNotUseServerWriteBackCacheForDirectOrSyncHandles)
     {
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
@@ -2520,11 +2568,22 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handleId = 456;
 
         std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> firstFlags = -1;
+        std::atomic<int> secondFlags = -1;
+        std::atomic<int> thirdFlags = -1;
 
-        bootstrap.Service->WriteDataHandler = [&](auto callContext, auto)
+        bootstrap.Service->WriteDataHandler =
+            [&](auto callContext, const auto& request)
         {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-            writeDataCalled++;
+            const auto index = writeDataCalled.fetch_add(1);
+            if (index == 0) {
+                firstFlags.store(request->GetFlags());
+            } else if (index == 1) {
+                secondFlags.store(request->GetFlags());
+            } else if (index == 2) {
+                thirdFlags.store(request->GetFlags());
+            }
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
         };
@@ -2546,6 +2605,33 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, firstFlags.load());
+
+        // write request with O_SYNC should not go to write cache
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_SYNC;
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(O_SYNC, secondFlags.load());
+
+        // write request with O_DSYNC should not go to write cache
+        reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_DSYNC;
+        reqWrite->In->Body.flags |= O_WRONLY;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(O_DSYNC, thirdFlags.load());
 
         // write request without O_DIRECT should go to write cache
         reqWrite = std::make_shared<TWriteRequest>(
@@ -2556,7 +2642,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         reqWrite->In->Body.flags |= O_WRONLY;
         write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
     }
 
     Y_UNIT_TEST(ShouldFlushWithServerWriteBackCacheEnabled)
@@ -2599,6 +2685,74 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
         // cache should be flushed
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldFlushCachedDataBeforeSyncWrite)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        // disable automatic flush to verify ordering around sync writes
+        const ui32 automaticFlushPeriodMs = 0;
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            automaticFlushPeriodMs);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> firstPayload = 0;
+        std::atomic<int> secondPayload = 0;
+
+        bootstrap.Service->WriteDataHandler =
+            [&](auto callContext, const auto& request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            const auto payload = static_cast<unsigned char>(
+                request->GetBuffer()[request->GetBufferOffset()]);
+            const auto index = writeDataCalled.fetch_add(1);
+            if (index == 0) {
+                firstPayload.store(payload);
+            } else if (index == 1) {
+                secondPayload.store(payload);
+            }
+
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto writeReq = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        writeReq->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(writeReq);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        writeReq = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'b'));
+        writeReq->In->Body.flags |= O_WRONLY;
+        writeReq->In->Body.flags |= O_SYNC;
+        write = bootstrap.Fuse->SendRequest<TWriteRequest>(writeReq);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<int>('a'), firstPayload.load());
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<int>('b'), secondPayload.load());
     }
 
     Y_UNIT_TEST(ShouldReleaseWithServerWriteBackCacheEnabled)
@@ -2888,9 +3042,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         reqWrite->In->Body.flags |= O_WRONLY;
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
 
-        while (writeDataCalled.load() == 0) {
-            bootstrap.Timer->Sleep(TDuration::MilliSeconds(1));
-        }
+        auto reqFlush =
+            bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+
+        UNIT_ASSERT(reqFlush.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
 
     Y_UNIT_TEST(ShouldSupportZeroCopyWriteByWriteBackCache)
@@ -3029,10 +3185,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(!path.Exists());
     }
 
-    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    void TestShouldHandleZeroCopyReadRequest(bool enableWriteBackCache)
     {
         NProto::TFileStoreFeatures features;
         features.SetZeroCopyReadEnabled(true);
+        features.SetServerWriteBackCacheEnabled(enableWriteBackCache);
 
         TBootstrap bootstrap(
             CreateWallClockTimer(),
@@ -3077,6 +3234,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(
             data,
             TString(reinterpret_cast<char*>(&request->Out->Body), size));
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    {
+        TestShouldHandleZeroCopyReadRequest(false);
+        TestShouldHandleZeroCopyReadRequest(true);
     }
 
     Y_UNIT_TEST(ShouldHandleZeroCopyReadRequestFallbackToBuffer)
@@ -3439,9 +3602,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
                         // Skip "." and ".." entries
                         UNIT_ASSERT_LE(
-                            sizeof(fuse_direntplus) + 320,
+                            sizeof(fuse_direntplus) + dotSize + dotDotSize,
                             buf.size());
-                        buf = buf.Skip(320);
+                        buf = buf.Skip(dotSize + dotDotSize);
 
                         const auto* de =
                             reinterpret_cast<const fuse_direntplus*>(
@@ -3475,7 +3638,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // The following filestore service operations affect node size:
         // - AllocateData
         // - SetNodeAttr (also returns new attributes)
-        // - TruncateData - seems to be unused
         // - WriteData
 
         bootstrap.Service->AllocateDataHandler = [&](auto, const auto& rq)
@@ -3641,6 +3803,360 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         test("DirectoryRead", getSizeFromDirectoryRead);
         test("CachedRead", getSizeFromCachedRead);
         test("DirectRead", getSizeFromDirectRead);
+    }
+
+    struct TAttrRaceBootstrap: TBootstrap
+    {
+        const ui64 ParentNodeId = 101;
+        const ui64 NodeId = 1001;
+        const ui64 HandleId = 10001;
+        std::atomic<ui64> NodeSize = 0;
+
+        TAutoEvent GetNodeAttrRequestEvent;
+        TPromise<NProto::TGetNodeAttrResponse> GetNodeAttrResponse;
+
+        TAutoEvent ListNodesRequestEvent;
+        TPromise<NProto::TListNodesResponse> ListNodesResponse;
+
+        TPromise<void> WritePromise = NewPromise();
+        TPromise<void> AllocatePromise = NewPromise();
+        TPromise<void> SetNodeAttrPromise = NewPromise();
+
+        TAttrRaceBootstrap()
+            : TBootstrap(
+                CreateWallClockTimer(),
+                std::make_shared<TTestScheduler>())
+        {
+            Service->GetNodeAttrHandler = [&](auto, auto)
+            {
+                GetNodeAttrRequestEvent.Signal();
+                GetNodeAttrResponse = NewPromise<NProto::TGetNodeAttrResponse>();
+                return GetNodeAttrResponse.GetFuture();
+            };
+
+            Service->ListNodesHandler = [&](auto, auto)
+            {
+                ListNodesRequestEvent.Signal();
+                ListNodesResponse = NewPromise<NProto::TListNodesResponse>();
+                return ListNodesResponse.GetFuture();
+            };
+
+            Service->WriteDataHandler = [&](auto, const auto& rq)
+            {
+                NodeSize = Max(
+                    NodeSize.load(),
+                    rq->GetOffset() + rq->GetBuffer().size());
+                NProto::TWriteDataResponse result;
+                return MakeFuture(result).Subscribe([&] (auto) {
+                    WritePromise.SetValue();
+                });
+            };
+
+            Service->AllocateDataHandler = [&](auto, const auto& rq)
+            {
+                NodeSize = Max(
+                    NodeSize.load(),
+                    rq->GetOffset() + rq->GetLength());
+                NProto::TAllocateDataResponse result;
+                return MakeFuture(result).Subscribe([&] (auto) {
+                    AllocatePromise.SetValue();
+                });
+            };
+
+            Service->SetNodeAttrHandler = [&](auto, const auto& rq)
+            {
+                NodeSize = rq->GetUpdate().GetSize();
+                NProto::TSetNodeAttrResponse result;
+                result.MutableNode()->SetId(NodeId);
+                result.MutableNode()->SetSize(NodeSize);
+                return MakeFuture(std::move(result)).Subscribe([&] (auto) {
+                    SetNodeAttrPromise.SetValue();
+                });
+            };
+        }
+
+        void Write(ui64 offset, ui64 size)
+        {
+            auto rq = std::make_shared<TWriteRequest>(
+                NodeId,
+                HandleId,
+                offset,
+                CreateBuffer(size, 'a'));
+            rq->In->Body.flags |= O_WRONLY;
+            auto resp = Fuse->SendRequest<TWriteRequest>(rq);
+            resp.GetValue(WaitTimeout);
+            WritePromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        void Allocate(ui64 offset, ui64 size)
+        {
+            auto rq = std::make_shared<TAllocateRequest>(
+                NodeId,
+                HandleId,
+                offset,
+                size);
+            auto resp = Fuse->SendRequest<TAllocateRequest>(rq);
+            resp.GetValue(WaitTimeout);
+            AllocatePromise.GetFuture().GetValue(WaitTimeout);
+        };
+
+        void SetSize(ui64 size)
+        {
+            auto rq = std::make_shared<TSetAttrRequest>(NodeId, HandleId);
+            rq->In->Body.valid = FUSE_SET_ATTR_SIZE;
+            rq->In->Body.size = size;
+            auto resp = Fuse->SendRequest(rq);
+            resp.GetValue(WaitTimeout);
+            SetNodeAttrPromise.GetFuture().GetValue(WaitTimeout);
+        };
+    };
+
+    Y_UNIT_TEST(
+        ShouldNotAllowGuestAttrCachingUponGetAttrAndAttrModificationRace)
+    {
+        TAttrRaceBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            bootstrap.Write(bootstrap.NodeSize, 4_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(bootstrap.NodeId);
+            n.SetSize(oldSize);
+            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // Write completed while we were processing GetNodeAttr - the result
+            // is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            bootstrap.Allocate(bootstrap.NodeSize, 4_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(bootstrap.NodeId);
+            n.SetSize(oldSize);
+            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // FAllocate completed while we were processing GetNodeAttr - the
+            // result is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            bootstrap.SetSize(12_KB);
+
+            NProto::TGetNodeAttrResponse r;
+            auto& n = *r.MutableNode();
+            n.SetId(bootstrap.NodeId);
+            n.SetSize(oldSize);
+            bootstrap.GetNodeAttrResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // SetAttr completed while we were processing GetNodeAttr - the
+            // result is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, rq->Out->Body.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->Out->Body.attr_valid_nsec);
+        }
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotAllowGuestAttrCachingUponListNodesAndAttrModificationRace)
+    {
+        TAttrRaceBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const TString name = "file";
+
+        auto doTest = [&] (const std::function<void()>& w) {
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(
+                bootstrap.ParentNodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            auto handleId = handle.GetValue();
+
+            auto rq = std::make_shared<TReadDirRequest>(
+                bootstrap.ParentNodeId,
+                handleId);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            bootstrap.ListNodesRequestEvent.WaitT(WaitTimeout);
+            const ui64 oldSize = bootstrap.NodeSize;
+            w();
+
+            NProto::TListNodesResponse r;
+            r.AddNames(name);
+            auto* node = r.AddNodes();
+            node->SetId(bootstrap.NodeId);
+            node->SetType(NProto::E_REGULAR_NODE);
+            node->SetSize(oldSize);
+            bootstrap.ListNodesResponse.SetValue(std::move(r));
+            rf.GetValue(WaitTimeout);
+
+            //
+            // Write completed while we were processing ListNodes - the result
+            // is stale, shouldn't be cached (attr_timeout should be 0).
+            //
+
+            auto buf = TStringBuf(
+                reinterpret_cast<const char*>(rq->Out->Data()),
+                rq->Out->Header.len - sizeof(rq->Out->Header));
+
+            // Skip "." and ".." entries
+            UNIT_ASSERT_LE(
+                sizeof(fuse_direntplus) + dotSize + dotDotSize,
+                buf.size());
+            buf = buf.Skip(dotSize + dotDotSize);
+
+            const auto* de =
+                reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+            UNIT_ASSERT_VALUES_EQUAL(oldSize, de->entry_out.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+
+            auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+                bootstrap.ParentNodeId,
+                handleId);
+            UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+        };
+
+        doTest([&] () {
+            bootstrap.Write(bootstrap.NodeSize, 4_KB);
+        });
+
+        doTest([&] () {
+            bootstrap.Allocate(bootstrap.NodeSize, 4_KB);
+        });
+
+        doTest([&] () {
+            bootstrap.SetSize(12_KB);
+        });
+    }
+
+    Y_UNIT_TEST(ShouldListWithDirectoryContentChunkAtNameBoundary)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            NProto::TListNodesResponse r;
+            for (ui32 ino = 2; ino < 100; ++ino) {
+                r.AddNames(TStringBuilder() << "f" << ino);
+                auto* node = r.AddNodes();
+                node->SetId(ino);
+                node->SetType(NProto::E_REGULAR_NODE);
+                node->SetSize(4_KB);
+            }
+            return MakeFuture(std::move(r));
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 parentNodeId = 1;
+
+        auto handle =
+            bootstrap.Fuse->SendRequest<TOpenDirRequest>(parentNodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        auto handleId = handle.GetValue();
+
+        const ui64 smallDirentSize =
+            sizeof(fuse_direntplus) + sizeof(ui64);
+        const ui64 direntWithoutNameSize = sizeof(fuse_direntplus);
+        const ui64 size = dotSize + dotDotSize
+            + 10 * smallDirentSize + direntWithoutNameSize;
+        auto rq = std::make_shared<TReadDirRequest>(
+            parentNodeId,
+            handleId,
+            0 /* offset */,
+            size);
+        auto rf = bootstrap.Fuse->SendRequest(rq);
+        rf.GetValue(WaitTimeout);
+
+        auto buf = TStringBuf(
+            reinterpret_cast<const char*>(rq->Out->Data()),
+            rq->Out->Header.len - sizeof(rq->Out->Header));
+
+        // Skip "." and ".." entries
+        UNIT_ASSERT_LE(
+            sizeof(fuse_direntplus) + dotSize + dotDotSize,
+            buf.size());
+        buf = buf.Skip(dotSize + dotDotSize);
+
+        for (ui32 ino = 2; ino < 12; ++ino) {
+            UNIT_ASSERT_GE(buf.Size(), sizeof(fuse_direntplus));
+
+            const auto* de =
+                reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, de->entry_out.attr.size);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder() << "f" << ino,
+                TStringBuf(de->dirent.name, de->dirent.namelen));
+
+            buf = buf.Skip(AlignUp<ui64>(
+                sizeof(fuse_direntplus) + de->dirent.namelen,
+                sizeof(uint64_t)));
+        }
+
+        //
+        // Checking that our test did what's expected - generated a dirent
+        // without a name.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(direntWithoutNameSize, buf.Size());
+
+        //
+        // This incomplete dirent shouldn't cause any errors.
+        //
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "ListNodes");
+        // counters->OutputPlainText(Cerr);
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+
+        auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+            parentNodeId,
+            handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
     }
 }
 

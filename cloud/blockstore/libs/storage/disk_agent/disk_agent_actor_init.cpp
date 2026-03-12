@@ -1,12 +1,12 @@
 #include "disk_agent_actor.h"
 
-#include "actors/io_request_parser.h"
-
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/io_request_parser.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -55,41 +55,38 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
     auto* actorSystem = TActivationContext::ActorSystem();
     auto replyTo = ctx.SelfID;
 
-    State->Initialize().Subscribe([=] (auto future) {
-        using TCompletionEvent = TEvDiskAgentPrivate::TEvInitAgentCompleted;
+    State->Initialize().Subscribe(
+        [actorSystem, replyTo]   //
+        (const NThreading::TFuture<TDiskAgentState::TInitializeResult>& future)
+        {
+            using TCompletionEvent = TEvDiskAgentPrivate::TEvInitAgentCompleted;
 
-        NProto::TError error;
+            NProto::TError error;
 
-        try {
-            TDiskAgentState::TInitializeResult r = future.ExtractValue();
+            try {
+                TDiskAgentState::TInitializeResult r = UnsafeExtractValue(future);
 
-            auto response = std::make_unique<TCompletionEvent>(
-                std::move(r.Configs),
-                std::move(r.Errors),
-                std::move(r.ConfigMismatchErrors),
-                std::move(r.DevicesWithSuspendedIO));
+                auto response = std::make_unique<TCompletionEvent>(
+                    std::move(r.Configs),
+                    std::move(r.Errors),
+                    std::move(r.ConfigMismatchErrors),
+                    std::move(r.DevicesWithSuspendedIO));
 
-            actorSystem->Send(
-                new IEventHandle(
-                    replyTo,
-                    replyTo,
-                    response.release()));
-        } catch (const TServiceError& e) {
-            error = MakeError(e.GetCode(), TString(e.GetMessage()));
-        } catch (...) {
-            error = MakeError(E_FAIL, CurrentExceptionMessage());
-        }
+                actorSystem->Send(
+                    new IEventHandle(replyTo, replyTo, response.release()));
+            } catch (const TServiceError& e) {
+                error = MakeError(e.GetCode(), TString(e.GetMessage()));
+            } catch (...) {
+                error = MakeError(E_FAIL, CurrentExceptionMessage());
+            }
 
-        if (error.GetCode()) {
-            auto response = std::make_unique<TCompletionEvent>(error);
+            if (error.GetCode()) {
+                auto response = std::make_unique<TCompletionEvent>(error);
 
-            actorSystem->Send(
-                new IEventHandle(
-                    replyTo,
-                    replyTo,
-                    response.release()));
-        }
-    });
+                actorSystem->Send(
+                    new IEventHandle(replyTo, replyTo, response.release()));
+            }
+        });
 }
 
 void TDiskAgentActor::HandleInitAgentCompleted(

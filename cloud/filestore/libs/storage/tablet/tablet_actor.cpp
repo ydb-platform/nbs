@@ -41,8 +41,7 @@ TIndexTabletActor::TIndexTabletActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry,
-        bool useNoneCompactionPolicy)
+        NMetrics::IMetricsRegistryPtr metricsRegistry)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
     , Metrics{std::move(metricsRegistry)}
@@ -56,9 +55,8 @@ TIndexTabletActor::TIndexTabletActor(
                 time);
         }
     )
-    , Config(std::move(config))
+    , Config(std::make_shared<TStorageConfig>(*config))
     , DiagConfig(std::move(diagConfig))
-    , UseNoneCompactionPolicy(useNoneCompactionPolicy)
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
 {
     UpdateLogTag();
@@ -140,7 +138,7 @@ void TIndexTabletActor::OnActivateExecutor(const TActorContext& ctx)
     RegisterCounters(ctx);
 
     if (!Executor()->GetStats().IsFollower) {
-        ExecuteTx<TInitSchema>(ctx, UseNoneCompactionPolicy);
+        ExecuteTx<TInitSchema>(ctx);
     }
 }
 
@@ -437,6 +435,24 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
     }
 
     return {};
+}
+
+bool TIndexTabletActor::CanUseUnconfirmedData() const
+{
+    if (!Config->GetAddingUnconfirmedDataEnabled()) {
+        return false;
+    }
+
+    const ui32 hardLimit = Config->GetUnconfirmedDataCountHardLimit();
+    const size_t unconfirmedDataCount =
+        UnconfirmedData.size() +
+        ConfirmedData.size() +
+        UnconfirmedDataInProgress.size();
+    if (hardLimit && unconfirmedDataCount >= hardLimit) {
+        return false;
+    }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1014,6 +1030,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
@@ -1042,6 +1059,7 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
@@ -1058,9 +1076,13 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
             HandleDoRenameNodeInDestination);
+        HFunc(TEvIndexTabletPrivate::TEvDoRenameNode, HandleDoRenameNode);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
+        HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
         HFunc(
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
@@ -1108,6 +1130,7 @@ STFUNC(TIndexTabletActor::StateWork)
             HandleLoadCompactionMapChunkResponse);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
+        HFunc(TEvIndexTabletPrivate::TEvRunRegularTasks, HandleRunRegularTasks);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
 
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
@@ -1126,9 +1149,13 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
             HandleDoRenameNodeInDestination);
+        HFunc(TEvIndexTabletPrivate::TEvDoRenameNode, HandleDoRenameNode);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
+        HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
         HFunc(
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
@@ -1191,7 +1218,9 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         // private api
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAggregateStatsCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
@@ -1211,6 +1240,7 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+        IgnoreFunc(TEvents::TEvWakeup);
 
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInShard,
@@ -1224,12 +1254,13 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(
             TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
             HandleDoRenameNodeInDestination);
+        HFunc(TEvIndexTabletPrivate::TEvDoRenameNode, HandleDoRenameNode);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
         HFunc(
-            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
-            HandleAggregateStatsCompleted);
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
@@ -1254,6 +1285,7 @@ STFUNC(TIndexTabletActor::StateBroken)
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
@@ -1287,9 +1319,13 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
             HandleDoRenameNodeInDestination);
+        HFunc(TEvIndexTabletPrivate::TEvDoRenameNode, HandleDoRenameNode);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
             HandleNodeRenamedInDestination);
+        HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
         HFunc(
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
@@ -1431,21 +1467,6 @@ bool TIndexTabletActor::HasNodesLeft() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-i64 TIndexTabletActor::TMetrics::CalculateNetworkRequestBytes(
-    ui32 nonNetworkMetricsBalancingFactor)
-{
-    i64 sumRequestBytes =
-        ReadBlob.RequestBytes + WriteBlob.RequestBytes +
-        WriteData.RequestBytes +
-        (DescribeData.Count + AddData.Count + ReadData.Count) *
-            nonNetworkMetricsBalancingFactor;
-    auto delta = sumRequestBytes - LastNetworkMetric;
-    LastNetworkMetric = sumRequestBytes;
-    return delta;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 bool TIndexTabletActor::IsMainTablet() const
 {
     return GetFileSystem().GetShardNo() == 0;
@@ -1463,8 +1484,11 @@ bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
     // shards)
     //
     // Note that checking both that ShardFileSystemIds is not empty and that the
-    // DirectoryCreationInShardsEnabled flag is set might be excessive, because
-    // they are both supposed to be set at the same time
+    // DirectoryCreationInShardsEnabled flag is true is necessary because:
+    // * ShardFileSystemIds can be empty even if directory creation in shards is
+    //  enabled - e.g. for small filesystems
+    // * DirectoryCreationInShardsEnabled can be false but ShardFileSystemIds
+    //  can be non-empty - e.g. when strict size enforcement is enabled
     if (headers.GetBehaveAsDirectoryTablet() &&
         !GetFileSystem().GetShardFileSystemIds().empty() &&
         GetFileSystem().GetDirectoryCreationInShardsEnabled())
@@ -1473,6 +1497,25 @@ bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
     }
 
     return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::RunRegularTasks(const TActorContext& ctx)
+{
+    DeleteOldResponseLogEntries(ctx);
+
+    ctx.Schedule(Config->GetTabletRegularTasksSchedulePeriod(),
+        new TEvIndexTabletPrivate::TEvRunRegularTasks());
+}
+
+void TIndexTabletActor::HandleRunRegularTasks(
+    const TEvIndexTabletPrivate::TEvRunRegularTasks::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    RunRegularTasks(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

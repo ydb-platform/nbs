@@ -64,14 +64,14 @@ func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 		&disk_manager.ListPlacementGroupsRequest{ZoneId: "zone-a"},
 	)
 	require.NoError(t, err)
-	errorsCount := testcommon.GetCounter(
+	errorsCount := testcommon.GetCountersControlplane(
 		t,
 		"errors",
 		map[string]string{
 			"component": "grpc_facade",
 			"request":   "DiskService.Create",
 		},
-	)
+	)[0]
 
 	diskID := t.Name()
 	reqCtx := testcommon.GetRequestContext(t, ctx)
@@ -88,14 +88,14 @@ func TestFacadeShouldSendErrorMetrics(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	newErrorsCount := testcommon.GetCounter(
+	newErrorsCount := testcommon.GetCountersControlplane(
 		t,
 		"errors",
 		map[string]string{
 			"component": "grpc_facade",
 			"request":   "DiskService.Create",
 		},
-	)
+	)[0]
 	require.GreaterOrEqual(
 		t,
 		newErrorsCount-errorsCount,

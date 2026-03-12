@@ -759,6 +759,33 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
                : Config->GetBlobStorageAsyncRequestTimeoutHDD();
 }
 
+void TPartitionActor::HandlePatchBlob(
+    const TEvPartitionCommonPrivate::TEvPatchBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
+void TPartitionActor::HandleGetFreshChannelsInfo(
+    const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
+void TPartitionActor::HandleAddFreshBlocks(
+    const TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+    Y_ABORT("Unimplemented");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \

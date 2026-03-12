@@ -128,11 +128,6 @@ if [[ "$1" == "create" ]]; then
         --shard-count           "$SHARD_COUNT"  \
         --storage-media-kind    "ssd"
     shift
-
-    $BIN_DIR/filestore-client executeaction                                    \
-        --action changestorageconfig                                           \
-        --input-json                                                           \
-        '{"FileSystemId": "'$FS'", "StorageConfig": {"MaxFuseLoopThreads": 8}}'
 fi
 
 ################################################################################

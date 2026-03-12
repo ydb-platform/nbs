@@ -22,7 +22,9 @@ RECURSE_FOR_TESTS(
     facade_test
     image_service_nemesis_test
     image_service_test
+    filesystem_scrubbing_test
     filesystem_service_nemesis_test
+    filesystem_scrubbing_nemesis_test
     filesystem_service_test
     filesystem_snapshot_service_test
     placement_group_service_nemesis_test
@@ -31,6 +33,7 @@ RECURSE_FOR_TESTS(
     private_service_test
     with_broken_checkpoints_test
     with_broken_checkpoints_nemesis_test
+    without_shadow_disks_test
     snapshot_service_nemesis_test
     snapshot_service_test
     testcommon

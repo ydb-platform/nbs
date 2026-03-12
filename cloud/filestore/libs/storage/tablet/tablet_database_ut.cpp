@@ -16,7 +16,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -36,7 +36,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 commitId = 1;
@@ -90,7 +90,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 commitId = 1;
@@ -122,7 +122,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 commitId = 1;
@@ -168,7 +168,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         const TString checkpointId1 = "test1";
@@ -195,7 +195,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         const TString sessionId1 = "test1";
@@ -222,7 +222,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         const TString sessionId1 = "test1";
@@ -292,7 +292,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         constexpr ui64 nodeId = 1;
@@ -328,7 +328,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         TMaybe<NProto::TStorageConfig> serviceConfig;
@@ -359,7 +359,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         using TEntries = TVector<TCompactionRangeInfo>;
@@ -460,7 +460,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         using TEntries = TVector<TDeletionMarker>;
@@ -519,7 +519,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
+            db.InitSchema();
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -555,7 +555,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         TTestExecutor executor;
 
         executor.WriteTx([&](TIndexTabletDatabase db)
-                         { db.InitSchema(false); });
+                         { db.InitSchema(); });
 
         constexpr ui64 commitId = 1;
         constexpr ui64 nodeId = 1;
@@ -617,6 +617,329 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     true,
                     NProto::LNSM_NAME_ONLY));
                 UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldStoreOpLog)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        auto makeEntry = [&] (
+            ui64 entryId,
+            TString fsId,
+            ui64 newParentId,
+            TString newName)
+        {
+            NProto::TOpLogEntry e;
+            e.SetEntryId(entryId);
+            auto* r = e.MutableRenameNodeInDestinationRequest();
+            r->SetFileSystemId(std::move(fsId));
+            r->SetNewParentId(newParentId);
+            r->SetNewName(std::move(newName));
+            return e;
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteOpLogEntry(makeEntry(100, "fs0", 10, "name0"));
+            db.WriteOpLogEntry(makeEntry(101, "fs1", 11, "name1"));
+            db.WriteOpLogEntry(makeEntry(102, "fs2", 12, "name2"));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TOpLogEntry> entries;
+            UNIT_ASSERT(db.ReadOpLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetEntryId());
+            UNIT_ASSERT_VALUES_EQUAL(101, entries[1].GetEntryId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[2].GetEntryId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationRequest();
+            const auto& r1 = entries[1].GetRenameNodeInDestinationRequest();
+            const auto& r2 = entries[2].GetRenameNodeInDestinationRequest();
+            UNIT_ASSERT_VALUES_EQUAL("fs0", r0.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(10, r0.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name0", r0.GetNewName());
+            UNIT_ASSERT_VALUES_EQUAL("fs1", r1.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(11, r1.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name1", r1.GetNewName());
+            UNIT_ASSERT_VALUES_EQUAL("fs2", r2.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(12, r2.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name2", r2.GetNewName());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteOpLogEntry(101);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TOpLogEntry> entries;
+            UNIT_ASSERT(db.ReadOpLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetEntryId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[1].GetEntryId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationRequest();
+            const auto& r2 = entries[1].GetRenameNodeInDestinationRequest();
+            UNIT_ASSERT_VALUES_EQUAL("fs0", r0.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(10, r0.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name0", r0.GetNewName());
+            UNIT_ASSERT_VALUES_EQUAL("fs2", r2.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(12, r2.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name2", r2.GetNewName());
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TMaybe<NProto::TOpLogEntry> entry;
+            UNIT_ASSERT(db.ReadOpLogEntry(100, entry));
+            UNIT_ASSERT_VALUES_EQUAL(100, entry->GetEntryId());
+            const auto& r = entry->GetRenameNodeInDestinationRequest();
+            UNIT_ASSERT_VALUES_EQUAL("fs0", r.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(10, r.GetNewParentId());
+            UNIT_ASSERT_VALUES_EQUAL("name0", r.GetNewName());
+        });
+    }
+
+    Y_UNIT_TEST(ShouldStoreResponseLog)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        auto makeEntry = [&] (
+            ui64 clientTabletId,
+            ui64 requestId,
+            TString oldTargetNodeShardId,
+            TString oldTargetNodeShardNodeName)
+        {
+            NProtoPrivate::TResponseLogEntry e;
+            e.SetClientTabletId(clientTabletId);
+            e.SetRequestId(requestId);
+            auto* r = e.MutableRenameNodeInDestinationResponse();
+            r->SetOldTargetNodeShardId(std::move(oldTargetNodeShardId));
+            r->SetOldTargetNodeShardNodeName(
+                std::move(oldTargetNodeShardNodeName));
+            return e;
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteResponseLogEntry(makeEntry(100, 10, "sh0", "n0"));
+            db.WriteResponseLogEntry(makeEntry(101, 11, "sh1", "n1"));
+            db.WriteResponseLogEntry(makeEntry(102, 12, "sh2", "n2"));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProtoPrivate::TResponseLogEntry> entries;
+            UNIT_ASSERT(db.ReadResponseLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(10, entries[0].GetRequestId());
+            UNIT_ASSERT_VALUES_EQUAL(101, entries[1].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(11, entries[1].GetRequestId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[2].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(12, entries[2].GetRequestId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationResponse();
+            const auto& r1 = entries[1].GetRenameNodeInDestinationResponse();
+            const auto& r2 = entries[2].GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r0.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r0.GetOldTargetNodeShardNodeName());
+            UNIT_ASSERT_VALUES_EQUAL("sh1", r1.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n1", r1.GetOldTargetNodeShardNodeName());
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r2.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r2.GetOldTargetNodeShardNodeName());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteResponseLogEntry(101, 11);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProtoPrivate::TResponseLogEntry> entries;
+            UNIT_ASSERT(db.ReadResponseLog(entries));
+            UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+            UNIT_ASSERT_VALUES_EQUAL(100, entries[0].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(10, entries[0].GetRequestId());
+            UNIT_ASSERT_VALUES_EQUAL(102, entries[1].GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(12, entries[1].GetRequestId());
+            const auto& r0 = entries[0].GetRenameNodeInDestinationResponse();
+            const auto& r2 = entries[1].GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r0.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r0.GetOldTargetNodeShardNodeName());
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r2.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r2.GetOldTargetNodeShardNodeName());
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TMaybe<NProtoPrivate::TResponseLogEntry> entry;
+            UNIT_ASSERT(db.ReadResponseLogEntry(100, 10, entry));
+            UNIT_ASSERT_VALUES_EQUAL(100, entry->GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(10, entry->GetRequestId());
+            const auto& r = entry->GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        });
+    }
+
+    Y_UNIT_TEST(ShouldStoreUnconfirmedData)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TIndexTabletDatabase db) { db.InitSchema(); });
+
+        auto makeEntry = [&](ui64 nodeId,
+                             ui64 offset,
+                             ui64 length,
+                             ui64 unalignedOffset1,
+                             TString unalignedContent1,
+                             ui64 unalignedOffset2,
+                             TString unalignedContent2)
+        {
+            NProto::TUnconfirmedData e;
+            e.SetNodeId(nodeId);
+            e.SetOffset(offset);
+            e.SetLength(length);
+
+            auto* r1 = e.AddUnalignedDataRanges();
+            r1->SetOffset(unalignedOffset1);
+            r1->SetContent(std::move(unalignedContent1));
+
+            auto* r2 = e.AddUnalignedDataRanges();
+            r2->SetOffset(unalignedOffset2);
+            r2->SetContent(std::move(unalignedContent2));
+            return e;
+        };
+
+        executor.WriteTx(
+            [&](TIndexTabletDatabase db)
+            {
+                db.WriteUnconfirmedData(
+                    100,
+                    makeEntry(1000, 10, 20, 1, "h0", 19, "t0"));
+                db.WriteUnconfirmedData(
+                    101,
+                    makeEntry(1001, 11, 21, 2, "h1", 20, "t1"));
+                db.WriteUnconfirmedData(
+                    102,
+                    makeEntry(1002, 12, 22, 3, "h2", 21, "t2"));
+            });
+
+        executor.ReadTx(
+            [&](TIndexTabletDatabase db)
+            {
+                TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries;
+                UNIT_ASSERT(db.ReadUnconfirmedData(entries));
+                UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(100, entries[0].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1000, entries[0].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(10, entries[0].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(20, entries[0].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[0].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    entries[0].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h0",
+                    entries[0].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    19,
+                    entries[0].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t0",
+                    entries[0].Data.GetUnalignedDataRanges(1).GetContent());
+
+                UNIT_ASSERT_VALUES_EQUAL(101, entries[1].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1001, entries[1].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(11, entries[1].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(21, entries[1].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[1].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[1].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h1",
+                    entries[1].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    20,
+                    entries[1].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t1",
+                    entries[1].Data.GetUnalignedDataRanges(1).GetContent());
+
+                UNIT_ASSERT_VALUES_EQUAL(102, entries[2].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1002, entries[2].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(12, entries[2].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(22, entries[2].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[2].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    3,
+                    entries[2].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h2",
+                    entries[2].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    21,
+                    entries[2].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t2",
+                    entries[2].Data.GetUnalignedDataRanges(1).GetContent());
+            });
+
+        executor.WriteTx([&](TIndexTabletDatabase db)
+                         { db.DeleteUnconfirmedData(101); });
+
+        executor.ReadTx(
+            [&](TIndexTabletDatabase db)
+            {
+                TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries;
+                UNIT_ASSERT(db.ReadUnconfirmedData(entries));
+                UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(100, entries[0].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1000, entries[0].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(10, entries[0].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(20, entries[0].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[0].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    entries[0].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h0",
+                    entries[0].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    19,
+                    entries[0].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t0",
+                    entries[0].Data.GetUnalignedDataRanges(1).GetContent());
+
+                UNIT_ASSERT_VALUES_EQUAL(102, entries[1].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1002, entries[1].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(12, entries[1].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(22, entries[1].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[1].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    3,
+                    entries[1].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h2",
+                    entries[1].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    21,
+                    entries[1].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t2",
+                    entries[1].Data.GetUnalignedDataRanges(1).GetContent());
             });
     }
 }

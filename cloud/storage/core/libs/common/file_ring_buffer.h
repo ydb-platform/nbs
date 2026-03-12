@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error.h"
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -48,6 +50,17 @@ public:
 
 public:
     bool PushBack(TStringBuf data);
+
+    // Implement in-place allocation.
+    // Returns a pointer to the allocated memory or nullptr if storage is full.
+    // Returns an error if allocation is not possible due to corruption or
+    // invalid data.
+    TResultOrError<char*> Alloc(size_t size);
+
+    // Calculate checksum for the previously allocated memory using Alloc
+    // and advance the write pointer.
+    bool Commit();
+
     TStringBuf Front() const;
     TStringBuf Back() const;
     void PopFront();
@@ -56,11 +69,19 @@ public:
     TVector<TBrokenFileEntry> Validate();
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
+    void SetCorrupted();
     ui64 GetRawCapacity() const;
     ui64 GetRawUsedBytesCount() const;
-    // Returns the maximum data size that is guaranteed to be successfully
-    // allocated by PushBack. Returns zero if the buffer is corrupted.
-    ui64 GetMaxAllocationBytesCount() const;
+
+    // Returns the number of bytes that can be allocated in the buffer without
+    // exceeding its capacity (PushBack will succeed).
+    // Returns zero if the buffer is full or corrupted.
+    ui64 GetAvailableByteCount() const;
+
+    // Returns the maximal number of bytes that can be allocated in the buffer
+    // (PushBack will succeed for an empty buffer).
+    // Returns zero if the buffer is corrupted.
+    ui64 GetMaxSupportedAllocationByteCount() const;
 
     bool ValidateMetadata() const;
     TStringBuf GetMetadata() const;

@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/write_sync_flags.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -78,18 +79,32 @@ struct TIoUringService final
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Context.AsyncWrite(file, buffer, offset, completion, SqeFlags);
+        Context.AsyncWrite(
+            file,
+            buffer,
+            offset,
+            completion,
+            SqeFlags,
+            GetWriteSyncFlags(flags));
     }
 
     void AsyncWriteV(
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Context.AsyncWriteV(file, buffers, offset, completion, SqeFlags);
+        Context.AsyncWriteV(
+            file,
+            buffers,
+            offset,
+            completion,
+            SqeFlags,
+            GetWriteSyncFlags(flags));
     }
 };
 
@@ -131,9 +146,10 @@ struct TIoUringServiceNull final
         TFileHandle& file,
         i64 offset,
         TArrayRef<const char> buffer,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         Context.PostCompletion(completion, buffer.size());
     }
@@ -142,9 +158,10 @@ struct TIoUringServiceNull final
         TFileHandle& file,
         i64 offset,
         const TVector<TArrayRef<const char>>& buffers,
-        TFileIOCompletion* completion) final
+        TFileIOCompletion* completion,
+        ui32 flags) final
     {
-        Y_UNUSED(file, offset);
+        Y_UNUSED(file, offset, flags);
 
         ui32 len = 0;
         for (const auto& buf: buffers) {

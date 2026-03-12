@@ -23,6 +23,12 @@ public:
         , DeallocateHistory(std::move(deallocateHistory))
     {}
 
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
     TFuture<NProto::TError> Format(
         const TString& path,
         nvme_secure_erase_setting ses) override
@@ -74,6 +80,13 @@ public:
         Y_UNUSED(ctrlPath);
 
         return TSanitizeStatus{};
+    }
+
+    NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
     }
 };
 

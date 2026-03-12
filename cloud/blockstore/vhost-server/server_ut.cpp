@@ -936,6 +936,67 @@ TEST_P(TServerTest, ShouldStoreEncryptedZeroes)
     }
 }
 
+TEST_P(TServerTest, ShouldReadAndWriteMultipleBuffers)
+{
+    StartServer();
+
+    std::span hdr_w = Hdr(Memory, {.type = VIRTIO_BLK_T_OUT});
+    std::span writeBuffer1 =
+        Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+    std::span writeBuffer2 =
+        Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+    std::span writeStatus = Memory.Allocate(1);
+
+    std::span hdr_r = Hdr(Memory, {.type = VIRTIO_BLK_T_IN});
+    std::span readBuffer1 =
+        Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+    std::span readBuffer2 =
+        Memory.Allocate(RequestSize, Unaligned ? 1 : BlockSize);
+    std::span readStatus = Memory.Allocate(1);
+
+
+    for (ui64 i = 0; i <= TotalBlockCount - BlocksPerRequest * 2; ++i) {
+        const TString pattern1 = MakeRandomPattern(RequestSize);
+        const TString pattern2 = MakeRandomPattern(RequestSize);
+
+        // check writes
+        {
+            memcpy(writeBuffer1.data(), pattern1.data(), writeBuffer1.size_bytes());
+            memcpy(writeBuffer2.data(), pattern2.data(), writeBuffer2.size_bytes());
+
+            reinterpret_cast<virtio_blk_req_hdr*>(hdr_w.data())->sector =
+                i * SectorsPerBlock;
+            auto writeOp = Client.WriteAsync(
+                QueueIndex,
+                {hdr_w, writeBuffer1, writeBuffer2},
+                {writeStatus});
+            const ui32 len = writeOp.GetValueSync();
+            EXPECT_EQ(1u, len);
+            EXPECT_EQ(VIRTIO_BLK_S_OK, writeStatus[0]);
+        }
+
+        // check reads
+        {
+            reinterpret_cast<virtio_blk_req_hdr*>(hdr_r.data())->sector =
+                i * SectorsPerBlock;
+            auto readOp = Client.WriteAsync(
+                QueueIndex,
+                {hdr_r},
+                {readBuffer1, readBuffer2, readStatus});
+            const ui32 len = readOp.GetValueSync();
+            EXPECT_EQ(
+                readStatus.size() + readBuffer1.size() + readBuffer2.size(),
+                len);
+            EXPECT_EQ(VIRTIO_BLK_S_OK, readStatus[0]);
+
+            TString readData1(readBuffer1.data(), readBuffer1.size());
+            EXPECT_EQ(pattern1, readData1);
+            TString readData2(readBuffer2.data(), readBuffer2.size());
+            EXPECT_EQ(pattern2, readData2);
+        }
+    }
+}
+
 TEST_P(TServerTest, ShouldStatEncryptorErrors)
 {
     if (EncryptionMode != NProto::EEncryptionMode::ENCRYPTION_AES_XTS) {

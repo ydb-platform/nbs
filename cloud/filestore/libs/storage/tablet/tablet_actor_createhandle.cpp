@@ -58,9 +58,29 @@ void TIndexTabletActor::HandleCreateHandle(
     }
 
     auto* msg = ev->Get();
+
+    const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::CreateHandle,
+        msg->Record,
+        ctx.Now(),
+        behaveAsShard);
+
+    auto onReply = [&] (const NProto::TError& error) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
+    };
+
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
-        const bool shouldStoreHandles = BehaveAsShard(msg->Record.GetHeaders())
+        const bool shouldStoreHandles = behaveAsShard
             || GetFileSystem().GetShardFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
@@ -96,7 +116,9 @@ void TIndexTabletActor::HandleCreateHandle(
                 << " HandleId=" << response->Record.GetHandle());
             session->DropDupEntry(requestId);
         } else {
-            return NCloud::Reply(ctx, *ev, std::move(response));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(MakeError(S_ALREADY));
+            return;
         }
     }
 
@@ -120,8 +142,9 @@ void TIndexTabletActor::HandleCreateHandle(
                 LogTag.c_str(),
                 FormatError(error).Quote().c_str());
 
-            auto response = std::make_unique<TResponse>(std::move(error));
+            auto response = std::make_unique<TResponse>(error);
             NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(error);
             return;
         }
     }
@@ -137,7 +160,8 @@ void TIndexTabletActor::HandleCreateHandle(
     ExecuteTx<TCreateHandle>(
         ctx,
         std::move(requestInfo),
-        std::move(msg->Record));
+        std::move(msg->Record),
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -210,7 +234,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
 
             // validate there are enough free inodes
-            if (GetUsedNodesCount() >= GetNodesCount()) {
+            if (!HasNodesLeft()) {
                 args.Error = ErrorNoSpaceLeft();
                 return true;
             }
@@ -439,6 +463,13 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->SetNodeId(RootNodeId);
         shardRequest->SetName(args.ShardNodeName);
         shardRequest->ClearShardFileSystemId();
+        const bool serialized = args.ProfileLogRequest.SerializeToString(
+            args.OpLogEntry.MutableProfileLogRequest());
+        if (!serialized) {
+            ReportBrokenProfileLogRequest(TStringBuilder()
+                << "Written OpLogEntry: "
+                << args.OpLogEntry.ShortUtf8DebugString().Quote());
+        }
 
         db.WriteOpLogEntry(args.OpLogEntry);
     }
@@ -458,7 +489,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     TTxIndexTablet::TCreateHandle& args)
 {
     for (auto nodeId: args.UpdatedNodes) {
-        InvalidateNodeCaches(nodeId);
+        InvalidateReadAheadCache(nodeId);
     }
 
     if (args.Error.GetCode() == E_ARGUMENT) {
@@ -482,6 +513,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
             ctx,
             args.RequestInfo,
             std::move(*args.OpLogEntry.MutableCreateNodeRequest()),
+            std::move(args.ProfileLogRequest),
             args.RequestId,
             args.OpLogEntry.GetEntryId(),
             std::move(args.Response));
@@ -498,7 +530,9 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
     }
-    Metrics.CreateHandle.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
+    auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
+        ? Metrics.CreateHandleInShard : Metrics.CreateHandle;
+    requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     CompleteResponse<TEvService::TCreateHandleMethod>(
         response->Record,
@@ -506,6 +540,13 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

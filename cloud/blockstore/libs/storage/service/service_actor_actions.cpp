@@ -49,6 +49,7 @@ void TServiceActor::HandleExecuteAction(
         {"describevolume",                    &TServiceActor::CreateDescribeVolumeActionActor              },
         {"diskregistrychangestate",           &TServiceActor::CreateDiskRegistryChangeStateActor           },
         {"drainnode",                         &TServiceActor::CreateDrainNodeActionActor                   },
+        {"ensurediskregistrystateintegrity",  &TServiceActor::CreateDiskRegistryEnsureStateIntegrityActor  },
         {"finishfilldisk",                    &TServiceActor::CreateFinishFillDiskActionActor              },
         {"getcompactionstatus",               &TServiceActor::CreateGetCompactionStatusActionActor         },
         {"getdependentdisks",                 &TServiceActor::CreateGetDependentDisksActionActor           },
@@ -92,6 +93,7 @@ void TServiceActor::HandleExecuteAction(
         {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
         {"getclustercapacity",                &TServiceActor::CreateGetClusterCapacityActor                },
         {"setvhostdiscardenabledflag",        &TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor  },
+        {"getlinkstatus",                     &TServiceActor::CreateGetLinkStatusActionActor               },
         // Local NVMe disks
         {"listnvmedevices",                   &TServiceActor::CreateListNVMeDevicesActor                   },
         {"acquirenvmedevice",                 &TServiceActor::CreateAcquireNVMeDeviceActor                 },

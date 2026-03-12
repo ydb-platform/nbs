@@ -105,7 +105,7 @@ public:
 
     [[nodiscard]] bool OverlapsWithWrites(TBlockRange64 range) const override
     {
-        return WriteRequests.FindFirstOverlapping(range) != nullptr;
+        return WriteRequests.HasOverlaps(range);
     }
 
     void WaitForInFlightWrites() override
@@ -118,12 +118,12 @@ public:
         return !DirtyWriteRequests.empty();
     }
 
-    void EnumerateReadOverlapping(TBlockRange64 range, TEnumerateFunc f) const
+    void EnumerateReadOverlapping(TBlockRange64 range, TEnumerateFunc f)
         requires(IsReadAllowed<TKind>)
     {
         ReadRequests.EnumerateOverlapping(
             range,
-            [&](const TRequests::TItem& item)
+            [&](const TRequests::TFindItem& item)
             {
                 f(item.Key,
                   false,   // Read
@@ -133,10 +133,10 @@ public:
             });
     }
 
-    void EnumerateRequests(TEnumerateFunc f) const
+    void EnumerateRequests(TEnumerateFunc f)
     {
         ReadRequests.Enumerate(
-            [&](const TRequests::TItem& item)
+            [&](const TRequests::TFindItem& item)
             {
                 f(item.Key,
                   false,   // Read
@@ -145,7 +145,7 @@ public:
                 return TRequests::EEnumerateContinuation::Continue;
             });
         WriteRequests.Enumerate(
-            [&](const TRequests::TItem& item)
+            [&](const TRequests::TFindItem& item)
             {
                 f(item.Key,
                   true,   // Write

@@ -375,8 +375,9 @@ bool TBootstrap::InitBackend()
     Y_ABORT_IF(NvmeManager);
     Y_ABORT_IF(FileIOServiceProvider);
     Y_ABORT_IF(LocalStorageProvider);
+    Y_ABORT_UNLESS(Logging);
 
-    auto r = CreateDiskAgentBackendComponents(config);
+    auto r = CreateDiskAgentBackendComponents(Logging, config);
     NvmeManager = std::move(r.NvmeManager);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);
@@ -662,6 +663,7 @@ void TBootstrap::Start()
     START_COMPONENT(BackgroundThreadPool);
     START_COMPONENT(AsyncLogger);
     START_COMPONENT(Logging);
+    START_COMPONENT(NvmeManager);
     START_COMPONENT(Monitoring);
     START_COMPONENT(ProfileLog);
     START_COMPONENT(TraceProcessor);
@@ -716,6 +718,7 @@ void TBootstrap::Stop()
     STOP_COMPONENT(TraceProcessor);
     STOP_COMPONENT(ProfileLog);
     STOP_COMPONENT(Monitoring);
+    STOP_COMPONENT(NvmeManager);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);
     STOP_COMPONENT(LocalNVMeService);

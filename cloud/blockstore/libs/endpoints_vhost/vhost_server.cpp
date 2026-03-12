@@ -50,9 +50,6 @@ public:
         options.BlocksCount = volume.GetBlocksCount();
         options.VhostQueuesCount = request.GetVhostQueuesCount();
         options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
-        options.CheckBufferModificationDuringWriting =
-            ChecksumFlags.GetCheckBufferModificationForMirrorDisk() &&
-            IsReliableDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.DiscardEnabled =
             ShouldEnableVhostDiscardForVolume(VhostDiscardEnabled, volume);

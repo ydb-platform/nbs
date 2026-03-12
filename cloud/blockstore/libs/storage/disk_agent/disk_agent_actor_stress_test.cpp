@@ -305,7 +305,7 @@ public:
 
         DiskRegistryGeneration = diskRegistryGeneration;
 
-        if (requestNumber <= RequestNumber) {
+        if (requestNumber < RequestNumber) {
             return false;
         }
 

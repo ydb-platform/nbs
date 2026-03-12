@@ -4,6 +4,7 @@ SRCS(
     config.cpp
     probes.cpp
     server_memory_state.cpp
+    server_stats.cpp
     server.cpp
 )
 

@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	cells_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/protos"
+	filesystem_scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	disk_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	filesystem_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
@@ -68,6 +69,7 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"pools.RetireBaseDisks":                         func() proto.Message { return &pools_protos.RetireBaseDisksRequest{} },
 	"snapshots.CreateSnapshotFromDisk":              func() proto.Message { return &snapshot_protos.CreateSnapshotFromDiskRequest{} },
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotRequest{} },
+	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemRequest{} },
 }
 
 var stateProtoByTaskType = map[string]func() proto.Message{
@@ -122,6 +124,7 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"pools.RetireBaseDisks":                         func() proto.Message { return &pools_protos.RetireBaseDisksTaskState{} },
 	"snapshots.CreateSnapshotFromDisk":              func() proto.Message { return &snapshot_protos.CreateSnapshotFromDiskTaskState{} },
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotTaskState{} },
+	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemTaskState{} },
 }
 
 type FormattableDuration struct {

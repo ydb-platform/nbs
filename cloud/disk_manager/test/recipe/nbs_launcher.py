@@ -49,6 +49,7 @@ class NbsLauncher:
         nbs_secure_port=None,
         cell_id=None,
         cells=None,
+        without_shadow_disks=False,
     ):
         self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
@@ -105,7 +106,7 @@ class NbsLauncher:
         storage_config_patch.DisableLocalService = False
         storage_config_patch.InactiveClientsTimeout = 60000  # 1 min
         storage_config_patch.AgentRequestTimeout = 5000      # 5 sec
-        storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = True
+        storage_config_patch.UseShadowDisksForNonreplDiskCheckpoints = not without_shadow_disks
 
         # TODO: Actualize blockstore storage config.
         storage_config_patch.FreshChannelWriteRequestsEnabled = True
@@ -124,7 +125,7 @@ class NbsLauncher:
 
         devices = create_devices(
             use_memory_devices=True,
-            device_count=device_count_per_agent*self.__disk_agent_count,
+            device_count=device_count_per_agent * self.__disk_agent_count,
             block_size=DEFAULT_BLOCK_SIZE,
             block_count_per_device=DEFAULT_BLOCK_COUNT_PER_DEVICE,
             ram_drive_path=None

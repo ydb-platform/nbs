@@ -23,15 +23,16 @@ SRCS(
     fresh_bytes.cpp
     garbage_queue.cpp
     group_by.cpp
+    internal_request_id.cpp
     large_blocks.cpp
     mixed_blocks.cpp
-    node_index_cache.cpp
     node_ref.cpp
     node_session_stat.cpp
     operation.cpp
     profile_log_events.cpp
     range_locks.cpp
     read_ahead.cpp
+    request_metrics.cpp
     shard_balancer.cpp
     sparse_segment.cpp
     split_range.cpp

@@ -334,14 +334,16 @@ private:
         const auto type = GetRequestType(callContext);
         const auto media = GetMediaKind(callContext);
         const auto startedCycles = callContext.GetRequestStartedCycles();
-        const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+        const auto postponedTime =
+            callContext.Time(EProcessingStage::Postponed);
         const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
-        const auto waitTime = postponedTime + backoffTime;
         if (media != NProto::STORAGE_MEDIA_DEFAULT) {
             GetCounters(media)->RequestCompleted(
                 type,
                 startedCycles,
-                waitTime,
+                postponedTime,
+                backoffTime,
+                TDuration::Zero(),   // shapingTime
                 callContext.RequestSize,
                 errorKind,
                 NCloud::NProto::EF_NONE,
@@ -351,16 +353,20 @@ private:
         }
         BusyIdleCalc.OnRequestCompleted();
 
-        return TotalCounters->RequestCompleted(
-            type,
-            startedCycles,
-            waitTime,
-            callContext.RequestSize,
-            errorKind,
-            NCloud::NProto::EF_NONE,
-            callContext.Unaligned,
-            ECalcMaxTime::ENABLE,
-            0).Time;
+        return TotalCounters
+            ->RequestCompleted(
+                type,
+                startedCycles,
+                postponedTime,
+                backoffTime,
+                TDuration::Zero(),   // shapingTime
+                callContext.RequestSize,
+                errorKind,
+                NCloud::NProto::EF_NONE,
+                callContext.Unaligned,
+                ECalcMaxTime::ENABLE,
+                0)
+            .Time;
     }
 
     TString LogHeader(const TCallContext& callContext) const override
@@ -574,11 +580,12 @@ private:
         const auto startedCycles = callContext.GetRequestStartedCycles();
         const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
         const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
-        const auto waitTime = postponedTime + backoffTime;
         return Counters->RequestCompleted(
             type,
             startedCycles,
-            waitTime,
+            postponedTime,
+            backoffTime,
+            TDuration::Zero(),  // shapingTime
             callContext.RequestSize,
             errorKind,
             NCloud::NProto::EF_NONE,

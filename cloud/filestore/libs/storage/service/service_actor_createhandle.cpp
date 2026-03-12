@@ -264,6 +264,7 @@ void TStorageServiceActor::HandleCreateHandle(
         ForwardRequestToShard<TEvService::TCreateHandleMethod>(
             ctx,
             ev,
+            true /* forceBehaveAsShard */,
             msg->Record.GetNodeId());
         return;
     }

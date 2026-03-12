@@ -679,7 +679,64 @@ class Client(_SafeClient):
             FolderId=folder_id,
             CloudId=cloud_id,
         )
-        self._impl.create_volume_from_device(
+        return self._impl.create_volume_from_device(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def list_nvme_devices(
+            self,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
+
+        request = protos.TListNVMeDevicesRequest()
+
+        return self._impl.list_nvme_devices(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def acquire_nvme_device(
+            self,
+            serial_number: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
+
+        request = protos.TAcquireNVMeDeviceRequest(
+            SerialNumber=serial_number,
+        )
+
+        return self._impl.acquire_nvme_device(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def release_nvme_device(
+            self,
+            serial_number: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
+
+        request = protos.TReleaseNVMeDeviceRequest(
+            SerialNumber=serial_number,
+        )
+
+        return self._impl.release_nvme_device(
             request,
             idempotence_id,
             timestamp,

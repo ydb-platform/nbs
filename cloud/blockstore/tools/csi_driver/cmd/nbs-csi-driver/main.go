@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver"
+
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -16,6 +18,8 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 func main() {
+	klog.InitFlags(nil)
+
 	cfg := driver.Config{GrpcRequestTimeout: defaultGrpcRequestTimeout,
 		StartEndpointRequestTimeout: defaultStartEndpointRequestTimeout}
 
@@ -46,6 +50,8 @@ func main() {
 	flag.DurationVar(&cfg.RetriableErrorsDurationThreshold, "retriable-errors-threshold", 15*time.Minute,
 		"Report retriable errors per volume after duration threshold exceeded")
 	flag.Parse()
+
+	defer klog.Flush()
 
 	log.Printf("Run NBS CSI driver: %s:%s", cfg.DriverName, cfg.VendorVersion)
 

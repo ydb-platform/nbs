@@ -92,7 +92,10 @@ TTestEnv::TTestEnv(
     , NextDynamicNode(Config.StaticNodes)
     , Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
 {
-    storageConfig.SetSchemeShardDir(Config.DomainName);
+    UNIT_ASSERT(config.StaticNodes > 0);
+
+    storageConfig.SetSchemeShardDir(
+        Config.DomainName + "/" + Config.SubDomainName);
 
     UpdateStorageConfig(std::move(storageConfig));
 
@@ -107,7 +110,6 @@ TTestEnv::TTestEnv(
     SetupTabletServices(Runtime, &app, false, {}, std::move(cachesConfig));
     BootTablets();
     SetupStorage();
-    SetupLocalServices();
     SetupProxies();
 
     InitSchemeShard();
@@ -126,6 +128,8 @@ TTestEnv::TTestEnv(
     Registry = NMetrics::CreateMetricsRegistry(
         {NMetrics::CreateLabel("counters", "filestore")},
         Runtime.GetAppData().Counters);
+
+    SetupSubDomain();
 }
 
 void TTestEnv::UpdateStorageConfig(NProto::TStorageConfig storageConfig)
@@ -166,42 +170,6 @@ ui64 TTestEnv::AllocateTxId()
     return event->Record.GetRangeBegin();
 }
 
-void TTestEnv::CreateSubDomain(const TString& name)
-{
-    ui64 tabletId = ChangeDomain(Tests::SchemeRoot, Config.DomainUid);
-    ui64 txId = AllocateTxId();
-
-    auto evTx = std::make_unique<TEvSchemeShard::TEvModifySchemeTransaction>(
-        txId,
-        tabletId);
-    auto* tx = evTx->Record.AddTransaction();
-    tx->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpCreateSubDomain);
-    tx->SetWorkingDir("/" + Config.DomainName);
-    tx->MutableSubDomain()->CopyFrom(GetSubDomainDefaultSettings(name));
-    for (const auto& [kind, pool] : Runtime.GetAppData().DomainsInfo->GetDomain(Config.DomainUid).StoragePoolTypes) {
-        auto* pbPool = tx->MutableSubDomain()->AddStoragePools();
-        pbPool->SetKind(kind);
-        pbPool->SetName(pool.GetName());
-    }
-
-    auto sender = Runtime.AllocateEdgeActor();
-    Runtime.SendToPipe(
-        tabletId,
-        sender,
-        evTx.release());
-
-    TAutoPtr<IEventHandle> handle;
-    auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvModifySchemeTransactionResult>(handle);
-    UNIT_ASSERT(event);
-    UNIT_ASSERT_EQUAL(event->Record.GetTxId(), txId);
-
-    if (event->Record.GetStatus() == NKikimrScheme::StatusAccepted) {
-        WaitForSchemeShardTx(txId);
-    } else {
-        UNIT_ASSERT_EQUAL(event->Record.GetStatus(), NKikimrScheme::StatusAlreadyExists);
-    }
-}
-
 void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
 {
     auto& appData = Runtime.GetAppData(nodeIdx);
@@ -226,9 +194,10 @@ void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
         nodeIdx);
 }
 
-ui32 TTestEnv::CreateNode(const TString& name)
+ui32 TTestEnv::AddDynamicNode()
 {
     ui32 nodeIdx = NextDynamicNode++;
+    UNIT_ASSERT(nodeIdx > 0);
     UNIT_ASSERT(nodeIdx < Config.StaticNodes + Config.DynamicNodes);
 
     auto& appData = Runtime.GetAppData(nodeIdx);
@@ -243,7 +212,7 @@ ui32 TTestEnv::CreateNode(const TString& name)
     SetupLocalServiceConfig(appData, *localConfig);
 
     TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
-    tenantPoolConfig->AddStaticSlot("/" + Config.DomainName + "/" + name);
+    tenantPoolConfig->AddStaticSlot("/" + Config.DomainName + "/" + Config.SubDomainName);
 
     auto tenantPoolId = Runtime.Register(
         CreateTenantPool(tenantPoolConfig),
@@ -306,20 +275,19 @@ ui32 TTestEnv::CreateNode(const TString& name)
         hiveProxyId,
         nodeIdx);
 
-    if (nodeIdx != 0) {
-        // we need node-local proxies as well
-        auto localTabletProxy = CreateIndexTabletProxy(StorageConfig);
-        auto localTabletProxyId = Runtime.Register(
-            localTabletProxy.release(),
-            0,
-            appData.UserPoolId,
-            TMailboxType::Simple,
-            0);
-        Runtime.EnableScheduleForActor(localTabletProxyId);
-        Runtime.RegisterService(
-            MakeIndexTabletProxyServiceId(),
-            localTabletProxyId,
-            0);
+    // we need node-local proxies as well
+    auto localTabletProxy = CreateIndexTabletProxy(StorageConfig);
+    auto localTabletProxyId = Runtime.Register(
+        localTabletProxy.release(),
+        0,
+        appData.UserPoolId,
+        TMailboxType::Simple,
+        0);
+    Runtime.EnableScheduleForActor(localTabletProxyId);
+    Runtime.RegisterService(
+        MakeIndexTabletProxyServiceId(),
+        localTabletProxyId,
+        0);
 
     auto localSsProxy = CreateSSProxy(StorageConfig);
     auto localSsProxyId = Runtime.Register(
@@ -354,9 +322,31 @@ ui32 TTestEnv::CreateNode(const TString& name)
         MakeHiveProxyServiceId(),
         localHiveProxyId,
         0);
-    }
 
     return nodeIdx;
+}
+
+void TTestEnv::RebootHive()
+{
+    // The method only works in a single-node setup
+    UNIT_ASSERT_VALUES_EQUAL(1, Config.StaticNodes);
+    const ui64 nodeIdx = 0;
+
+    auto sender = Runtime.AllocateEdgeActor();
+    auto tabletId = GetHive();
+
+    TVector<ui64> tablets = { tabletId };
+    auto guard = NKikimr::CreateTabletScheduledEventsGuard(
+        tablets,
+        Runtime,
+        sender);
+
+    NKikimr::RebootTablet(
+        Runtime,
+        tabletId,
+        sender,
+        nodeIdx,
+        true);  // sysTablet
 }
 
 void TTestEnv::SetupLogging()
@@ -406,6 +396,47 @@ void TTestEnv::SetupDomain(TAppPrepare& app)
     UNIT_ASSERT_EQUAL(domain->TxAllocators.front(), ChangeDomain(Tests::TxAllocator, Config.DomainUid));
 
     app.AddDomain(domain.Release());
+}
+
+void TTestEnv::SetupSubDomain()
+{
+    ui64 tabletId = ChangeDomain(Tests::SchemeRoot, Config.DomainUid);
+    ui64 txId = AllocateTxId();
+
+    auto evTx = std::make_unique<TEvSchemeShard::TEvModifySchemeTransaction>(
+        txId,
+        tabletId);
+    auto* tx = evTx->Record.AddTransaction();
+    tx->SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpCreateSubDomain);
+    tx->SetWorkingDir("/" + Config.DomainName);
+    tx->MutableSubDomain()->CopyFrom(
+        GetSubDomainDefaultSettings(
+            Config.SubDomainName));
+    for (const auto& [kind, pool] : Runtime.GetAppData()
+            .DomainsInfo->GetDomain(Config.DomainUid)
+            .StoragePoolTypes)
+    {
+        auto* pbPool = tx->MutableSubDomain()->AddStoragePools();
+        pbPool->SetKind(kind);
+        pbPool->SetName(pool.GetName());
+    }
+
+    auto sender = Runtime.AllocateEdgeActor();
+    Runtime.SendToPipe(
+        tabletId,
+        sender,
+        evTx.release());
+
+    TAutoPtr<IEventHandle> handle;
+    auto event = Runtime.GrabEdgeEvent<TEvSchemeShard::TEvModifySchemeTransactionResult>(handle);
+    UNIT_ASSERT(event);
+    UNIT_ASSERT_EQUAL(event->Record.GetTxId(), txId);
+
+    if (event->Record.GetStatus() == NKikimrScheme::StatusAccepted) {
+        WaitForSchemeShardTx(txId);
+    } else {
+        UNIT_ASSERT_EQUAL(event->Record.GetStatus(), NKikimrScheme::StatusAlreadyExists);
+    }
 }
 
 void TTestEnv::SetupChannelProfiles(TAppPrepare& app)
@@ -487,8 +518,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             ProfileLog,
             TraceSerializer,
             SystemCounters,
-            Registry,
-            true);
+            Registry);
         return actor.release();
     };
 
@@ -605,37 +635,6 @@ void TTestEnv::SetupStorage()
     UNIT_ASSERT(Config.Groups <= GroupIds.size());
 }
 
-void TTestEnv::SetupLocalServices()
-{
-    for (ui32 nodeIdx = 0; nodeIdx < Config.StaticNodes; ++nodeIdx) {
-        SetupLocalService(nodeIdx);
-    }
-}
-
-void TTestEnv::SetupLocalService(ui32 nodeIdx)
-{
-    auto& appData = Runtime.GetAppData(nodeIdx);
-
-    TLocalConfig::TPtr localConfig = new TLocalConfig();
-    SetupLocalServiceConfig(appData, *localConfig);
-
-    TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(localConfig);
-    tenantPoolConfig->AddStaticSlot("/" + Config.DomainName);
-
-    auto tenantPoolActorId = Runtime.Register(
-        CreateTenantPool(tenantPoolConfig),
-        nodeIdx,
-        appData.SystemPoolId,
-        TMailboxType::Revolving,
-        0);
-    Runtime.EnableScheduleForActor(tenantPoolActorId);
-
-    Runtime.RegisterService(
-        MakeTenantPoolID(Runtime.GetNodeId(nodeIdx)),
-        tenantPoolActorId,
-        nodeIdx);
-}
-
 void TTestEnv::SetupLocalServiceConfig(
     TAppData& appData,
     TLocalConfig& localConfig)
@@ -650,8 +649,7 @@ void TTestEnv::SetupLocalServiceConfig(
             ProfileLog,
             TraceSerializer,
             SystemCounters,
-            Registry,
-            true);
+            Registry);
         return actor.release();
     };
 
@@ -915,7 +913,7 @@ void CheckForkJoin(const NLWTrace::TShuttleTrace& trace, bool forkRequired)
 TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig)
 {
     if (!storageConfig.GetSchemeShardDir()) {
-        storageConfig.SetSchemeShardDir("local");
+        storageConfig.SetSchemeShardDir("local/nfs");
     }
 
     storageConfig.SetHDDSystemChannelPoolKind("pool-kind-1");

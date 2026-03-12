@@ -8,9 +8,10 @@ TRequestsInFlight::TAddResult TRequestsInFlight::TryAddRequest(
     ui64 requestId,
     TBlockRange64 blockRange)
 {
-    if (const auto* existRange = Requests.FindFirstOverlapping(blockRange)) {
+    if (auto existRange = Requests.FindFirstOverlapping(blockRange)) {
         return TAddResult{
             .Added = false,
+            .InflightRange = existRange->Range,
             .DuplicateRequestId = existRange->Range.Contains(blockRange)
                                       ? existRange->Key
                                       : InvalidRequestId};
@@ -19,7 +20,10 @@ TRequestsInFlight::TAddResult TRequestsInFlight::TryAddRequest(
     const bool inserted = Requests.AddRange(requestId, blockRange);
     Y_ABORT_UNLESS(inserted);
 
-    return TAddResult{.Added = true, .DuplicateRequestId = InvalidRequestId};
+    return TAddResult{
+        .Added = true,
+        .InflightRange = std::nullopt,
+        .DuplicateRequestId = InvalidRequestId};
 }
 
 void TRequestsInFlight::RemoveRequest(ui64 requestId)

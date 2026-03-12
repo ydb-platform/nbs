@@ -418,6 +418,8 @@ public:
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
@@ -432,6 +434,8 @@ public:
                 TranslateLocalRequestType(requestType)),
             requestStarted,
             postponedTime,
+            backoffTime,
+            shapingTime,
             requestBytes,
             errorKind,
             errorFlags,
@@ -447,6 +451,8 @@ public:
                     TranslateLocalRequestType(requestType)),
                 requestStarted,
                 postponedTime,
+                backoffTime,
+                shapingTime,
                 requestBytes,
                 errorKind,
                 errorFlags,
@@ -475,6 +481,8 @@ public:
                     static_cast<TRequestCounters::TRequestType>(requestType),
                     requestStarted,
                     postponedTime,
+                    backoffTime,
+                    shapingTime,
                     requestBytes,
                     errorKind,
                     errorFlags,
@@ -486,6 +494,8 @@ public:
                     static_cast<TRequestCounters::TRequestType>(requestType),
                     requestStarted,
                     postponedTime,
+                    backoffTime,
+                    shapingTime,
                     requestBytes,
                     errorKind,
                     errorFlags,
@@ -741,6 +751,8 @@ struct TRequestStatsStub final
         EBlockStoreRequest requestType,
         ui64 requestStarted,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
@@ -753,6 +765,8 @@ struct TRequestStatsStub final
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
         Y_UNUSED(postponedTime);
+        Y_UNUSED(backoffTime);
+        Y_UNUSED(shapingTime);
         Y_UNUSED(requestBytes);
         Y_UNUSED(errorKind);
         Y_UNUSED(errorFlags);

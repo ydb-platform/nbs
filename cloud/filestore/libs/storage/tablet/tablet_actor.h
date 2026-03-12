@@ -92,6 +92,17 @@ void BuildBackendInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProtoPrivate::TRenameNodeInDestinationRequest
+MakeRenameNodeInDestinationRequest(
+    ui64 tabletId,
+    ui64 commitId,
+    NProto::TRenameNodeRequest originalRequest,
+    TString sourceNodeShardId,
+    TString sourceNodeShardNodeName,
+    TString newParentShardId);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletActor final
     : public NActors::TActor<TIndexTabletActor>
     , public TTabletBase<TIndexTabletActor>
@@ -116,324 +127,7 @@ class TIndexTabletActor final
     };
 
 private:
-    struct TMetrics
-    {
-        bool Initialized{false};
-
-        std::atomic<i64> TotalBytesCount{0};
-        std::atomic<i64> UsedBytesCount{0};
-        std::atomic<i64> AggregateUsedBytesCount{0};
-
-        std::atomic<i64> TotalNodesCount{0};
-        std::atomic<i64> UsedNodesCount{0};
-        std::atomic<i64> AggregateUsedNodesCount{0};
-
-        std::atomic<i64> UsedSessionsCount{0};
-        std::atomic<i64> UsedHandlesCount{0};
-        std::atomic<i64> UsedDirectHandlesCount{0};
-        std::atomic<i64> SevenBytesHandlesCount{0};
-        std::atomic<i64> UsedLocksCount{0};
-
-        std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
-        std::atomic<i64> DirectoryCreationInShardsEnabled{0};
-
-        // Session stats
-        std::atomic<i64> StatefulSessionsCount{0};
-        std::atomic<i64> StatelessSessionsCount{0};
-        std::atomic<i64> ActiveSessionsCount{0};
-        std::atomic<i64> OrphanSessionsCount{0};
-        std::atomic<i64> SessionTimeouts{0};
-        std::atomic<i64> SessionCleanupAttempts{0};
-
-        std::atomic<i64> AllocatedCompactionRangesCount{0};
-        std::atomic<i64> UsedCompactionRangesCount{0};
-
-        std::atomic<i64> ReassignCount{0};
-        std::atomic<i64> WritableChannelCount{0};
-        std::atomic<i64> UnwritableChannelCount{0};
-        std::atomic<i64> ChannelsToMoveCount{0};
-
-        std::atomic<i64> ReadAheadCacheHitCount{0};
-        std::atomic<i64> ReadAheadCacheNodeCount{0};
-
-        // Node index cache
-        std::atomic<i64> NodeIndexCacheHitCount{0};
-        std::atomic<i64> NodeIndexCacheNodeCount{0};
-        // Read-only transactions that used fast path (in-memory index state)
-        std::atomic<i64> InMemoryIndexStateROCacheHitCount{0};
-        // Read-only transactions that used slow path
-        std::atomic<i64> InMemoryIndexStateROCacheMissCount{0};
-        // Read-write transactions
-        std::atomic<i64> InMemoryIndexStateRWCount{0};
-
-        std::atomic<i64> InMemoryIndexStateNodesCount;
-        std::atomic<i64> InMemoryIndexStateNodesCapacity;
-        std::atomic<i64> InMemoryIndexStateNodeRefsCount;
-        std::atomic<i64> InMemoryIndexStateNodeRefsCapacity;
-        std::atomic<i64> InMemoryIndexStateNodeAttrsCount;
-        std::atomic<i64> InMemoryIndexStateNodeAttrsCapacity;
-        std::atomic<i64> InMemoryIndexStateNodeRefsExhaustivenessCount;
-        std::atomic<i64> InMemoryIndexStateNodeRefsExhaustivenessCapacity;
-        std::atomic<i64> InMemoryIndexStateIsExhaustive;
-
-        // Mixed index in-memory stats
-        std::atomic<i64> MixedIndexLoadedRanges{0};
-        std::atomic<i64> MixedIndexOffloadedRanges{0};
-
-        // Data stats
-        std::atomic<i64> FreshBytesCount{0};
-        std::atomic<i64> FreshBytesItemCount{0};
-        std::atomic<i64> DeletedFreshBytesCount{0};
-        std::atomic<i64> MixedBytesCount{0};
-        std::atomic<i64> MixedBlobsCount{0};
-        std::atomic<i64> DeletionMarkersCount{0};
-        std::atomic<i64> LargeDeletionMarkersCount{0};
-        std::atomic<i64> GarbageQueueSize{0};
-        std::atomic<i64> GarbageBytesCount{0};
-        std::atomic<i64> FreshBlocksCount{0};
-        std::atomic<i64> CMMixedBlobsCount{0};
-        std::atomic<i64> CMDeletionMarkersCount{0};
-        std::atomic<i64> CMGarbageBlocksCount{0};
-
-        // Backpressure Write throttling
-        std::atomic<i64> IsWriteAllowed{0};
-        std::atomic<i64> FlushBackpressureValue{0};
-        std::atomic<i64> FlushBackpressureThreshold{0};
-        std::atomic<i64> FlushBytesBackpressureValue{0};
-        std::atomic<i64> FlushBytesBackpressureThreshold{0};
-        std::atomic<i64> CompactionBackpressureValue{0};
-        std::atomic<i64> CompactionBackpressureThreshold{0};
-        std::atomic<i64> CleanupBackpressureValue{0};
-        std::atomic<i64> CleanupBackpressureThreshold{0};
-
-        // Throttling
-        std::atomic<i64> MaxReadBandwidth{0};
-        std::atomic<i64> MaxWriteBandwidth{0};
-        std::atomic<i64> MaxReadIops{0};
-        std::atomic<i64> MaxWriteIops{0};
-        std::atomic<i64> RejectedRequests{0};
-        std::atomic<i64> PostponedRequests{0};
-        std::atomic<i64> UsedQuota{0};
-
-        // Tablet busy/idle time
-        std::atomic<i64> BusyTime{0};
-        std::atomic<i64> IdleTime{0};
-        TBusyIdleTimeCalculatorAtomics BusyIdleCalc;
-
-        // Tablet-specific stats
-        std::atomic<i64> TabletStartTimestamp{0};
-
-        // Blob compression stats
-        std::atomic<i64> UncompressedBytesWritten{0};
-        std::atomic<i64> CompressedBytesWritten{0};
-
-        // Opened nodes stats
-        std::atomic<i64> NodesOpenForWritingBySingleSession{0};
-        std::atomic<i64> NodesOpenForWritingByMultipleSessions{0};
-        std::atomic<i64> NodesOpenForReadingBySingleSession{0};
-        std::atomic<i64> NodesOpenForReadingByMultipleSessions{0};
-
-        std::atomic<i64> OrphanNodesCount{0};
-
-        NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
-        using TLatHistogram =
-            NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
-        TLatHistogram ReadDataPostponed;
-        TLatHistogram WriteDataPostponed;
-
-        struct TRequestMetrics
-        {
-            std::atomic<i64> Count = 0;
-            std::atomic<i64> RequestBytes = 0;
-            std::atomic<i64> TimeSumUs = 0;
-            TLatHistogram Time;
-
-            ui64 PrevCount = 0;
-            ui64 PrevRequestBytes = 0;
-            ui64 PrevTimeSumUs = 0;
-            TInstant PrevTs;
-
-            void Update(ui64 requestCount, ui64 requestBytes, TDuration d)
-            {
-                Count.fetch_add(requestCount, std::memory_order_relaxed);
-                RequestBytes.fetch_add(requestBytes, std::memory_order_relaxed);
-                TimeSumUs.fetch_add(
-                    d.MicroSeconds(),
-                    std::memory_order_relaxed);
-                Time.Record(d);
-            }
-
-            void UpdatePrev(TInstant now)
-            {
-                PrevCount = Count.load(std::memory_order_relaxed);
-                PrevRequestBytes = RequestBytes.load(std::memory_order_relaxed);
-                PrevTimeSumUs = TimeSumUs.load(std::memory_order_relaxed);
-                PrevTs = now;
-            }
-
-            double RPS(TInstant now) const
-            {
-                return Rate(now, Count, PrevCount);
-            }
-
-            double Throughput(TInstant now) const
-            {
-                return Rate(now, RequestBytes, PrevRequestBytes);
-            }
-
-            double AverageSecondsPerSecond(TInstant now) const
-            {
-                return Rate(now, TimeSumUs, PrevTimeSumUs) * 1e-6;
-            }
-
-            ui64 AverageRequestSize() const
-            {
-                const auto requestCount =
-                    Count.load(std::memory_order_relaxed) - PrevCount;
-                if (!requestCount) {
-                    return 0;
-                }
-
-                const auto requestBytes =
-                    RequestBytes.load(std::memory_order_relaxed)
-                    - PrevRequestBytes;
-                return requestBytes / requestCount;
-            }
-
-            TDuration AverageLatency() const
-            {
-                const auto requestCount =
-                    Count.load(std::memory_order_relaxed) - PrevCount;
-                if (!requestCount) {
-                    return TDuration::Zero();
-                }
-
-                const auto timeSumUs =
-                    TimeSumUs.load(std::memory_order_relaxed) - PrevTimeSumUs;
-                return TDuration::MicroSeconds(timeSumUs / requestCount);
-            }
-
-        private:
-            double Rate(
-                TInstant now,
-                const std::atomic<i64>& counter,
-                ui64 prevCounter) const
-            {
-                if (!PrevTs) {
-                    return 0;
-                }
-
-                auto micros = (now - PrevTs).MicroSeconds();
-                if (!micros) {
-                    return 0;
-                }
-
-                auto cur = counter.load(std::memory_order_relaxed);
-                return (cur - prevCounter) * 1'000'000. / micros;
-            }
-        };
-
-        struct TCompactionMetrics: TRequestMetrics
-        {
-            std::atomic<i64> DudCount{0};
-        };
-
-        struct TListNodesMetrics: TRequestMetrics
-        {
-            std::atomic<i64> RequestedBytesPrecharge{0};
-            std::atomic<i64> PrepareAttempts{0};
-        };
-
-        // internal requests
-        TRequestMetrics ReadBlob;
-        TRequestMetrics WriteBlob;
-        TRequestMetrics PatchBlob;
-
-        // private requests
-        TRequestMetrics DescribeData;
-        TRequestMetrics GenerateBlobIds;
-        TRequestMetrics AddData;
-        TRequestMetrics GetStorageStats;
-        TRequestMetrics GetNodeAttrBatch;
-        TRequestMetrics RenameNodeInDestination;
-        TRequestMetrics PrepareUnlinkDirectoryNodeInShard;
-        TRequestMetrics AbortUnlinkDirectoryNodeInShard;
-
-        // public requests
-        TRequestMetrics ReadData;
-        TRequestMetrics WriteData;
-        TListNodesMetrics ListNodes;
-        TRequestMetrics GetNodeAttr;
-        TRequestMetrics CreateHandle;
-        TRequestMetrics DestroyHandle;
-        TRequestMetrics CreateNode;
-        TRequestMetrics RenameNode;
-        TRequestMetrics UnlinkNode;
-        TRequestMetrics StatFileStore;
-        TRequestMetrics GetNodeXAttr;
-
-        // background requests
-        TCompactionMetrics Compaction;
-        TRequestMetrics Cleanup;
-        TRequestMetrics Flush;
-        TRequestMetrics FlushBytes;
-        TRequestMetrics TrimBytes;
-        TRequestMetrics CollectGarbage;
-
-        i64 LastNetworkMetric = 0;
-
-        i64 CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor);
-        // Compaction/Cleanup stats
-        std::atomic<i64> MaxBlobsInRange{0};
-        std::atomic<i64> MaxDeletionsInRange{0};
-        std::atomic<i64> MaxGarbageBlocksInRange{0};
-
-        // performance evaluation
-        std::atomic<i64> CurrentLoad{0};
-        std::atomic<i64> Suffer{0};
-        std::atomic<i64> OverloadedCount{0};
-
-        TInstant PrevCPUUsageMicrosTs;
-        std::atomic<i64> CPUUsageMicros{0};
-        i64 CPUUsageRate = 0;
-
-        const NMetrics::IMetricsRegistryPtr StorageRegistry;
-        const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
-
-        NMetrics::IMetricsRegistryPtr FsRegistry;
-        NMetrics::IMetricsRegistryPtr AggregatableFsRegistry;
-
-        explicit TMetrics(NMetrics::IMetricsRegistryPtr metricsRegistry);
-
-        void Register(
-            const TString& fsId,
-            const TString& cloudId,
-            const TString& folderId,
-            const TString& mediaKind);
-        void Update(
-            TInstant now,
-            const TDiagnosticsConfig& diagConfig,
-            const NProto::TFileSystem& fileSystem,
-            const NProto::TFileSystemStats& stats,
-            const NProto::TFileStorePerformanceProfile& performanceProfile,
-            const TCompactionMapStats& compactionStats,
-            const TSessionsStats& sessionsStats,
-            const TChannelsStats& channelsStats,
-            const TReadAheadCacheStats& readAheadStats,
-            const TNodeIndexCacheStats& nodeIndexCacheStats,
-            const TNodeToSessionCounters& nodeToSessionCounters,
-            const TMiscNodeStats& miscNodeStats,
-            const TInMemoryIndexStateStats& inMemoryIndexStateStats,
-            const TBlobMetaMapStats& blobMetaMapStats,
-            const TIndexTabletState::TBackpressureThresholds&
-                backpressureThresholds,
-            const TIndexTabletState::TBackpressureValues& backpressureValues,
-            const THandlesStats& handlesStats);
-        void UpdatePerformanceMetrics(
-            TInstant now,
-            const TDiagnosticsConfig& diagConfig,
-            const NProto::TFileSystem& fileSystem);
-    } Metrics;
+    TTabletMetrics Metrics;
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
     TVector<TShardStats> CachedShardStats;
@@ -466,8 +160,6 @@ private:
     TStorageConfigPtr Config;
     TDiagnosticsConfigPtr DiagConfig;
 
-    const bool UseNoneCompactionPolicy;
-
     struct TCompactionStateLoadStatus
     {
         TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadQueue;
@@ -496,8 +188,7 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry,
-        bool useNoneCompactionPolicy);
+        NMetrics::IMetricsRegistryPtr metricsRegistry);
     ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;
@@ -508,6 +199,16 @@ public:
     void ScheduleRebootTabletOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TString& request);
+
+    void SendPendingConfirmAddDataResponse(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TError& error);
+
+    void UnconfirmedAddBlobSafePointReached(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TError& error);
 
 private:
     void Enqueue(STFUNC_SIG) override;
@@ -520,6 +221,29 @@ private:
         ui32 channel,
         const NKikimr::TStorageStatusFlags flags,
         double freeSpaceShare);
+
+    template <typename TBlobIds, typename TRecord>
+    void ProcessStorageStatusFlags(
+        const NActors::TActorContext& ctx,
+        const TBlobIds& blobIds,
+        const TRecord& record)
+    {
+        const auto& flags = record.GetStorageStatusFlags();
+        const auto& shares = record.GetApproximateFreeSpaceShares();
+        const auto count = Min<int>(blobIds.size(), flags.size());
+        for (int i = 0; i < count; ++i) {
+            const auto blobId =
+                NKikimr::LogoBlobIDFromLogoBlobID(blobIds.Get(i));
+            const double share = i < shares.size() ? shares.Get(i) : 0;
+            RegisterEvPutResult(
+                ctx,
+                blobId.Generation(),
+                blobId.Channel(),
+                flags.Get(i),
+                share);
+        }
+    }
+
     void ReassignDataChannelsIfNeeded(const NActors::TActorContext& ctx);
     bool OnRenderAppHtmlPage(
         NActors::NMon::TEvRemoteHttpInfo::TPtr ev,
@@ -536,11 +260,31 @@ private:
     void RegisterStatCounters(TInstant now);
     void RegisterCounters(const NActors::TActorContext& ctx);
     void ScheduleUpdateCounters(const NActors::TActorContext& ctx);
-    void UpdateCounters();
+    void UpdateMetrics(
+        TInstant now,
+        const TDiagnosticsConfig& diagConfig,
+        const NProto::TFileSystem& fileSystem,
+        const NProto::TFileSystemStats& stats,
+        const NProto::TFileStorePerformanceProfile& performanceProfile,
+        const TCompactionMapStats& compactionStats,
+        const TSessionsStats& sessionsStats,
+        const TChannelsStats& channelsStats,
+        const TReadAheadCacheStats& readAheadStats,
+        const TNodeToSessionCounters& nodeToSessionCounters,
+        const TMiscNodeStats& miscNodeStats,
+        const TInMemoryIndexStateStats& inMemoryIndexStateStats,
+        const TBlobMetaMapStats& blobMetaMapStats,
+        const TIndexTabletState::TBackpressureThresholds&
+            backpressureThresholds,
+        const TIndexTabletState::TBackpressureValues& backpressureValues,
+        const THandlesStats& handlesStats);
     void UpdateDelayCounter(
         TThrottlingPolicy::EOpType opType,
         TDuration time);
     void CalculateActorCPUUsage(const NActors::TActorContext& ctx);
+
+    void DeleteOldResponseLogEntries(const NActors::TActorContext& ctx);
+    void RunRegularTasks(const NActors::TActorContext& ctx);
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
@@ -703,6 +447,7 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         NProto::TCreateNodeRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
         TCreateNodeInShardResult result);
@@ -733,7 +478,17 @@ private:
         NProto::TError originalError,
         TString shardId,
         ui64 nodeId,
-        ui64 opLogEntryId);
+        ui64 opLogEntryId,
+        bool isLocalRename);
+
+    void RegisterGetNodeInfoAndPrepareUnlinkActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TRenameNodeInDestinationRequest request,
+        NProto::TProfileLogRequestInfo profileLogRequest,
+        TString dstShardId,
+        TString dstShardNodeName,
+        bool isLocalRename);
 
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
@@ -777,6 +532,7 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    bool CanUseUnconfirmedData() const;
 
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
@@ -834,6 +590,10 @@ private:
         const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleRunRegularTasks(
+        const TEvIndexTabletPrivate::TEvRunRegularTasks::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleReleaseCollectBarrier(
         const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -849,6 +609,10 @@ private:
     void HandleAddDataCompleted(
         const TEvIndexTabletPrivate::TEvAddDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    bool ValidateAddDataRequest(
+        NKikimr::NTabletFlatExecutor::TTransactionContext& tx,
+        TTxIndexTablet::TAddDataBase& args);
 
     void HandleForcedRangeOperationProgress(
         const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
@@ -884,8 +648,16 @@ private:
         const TEvIndexTabletPrivate::TEvDoRenameNodeInDestination::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDoRenameNode(
+        const TEvIndexTabletPrivate::TEvDoRenameNode::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleNodeRenamedInDestination(
         const TEvIndexTabletPrivate::TEvNodeRenamedInDestination::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleResponseLogEntryDeleted(
+        const TEvIndexTabletPrivate::TEvResponseLogEntryDeleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleAggregateStatsCompleted(
@@ -908,6 +680,18 @@ private:
         const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    std::unique_ptr<TEvIndexTabletPrivate::TEvAddBlobRequest>
+    BuildAddBlobRequest(ui64 commitId, const NProto::TUnconfirmedData& entry);
+
+    void AddBlobForUnconfirmedData(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        const NProto::TUnconfirmedData& entry);
+    void ConfirmData(ui64 commitId, const NActors::TActorContext& ctx);
+    void SendDeferredConfirmAddDataResponse(
+        const NActors::TActorContext& ctx,
+        TPendingConfirmAddData pending,
+        const NProto::TError& error);
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

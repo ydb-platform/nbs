@@ -22,4 +22,8 @@ size_t SgListCopy(const TSgList& src, TBlockDataRef dst);
 TResultOrError<TSgList> SgListNormalize(TBlockDataRef buffer, ui32 blockSize);
 TResultOrError<TSgList> SgListNormalize(TSgList sglist, ui32 blockSize);
 
+// Creates a TSgList that represents a part of the original one, specified by
+// the offset and size.
+TSgList CreateSgListSubRange(const TSgList& sgList, size_t offset, size_t size);
+
 }   // namespace NCloud

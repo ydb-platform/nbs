@@ -148,6 +148,16 @@ func (c *NfsClientMock) ReadLink(
 	return res, args.Error(1)
 }
 
+func (c *NfsClientMock) GetNodeAttr(
+	ctx context.Context,
+	req *protos.TGetNodeAttrRequest,
+) (*protos.TGetNodeAttrResponse, error) {
+
+	args := c.Called(ctx, req)
+	res, _ := args.Get(0).(*protos.TGetNodeAttrResponse)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNfsClientMock() *NfsClientMock {

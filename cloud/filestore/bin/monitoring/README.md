@@ -7,11 +7,19 @@ To start Grafana + Prometheus, run:
 ```bash
 docker compose up -d
 ```
+or
+```bash
+docker-compose up -d
+```
 
 To stop the monitoring stack, run:
 
 ```bash
 docker compose down
+```
+or
+```bash
+docker-compose down
 ```
 
 Grafana will be available at [http://localhost:3000](http://localhost:3000) (default login/password: `admin`/`admin`).

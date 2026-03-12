@@ -225,14 +225,16 @@ void TBootstrapCommon::InitDiagnostics()
         Metrics->SetupCounters(Monitoring->GetCounters());
     }
 
+    FilestoreCounters = FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters());
+
     FsCountersProvider = CreateFsCountersProvider(
         MetricsComponent,
-        FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()));
+        FilestoreCounters);
 
     StatsRegistry = CreateRequestStatsRegistry(
         MetricsComponent,
         Configs->DiagnosticsConfig,
-        FILESTORE_COUNTERS_ROOT(Monitoring->GetCounters()),
+        FilestoreCounters,
         Timer,
         UserCounters,
         FsCountersProvider);
@@ -296,7 +298,7 @@ void TBootstrapCommon::InitActorSystem()
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
     args.StorageConfig = Configs->StorageConfig;
-    args.StorageConfig->SetFeaturesConfig(Configs->FeaturesConfig);
+    args.StorageConfig->SetFeaturesConfig(*Configs->FeaturesConfig);
     args.ProfileLog = ProfileLog;
     args.TraceSerializer = TraceSerializer;
     args.DiagnosticsConfig = Configs->DiagnosticsConfig;

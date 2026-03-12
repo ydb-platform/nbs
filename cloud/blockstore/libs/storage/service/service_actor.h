@@ -267,6 +267,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateDiskRegistryEnsureStateIntegrityActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateReplaceDeviceActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
@@ -436,6 +440,10 @@ private:
         TString input);
 
     TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardEnabledFlagActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateGetLinkStatusActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

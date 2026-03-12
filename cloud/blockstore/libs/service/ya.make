@@ -7,9 +7,10 @@ SRCS(
     auth_provider.cpp
     auth_scheme.cpp
     blocks_info.cpp
-    checksum_storage_wrapper.cpp
     context.cpp
     device_handler.cpp
+    overlapping_requests_guard_service.cpp
+    overlapping_requests_guard.cpp
     request_helpers.cpp
     request.cpp
     service_auth.cpp

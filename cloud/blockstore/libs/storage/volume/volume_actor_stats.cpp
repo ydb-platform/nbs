@@ -268,6 +268,11 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
             DiagnosticsConfig->GetHistogramCounterOptions());
     }
 
+    if (!data.PartCountersData.DiskCounters) {
+        UpdateCounters(ctx);
+        return;
+    }
+
     statInfo->LastCounters->Add(*data.PartCountersData.DiskCounters);
 
     UpdateCachedStats(

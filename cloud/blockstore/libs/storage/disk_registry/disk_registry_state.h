@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/agent_list.h>
+#include <cloud/blockstore/libs/storage/disk_registry/model/agents_paths.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/pending_cleanup.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/replica_table.h>
@@ -294,6 +295,7 @@ private:
     const NMonitoring::TDynamicCountersPtr Counters;
     mutable TDiskRegistrySelfCounters SelfCounters;
 
+    TAgentsPaths AgentsPaths;
     TAgentList AgentList;
     TDeviceList DeviceList;
 
@@ -893,7 +895,8 @@ public:
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
 
-    TVector<NProto::TAgentInfo> QueryAgentsInfo() const;
+    TVector<NProto::TAgentInfo> QueryAgentsInfo(
+        const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter) const;
 
     TVector<TString> FindOrphanDevices() const;
 
@@ -909,16 +912,18 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
-    void DetachPathsOnAgentIfNeeded(
-        TDiskRegistryDatabase& db,
-        NProto::TAgentConfig& agent);
-
-    void DetachPathIfNeeded(
-        TDiskRegistryDatabase& db,
-        NProto::TAgentConfig& agent,
-        const TString& path);
-
     bool HasDependentDisks(const TAgentId& agentId, const TString& path);
+
+    [[nodiscard]] NProto::TError UpdatePathAttachState(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId,
+        const TString& path,
+        NProto::EPathAttachState state);
+
+    const THashMap<TAgentId, THashSet<TString>>& GetPathsToAttach() const
+    {
+        return AgentsPaths.GetPathsToAttach();
+    }
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -1408,6 +1413,35 @@ private:
         const TString& masterDiskId);
 
     [[nodiscard]] bool IsUnavailableOrBroken(const TDeviceId& deviceId) const;
+
+    void AttachDetachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        bool attach);
+
+    void AttachDetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path,
+        bool attach);
+
+    void AttachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path);
+
+    void AttachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent);
+
+    void DetachPathIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        const TString& path);
+
+    void DetachPathsOnAgentIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

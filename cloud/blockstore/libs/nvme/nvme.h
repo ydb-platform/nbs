@@ -5,6 +5,8 @@
 #include "spec.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 namespace NCloud::NBlockStore::NNvme {
 
@@ -17,9 +19,8 @@ struct TSanitizeStatus
 };
 
 struct INvmeManager
+    : public IStartable
 {
-    virtual ~INvmeManager() = default;
-
     virtual NThreading::TFuture<NProto::TError> Format(
         const TString& path,
         nvme_secure_erase_setting ses) = 0;
@@ -37,10 +38,14 @@ struct INvmeManager
     virtual TResultOrError<bool> IsSsd(const TString& path) = 0;
 
     virtual TResultOrError<TString> GetSerialNumber(const TString& path) = 0;
+
+    virtual NProto::TError ResetToSingleNamespace(const TString& ctrlPath) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-INvmeManagerPtr CreateNvmeManager(TDuration timeout);
+INvmeManagerPtr CreateNvmeManager(
+    ILoggingServicePtr logging,
+    TDuration timeout);
 
 }   // namespace NCloud::NBlockStore::NNvme

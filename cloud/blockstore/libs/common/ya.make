@@ -12,6 +12,7 @@ SRCS(
     iovector.cpp
     request_checksum_helpers.cpp
     safe_debug_print.cpp
+    split_request_helpers.cpp
     typeinfo.cpp
 )
 

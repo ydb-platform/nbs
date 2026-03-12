@@ -152,15 +152,15 @@ protected:
         return true;
     }
 
-    bool UnmountVolumes()
+    void UnmountVolumes()
     {
-        bool result = UnmountVolume(*SrcSession);
-
-        if (!UnmountVolume(*DstSession)) {
-            result = false;
+        if (SrcSession) {
+            UnmountVolume(*SrcSession);
         }
 
-        return result;
+        if (DstSession) {
+            UnmountVolume(*DstSession);
+        }
     }
 
     void GetChangedBlocks(ui64 startIndex, ui32 blocksCount)

@@ -20,9 +20,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldCreateFileNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -48,9 +47,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotCreateNodeAtInvalidPath)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -61,9 +59,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotCreateInvalidNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -99,9 +96,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldCreateDirectoryNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -121,9 +117,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldCreateLinkNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -142,9 +137,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotIncrementBlocksForLink)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -162,9 +156,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotCreateLinkToInvalidNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -184,9 +177,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldCreateSymLinkNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -219,9 +211,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldCreateCharDevNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -243,9 +234,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldCreateBlockDevNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -267,9 +257,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldRemoveNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -300,9 +289,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotRemoveNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -340,9 +328,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotRemoveInvalidPath)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -357,9 +344,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldRenameDirNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -441,9 +427,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldRenameFileNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -531,9 +516,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         const ui32 exchange = ProtoFlag(NProto::TRenameNodeRequest::F_EXCHANGE);
 
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -596,12 +580,62 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+    Y_UNIT_TEST(ShouldProperlyHandleSelfRename)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        // Self-rename of a non-existent file should return E_FS_NOENT.
+        {
+            auto response = tablet.AssertRenameNodeFailed(
+                RootNodeId,
+                "file1",
+                RootNodeId,
+                "file1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOENT,
+                response->GetError().GetCode());
+        }
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file1"));
+
+        // Self-rename of an existing file is a no-op and should return
+        // S_ALREADY without causing a deadlock (the source and destination
+        // node refs are identical, so only one lock is needed).
+        {
+            auto response = tablet.RenameNode(
+                RootNodeId,
+                "file1",
+                RootNodeId,
+                "file1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                response->GetError().GetCode());
+        }
+
+        // Rename to a non-existent destination should succeed.
+        {
+            auto response = tablet.RenameNode(
+                RootNodeId,
+                "file1",
+                RootNodeId,
+                "file2");
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->GetError().GetCode());
+        }
+    }
+
     Y_UNIT_TEST(ShouldListNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -632,9 +666,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldLimitListNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -700,9 +733,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         storageConfig.SetListNodesSizeMode(NProto::LNSM_FULL_ROW);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -739,9 +771,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldStoreNodeAttrs)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -795,9 +826,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotStoreNodeAttrsForInvalidNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -815,9 +845,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldStoreNodeXAttrs)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -843,9 +872,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         {
             auto response = tablet.ListNodeXAttr(id);
             const auto& names = response->Record.GetNames();
+            const auto& values = response->Record.GetValues();
             UNIT_ASSERT(names.size() == 2);
             UNIT_ASSERT(names[0] == "user.name1");
+            UNIT_ASSERT_EQUAL("value1", values[0]);
             UNIT_ASSERT(names[1] == "user.name3");
+            UNIT_ASSERT_EQUAL("value3", values[1]);
         }
 
         // should fail if attribute doesn't exist, but differently to an invalid attr
@@ -857,9 +889,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldIncrementXAttrVersionOnUpdate)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -884,9 +915,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotStoreNodeXAttrsForInvalidNodes)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -902,9 +932,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotStoreXAttrsWithFlagsRestrictions)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -919,9 +948,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldValidateXAttrNameAndValue)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -951,9 +979,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -1043,9 +1070,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -1125,9 +1151,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldPayRespectToInodeLimits)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {
@@ -1168,9 +1193,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldTrackUsedBlocks)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         constexpr ui64 maxBlocks = 64;
@@ -1203,9 +1227,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldDeduplicateCreateNodeRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -1256,9 +1279,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldDeduplicateRenameNodeRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -1305,9 +1327,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldDeduplicateUnlinkNodeRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -1353,9 +1374,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldValidateDupRequests)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -1411,9 +1431,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldWaitForDupRequestToBeCommitted)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -1453,221 +1472,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
-    Y_UNIT_TEST(ShouldUseNodeIndexCacheForGetNodeAttr)
-    {
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetNodeIndexCacheMaxNodes(32);
-        TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
-        auto registry = env.GetRegistry();
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.InitSession("client", "session");
-
-        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        auto handle = CreateHandle(tablet, id);
-
-        tablet.WriteData(handle, 0, 1, '1');
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
-
-        tablet.WriteData(handle, 1, 1024, '2');
-        UNIT_ASSERT_VALUES_EQUAL(
-            1025,
-            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1025,
-            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1025,
-            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
-
-        tablet.SendRequest(tablet.CreateUpdateCounters());
-        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
-
-        {
-            TTestRegistryVisitor visitor;
-            registry->Visit(TInstant::Zero(), visitor);
-            // clang-format off
-            visitor.ValidateExpectedCounters({
-                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheHitCount"}}, 2},
-                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheNodeCount"}}, 1},
-            });
-            // clang-format on
-        }
-    }
-
-// See #2737 for more details
-#define INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(name, createHandle, ...)       \
-    Y_UNIT_TEST(IndexCacheShouldProperlyHandleConcurrentModifying##name)       \
-    {                                                                          \
-        NProto::TStorageConfig storageConfig;                                  \
-        storageConfig.SetNodeIndexCacheMaxNodes(32);                           \
-        TTestEnv env({}, storageConfig);                                       \
-        env.CreateSubDomain("nfs");                                            \
-        auto registry = env.GetRegistry();                                     \
-                                                                               \
-        ui32 nodeIdx = env.CreateNode("nfs");                                  \
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);                          \
-                                                                               \
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);        \
-        tablet.InitSession("client", "session");                               \
-                                                                               \
-        auto id =                                                              \
-            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));     \
-        auto handle = InvalidHandle;                                           \
-        if (createHandle) {                                                    \
-            handle = CreateHandle(tablet, id);                                 \
-            /* Just write some data to the file to make it non-empty */        \
-            tablet.WriteData(handle, 0, 16, '0');                              \
-        }                                                                      \
-                                                                               \
-        auto& runtime = env.GetRuntime();                                      \
-                                                                               \
-        TAutoPtr<IEventHandle> rwTxPutRequest;                                 \
-                                                                               \
-        runtime.SetEventFilter(                                                \
-            [&](auto& runtime, auto& event)                                    \
-            {                                                                  \
-                Y_UNUSED(runtime);                                             \
-                switch (event->GetTypeRewrite()) {                             \
-                    case TEvBlobStorage::EvPut:                                \
-                        if (!rwTxPutRequest) {                                 \
-                            rwTxPutRequest = std::move(event);                 \
-                            return true;                                       \
-                        }                                                      \
-                }                                                              \
-                return false;                                                  \
-            });                                                                \
-                                                                               \
-        /* Execute stage of RW tx will produce a TEvPut request, which is      \
-           dropped to postpone the completion of the transaction */            \
-        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2)); \
-                                                                               \
-        runtime.DispatchEvents(TDispatchOptions{                               \
-            .CustomFinalCondition = [&]()                                      \
-            {                                                                  \
-                return rwTxPutRequest != nullptr;                              \
-            }});                                                               \
-                                                                               \
-        /* Now the GetNodeAttr operation is supposed to start a new            \
-           transaction and hang because it accesses the same data as the       \
-           previous one. This operation has a potential to populate the        \
-           node attributes cache */                                            \
-        tablet.SendGetNodeAttrRequest(RootNodeId, "test");                     \
-                                                                               \
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));     \
-                                                                               \
-        /* Ensure that both operations are still in progress */                \
-        tablet.AssertSetNodeAttrNoResponse();                                  \
-        tablet.AssertGetNodeAttrNoResponse();                                  \
-                                                                               \
-        /* However, Prepare stages are already completed, and GetNodeAttr has  \
-           stale data in its structure */                                      \
-                                                                               \
-        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);      \
-                                                                               \
-        /* Now let's start the new transaction that will update attributes of  \
-           the node. It is also expected to hang */                            \
-        tablet.Send##name##Request(__VA_ARGS__);                               \
-                                                                               \
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));     \
-                                                                               \
-        /* Let us complete the initial transaction that will release the lock  \
-           and let the GetNodeAttr complete */                                 \
-        runtime.Send(rwTxPutRequest.Release(), nodeIdx);                       \
-                                                                               \
-        /* Now the initial SetNodeAttr should complete */                      \
-        {                                                                      \
-            auto response = tablet.RecvSetNodeAttrResponse();                  \
-            UNIT_ASSERT(!HasError(response->GetError()));                      \
-        }                                                                      \
-                                                                               \
-        /* The GetNodeAttr should also complete with initial data */           \
-        {                                                                      \
-            auto response = tablet.RecvGetNodeAttrResponse();                  \
-            UNIT_ASSERT(!HasError(response->GetError()));                      \
-            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetNode().GetUid());  \
-        }                                                                      \
-                                                                               \
-        /* Now the sent modifying operation is expected to complete */         \
-        {                                                                      \
-            auto response = tablet.Recv##name##Response();                     \
-            UNIT_ASSERT(!HasError(response->GetError()));                      \
-        }                                                                      \
-                                                                               \
-        /* Now let us ensure that GetNodeAttr using node id and using          \
-           parent + name are consistent */                                     \
-        {                                                                      \
-            auto response1 = tablet.SendAndRecvGetNodeAttr(id);                \
-            auto response2 =                                                   \
-                tablet.SendAndRecvGetNodeAttr(RootNodeId, "test");             \
-            if (HasError(response1->GetError())) {                             \
-                UNIT_ASSERT(HasError(response2->GetError()));                  \
-            } else {                                                           \
-                UNIT_ASSERT(!HasError(response2->GetError()));                 \
-                UNIT_ASSERT_VALUES_EQUAL(                                      \
-                    response1->Record.DebugString(),                           \
-                    response2->Record.DebugString());                          \
-            }                                                                  \
-        }                                                                      \
-    }
-    // INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL
-
-    // IndexCacheShouldProperlyHandleConcurrentModifyingSetNodeAttr
-    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
-        SetNodeAttr,
-        false,
-        TSetNodeAttrArgs(id).SetUid(1))
-
-    // IndexCacheShouldProperlyHandleConcurrentModifyingWriteData
-    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(WriteData, true, handle, 0, 1, '1')
-
-    // IndexCacheShouldProperlyHandleConcurrentModifyingCreateNode
-    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
-        CreateNode,
-        true,
-        TCreateNodeArgs::Link(RootNodeId, "test2", id))
-
-    // IndexCacheShouldProperlyHandleConcurrentModifyingAllocateData
-    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
-        AllocateData,
-        true,
-        handle,
-        0,
-        1024,
-        ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE))
-
-    // IndexCacheShouldProperlyHandleConcurrentModifyingCreateHandle
-    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
-        CreateHandle,
-        true,
-        id,
-        TCreateHandleArgs::TRUNC | TCreateHandleArgs::RDWR)
-
-    // IndexCacheShouldProperlyHandleConcurrentModifyingUnlinkNode
-    INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL(
-        UnlinkNode,
-        false,
-        RootNodeId,
-        "test",
-        false)
-
-#undef INDEX_CACHE_CONSISTENCY_CACHE_TEST_IMPL
-
     Y_UNIT_TEST(ShouldStatOpenedFiles)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetNodeIndexCacheMaxNodes(32);
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
         auto registry = env.GetRegistry();
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -1794,78 +1605,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 #undef COUNTERS_VALIDATE_WS_WM_RS_RM
     }
 
-    Y_UNIT_TEST(ShouldInvalidateNodeIndexCacheUponIndexOps)
-    {
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetNodeIndexCacheMaxNodes(32);
-        TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
-        auto registry = env.GetRegistry();
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.InitSession("client", "session");
-
-        auto dir =
-            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
-        auto file = CreateNode(tablet, TCreateNodeArgs::File(dir, "file"));
-
-        auto handle = CreateHandle(tablet, file);
-        tablet.WriteData(handle, 0, 1024, '1');
-
-        tablet.GetNodeAttr(RootNodeId, "dir");
-        tablet.GetNodeAttr(dir, "file");
-
-        // UpdateNodeAttr
-        TSetNodeAttrArgs arg(file);
-        arg.SetMode(123);
-        tablet.SetNodeAttr(arg);
-        UNIT_ASSERT_VALUES_EQUAL(
-            123,
-            tablet.GetNodeAttr(file)->Record.GetNode().GetMode());
-
-        // UnlinkNode (open handle exists)
-        tablet.UnlinkNode(dir, "file", false);
-        file = CreateNode(tablet, TCreateNodeArgs::File(dir, "file"));
-        tablet.GetNodeAttr(dir, "file");
-
-        // RemoveNode (no open handles)
-        tablet.UnlinkNode(dir, "file", false);
-        file = CreateNode(tablet, TCreateNodeArgs::File(dir, "file"));
-
-        // RenameNode
-        tablet.GetNodeAttr(dir, "file");
-
-        tablet.RenameNode(dir, "file", dir, "file2");
-        tablet.AssertGetNodeAttrFailed(dir, "file");
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            file,
-            tablet.GetNodeAttr(dir, "file2")->Record.GetNode().GetId());
-
-        {
-            tablet.SendRequest(tablet.CreateUpdateCounters());
-            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
-
-            TTestRegistryVisitor visitor;
-            registry->Visit(TInstant::Zero(), visitor);
-            // clang-format off
-            visitor.ValidateExpectedCounters({
-                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheHitCount"}}, 0},
-                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheNodeCount"}}, 1},
-            });
-            // clang-format on
-        }
-    }
-
     Y_UNIT_TEST(ShouldGetNodeAttrBatch)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -1944,112 +1688,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
-    Y_UNIT_TEST(ShouldGetNodeAttrBatchWithCache)
-    {
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetNodeIndexCacheMaxNodes(32);
-        TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
-        auto registry = env.GetRegistry();
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.InitSession("client", "session");
-
-        auto id1 = CreateNode(
-            tablet,
-            TCreateNodeArgs::File(RootNodeId, "test1"));
-        auto id2 = CreateNode(
-            tablet,
-            TCreateNodeArgs::File(RootNodeId, "test2"));
-
-        // no cache
-        {
-            const TVector<TString> names = {"test1"};
-            auto response = tablet.GetNodeAttrBatch(RootNodeId, names);
-            const auto nodeResponses = response->Record.GetResponses();
-            UNIT_ASSERT_VALUES_EQUAL(1, nodeResponses.size());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                nodeResponses[0].GetError().GetCode(),
-                nodeResponses[0].GetError().GetMessage());
-            UNIT_ASSERT_VALUES_EQUAL(id1, nodeResponses[0].GetNode().GetId());
-        }
-
-        // partial cache
-        {
-            const TVector<TString> names = {"test1", "test2", "test3"};
-            auto response = tablet.GetNodeAttrBatch(RootNodeId, names);
-            const auto nodeResponses = response->Record.GetResponses();
-            UNIT_ASSERT_VALUES_EQUAL(3, nodeResponses.size());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                nodeResponses[0].GetError().GetCode(),
-                nodeResponses[0].GetError().GetMessage());
-            UNIT_ASSERT_VALUES_EQUAL(id1, nodeResponses[0].GetNode().GetId());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                nodeResponses[1].GetError().GetCode(),
-                nodeResponses[1].GetError().GetMessage());
-            UNIT_ASSERT_VALUES_EQUAL(
-                id2,
-                nodeResponses[1].GetNode().GetId());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_FS_NOENT,
-                nodeResponses[2].GetError().GetCode(),
-                nodeResponses[2].GetError().GetMessage());
-            UNIT_ASSERT_VALUES_EQUAL(
-                InvalidNodeId,
-                nodeResponses[2].GetNode().GetId());
-        }
-
-        // everything from cache
-        {
-            const TVector<TString> names = {"test1", "test2"};
-            auto response = tablet.GetNodeAttrBatch(RootNodeId, names);
-            const auto nodeResponses = response->Record.GetResponses();
-            UNIT_ASSERT_VALUES_EQUAL(2, nodeResponses.size());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                nodeResponses[0].GetError().GetCode(),
-                nodeResponses[0].GetError().GetMessage());
-            UNIT_ASSERT_VALUES_EQUAL(id1, nodeResponses[0].GetNode().GetId());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                nodeResponses[1].GetError().GetCode(),
-                nodeResponses[1].GetError().GetMessage());
-            UNIT_ASSERT_VALUES_EQUAL(
-                id2,
-                nodeResponses[1].GetNode().GetId());
-        }
-
-        tablet.SendRequest(tablet.CreateUpdateCounters());
-        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
-
-        {
-            TTestRegistryVisitor visitor;
-            registry->Visit(TInstant::Zero(), visitor);
-            visitor.ValidateExpectedCounters({
-                {{
-                    {"filesystem", "test"},
-                    {"sensor", "NodeIndexCacheHitCount"}
-                }, 3},
-                {{
-                    {"filesystem", "test"},
-                    {"sensor", "NodeIndexCacheNodeCount"}
-                }, 2},
-            });
-        }
-    }
-
     Y_UNIT_TEST(ShouldNotGenerateDeletionMarkersUponSymLinkRemoval)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -2070,9 +1713,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldIdentifyRequestIdCollision)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -2158,9 +1800,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldIdentifyStaleHandlesInDupCache)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -2229,9 +1870,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldNotReadPhantomData)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -2312,9 +1952,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(DataObservedByROTxUponCompletionShouldNeverBeStale)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -2412,9 +2051,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
     Y_UNIT_TEST(ShouldReturnDataFromReadNodeRefs)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -2463,9 +2101,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -2536,9 +2173,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         NProto::TStorageConfig storageConfig;
         storageConfig.SetGidPropagationEnabled(true);
         TTestEnv env({}, storageConfig);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);

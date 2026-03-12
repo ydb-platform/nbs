@@ -3094,6 +3094,188 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldKeepDiskRegistryStateEqualWithLocalDb)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
+
+        const auto agent3 = CreateAgentConfig(
+            "agent-3",
+            {
+                Device("dev-1", "uuid-5", "rack-3", 10_GB),
+                Device("dev-2", "uuid-6", "rack-3", 10_GB),
+            });
+
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2, agent3}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agent1, agent2, agent3}));
+
+        RegisterAgents(*runtime, 3);
+        WaitForAgents(*runtime, 3);
+        WaitForSecureErase(*runtime, {agent1, agent2, agent3});
+
+        {
+            auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+            UNIT_ASSERT(!result->Record.HasError());
+        }
+
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("mirrored-vol");
+        diskRegistry.AllocateDisk(
+            "mirrored-vol",
+            10_GB,
+            DefaultLogicalBlockSize,
+            "",   // placementGroupId
+            0,    // placementPartitionIndex
+            "",   // cloudId
+            "",   // folderId
+            1     // replicaCount
+        );
+
+        diskRegistry.ChangeDeviceState("uuid-1", NProto::DEVICE_STATE_ERROR);
+
+        {
+            auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+            UNIT_ASSERT(!result->Record.HasError());
+        }
+
+        diskRegistry.AllocateDisk("disk-1", 10_GB);
+        diskRegistry.AllocateDisk("disk-2", 10_GB);
+
+        {
+            auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+            UNIT_ASSERT(!result->Record.HasError());
+        }
+
+        diskRegistry.MarkDiskForCleanup("disk-1");
+
+        {
+            auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+            UNIT_ASSERT(!result->Record.HasError());
+        }
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+        {
+            auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+            UNIT_ASSERT(!result->Record.HasError());
+        }
+
+        diskRegistry.AcquireDisk("disk-1", "session-1");
+
+        {
+            auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+            UNIT_ASSERT(!result->Record.HasError());
+        }
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvBackupDiskRegistryStateResponse)
+                {
+                    auto& record =
+                        event
+                            ->Get<TEvDiskRegistry::
+                                      TEvBackupDiskRegistryStateResponse>()
+                            ->Record;
+                    auto& agent =
+                        record.MutableMemoryBackup()->MutableAgents()->at(0);
+                    auto& device = agent.MutableDevices()->at(0);
+                    device.SetBlockSize(2 * device.GetBlockSize());
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            auto request = std::make_unique<
+                TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
+            diskRegistry.SendRequest(std::move(request));
+            auto result = diskRegistry.RecvResponse<
+                TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse>();
+            UNIT_ASSERT(result->Record.HasError());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompareStatePeriodically)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB),
+             Device("dev-3", "uuid-3", "rack-1", 10_GB),
+             Device("dev-4", "uuid-4", "rack-1", 10_GB),
+             Device("dev-5", "uuid-5", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
+        config.SetEnsureDiskRegistryStateIntegrityInterval(
+            TDuration::Hours(1).MilliSeconds());
+        auto runtime =
+            TTestRuntimeBuilder().With(config).WithAgents({agent1}).Build();
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto stateMismatchLocalDbError = counters->GetCounter(
+            "AppCriticalEvents/DiskRegistryStateIntegrityBroken",
+            true);
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+
+        runtime->AdvanceCurrentTime(1h);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(stateMismatchLocalDbError->Val(), 0);
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvBackupDiskRegistryStateResponse)
+                {
+                    auto& record =
+                        event
+                            ->Get<TEvDiskRegistry::
+                                      TEvBackupDiskRegistryStateResponse>()
+                            ->Record;
+                    auto& agent =
+                        record.MutableMemoryBackup()->MutableAgents()->at(0);
+                    auto& device = agent.MutableDevices()->at(0);
+                    device.SetBlockSize(2 * device.GetBlockSize());
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        runtime->AdvanceCurrentTime(1h);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(stateMismatchLocalDbError->Val(), 1);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

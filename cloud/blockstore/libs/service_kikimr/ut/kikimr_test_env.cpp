@@ -91,6 +91,12 @@ bool TTestActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
     return true;
 }
 
+bool TTestActorSystem::Send(IEventHandlePtr event)
+{
+    Runtime->Send(event.release());
+    return true;
+}
+
 TProgramShouldContinue& TTestActorSystem::GetProgramShouldContinue()
 {
     return ProgramShouldContinue;

@@ -467,9 +467,29 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 FormatError(response->GetError()));
         }
 
+        // Previously postponed request should not be recorded in ingestion
+        // stats.
+        {
+            auto writeRequest = volume.CreateWriteBlocksRequest(
+                TBlockRange64::WithLength(200, 100),
+                clientInfo.GetClientId(),
+                'B');
+            const auto timestamp = time - TDuration::Seconds(5);
+            writeRequest->Record.MutableHeaders()->SetTimestamp(
+                timestamp.MicroSeconds());
+            writeRequest->CallContext->SetPostponeTs(
+                timestamp + TDuration::Seconds(1));
+
+            volume.SendToPipe(std::move(writeRequest));
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                FormatError(response->GetError()));
+        }
+
         {
             auto zeroRequest = volume.CreateZeroBlocksRequest(
-                TBlockRange64::WithLength(200, 100),
+                TBlockRange64::WithLength(300, 100),
                 clientInfo.GetClientId());
             const auto timestamp = time - TDuration::Seconds(35);
             zeroRequest->Record.MutableHeaders()->SetTimestamp(
@@ -501,6 +521,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_UNEQUAL(writeIndex, NPOS);
         UNIT_ASSERT_GE(zeroIndex, 23);
         UNIT_ASSERT_VALUES_UNEQUAL(zeroIndex, NPOS);
+
+        // Previously postponed request should not be recorded in ingestion
+        // stats.
+        const size_t writeCount = Accumulate(
+            writeBuckets,
+            0UL,
+            [](size_t acc, const auto& bucket) { return acc + bucket.second; });
+        UNIT_ASSERT_VALUES_EQUAL(1, writeCount);
 
         // Make sure that retry request is not recorded in ingestion stats.
         {
@@ -1802,6 +1830,95 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         // Check that we see answer with error
         UNIT_ASSERT(answerSeen);
+
+        // Check that statistics was updated
+        UNIT_ASSERT(statUpdated);
+    }
+
+    Y_UNIT_TEST(ShouldNotCrashWhenDiskCountersIsNullptr)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        config.SetAcquireNonReplicatedDevices(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        TActorId recipient;
+        TActorId sender;
+        TString diskId;
+
+        bool statUpdated = false;
+        bool isGrabResponse = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (ev->GetTypeRewrite() ==
+                        TEvNonreplPartitionPrivate::
+                            EvGetDiskRegistryBasedPartCountersResponse &&
+                    !isGrabResponse)
+                {
+                    recipient = ev->Recipient;
+                    sender = ev->Sender;
+                    diskId = ev->Get<TEvNonreplPartitionPrivate::
+                            TEvGetDiskRegistryBasedPartCountersResponse>()->DiskId;
+                    isGrabResponse = true;
+                    return true;
+                }
+
+                if (ev->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters)
+                {
+                    statUpdated = true;
+                }
+
+                return false;
+            });
+
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+
+        runtime->DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !!recipient;
+                };
+                return options;
+            }());
+
+        auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvGetDiskRegistryBasedPartCountersResponse>(
+                sender,
+                diskId,
+                TPartNonreplCountersData{});
+        Send(*runtime, recipient, sender, std::move(request));
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvVolumePrivate::EvPartStatsSaved);
+        runtime->DispatchEvents(options);
 
         // Check that statistics was updated
         UNIT_ASSERT(statUpdated);

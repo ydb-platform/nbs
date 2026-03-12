@@ -73,7 +73,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TStringBuf VhostMetricsComponent = "client";
+const TString VhostMetricsComponent = "client";
+const TString ServerMetricsComponent = "server";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -129,7 +130,8 @@ public:
     bool AddEndpoint(
         const TString& name,
         const NProto::TClientConfig& config,
-        NDaemon::EServiceKind kind)
+        NDaemon::EServiceKind kind,
+        bool usePermanentActor)
     {
         auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
         IFileStoreServicePtr fileStore;
@@ -140,7 +142,8 @@ public:
             }
 
             case NDaemon::EServiceKind::Kikimr: {
-                fileStore = CreateKikimrFileStore(ActorSystem);
+                fileStore =
+                    CreateKikimrFileStore(ActorSystem, usePermanentActor);
                 break;
             }
 
@@ -250,7 +253,7 @@ TBootstrapVhost::TBootstrapVhost(
     : TBootstrapCommon(
         std::move(kikimrFactories),
         "NFS_VHOST",
-        TString{VhostMetricsComponent},
+        VhostMetricsComponent,
         NUserStats::CreateUserCounterSupplier())
     , VhostModuleFactories(std::move(vhostFactories))
 {}
@@ -321,10 +324,15 @@ void TBootstrapVhost::InitComponents()
             CreateKikimrAuthProvider(ActorSystem));
     }
 
+    auto serverCounters =
+        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
+
     Server = CreateServer(
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
+        serverCounters,
+        Scheduler,
         EndpointManager);
     RegisterServer(Server);
 
@@ -336,7 +344,9 @@ void TBootstrapVhost::InitComponents()
             std::make_shared<NServer::TServerConfig>(serverConfigProto),
             Logging,
             StatsRegistry->GetRequestStats(),
+            serverCounters,
             ProfileLog,
+            Scheduler,
             LocalService);
 
         STORAGE_INFO("initialized LocalServiceServer: %s",
@@ -385,7 +395,8 @@ void TBootstrapVhost::InitEndpoints()
         bool inserted = endpoints->AddEndpoint(
             endpoint.GetName(),
             endpoint.GetClientConfig(),
-            Configs->Options->Service);
+            Configs->Options->Service,
+            Configs->AppConfig.GetVhostServiceConfig().GetUsePermanentActor());
 
         if (inserted) {
             STORAGE_INFO("configured endpoint type %s -> %s",

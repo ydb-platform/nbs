@@ -13,8 +13,6 @@
 
 #include <tuple>
 #include <unordered_map>
-#include <utility>
-#include <vector>
 
 namespace NCloud::NFileStore::NServer {
 
@@ -53,7 +51,7 @@ public:
         }
     {}
 
-    TMmapRegionMetadata ToMetadata() const
+    [[nodiscard]] TMmapRegionMetadata ToMetadata() const
     {
         return Metadata;
     }
@@ -63,14 +61,27 @@ public:
         Metadata.LatestActivityTimestamp = TInstant::Now();
     }
 
+    [[nodiscard]] TInstant GetLatestActivityTimestamp() const
+    {
+        return Metadata.LatestActivityTimestamp;
+    }
+
 private:
     TMmapRegionMetadata Metadata;
+};
+
+struct TServerStateStats
+{
+    size_t MmapRegionCount = 0;
+    ui64 TotalMmapSize = 0;
 };
 
 class TServerState
 {
 public:
-    explicit TServerState(const TString& sharedMemoryBasePath);
+    TServerState(
+        const TString& sharedMemoryBasePath,
+        TDuration regionTimeout);
 
     ~TServerState();
 
@@ -86,10 +97,15 @@ public:
 
     NProto::TError PingMmapRegion(ui64 mmapId);
 
+    [[nodiscard]] TServerStateStats GetStateStats() const;
+
+    NProto::TError InvalidateTimedOutRegions();
+
 private:
     TLightRWLock StateLock;
     std::unordered_map<ui64, TMmapRegion> MmapRegions;
     TFsPath SharedMemoryBasePath;
+    TDuration RegionTimeout;
 };
 
 using TServerStatePtr = std::shared_ptr<TServerState>;

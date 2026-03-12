@@ -378,15 +378,22 @@ void TVolumeClientActor::HandleResponse(
         THasGetDeprecatedThrottlerDelay<TProtoType>::value);
 
     if constexpr (RequiresThrottling<TMethod>) {
+        NProto::TThrottlerInfo& throttler =
+            *msg->Record.MutableHeaders()->MutableThrottler();
         const ui64 throttlerDelay =
             Max(msg->Record.GetDeprecatedThrottlerDelay(),
-                msg->Record.GetHeaders().GetThrottler().GetDelay());
+                throttler.GetDelay());
         it->second.CallContext->AddTime(
             EProcessingStage::Postponed,
             TDuration::MicroSeconds(throttlerDelay));
         msg->Record.SetDeprecatedThrottlerDelay(0);
-        msg->Record.MutableHeaders()->MutableThrottler()->SetDelay(0);
+        throttler.SetDelay(0);
         it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());
+
+        it->second.CallContext->AddTime(
+            EProcessingStage::Shaping,
+            TDuration::MicroSeconds(throttler.GetShapingDelay()));
+        throttler.SetShapingDelay(0);
     }
 
     LWTRACK(

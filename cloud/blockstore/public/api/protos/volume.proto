@@ -478,6 +478,7 @@ message TCreateVolumeRequest
     // Mount requests with incorrect FillGeneration will be rejected unless filling is finished.
     uint64 FillGeneration = 21;
 
+    // Tags. Format: "key=value,key2=value2,just_key"
     string TagsStr = 22;
 }
 

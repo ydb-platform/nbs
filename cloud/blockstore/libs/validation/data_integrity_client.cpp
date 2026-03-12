@@ -10,6 +10,7 @@
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -353,10 +354,11 @@ bool TDataIntegrityClient::HandleRequest(
     auto result =
         Client->ReadBlocks(std::move(callContext), std::move(request));
     response = result.Apply(
-        [result, weakPtr = weak_from_this()](
-            const auto&) mutable -> NProto::TReadBlocksResponse
+        [result, weakPtr = weak_from_this()]   //
+        (const TFuture<NProto::TReadBlocksResponse>& f) mutable
+            -> NProto::TReadBlocksResponse
         {
-            NProto::TReadBlocksResponse response = result.ExtractValue();
+            NProto::TReadBlocksResponse response = UnsafeExtractValue(f);
             if (HasError(response)) {
                 return response;
             }
@@ -433,7 +435,7 @@ bool TDataIntegrityClient::HandleRequest(
          request = std::move(request),
          copyGuardedSgList = std::move(copyGuardedSgList),
          copyBuffer = std::move(copyBuffer)](
-            TFuture<NProto::TReadBlocksLocalResponse> result) mutable
+            const TFuture<NProto::TReadBlocksLocalResponse>& f) mutable
         -> NProto::TReadBlocksLocalResponse
     {
         Y_DEFER
@@ -444,7 +446,7 @@ bool TDataIntegrityClient::HandleRequest(
             }
         };
 
-        NProto::TReadBlocksLocalResponse response{result.ExtractValue()};
+        NProto::TReadBlocksLocalResponse response{UnsafeExtractValue(f)};
         if (HasError(response)) {
             return response;
         }
@@ -612,15 +614,15 @@ bool TDataIntegrityClient::HandleRequest(
         [shouldCopy,
          weakPtr = weak_from_this(),
          copyBuffer = std::move(copyBuffer),
-         copyGuardedSgList = std::move(copyGuardedSgList)](
-            TFuture<NProto::TWriteBlocksResponse> result) mutable
+         copyGuardedSgList = std::move(copyGuardedSgList)]   //
+        (const TFuture<NProto::TWriteBlocksResponse>& f) mutable
     {
         if (!copyGuardedSgList.Empty()) {
             copyGuardedSgList.Close();
             copyBuffer.reset();
         }
 
-        auto response = result.ExtractValue();
+        auto response = UnsafeExtractValue(f);
         auto self = weakPtr.lock();
         if (!self) {
             return response;

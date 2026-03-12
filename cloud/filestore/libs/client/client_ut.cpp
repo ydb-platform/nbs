@@ -10,7 +10,10 @@
 #include <cloud/filestore/libs/service/filestore_test.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
@@ -67,7 +70,9 @@ Y_UNIT_TEST_SUITE(TFileStoreClientTest)
             serverConfig,
             logging,
             registry->GetRequestStats(),
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
             CreateProfileLogStub(),
+            CreateSchedulerStub(),
             service);
         server->Start();
 

@@ -21,9 +21,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
     Y_UNIT_TEST(ShouldHandleHttpInfo)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);

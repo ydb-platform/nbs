@@ -1,14 +1,24 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
+#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
+
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -18,6 +28,10 @@ namespace NCloud::NBlockStore::NStorage {
 #define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
     xxx(ReadBlob,                  __VA_ARGS__)                                \
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
+    xxx(WriteBlob,                 __VA_ARGS__)                                \
+    xxx(PatchBlob,                 __VA_ARGS__)                                \
+    xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
+    xxx(AddFreshBlocks,            __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,10 +56,15 @@ struct TEvPartitionCommonPrivate
 
     struct TOperationCompleted
     {
+        NProto::TPartitionStats Stats;
+
         ui64 TotalCycles = 0;
         ui64 ExecCycles = 0;
 
         ui64 CommitId = 0;
+
+        TVector<TBlockRange64> AffectedRanges;
+        TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     };
 
     //
@@ -230,6 +249,182 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // WriteBlob
+    //
+    struct TWriteBlobRequest
+    {
+        NActors::TActorId Proxy;
+
+        const TPartialBlobId BlobId;
+        std::variant<TGuardedSgList, TString> Data;
+        // BlockSize is used to calculate checksums. If it's 0, checksums won't
+        // be calculated.
+        const ui32 BlockSizeForChecksums;
+        const bool Async;
+        const TInstant Deadline;
+
+        template <typename TData>
+        TWriteBlobRequest(
+                TPartialBlobId blobId,
+                TData data,
+                ui32 blockSizeForChecksums,
+                bool async,
+                TInstant deadline = TInstant::Max())
+            : BlobId(blobId)
+            , Data(std::move(data))
+            , BlockSizeForChecksums(blockSizeForChecksums)
+            , Async(async)
+            , Deadline(deadline)
+        {}
+    };
+
+    struct TWriteBlobResponse
+    {
+        TVector<ui32> BlockChecksums;
+        ui64 ExecCycles = 0;
+    };
+
+    //
+    // WriteBlobCompleted
+    //
+
+    struct TWriteBlobCompleted
+    {
+        TPartialBlobId BlobId;
+        NKikimr::TStorageStatusFlags StorageStatusFlags;
+        double ApproximateFreeSpaceShare = 0;
+        TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
+
+        TWriteBlobCompleted() = default;
+
+        TWriteBlobCompleted(
+                const TPartialBlobId& blobId,
+                NKikimr::TStorageStatusFlags storageStatusFlags,
+                double approximateFreeSpaceShare,
+                TDuration requestTime,
+                ui64 bsGroupOperationId)
+            : BlobId(blobId)
+            , StorageStatusFlags(storageStatusFlags)
+            , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
+            , RequestTime(requestTime)
+            , BSGroupOperationId(bsGroupOperationId)
+        {}
+    };
+
+    //
+    // PatchBlob
+    //
+
+    struct TPatchBlobRequest
+    {
+        NActors::TActorId Proxy;
+        TPartialBlobId OriginalBlobId;
+        TPartialBlobId PatchedBlobId;
+
+        TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> Diffs;
+        ui32 DiffCount;
+
+        bool Async = false;
+        TInstant Deadline;
+
+        TPatchBlobRequest() = default;
+
+        TPatchBlobRequest(
+                const TPartialBlobId& originalBlobId,
+                const TPartialBlobId& patchedBlobId,
+                TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> diffs,
+                ui32 diffCount,
+                bool async,
+                TInstant deadline)
+            : OriginalBlobId(originalBlobId)
+            , PatchedBlobId(patchedBlobId)
+            , Diffs(std::move(diffs))
+            , DiffCount(diffCount)
+            , Async(async)
+            , Deadline(deadline)
+        {}
+    };
+
+    struct TPatchBlobResponse
+    {
+        ui64 ExecCycles = 0;
+    };
+
+    struct TPatchBlobCompleted
+    {
+        TPartialBlobId OriginalBlobId;
+        TPartialBlobId PatchedBlobId;
+        NKikimr::TStorageStatusFlags StorageStatusFlags;
+        double ApproximateFreeSpaceShare = 0;
+        TDuration RequestTime;
+        ui64 BSGroupOperationId = 0;
+
+        TPatchBlobCompleted() = default;
+
+        TPatchBlobCompleted(
+                const TPartialBlobId& originalBlobId,
+                const TPartialBlobId& patchedBlobId,
+                NKikimr::TStorageStatusFlags storageStatusFlags,
+                double approximateFreeSpaceShare,
+                TDuration requestTime)
+            : OriginalBlobId(originalBlobId)
+            , PatchedBlobId(patchedBlobId)
+            , StorageStatusFlags(storageStatusFlags)
+            , ApproximateFreeSpaceShare(approximateFreeSpaceShare)
+            , RequestTime(requestTime)
+        {}
+    };
+
+    //
+    // GetFreshChannelsInfo
+    //
+    struct TGetFreshChannelsInfoRequest
+    {
+    };
+
+    struct TGetFreshChannelsInfoResponse
+    {
+        NKikimr::TTabletStorageInfoPtr TabletInfo;
+        ui64 ChannelsCount;
+        ui64 Generation;
+
+        TVector<EChannelPermissions> ChannelPermissions;
+
+        NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
+        NPartition::TThreadSafePartCountersPtr PartCounters;
+        NPartition::TGroupDowntimesPtr GroupDowntimes;
+    };
+
+
+    //
+    // AddFreshBlocks
+    //
+
+    struct TAddFreshBlocksRequest
+    {
+        ui64 CommitId;
+        ui64 BlobSize;
+        TVector<TBlockRange32> BlockRanges;
+        TVector<IWriteBlocksHandlerPtr> WriteHandlers;
+
+        TAddFreshBlocksRequest(
+                ui64 commitId,
+                ui64 blobSize,
+                TVector<TBlockRange32> blockRanges,
+                TVector<IWriteBlocksHandlerPtr> writeHandlers)
+            : CommitId(commitId)
+            , BlobSize(blobSize)
+            , BlockRanges(std::move(blockRanges))
+            , WriteHandlers(std::move(writeHandlers))
+        {}
+    };
+
+    struct TAddFreshBlocksResponse
+    {
+    };
+
+
     // Events declaration
     //
 
@@ -247,6 +442,10 @@ struct TEvPartitionCommonPrivate
         EvGetPartCountersRequest,
         EvGetPartCountersResponse,
         EvPartCountersCombined,
+        EvPatchBlobCompleted,
+        EvWriteBlobCompleted,
+        EvWriteFreshBlocksCompleted,
+        EvZeroFreshBlocksCompleted,
 
         EvEnd
     };
@@ -267,6 +466,17 @@ struct TEvPartitionCommonPrivate
         TResponseEvent<TGetPartCountersResponse, EvGetPartCountersResponse>;
     using TEvPartCountersCombined =
         TResponseEvent<TPartCountersCombined, EvPartCountersCombined>;
+    using TEvWriteBlobCompleted =
+        TResponseEvent<TWriteBlobCompleted, EvWriteBlobCompleted>;
+
+    using TEvPatchBlobCompleted =
+        TResponseEvent<TPatchBlobCompleted, EvPatchBlobCompleted>;
+
+    using TEvWriteFreshBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvWriteFreshBlocksCompleted>;
+
+    using TEvZeroFreshBlocksCompleted =
+        TResponseEvent<TOperationCompleted, EvZeroFreshBlocksCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

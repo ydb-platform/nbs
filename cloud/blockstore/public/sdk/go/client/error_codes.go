@@ -25,6 +25,8 @@ const (
 	FACILITY_SCHEMESHARD
 	FACILITY_SERVICE
 	FACILITY_TXPROXY
+	FACILITY_FILESTORE
+	FACILITY_RDMA
 )
 
 func succeeded(code uint32) bool {
@@ -79,6 +81,10 @@ func makeTxProxyError(status uint32) uint32 {
 	return makeResultCode(SEVERITY_ERROR, FACILITY_TXPROXY, status)
 }
 
+func makeRdmaError(status uint32) uint32 {
+	return makeResultCode(SEVERITY_ERROR, FACILITY_RDMA, status)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Well-known result codes
 
@@ -102,6 +108,7 @@ var (
 	E_IO_SILENT           = makeError(13)
 	E_RETRY_TIMEOUT       = makeError(14)
 	E_PRECONDITION_FAILED = makeError(15)
+	E_TRANSPORT_ERROR     = makeError(16)
 
 	E_GRPC_CANCELLED           = makeGrpcError(1)
 	E_GRPC_UNKNOWN             = makeGrpcError(2)
@@ -126,6 +133,8 @@ var (
 	E_RESOURCE_EXHAUSTED     = makeServiceError(4)
 	E_DISK_ALLOCATION_FAILED = makeServiceError(5)
 	E_MOUNT_CONFLICT         = makeServiceError(6)
+
+	E_RDMA_UNAVAILABLE = makeRdmaError(1)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +147,8 @@ var facilityMap = map[uint32]string{
 	FACILITY_SCHEMESHARD: "FACILITY_SCHEMESHARD",
 	FACILITY_SERVICE:     "FACILITY_SERVICE",
 	FACILITY_TXPROXY:     "FACILITY_TXPROXY",
+	FACILITY_FILESTORE:   "FACILITY_FILESTORE",
+	FACILITY_RDMA:        "FACILITY_RDMA",
 }
 
 var resultMap = map[uint32]string{
@@ -145,20 +156,22 @@ var resultMap = map[uint32]string{
 	S_FALSE:   "S_FALSE",
 	S_ALREADY: "S_ALREADY",
 
-	E_FAIL:            "E_FAIL",
-	E_ARGUMENT:        "E_ARGUMENT",
-	E_REJECTED:        "E_REJECTED",
-	E_IO:              "E_IO",
-	E_INVALID_STATE:   "E_INVALID_STATE",
-	E_TIMEOUT:         "E_TIMEOUT",
-	E_NOT_FOUND:       "E_NOT_FOUND",
-	E_UNAUTHORIZED:    "E_UNAUTHORIZED",
-	E_NOT_IMPLEMENTED: "E_NOT_IMPLEMENTED",
-	E_ABORTED:         "E_ABORTED",
-	E_TRY_AGAIN:       "E_TRY_AGAIN",
-	E_CANCELLED:       "E_CANCELLED",
-	E_IO_SILENT:       "E_IO_SILENT",
-	E_RETRY_TIMEOUT:   "E_RETRY_TIMEOUT",
+	E_FAIL:                "E_FAIL",
+	E_ARGUMENT:            "E_ARGUMENT",
+	E_REJECTED:            "E_REJECTED",
+	E_INVALID_STATE:       "E_INVALID_STATE",
+	E_TIMEOUT:             "E_TIMEOUT",
+	E_NOT_FOUND:           "E_NOT_FOUND",
+	E_UNAUTHORIZED:        "E_UNAUTHORIZED",
+	E_NOT_IMPLEMENTED:     "E_NOT_IMPLEMENTED",
+	E_ABORTED:             "E_ABORTED",
+	E_TRY_AGAIN:           "E_TRY_AGAIN",
+	E_IO:                  "E_IO",
+	E_CANCELLED:           "E_CANCELLED",
+	E_IO_SILENT:           "E_IO_SILENT",
+	E_RETRY_TIMEOUT:       "E_RETRY_TIMEOUT",
+	E_PRECONDITION_FAILED: "E_PRECONDITION_FAILED",
+	E_TRANSPORT_ERROR:     "E_TRANSPORT_ERROR",
 
 	E_GRPC_CANCELLED:           "E_GRPC_CANCELLED",
 	E_GRPC_UNKNOWN:             "E_GRPC_UNKNOWN",
@@ -183,6 +196,8 @@ var resultMap = map[uint32]string{
 	E_RESOURCE_EXHAUSTED:     "E_RESOURCE_EXHAUSTED",
 	E_DISK_ALLOCATION_FAILED: "E_DISK_ALLOCATION_FAILED",
 	E_MOUNT_CONFLICT:         "E_MOUNT_CONFLICT",
+
+	E_RDMA_UNAVAILABLE: "E_RDMA_UNAVAILABLE",
 }
 
 func getSeverityString(code uint32) string {

@@ -154,6 +154,7 @@ private:
     void ForwardRequestToShard(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
+        bool forceBehaveAsShard,
         ui64 entityId);
 
     template <typename TMethod>

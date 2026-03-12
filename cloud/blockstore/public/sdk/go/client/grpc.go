@@ -33,7 +33,7 @@ func WithClientID(ctx context.Context, clientId string) context.Context {
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcClient struct {
-	log      Log
+	logger   Logger
 	impl     api.TBlockStoreServiceClient
 	conn     *grpc.ClientConn
 	timeout  time.Duration
@@ -106,8 +106,11 @@ func (client *grpcClient) executeRequest(
 	requestId := nextRequestId()
 	client.setupHeaders(ctx, req)
 
-	if logger := client.log.Logger(requestLogLevel(req)); logger != nil {
-		logger.Printf(ctx, "%s #%d sending request", requestName(req), requestId)
+	format := "%s #%d sending request"
+	if requestLogLevel(req) == LOG_DEBUG {
+		client.logger.Debugf(format, requestName(req), requestId)
+	} else {
+		client.logger.Infof(format, requestName(req), requestId)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, client.timeout)
@@ -126,11 +129,21 @@ func (client *grpcClient) executeRequest(
 		err = NewClientError(err)
 	}
 
+	format = "%s%s #%d request completed (time: %v, size: %d, error: %v)"
 	if requestTime < requestTimeWarnThreshold {
-		if logger := client.log.Logger(requestLogLevel(req)); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s%s #%d request completed (time: %v, size: %d, error: %v)",
+		if requestLogLevel(req) == LOG_DEBUG {
+			client.logger.Debugf(
+				format,
+				requestName(req),
+				requestDetails(req),
+				requestId,
+				requestTime,
+				requestSize(req),
+				err,
+			)
+		} else {
+			client.logger.Infof(
+				format,
 				requestName(req),
 				requestDetails(req),
 				requestId,
@@ -140,18 +153,15 @@ func (client *grpcClient) executeRequest(
 			)
 		}
 	} else {
-		if logger := client.log.Logger(LOG_WARN); logger != nil {
-			logger.Printf(
-				ctx,
-				"%s%s #%d request too slow (time: %v, size: %d, error: %v)",
-				requestName(req),
-				requestDetails(req),
-				requestId,
-				requestTime,
-				requestSize(req),
-				err,
-			)
-		}
+		client.logger.Warnf(
+			format,
+			requestName(req),
+			requestDetails(req),
+			requestId,
+			requestTime,
+			requestSize(req),
+			err,
+		)
 	}
 
 	return resp, err
@@ -866,6 +876,63 @@ func (client *grpcClient) QueryAgentsInfo(
 	return resp.(*protos.TQueryAgentsInfoResponse), err
 }
 
+func (client *grpcClient) ListNVMeDevices(
+	ctx context.Context,
+	req *protos.TListNVMeDevicesRequest,
+) (*protos.TListNVMeDevicesResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ListNVMeDevices(ctx, req)
+		})
+
+	return resp.(*protos.TListNVMeDevicesResponse), err
+}
+
+func (client *grpcClient) AcquireNVMeDevice(
+	ctx context.Context,
+	req *protos.TAcquireNVMeDeviceRequest,
+) (*protos.TAcquireNVMeDeviceResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.AcquireNVMeDevice(ctx, req)
+		})
+
+	return resp.(*protos.TAcquireNVMeDeviceResponse), err
+}
+
+func (client *grpcClient) ReleaseNVMeDevice(
+	ctx context.Context,
+	req *protos.TReleaseNVMeDeviceRequest,
+) (*protos.TReleaseNVMeDeviceResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ReleaseNVMeDevice(ctx, req)
+		})
+
+	return resp.(*protos.TReleaseNVMeDeviceResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type GrpcClientOpts struct {
@@ -881,7 +948,7 @@ type GrpcClientOpts struct {
 	UseGZIPCompression bool
 }
 
-func NewGrpcClient(opts *GrpcClientOpts, log Log) (ClientIface, error) {
+func NewGrpcClient(opts *GrpcClientOpts, log Logger) (ClientIface, error) {
 	requestTimeout := defaultRequestTimeout
 	if opts.Timeout != nil {
 		requestTimeout = *opts.Timeout

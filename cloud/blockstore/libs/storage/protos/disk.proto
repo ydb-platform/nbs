@@ -33,11 +33,34 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// passive - send attach/detach path request only on registration
+// active - send attach/detach path request on registration and trying to send this requests to DA until success
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// State                        // Can allocate disks?  // Should try attach or detach path?             //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_ATTACHED   // Yes                  // passive attach                                //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_ATTACHING  // No                   // active attach                                 //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                              //                      //                                               //
+// PATH_ATTACH_STATE_DETACHED   // No                   // passive detach                                //
+//                              //                      //                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 enum EPathAttachState
 {
     PATH_ATTACH_STATE_ATTACHED = 0;
     PATH_ATTACH_STATE_DETACHED = 1;
+    PATH_ATTACH_STATE_ATTACHING = 2;
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 // Mean time between failures.
 
@@ -615,6 +638,12 @@ message TRegisterAgentResponse
 
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
+
+    // Request number, needed to order attach detach requests.
+    TControlPlaneRequestNumber ControlPlaneRequestNumber = 3;
+
+    // Devices that should be attached to the agent.
+    repeated string PathsToAttach = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1917,4 +1946,17 @@ message TAttachPathsResponse
 
     // List of attached devices.
     repeated TDeviceConfig AttachedDevices = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TEnsureDiskRegistryStateIntegrityRequest request/response.
+
+message TEnsureDiskRegistryStateIntegrityRequest
+{
+}
+
+message TEnsureDiskRegistryStateIntegrityResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
 }

@@ -13,8 +13,11 @@ namespace NCloud::NFileStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TServerState::TServerState(const TString& sharedMemoryBasePath)
+TServerState::TServerState(
+        const TString& sharedMemoryBasePath,
+        TDuration regionTimeout)
     : SharedMemoryBasePath(sharedMemoryBasePath)
+    , RegionTimeout(regionTimeout)
 {}
 
 TServerState::~TServerState()
@@ -157,6 +160,44 @@ NProto::TError TServerState::PingMmapRegion(ui64 mmapId)
 
     // update latest activity timestamp
     it->second.UpdateActivityTimestamp();
+
+    return NProto::TError{};
+}
+
+TServerStateStats TServerState::GetStateStats() const
+{
+    TLightReadGuard guard(StateLock);
+
+    TServerStateStats info;
+    info.MmapRegionCount = MmapRegions.size();
+    for (const auto& [id, region] : MmapRegions) {
+        info.TotalMmapSize += region.ToMetadata().Size;
+    }
+    return info;
+}
+
+NProto::TError TServerState::InvalidateTimedOutRegions()
+{
+    auto now = TInstant::Now();
+
+    TLightWriteGuard guard(StateLock);
+
+    for (auto it = MmapRegions.begin(); it != MmapRegions.end(); ) {
+        if (now - it->second.GetLatestActivityTimestamp() > RegionTimeout) {
+            auto metadata = it->second.ToMetadata();
+            if (munmap(metadata.Address, metadata.Size) != 0) {
+                return MakeError(
+                    E_IO,
+                    Sprintf(
+                        "Failed to unmap memory region: %lu, %s",
+                        metadata.Id,
+                        LastSystemErrorText()));
+            }
+            it = MmapRegions.erase(it);
+        } else {
+            ++it;
+        }
+    }
 
     return NProto::TError{};
 }

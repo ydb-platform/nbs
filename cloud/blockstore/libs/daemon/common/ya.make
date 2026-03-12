@@ -14,13 +14,14 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery
+    cloud/blockstore/libs/encryption
     cloud/blockstore/libs/endpoints
     cloud/blockstore/libs/endpoints_grpc
     cloud/blockstore/libs/endpoints_nbd
     cloud/blockstore/libs/endpoints_rdma
     cloud/blockstore/libs/endpoints_spdk
     cloud/blockstore/libs/endpoints_vhost
-    cloud/blockstore/libs/encryption
+    cloud/blockstore/libs/local_nvme
     cloud/blockstore/libs/nbd
     cloud/blockstore/libs/nvme
     cloud/blockstore/libs/rdma/iface

@@ -81,6 +81,8 @@ void TFileSystem::SetAttr(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+
     auto callback = [=, ptr = weak_from_this()](const auto& future)
     {
         auto self = ptr.lock();
@@ -93,7 +95,14 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckResponse(self, *callContext, req, response)) {
-            self->ReplyAttr(*callContext, error, req, response.GetNode());
+            InvalidateNodeInCache(ino);
+
+            self->ReplyAttrWithCache(
+                *callContext,
+                error,
+                req,
+                response.GetNode(),
+                version);
         }
     };
 
@@ -137,6 +146,8 @@ void TFileSystem::GetAttr(
     const auto cachedNodeSize =
         WriteBackCache ? WriteBackCache.GetCachedNodeSize(ino) : 0;
 
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe(
             [=, ptr = weak_from_this()](auto future)
@@ -146,11 +157,12 @@ void TFileSystem::GetAttr(
                 if (CheckResponse(self, *callContext, req, response)) {
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), cachedNodeSize));
-                    self->ReplyAttr(
+                    self->ReplyAttrWithCache(
                         *callContext,
                         response.GetError(),
                         req,
-                        response.GetNode());
+                        response.GetNode(),
+                        version);
                 }
             });
 }

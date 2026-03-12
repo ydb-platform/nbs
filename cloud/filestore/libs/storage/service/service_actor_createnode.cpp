@@ -114,7 +114,7 @@ void TLinkActor::CreateNodeInShard(const TActorContext& ctx)
 
     // The `CreateNodeInShard` is sent to the shard, and thus there is no need
     // to consider this shard as a standalone filesystem
-    request->Record.MutableHeaders()->ClearBehaveAsDirectoryTablet();
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
 
     LOG_DEBUG(
         ctx,

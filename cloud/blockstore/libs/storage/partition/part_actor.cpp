@@ -1,12 +1,15 @@
 #include "part_actor.h"
 
-#include <cloud/storage/core/libs/common/format.h>
+#include "fresh_blocks_companion_client.h"
+#include "io_companion_client.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
@@ -133,6 +136,11 @@ void TPartitionActor::Activate(const TActorContext& ctx)
 
     State->FinishLoadState();
 
+    ctx.Schedule(
+        Config->GetResourceMetricsUpdateInterval(),
+        std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
+            .release());
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -199,6 +207,9 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
         PartCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions());
+        IoCompanionCounters->Swap(CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            DiagnosticsConfig->GetHistogramCounterOptions()));
     }
 }
 
@@ -260,7 +271,8 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 void TPartitionActor::ScheduleYellowStateUpdate(const TActorContext& ctx)
 {
     if (!UpdateYellowStateScheduled) {
-        ctx.Schedule(YellowStateUpdateInterval,
+        ctx.Schedule(
+            YellowStateUpdateInterval,
             new TEvPartitionPrivate::TEvUpdateYellowState());
         UpdateYellowStateScheduled = true;
     }
@@ -391,12 +403,34 @@ void TPartitionActor::BeforeDie(const TActorContext& ctx)
     KillActors(ctx);
     ClearWriteQueue(ctx);
     CancelPendingRequests(ctx, PendingRequests);
+
+    if (Poisoner) {
+        NCloud::Reply(
+            ctx,
+            *Poisoner,
+            std::make_unique<TEvents::TEvPoisonTaken>());
+    }
+
+    if (FreshBlocksWriter) {
+        // Fast die for FreshBlocksWriter
+        NCloud::Send(
+            ctx,
+            FreshBlocksWriter,
+            std::make_unique<TEvents::TEvPoisonPill>());
+    }
 }
 
 void TPartitionActor::KillActors(const TActorContext& ctx)
 {
     for (const auto& actor: Actors.GetActors()) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
+    }
+
+    if (FreshBlocksCompanion) {
+        FreshBlocksCompanion->KillActors(ctx);
+    }
+    if (IOCompanion) {
+        IOCompanion->KillActors(ctx);
     }
 }
 
@@ -454,26 +488,6 @@ void TPartitionActor::ReleaseTransactions()
             TWellKnownEntityTypes::TABLET,
             TabletID());
         requestInfo->UnRef();
-    }
-}
-
-void TPartitionActor::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
-{
-    while (auto request = State->DequeueIORequest(channel)) {
-        auto actorId = NCloud::Register(ctx, std::move(request->Actor));
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Partition registered request actor with id [%lu]",
-            LogTitle.GetWithTime().c_str(),
-            actorId);
-        Actors.Insert(actorId);
-        BSGroupOperationTimeTracker.OnStarted(
-            request->BSGroupOperationId,
-            request->Group,
-            request->OperationType,
-            GetCycleCount(),
-            request->BlockSize);
     }
 }
 
@@ -541,6 +555,44 @@ void TPartitionActor::UpdateCPUUsageStat(TInstant now, ui64 execCylces)
     const auto duration = CyclesToDurationSafe(execCylces);
     UserCPUConsumption += duration.MicroSeconds();
     GetResourceMetrics()->CPU.Increment(duration.MicroSeconds(), now);
+}
+
+void TPartitionActor::UpdateResourceMetrics(
+    TUpdateWriteThroughput& writeThroughput)
+{
+    UpdateWriteThroughput(
+        writeThroughput.Now,
+        writeThroughput.Channel,
+        writeThroughput.Group,
+        writeThroughput.Value);
+}
+
+void TPartitionActor::UpdateResourceMetrics(
+    TUpdateReadThroughput& readThroughput)
+{
+    UpdateReadThroughput(
+        readThroughput.Now,
+        readThroughput.Channel,
+        readThroughput.Group,
+        readThroughput.Value,
+        readThroughput.IsOverlayDisk);
+}
+
+void TPartitionActor::UpdateResourceMetrics(TUpdateNetworkStat& networkStat)
+{
+    UpdateNetworkStat(
+        networkStat.Now,
+        networkStat.Value);
+}
+
+void TPartitionActor::UpdateResourceMetrics(TUpdateStorageStat& storageStat)
+{
+    UpdateStorageStat(storageStat.Value);
+}
+
+void TPartitionActor::UpdateResourceMetrics(TUpdateCPUUsageStat& cpuUsageStat)
+{
+    UpdateCPUUsageStat(cpuUsageStat.Now, cpuUsageStat.Value);
 }
 
 bool TPartitionActor::InitReadWriteBlockRange(
@@ -616,7 +668,10 @@ void TPartitionActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    Poisoner = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
 
     LOG_INFO(
         ctx,
@@ -660,7 +715,8 @@ void TPartitionActor::HandleSendBackpressureReport(
         SendBackpressureReport(ctx);
     }
 
-    ctx.Schedule(BackpressureReportSendInterval,
+    ctx.Schedule(
+        BackpressureReportSendInterval,
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 }
 
@@ -836,6 +892,27 @@ void TPartitionActor::HandleWakeupOnBoot(
     Suicide(ctx);
 }
 
+void TPartitionActor::HandleWriteBlob(
+    const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    IOCompanion->HandleWriteBlob(ev, ctx);
+}
+
+void TPartitionActor::HandleReadBlob(
+    const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    IOCompanion->HandleReadBlob(ev, ctx);
+}
+
+void TPartitionActor::HandlePatchBlob(
+    const TEvPartitionCommonPrivate::TEvPatchBlobRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    IOCompanion->HandlePatchBlob(ev, ctx);
+}
+
 bool TPartitionActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -901,6 +978,17 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
                : Config->GetBlobStorageAsyncRequestTimeoutHDD();
 }
 
+void TPartitionActor::CreateFreshBlocksCompanionClient()
+{
+    FreshBlocksCompanionClient =
+        std::make_unique<TFreshBlocksCompanionClient>(*this);
+}
+
+void TPartitionActor::CreateIOCompanionClient()
+{
+    IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -953,8 +1041,12 @@ STFUNC(TPartitionActor::StateInit)
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
-        HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
-        HFunc(TEvPartitionPrivate::TEvConfirmBlobsCompleted, HandleConfirmBlobsCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted,
+            FreshBlocksCompanion->HandleLoadFreshBlobsCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvConfirmBlobsCompleted,
+            HandleConfirmBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
@@ -997,17 +1089,34 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
+        HFunc(TEvPartitionPrivate::TEvUpdateResourceMetrics, HandleUpdateResourceMetrics);
         HFunc(TEvPartitionPrivate::TEvUpdateYellowState, HandleUpdateYellowState);
         HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
         HFunc(TEvPartitionPrivate::TEvProcessWriteQueue, HandleProcessWriteQueue);
 
-        HFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted, HandleReadBlobCompleted);
-        HFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation, HandleLongRunningBlobOperation);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobCompleted, HandleWriteBlobCompleted);
-        HFunc(TEvPartitionPrivate::TEvPatchBlobCompleted, HandlePatchBlobCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted,
+            IOCompanion->HandleReadBlobCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLongRunningOperation,
+            IOCompanion->HandleLongRunningBlobOperation);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteBlobCompleted,
+            IOCompanion->HandleWriteBlobCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvPatchBlobCompleted,
+            IOCompanion->HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
-        HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,
+            HandleWriteFreshBlocksCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlocksCompleted,
+            HandleWriteBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
+            HandleZeroFreshBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvFlushCompleted, HandleFlushCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
         HFunc(TEvPartitionPrivate::TEvCompactionCompleted, HandleCompactionCompleted);
@@ -1065,18 +1174,23 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateCounters);
+        IgnoreFunc(TEvPartitionPrivate::TEvUpdateResourceMetrics);
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
-        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersRequest);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            RejectGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted);
-        IgnoreFunc(TEvPartitionPrivate::TEvWriteBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildCompleted);
@@ -1184,6 +1298,50 @@ NProto::TError VerifyBlockChecksum(
     }
 
     return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::HandleUpdateResourceMetrics(
+    const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    auto updates = ResourceMetricsQueue->PopAll();
+    for (auto& update: updates) {
+        std::visit([&](auto&& arg) { UpdateResourceMetrics(arg); }, update);
+    }
+
+    // Schedule the next update
+    ctx.Schedule(
+        Config->GetResourceMetricsUpdateInterval(),
+        std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
+            .release());
+}
+
+void TPartitionActor::HandleGetFreshChannelsInfo(
+    const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto response = std::make_unique<
+        TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+
+    response->TabletInfo = MakeIntrusive<NKikimr::TTabletStorageInfo>(*Info());
+    response->ChannelsCount = State->GetChannelCount();
+    response->Generation = Executor()->Generation();
+
+    response->ResourceMetricsQueue = ResourceMetricsQueue;
+    response->PartCounters = IoCompanionCounters;
+    response->GroupDowntimes = GroupDowntimes;
+
+    for (size_t i = 0; i < State->GetChannelCount(); ++i) {
+        response->ChannelPermissions.emplace_back(
+            State->GetChannelPermissions(i));
+    }
+
+    FreshBlocksWriter = ev->Sender;
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

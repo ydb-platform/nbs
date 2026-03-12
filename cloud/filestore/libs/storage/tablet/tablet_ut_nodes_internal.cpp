@@ -56,9 +56,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     TABLET_TEST_4K_ONLY(ShouldPrepareUnlinkDirectoryNodeInShard)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
         OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
 
@@ -202,9 +201,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     TABLET_TEST_4K_ONLY(ShouldAbortUnlinkDirectoryNodeInShard)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
         OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
 
@@ -274,13 +272,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
-    TABLET_TEST_4K_ONLY(
-        ShouldReturnErrorUponRenameNodeInDestinationForFileToDirOp)
+    void DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
     {
-        TTestEnv env;
-        env.CreateSubDomain("nfs");
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
         OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
 
@@ -289,6 +289,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -308,7 +311,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -318,36 +322,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
         CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_ISDIR,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name1,
-            shardId2,
-            uuid2);
-        response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name1,
+                shardId2,
+                uuid2);
+            response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            tablet.SendRenameNodeRequest(RootNodeId, name1, RootNodeId, name2);
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            tablet.SendRenameNodeRequest(RootNodeId, name2, RootNodeId, name1);
+            response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
     }
 
     TABLET_TEST_4K_ONLY(
-        ShouldCheckDstEmptinessUponRenameNodeInDestinationForDirToDirOp)
+        ShouldReturnErrorUponRenameNodeInDestinationForFileToDirOp)
     {
-        TTestEnv env;
-        env.CreateSubDomain("nfs");
+        DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+    TABLET_TEST_4K_ONLY(ShouldReturnErrorUponRenameNodeForFileToDirOp)
+    {
+        DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    void DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
         OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
 
@@ -356,6 +393,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -367,7 +407,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         //  uuid2 -> id2 (dir)
         //  name2 -> uuid2
         //
-        //  uuid3 -> id3 (dir)
+        //  uuid3 -> id3 (file)
         //  name2/name3 -> uuid3
         //
         //  move name1 to name2 -> fail
@@ -381,7 +421,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -399,29 +440,51 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid3));
         CreateExternalRef(tablet, dir2, name3, shardId3, uuid3);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_NOTEMPTY,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOTEMPTY,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            tablet.SendRenameNodeRequest(
+                RootNodeId,
+                name1,
+                RootNodeId,
+                name2);
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOTEMPTY,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         DeleteRef(tablet, dir2, name3);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
-        response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            tablet.SendRenameNodeRequest(RootNodeId, name1, RootNodeId, name2);
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         const auto nodeRef = tablet.UnsafeGetNodeRef(RootNodeId, name2)->Record;
         UNIT_ASSERT_VALUES_EQUAL(shardId1, nodeRef.GetShardId());
@@ -429,12 +492,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     }
 
     TABLET_TEST_4K_ONLY(
-        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOp)
+        ShouldCheckDstEmptinessUponRenameNodeInDestinationForDirToDirOp)
     {
-        TTestEnv env;
-        env.CreateSubDomain("nfs");
+        DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+    TABLET_TEST_4K_ONLY(ShouldCheckDstEmptinessUponRenameNodeForDirToDirOp)
+    {
+        DoTestShouldCheckDstEmptinessUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    void DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         IEventHandlePtr abortRequest;
@@ -475,6 +555,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -500,7 +583,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -511,11 +595,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
         CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+        } else {
+            tablet.SendRenameNodeRequest(RootNodeId, name1, RootNodeId, name2);
+        }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(abortRequest);
@@ -567,11 +655,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         shouldIntercept = false;
         env.GetRuntime().Send(abortRequest.release(), nodeIdx);
 
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_ISDIR,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         //
         // Abort OpLogEntry should be deleted.
@@ -599,12 +695,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     }
 
     TABLET_TEST_4K_ONLY(
-        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOpAfterReboot)
+        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOp)
     {
-        TTestEnv env;
-        env.CreateSubDomain("nfs");
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+    TABLET_TEST_4K_ONLY(ShouldAbortUnlinkUponRenameNodeForDirToDirOp)
+    {
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOp(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    void DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
+        const TFileSystemConfig& tabletConfig,
+        bool useRenameInDestination)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         IEventHandlePtr abortRequest;
@@ -645,6 +758,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             nodeIdx,
             tabletId,
             tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
         tablet.InitSession("client", "session");
 
         //
@@ -672,7 +788,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        const TString shardId2 = "shard2";
+        // NodeRefs should be managed by the same shard for the RenameNode test
+        const TString shardId2 = useRenameInDestination ? "shard2" : shardId1;
         const TString name2 = "name2";
         const TString uuid2 = CreateGuidAsString();
 
@@ -683,11 +800,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid2));
         CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
 
-        tablet.SendRenameNodeInDestinationRequest(
-            RootNodeId,
-            name2,
-            shardId1,
-            uuid1);
+        if (useRenameInDestination) {
+            tablet.SendRenameNodeInDestinationRequest(
+                RootNodeId,
+                name2,
+                shardId1,
+                uuid1);
+        } else {
+            tablet.SendRenameNodeRequest(
+                RootNodeId,
+                name1,
+                RootNodeId,
+                name2);
+        }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(abortRequest);
@@ -746,11 +871,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         // E_REJECTED is expected because tablet actor died.
         //
 
-        auto response = tablet.RecvRenameNodeInDestinationResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
-            response->GetStatus(),
-            FormatError(response->GetError()));
+        if (useRenameInDestination) {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        } else {
+            auto response = tablet.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
 
         //
         // Abort OpLogEntry should be deleted.
@@ -778,12 +911,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
     }
 
     TABLET_TEST_4K_ONLY(
+        ShouldAbortUnlinkUponRenameNodeInDestinationForDirToDirOpAfterReboot)
+    {
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
+            tabletConfig,
+            true /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot)
+    {
+        DoTestShouldAbortUnlinkUponRenameNodeForDirToDirOpAfterReboot(
+            tabletConfig,
+            false /* useRenameInDestination */);
+    }
+
+    TABLET_TEST_4K_ONLY(
         ShouldReturnErrorUponRenameNodeInDestinationForLocalNode)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -816,9 +963,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -850,6 +996,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         TVector<TString> names;
         TVector<NProto::TNodeAttr> nodes;
 
+        const ui32 flags = 0;
+        const ui64 clientTabletId = 1;
+        ui64 requestId = 0;
+        TVector<ui64> requestIds;
+
         for (ui32 i = 0; i < 10; ++i) {
             auto fileName = TStringBuilder() << "file" << i;
             auto shardId = TStringBuilder() << "shard" << i;
@@ -859,7 +1010,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 dir,
                 fileName,
                 shardId,
-                shardNodeName);
+                shardNodeName,
+                flags,
+                clientTabletId,
+                ++requestId);
             auto response = tablet.RecvRenameNodeInDestinationResponse();
             reconnectIfNeeded();
 
@@ -877,6 +1031,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             node.SetShardFileSystemId(shardId);
             node.SetShardNodeName(shardNodeName);
             nodes.push_back(std::move(node));
+
+            requestIds.push_back(requestId);
         }
 
         auto response = tablet.ListNodes(dir);
@@ -889,6 +1045,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             UNIT_ASSERT_VALUES_EQUAL(
                 nodes[i].ShortUtf8DebugString(),
                 listedNodes[i].ShortUtf8DebugString());
+        }
+
+        //
+        // Just checking that the responses have been persistently saved to
+        // the response log. It's ok that the responses are basically empty.
+        //
+
+        for (ui32 i = 0; i < requestIds.size(); ++i) {
+            auto response =
+                tablet.GetResponseLogEntry(clientTabletId, requestIds[i]);
+            const auto& e = response->Record.GetEntry();
+            UNIT_ASSERT_VALUES_EQUAL(clientTabletId, e.GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(requestIds[i], e.GetRequestId());
+            const auto& r = e.GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("", r.GetOldTargetNodeShardNodeName());
         }
 
         UNIT_ASSERT_C(
@@ -909,9 +1081,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -1008,9 +1179,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             const auto& entry = *opLogEntryResponse->OpLogEntry;
             const auto& dstRequest = entry.GetRenameNodeInDestinationRequest();
             UNIT_ASSERT_VALUES_EQUAL(
-                renameNodeRequest->Record.GetHeaders().ShortUtf8DebugString(),
-                dstRequest.GetHeaders().ShortUtf8DebugString());
-            UNIT_ASSERT_VALUES_EQUAL(
                 renameNodeRequest->Record.GetNewParentId(),
                 dstRequest.GetNewParentId());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1042,6 +1210,353 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         UNIT_ASSERT_GT(failures, 0);
     }
 
+    TABLET_TEST_4K_ONLY(ShouldDeleteGetWriteResponseLog)
+    {
+        TTestEnv env;
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto rebootAndReconnect = [&]()
+        {
+            tablet.RebootTablet();
+            tablet.ReconnectPipe();
+            tablet.WaitReady();
+        };
+
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(100);
+            entry.SetRequestId(10);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId("sh0");
+            r.SetOldTargetNodeShardNodeName("n0");
+            tablet.WriteResponseLogEntry(entry);
+
+            entry.SetClientTabletId(101);
+            entry.SetRequestId(11);
+            r.SetOldTargetNodeShardId("sh1");
+            r.SetOldTargetNodeShardNodeName("n1");
+            tablet.WriteResponseLogEntry(entry);
+
+            entry.SetClientTabletId(102);
+            entry.SetRequestId(12);
+            r.SetOldTargetNodeShardId("sh2");
+            r.SetOldTargetNodeShardNodeName("n2");
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        tablet.DeleteResponseLogEntry(101, 11);
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(101, 11);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(102, 12);
+            UNIT_ASSERT_VALUES_EQUAL(
+                102,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                12,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r.GetOldTargetNodeShardNodeName());
+        }
+
+        rebootAndReconnect();
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(101, 11);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(102, 12);
+            UNIT_ASSERT_VALUES_EQUAL(
+                102,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                12,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh2", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n2", r.GetOldTargetNodeShardNodeName());
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldDeleteOldResponseLogEntries)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetResponseLogEntryTTL(10'000);
+        storageConfig.SetTabletRegularTasksSchedulePeriod(5'000);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(100);
+            entry.SetRequestId(10);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId("sh0");
+            r.SetOldTargetNodeShardNodeName("n0");
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                response->Record.GetEntry().GetClientTabletId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                response->Record.GetEntry().GetRequestId());
+            const auto& r = response->Record.GetEntry()
+                .GetRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL("sh0", r.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL("n0", r.GetOldTargetNodeShardNodeName());
+        }
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        {
+            auto response = tablet.GetResponseLogEntry(100, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldDeleteResponseLogEntryUponCommitRenameNodeInSource)
+    {
+        TTestEnv env;
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        const ui64 dstDir = 11111;
+
+        const TString shardId = "shard";
+        const TString shardNodeName = CreateGuidAsString();
+        const ui64 opLogEntryId = Max<ui64>();
+
+        //
+        // Pre-creating a fake node-ref and a fake rename-node-in-destination
+        // response.
+        //
+
+        const TString fileName = "file";
+        tablet.UnsafeCreateNodeRef(
+            dir,
+            fileName,
+            0 /* childId */,
+            shardId,
+            shardNodeName);
+
+        const ui64 tabletRequestId = 10;
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(tabletId);
+            entry.SetRequestId(tabletRequestId);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId(shardId);
+            r.SetOldTargetNodeShardNodeName(shardNodeName);
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        //
+        // Calling CommitRenameNodeInSource for this node-ref and checking that
+        // the response-log-entry gets deleted.
+        //
+
+        {
+            auto renameNodeRequest = tablet.CreateRenameNodeRequest(
+                dir,
+                fileName,
+                dstDir,
+                fileName + ".new");
+
+            NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
+
+            tablet.CommitRenameNodeInSource(
+                renameNodeRequest->Record,
+                subResponse,
+                opLogEntryId,
+                shardId,
+                tabletRequestId);
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(tabletId, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldDeleteResponseLogEntryUponCommitRenameNodeInSourceWithError)
+    {
+        TTestEnv env;
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        const ui64 dstDir = 11111;
+
+        const TString shardId = "shard";
+        const TString shardNodeName = CreateGuidAsString();
+        const ui64 opLogEntryId = Max<ui64>();
+
+        //
+        // Pre-creating a fake node-ref and a fake rename-node-in-destination
+        // response.
+        //
+
+        const TString fileName = "file";
+        tablet.UnsafeCreateNodeRef(
+            dir,
+            fileName,
+            0 /* childId */,
+            shardId,
+            shardNodeName);
+
+        const ui64 tabletRequestId = 10;
+        {
+            NProtoPrivate::TResponseLogEntry entry;
+            entry.SetClientTabletId(tabletId);
+            entry.SetRequestId(tabletRequestId);
+            auto& r = *entry.MutableRenameNodeInDestinationResponse();
+            r.SetOldTargetNodeShardId(shardId);
+            r.SetOldTargetNodeShardNodeName(shardNodeName);
+            tablet.WriteResponseLogEntry(entry);
+        }
+
+        //
+        // Calling CommitRenameNodeInSource for this node-ref and checking that
+        // the response-log-entry is deleted even in case of errors.
+        //
+
+        {
+            auto renameNodeRequest = tablet.CreateRenameNodeRequest(
+                dir,
+                fileName,
+                dstDir,
+                fileName + ".new");
+
+            NProtoPrivate::TRenameNodeInDestinationResponse subResponse;
+            *subResponse.MutableError() =
+                MakeError(E_REJECTED, "tablet is dead");
+
+            tablet.SendCommitRenameNodeInSourceRequest(
+                renameNodeRequest->Record,
+                subResponse,
+                opLogEntryId,
+                shardId,
+                tabletRequestId);
+
+            auto response = tablet.RecvCommitRenameNodeInSourceResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(subResponse.GetError()),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto response = tablet.GetResponseLogEntry(tabletId, 10);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetEntry().ByteSizeLong());
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInUnsafeNodeOperations)
     {
         const ui32 maxTabletStep = 4;
@@ -1050,9 +1565,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -1157,9 +1671,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
@@ -1240,7 +1753,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             tablet.SendCommitRenameNodeInSourceRequest(
                 renameNodeRequest->Record,
                 subResponse,
-                opLogEntryId);
+                opLogEntryId,
+                dstShardId,
+                0 // tabletRequestId, doesn't matter for this test
+            );
             auto response = tablet.RecvCommitRenameNodeInSourceResponse();
             reconnectIfNeeded();
 
@@ -1278,9 +1794,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());

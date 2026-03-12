@@ -107,6 +107,8 @@ private:
 
     THeaders Headers;
 
+    ui64 AutoRequestId = 0;
+
 public:
     TIndexTabletClient(
             NKikimr::TTestActorRuntime& runtime,
@@ -326,6 +328,16 @@ public:
         return requestToTablet;
     }
 
+    auto CreateConfigureShardsRequest(bool directoryCreationInShardsEnabled)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            directoryCreationInShardsEnabled);
+
+        return request;
+    }
+
     auto CreateConfigureAsShardRequest(ui32 shardNo)
     {
         auto request =
@@ -364,10 +376,16 @@ public:
         const TString& newName,
         const TString& sourceNodeShardId,
         const TString& sourceNodeShardNodeName,
-        ui32 flags = 0)
+        ui32 flags = 0,
+        ui64 clientTabletId = 1,
+        ui64 requestId = 0)
     {
         using TRequestEvent = TEvIndexTablet::TEvRenameNodeInDestinationRequest;
         auto request = CreateSessionRequest<TRequestEvent>();
+        auto& headers = *request->Record.MutableHeaders();
+        // just has to be nonzero
+        headers.MutableInternal()->SetClientTabletId(clientTabletId);
+        headers.SetRequestId(requestId ? requestId : ++AutoRequestId);
         request->Record.SetNewParentId(newParent);
         request->Record.SetNewName(newName);
         request->Record.SetSourceNodeShardId(sourceNodeShardId);
@@ -563,14 +581,49 @@ public:
     auto CreateCommitRenameNodeInSourceRequest(
         NProto::TRenameNodeRequest subRequest,
         NProtoPrivate::TRenameNodeInDestinationResponse subResponse,
-        ui64 opLogEntryId)
+        ui64 opLogEntryId,
+        TString shardFileSystemId,
+        ui64 tabletRequestId)
     {
         using TRequestEvent =
             TEvIndexTabletPrivate::TEvCommitRenameNodeInSourceRequest;
         return std::make_unique<TRequestEvent>(
             std::move(subRequest),
             std::move(subResponse),
-            opLogEntryId);
+            opLogEntryId,
+            std::move(shardFileSystemId),
+            tabletRequestId);
+    }
+
+    auto CreateDeleteResponseLogEntryRequest(
+        ui64 clientTabletId,
+        ui64 requestId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvDeleteResponseLogEntryRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetClientTabletId(clientTabletId);
+        request->Record.SetRequestId(requestId);
+        return request;
+    }
+
+    auto CreateGetResponseLogEntryRequest(
+        ui64 clientTabletId,
+        ui64 requestId)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvGetResponseLogEntryRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetClientTabletId(clientTabletId);
+        request->Record.SetRequestId(requestId);
+        return request;
+    }
+
+    auto CreateWriteResponseLogEntryRequest(
+        NProtoPrivate::TResponseLogEntry entry)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvWriteResponseLogEntryRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        *request->Record.MutableEntry() = std::move(entry);
+        return request;
     }
 
     auto CreateCompleteUnlinkNodeRequest(
@@ -874,6 +927,22 @@ public:
         for (auto& part: unalignedDataParts) {
             *request->Record.AddUnalignedDataRanges() = std::move(part);
         }
+        return request;
+    }
+
+    auto CreateConfirmAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvConfirmAddDataRequest>();
+        request->Record.SetCommitId(commitId);
+        return request;
+    }
+
+    auto CreateCancelAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvCancelAddDataRequest>();
+        request->Record.SetCommitId(commitId);
         return request;
     }
 

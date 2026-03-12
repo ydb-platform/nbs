@@ -1,5 +1,7 @@
 #include "device_generator.h"
 
+#include <cloud/blockstore/config/disk.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/string/printf.h>
@@ -28,7 +30,16 @@ NProto::TError TDeviceGenerator::operator () (
         file.SetPath(path);
         file.SetBlockSize(blockSize);
         file.SetPoolName(poolConfig.GetPoolName());
-        file.SetDeviceId(CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix()));
+        switch (poolConfig.GetHashScheme()) {
+            case NProto::TStorageDiscoveryConfig::HS_LEGACY:
+                file.SetDeviceId(
+                    CreateDeviceId(deviceNumber, poolConfig.GetHashSuffix()));
+                break;
+            case NProto::TStorageDiscoveryConfig::HS_FULL_PATH:
+                file.SetDeviceId(
+                    CreateDeviceId(path, poolConfig.GetHashSuffix()));
+                break;
+        }
 
         STORAGE_INFO("Found " << file);
 
@@ -53,10 +64,21 @@ NProto::TError TDeviceGenerator::operator () (
         file.SetPoolName(poolConfig.GetPoolName());
         file.SetOffset(offset);
         file.SetFileSize(layout.GetDeviceSize());
-        file.SetDeviceId(CreateDeviceId(
-            deviceNumber,
-            poolConfig.GetHashSuffix(),
-            subDeviceIndex));
+
+        switch (poolConfig.GetHashScheme()) {
+            case NProto::TStorageDiscoveryConfig::HS_LEGACY:
+                file.SetDeviceId(CreateDeviceId(
+                    deviceNumber,
+                    poolConfig.GetHashSuffix(),
+                    subDeviceIndex));
+                break;
+            case NProto::TStorageDiscoveryConfig::HS_FULL_PATH:
+                file.SetDeviceId(CreateDeviceId(
+                    path,
+                    poolConfig.GetHashSuffix(),
+                    subDeviceIndex));
+                break;
+        }
 
         ++subDeviceIndex;
 
@@ -103,6 +125,34 @@ TString TDeviceGenerator::CreateDeviceId(
         "%s-%02u%s",
         AgentId.c_str(),
         deviceNumber,
+        suffix.c_str());
+
+    return MD5::Calc(s);
+}
+
+TString TDeviceGenerator::CreateDeviceId(
+    const TString& path,
+    const TString& suffix,
+    ui32 subDeviceIndex) const
+{
+    const auto s = Sprintf(
+        "%s-%s-%03u%s",
+        AgentId.c_str(),
+        path.c_str(),
+        subDeviceIndex + 1,
+        suffix.c_str());
+
+    return MD5::Calc(s);
+}
+
+TString TDeviceGenerator::CreateDeviceId(
+    const TString& path,
+    const TString& suffix) const
+{
+    const auto s = Sprintf(
+        "%s-%s-%s",
+        AgentId.c_str(),
+        path.c_str(),
         suffix.c_str());
 
     return MD5::Calc(s);

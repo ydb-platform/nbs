@@ -22,7 +22,6 @@ NActors::IActorPtr CreateIndexTablet(
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
     TSystemCountersPtr systemCounters,
-    NMetrics::IMetricsRegistryPtr metricsRegistry,
-    bool useNoneCompactionPolicy);
+    NMetrics::IMetricsRegistryPtr metricsRegistry);
 
 }   // namespace NCloud::NFileStore::NStorage

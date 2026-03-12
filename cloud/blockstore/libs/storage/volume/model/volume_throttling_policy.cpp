@@ -13,6 +13,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
+using EOpType = EVolumeThrottlingOpType;
+
 ////////////////////////////////////////////////////////////////////////////////
 // IOPS throttle
 //
@@ -320,8 +322,7 @@ struct TVolumeThrottlingPolicy::TImpl
             ts,
             PostponedRequestWeight(
                 static_cast<EOpType>(requestInfo.OpType),
-                requestInfo.ByteCount)
-        );
+                requestInfo.ByteCount));
     }
 
     ui64 GetMaxIops(EOpType opType) const
@@ -409,8 +410,7 @@ struct TVolumeThrottlingPolicy::TImpl
             ts,
             PostponedRequestWeight(
                 static_cast<EOpType>(requestInfo.OpType),
-                requestInfo.ByteCount)
-        );
+                requestInfo.ByteCount));
 
         return postponed ? d : TMaybe<TDuration>();
     }

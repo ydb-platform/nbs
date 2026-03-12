@@ -1,0 +1,366 @@
+package scrubbing
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math/rand"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
+	scrubbing_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
+	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
+	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+	filesystem_snapshot_schema "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	tasks_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
+	endpoint := fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
+	)
+	database := "/Root"
+	rootPath := "disk_manager"
+	connectionTimeout := "10s"
+
+	return persistence.NewYDBClient(
+		ctx,
+		&persistence_config.PersistenceConfig{
+			Endpoint:          &endpoint,
+			Database:          &database,
+			RootPath:          &rootPath,
+			ConnectionTimeout: &connectionTimeout,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+func newStorage(
+	t *testing.T,
+	ctx context.Context,
+	db *persistence.YDBClient,
+	storageFolder string,
+) traversal_storage.Storage {
+
+	err := filesystem_snapshot_schema.Create(ctx, storageFolder, db, false)
+	require.NoError(t, err)
+
+	storage := traversal_storage.NewStorage(db, storageFolder)
+	require.NotNil(t, storage)
+
+	return storage
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type fixture struct {
+	ctx     context.Context
+	db      *persistence.YDBClient
+	storage traversal_storage.Storage
+	client  nfs.Client
+	factory nfs.Factory
+}
+
+func newFixture(t *testing.T) *fixture {
+	ctx := nfs_testing.NewContext()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+
+	storageFolder := fmt.Sprintf(
+		"scrubbing_tests/%v",
+		t.Name(),
+	)
+	storage := newStorage(t, ctx, db, storageFolder)
+
+	client := nfs_testing.NewClient(t, ctx)
+	factory := nfs_testing.NewFactory(ctx)
+
+	return &fixture{
+		ctx:     ctx,
+		db:      db,
+		storage: storage,
+		client:  client,
+		factory: factory,
+	}
+}
+
+func (f *fixture) close(t *testing.T) {
+	require.NoError(t, f.client.Close())
+	require.NoError(t, f.db.Close(f.ctx))
+}
+
+func (f *fixture) prepareFilesystem(t *testing.T, filesystemID string) {
+	err := f.client.Create(f.ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+}
+
+func (f *fixture) cleanupFilesystem(t *testing.T, filesystemID string) {
+	// We interrupt the scrubbing which creates a session at random time.
+	// The session be created but the session creation can be cancelled before
+	// the session id is received, so it won't be destroyed.
+	// We need to force-delete the filesystem to ignore dangling sessions.
+	err := f.client.Delete(f.ctx, filesystemID, true /*force*/)
+	require.NoError(t, err)
+}
+
+func (f *fixture) fillFilesystem(
+	t *testing.T,
+	filesystemID string,
+	rootDir nfs_testing.Node,
+	parallel bool,
+) nfs_testing.FilesystemModelInterface {
+
+	session, err := f.client.CreateSession(f.ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	if parallel {
+		model := nfs_testing.NewParallelFilesystemModel(
+			t,
+			f.ctx,
+			session,
+			rootDir,
+		)
+		model.CreateAllNodesRecursively()
+		return model
+	}
+	model := nfs_testing.NewFileSystemModel(
+		t,
+		f.ctx,
+		session,
+		rootDir,
+	)
+	model.CreateAllNodesRecursively()
+	return model
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func withNemesis(
+	ctx context.Context,
+	runFunc func(ctx context.Context) error,
+	minDuration time.Duration,
+	maxDuration time.Duration,
+) error {
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	durationRange := maxDuration - minDuration
+
+	for {
+		runCtx, cancel := context.WithCancel(ctx)
+		delay := minDuration + time.Duration(rng.Int63n(int64(durationRange)))
+		logging.Info(
+			runCtx,
+			"task will be cancelled after %v",
+			delay,
+		)
+		timer := time.AfterFunc(delay, cancel)
+
+		err := runFunc(runCtx)
+
+		timer.Stop()
+		cancel()
+
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, context.Canceled) {
+			continue
+		}
+
+		if tasks_errors.Is(err, tasks_errors.NewEmptyRetriableError()) {
+			continue
+		}
+
+		return err
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	layers := []nfs_testing.FilesystemLayerConfig{
+		{
+			DirsCount:  3,
+			FilesCount: 0,
+		},
+		{
+			DirsCount:  5,
+			FilesCount: 1000,
+		},
+		{
+			DirsCount:  1000,
+			FilesCount: 1000,
+		},
+		{
+			DirsCount:  0,
+			FilesCount: 2,
+		},
+	}
+
+	root := nfs_testing.HomogeneousDirectoryTree(layers)
+	fsModel := f.fillFilesystem(t, filesystemID, root, true /* parallel */)
+	defer fsModel.Close()
+
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("GetTaskID").Return("scrub-task")
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
+	actualNodeNames := tasks_common.NewStringSet()
+	var namesMu sync.Mutex
+
+	listNodesMaxBytes := uint32(1000)
+	// scrubFilesystemTask configured with a small ListNodesMaxBytes limit
+	// to test traversal behavior when listing is interrupted mid-way,
+	// without requiring large filesystem fixtures.
+	task := &scrubFilesystemTask{
+		config: &scrubbing_config.FilesystemScrubbingConfig{
+			ListNodesMaxBytes: &listNodesMaxBytes,
+		},
+		factory: f.factory,
+		storage: f.storage,
+		request: &scrubbing_protos.ScrubFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: filesystemID,
+			},
+			FilesystemCheckpointId: "",
+		},
+		state: &scrubbing_protos.ScrubFilesystemTaskState{},
+	}
+
+	task.callback = func(nodes []nfs.Node) {
+		time.Sleep(100 * time.Nanosecond)
+		namesMu.Lock()
+		defer namesMu.Unlock()
+
+		for _, node := range nodes {
+			actualNodeNames.Add(node.Name)
+		}
+	}
+
+	err := withNemesis(
+		f.ctx,
+		func(ctx context.Context) error {
+			// State is updated inside the run method, the task is not recreated
+			return task.Run(ctx, execCtx)
+		},
+		0,
+		500*time.Millisecond,
+	)
+	require.NoError(t, err)
+
+	require.True(t, fsModel.ExpectedNodeNames().Equals(actualNodeNames))
+}
+
+func TestScrubFilesystemTaskCancel(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	layers := []nfs_testing.FilesystemLayerConfig{
+		{
+			DirsCount:  100,
+			FilesCount: 10,
+		},
+		{
+			DirsCount:  5,
+			FilesCount: 10,
+		},
+	}
+
+	root := nfs_testing.HomogeneousDirectoryTree(layers)
+	fsModel := f.fillFilesystem(t, filesystemID, root, true /* parallel */)
+	defer fsModel.Close()
+
+	taskID := "cancel-task"
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("GetTaskID").Return(taskID)
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
+	listNodesMaxBytes := uint32(1000)
+	task := &scrubFilesystemTask{
+		config: &scrubbing_config.FilesystemScrubbingConfig{
+			ListNodesMaxBytes: &listNodesMaxBytes,
+		},
+		factory: f.factory,
+		storage: f.storage,
+		request: &scrubbing_protos.ScrubFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: filesystemID,
+			},
+			FilesystemCheckpointId: "",
+		},
+		state: &scrubbing_protos.ScrubFilesystemTaskState{},
+	}
+
+	var callCount int
+	var mu sync.Mutex
+	runCtx, cancel := context.WithCancel(f.ctx)
+
+	task.callback = func(nodes []nfs.Node) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		callCount++
+		if callCount >= 10 {
+			cancel()
+		}
+	}
+
+	err := task.Run(runCtx, execCtx)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, context.Canceled))
+	snapshotID := task.getSnapshotID(execCtx)
+	entries, err := f.storage.SelectNodesToList(
+		f.ctx,
+		snapshotID,
+		map[uint64]struct{}{}, // nodesToExclude
+		100,                   // limit
+	)
+
+	require.NotEmpty(t, entries)
+	err = task.Cancel(f.ctx, execCtx)
+	require.NoError(t, err)
+
+	entries, err = f.storage.SelectNodesToList(
+		f.ctx,
+		snapshotID,
+		map[uint64]struct{}{}, // nodesToExclude
+		100,                   // limit
+	)
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}

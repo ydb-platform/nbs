@@ -85,7 +85,7 @@ struct TEnvironment
     TFSyncQueue Queue = TFSyncQueue(FileSystemId, Logging);
 
     std::atomic<TFSyncCache::TRequestId> CurrentRequestId = 1ul;
-    std::atomic<std::underlying_type_t<TNodeId>> CurrentNodeId = 1ul;
+    std::atomic<TNodeId::TUnderlyingType> CurrentNodeId = 1ul;
 
     TMutex HandleMutex;
     std::mt19937_64 eng = CreateRandomEngine();
@@ -109,7 +109,7 @@ struct TEnvironment
 
     THandle GetRandomHandle()
     {
-        using H = std::underlying_type_t<THandle>;
+        using H = THandle::TUnderlyingType;
 
         std::uniform_int_distribution<H> dist(1, std::numeric_limits<H>::max());
 

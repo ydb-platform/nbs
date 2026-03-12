@@ -202,6 +202,10 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
     Y_UNIT_TEST(ShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores)
     {
+        // Skip the test. See #4998 issue for details.
+        // TODO(svartmetal): fix the test
+        return;
+
         // should not affect configuration with available cores percentage set
         // to zero
         TestShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores(

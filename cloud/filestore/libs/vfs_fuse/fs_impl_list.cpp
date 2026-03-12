@@ -1,18 +1,15 @@
 #include "fs_impl.h"
 
+#include "fs_directory_content_format.h"
 #include "fs_directory_handle.h"
 
-#include <util/generic/buffer.h>
-#include <util/generic/map.h>
 #include <util/random/random.h>
-#include <util/system/mutex.h>
 
 #include <sys/stat.h>
 
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
-
 
 namespace {
 
@@ -37,77 +34,6 @@ bool CheckDirectoryHandle(
 }
 
 } // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TDirectoryBuilder
-{
-private:
-    TBufferPtr Buffer;
-
-public:
-    explicit TDirectoryBuilder(size_t size) noexcept
-        : Buffer(std::make_shared<TBuffer>(size))
-    {}
-
-#if defined(FUSE_VIRTIO)
-    void Add(
-        fuse_req_t req,
-        const TString& name,
-        const fuse_entry_param& entry,
-        size_t offset)
-    {
-        size_t entrySize = fuse_add_direntry_plus(
-            req,
-            nullptr,
-            0,
-            name.c_str(),
-            &entry,
-            0);
-
-        Buffer->Advance(entrySize);
-
-        fuse_add_direntry_plus(
-            req,
-            Buffer->Pos() - entrySize,
-            entrySize,
-            name.c_str(),
-            &entry,
-            offset + Buffer->Size());
-    }
-#else
-    void Add(
-        fuse_req_t req,
-        const TString& name,
-        const fuse_entry_param& entry,
-        size_t offset)
-    {
-        size_t entrySize = fuse_add_direntry(
-            req,
-            nullptr,
-            0,
-            name.c_str(),
-            &entry.attr,
-            0);
-
-        Buffer->Advance(entrySize);
-
-        fuse_add_direntry(
-            req,
-            Buffer->Pos() - entrySize,
-            entrySize,
-            name.c_str(),
-            &entry.attr,
-            offset + Buffer->Size());
-    }
-#endif
-
-    TBufferPtr Finish()
-    {
-        return std::move(Buffer);
-    }
-};
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -205,12 +131,23 @@ void TFileSystem::ReadDir(
     }
 
     auto reply = [=] (TFileSystem& fs, const TDirectoryContent& content) {
-        fs.ReplyBuf(
-            *callContext,
-            {},
-            req,
-            content.GetData(),
-            content.GetSize());
+        TBuffer c(content.GetData(), content.GetSize());
+
+        auto error = ResetAttrTimeout(c.Data(), c.Size(), [&] (ui64 ino) {
+            return NodeCache.GetNodeVersion(ino) > content.AttrVersion;
+        });
+
+        if (HasError(error)) {
+            STORAGE_ERROR("request #" << fuse_req_unique(req)
+                << " ResetAttrTimeout error: " << FormatError(error).Quote());
+        }
+
+        //
+        // Returning success to the guest but tracking the error (if any) in our
+        // metrics.
+        //
+
+        fs.ReplyBuf(*callContext, error, req, c.Data(), c.Size());
     };
 
     if (!offset) {
@@ -243,6 +180,8 @@ void TFileSystem::ReadDir(
     // for flushed nodes.
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
+
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
 
     Session->ListNodes(callContext, std::move(request))
         .Subscribe(
@@ -333,6 +272,7 @@ void TFileSystem::ReadDir(
                     size,
                     offset,
                     builder.Finish(),
+                    version,
                     response.GetCookie());
 
                 STORAGE_TRACE(

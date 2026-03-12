@@ -18,6 +18,7 @@ SRCS(
     service_actor_actions_describe_blocks.cpp
     service_actor_actions_describe.cpp
     service_actor_actions_disk_registry_change_state.cpp
+    service_actor_actions_disk_registry_ensure_state_integrity.cpp
     service_actor_actions_drain_node.cpp
     service_actor_actions_finish_fill_disk.cpp
     service_actor_actions_flush_profile_log.cpp
@@ -30,6 +31,7 @@ SRCS(
     service_actor_actions_get_partition_info.cpp
     service_actor_actions_get_storage_config.cpp
     service_actor_actions_kill_tablet.cpp
+    service_actor_actions_get_link_status.cpp
     service_actor_actions_local_nvme.cpp
     service_actor_actions_mark_replacement_device.cpp
     service_actor_actions_migration_disk_registry_device.cpp
@@ -106,6 +108,7 @@ PEERDIR(
     cloud/blockstore/libs/discovery
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/kikimr
+    cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos

@@ -2,6 +2,7 @@ RECURSE(
     disk-registry-state
     endpoint
     fake-root-kms
+    infra-device-provider
     local-kikimr
     local-null
     notify-mock

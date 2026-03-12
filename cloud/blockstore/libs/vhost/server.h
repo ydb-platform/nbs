@@ -28,7 +28,6 @@ struct TStorageOptions
     ui64 BlocksCount = 0;
     ui32 VhostQueuesCount = 0;
     bool UnalignedRequestsDisabled = false;
-    bool CheckBufferModificationDuringWriting = false;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     bool DiscardEnabled = false;
     ui32 MaxZeroBlocksSubRequestSize = 0;

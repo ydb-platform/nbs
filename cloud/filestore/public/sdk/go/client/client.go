@@ -74,6 +74,7 @@ type Node struct {
 	Mode       uint32
 	UID        uint64
 	GID        uint64
+	Links      uint32
 	Type       NodeType
 	LinkTarget string
 }
@@ -298,6 +299,8 @@ func (client *Client) ListNodes(
 	session Session,
 	nodeID uint64,
 	cookie string,
+	maxBytes uint32,
+	unsafe bool,
 ) ([]Node, string, error) {
 
 	req := &protos.TListNodesRequest{
@@ -308,8 +311,9 @@ func (client *Client) ListNodes(
 			SessionSeqNo: session.SessionSeqNo,
 			SessionId:    []byte(session.SessionID),
 		},
+		MaxBytes: maxBytes,
+		Unsafe:   unsafe,
 	}
-
 	resp, err := client.Impl.ListNodes(ctx, req)
 	if err != nil {
 		return nil, "", err
@@ -337,6 +341,7 @@ func (client *Client) ListNodes(
 			Mode:     nodes[idx].GetMode(),
 			UID:      uint64(nodes[idx].GetUid()),
 			GID:      uint64(nodes[idx].GetGid()),
+			Links:    nodes[idx].GetLinks(),
 			Type:     NodeType(nodes[idx].GetType()),
 		}
 	}
@@ -424,6 +429,45 @@ func (client *Client) ReadLink(
 	}
 
 	return resp.GetSymLink(), nil
+}
+
+func (client *Client) GetNodeAttr(
+	ctx context.Context,
+	session Session,
+	parentNodeID uint64,
+	name string,
+) (Node, error) {
+
+	req := &protos.TGetNodeAttrRequest{
+		FileSystemId: session.FileSystemID,
+		NodeId:       parentNodeID,
+		Name:         []byte(name),
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+
+	resp, err := client.Impl.GetNodeAttr(ctx, req)
+	if err != nil {
+		return Node{}, err
+	}
+
+	attr := resp.GetNode()
+	return Node{
+		ParentID: parentNodeID,
+		NodeID:   attr.GetId(),
+		Name:     name,
+		Atime:    attr.GetATime(),
+		Mtime:    attr.GetMTime(),
+		Ctime:    attr.GetCTime(),
+		Size:     attr.GetSize(),
+		Mode:     attr.GetMode(),
+		UID:      uint64(attr.GetUid()),
+		GID:      uint64(attr.GetGid()),
+		Links:    attr.GetLinks(),
+		Type:     NodeType(attr.GetType()),
+	}, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -527,15 +571,15 @@ func (client *EndpointClient) Ping(
 func NewClient(
 	grpcOpts *GrpcClientOpts,
 	durableOpts *DurableClientOpts,
-	log Log,
+	logger Logger,
 ) (*Client, error) {
 
-	grpcClient, err := NewGrpcClient(grpcOpts, log)
+	grpcClient, err := NewGrpcClient(grpcOpts, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	durableClient := NewDurableClient(grpcClient, durableOpts, log)
+	durableClient := NewDurableClient(grpcClient, durableOpts, logger)
 
 	return &Client{
 		durableClient,
@@ -545,15 +589,15 @@ func NewClient(
 func NewEndpointClient(
 	grpcOpts *GrpcClientOpts,
 	durableOpts *DurableClientOpts,
-	log Log,
+	logger Logger,
 ) (*EndpointClient, error) {
 
-	grpcClient, err := NewGrpcEndpointClient(grpcOpts, log)
+	grpcClient, err := NewGrpcEndpointClient(grpcOpts, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	durableClient := NewDurableEndpointClient(grpcClient, durableOpts, log)
+	durableClient := NewDurableEndpointClient(grpcClient, durableOpts, logger)
 
 	return &EndpointClient{
 		durableClient,

@@ -5,6 +5,7 @@
 #include <cloud/filestore/config/storage.pb.h>
 #include <cloud/filestore/libs/storage/core/tablet_schema.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/protos/tablet.pb.h>
 
@@ -562,6 +563,39 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    struct ResponseLog: TTableSchema<28>
+    {
+        using TEntryType = NProtoPrivate::TResponseLogEntry;
+        struct ClientTabletId   : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct RequestId        : Column<2, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct Proto            : ProtoColumn<3, TEntryType> {};
+
+        using TKey = TableKey<ClientTabletId, RequestId>;
+
+        using TColumns = TableColumns<
+            ClientTabletId,
+            RequestId,
+            Proto
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
+    struct UnconfirmedData: TTableSchema<29>
+    {
+        struct CommitId    : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct RequestData : ProtoColumn<2, NProto::TUnconfirmedData> {};
+
+        using TKey = TableKey<CommitId>;
+
+        using TColumns = TableColumns<
+            CommitId,
+            RequestData
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -589,7 +623,9 @@ struct TIndexTabletSchema
         SessionHistory,
         OpLog,
         LargeDeletionMarkers,
-        OrphanNodes
+        OrphanNodes,
+        ResponseLog,
+        UnconfirmedData
     >;
 
     using TSettings = SchemaSettings<

@@ -49,6 +49,7 @@ private:
     TString StoragePoolName;
     TVector<TString> AgentIds;
     bool JsonOutput = false;
+    TString TagsStr;
 
 public:
     TCreateVolumeCommand(IBlockStorePtr client)
@@ -120,7 +121,13 @@ public:
                 "Allowed only for nonreplicated disks")
             .RequiredArgument("STR")
             .AppendTo(&AgentIds);
-        Opts.AddLongOption("json").StoreTrue(&JsonOutput);
+
+        Opts.AddLongOption("json", "Format output as json string")
+            .StoreTrue(&JsonOutput);
+
+        Opts.AddLongOption("tags", "Tags string 'key=value,key2=value2'")
+            .RequiredArgument("STR")
+            .StoreResult(&TagsStr);
     }
 
 protected:
@@ -170,6 +177,8 @@ protected:
                     EncryptionMode,
                     EncryptionKeyPath,
                     EncryptionKeyHash));
+
+            request->SetTagsStr(TagsStr);
         }
 
         STORAGE_DEBUG("Sending CreateVolume request");

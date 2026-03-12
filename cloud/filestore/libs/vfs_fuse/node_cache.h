@@ -8,7 +8,7 @@
 
 #include <library/cpp/cache/cache.h>
 
-#include <util/generic/hash_set.h>
+#include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/string.h>
 
@@ -16,18 +16,37 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNode
-    : private TNonCopyable
+class TNode
 {
+private:
     NProto::TNodeAttr Attrs;
     ui64 RefCount = 1;
+    ui64 LastUpdateVersion = 1;
 
-    TNode(const NProto::TNodeAttr& attrs) noexcept
-        : Attrs(attrs)
+private:
+    explicit TNode(NProto::TNodeAttr attrs) noexcept
+        : Attrs(std::move(attrs))
     {
-        Y_ABORT_UNLESS(attrs.GetId() != InvalidNodeId);
+        Y_ABORT_UNLESS(Attrs.GetId() != InvalidNodeId);
     }
 
+public:
+    const auto& GetAttrs() const
+    {
+        return Attrs;
+    }
+
+    bool IsValid() const
+    {
+        return Attrs.GetType() != NProto::E_INVALID_NODE;
+    }
+
+    ui64 GetVersion() const
+    {
+        return LastUpdateVersion;
+    }
+
+private:
     ui64 Ref()
     {
         return ++RefCount;
@@ -42,81 +61,100 @@ struct TNode
         return RefCount;
     }
 
-    void UpdateAttrs(const NProto::TNodeAttr& attrs)
+    void UpdateAttrs(const NProto::TNodeAttr& attrs, ui64 version)
     {
         Y_ABORT_UNLESS(Attrs.GetId() == attrs.GetId());
         Attrs.CopyFrom(attrs);
+        LastUpdateVersion = version;
     }
+
+    friend class TNodeCacheShard;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNodeOps
+/*
+ * Currently this cache is not used for lookup - we rely on the inode cache in
+ * the guest for this. This cache is used to be able to detect races between
+ * the operations that fetch node attrs from the backend and the operations that
+ * can modify those attrs.
+ *
+ * When an attr-reading operation starts, it should get current fs "version".
+ * Upon each attr-modifying operation completion we bump this global version and
+ * invalidate the affected node with this version. If an attr-reading operation
+ * finds out upon its completion that the node version in the node (or nodes
+ * in case of ListNodes) is already higher than at the start of the operation,
+ * it should tell the guest not to cache these attributes because they might
+ * already be stale.
+ *
+ * In the future we might actually start using this cache for attribute lookups.
+ */
+class TNodeCacheShard
 {
-    struct THash
-    {
-        template <typename T>
-        size_t operator ()(const T& value) const
-        {
-            return IntHash(GetNodeId(value));
-        }
-    };
+private:
+    const TString FileSystemId;
+    THashMap<ui64, TNode> Id2Node;
+    TAdaptiveLock Lock;
 
-    struct TEqual
-    {
-        template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
-        {
-            return GetNodeId(l) == GetNodeId(r);
-        }
-    };
+public:
+    explicit TNodeCacheShard(TString fileSystemId)
+        : FileSystemId(std::move(fileSystemId))
+    {}
 
-    static auto GetNodeId(const TNode& node)
-    {
-        return node.Attrs.GetId();
-    }
-
-    template <typename T>
-    static auto GetNodeId(const T& value)
-    {
-        return value;
-    }
+public:
+    bool UpdateNode(const NProto::TNodeAttr& attrs, ui64 version);
+    void InvalidateNode(ui64 ino, ui64 version);
+    void ForgetNode(ui64 ino, size_t count);
+    ui64 GetNodeVersion(ui64 ino) const;
 };
-
-using TNodeMap = THashSet<TNode, TNodeOps::THash, TNodeOps::TEqual>;
-
-////////////////////////////////////////////////////////////////////////////////
 
 class TNodeCache
 {
 private:
-    TNodeMap Nodes;
-
-    // TODO: keep track of session re-creation
-    ui64 LastGen = 0;
+    TVector<TNodeCacheShard> Shards;
 
 public:
-    ui64 Generation() const
+    explicit TNodeCache(const TString& fileSystemId, ui32 shardCount = 1)
     {
-        return LastGen;
+        for (ui32 i = 0; i < shardCount; ++i) {
+            Shards.emplace_back(fileSystemId);
+        }
     }
 
-    TNode* AddNode(const NProto::TNodeAttr& node);
-    TNode* TryAddNode(const NProto::TNodeAttr& node);
-    TNode* FindNode(ui64 ino);
-    void ForgetNode(ui64 ino, size_t count);
+public:
+    bool UpdateNode(const NProto::TNodeAttr& attrs, ui64 version)
+    {
+        return Shards[attrs.GetId() % Shards.size()].UpdateNode(attrs, version);
+    }
+
+    void InvalidateNode(ui64 ino, ui64 version)
+    {
+        Shards[ino % Shards.size()].InvalidateNode(ino, version);
+    }
+
+    void ForgetNode(ui64 ino, size_t count)
+    {
+        Shards[ino % Shards.size()].ForgetNode(ino, count);
+    }
+
+    ui64 GetNodeVersion(ui64 ino) const
+    {
+        return Shards[ino % Shards.size()].GetNodeVersion(ino);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TXAttr {
+struct TXAttr
+{
     TString Name;
     TMaybe<TString> Value;
     ui64 Version;
     TInstant UpdateTime;
 };
 
-class TXAttrCache {
+class TXAttrCache
+{
 private:
     struct TWeighter {
         static TInstant Weight(const TXAttr& value)

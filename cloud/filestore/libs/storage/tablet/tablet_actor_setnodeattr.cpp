@@ -201,7 +201,7 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeAttr& args)
 {
-    InvalidateNodeCaches(args.NodeId);
+    InvalidateReadAheadCache(args.NodeId);
 
     RemoveInFlightRequest(*args.RequestInfo);
 

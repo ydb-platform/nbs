@@ -15,20 +15,6 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-inline bool IsUnrecoverable(const NKikimrProto::EReplyStatus status)
-{
-    switch (status) {
-        case NKikimrProto::NODATA:
-        case NKikimrProto::ERROR:
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define BLOCKSTORE_IMPLEMENT_REQUEST(name, ns)                                 \
     void Handle##name(                                                         \
         const ns::TEv##name##Request::TPtr& ev,                                \

@@ -13,6 +13,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -924,9 +925,9 @@ protected:
             request);
 
         return future.Apply([request = std::move(request)] (
-            TFuture<NProto::TReadBlocksResponse> f)
+            const TFuture<NProto::TReadBlocksResponse>& f)
         {
-            NProto::TReadBlocksLocalResponse response(f.ExtractValue());
+            NProto::TReadBlocksLocalResponse response(UnsafeExtractValue(f));
             if (HasError(response)) {
                 return response;
             }

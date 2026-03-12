@@ -277,7 +277,7 @@ void TDiskRegistryActor::KillActors(const TActorContext& ctx)
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
 
-    for (const auto& [_, actorId]: AgentsWithDetachRequestsInProgress) {
+    for (const auto& [_, actorId]: AgentsWithAttachDetachRequestsInProgress) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actorId);
     }
 }
@@ -299,6 +299,21 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
     ctx.Schedule(
         Config->GetAgentListExpiredParamsCleanupInterval(),
         new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
+}
+
+void TDiskRegistryActor::ScheduleEnsureDiskRegistryStateIntegrity(
+    const NActors::TActorContext& ctx)
+{
+    if (!Config->GetEnsureDiskRegistryStateIntegrityInterval()) {
+        return;
+    }
+
+    ctx.Schedule(
+        Config->GetEnsureDiskRegistryStateIntegrityInterval(),
+        std::make_unique<IEventHandle>(
+            SelfId(),
+            SelfId(),
+            new TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -729,8 +744,17 @@ STFUNC(TDiskRegistryActor::StateWork)
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanup);
 
         HFunc(
-            TEvDiskRegistryPrivate::TEvDetachPathsOperationCompleted,
-            HandleDetachPathsOperationCompleted);
+            TEvDiskRegistryPrivate::TEvAttachDetachPathsOperationCompleted,
+            HandleAttachDetachPathsOperationCompleted);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -780,6 +804,15 @@ STFUNC(TDiskRegistryActor::StateRestore)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -851,6 +884,15 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityRequest,
             HandleGetClusterCapacity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest,
+            HandleEnsureDiskRegistryStateIntegrity);
+
+        HFunc(
+            TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
+            HandleEnsureDiskRegistryStateIntegrityResponse
+        )
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

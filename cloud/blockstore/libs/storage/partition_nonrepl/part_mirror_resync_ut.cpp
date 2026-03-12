@@ -535,7 +535,7 @@ struct TTestEnv
 
     void TestNoEvent(ui32 eventType)
     {
-        Runtime.DispatchEvents({}, TInstant::Zero());
+        Runtime.DispatchEvents({}, TInstant::MilliSeconds(10));
         auto evList = Runtime.CaptureEvents();
         for (auto& ev: evList) {
             UNIT_ASSERT(ev->GetTypeRewrite() != eventType);
@@ -2459,7 +2459,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
                 return false;
             });
 
+        // Wait for resync to do one range
         env.ResyncController.SetStopAfterResyncedRangeCount(1);
+        env.ResyncController.WaitForResyncedRangeCount(1);
+
         TPartitionClient client(runtime, env.ActorId);
         // Send read request - this should trigger fast path
         client.SendReadBlocksRequest(readRange);

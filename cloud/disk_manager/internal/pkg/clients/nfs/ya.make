@@ -10,6 +10,7 @@ SRCS(
     endpoint_picker.go
     interface.go
     factory.go
+    session.go
 )
 
 END()

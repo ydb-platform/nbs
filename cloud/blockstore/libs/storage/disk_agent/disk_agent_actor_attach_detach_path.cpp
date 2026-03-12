@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
+
 #include <util/string/join.h>
 
 #include <algorithm>
@@ -57,6 +59,39 @@ TString DescribeResponse(const TEvDiskAgentPrivate::TEvPathsDetached& msg)
         msg.Error);
 }
 
+// Separates valid paths into attached and detached categories, filtering
+// out unknown paths.
+// Returns: [attached paths, detached paths]
+template <typename TContainer>
+auto SplitPaths(TContainer paths, TDiskAgentState& state)
+    -> std::pair<TVector<TString>, TVector<TString>>
+{
+    THashSet<TString> allKnownPaths;
+    for (const auto& device: state.GetDevices()) {
+        allKnownPaths.insert(device.GetDeviceName());
+    }
+
+    // Filter from unknown paths.
+    auto unknownPaths = std::ranges::partition(
+        paths.begin(),
+        paths.end(),
+        [&](const auto& p) { return allKnownPaths.contains(p); });
+    paths.erase(unknownPaths.begin(), unknownPaths.end());
+
+    auto [it, end] = std::ranges::partition(
+        paths,
+        [&](const auto& p) { return state.IsPathAttached(p); });
+
+    TVector<TString> detachedPaths(
+        std::make_move_iterator(it),
+        std::make_move_iterator(end));
+    TVector<TString> attachedPaths(
+        std::make_move_iterator(paths.begin()),
+        std::make_move_iterator(it));
+
+    return {std::move(attachedPaths), std::move(detachedPaths)};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,7 +114,7 @@ NProto::TError TDiskAgentActor::UpdateControlPlaneRequestNumber(
         return MakeError(E_REJECTED, "another request is in progress");
     }
 
-    if (controlPlaneRequestNumber <= ControlPlaneRequestNumber) {
+    if (controlPlaneRequestNumber < ControlPlaneRequestNumber) {
         return MakeError(
             E_TRY_AGAIN,
             TStringBuilder() << "outdated control plane request: "
@@ -90,36 +125,6 @@ NProto::TError TDiskAgentActor::UpdateControlPlaneRequestNumber(
     ControlPlaneRequestNumber = controlPlaneRequestNumber;
 
     return {};
-}
-
-auto TDiskAgentActor::SplitPaths(
-    google::protobuf::RepeatedPtrField<TString> paths) const
-    -> std::pair<TVector<TString>, TVector<TString>>
-{
-    THashSet<TString> allKnownPaths;
-    for (const auto& device: State->GetDevices()) {
-        allKnownPaths.insert(device.GetDeviceName());
-    }
-
-    // Filter from unknown paths.
-    auto unknownPaths = std::ranges::partition(
-        paths.begin(),
-        paths.end(),
-        [&](const auto& p) { return allKnownPaths.contains(p); });
-    paths.erase(unknownPaths.begin(), unknownPaths.end());
-
-    auto [it, end] = std::ranges::partition(
-        paths,
-        [&](const auto& p) { return State->IsPathAttached(p); });
-
-    TVector<TString> detachedPaths(
-        std::make_move_iterator(it),
-        std::make_move_iterator(end));
-    TVector<TString> attachedPaths(
-        std::make_move_iterator(paths.begin()),
-        std::make_move_iterator(it));
-
-    return {std::move(attachedPaths), std::move(detachedPaths)};
 }
 
 void TDiskAgentActor::HandleDetachPaths(
@@ -157,7 +162,7 @@ void TDiskAgentActor::HandleDetachPaths(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto [attachedPaths, detachedPaths] =
-        SplitPaths(*record.MutablePathsToDetach());
+        SplitPaths(std::move(*record.MutablePathsToDetach()), *State);
 
     auto future = State->DetachPaths(attachedPaths);
 
@@ -212,7 +217,7 @@ void TDiskAgentActor::HandleAttachPaths(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    const auto& record = msg->Record;
+    auto& record = msg->Record;
 
     LOG_INFO_S(
         ctx,
@@ -239,8 +244,8 @@ void TDiskAgentActor::HandleAttachPaths(
         return;
     }
 
-    auto [attachedPaths, detachedPaths] = SplitPaths(
-        {record.GetPathsToAttach().begin(), record.GetPathsToAttach().end()});
+    auto [attachedPaths, detachedPaths] =
+        SplitPaths(std::move(*record.MutablePathsToAttach()), *State);
 
     PendingControlPlaneRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
@@ -252,11 +257,11 @@ void TDiskAgentActor::HandleAttachPaths(
          selfId = ctx.SelfID,
          pathsToAttach = std::move(detachedPaths),
          alreadyAttachedPaths = std::move(attachedPaths),
-         controlPlaneRequestNumber](
-            TFuture<TResultOrError<TDiskAgentState::TPreparePathsResult>>
-                future) mutable
+         controlPlaneRequestNumber]   //
+        (const TFuture<TResultOrError<TDiskAgentState::TPreparePathsResult>>&
+             future) mutable
         {
-            auto [result, error] = future.ExtractValue();
+            auto [result, error] = UnsafeExtractValue(future);
 
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvPathsPrepared>(

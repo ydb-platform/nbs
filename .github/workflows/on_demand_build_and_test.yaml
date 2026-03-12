@@ -144,27 +144,34 @@ jobs:
       link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
     steps:
       - name: checkout PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
           sparse-checkout: '.github'
+          clean: true
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: rebase PR
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
+          [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
           sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: Start runner
         id: start-runner
         if: always()
@@ -182,7 +189,7 @@ jobs:
           vm_platform_id: ${{ vars.POOLED_HEAVY_PLATFORM_ID }}
           vm_preset: ${{ inputs.vm_preset != '' && inputs.vm_preset || vars.POOLED_HEAVY_VM_PRESET }}
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
-          vm_disk_size: 1023
+          vm_disk_size: ${{ vars.POOLED_HEAVY_DISK_SIZE_GB || '1023' }}
           vm_subnet: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
           vm_image: ${{ vars.POOLED_HEAVY_IMAGE_ID_2204 }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
@@ -256,27 +263,34 @@ jobs:
     if: always() && needs.provide-runner.outputs.instance-id != ''
     steps:
       - name: checkout PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
           sparse-checkout: '.github'
+          clean: true
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: rebase PR
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
+          [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
           sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: Decide whether to remove VM
         id: decider
         uses: actions/github-script@v7

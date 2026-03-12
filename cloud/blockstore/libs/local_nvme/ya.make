@@ -2,13 +2,16 @@ LIBRARY()
 
 SRCS(
     config.cpp
-    service.cpp
     device_provider.cpp
+    generic_inventory_service_client.cpp
+    service.cpp
+    service_proxy.cpp
 )
 
 PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/nvme
     cloud/blockstore/libs/storage/protos
     cloud/storage/core/libs/coroutine
@@ -32,4 +35,9 @@ END()
 
 RECURSE_FOR_TESTS(
     ut
+    ut_infra
+)
+
+RECURSE(
+    protos
 )

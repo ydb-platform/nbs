@@ -1,21 +1,26 @@
 #include "hive_proxy.h"
+
 #include "hive_proxy_events_private.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h>
+#include <cloud/storage/core/libs/kikimr/components.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/base/tablet_resolver.h>
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/testlib/basics/helpers.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/folder/path.h>
+#include <util/system/fstat.h>
 
 namespace NCloud::NStorage {
 
@@ -510,6 +515,7 @@ struct TTestEnv
             Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
         }
         Runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
+        Runtime.SetLogPriority(0, NLog::PRI_DEBUG);
     }
 
     void SetupHiveProxy(
@@ -710,7 +716,7 @@ struct TTestEnv
                 sender);
         UNIT_ASSERT(ev);
         const auto* msg = ev->Get();
-        UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), errorCode);
+        UNIT_ASSERT_VALUES_EQUAL(errorCode, msg->GetStatus());
         return *msg;
     }
 
@@ -1146,6 +1152,113 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         env.SendBackupTabletBootInfos(sender, S_FALSE);
     }
 
+    Y_UNIT_TEST(BackupTabletBootInfosReturnCode)
+    {
+        TString backupFilePath =
+            "BackupTabletBootInfosReturnCode.tablet_boot_info_backup.txt";
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
+
+        auto sender = runtime.AllocateEdgeActor();
+        // No actual changes in backup has been made.
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+        UNIT_ASSERT(!TFsPath(backupFilePath).Exists());
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        auto result = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT(result.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
+        UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
+
+        // Backup has been made.
+        env.SendBackupTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT(TFsPath(backupFilePath).Exists());
+        TFileStat backupStat(backupFilePath);
+        // No changes again.
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+        TFileStat backupStat2(backupFilePath);
+        UNIT_ASSERT_VALUES_EQUAL(backupStat.MTime, backupStat2.MTime);
+        UNIT_ASSERT_VALUES_EQUAL(backupStat.MTimeNSec, backupStat2.MTimeNSec);
+    }
+
+    Y_UNIT_TEST(InitialBackup)
+    {
+        TString backupFilePath = "InitialBackup.tablet_boot_info_backup.txt";
+        const bool fallbackMode = false;
+
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, fallbackMode);
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+            auto sender = runtime.AllocateEdgeActor();
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            UNIT_ASSERT(result.StorageInfo);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
+            UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
+
+            // Backup has been made.
+            env.SendBackupTabletBootInfos(sender, S_OK);
+
+            auto listResult = env.SendListTabletBootInfoBackups(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, listResult.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet2,
+                listResult.TabletBootInfos[0].StorageInfoProto.GetTabletID());
+        }
+
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, fallbackMode);
+
+            auto sender = runtime.AllocateEdgeActor();
+            // Backup should contain the tablet from previous external boot.
+            auto listResult = env.SendListTabletBootInfoBackups(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, listResult.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet2,
+                listResult.TabletBootInfos[0].StorageInfoProto.GetTabletID());
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet3,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet3] = expected;
+
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet3, S_OK);
+            UNIT_ASSERT(result.StorageInfo);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet3, result.StorageInfo->TabletID);
+            UNIT_ASSERT_VALUES_EQUAL(1u, result.SuggestedGeneration);
+
+            // Backup should contain the tablet from "initial" backup.
+            auto listResult2 = env.SendListTabletBootInfoBackups(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, listResult2.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet2,
+                listResult2.TabletBootInfos[0].StorageInfoProto.GetTabletID());
+
+            // Backup has been made.
+            env.SendBackupTabletBootInfos(sender, S_OK);
+
+            // Backup should contain the recently booted tablet.
+            auto listResult3 = env.SendListTabletBootInfoBackups(sender, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, listResult3.TabletBootInfos.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                FakeTablet3,
+                listResult3.TabletBootInfos[0].StorageInfoProto.GetTabletID());
+        }
+    }
+
     Y_UNIT_TEST(BootExternalInFallbackMode)
     {
         TString backupFilePath =
@@ -1174,7 +1287,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             runtime.AdvanceCurrentTime(TDuration::Seconds(15));
             runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(15));
 
-            env.SendBackupTabletBootInfos(sender, S_OK);
+            env.SendBackupTabletBootInfos(sender, S_FALSE);
         }
 
         fallbackMode = true;
@@ -1673,7 +1786,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 }
             }
             storageInfo = result.StorageInfo;
-            env.SendBackupTabletBootInfos(sender, S_OK);
+            env.SendBackupTabletBootInfos(sender, S_FALSE);
         }
 
         {
@@ -1739,7 +1852,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 }
             }
             storageInfo = result.StorageInfo;
-            env.SendBackupTabletBootInfos(sender, S_OK);
+            env.SendBackupTabletBootInfos(sender, S_FALSE);
         }
 
         // simulate backup corruption

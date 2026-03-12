@@ -84,11 +84,10 @@ func TestCreateCheckpoint(t *testing.T) {
 	nodeID := uint64(0)
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(t, err)
-	defer client.DestroySession(ctx, session)
+	defer session.Close(ctx)
 
-	err = client.CreateCheckpoint(
+	err = session.CreateCheckpoint(
 		ctx,
-		session,
 		filesystemID,
 		checkpointID,
 		nodeID,
@@ -117,7 +116,7 @@ func TestListNodesFileSystem(t *testing.T) {
 
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(t, err)
-	defer client.DestroySession(ctx, session)
+	defer session.Close(ctx)
 
 	rootDir := nfs_testing.Root(
 		nfs_testing.Dir("etc",
@@ -136,7 +135,7 @@ func TestListNodesFileSystem(t *testing.T) {
 			nfs_testing.Dir("lib", nfs_testing.File("libc.so")),
 		),
 	)
-	model := nfs_testing.NewFileSystemModel(t, ctx, client, session, rootDir)
+	model := nfs_testing.NewFileSystemModel(t, ctx, session, rootDir)
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively()
@@ -174,6 +173,68 @@ func TestListNodesFileSystem(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func TestListNodesMaxBytes(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	session, err := client.CreateSession(
+		ctx,
+		filesystemID,
+		"",    // checkpointID
+		false, // readOnly
+	)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	rootDir := nfs_testing.Root(
+		nfs_testing.File("1"),
+		nfs_testing.File("2"),
+		nfs_testing.File("3"),
+	)
+	model := nfs_testing.NewFileSystemModel(t, ctx, session, rootDir)
+	model.CreateAllNodesRecursively()
+
+	expectedNames := []string{"1", "2", "3"}
+	// maxBytes=0 means no limit, all nodes should be returned.
+	nodes, cookie, err := session.ListNodes(
+		ctx,
+		nfs.RootNodeID,
+		"",    // cookie
+		0,     // maxBytes
+		false, // unsafe
+	)
+	require.NoError(t, err)
+	require.Equal(t, expectedNames, nfs_testing.NodeNames(nodes))
+	require.Empty(t, cookie)
+
+	// maxBytes=1 limits response size, requiring pagination.
+	cookie = ""
+	for _, expectedName := range expectedNames {
+		nodes, cookie, err = session.ListNodes(
+			ctx,
+			nfs.RootNodeID,
+			cookie,
+			1,     // maxBytes
+			false, // unsafe
+		)
+		require.NoError(t, err)
+		require.Equal(t, []string{expectedName}, nfs_testing.NodeNames(nodes))
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestListNodesFromCheckpoint(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 	client := nfs_testing.NewClient(t, ctx)
@@ -191,17 +252,16 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(t, err)
-	defer client.DestroySession(ctx, session)
+	defer session.Close(ctx)
 
 	rootDir := nfs_testing.Root(nfs_testing.Dir("first"), nfs_testing.File("second"))
-	model := nfs_testing.NewFileSystemModel(t, ctx, client, session, rootDir)
+	model := nfs_testing.NewFileSystemModel(t, ctx, session, rootDir)
 	model.CreateAllNodesRecursively()
 
 	checkpointID := "checkpoint_1"
 	nodeID := uint64(0)
-	err = client.CreateCheckpoint(
+	err = session.CreateCheckpoint(
 		ctx,
-		session,
 		filesystemID,
 		checkpointID,
 		nodeID,
@@ -229,7 +289,7 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	defer client.DestroySession(ctx, checkpointSession)
+	defer checkpointSession.Close(ctx)
 	model.SetSession(checkpointSession)
 
 	// Verify that only files created before the checkpoint are visible
@@ -238,4 +298,45 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 		"first",
 		"second",
 	}, nfs_testing.NodeNames(nodes))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestGetNodeAttr(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	rootDir := nfs_testing.Root(
+		nfs_testing.File("testfile"),
+		nfs_testing.Dir("testdir"),
+	)
+	model := nfs_testing.NewFileSystemModel(t, ctx, session, rootDir)
+	model.CreateAllNodesRecursively()
+
+	fileNode, err := session.GetNodeAttr(ctx, nfs.RootNodeID, "testfile")
+	require.NoError(t, err)
+	require.Equal(t, "testfile", fileNode.Name)
+	require.False(t, fileNode.Type.IsDirectory())
+	require.NotZero(t, fileNode.NodeID)
+
+	dirNode, err := session.GetNodeAttr(ctx, nfs.RootNodeID, "testdir")
+	require.NoError(t, err)
+	require.Equal(t, "testdir", dirNode.Name)
+	require.True(t, dirNode.Type.IsDirectory())
+	require.NotZero(t, dirNode.NodeID)
 }

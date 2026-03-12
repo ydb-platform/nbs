@@ -9,6 +9,9 @@
 ## Reading and writing
 ![io](../excalidraw/sharded_filesystem_io.svg)
 
+## Cross-shard rename
+![doc](cross_shard_rename.md)
+
 ## Metrics aggregation
 `GetStorageStats` requests are sent to all shards from the main tablet, the results are cached and aggregated.
 The following aggregate metrics are exported:

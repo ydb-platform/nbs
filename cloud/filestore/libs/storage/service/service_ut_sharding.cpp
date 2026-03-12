@@ -195,9 +195,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     config.SetShardAllocationUnit(fsConfig.ShardBlockCount * 4_KB);           \
                                                                               \
     TTestEnv env({}, config);                                                 \
-    env.CreateSubDomain("nfs");                                               \
                                                                               \
-    ui32 nodeIdx = env.CreateNode("nfs");                                     \
+    ui32 nodeIdx = env.AddDynamicNode();                                     \
                                                                               \
     TServiceClient service(env.GetRuntime(), nodeIdx);                        \
     auto fsInfo = CreateFileSystem(service, fsConfig);                        \
@@ -443,7 +442,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
@@ -464,7 +463,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         // need to pass deadline instead of timeout here since otherwise the
@@ -644,7 +643,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
 
-        env.GetRuntime().Send(createNodeInShard.Release());
+        env.GetRuntime().Send(createNodeInShard.Release(), nodeIdx);
 
         auto response = service.RecvCreateNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1287,9 +1286,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetMultiTabletForwardingEnabled(true);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
 
@@ -2758,9 +2756,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TStorageConfig storageConfig(config);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -2816,9 +2813,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TStorageConfig storageConfig(config);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", fsSize);
@@ -2909,7 +2905,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         TDispatchOptions options;
@@ -2972,7 +2968,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         options.FinalEvents = {
@@ -3017,7 +3013,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         options.FinalEvents = {
@@ -3042,6 +3038,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 (data1.size() + 2 * data2.size()) / 4_KB,
                 stats.GetMixedBlocksCount());
         }
+
+        // smoke test for GetStorageStats.TimeSumUs metric - it should not show
+        // unnaturally large values
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+        auto tabletCounters = env.GetRuntime().GetAppData().Counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "storage")
+            ->FindSubgroup("type", "hdd");
+        UNIT_ASSERT_LT(
+            tabletCounters->GetCounter("GetStorageStats.TimeSumUs")
+                ->GetAtomic(),
+            10'000'000);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldRetryUnlinkingInShard)
@@ -3102,7 +3111,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT(shardUnlinkResponse);
         intercept = false;
-        env.GetRuntime().Send(shardUnlinkResponse.Release());
+        env.GetRuntime().Send(shardUnlinkResponse.Release(), nodeIdx);
 
         auto unlinkResponse = service.RecvUnlinkNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -3388,7 +3397,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT(shardCreateResponse);
         intercept = false;
-        env.GetRuntime().Send(shardCreateResponse.Release());
+        env.GetRuntime().Send(shardCreateResponse.Release(), nodeIdx);
 
         auto createResponse = service.RecvCreateNodeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -3591,7 +3600,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT(shardCreateResponse);
         intercept = false;
-        env.GetRuntime().Send(shardCreateResponse.Release());
+        env.GetRuntime().Send(shardCreateResponse.Release(), nodeIdx);
 
         auto createHandleResponse = service.RecvCreateHandleResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -3820,9 +3829,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
 
@@ -3846,9 +3854,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
 
@@ -3864,9 +3871,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const auto blockCount = 2_GB / 4_KB;
@@ -4027,9 +4033,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId1 = "test1";
         const TString fsId2 = "test2";
@@ -4078,9 +4083,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
 
@@ -4218,9 +4222,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
 
@@ -4271,9 +4274,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const auto newBlockCount = 4_GB / 4_KB;
@@ -4476,9 +4478,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldValidateShardList)
     {
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const auto shard1Id = fsId + "-f1";
@@ -4625,9 +4626,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldCreateSessionDirectlyInShard)
     {
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const auto shard1Id = fsId + "-f1";
@@ -4666,9 +4666,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(1_GB);
         config.SetAutomaticallyCreatedShardSize(2_GB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const TString shard1Id = fsId + "_s1";
@@ -4837,9 +4836,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
 
@@ -4969,9 +4967,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardAllocationUnit(4_TB);
         config.SetAutomaticallyCreatedShardSize(5_TB);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
 
@@ -5114,6 +5111,40 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsConfig.FsId, nodeId1, handle1);
         service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
         service.DestroyHandle(headers, fsConfig.FsId, nodeId3, handle3);
+
+        service.GetNodeAttr(headers, fsConfig.FsId, dir1_1Id, "file1");
+        service.UnlinkNode(headers, dir1_1Id, "file1", false);
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+        auto counters = env.GetRuntime().GetAppData().Counters
+            ->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "storage")
+            ->FindSubgroup("type", "hdd");
+        // counters->OutputPlainText(Cerr);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("CreateHandle.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("CreateHandleInShard.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("CreateNode.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            counters->GetCounter("CreateNodeInShard.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("GetNodeAttr.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("GetNodeAttrInShard.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("UnlinkNode.Count")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("UnlinkNodeInShard.Count")->GetAtomic());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
@@ -5126,9 +5157,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const TString shard1Id = fsId + "_s1";
@@ -5242,9 +5272,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const TString shard1Id = fsId + "_s1";
@@ -5319,9 +5348,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetStrictFileSystemSizeEnforcementEnabled(false);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         const TString fsId = "test";
         const TString shard1Id = fsId + "_s1";
@@ -5645,7 +5673,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     new TRequest(),
                     0, // flags
                     0),
-                0);
+                nodeIdx);
         }
 
         TDispatchOptions options;
@@ -5790,6 +5818,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // unlinking the file in subdir
         service.UnlinkNode(headers, subdirId, "file", false);
+
+        // unlinking subdir should fail if UnlinkDirectory==false
+        unlinkResponse = service.SendAndRecvUnlinkNode(
+            headers,
+            dirId,
+            "subdir",
+            false);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_ISDIR,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
 
         // unlinking subdir should now succeed
         service.UnlinkNode(headers, dirId, "subdir", true);
@@ -6071,7 +6110,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // unblocking the inflight RenameNode op
 
-        env.GetRuntime().Send(evHelper.Event.Release());
+        env.GetRuntime().Send(evHelper.Event.Release(), nodeIdx);
 
         {
             auto renameResponse = service.RecvRenameNodeResponse();
@@ -6443,7 +6482,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         // Resend the GetNodeAttr request
-        env.GetRuntime().Send(getNodeAttrEvent.Release());
+        env.GetRuntime().Send(getNodeAttrEvent.Release(), nodeIdx);
 
         for (ui32 attempt = 0; attempt < 100; ++attempt) {
             env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
@@ -6632,9 +6671,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const TString fsId = "test";
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, fsSize);
@@ -6730,9 +6768,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const TString fsId = "test";
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, fsSize);
@@ -6801,9 +6838,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const TString fsId = "test";
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, fsSize);
@@ -7006,9 +7042,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const TString fsId = "test";
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, fsSize);
@@ -7044,6 +7079,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_EQUAL(
             E_FS_NOSPC,
             service.RecvCreateNodeResponse()->GetStatus());
+        UNIT_ASSERT_EQUAL(
+            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            env.GetCounters()
+                ->FindSubgroup("component", "service")
+                ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
+                ->GetAtomic());
+
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "too_many_files",
+            TCreateHandleArgs::CREATE);
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOSPC,
+            service.RecvCreateHandleResponse()->GetStatus());
+        UNIT_ASSERT_EQUAL(
+            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            env.GetCounters()
+                ->FindSubgroup("component", "service")
+                ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
+                ->GetAtomic());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
@@ -7051,6 +7108,67 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         DoShouldShardedFileSystemHitNodesCountLimit(config, true);
         DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldNotUpdateShardBalancerInTabletZombieState)
+    {
+        // This test verifies the fix for the following crash:
+        // 1. TEvAggregateStatsCompleted was sent.
+        // 2. The filesystem was resized,
+        //    TIndexTabletActor::ExecuteTx_ConfigureShards was called,
+        //    and ShardBalancer was recreated with a new number of shards.
+        // 3. TEvAggregateStatsCompleted was handled, and UpdateShardBalancer
+        //    was called with the old number of shards,
+        //    which caused Y_ABORT_UNLESS(stats.size() == Metas.size())
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        // filter out TEvents::TEvPoisonPill in order not to kill the main
+        // tablet
+        bool poisonPillDropped = false;
+        bool shardsConfigured = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvConfigureShardsRequest: {
+                        shardsConfigured = true;
+                        break;
+                    }
+                    case TEvents::TSystem::PoisonPill: {
+                        if (shardsConfigured) {
+                            poisonPillDropped = true;
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            });
+
+        service.ResizeFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount() * 2);
+
+        env.GetRuntime().SetEventFilter(
+            &TTestActorRuntimeBase::DefaultFilterFunc);
+        using TCompletion = TEvIndexTabletPrivate::TEvAggregateStatsCompleted;
+        NProtoPrivate::TStorageStats statsForTablet;
+        TVector<TShardStats> shardStats(2);
+
+        auto completion = std::make_unique<TCompletion>(
+            NProto::TError(),
+            std::move(statsForTablet),
+            std::move(shardStats),
+            TInstant());
+
+        env.GetRuntime().Send(
+            new IEventHandle(
+                fsInfo.MainTabletActorId,   // recipient
+                TActorId(),                 // sender
+                completion.release(),
+                0,   // flags
+                0),
+            nodeIdx);
     }
 }
 }   // namespace NCloud::NFileStore::NStorage

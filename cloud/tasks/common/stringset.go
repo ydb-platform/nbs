@@ -15,6 +15,20 @@ func (s *StringSet) Has(val string) bool {
 	return false
 }
 
+func (s *StringSet) Equals(other StringSet) bool {
+	if s.Size() != other.Size() {
+		return false
+	}
+
+	for v := range s.vals {
+		if !other.Has(v) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (s *StringSet) Vals() map[string]struct{} {
 	return s.vals
 }

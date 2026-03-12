@@ -12,12 +12,11 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletDatabase::InitSchema(bool useNoneCompactionPolicy)
+void TIndexTabletDatabase::InitSchema()
 {
     Materialize<TIndexTabletSchema>();
 
     TSchemaInitializer<TIndexTabletSchema::TTables>::InitStorage(
-        useNoneCompactionPolicy,
         Database.Alter());
 }
 
@@ -2017,7 +2016,8 @@ void TIndexTabletDatabase::WriteOpLogEntry(const NProto::TOpLogEntry& entry)
         .Update(NIceDb::TUpdate<TTable::Proto>(entry));
 }
 
-void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId) {
+void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId)
+{
     using TTable = TIndexTabletSchema::OpLog;
 
     Table<TTable>()
@@ -2059,6 +2059,75 @@ bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 
     while (it.IsValid()) {
         opLog.emplace_back(it.template GetValue<TTable::Proto>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ResponseLog
+
+void TIndexTabletDatabase::WriteResponseLogEntry(
+    const NProtoPrivate::TResponseLogEntry& entry)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    Table<TTable>()
+        .Key(entry.GetClientTabletId(), entry.GetRequestId())
+        .Update(NIceDb::TUpdate<TTable::Proto>(entry));
+}
+
+void TIndexTabletDatabase::DeleteResponseLogEntry(
+    ui64 clientTabletId,
+    ui64 requestId)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    Table<TTable>()
+        .Key(clientTabletId, requestId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadResponseLogEntry(
+    ui64 clientTabletId,
+    ui64 requestId,
+    TMaybe<NProtoPrivate::TResponseLogEntry>& entry)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    auto it = Table<TTable>()
+        .Key(clientTabletId, requestId)
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    if (it.IsValid()) {
+        entry = it.GetValue<TTable::Proto>();
+    }
+
+    return true;
+}
+
+bool TIndexTabletDatabase::ReadResponseLog(
+    TVector<NProtoPrivate::TResponseLogEntry>& responseLog)
+{
+    using TTable = TIndexTabletSchema::ResponseLog;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        responseLog.emplace_back(it.template GetValue<TTable::Proto>());
 
         if (!it.Next()) {
             return false;   // not ready
@@ -2380,6 +2449,52 @@ TIndexTabletDatabaseProxy::ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref)
             .ChildId = ref.ChildNodeId,
             .ShardId = ref.ShardId,
             .ShardNodeName = ref.ShardNodeName}};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnconfirmedData
+
+void TIndexTabletDatabase::WriteUnconfirmedData(
+    ui64 commitId,
+    const NProto::TUnconfirmedData& data)
+{
+    using TTable = TIndexTabletSchema::UnconfirmedData;
+
+    Table<TTable>()
+        .Key(commitId)
+        .Update<TTable::RequestData>(data);
+}
+
+void TIndexTabletDatabase::DeleteUnconfirmedData(ui64 commitId)
+{
+    using TTable = TIndexTabletSchema::UnconfirmedData;
+    Table<TTable>().Key(commitId).Delete();
+}
+
+bool TIndexTabletDatabase::ReadUnconfirmedData(
+    TVector<TUnconfirmedDataEntry>& entries)
+{
+    using TTable = TIndexTabletSchema::UnconfirmedData;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        TUnconfirmedDataEntry entry;
+        entry.CommitId = it.GetValue<TTable::CommitId>();
+        entry.Data = it.GetValue<TTable::RequestData>();
+        entries.push_back(std::move(entry));
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

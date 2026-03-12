@@ -49,7 +49,6 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(MirroredDiskMinorityChecksumMismatch)                                  \
     xxx(MirroredDiskMajorityChecksumMismatch)                                  \
     xxx(MirroredDiskChecksumMismatchUponRead)                                  \
-    xxx(MirroredDiskChecksumMismatchUponWrite)                                 \
     xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
@@ -84,6 +83,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(ReleaseShadowDiskError)                                                \
     xxx(WrongCellIdInDescribeVolume)                                           \
     xxx(TrimFreshLogTimeout)                                                   \
+    xxx(DiskRegistryStateIntegrityBroken)                                      \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
@@ -137,6 +137,8 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(InflightRequestInvariantViolation)                                     \
     xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
+    xxx(OverlappingRequestsDetected)                                           \
+    xxx(AddFreshBlocksResultedInError)                                         \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

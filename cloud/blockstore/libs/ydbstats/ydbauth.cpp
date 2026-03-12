@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
@@ -104,7 +105,8 @@ private:
     void RefreshToken() const
     {
         Client->GetTokenAsync().Subscribe(
-            [weak = weak_from_this()](auto future)
+            [weak = weak_from_this()](
+                const TFuture<TResultOrError<TTokenInfo>>& future)
             {
                 auto self = weak.lock();
                 if (!self) {
@@ -115,7 +117,7 @@ private:
 
                 {
                     TWriteGuard guard(self->Mutex);
-                    auto result = future.ExtractValue();
+                    auto result = UnsafeExtractValue(future);
                     if (!HasError(result)) {
                         auto tokenInfo = result.ExtractResult();
                         self->Token = std::move(tokenInfo.Token);

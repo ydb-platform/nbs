@@ -1,5 +1,7 @@
 NFS profile:
 CreateFileStore
+CreateHandle
+CreateNode
 ReadData
 RenameNode
 UnlinkNode

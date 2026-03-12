@@ -79,11 +79,12 @@ public:
         TRequestType requestType,
         ui64 requestBytes);
 
-    //TODO: rollback commit after NBS-4239 is fixed
     TRequestTime RequestCompleted(
         TRequestType requestType,
         ui64 requestStarted,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
@@ -102,7 +103,6 @@ public:
     void RequestAdvancedServer(TRequestType requestType);
     void RequestFastPathHit(TRequestType requestType);
 
-    //TODO: rollback commit after NBS-4239 is fixed
     void AddIncompleteStats(
         TRequestType requestType,
         TDuration executionTime,
@@ -133,6 +133,8 @@ private:
         TDuration requestTime,
         TDuration requestCompletionTime,
         TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,

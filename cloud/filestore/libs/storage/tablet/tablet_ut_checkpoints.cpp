@@ -15,9 +15,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
     Y_UNIT_TEST(ShouldStoreCheckpoints)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -30,9 +29,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
     Y_UNIT_TEST(ShouldReadNodesFromCheckpoint)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -78,9 +76,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
     Y_UNIT_TEST(ShouldReadDataFromCheckpoint)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -200,9 +197,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
     Y_UNIT_TEST(ShouldStoreAndFlushFreshBytesFromMultipleNodesAndBlocks)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
@@ -340,9 +336,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
         storageConfig.SetMaxTabletStep(maxTabletStep);
 
         TTestEnv env({}, std::move(storageConfig));
-        env.CreateSubDomain("nfs");
 
-        const ui32 nodeIdx = env.CreateNode("nfs");
+        const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
         env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());

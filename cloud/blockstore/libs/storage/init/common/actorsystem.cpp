@@ -99,6 +99,11 @@ bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
     return ActorSystem->Send(recipient, event.release());
 }
 
+bool TActorSystem::Send(IEventHandlePtr ev)
+{
+    return ActorSystem->Send(ev.release());
+}
+
 TLog TActorSystem::CreateLog(const TString& componentName)
 {
     if (LogBackend) {

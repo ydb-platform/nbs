@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_device_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -227,10 +229,11 @@ void TDiskAgentActor::PerformIO(
             std::invoke(operation, *State, ctx.Now(), std::move(record));
 
         result.Subscribe(
-            [reply, deviceUUID, clientId, actorSystem](auto future)
+            [reply, deviceUUID, clientId, actorSystem]   //
+            (const auto& future)
             {
                 try {
-                    reply(future.ExtractValue());
+                    reply(UnsafeExtractValue(future));
                 } catch (...) {
                     auto [code, message] = HandleException(
                         *actorSystem,

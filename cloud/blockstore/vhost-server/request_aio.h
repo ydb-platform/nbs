@@ -65,7 +65,10 @@ struct TAioRequest
     TCpuCycles SubmitTs;
     bool BufferAllocated = false;
     bool Unaligned = false;
-    iovec Data[ /* Bio->sglist.nbuffers */ ];
+    ui32 BufferCount = 0;
+
+    // Should be last field in the struct.
+    iovec Data[/* Bio->sglist.nbuffers */];
 
     static TAioRequestHolder CreateNew(
         size_t bufferCount,
@@ -75,10 +78,15 @@ struct TAioRequest
         TCpuCycles submitTs);
     static TAioRequestHolder FromIocb(iocb* cb);
 
+    // If the data contains a single buffer, then the data can be accessed using
+    // this method.
+    [[nodiscard]] TBlockDataRef GetData() const;
+
 private:
     TAioRequest(
         size_t allocatedBufferSize,
         ui32 blockSize,
+        ui32 bufferCount,
         vhd_io* io,
         TCpuCycles submitTs);
 };
@@ -104,6 +112,7 @@ struct TAioCompoundRequest
     std::atomic<ui32> Errors;
     vhd_io* Io;
     TCpuCycles SubmitTs;
+    size_t BufferSize;
     std::unique_ptr<char, TFreeDeleter> Buffer;
 
     TAioCompoundRequest(
@@ -119,6 +128,8 @@ struct TAioCompoundRequest
         vhd_io* io,
         size_t bufferSize,
         TCpuCycles submitTs);
+
+    [[nodiscard]] TBlockDataRef GetData() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,7 +148,7 @@ void PrepareIO(
 [[nodiscard]] bool SgListCopyWithOptionalEncryption(
     TLog& Log,
     const vhd_sglist& src,
-    char* dst,
+    TBlockDataRef dst,
     IEncryptor* encryptor,
     ui64 startSector);
 
@@ -145,7 +156,7 @@ void PrepareIO(
 // if successful.
 [[nodiscard]] bool SgListCopyWithOptionalDecryption(
     TLog& Log,
-    const char* src,
+    TBlockDataRef src,
     const vhd_sglist& dst,
     IEncryptor* encryptor,
     ui64 startSector);

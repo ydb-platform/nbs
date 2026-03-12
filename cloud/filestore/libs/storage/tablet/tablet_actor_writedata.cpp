@@ -31,7 +31,8 @@ void TIndexTabletActor::HandleWriteData(
         profileLogRequest,
         EFileStoreRequest::WriteData,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
 
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
@@ -79,9 +80,7 @@ void TIndexTabletActor::HandleWriteData(
                 b < range.FirstBlock() + range.BlockCount();
                 ++b)
         {
-            const auto rangeId = GetMixedRangeIndex(
-                msg->Record.GetNodeId(),
-                range.FirstBlock());
+            const auto rangeId = GetMixedRangeIndex(msg->Record.GetNodeId(), b);
 
             if (rangeId > s.MaxLoadedInOrderRangeId
                     && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
@@ -390,7 +389,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
-    InvalidateNodeCaches(args.NodeId);
+    InvalidateReadAheadCache(args.NodeId);
 
     RemoveInFlightRequest(*args.RequestInfo);
 

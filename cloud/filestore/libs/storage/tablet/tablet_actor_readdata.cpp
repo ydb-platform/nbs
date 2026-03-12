@@ -619,7 +619,8 @@ void TIndexTabletActor::HandleReadData(
         profileLogRequest,
         EFileStoreRequest::ReadData,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
 
     auto validator = [&] (const NProto::TReadDataRequest& request) {
         return ValidateRequest(
@@ -711,7 +712,8 @@ void TIndexTabletActor::HandleDescribeData(
         profileLogRequest,
         EFileStoreRequest::DescribeData,
         msg->Record,
-        ctx.Now());
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
 
     auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
         return ValidateRequest(

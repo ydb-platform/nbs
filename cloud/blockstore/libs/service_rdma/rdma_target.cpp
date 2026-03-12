@@ -67,6 +67,10 @@ void FillResponse(const TCallContextPtr& callContext, TResponse& response)
         callContext->Time(EProcessingStage::Postponed).MicroSeconds();
     response.SetDeprecatedThrottlerDelay(postponeTime);
     response.MutableHeaders()->MutableThrottler()->SetDelay(postponeTime);
+
+    const ui64 shapingTime =
+        callContext->Time(EProcessingStage::Shaping).MicroSeconds();
+    response.MutableHeaders()->MutableThrottler()->SetShapingDelay(shapingTime);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

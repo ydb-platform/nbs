@@ -143,6 +143,7 @@ struct TWriteBlob
 enum class EAddBlobMode
 {
     Write,
+    WriteUnconfirmed,
     WriteBatch,
     Flush,
     FlushBytes,
@@ -406,6 +407,8 @@ struct TEvIndexTabletPrivate
         TVector<TMergedBlobMeta> MergedBlobs;
         TVector<TWriteRange> WriteRanges;
         TVector<TBlockBytesMeta> UnalignedDataParts;
+        // Used only in unconfirmed data flow
+        ui64 ConfirmedDataRefCommitId = InvalidCommitId;
     };
 
     struct TAddBlobResponse
@@ -653,6 +656,7 @@ struct TEvIndexTabletPrivate
         const ui64 OpLogEntryId;
         const TString NodeName;
         TCreateNodeInShardResult Result;
+        NProto::TProfileLogRequestInfo ProfileLogRequest;
 
         TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
@@ -660,13 +664,15 @@ struct TEvIndexTabletPrivate
                 ui64 requestId,
                 ui64 opLogEntryId,
                 TString nodeName,
-                TCreateNodeInShardResult result)
+                TCreateNodeInShardResult result,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
             , NodeName(std::move(nodeName))
             , Result(std::move(result))
+            , ProfileLogRequest(std::move(profileLogRequest))
         {
         }
     };
@@ -719,18 +725,21 @@ struct TEvIndexTabletPrivate
         NProto::TError OriginalError;
         NProto::TError Error;
         const ui64 OpLogEntryId;
+        const bool IsLocalRename;
 
         TUnlinkDirectoryNodeAbortedInShard(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TRenameNodeInDestinationRequest request,
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 NProto::TError originalError,
-                ui64 opLogEntryId)
+                ui64 opLogEntryId,
+                bool isLocalRename)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
             , ProfileLogRequest(std::move(profileLogRequest))
             , OriginalError(std::move(originalError))
             , OpLogEntryId(opLogEntryId)
+            , IsLocalRename(isLocalRename)
         {
         }
     };
@@ -770,6 +779,8 @@ struct TEvIndexTabletPrivate
         const TString SessionId;
         const ui64 RequestId;
         const ui64 OpLogEntryId;
+        TString ShardFileSystemId;
+        const ui64 TabletRequestId;
         NProto::TRenameNodeRequest Request;
         NProto::TProfileLogRequestInfo ProfileLogRequest;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
@@ -779,6 +790,8 @@ struct TEvIndexTabletPrivate
                 TString sessionId,
                 ui64 requestId,
                 ui64 opLogEntryId,
+                TString shardFileSystemId,
+                ui64 tabletRequestId,
                 NProto::TRenameNodeRequest request,
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 NProtoPrivate::TRenameNodeInDestinationResponse response)
@@ -786,12 +799,16 @@ struct TEvIndexTabletPrivate
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
+            , ShardFileSystemId(std::move(shardFileSystemId))
+            , TabletRequestId(tabletRequestId)
             , Request(std::move(request))
             , ProfileLogRequest(std::move(profileLogRequest))
             , Response(std::move(response))
         {
         }
     };
+
+    using TResponseLogEntryDeleted = TEmpty;
 
     //
     // PrepareRenameNodeInSource
@@ -829,14 +846,20 @@ struct TEvIndexTabletPrivate
         NProto::TRenameNodeRequest Request;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
         const ui64 OpLogEntryId;
+        TString ShardFileSystemId;
+        const ui64 TabletRequestId;
 
         TCommitRenameNodeInSourceRequest(
                 NProto::TRenameNodeRequest request,
                 NProtoPrivate::TRenameNodeInDestinationResponse response,
-                ui64 opLogEntryId)
+                ui64 opLogEntryId,
+                TString shardFileSystemId,
+                ui64 tabletRequestId)
             : Request(std::move(request))
             , Response(std::move(response))
             , OpLogEntryId(opLogEntryId)
+            , ShardFileSystemId(std::move(shardFileSystemId))
+            , TabletRequestId(tabletRequestId)
         {
         }
     };
@@ -1135,6 +1158,7 @@ struct TEvIndexTabletPrivate
         NProtoPrivate::TStorageStats AggregateStats;
         TVector<TShardStats> ShardStats;
         TInstant StartedTs;
+        bool IsBackgroundRequest = false;
     };
 
     //
@@ -1150,6 +1174,7 @@ struct TEvIndexTabletPrivate
 
         EvUpdateCounters,
         EvUpdateLeakyBucketCounters,
+        EvRunRegularTasks,
 
         EvReadDataCompleted,
         EvWriteDataCompleted,
@@ -1162,8 +1187,10 @@ struct TEvIndexTabletPrivate
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
         EvDoRenameNodeInDestination,
+        EvDoRenameNode,
         EvUnlinkDirectoryNodeAbortedInShard,
         EvNodeRenamedInDestination,
+        EvResponseLogEntryDeleted,
 
         EvAggregateStatsCompleted,
 
@@ -1186,6 +1213,8 @@ struct TEvIndexTabletPrivate
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
     using TEvUpdateLeakyBucketCounters =
         TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
+
+    using TEvRunRegularTasks = TRequestEvent<TEmpty, EvRunRegularTasks>;
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
@@ -1214,8 +1243,14 @@ struct TEvIndexTabletPrivate
     using TEvDoRenameNodeInDestination =
         TRequestEvent<TDoRenameNodeInDestination, EvDoRenameNodeInDestination>;
 
+    using TEvDoRenameNode =
+        TRequestEvent<TDoRenameNodeInDestination, EvDoRenameNode>;
+
     using TEvNodeRenamedInDestination =
         TRequestEvent<TNodeRenamedInDestination, EvNodeRenamedInDestination>;
+
+    using TEvResponseLogEntryDeleted =
+        TRequestEvent<TResponseLogEntryDeleted, EvResponseLogEntryDeleted>;
 
     using TEvAggregateStatsCompleted =
         TResponseEvent<TAggregateStatsCompleted, EvAggregateStatsCompleted>;

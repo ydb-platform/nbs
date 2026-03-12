@@ -25,6 +25,7 @@ type diskSource struct {
 	diskID           string
 	baseCheckpointID string
 	checkpointID     string
+	blockSize        uint32
 	blocksInChunk    uint64
 	blockCount       uint64
 	chunkCount       uint32
@@ -73,7 +74,7 @@ func (s *diskSource) generateChunkIndicesDefault(
 	return nil
 }
 
-func (s *diskSource) generateChunkIndices(
+func (s *diskSource) generateChunkIndicesUsingGetChangedBlocks(
 	ctx context.Context,
 	milestoneChunkIndex uint32,
 ) error {
@@ -172,8 +173,17 @@ func (s *diskSource) ChunkIndices(
 		defer s.chunkIndices.Close()
 		defer s.duplicatedChunkIndices.Close()
 
-		err := s.generateChunkIndices(ctx, milestone.ChunkIndex)
-		if err != nil && nbs.IsGetChangedBlocksNotSupportedError(err) {
+		err := s.generateChunkIndicesUsingGetChangedBlocks(
+			ctx,
+			milestone.ChunkIndex,
+		)
+		if err != nil && nbs.IsNotImplementedError(err) {
+			logging.Info(
+				ctx,
+				"falling back to generateChunkIndicesDefault for disk %v: %v",
+				s.diskID,
+				err,
+			)
 			err = s.generateChunkIndicesDefault(ctx, milestone.ChunkIndex)
 		}
 		if err != nil {
@@ -226,13 +236,19 @@ func (s *diskSource) ChunkCount(ctx context.Context) (uint32, error) {
 }
 
 func (s *diskSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
-	return s.client.GetChangedBytes(
+	diff, err := s.client.GetChangedBytes(
 		ctx,
 		s.diskID,
 		s.baseCheckpointID,
 		s.checkpointID,
 		s.ignoreBaseDisk,
 	)
+	if err != nil && nbs.IsNotImplementedError(err) {
+		// Worst case estimate
+		return s.blockCount * uint64(s.blockSize), nil
+	}
+
+	return diff, err
 }
 
 func (s *diskSource) Close(ctx context.Context) {
@@ -308,6 +324,7 @@ func NewDiskSource(
 		diskID:           diskID,
 		baseCheckpointID: baseCheckpointID,
 		checkpointID:     checkpointID,
+		blockSize:        blockSize,
 		blocksInChunk:    blocksInChunk,
 		blockCount:       blockCount,
 		chunkCount:       chunkCount,

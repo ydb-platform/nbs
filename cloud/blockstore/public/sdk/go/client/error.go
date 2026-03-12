@@ -1,6 +1,8 @@
 package client
 
 import (
+	"errors"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -38,7 +40,7 @@ func (e *ClientError) Error() string {
 
 func (e *ClientError) IsRetriable() bool {
 	switch e.Code {
-	case E_REJECTED, E_TIMEOUT, E_THROTTLED, E_OUT_OF_SPACE:
+	case E_REJECTED, E_TIMEOUT, E_THROTTLED, E_OUT_OF_SPACE, E_RDMA_UNAVAILABLE:
 		// special error code for retries
 		// NOTE: do not add E_TRY_AGAIN here - it is not retriable for a reason
 		return true
@@ -116,7 +118,9 @@ func GetClientCode(err error) uint32 {
 		return S_OK
 	}
 
-	if cerr, ok := err.(*ClientError); ok {
+	cerr := &ClientError{}
+
+	if errors.As(err, &cerr) {
 		return cerr.Code
 	}
 
@@ -128,7 +132,9 @@ func GetClientError(err error) ClientError {
 		return ClientError{S_OK, ""}
 	}
 
-	if cerr, ok := err.(*ClientError); ok {
+	cerr := &ClientError{}
+
+	if errors.As(err, &cerr) {
 		return *cerr
 	}
 

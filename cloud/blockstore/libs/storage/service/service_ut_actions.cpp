@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
-#include <cloud/blockstore/libs/storage/protos/local_nvme.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
@@ -1997,17 +1996,16 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        const auto response = service.ExecuteAction("ListNVMeDevices", TString());
+        const auto response =
+            service.ExecuteAction("ListNVMeDevices", TString());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-        NProto::TNVMeDeviceList list;
-        UNIT_ASSERT(
-            google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &list)
-                .ok());
-        UNIT_ASSERT_VALUES_EQUAL(1, list.DevicesSize());
-        UNIT_ASSERT_VALUES_EQUAL("NVME_0", list.GetDevices(0).GetSerialNumber());
+        NJson::TJsonValue value;
+        UNIT_ASSERT(NJson::ReadJsonTree(response->Record.GetOutput(), &value));
+        const auto& devices = value["Devices"].GetArray();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+        UNIT_ASSERT_VALUES_EQUAL("NVME_0", devices[0]["SerialNumber"]);
     }
 
     Y_UNIT_TEST(ShouldAcquireNVMeDevice)
@@ -2066,6 +2064,77 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
 
         service.ExecuteAction("ReleaseNVMeDevice", R"({"SerialNumber":"NVME_0"})");
+    }
+
+    Y_UNIT_TEST(ShouldHandleBscPipeDisconnectInGetClusterCapacity)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto makeFilter = [&] (auto eventCode) {
+            return
+            [&, eventCode = eventCode]
+            (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletPipe::EvSend: {
+                        if (event->Type != eventCode) {
+                            return false;
+                        }
+                        auto response =
+                            std::make_unique<TEvTabletPipe::TEvClientDestroyed>(
+                                0,
+                                TActorId{},
+                                TActorId{});
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return true;
+                    }
+                }
+                return false;
+            };
+        };
+
+        constexpr ui32 lostEvent[] = {
+            NSysView::TEvSysView::EvGetStoragePoolsRequest,
+            NSysView::TEvSysView::EvGetGroupsRequest,
+            NSysView::TEvSysView::EvGetVSlotsRequest
+        };
+
+        for (auto e: lostEvent) {
+            env.GetRuntime().SetEventFilter(makeFilter(e));
+
+            service.SendExecuteActionRequest("getclustercapacity", "{}");
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReturnClusterCapacity)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto response = service.ExecuteAction("getclustercapacity", "{}");
+        NPrivateProto::TGetClusterCapacityResponse output;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &output)
+                .ok());
+        UNIT_ASSERT_VALUES_UNEQUAL(0, output.GetCapacity().size());
     }
 }
 

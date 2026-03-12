@@ -7,6 +7,7 @@ import tempfile
 import time
 import json
 
+from functools import wraps
 from pathlib import Path
 
 import yatest.common as common
@@ -30,6 +31,20 @@ from google.protobuf.text_format import MessageToString
 
 
 BINARY_PATH = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
+
+
+def retry(max_retries):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if attempt == max_retries - 1:
+                        raise
+        return wrapper
+    return decorator
 
 
 class CsiLoadTest(LocalLoadTest):
@@ -102,6 +117,7 @@ class NbsCsiDriverRunner:
             f"--endpoint={str(self._endpoint)}",
             "--nfs-vhost-port=0",
             "--nfs-server-port=0",
+            "-v=4",
         ]
 
         if self._local_fs_config:
@@ -161,6 +177,7 @@ class NbsCsiDriverRunner:
     def _controller_run(self, *args):
         return self._client_run("controller", *args)
 
+    @retry(max_retries=3)
     def create_volume(self, name: str, size: int, is_nfs: bool = False):
         args = ["createvolume", "--name", name, "--size", str(size)]
         if is_nfs:
@@ -168,9 +185,11 @@ class NbsCsiDriverRunner:
 
         return self._controller_run(*args)
 
+    @retry(max_retries=3)
     def delete_volume(self, name: str):
         return self._controller_run("deletevolume", "--id", name)
 
+    @retry(max_retries=3)
     def stage_volume(self, volume_id: str, access_type: str, is_nfs: bool = False, vhost_request_queues_count: int = 8):
         args = ["stagevolume", "--volume-id", volume_id, "--access-type", access_type, "--vhost-request-queues-count", str(vhost_request_queues_count)]
         if is_nfs:
@@ -178,6 +197,7 @@ class NbsCsiDriverRunner:
 
         return self._node_run(*args)
 
+    @retry(max_retries=3)
     def unstage_volume(self, volume_id: str):
         return self._node_run(
             "unstagevolume",
@@ -185,6 +205,7 @@ class NbsCsiDriverRunner:
             volume_id,
         )
 
+    @retry(max_retries=3)
     def publish_volume(
             self,
             pod_id: str,
@@ -219,6 +240,7 @@ class NbsCsiDriverRunner:
 
         return self._node_run(*args)
 
+    @retry(max_retries=3)
     def unpublish_volume(self, pod_id: str, volume_id: str, access_type: str):
         return self._node_run(
             "unpublishvolume",
@@ -237,6 +259,7 @@ class NbsCsiDriverRunner:
         self._proc.kill()
         self._log_file.close()
 
+    @retry(max_retries=3)
     def volumestats(self, pod_id: str, volume_id: str):
         ret = self._node_run(
             "volumestats",
@@ -247,6 +270,7 @@ class NbsCsiDriverRunner:
         )
         return json.loads(ret)
 
+    @retry(max_retries=3)
     def expand_volume(self, pod_id: str, volume_id: str, size: int, access_type: str):
         return self._node_run(
             "expandvolume",

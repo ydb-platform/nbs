@@ -26,6 +26,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DescribeSessions,           __VA_ARGS__)                               \
     xxx(GenerateBlobIds,            __VA_ARGS__)                               \
     xxx(AddData,                    __VA_ARGS__)                               \
+    xxx(ConfirmAddData,             __VA_ARGS__)                               \
+    xxx(CancelAddData,              __VA_ARGS__)                               \
     xxx(ForcedOperation,            __VA_ARGS__)                               \
     xxx(ConfigureShards,            __VA_ARGS__)                               \
     xxx(ConfigureAsShard,           __VA_ARGS__)                               \
@@ -47,6 +49,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
     xxx(PrepareUnlinkDirectoryNodeInShard,  __VA_ARGS__)                       \
     xxx(AbortUnlinkDirectoryNodeInShard,    __VA_ARGS__)                       \
+    xxx(DeleteResponseLogEntry,             __VA_ARGS__)                       \
+    xxx(GetResponseLogEntry,                __VA_ARGS__)                       \
+    xxx(WriteResponseLogEntry,              __VA_ARGS__)                       \
                                                                                \
     xxx(ReadNodeRefs,              __VA_ARGS__)                                \
                                                                                \
@@ -172,6 +177,26 @@ struct TEvIndexTablet
 
         EvUnsafeCreateNodeRequest = EvBegin + 69,
         EvUnsafeCreateNodeResponse,
+
+        EvDeleteResponseLogEntryRequest = EvBegin + 71,
+        EvDeleteResponseLogEntryResponse,
+
+        EvGetResponseLogEntryRequest = EvBegin + 73,
+        EvGetResponseLogEntryResponse,
+
+        EvWriteResponseLogEntryRequest = EvBegin + 75,
+        EvWriteResponseLogEntryResponse,
+
+        EvConfirmAddDataRequest = EvBegin + 77,
+        EvConfirmAddDataResponse,
+
+        EvCancelAddDataRequest = EvBegin + 79,
+        EvCancelAddDataResponse,
+
+        // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
+        // sub-namespaces which don't have any non-local events so if we run out
+        // of event ids in the TABLET sub-namespace we can extend it by
+        // moving TABLET_WORKER and TABLET_PROXY after SS_PROXY
 
         EvEnd
     };

@@ -234,11 +234,14 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             1,
             requestBytes,
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.ListNodes.RequestedBytesPrecharge.fetch_add(
+        Metrics.ListNodesExtra.RequestedBytesPrecharge.fetch_add(
             args.BytesToPrecharge,
             std::memory_order_relaxed);
-        Metrics.ListNodes.PrepareAttempts.fetch_add(
+        Metrics.ListNodesExtra.PrepareAttempts.fetch_add(
             args.PrepareAttempts,
+            std::memory_order_relaxed);
+        Metrics.ListNodesExtra.ResponseNodeRefs.fetch_add(
+            args.ChildRefs.size(),
             std::memory_order_relaxed);
     }
 

@@ -15,6 +15,8 @@ SRCS(
     tablet_actor_acquirelock.cpp
     tablet_actor_addblob.cpp
     tablet_actor_adddata.cpp
+    tablet_actor_adddata_unconfirmed.cpp
+    tablet_actor_confirmadddata.cpp
     tablet_actor_allocatedata.cpp
     tablet_actor_change_storage_config.cpp
     tablet_actor_cleanup.cpp
@@ -62,6 +64,7 @@ SRCS(
     tablet_actor_request.cpp
     tablet_actor_resetsession.cpp
     tablet_actor_resolvepath.cpp
+    tablet_actor_responselog.cpp
     tablet_actor_restart_tablet.cpp
     tablet_actor_set_has_xattrs.cpp
     tablet_actor_setnodeattr.cpp
@@ -135,6 +138,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    bench
     ut
     ut_cache_stress
     ut_counters

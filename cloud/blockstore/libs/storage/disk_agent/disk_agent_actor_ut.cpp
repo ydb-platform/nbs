@@ -102,6 +102,12 @@ struct TTestNvmeManager: NNvme::INvmeManager
         : PathToSerial{pathToSerial.cbegin(), pathToSerial.cend()}
     {}
 
+    void Start() final
+    {}
+
+    void Stop() final
+    {}
+
     TFuture<NProto::TError> Format(
         const TString& path,
         NNvme::nvme_secure_erase_setting ses) override
@@ -161,6 +167,13 @@ struct TTestNvmeManager: NNvme::INvmeManager
         Y_UNUSED(ctrlPath);
 
         return NNvme::TSanitizeStatus{};
+    }
+
+    NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return {};
     }
 };
 
@@ -7062,6 +7075,106 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
+    }
+
+    Y_UNIT_TEST_F(ShouldAttachDetachPathsOnRegistration, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        NProto::TControlPlaneRequestNumber requestNumber;
+        requestNumber.SetDiskRegistryGeneration(1);
+        requestNumber.SetRequestNumber(10);
+        TVector<TString> pathsToAttach{PartLabels[0], PartLabels[2]};
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistry::EvRegisterAgentResponse: {
+                        auto* response = event->Get<
+                            TEvDiskRegistry::TEvRegisterAgentResponse>();
+                        response->Record.MutableControlPlaneRequestNumber()
+                            ->CopyFrom(requestNumber);
+                        response->Record.MutablePathsToAttach()->Assign(
+                            pathsToAttach.begin(),
+                            pathsToAttach.end());
+                    } break;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.RegisterAgent();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[1]).size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[2]).size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[3]).size());
+
+        pathsToAttach = {PartLabels[1], PartLabels[3]};
+        requestNumber.SetDiskRegistryGeneration(2);
+
+        diskAgent.RegisterAgent();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[1]).size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[2]).size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[3]).size());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldNotDetachAnyDevicesIfDrNotSupportingAttachDetachPaths,
+        TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.RegisterAgent();
+
+        for (auto& device: Devices) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                FindProcessesWithOpenFile(device).size());
+        }
     }
 }
 }   // namespace NCloud::NBlockStore::NStorage

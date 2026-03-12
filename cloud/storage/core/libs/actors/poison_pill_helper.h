@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "mortal_actor.h"
+
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -12,18 +14,13 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The owner of TPoisonPillHelper must implement this interface to make it
-// possible to kill the parent actor.
-class IPoisonPillHelperOwner
-{
-public:
-    virtual void Die(const NActors::TActorContext& ctx) = 0;
-};
-
 // Helps to handle the TEvPoisonPill for actor who owns other actors. The helper
 // sends TEvPoisonPill to all owned actors and waits for a response
 // TEvPoisonTaken from everyone. After that, it responds with the TEvPoisonTaken
 // message.
+
+// Don't send a poison pill to yourself with a cookie in which the most
+// significant bit is set. This can lead to an actor leak.
 class TPoisonPillHelper
 {
 private:
@@ -33,12 +30,16 @@ private:
         ui64 Cookie = 0;
     };
 
-    IPoisonPillHelperOwner* Owner;
+    IMortalActor* Owner;
     TSet<NActors::TActorId> OwnedActors;
     std::optional<TPoisoner> Poisoner;
 
+    THashMap<ui64, NActors::TActorId> PoisonPillCookieToOwnedActorId;
+
+    ui64 CookieCounter = 0;
+
 public:
-    explicit TPoisonPillHelper(IPoisonPillHelperOwner* owner);
+    explicit TPoisonPillHelper(IMortalActor* owner);
     virtual ~TPoisonPillHelper();
 
     void TakeOwnership(
@@ -59,6 +60,8 @@ public:
 private:
     void KillActors(const NActors::TActorContext& ctx);
     void ReplyAndDie(const NActors::TActorContext& ctx);
+
+    ui64 GetNextPoisonCookie();
 };
 
 }   // namespace NCloud

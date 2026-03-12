@@ -49,6 +49,15 @@ TString Join(TStringBuf delim, const R& range)
     return ss.Str();
 }
 
+// // xx:xx.x -> 0000:xx:xx.x
+TString NormalizePCIAddr(const TString& pciAddr)
+{
+    if (std::ranges::count(pciAddr, ':') == 1) {
+        return "0000:" + pciAddr;
+    }
+    return pciAddr;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalNVMeService final
@@ -87,8 +96,7 @@ public:
 
     // ILocalNVMeService
 
-    [[nodiscard]] auto ListNVMeDevices() const
-        -> TFuture<TListDevicesResult> final;
+    [[nodiscard]] auto ListNVMeDevices() -> TFuture<TListDevicesResult> final;
 
     [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
         -> TFuture<NProto::TError> final;
@@ -108,6 +116,8 @@ private:
     void UpdateStateCache();
     auto CreateStateSnapshot() -> NProto::TLocalNVMeServiceState;
     auto SanitizeNVMeDevice(TCont* c, const NProto::TNVMeDevice& device)
+        -> NProto::TError;
+    auto ResetToSingleNamespace(const NProto::TNVMeDevice& device)
         -> NProto::TError;
     auto GetNVMeCtrlPath(const NProto::TNVMeDevice& device) -> TFsPath;
     auto BindDeviceToDriver(
@@ -178,7 +188,7 @@ void TLocalNVMeService::Start()
 void TLocalNVMeService::Stop()
 {}
 
-auto TLocalNVMeService::ListNVMeDevices() const -> TFuture<TListDevicesResult>
+auto TLocalNVMeService::ListNVMeDevices() -> TFuture<TListDevicesResult>
 {
     STORAGE_INFO("List NVMe devices");
 
@@ -254,8 +264,40 @@ auto TLocalNVMeService::FetchDevices() -> NProto::TError
         "Fetched NVMe devices (" << devices.size()
                                  << "): " << Join(", ", devices));
 
-    for (const auto& device: devices) {
-        Devices[device.GetSerialNumber()] = device;
+    // We expect Device provider to provide serial numbers and PCI addresses
+
+    for (const auto& src: devices) {
+        if (src.GetPCIAddress().empty()) {
+            STORAGE_WARN("Ignore device with empty PCI address: " << src);
+            continue;
+        }
+
+        if (src.GetSerialNumber().empty()) {
+            STORAGE_WARN("Ignore device with empty serial number: " << src);
+            continue;
+        }
+
+        const auto pciAddr = NormalizePCIAddr(src.GetPCIAddress());
+
+        auto [device, deviceError] =
+            SafeExecute<TResultOrError<NProto::TNVMeDevice>>(
+                [&] { return SysFs->GetNVMeDeviceFromPCIAddr(pciAddr); });
+
+        if (HasError(deviceError)) {
+            STORAGE_ERROR(
+                "Failed to retrieve information about "
+                << src << ": " << FormatError(deviceError));
+            continue;
+        }
+
+        if (device.GetSerialNumber() != src.GetSerialNumber()) {
+            STORAGE_ERROR(
+                "Serial numbers don't match: " << src << " vs " << device
+                                               << ". Ignore device");
+            continue;
+        }
+
+        Devices[device.GetSerialNumber()] = std::move(device);
     }
 
     UpdateStateCache();
@@ -358,11 +400,12 @@ auto TLocalNVMeService::BindDeviceToDriver(
         "Bind " << device.GetSerialNumber().Quote() << " to " << driverName
                 << " driver");
 
-    try {
-        SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
-    } catch (...) {
-        return MakeError(E_FAIL, CurrentExceptionMessage());
-    }
+    return SafeExecute<NProto::TError>(
+        [&]
+        {
+            SysFs->BindPCIDeviceToDriver(device.GetPCIAddress(), driverName);
+            return MakeError(S_OK);
+        });
 
     return {};
 }
@@ -416,15 +459,11 @@ try {
 
     const TFsPath ctrlPath = GetNVMeCtrlPath(device);
 
-    if (auto error = NVMeManager->Sanitize(ctrlPath); HasError(error)) {
-        return error;
-    }
+    CheckError(NVMeManager->Sanitize(ctrlPath));
 
     for (;;) {
         auto [r, error] = NVMeManager->GetSanitizeStatus(ctrlPath);
-        if (HasError(error)) {
-            return error;
-        }
+        CheckError(error);
 
         STORAGE_DEBUG(
             "Sanitize status for " << device.GetSerialNumber() << ": "
@@ -447,6 +486,22 @@ try {
     return MakeError(E_FAIL, CurrentExceptionMessage());
 }
 
+auto TLocalNVMeService::ResetToSingleNamespace(
+    const NProto::TNVMeDevice& device) -> NProto::TError
+{
+    STORAGE_INFO(
+        "Reset NVMe " << device.GetSerialNumber().Quote()
+                      << " to single namespace");
+
+    return SafeExecute<NProto::TError>(
+        [&]
+        {
+            const TFsPath ctrlPath = GetNVMeCtrlPath(device);
+
+            return NVMeManager->ResetToSingleNamespace(ctrlPath);
+        });
+}
+
 auto TLocalNVMeService::ReleaseDevice(TCont* c, const TString& serialNumber)
     -> NProto::TError
 {
@@ -464,6 +519,10 @@ auto TLocalNVMeService::ReleaseDevice(TCont* c, const TString& serialNumber)
     }
 
     if (auto error = SanitizeNVMeDevice(c, *device); HasError(error)) {
+        return error;
+    }
+
+    if (auto error = ResetToSingleNamespace(*device); HasError(error)) {
         return error;
     }
 

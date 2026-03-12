@@ -41,9 +41,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceParentlessTest)
         NProto::TStorageConfig config;
         config.SetParentlessFilesOnly(true);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -170,9 +169,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceParentlessTest)
         config.SetShardAllocationUnit(fsConfig.ShardBlockCount * 4_KB);
 
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         CreateFileSystem(service, fsConfig);

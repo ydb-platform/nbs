@@ -6,6 +6,8 @@
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/features/features_config.h>
+
 #include <contrib/libs/protobuf/src/google/protobuf/stubs/stringpiece.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -154,9 +156,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldFail)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         auto response =
@@ -168,9 +169,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     Y_UNIT_TEST(ShouldDrainTablets)
     {
         TTestEnv env;
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -220,9 +220,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         config.SetReadAheadCacheMaxNodes(42);
 
         TTestEnv env{{}, config};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -261,9 +260,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
     {
         NProto::TStorageConfig config;
         TTestEnv env{{}, config};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -431,9 +429,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         // being explicit
         config.SetMultiTabletForwardingEnabled(false);
         TTestEnv env{{}, config};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -654,9 +651,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         *diagConfig.MutableHDDFileSystemPerformanceProfile() = pp;
 
         TTestEnv env{{}, storageConfig, {}, CreateProfileLogStub(), diagConfig};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -838,9 +834,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             strictFileSystemSizeEnforcementEnabled);
 
         TTestEnv env{{}, storageConfig};
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -957,9 +952,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         NProto::TStorageConfig config;
         config.SetCompactionThreshold(1000);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
@@ -1043,7 +1037,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         }
 
         UNIT_ASSERT(completion);
-        env.GetRuntime().Send(completion.Release());
+        env.GetRuntime().Send(completion.Release(), nodeIdx);
 
         TDispatchOptions options;
         options.CustomFinalCondition = [&compactionCounter]()
@@ -1102,9 +1096,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         config.SetInMemoryIndexCacheNodeRefsCapacity(10);
         config.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(5);
         TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
 
-        ui32 nodeIdx = env.CreateNode("nfs");
+        ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fsId = "test";
@@ -1147,6 +1140,42 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         UNIT_ASSERT_VALUES_EQUAL(2, listResponse->Record.GetNodes().size());
 
         UNIT_ASSERT_VALUES_EQUAL(1, getCacheHit());
+    }
+
+    Y_UNIT_TEST(ShouldNotLeakFeaturesAcrossFileStoresWithSharedConfig)
+    {
+        // Reproduce the bug: all tablet actors share the same TStorageConfig
+        // passed by shared_ptr. When SetCloudFolderEntity is modifies the
+        // shared ProtoConfig for all tablets, not only the matching one
+        NCloud::NProto::TFeaturesConfig featuresConfigProto;
+        auto* feature = featuresConfigProto.AddFeatures();
+        feature->SetName("ParentlessFilesOnly");
+        feature->MutableWhitelist()->AddEntityIds("with-feature");
+
+        NProto::TStorageConfig config;
+        TTestEnv env{{}, config};
+        env.GetStorageConfig()->SetFeaturesConfig(
+            NFeatures::TFeaturesConfig(featuresConfigProto));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateFileStore("with-feature", 1'000);
+        service.CreateFileStore("without-feature", 1'000);
+
+        {
+            auto response = ExecuteGetStorageConfig("with-feature", service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetParentlessFilesOnly());
+        }
+
+        {
+            auto response = ExecuteGetStorageConfig("without-feature", service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                response.GetParentlessFilesOnly());
+        }
     }
 }
 

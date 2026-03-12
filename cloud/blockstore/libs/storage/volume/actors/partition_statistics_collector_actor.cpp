@@ -25,13 +25,23 @@ void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
     for (const auto& partition: Partitions) {
         auto request = std::make_unique<
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest>();
-        NCloud::Send(ctx, partition, std::move(request));
+
+        auto event = std::make_unique<IEventHandle>(
+            partition,
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            0,            // cookie
+            &ctx.SelfID   // forwardOnNondelivery
+        );
+
+        ctx.Send(event.release());
     }
 
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
 }
 
-void TPartitionStatisticsCollectorActor::SendStatToVolume(
+void TPartitionStatisticsCollectorActor::ReplyAndDie(
     const TActorContext& ctx)
 {
     NCloud::Send(
@@ -82,7 +92,19 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
     }
 
     if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
-        SendStatToVolume(ctx);
+        ReplyAndDie(ctx);
+    }
+}
+
+void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
+    TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ++FailedResponses;
+    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+        ReplyAndDie(ctx);
     }
 }
 
@@ -93,7 +115,11 @@ STFUNC(TPartitionStatisticsCollectorActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersResponse,
-            HandleGetPartCountersResponse)
+            HandleGetPartCountersResponse);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCountersUndelivery
+        );
 
         default:
             HandleUnexpectedEvent(

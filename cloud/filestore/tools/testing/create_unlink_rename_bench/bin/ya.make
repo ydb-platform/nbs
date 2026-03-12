@@ -1,0 +1,17 @@
+PROGRAM(filestore-create-unlink-rename-bench)
+
+SRCS(
+    app.cpp
+    main.cpp
+    options.cpp
+)
+
+PEERDIR(
+    cloud/storage/core/libs/diagnostics
+
+    library/cpp/getopt
+
+    util
+)
+
+END()

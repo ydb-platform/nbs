@@ -7,6 +7,7 @@ from cloud.blockstore.public.api.protos.disk_pb2 import *           # noqa
 from cloud.blockstore.public.api.protos.endpoints_pb2 import *      # noqa
 from cloud.blockstore.public.api.protos.headers_pb2 import *        # noqa
 from cloud.blockstore.public.api.protos.io_pb2 import *             # noqa
+from cloud.blockstore.public.api.protos.local_nvme_pb2 import *     # noqa
 from cloud.blockstore.public.api.protos.local_ssd_pb2 import *      # noqa
 from cloud.blockstore.public.api.protos.metrics_pb2 import *        # noqa
 from cloud.blockstore.public.api.protos.mount_pb2 import *          # noqa

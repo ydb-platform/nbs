@@ -51,6 +51,7 @@ message TFileStoreFeatures
     bool ReadBlobDisabled = 36;
     bool WriteBlobDisabled = 37;
     bool FakeDescribeDataEnabled = 38;
+    bool UnconfirmedFlowEnabled = 39;
 }
 
 message TFileStore
@@ -79,6 +80,9 @@ message TFileStore
 
     // Zero for main fs, non-zero for shards.
     uint32 ShardNo = 13;
+
+    // The id of the main filestore tablet.
+    uint64 MainTabletId = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

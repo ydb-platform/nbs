@@ -92,7 +92,7 @@ concurrency:
   
 
 env:
-  disk_size: ${{ inputs.flavor == 'heavy' && 2046 || 93 }}
+  disk_size: ${{ inputs.flavor == 'heavy' && ( vars.POOLED_HEAVY_DISK_SIZE_GB || 2046 ) || ( vars.POOLED_LIGHT_DISK_SIZE_GB || 1023 ) }}
   parent_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PARENT_ID || vars.POOLED_LIGHT_PARENT_ID }}
   sa_json: ${{ inputs.flavor == 'heavy' && secrets.POOLED_HEAVY_SA_JSON || secrets.POOLED_LIGHT_SA_JSON }}
   preset: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_VM_PRESET || vars.POOLED_LIGHT_VM_PRESET }}
@@ -114,9 +114,13 @@ jobs:
       date: ${{ steps.list.outputs.DATE }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: '.github'
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: List VMs and prepare removal (vms older than 24h) and creation lists
         id: list
         uses: ./.github/actions/nebius_runner_populate
@@ -144,9 +148,14 @@ jobs:
         vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_remove) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: Remove VM ${{ matrix.vms_to_remove }}
         id: remove-runner
         uses: ./.github/actions/nebius_runner_remove
@@ -169,9 +178,14 @@ jobs:
         broken_vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.broken_vms_to_remove) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: Remove Broken VM ${{ matrix.broken_vms_to_remove }}
         id: remove-runner
         uses: ./.github/actions/nebius_runner_remove
@@ -194,9 +208,14 @@ jobs:
         vms_to_create: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_create) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: '.github'
+          clean: true
+      - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
+        if: ${{ always() }}
+        run: git config core.sparseCheckout false
+        continue-on-error: true
       - name: Create VM ${{ matrix.vms_to_create }}
         id: start-runner
         uses: ./.github/actions/nebius_runner_create

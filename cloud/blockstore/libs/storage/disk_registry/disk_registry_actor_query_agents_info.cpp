@@ -26,7 +26,8 @@ void TDiskRegistryActor::HandleQueryAgentsInfo(
 
     auto response = std::make_unique<TEvService::TEvQueryAgentsInfoResponse>(
         MakeError(S_OK));
-    for (auto& agentInfo: State->QueryAgentsInfo()) {
+
+    for (auto& agentInfo: State->QueryAgentsInfo(msg->Record.GetFilter())) {
         *response->Record.AddAgents() = std::move(agentInfo);
     }
 

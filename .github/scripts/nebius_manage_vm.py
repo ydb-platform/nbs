@@ -104,6 +104,7 @@ def generate_cloud_init_script(
     repo: str,
     token: str,
     version: str,
+    override_existing_runner: bool,
     label: str,
 ):
     if os.environ.get("GITHUB_REPOSITORY"):
@@ -118,20 +119,21 @@ def generate_cloud_init_script(
     script = f"""
 set -x
 
+export UPDATE_RUNNER="{override_existing_runner}"
 echo "fixing /etc/hosts"
 echo "::1 localhost" | tee -a /etc/hosts
 grep localhost /etc/hosts
 
-[ -d /actions-runner ] && {{
-    echo "Runner already installed"
+if [ -d /actions-runner ] && [ "$UPDATE_RUNNER" != "true" ]; then
+    echo "Runner already installed and doesn't require update, skipping installation"
     cd /actions-runner
-}} || {{
+else
     mkdir -p /actions-runner && cd /actions-runner
     case $(uname -m) in
         aarch64) ARCH="arm64" ;;
         amd64|x86_64) ARCH="x64";;
     esac
-    export FILENAME=runner.tar.gz
+    export FILENAME=runner-v{version}.tar.gz
     # https://github.com/actions/runner/releases/download/v2.314.1/actions-runner-linux-x64-2.314.1.tar.gz
     exit_code=1
     i=0
@@ -144,7 +146,7 @@ grep localhost /etc/hosts
         echo "$((date)) [$i] curl exited (or timed-out) with code $exit_code"
     done
     tar xzf "./$FILENAME" || exit 0
-}}
+fi
 export RUNNER_ALLOW_RUNASROOT=1
 
 # trying to catch registration error
@@ -429,6 +431,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         args.github_repo,
         runner_registration_token,
         args.github_runner_version,
+        args.github_override_existing_runner,
         runner_github_label + ",runner_" + args.runner_flavor,
     )
 
@@ -720,8 +723,13 @@ async def main() -> None:
 
     create.add_argument(
         "--github-runner-version",
-        default="2.320.0",
+        default="2.331.0",
         help="GitHub Runner version",
+    )
+    create.add_argument(
+        "--github-override-existing-runner",
+        default="false",
+        help="Whether to update GitHub Runner if it's already installed",
     )
 
     create.add_argument(

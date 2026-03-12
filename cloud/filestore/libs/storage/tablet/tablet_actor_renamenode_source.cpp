@@ -96,9 +96,7 @@ void TRenameNodeInDestinationActor::SendRequest(const TActorContext& ctx)
         Request.GetNewParentId(),
         Request.GetNewName().c_str());
 
-    ctx.Send(
-        MakeIndexTabletProxyServiceId(),
-        request.release());
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
 void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
@@ -177,6 +175,8 @@ void TRenameNodeInDestinationActor::ReplyAndDie(
         Request.GetHeaders().GetSessionId(),
         RequestId,
         OpLogEntryId,
+        Request.GetFileSystemId(),
+        Request.GetHeaders().GetRequestId(),
         Request.GetOriginalRequest(), // TODO: move
         std::move(ProfileLogRequest),
         std::move(response)));
@@ -192,6 +192,176 @@ STFUNC(TRenameNodeInDestinationActor::StateWork)
         HFunc(
             TEvIndexTablet::TEvRenameNodeInDestinationResponse,
             HandleRenameNodeInDestinationResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::TABLET_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeleteResponseLogEntryActor final
+    : public TActorBootstrapped<TDeleteResponseLogEntryActor>
+{
+private:
+    const TString LogTag;
+    const TActorId ParentId;
+    const TString ShardFileSystemId;
+    const ui64 ClientTabletId;
+    const ui64 TabletRequestId;
+
+public:
+    TDeleteResponseLogEntryActor(
+        TString logTag,
+        const TActorId& parentId,
+        TString shardFileSystemId,
+        ui64 clientTabletId,
+        ui64 tabletRequestId);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void SendRequest(const TActorContext& ctx);
+
+    void HandleDeleteResponseLogEntryResponse(
+        const TEvIndexTablet::TEvDeleteResponseLogEntryResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& e);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDeleteResponseLogEntryActor::TDeleteResponseLogEntryActor(
+        TString logTag,
+        const TActorId& parentId,
+        TString shardFileSystemId,
+        ui64 clientTabletId,
+        ui64 tabletRequestId)
+    : LogTag(std::move(logTag))
+    , ParentId(parentId)
+    , ShardFileSystemId(std::move(shardFileSystemId))
+    , ClientTabletId(clientTabletId)
+    , TabletRequestId(tabletRequestId)
+{}
+
+void TDeleteResponseLogEntryActor::Bootstrap(const TActorContext& ctx)
+{
+    SendRequest(ctx);
+    Become(&TThis::StateWork);
+}
+
+void TDeleteResponseLogEntryActor::SendRequest(const TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvDeleteResponseLogEntryRequest>();
+    request->Record.SetFileSystemId(ShardFileSystemId);
+    request->Record.SetClientTabletId(ClientTabletId);
+    request->Record.SetRequestId(TabletRequestId);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Sending DeleteResponseLogEntryRequest to shard %s",
+        LogTag.c_str(),
+        request->Record.ShortUtf8DebugString().Quote().c_str());
+
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+void TDeleteResponseLogEntryActor::HandleDeleteResponseLogEntryResponse(
+    const TEvIndexTablet::TEvDeleteResponseLogEntryResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s DeleteResponseLogEntry failed for %s, %lu, %lu with error"
+                " %s, retrying",
+                LogTag.c_str(),
+                ShardFileSystemId.c_str(),
+                ClientTabletId,
+                TabletRequestId,
+                FormatError(msg->GetError()).Quote().c_str());
+
+            SendRequest(ctx);
+            return;
+        }
+
+        ReplyAndDie(ctx, msg->Record.GetError());
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s DeleteResponseLogEntry succeeded for %s, %lu, %lu",
+        LogTag.c_str(),
+        ShardFileSystemId.c_str(),
+        ClientTabletId,
+        TabletRequestId);
+
+    ReplyAndDie(ctx, msg->Record.GetError());
+}
+
+void TDeleteResponseLogEntryActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
+void TDeleteResponseLogEntryActor::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& e)
+{
+    if (HasError(e)) {
+        const auto message = Sprintf(
+            "DeleteResponseLogEntry failed for %s, %lu, %lu with error %s"
+            ", will not retry",
+            ShardFileSystemId.c_str(),
+            ClientTabletId,
+            TabletRequestId,
+            FormatError(e).Quote().c_str());
+
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+    }
+
+    using TResponse = TEvIndexTabletPrivate::TEvResponseLogEntryDeleted;
+    ctx.Send(ParentId, std::make_unique<TResponse>());
+
+    Die(ctx);
+}
+
+STFUNC(TDeleteResponseLogEntryActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvIndexTablet::TEvDeleteResponseLogEntryResponse,
+            HandleDeleteResponseLogEntryResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -303,17 +473,14 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     // to use CommitId here in order not to generate some other unique
     // ui64
     args.OpLogEntry.SetEntryId(args.CommitId);
-    auto* shardRequest =
-        args.OpLogEntry.MutableRenameNodeInDestinationRequest();
-    shardRequest->MutableHeaders()->CopyFrom(
-        args.Request.GetHeaders());
-    shardRequest->SetFileSystemId(args.NewParentShardId);
-    shardRequest->SetNewParentId(args.Request.GetNewParentId());
-    shardRequest->SetNewName(args.Request.GetNewName());
-    shardRequest->SetFlags(args.Request.GetFlags());
-    shardRequest->SetSourceNodeShardId(args.ChildRef->ShardId);
-    shardRequest->SetSourceNodeShardNodeName(args.ChildRef->ShardNodeName);
-    *shardRequest->MutableOriginalRequest() = args.Request;
+    *args.OpLogEntry.MutableRenameNodeInDestinationRequest() =
+        MakeRenameNodeInDestinationRequest(
+            TabletID(),
+            args.CommitId,
+            args.Request,
+            args.ChildRef->ShardId,
+            args.ChildRef->ShardNodeName,
+            args.NewParentShardId);
 
     db.WriteOpLogEntry(args.OpLogEntry);
 
@@ -349,12 +516,12 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
     const TActorContext& ctx,
     TTxIndexTablet::TPrepareRenameNodeInSource& args)
 {
-    InvalidateNodeCaches(args.ParentNodeId);
+    InvalidateReadAheadCache(args.ParentNodeId);
     if (args.ChildRef) {
-        InvalidateNodeCaches(args.ChildRef->ChildNodeId);
+        InvalidateReadAheadCache(args.ChildRef->ChildNodeId);
     }
     if (args.ParentNode) {
-        InvalidateNodeCaches(args.ParentNode->NodeId);
+        InvalidateReadAheadCache(args.ParentNode->NodeId);
     }
 
     if (!HasError(args.Error) && !args.ChildRef) {
@@ -442,6 +609,8 @@ void TIndexTabletActor::HandleNodeRenamedInDestination(
         std::move(msg->ProfileLogRequest),
         std::move(msg->Response),
         msg->OpLogEntryId,
+        std::move(msg->ShardFileSystemId),
+        msg->TabletRequestId,
         false /* isExplicitRequest */);
 
     WorkerActors.erase(ev->Sender);
@@ -470,6 +639,8 @@ void TIndexTabletActor::HandleCommitRenameNodeInSource(
         NProto::TProfileLogRequestInfo{},
         std::move(msg->Response),
         msg->OpLogEntryId,
+        std::move(msg->ShardFileSystemId),
+        msg->TabletRequestId,
         true /* isExplicitRequest */);
 }
 
@@ -592,7 +763,7 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
     const TActorContext& ctx,
     TTxIndexTablet::TCommitRenameNodeInSource& args)
 {
-    InvalidateNodeCaches(args.Request.GetNodeId());
+    InvalidateReadAheadCache(args.Request.GetNodeId());
     CommitDupCacheEntry(args.SessionId, args.RequestId);
 
     Y_DEFER {
@@ -609,6 +780,22 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
     }
 
     RemoveInFlightRequest(*args.RequestInfo);
+
+    //
+    // Best-effort response log entry deletion attempt. The entries that don't
+    // get deleted because of this request not reaching the shard will be
+    // deleted in background when they become too old.
+    //
+
+    auto actor = std::make_unique<TDeleteResponseLogEntryActor>(
+        LogTag,
+        ctx.SelfID,
+        std::move(args.ShardFileSystemId),
+        TabletID(),
+        args.TabletRequestId);
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
 
     if (args.IsExplicitRequest) {
         using TResponse =
@@ -631,6 +818,41 @@ void TIndexTabletActor::CompleteTx_CommitRenameNodeInSource(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+void TIndexTabletActor::HandleResponseLogEntryDeleted(
+    const TEvIndexTabletPrivate::TEvResponseLogEntryDeleted::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProtoPrivate::TRenameNodeInDestinationRequest
+MakeRenameNodeInDestinationRequest(
+    ui64 tabletId,
+    ui64 commitId,
+    NProto::TRenameNodeRequest originalRequest,
+    TString sourceNodeShardId,
+    TString sourceNodeShardNodeName,
+    TString newParentShardId)
+{
+    NProtoPrivate::TRenameNodeInDestinationRequest request;
+    auto& headers = *request.MutableHeaders();
+    headers.CopyFrom(originalRequest.GetHeaders());
+    headers.SetRequestId(commitId);
+    headers.MutableInternal()->SetClientTabletId(tabletId);
+    request.SetFileSystemId(std::move(newParentShardId));
+    request.SetNewParentId(originalRequest.GetNewParentId());
+    request.SetNewName(originalRequest.GetNewName());
+    request.SetFlags(originalRequest.GetFlags());
+    request.SetSourceNodeShardId(std::move(sourceNodeShardId));
+    request.SetSourceNodeShardNodeName(std::move(sourceNodeShardNodeName));
+    *request.MutableOriginalRequest() = std::move(originalRequest);
+    return request;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

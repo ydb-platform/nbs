@@ -13,8 +13,10 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
+#include <cloud/filestore/libs/storage/tablet/model/request_metrics.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -111,6 +113,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
     xxx(CommitRenameNodeInSource,           __VA_ARGS__)                       \
+    xxx(DeleteResponseLogEntries,           __VA_ARGS__)                       \
+    xxx(GetResponseLogEntry,                __VA_ARGS__)                       \
+    xxx(WriteResponseLogEntry,              __VA_ARGS__)                       \
                                                                                \
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
@@ -126,6 +131,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AddData,                            __VA_ARGS__)                       \
+    xxx(AddDataUnconfirmed,                 __VA_ARGS__)                       \
+    xxx(DeleteUnconfirmedData,              __VA_ARGS__)                       \
     xxx(WriteBatch,                         __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
@@ -346,11 +353,8 @@ struct TTxIndexTablet
         // actually unused, needed in tablet_tx.h to avoid sophisticated
         // template tricks
         const TRequestInfoPtr RequestInfo;
-        const bool UseNoneCompactionPolicy;
 
-        TInitSchema(bool useNoneCompactionPolicy)
-            : UseNoneCompactionPolicy(useNoneCompactionPolicy)
-        {}
+        TInitSchema() = default;
 
         void Clear() override
         {
@@ -385,6 +389,7 @@ struct TTxIndexTablet
         TMaybe<NProto::TStorageConfig> StorageConfig;
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
         TVector<NProto::TOpLogEntry> OpLog;
+        TVector<NProtoPrivate::TResponseLogEntry> ResponseLog;
         TVector<TDeletionMarker> LargeDeletionMarkers;
         TVector<ui64> OrphanNodeIds;
 
@@ -409,6 +414,7 @@ struct TTxIndexTablet
             StorageConfig.Clear();
             SessionHistory.clear();
             OpLog.clear();
+            ResponseLog.clear();
             LargeDeletionMarkers.clear();
             OrphanNodeIds.clear();
         }
@@ -742,6 +748,7 @@ struct TTxIndexTablet
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -766,10 +773,12 @@ struct TTxIndexTablet
         TCreateNode(
                 TRequestInfoPtr requestInfo,
                 NProto::TCreateNodeRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest,
                 ui64 parentNodeId,
                 ui64 targetNodeId,
                 NProto::TNode attrs)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(parentNodeId)
             , TargetNodeId(targetNodeId)
@@ -794,6 +803,8 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+
+            // deliberately not calling TProfileAware::Clear()
         }
     };
 
@@ -1006,6 +1017,10 @@ struct TTxIndexTablet
         const TString NewName;
         const ui32 Flags;
         const NProto::TRenameNodeRequest Request;
+        const NProto::TNodeAttr SourceNodeAttr;
+        const NProto::TNodeAttr DestinationNodeAttr;
+        const bool IsSecondPass;
+        const ui64 AbortUnlinkOpLogEntryId;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -1022,6 +1037,7 @@ struct TTxIndexTablet
 
         TString ShardIdForUnlink;
         TString ShardNodeNameForUnlink;
+        bool SecondPassRequired = false;
 
         TRenameNode(
                 TRequestInfoPtr requestInfo,
@@ -1036,6 +1052,30 @@ struct TTxIndexTablet
             , NewName(request.GetNewName())
             , Flags(request.GetFlags())
             , Request(std::move(request))
+            , IsSecondPass(false)
+            , AbortUnlinkOpLogEntryId(0)
+        {}
+
+        TRenameNode(
+                TRequestInfoPtr requestInfo,
+                NProto::TRenameNodeRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                NProto::TNodeAttr sourceNodeAttr,
+                NProto::TNodeAttr destinationNodeAttr,
+                ui64 abortUnlinkOpLogEntryId)
+            : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
+            , RequestInfo(std::move(requestInfo))
+            , ParentNodeId(request.GetNodeId())
+            , Name(request.GetName())
+            , NewParentNodeId(request.GetNewParentId())
+            , NewName(request.GetNewName())
+            , Flags(request.GetFlags())
+            , Request(std::move(request))
+            , SourceNodeAttr(std::move(sourceNodeAttr))
+            , DestinationNodeAttr(std::move(destinationNodeAttr))
+            , IsSecondPass(true)
+            , AbortUnlinkOpLogEntryId(abortUnlinkOpLogEntryId)
         {}
 
         void Clear() override
@@ -1058,6 +1098,8 @@ struct TTxIndexTablet
 
             ShardIdForUnlink.clear();
             ShardNodeNameForUnlink.clear();
+
+            SecondPassRequired = false;
 
             // deliberately not calling TProfileAware::Clear()
         }
@@ -1146,6 +1188,7 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
+        NProtoPrivate::TResponseLogEntry ResponseLogEntry;
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
 
         TString ShardIdForUnlink;
@@ -1199,6 +1242,7 @@ struct TTxIndexTablet
             NewChildRef.Clear();
 
             OpLogEntry.Clear();
+            ResponseLogEntry.Clear();
 
             Response.Clear();
 
@@ -1226,6 +1270,8 @@ struct TTxIndexTablet
         const NProto::TRenameNodeRequest Request;
         const NProtoPrivate::TRenameNodeInDestinationResponse Response;
         const ui64 OpLogEntryId;
+        /* const */ TString ShardFileSystemId;
+        const ui64 TabletRequestId;
         const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
@@ -1237,6 +1283,8 @@ struct TTxIndexTablet
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 NProtoPrivate::TRenameNodeInDestinationResponse response,
                 ui64 opLogEntryId,
+                TString shardFileSystemId,
+                ui64 tabletRequestId,
                 bool isExplicitRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
@@ -1244,6 +1292,8 @@ struct TTxIndexTablet
             , Request(std::move(request))
             , Response(std::move(response))
             , OpLogEntryId(opLogEntryId)
+            , ShardFileSystemId(std::move(shardFileSystemId))
+            , TabletRequestId(tabletRequestId)
             , IsExplicitRequest(isExplicitRequest)
         {}
 
@@ -1256,6 +1306,75 @@ struct TTxIndexTablet
             ChildRef.Clear();
 
             // deliberately not calling TProfileAware::Clear()
+        }
+    };
+
+    //
+    // DeleteResponseLogEntries
+    //
+
+    struct TDeleteResponseLogEntries: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TVector<TInternalRequestId> InternalRequestIds;
+
+        explicit TDeleteResponseLogEntries(
+                TRequestInfoPtr requestInfo,
+                TVector<TInternalRequestId> internalRequestIds)
+            : RequestInfo(std::move(requestInfo))
+            , InternalRequestIds(std::move(internalRequestIds))
+        {}
+
+        void Clear() override
+        {
+        }
+    };
+
+    //
+    // GetResponseLogEntry
+    //
+
+    struct TGetResponseLogEntry: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 ClientTabletId;
+        const ui64 RequestId;
+        TMaybe<NProtoPrivate::TResponseLogEntry> Entry;
+
+        explicit TGetResponseLogEntry(
+                TRequestInfoPtr requestInfo,
+                ui64 clientTabletId,
+                ui64 requestId)
+            : RequestInfo(std::move(requestInfo))
+            , ClientTabletId(clientTabletId)
+            , RequestId(requestId)
+        {}
+
+        void Clear() override
+        {
+            Entry.Clear();
+        }
+    };
+
+    //
+    // WriteResponseLogEntry
+    //
+
+    struct TWriteResponseLogEntry: TTxIndexTabletBase, TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TResponseLogEntry Entry;
+
+        explicit TWriteResponseLogEntry(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TResponseLogEntry entry)
+            : RequestInfo(std::move(requestInfo))
+            , Entry(std::move(entry))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
         }
     };
 
@@ -1443,6 +1562,7 @@ struct TTxIndexTablet
         const NProto::TGetNodeAttrRequest Request;
         const ui64 NodeId;
         const TString Name;
+        TTabletRequestMetrics& RequestMetrics;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -1453,12 +1573,14 @@ struct TTxIndexTablet
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
-                const NProto::TGetNodeAttrRequest& request)
+                const NProto::TGetNodeAttrRequest& request,
+                TTabletRequestMetrics& requestMetrics)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
             , NodeId(request.GetNodeId())
             , Name(request.GetName())
+            , RequestMetrics(requestMetrics)
         {}
 
         void Clear() override
@@ -1495,13 +1617,15 @@ struct TTxIndexTablet
 
         TGetNodeAttrBatch(
                 TRequestInfoPtr requestInfo,
-                NProtoPrivate::TGetNodeAttrBatchRequest request,
-                NProtoPrivate::TGetNodeAttrBatchResponse response)
+                NProtoPrivate::TGetNodeAttrBatchRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
-            , Response(std::move(response))
-        {}
+        {
+            for (ui32 i = 0; i < Request.NamesSize(); ++i) {
+                Response.AddResponses();
+            }
+        }
 
         void Clear() override
         {
@@ -1510,6 +1634,9 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             ParentNode.Clear();
+            for (auto& response : *Response.MutableResponses()) {
+                response.Clear();
+            }
         }
     };
 
@@ -1713,6 +1840,7 @@ struct TTxIndexTablet
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -1741,8 +1869,10 @@ struct TTxIndexTablet
 
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
-                NProto::TCreateHandleRequest request)
+                NProto::TCreateHandleRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , NodeId(request.GetNodeId())
             , Name(request.GetName())
@@ -1773,6 +1903,8 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+
+            // deliberately not calling TProfileAware::Clear()
         }
     };
 
@@ -2033,10 +2165,10 @@ struct TTxIndexTablet
     };
 
     //
-    // AddData
+    // AddDataBase - common fields for AddData validation
     //
 
-    struct TAddData
+    struct TAddDataBase
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
@@ -2045,9 +2177,6 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
         const TByteRange ByteRange;
-        TVector<NKikimr::TLogoBlobID> BlobIds;
-        TVector<TBlockBytesMeta> UnalignedDataParts;
-        ui64 CommitId;
         // Used when we want to access a specific node, not the node
         // inferred from the handle.
         const ui64 ExplicitNodeId = InvalidNodeId;
@@ -2055,22 +2184,17 @@ struct TTxIndexTablet
         ui64 NodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
-        TAddData(
+        template <typename TRequest>
+        TAddDataBase(
                 TRequestInfoPtr requestInfo,
-                const NProtoPrivate::TAddDataRequest& request,
+                const TRequest& request,
                 TByteRange byteRange,
-                TVector<NKikimr::TLogoBlobID> blobIds,
-                TVector<TBlockBytesMeta> unalignedDataParts,
-                ui64 commitId,
                 NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
-            , BlobIds(std::move(blobIds))
-            , UnalignedDataParts(std::move(unalignedDataParts))
-            , CommitId(commitId)
             , ExplicitNodeId(request.GetNodeId())
         {}
 
@@ -2083,6 +2207,81 @@ struct TTxIndexTablet
 
             // deliberately not calling TProfileAware::Clear()
         }
+    };
+
+    //
+    // AddData
+    //
+
+    struct TAddData
+        : TAddDataBase
+    {
+        TVector<NKikimr::TLogoBlobID> BlobIds;
+        TVector<TBlockBytesMeta> UnalignedDataParts;
+        ui64 CommitId;
+
+        TAddData(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TAddDataRequest& request,
+                TByteRange byteRange,
+                TVector<NKikimr::TLogoBlobID> blobIds,
+                TVector<TBlockBytesMeta> unalignedDataParts,
+                ui64 commitId,
+                NProto::TProfileLogRequestInfo profileLogRequest)
+            : TAddDataBase(
+                  std::move(requestInfo),
+                  request,
+                  byteRange,
+                  std::move(profileLogRequest))
+            , BlobIds(std::move(blobIds))
+            , UnalignedDataParts(std::move(unalignedDataParts))
+            , CommitId(commitId)
+        {}
+    };
+
+    //
+    // AddDataUnconfirmed
+    //
+
+    struct TAddDataUnconfirmed
+        : TAddDataBase
+    {
+        const ui64 CommitId;
+
+        TAddDataUnconfirmed(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TGenerateBlobIdsRequest& request,
+                ui64 commitId,
+                TByteRange byteRange,
+                NProto::TProfileLogRequestInfo profileLogRequest)
+            : TAddDataBase(
+                  std::move(requestInfo),
+                  request,
+                  byteRange,
+                  std::move(profileLogRequest))
+            , CommitId(commitId)
+        {}
+    };
+
+    //
+    // DeleteUnconfirmedData
+    //
+
+    struct TDeleteUnconfirmedData
+        : TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        TVector<ui64> CommitIds;
+
+        TDeleteUnconfirmedData(
+                TRequestInfoPtr requestInfo,
+                TVector<ui64> commitIds)
+            : RequestInfo(std::move(requestInfo))
+            , CommitIds(std::move(commitIds))
+        {}
+
+        void Clear() override
+        {}
     };
 
     //
@@ -2184,6 +2383,9 @@ struct TTxIndexTablet
         const TVector<TBlockBytesMeta> UnalignedDataParts;
 
         ui64 CommitId = InvalidCommitId;
+        // Original commitId from GenerateBlobIds, used to clean up
+        // ConfirmedData entries after successful indexing
+        ui64 ConfirmedDataRefCommitId = InvalidCommitId;
         TNodeSet Nodes;
 
         TAddBlob(
@@ -2194,7 +2396,8 @@ struct TTxIndexTablet
                 TVector<TMixedBlobMeta> mixedBlobs,
                 TVector<TMergedBlobMeta> mergedBlobs,
                 TVector<TWriteRange> writeRanges,
-                TVector<TBlockBytesMeta> unalignedDataParts)
+                TVector<TBlockBytesMeta> unalignedDataParts,
+                ui64 confirmedDataRefCommitId = InvalidCommitId)
             : TProfileAware(EFileStoreSystemRequest::AddBlob)
             , RequestInfo(std::move(requestInfo))
             , Mode(mode)
@@ -2204,6 +2407,7 @@ struct TTxIndexTablet
             , MergedBlobs(std::move(mergedBlobs))
             , WriteRanges(std::move(writeRanges))
             , UnalignedDataParts(std::move(unalignedDataParts))
+            , ConfirmedDataRefCommitId(confirmedDataRefCommitId)
         {}
 
         void Clear() override

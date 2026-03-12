@@ -167,6 +167,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
         {}                                                                    )\
     xxx(ComputeDigestForEveryBlockOnCompaction,     bool,            false    )\
+    xxx(PoolKindToMediaKindMapping,                                            \
+        TPoolKindToMediaKindMapping,                  \
+        (TPoolKindToMediaKindMapping {{               \
+            {"rot", NCloud::NProto::STORAGE_MEDIA_HDD},                        \
+            {"rotmirror", NCloud::NProto::STORAGE_MEDIA_HDD},                  \
+            {"ssd", NCloud::NProto::STORAGE_MEDIA_SSD},                        \
+            {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
+        }})                                                                   )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -481,6 +489,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RemoteMountOnly,                           bool,      false           )\
     xxx(MaxLocalVolumes,                           ui32,      100             )\
                                                                                \
+    xxx(EnsureDiskRegistryStateIntegrityInterval,  TDuration, Seconds(0)      )\
     xxx(DiskRegistryVolumeConfigUpdatePeriod,      TDuration, Minutes(5)      )\
     xxx(DiskRegistryAlwaysAllocatesLocalDisks,     bool,      false           )\
     xxx(DiskRegistryCleanupConfigOnRemoveHost,     bool,      false           )\
@@ -665,6 +674,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
+    xxx(ResourceMetricsUpdateInterval,        TDuration,   Seconds(1)         )\
+    xxx(SendErrorOnAddClientConflict,         bool,        false              )\
+    xxx(FreshBlocksWriterEnabled,             bool,        false              )\
+                                                                               \
+    xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
+    xxx(OverlappingRequestsPolicy,                                             \
+        NProto::EOverlappingRequestsPolicy,                                    \
+        NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -767,6 +784,17 @@ TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
     return v;
 }
 
+template <>
+THashMap<TString, NCloud::NProto::EStorageMediaKind> ConvertValue(
+    const google::protobuf::RepeatedPtrField<NProto::TPoolKindToMediaKindMapping>& value)
+{
+    THashMap<TString, NCloud::NProto::EStorageMediaKind> res;
+    for (const auto& pool: value) {
+        res.emplace(pool.GetPoolKind(), pool.GetMediaKind());
+    }
+    return res;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IOutputStream& operator <<(
@@ -800,6 +828,13 @@ IOutputStream& operator<<(
     NProto::ENonreplAllocationPolicy pt)
 {
     return out << NProto::ENonreplAllocationPolicy_Name(pt);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::EOverlappingRequestsPolicy orp)
+{
+    return out << NProto::EOverlappingRequestsPolicy_Name(orp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -841,6 +876,26 @@ void DumpImpl(
         }
         os << value[i];
     }
+}
+
+template <>
+void DumpImpl(
+    const TPoolKindToMediaKindMapping& value,
+    IOutputStream& os)
+{
+    ui32 i = 0;
+    os << "{ ";
+    for (const auto& [pool, kind]: value) {
+        if (i++) {
+            os << ",<br>";
+        }
+        os << "{ "
+            << pool
+            << ", "
+            << NCloud::NProto::EStorageMediaKind_Name(kind)
+            << " }";
+    }
+    os << "}";
 }
 
 ////////////////////////////////////////////////////////////////////////////////

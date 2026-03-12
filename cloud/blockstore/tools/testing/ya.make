@@ -10,6 +10,7 @@ RECURSE(
     fake-vhost-server
     generate-agents
     infra-client
+    infra-device-provider
     loadtest
     nbd-test
     notify-mock

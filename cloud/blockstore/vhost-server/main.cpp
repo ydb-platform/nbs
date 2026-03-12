@@ -6,6 +6,8 @@
 
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
+
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -132,7 +134,7 @@ IEncryptorPtr CreateEncryptor(
     auto keyProvider = CreateDefaultEncryptionKeyProvider();
     auto keyFuture =
         keyProvider->GetKey(options.GetEncryptionSpec(), options.DiskId);
-    auto keyOrError = std::move(keyFuture).ExtractValue();
+    auto keyOrError = UnsafeExtractValue(keyFuture);
     if (HasError(keyOrError)) {
         Y_ABORT(
             "Error getting encryption key: %s",

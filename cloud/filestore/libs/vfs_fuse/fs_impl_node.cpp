@@ -37,6 +37,8 @@ void TFileSystem::Lookup(
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
 
+    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (auto future) {
             if (auto self = ptr.lock()) {
@@ -44,11 +46,12 @@ void TFileSystem::Lookup(
                 const auto& error = response.GetError();
                 if (!HasError(response)) {
                     self->AdjustNodeSize(*response.MutableNode());
-                    self->ReplyEntry(
+                    self->ReplyEntryWithCache(
                         *callContext,
                         error,
                         req,
-                        response.GetNode());
+                        response.GetNode(),
+                        version);
                 } else if (error.GetCode() == E_FS_NAMETOOLONG) {
                     self->ReplyError(*callContext, error, req, ENAMETOOLONG);
                 } else {
@@ -74,10 +77,7 @@ void TFileSystem::Forget(
     fuse_ino_t ino,
     unsigned long nlookup)
 {
-    with_lock (NodeCacheLock) {
-        NodeCache.ForgetNode(ino, nlookup);
-    }
-
+    NodeCache.ForgetNode(ino, nlookup);
     ReplyNone(*callContext, {}, req);
 }
 
@@ -87,10 +87,8 @@ void TFileSystem::ForgetMulti(
     size_t count,
     fuse_forget_data* forgets)
 {
-    with_lock (NodeCacheLock) {
-        for (size_t i = 0; i < count; ++i) {
-            NodeCache.ForgetNode(forgets[i].ino, forgets[i].nlookup);
-        }
+    for (size_t i = 0; i < count; ++i) {
+        NodeCache.ForgetNode(forgets[i].ino, forgets[i].nlookup);
     }
 
     ReplyNone(*callContext, {}, req);
@@ -131,7 +129,12 @@ void TFileSystem::MkDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
+                self->ReplyEntryWithCache(
+                    *callContext,
+                    error,
+                    req,
+                    response.GetNode(),
+                    1 /* version */);
             }
         });
 }
@@ -230,7 +233,12 @@ void TFileSystem::MkNode(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
+                self->ReplyEntryWithCache(
+                    *callContext,
+                    error,
+                    req,
+                    response.GetNode(),
+                    1 /* version */);
             }
         });
 }
@@ -351,7 +359,12 @@ void TFileSystem::SymLink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
+                self->ReplyEntryWithCache(
+                    *callContext,
+                    error,
+                    req,
+                    response.GetNode(),
+                    1 /* version */);
             }
         });
 }
@@ -390,7 +403,12 @@ void TFileSystem::Link(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
+                self->ReplyEntryWithCache(
+                    *callContext,
+                    error,
+                    req,
+                    response.GetNode(),
+                    1 /* version */);
             }
         });
 }

@@ -1,0 +1,25 @@
+Vertices {
+    Test {
+        Name: "prepare_nonreplicated_volume"
+        TestDuration: 10
+        Verify: false
+        VolumeName: "test_volume_nrd0"
+
+        StartEndpointRequest {
+            IpcType: IPC_GRPC
+            VolumeAccessMode: VOLUME_ACCESS_READ_WRITE
+            VolumeMountMode: VOLUME_MOUNT_LOCAL
+        }
+
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 786431
+                WriteRate: 50
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                MaxRequestSize: 256
+            }
+        }
+    }
+}
