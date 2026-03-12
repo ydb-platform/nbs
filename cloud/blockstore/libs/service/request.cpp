@@ -4,6 +4,84 @@
 
 namespace NCloud::NBlockStore {
 
+namespace NProto {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// On copy dont transfer sglist ownership, to avoid use after free.
+TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
+    const TWriteBlocksLocalRequest& request)
+    : TWriteBlocksRequest(request)
+    , Sglist(request.Sglist)
+    , BlocksCount(request.BlocksCount)
+    , BlockSize(request.BlockSize)
+{
+    Y_DEBUG_ABORT_UNLESS(!request.SglistOwner, "Losing sglist ownership");
+}
+
+TWriteBlocksLocalRequest& TWriteBlocksLocalRequest::operator=(
+    const TWriteBlocksLocalRequest& request)
+{
+    TWriteBlocksLocalRequest tmp{request};
+    *this = std::move(tmp);
+    return *this;
+}
+
+
+TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CopyRecord() const
+{
+    TWriteBlocksLocalRequest copiedRecord;
+
+#define COPY_WRITE_BLOCKS_STRUCT_FIELD(field)                    \
+    copiedRecord.Mutable##field()->CopyFrom(this->Get##field())  \
+// COPY_WRITE_BLOCKS_FIELD
+
+#define COPY_WRITE_BLOCKS_FIELD(field)                           \
+    copiedRecord.Set##field(this->Get##field())                  \
+// COPY_WRITE_BLOCKS_FIELD
+
+    COPY_WRITE_BLOCKS_STRUCT_FIELD(Headers);
+    COPY_WRITE_BLOCKS_FIELD(DiskId);
+    COPY_WRITE_BLOCKS_FIELD(StartIndex);
+    COPY_WRITE_BLOCKS_FIELD(Flags);
+    COPY_WRITE_BLOCKS_FIELD(SessionId);
+    COPY_WRITE_BLOCKS_FIELD(BlockSize);
+    COPY_WRITE_BLOCKS_STRUCT_FIELD(Checksums);
+
+#undef COPY_WRITE_BLOCKS_STRUCT_FIELD
+#undef COPY_WRITE_BLOCKS_FIELD
+
+    copiedRecord.Sglist = Sglist;
+    copiedRecord.BlocksCount = BlocksCount;
+    copiedRecord.BlockSize = BlockSize;
+
+    return copiedRecord;
+}
+
+void TWriteBlocksLocalRequest::CopySglistIntoBuffers()
+{
+    auto g = Sglist.Acquire();
+    if (!g) {
+        return;
+    }
+
+    const auto& sgList = g.Get();
+    TSgList newSgList;
+    newSgList.reserve(sgList.size());
+    for (const auto& block: sgList) {
+        auto& buffer = *MutableBlocks()->AddBuffers();
+        buffer.ReserveAndResize(block.Size());
+        memcpy(buffer.begin(), block.Data(), block.Size());
+        newSgList.emplace_back(buffer.data(), buffer.size());
+    }
+
+    TGuardedSgList newGuardedSgList(std::move(newSgList));
+    Sglist = newGuardedSgList;
+    SglistOwner.emplace(std::move(newGuardedSgList));
+}
+
+}   // namespace NProto
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ...)    #name,

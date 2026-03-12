@@ -65,6 +65,27 @@ struct TWriteBlocksLocalRequest
     ui32 BlocksCount = 0;
     // TODO: remove BlockSize as it is now in NProto::TWriteBlocksRequest
     ui32 BlockSize = 0;
+
+    std::optional<TGuardedSglistOwner> SglistOwner;
+
+    TWriteBlocksLocalRequest() = default;
+
+    TWriteBlocksLocalRequest(const TWriteBlocksLocalRequest& request);
+
+    TWriteBlocksLocalRequest(TWriteBlocksLocalRequest&& request) = default;
+
+    TWriteBlocksLocalRequest& operator=(
+        const TWriteBlocksLocalRequest& request);
+
+    TWriteBlocksLocalRequest& operator=(
+        TWriteBlocksLocalRequest&& request) = default;
+
+    // If write blocks local own request data (CopySglistIntoBuffers method was
+    // called). Copied request will be invalidated(will be called
+    // Sglist.Close()) after this object destruction.
+    TWriteBlocksLocalRequest CopyRecord() const;
+
+    void CopySglistIntoBuffers();
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;

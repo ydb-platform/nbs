@@ -93,6 +93,7 @@ message TReadBlocksResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Blocks write request/response.
 
+// Update WriteBlockLocal CopyRecord method after adding a new field.
 message TWriteBlocksRequest
 {
     // Optional request headers.

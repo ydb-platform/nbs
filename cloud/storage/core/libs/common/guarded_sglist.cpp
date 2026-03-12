@@ -284,4 +284,30 @@ void TGuardedSgList::Close()
     GuardedObject->Close();
 }
 
+TGuardedSglistOwner::TGuardedSglistOwner(TGuardedSgList guardedSgList)
+    : GuardedSgList(std::move(guardedSgList))
+{}
+
+TGuardedSglistOwner::TGuardedSglistOwner(TGuardedSglistOwner&& other) noexcept
+    : GuardedSgList(std::move(other.GuardedSgList))
+{
+    other.GuardedSgList.reset();
+}
+
+TGuardedSglistOwner& TGuardedSglistOwner::operator=(
+    TGuardedSglistOwner&& other) noexcept
+{
+    TGuardedSglistOwner tmp{std::move(*this)};
+
+    std::swap(GuardedSgList, other.GuardedSgList);
+    return *this;
+}
+
+TGuardedSglistOwner::~TGuardedSglistOwner()
+{
+    if (GuardedSgList) {
+        GuardedSgList->Close();
+    }
+}
+
 }   // namespace NCloud
