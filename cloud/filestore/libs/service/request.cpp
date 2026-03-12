@@ -112,14 +112,14 @@ ui64 CreateRequestId()
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-ui64 CalculateRequestSize<NProto::TReadDataRequest>(
+ui64 CalculateByteCount<NProto::TReadDataRequest>(
     const NProto::TReadDataRequest& request)
 {
     return request.GetLength();
 }
 
 template <>
-ui64 CalculateRequestSize<NProto::TWriteDataRequest>(
+ui64 CalculateByteCount<NProto::TWriteDataRequest>(
     const NProto::TWriteDataRequest& request)
 {
     if (!request.GetBuffer().empty()) {

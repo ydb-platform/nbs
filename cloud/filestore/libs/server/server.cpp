@@ -669,7 +669,7 @@ private:
 
         CallContext->FileSystemId = GetFileSystemId(*Request);
         CallContext->RequestId = RequestId;
-        CallContext->RequestSize = CalculateRequestSize(*Request);
+        CallContext->RequestSize = CalculateByteCount(*Request);
         CallContext->RequestType = TMethod::RequestType;
     }
 

@@ -42,7 +42,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        NCloud::NFileStore::CalculateRequestSize(request.Record),
+        NCloud::NFileStore::CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
         policyVersion
     };

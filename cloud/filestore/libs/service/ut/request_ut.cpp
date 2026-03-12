@@ -6,14 +6,14 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TCalculateRequestSizeTest)
+Y_UNIT_TEST_SUITE(TCalculateByteCountTest)
 {
     Y_UNIT_TEST(ShouldReturnLengthForReadData)
     {
         NProto::TReadDataRequest request;
         request.SetLength(4096);
 
-        UNIT_ASSERT_VALUES_EQUAL(4096, CalculateRequestSize(request));
+        UNIT_ASSERT_VALUES_EQUAL(4096, CalculateByteCount(request));
     }
 
     Y_UNIT_TEST(ShouldReturnBufferSizeForWriteDataWithBuffer)
@@ -21,7 +21,7 @@ Y_UNIT_TEST_SUITE(TCalculateRequestSizeTest)
         NProto::TWriteDataRequest request;
         request.SetBuffer("hello world");
 
-        UNIT_ASSERT_VALUES_EQUAL(11, CalculateRequestSize(request));
+        UNIT_ASSERT_VALUES_EQUAL(11, CalculateByteCount(request));
     }
 
     Y_UNIT_TEST(ShouldSumIovecLengthsForWriteDataWithIovecs)
@@ -37,14 +37,14 @@ Y_UNIT_TEST_SUITE(TCalculateRequestSizeTest)
         auto* iovec3 = request.MutableIovecs()->Add();
         iovec3->SetLength(300);
 
-        UNIT_ASSERT_VALUES_EQUAL(600, CalculateRequestSize(request));
+        UNIT_ASSERT_VALUES_EQUAL(600, CalculateByteCount(request));
     }
 
     Y_UNIT_TEST(ShouldReturnZeroForWriteDataWithNoBufferAndNoIovecs)
     {
         NProto::TWriteDataRequest request;
 
-        UNIT_ASSERT_VALUES_EQUAL(0, CalculateRequestSize(request));
+        UNIT_ASSERT_VALUES_EQUAL(0, CalculateByteCount(request));
     }
 
     Y_UNIT_TEST(ShouldPreferBufferOverIovecsForWriteData)
@@ -55,14 +55,14 @@ Y_UNIT_TEST_SUITE(TCalculateRequestSizeTest)
         auto* iovec = request.MutableIovecs()->Add();
         iovec->SetLength(999);
 
-        UNIT_ASSERT_VALUES_EQUAL(5, CalculateRequestSize(request));
+        UNIT_ASSERT_VALUES_EQUAL(5, CalculateByteCount(request));
     }
 
     Y_UNIT_TEST(ShouldReturnZeroForUnrelatedRequest)
     {
         NProto::TCreateNodeRequest request;
 
-        UNIT_ASSERT_VALUES_EQUAL(0, CalculateRequestSize(request));
+        UNIT_ASSERT_VALUES_EQUAL(0, CalculateByteCount(request));
     }
 }
 

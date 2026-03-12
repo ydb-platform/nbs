@@ -85,7 +85,7 @@ void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 
     auto rope = CreateRope(request.GetIovecs());
     auto* buffer = request.MutableBuffer();
-    const auto bytesToCopy = NCloud::NFileStore::CalculateRequestSize(request);
+    const auto bytesToCopy = NCloud::NFileStore::CalculateByteCount(request);
     buffer->ReserveAndResize(bytesToCopy);
     auto bytesCopied =
         TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
@@ -202,7 +202,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            NCloud::NFileStore::CalculateRequestSize(WriteRequest),
+            NCloud::NFileStore::CalculateByteCount(WriteRequest),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -459,7 +459,7 @@ private:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
         request->Record.SetLength(
-            NCloud::NFileStore::CalculateRequestSize(WriteRequest));
+            NCloud::NFileStore::CalculateByteCount(WriteRequest));
         for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
             request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
@@ -588,7 +588,7 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            NCloud::NFileStore::CalculateRequestSize(WriteRequest),
+            NCloud::NFileStore::CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
@@ -741,8 +741,7 @@ void TStorageServiceActor::HandleWriteData(
 
     ui32 blockSize = filestore.GetBlockSize();
 
-    const auto bytesCount =
-        NCloud::NFileStore::CalculateRequestSize(msg->Record);
+    const auto bytesCount = NCloud::NFileStore::CalculateByteCount(msg->Record);
     const TByteRange range(msg->Record.GetOffset(), bytesCount, blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&

@@ -209,7 +209,7 @@ TString DumpMessage(const google::protobuf::Message& message);
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TProtoRequest>
-ui64 CalculateRequestSize(const TProtoRequest&)
+ui64 CalculateByteCount(const TProtoRequest&)
 {
     return 0;
 }

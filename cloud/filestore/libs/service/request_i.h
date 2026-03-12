@@ -230,11 +230,11 @@ consteval bool HasResponseHeaders()
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-ui64 CalculateRequestSize<NProto::TReadDataRequest>(
+ui64 CalculateByteCount<NProto::TReadDataRequest>(
     const NProto::TReadDataRequest& request);
 
 template <>
-ui64 CalculateRequestSize<NProto::TWriteDataRequest>(
+ui64 CalculateByteCount<NProto::TWriteDataRequest>(
     const NProto::TWriteDataRequest& request);
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -305,7 +305,7 @@ private:
 
             callContext->RequestType = EFileStoreRequest::WriteData;
             callContext->RequestSize =
-                NCloud::NFileStore::CalculateRequestSize(*request) -
+                NCloud::NFileStore::CalculateByteCount(*request) -
                 request->GetBufferOffset();
 
             auto callback = [ptr = weak_from_this(), flushState, i](

@@ -43,7 +43,7 @@ std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInPersistentStorage(
     const NProto::TWriteDataRequest& request,
     IPersistentStorage& storage)
 {
-    const ui64 byteCount = NCloud::NFileStore::CalculateRequestSize(request) -
+    const ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request) -
                            request.GetBufferOffset();
 
     const ui64 allocationSize =
