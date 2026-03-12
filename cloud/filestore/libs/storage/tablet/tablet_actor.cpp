@@ -434,6 +434,10 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
         return MakeError(E_REJECTED, "compaction state not loaded yet");
     }
 
+    if (!UnconfirmedRecoveryReady) {
+        return MakeError(E_REJECTED, "unconfirmed recovery not ready yet");
+    }
+
     return {};
 }
 
@@ -1171,6 +1175,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
             HandleEnqueueBlobIndexOpIfNeeded);
+        HFunc(
+            TEvIndexTabletPrivate::TEvConfirmBlobsCompleted,
+            HandleConfirmBlobsCompleted);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1229,6 +1236,8 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
+
+        IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -1304,6 +1313,8 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
+
+        IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

@@ -367,6 +367,51 @@ void TIndexTabletState::ConfirmedDataAdded(
     TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
 }
 
+void TIndexTabletState::LoadUnconfirmedData(
+    TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries)
+{
+    for (auto& entry: entries) {
+        AcquireCollectBarrier(entry.CommitId);
+
+        // Skip session id. After restart we add all records to the index
+        UnconfirmedData[entry.CommitId] = {
+            .Data = std::move(entry.Data)};
+    }
+}
+
+bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
+    const ui64 nodeId,
+    const TByteRange& requestRange) const
+{
+    auto hasDataOverlap = [&](const auto& trackedDataMap)
+    {
+        for (const auto& [_, trackedEntry]: trackedDataMap) {
+            const auto& trackedDataRecord = trackedEntry.Data;
+            if (trackedDataRecord.GetNodeId() != nodeId) {
+                continue;
+            }
+
+            const TByteRange trackedRange(
+                trackedDataRecord.GetOffset(),
+                trackedDataRecord.GetLength(),
+                GetBlockSize());
+
+            if (requestRange.Overlaps(trackedRange)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    // Intentionally without DataInProgress as wee need it currently only for
+    // recovery phase.
+    return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// FreshBytes
+
 NProto::TError TIndexTabletState::CheckFreshBytes(
     ui64 nodeId,
     ui64 commitId,
