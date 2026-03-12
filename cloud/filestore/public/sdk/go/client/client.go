@@ -431,6 +431,45 @@ func (client *Client) ReadLink(
 	return resp.GetSymLink(), nil
 }
 
+func (client *Client) GetNodeAttr(
+	ctx context.Context,
+	session Session,
+	parentNodeID uint64,
+	name string,
+) (Node, error) {
+
+	req := &protos.TGetNodeAttrRequest{
+		FileSystemId: session.FileSystemID,
+		NodeId:       parentNodeID,
+		Name:         []byte(name),
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+
+	resp, err := client.Impl.GetNodeAttr(ctx, req)
+	if err != nil {
+		return Node{}, err
+	}
+
+	attr := resp.GetNode()
+	return Node{
+		ParentID: parentNodeID,
+		NodeID:   attr.GetId(),
+		Name:     name,
+		Atime:    attr.GetATime(),
+		Mtime:    attr.GetMTime(),
+		Ctime:    attr.GetCTime(),
+		Size:     attr.GetSize(),
+		Mode:     attr.GetMode(),
+		UID:      uint64(attr.GetUid()),
+		GID:      uint64(attr.GetGid()),
+		Links:    attr.GetLinks(),
+		Type:     NodeType(attr.GetType()),
+	}, nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type StartEndpointOpts struct {

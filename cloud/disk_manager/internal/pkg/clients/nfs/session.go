@@ -119,3 +119,15 @@ func (s *session) ReadLink(
 	data, err := s.nfs.ReadLink(ctx, s.session, nodeID)
 	return data, wrapError(err)
 }
+
+func (s *session) GetNodeAttr(
+	ctx context.Context,
+	parentNodeID uint64,
+	name string,
+) (_ Node, err error) {
+
+	defer s.metrics.StatRequest("GetNodeAttr")(&err)
+
+	node, err := s.nfs.GetNodeAttr(ctx, s.session, parentNodeID, name)
+	return Node(node), wrapError(err)
+}

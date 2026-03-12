@@ -167,6 +167,18 @@ func (m *ClientInterfaceMock) ReadLink(
 	return res, args.Error(1)
 }
 
+func (m *ClientInterfaceMock) GetNodeAttr(
+	ctx context.Context,
+	session nfs_client.Session,
+	parentNodeID uint64,
+	name string,
+) (nfs_client.Node, error) {
+
+	args := m.Called(ctx, session, parentNodeID, name)
+	res, _ := args.Get(0).(nfs_client.Node)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientInterfaceMock() *ClientInterfaceMock {

@@ -299,3 +299,44 @@ func TestListNodesFromCheckpoint(t *testing.T) {
 		"second",
 	}, nfs_testing.NodeNames(nodes))
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestGetNodeAttr(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	rootDir := nfs_testing.Root(
+		nfs_testing.File("testfile"),
+		nfs_testing.Dir("testdir"),
+	)
+	model := nfs_testing.NewFileSystemModel(t, ctx, session, rootDir)
+	model.CreateAllNodesRecursively()
+
+	fileNode, err := session.GetNodeAttr(ctx, nfs.RootNodeID, "testfile")
+	require.NoError(t, err)
+	require.Equal(t, "testfile", fileNode.Name)
+	require.False(t, fileNode.Type.IsDirectory())
+	require.NotZero(t, fileNode.NodeID)
+
+	dirNode, err := session.GetNodeAttr(ctx, nfs.RootNodeID, "testdir")
+	require.NoError(t, err)
+	require.Equal(t, "testdir", dirNode.Name)
+	require.True(t, dirNode.Type.IsDirectory())
+	require.NotZero(t, dirNode.NodeID)
+}

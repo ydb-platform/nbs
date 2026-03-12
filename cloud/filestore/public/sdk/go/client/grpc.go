@@ -405,6 +405,29 @@ func (client *grpcClient) ReadLink(
 	return resp.(*protos.TReadLinkResponse), err
 }
 
+func (client *grpcClient) GetNodeAttr(
+	ctx context.Context,
+	req *protos.TGetNodeAttrRequest,
+) (*protos.TGetNodeAttrResponse, error) {
+
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "GetNodeAttr: headers must be not nil",
+		}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.GetNodeAttr(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TGetNodeAttrResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcEndpointClient struct {
