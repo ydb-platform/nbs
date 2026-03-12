@@ -54,7 +54,7 @@ const (
 
 type testContext struct {
 	nbsClient               *mocks.NbsClientMock
-	nfsClient               *mocks.NfsEndpointClientMock
+	nfsClients              []*mocks.NfsEndpointClientMock
 	nfsLocalClient          *mocks.NfsEndpointClientMock
 	nfsLocalFilestoreClient *mocks.NfsClientMock
 	mounter                 *csimounter.Mock
@@ -117,8 +117,13 @@ func CreateTestContext(
 	socketsDir := filepath.Join(tempDir, "sockets")
 	sourcePath := getSourcePath(socketsDir, vmMode, legacyMode)
 
+	nfsClients := []*mocks.NfsEndpointClientMock{}
+	for i := 0; i < int(nfsVhostReplicaCount); i++ {
+		nfsClients = append(nfsClients, mocks.NewNfsEndpointClientMock())
+	}
+
 	return testContext{nbsClient: mocks.NewNbsClientMock(),
-		nfsClient:               mocks.NewNfsEndpointClientMock(),
+		nfsClients:              nfsClients,
 		nfsLocalClient:          mocks.NewNfsEndpointClientMock(),
 		nfsLocalFilestoreClient: mocks.NewNfsClientMock(),
 		mounter:                 csimounter.NewMock(),
@@ -137,6 +142,26 @@ func CreateTestContext(
 		localFsOverrides:        make(ExternalFsOverrideMap),
 		nfsVhostReplicaCount:    nfsVhostReplicaCount,
 	}
+}
+
+func getNfsClients(mockNfsClients []*mocks.NfsEndpointClientMock) []nfsclient.EndpointClientIface {
+	nfsClients := []nfsclient.EndpointClientIface{}
+	for _, mockNfsClient := range mockNfsClients {
+		nfsClients = append(nfsClients, nfsclient.EndpointClientIface(mockNfsClient))
+	}
+
+	return nfsClients
+}
+
+func getNfsClient(
+	mockNfsClients []*mocks.NfsEndpointClientMock,
+	instanceId string,
+	nfsVhostReplicaCount uint) *mocks.NfsEndpointClientMock {
+	if instanceId == "" {
+		return mockNfsClients[0]
+	}
+
+	return mockNfsClients[getNfsClientIndex(instanceId, nfsVhostReplicaCount)]
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -174,7 +199,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -244,12 +269,13 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
+	nfsClient := getNfsClient(testCtx.nfsClients, "", testCtx.nfsVhostReplicaCount)
 	if backend == "nfs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
 			vhostQueuesCount = virtioFsVhostQueuesCount(*requestQueuesCountOpt)
 		}
-		testCtx.nfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
+		nfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
 			Endpoint: &nfs.TEndpointConfig{
 				SocketPath:       testCtx.nfsSocketPath,
 				FileSystemId:     testCtx.volumeId,
@@ -293,7 +319,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		UnixSocketPath: testCtx.nbsSocketPath,
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
-	testCtx.nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+	nfsClient.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
 		SocketPath: testCtx.nfsSocketPath,
 	}).Return(&nfs.TStopEndpointResponse{}, nil)
 
@@ -313,7 +339,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 	require.NoError(t, err)
 
 	testCtx.nbsClient.AssertExpectations(t)
-	testCtx.nfsClient.AssertExpectations(t)
+	nfsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
 
@@ -424,7 +450,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -487,7 +513,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
-	expectedNfsClient := testCtx.nfsClient
+	expectedNfsClient := getNfsClient(testCtx.nfsClients, defaultInstanceId, testCtx.nfsVhostReplicaCount)
 	if localFsOverride == LocalFsOverrideLegacyEnabled || localFsOverride == LocalFsOverrideEnabled {
 		expectedNfsClient = testCtx.nfsLocalClient
 	}
@@ -610,7 +636,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	assert.True(t, os.IsNotExist(err))
 
 	testCtx.nbsClient.AssertExpectations(t)
-	testCtx.nfsClient.AssertExpectations(t)
+	expectedNfsClient.AssertExpectations(t)
 	testCtx.nfsLocalClient.AssertExpectations(t)
 	testCtx.nfsLocalFilestoreClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
@@ -750,6 +776,15 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			requestQueuesCountOpt: &rqc32,
 			nfsVhostReplicaCount:  1,
 		},
+		{
+			name:                  "FilestoreForKubevirtMultipleNfsVhost",
+			backend:               "nfs",
+			deviceNameOpt:         nil,
+			perInstanceVolumes:    true,
+			localFsOverride:       LocalFsOverrideDisabled,
+			requestQueuesCountOpt: nil,
+			nfsVhostReplicaCount:  4,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -836,7 +871,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -985,7 +1020,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -1135,7 +1170,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -1196,7 +1231,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -1250,7 +1285,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -1340,7 +1375,7 @@ func TestExternaFs(t *testing.T) {
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -1456,7 +1491,6 @@ func TestExternaFs(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 
 	testCtx.nbsClient.AssertExpectations(t)
-	testCtx.nfsClient.AssertExpectations(t)
 	testCtx.nfsLocalClient.AssertExpectations(t)
 	testCtx.nfsLocalFilestoreClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
@@ -1481,7 +1515,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -1558,7 +1592,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
@@ -1640,7 +1674,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
 		testCtx.nbsClient,
-		[]nfsclient.EndpointClientIface{testCtx.nfsClient},
+		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
 		testCtx.mounter,
