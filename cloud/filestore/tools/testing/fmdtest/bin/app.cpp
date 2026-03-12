@@ -541,11 +541,12 @@ public:
         }
 
         STORAGE_INFO("Validating results...");
+        ui32 errors = 0;
         for (auto& p: ProducerThreads) {
-            p->Validate(vc);
+            errors += p->Validate(vc);
         }
         for (auto& s: StealerThreads) {
-            s->Validate(vc);
+            errors += s->Validate(vc);
         }
 
         STORAGE_INFO("=== Test Results ===");
@@ -556,12 +557,12 @@ public:
         Stats.Stat.Report(Log);
         Stats.List.Report(Log);
 
-        WriteReport(options.ReportPath);
+        WriteReport(Log, options.ReportPath, errors);
 
-        return 0;
+        return errors == 0 ? 0 : 1;
     }
 
-    void WriteReport(const TString& reportPath) const
+    void WriteReport(TLog& Log, const TString& reportPath, ui32 errors) const
     {
         TOFStream os(reportPath);
         NJsonWriter::TBuf buf(NJsonWriter::HEM_DONT_ESCAPE_HTML, &os);
@@ -573,7 +574,13 @@ public:
         Stats.Rename.Report(buf);
         Stats.Stat.Report(buf);
         Stats.List.Report(buf);
+        buf.WriteKey("errors");
+        buf.WriteULongLong(errors);
         buf.EndObject();
+
+        os.Flush();
+
+        STORAGE_INFO("Report: " << reportPath << ", errors: " << errors);
     }
 
     void Stop()
