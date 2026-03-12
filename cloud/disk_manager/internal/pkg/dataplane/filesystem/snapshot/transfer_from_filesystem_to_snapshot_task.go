@@ -107,6 +107,17 @@ func (t *transferFromFilesystemToSnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	snapshotID := t.request.GetSnapshotId()
+
+	err := t.traversalStorage.ClearDirectoryListingQueue(
+		ctx,
+		snapshotID,
+		t.config.GetTraversalQueueDeletionLimit(),
+	)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

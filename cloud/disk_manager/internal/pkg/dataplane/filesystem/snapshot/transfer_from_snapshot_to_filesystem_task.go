@@ -185,7 +185,7 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 				node.ParentID = dstParentID
 			}
 
-			dstNodeID, err := session.CreateNode(ctx, node)
+			dstNodeID, err := session.SafeCreateNode(ctx, node)
 			if err != nil {
 				return err
 			}
@@ -266,7 +266,7 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 
 		if !ok {
 			first := nodes[0]
-			dstNodeID, err = session.CreateNode(ctx, first)
+			dstNodeID, err = session.SafeCreateNode(ctx, first)
 			if err != nil {
 				return false, err
 			}
@@ -333,10 +333,21 @@ func (t *transferFromSnapshotToFilesystemTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	snapshotID := t.snapshotID()
+
+	err := t.traversalStorage.ClearDirectoryListingQueue(
+		ctx,
+		snapshotID,
+		t.config.GetTraversalQueueDeletionLimit(),
+	)
+	if err != nil {
+		return err
+	}
+
 	for {
 		done, err := t.nodesStorage.DeleteRestorationMapping(
 			ctx,
-			t.snapshotID(),
+			snapshotID,
 		)
 		if err != nil {
 			return err
