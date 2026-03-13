@@ -1,7 +1,6 @@
 GO_LIBRARY()
 
 SRCS(
-    common.go
     storage.go
     storage_ydb.go
 )
@@ -14,12 +13,8 @@ END()
 
 RECURSE(
     mocks
-    nodes
-    protos
-    schema
 )
 
 RECURSE_FOR_TESTS(
-    mocks
     tests
 )
