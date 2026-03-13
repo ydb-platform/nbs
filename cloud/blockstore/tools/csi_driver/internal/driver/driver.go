@@ -71,8 +71,8 @@ type Config struct {
 	GrpcRequestTimeout               time.Duration
 	StartEndpointRequestTimeout      time.Duration
 	RetriableErrorsDurationThreshold time.Duration
-	NfsVhostReplicaCount             uint
-	NfsVhostReplicaCountOnNode       uint
+	NfsVhostReplicaCountUsed         uint
+	NfsVhostReplicaCountTotal        uint
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,7 +140,7 @@ func createClients(cfg Config) (*driverClients, error) {
 	var nfsEndpointClients []nfsclient.EndpointClientIface
 	if cfg.NfsVhostSocket != "" || cfg.NfsVhostPort != 0 {
 		if cfg.NfsVhostSocket != "" {
-			for i := 0; i < int(cfg.NfsVhostReplicaCountOnNode); i++ {
+			for i := 0; i < int(cfg.NfsVhostReplicaCountTotal); i++ {
 				nfsVhostSocket := getNfsVhostSocket(cfg.NfsVhostSocket, uint(i))
 				nfsEndpointClient, err := nfsclient.NewGrpcEndpointClient(
 					&nfsclient.GrpcClientOpts{
@@ -195,10 +195,10 @@ func NewDriver(cfg Config) (*Driver, error) {
 				cfg.StartEndpointRequestTimeout, cfg.GrpcRequestTimeout)
 	}
 
-	if cfg.NfsVhostReplicaCountOnNode > cfg.NfsVhostReplicaCount {
+	if cfg.NfsVhostReplicaCountTotal > cfg.NfsVhostReplicaCountUsed {
 		return nil,
-			fmt.Errorf("Invalid nfs-vhost replica count values. NfsVhostReplicaCountOnNode %q must be less than NfsVhostReplicaCount %q",
-				cfg.NfsVhostReplicaCountOnNode, cfg.NfsVhostReplicaCount)
+			fmt.Errorf("Invalid nfs-vhost replica count values. NfsVhostReplicaCountTotal %q must be less than NfsVhostReplicaCountUsed %q",
+				cfg.NfsVhostReplicaCountTotal, cfg.NfsVhostReplicaCountUsed)
 	}
 
 	clients, err := createClients(cfg)
@@ -270,7 +270,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			strings.Split(cfg.MountOptions, ","),
 			cfg.UseDiscardForYDBBasedDisks,
 			cfg.StartEndpointRequestTimeout,
-			cfg.NfsVhostReplicaCount))
+			cfg.NfsVhostReplicaCountUsed))
 
 	return &Driver{
 		grpcServer: grpcServer,
