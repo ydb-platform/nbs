@@ -21,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -340,6 +341,37 @@ func TestDeleteDisk(t *testing.T) {
 	// Deleting non-existent disk is also not an error.
 	err = client.Delete(ctx, diskID+"_does_not_exist")
 	require.NoError(t, err)
+}
+
+func TestDeleteNonreplDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
+	err := client.Delete(ctx, diskID)
+	require.NoError(t, err)
+	err = client.Delete(ctx, diskID)
+	require.NoError(t, err)
+
+	err = client.Delete(ctx, diskID+"_does_not_exist")
+	require.NoError(t, err)
+}
+
+func TestParallelDeleteNonreplDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	createStandardSSDNonreplDisk(t, ctx, client, diskID)
+	eg, ctx := errgroup.WithContext(ctx)
+	for i := 0; i < 10; i++ {
+		eg.Go(func() error {
+			return client.Delete(ctx, diskID)
+		})
+	}
+
+	require.NoError(t, eg.Wait())
 }
 
 func TestDeleteDiskSync(t *testing.T) {
