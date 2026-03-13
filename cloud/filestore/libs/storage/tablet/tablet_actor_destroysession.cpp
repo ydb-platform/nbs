@@ -143,8 +143,13 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
     }
 
     if (!CheckSessionForDestroy(session, args.SessionSeqNo) &&
-        session->DeleteSubSession(args.SessionSeqNo))
+        !session->ReadyToDestroy(args.SessionSeqNo))
     {
+        auto subsession = session->DeleteSubSession(args.SessionSeqNo);
+        if (subsession) {
+            RemovePipeServer(subsession->PipeInfo.PipeServer);
+        }
+
         db.WriteSession(*session);
         return;
     }
@@ -174,7 +179,6 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
     }
 
     RemoveSession(db, args.SessionId);
-
     EnqueueTruncateIfNeeded(ctx);
 }
 

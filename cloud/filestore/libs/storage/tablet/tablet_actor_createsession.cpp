@@ -117,12 +117,13 @@ TActorId DoRecoverSession(
     ui64 sessionSeqNo,
     bool readOnly,
     const TActorId& owner,
+    const TActorId& pipeServer,
     const TActorContext& ctx)
 {
     auto oldSessionSeqNo = session->GetSessionSeqNo();
 
     auto oldOwner =
-        state.RecoverSession(session, sessionSeqNo, readOnly, owner);
+        state.RecoverSession(session, sessionSeqNo, readOnly, owner, pipeServer);
     if (oldOwner) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "[s:%s][n:%lu] kill from tablet %s self %s",
@@ -233,7 +234,9 @@ void TIndexTabletActor::HandleCreateSession(
     ExecuteTx<TCreateSession>(
         ctx,
         std::move(requestInfo),
-        std::move(msg->Record));
+        std::move(msg->Record),
+        ev->Recipient
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -263,6 +266,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     const auto readOnly = args.Request.GetReadOnly();
 
     const auto owner = args.RequestInfo->Sender;
+    const auto pipeServer = args.PipeServerId;
 
     TIndexTabletDatabase db(tx.DB);
 
@@ -281,6 +285,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 seqNo,
                 readOnly,
                 owner,
+                pipeServer,
                 ctx);
             if (toKill != owner) {
                 LOG_INFO(ctx, TFileStoreComponents::TABLET,
@@ -327,6 +332,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 seqNo,
                 readOnly,
                 owner,
+                pipeServer,
                 ctx);
 
             return;
@@ -362,6 +368,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         seqNo,
         readOnly,
         owner,
+        pipeServer,
         sessionOptions);
 }
 

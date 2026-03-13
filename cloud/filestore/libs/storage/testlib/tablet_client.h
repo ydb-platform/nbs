@@ -468,6 +468,11 @@ public:
         return request;
     }
 
+    auto CreateDescribeSessionsRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
+    }
+
     //
     // TEvIndexTabletPrivate
     //
@@ -1259,6 +1264,11 @@ public:
             Sender,
             NodeIdx,
             NKikimr::GetPipeConfigWithRetries());
+    }
+
+    void DisconnectPipe()
+    {
+        Runtime.ClosePipe(PipeClient, Sender, NodeIdx);
     }
 };
 
