@@ -1142,6 +1142,112 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
                 TString::npos,
             readResponse->GetErrorReason());
     }
+
+    Y_UNIT_TEST(
+        ShouldDeleteUnconfirmedDataOnSessionInterruptionDuringCreateSession)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient client1(runtime, nodeIdx, tabletId);
+        client1.InitSession("client", "session");
+
+        auto id =
+            CreateNode(client1, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(client1, id);
+
+        auto gbi = client1.GenerateBlobIds(id, handle, 0, block);
+        Y_UNUSED(gbi);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(client1, 1, 0);
+
+        // Different owner recovers the same session => SessionInterrupted path.
+        TIndexTabletClient client2(runtime, nodeIdx, tabletId);
+        client2.InitSession("client", "session");
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(client2, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnDestroySession)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        Y_UNUSED(gbi);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(tablet, 1, 0);
+
+        tablet.DestroySession();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnPipeDisconnection)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient sessionClient(runtime, nodeIdx, tabletId);
+        sessionClient.InitSession("client", "session");
+
+        auto id = CreateNode(
+            sessionClient,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(sessionClient, id);
+
+        auto gbi = sessionClient.GenerateBlobIds(id, handle, 0, block);
+        Y_UNUSED(gbi);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(sessionClient, 1, 0);
+
+        sessionClient.DisconnectPipe();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        TIndexTabletClient observer(runtime, nodeIdx, tabletId);
+        AssertStorageStats(observer, 0, 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

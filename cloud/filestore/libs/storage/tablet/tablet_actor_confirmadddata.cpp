@@ -382,6 +382,59 @@ void TIndexTabletActor::ConfirmData(ui64 commitId, const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TIndexTabletActor::DeleteUnconfirmedDataForSession(
+    const TString& sessionId,
+    const TActorContext& ctx)
+{
+    TVector<ui64> commitIdsToDeleteNow;
+    ui64 commitIdsToDeleteOnTx = 0;
+
+    for (const auto& [commitId, trackedData]: UnconfirmedData) {
+        if (trackedData.SessionId != sessionId) {
+            continue;
+        }
+
+        if (!DeletionQueue.emplace(commitId).second) {
+            continue;
+        }
+        commitIdsToDeleteNow.push_back(commitId);
+    }
+
+    for (const auto& [commitId, inProgressData]: UnconfirmedDataInProgress) {
+        if (inProgressData.SessionId != sessionId) {
+            continue;
+        }
+
+        if (DeletionQueue.emplace(commitId).second) {
+            ++commitIdsToDeleteOnTx;
+        }
+    }
+
+    if (!commitIdsToDeleteNow.empty()) {
+        ExecuteTx<TDeleteUnconfirmedData>(
+            ctx,
+            CreateRequestInfo(
+                SelfId(),
+                0 /* cookie */,
+                MakeIntrusive<TCallContext>()),
+            std::move(commitIdsToDeleteNow));
+    }
+
+    if (!commitIdsToDeleteNow.empty() || commitIdsToDeleteOnTx) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Deleting unconfirmed data: sessionId=%s, "
+            "deleteNow=%zu, deleteOnTx=%lu",
+            LogTag.c_str(),
+            sessionId.Quote().c_str(),
+            commitIdsToDeleteNow.size(),
+            commitIdsToDeleteOnTx);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TIndexTabletActor::PrepareTx_DeleteUnconfirmedData(
     const TActorContext& ctx,
     TTransactionContext& tx,

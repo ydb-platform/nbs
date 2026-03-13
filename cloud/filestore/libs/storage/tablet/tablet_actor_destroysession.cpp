@@ -187,6 +187,9 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     auto response =
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(args.Error);
 
+    UnregisterSessionByPipeServer(args.SessionId);
+    DeleteUnconfirmedDataForSession(args.SessionId, ctx);
+
     if (HasError(args.Error)) {
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
