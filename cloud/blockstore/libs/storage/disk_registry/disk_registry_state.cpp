@@ -6122,6 +6122,13 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
 
     ApplyDeviceStateChange(db, *agentPtr, *devicePtr, now, affectedDisk);
 
+    if (PendingCleanup.FindDiskId(deviceId) != "" && newState != oldState &&
+        newState == NProto::DEVICE_STATE_ERROR)
+    {
+        PendingCleanup.EraseDevice(deviceId);
+        db.UpdateDirtyDevice(deviceId, {});
+    }
+
     return error;
 }
 

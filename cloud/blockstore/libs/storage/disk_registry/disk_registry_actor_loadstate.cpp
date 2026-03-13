@@ -67,6 +67,33 @@ void ProcessUserNotifications(
     std::erase_if(userNotifications, isObsolete);
 }
 
+// TODO: Remove in next release
+void RemovePendingCleanupDevicesInErrorState(
+    TDiskRegistryDatabase& db,
+    TVector<NProto::TAgentConfig>& agents,
+    TVector<TDirtyDevice>& dirtyDevices)
+{
+    THashMap<TString, size_t> dirtyDevicesUUID;
+    for (size_t deviceIdx = 0; deviceIdx < dirtyDevices.size(); deviceIdx++) {
+        const auto& device = dirtyDevices[deviceIdx];
+        dirtyDevicesUUID[device.Id] = deviceIdx;
+    }
+
+    for (auto& agent: agents) {
+        for (auto& device: agent.GetDevices()) {
+            if (device.GetState() == NProto::DEVICE_STATE_ERROR &&
+                dirtyDevicesUUID.contains(device.GetDeviceUUID()))
+            {
+                db.UpdateDirtyDevice(device.GetDeviceUUID(), "");
+                auto deviceIdx = dirtyDevicesUUID[device.GetDeviceUUID()];
+                dirtyDevices[deviceIdx] = {
+                    .Id = device.GetDeviceUUID(),
+                    .DiskId = {}};
+            }
+        }
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -124,6 +151,11 @@ void TDiskRegistryActor::ExecuteLoadState(
         db,
         args.Snapshot.ErrorNotifications,
         args.Snapshot.UserNotifications);
+
+    RemovePendingCleanupDevicesInErrorState(
+        db,
+        args.Snapshot.agents,
+        args.Snapshot.dirtyDevices);
 }
 
 void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
