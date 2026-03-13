@@ -26,7 +26,6 @@ TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() cons
     copiedRecord.MutableHeaders()->CopyFrom(this->GetHeaders());
     copiedRecord.SetDiskId(this->GetDiskId());
     copiedRecord.SetStartIndex(this->GetStartIndex());
-    // Skip Blocks field - it's accessed via Sglist
     copiedRecord.SetFlags(this->GetFlags());
     copiedRecord.SetSessionId(this->GetSessionId());
     copiedRecord.SetBlockSize(this->GetBlockSize());
