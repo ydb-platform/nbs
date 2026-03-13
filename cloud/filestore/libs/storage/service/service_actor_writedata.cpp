@@ -85,7 +85,7 @@ void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 
     auto rope = CreateRope(request.GetIovecs());
     auto* buffer = request.MutableBuffer();
-    const auto bytesToCopy = NCloud::NFileStore::CalculateByteCount(request);
+    const auto bytesToCopy = NFileStore::CalculateByteCount(request);
     buffer->ReserveAndResize(bytesToCopy);
     auto bytesCopied =
         TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
@@ -176,7 +176,8 @@ public:
         PrepareTabletRequest(
             ctx,
             EFileStoreRequest::GenerateBlobIds,
-            request->Record);
+            request->Record,
+            false /* addWriteRangeInfo */);
 
         LOG_DEBUG(
             ctx,
@@ -184,7 +185,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            NCloud::NFileStore::CalculateByteCount(WriteRequest),
+            NFileStore::CalculateByteCount(WriteRequest),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -445,7 +446,7 @@ private:
         const TActorContext& ctx,
         EFileStoreRequest requestType,
         TRecord& record,
-        bool addWriteRangeInfo = false)
+        bool addWriteRangeInfo)
     {
         auto callContext = MakeIntrusive<TCallContext>(
             RequestInfo->CallContext->FileSystemId,
@@ -471,7 +472,7 @@ private:
             rangeInfo->SetNodeId(WriteRequest.GetNodeId());
             rangeInfo->SetHandle(WriteRequest.GetHandle());
             rangeInfo->SetOffset(WriteRequest.GetOffset());
-            rangeInfo->SetBytes(NCloud::NFileStore::CalculateByteCount(WriteRequest));
+            rangeInfo->SetBytes(NFileStore::CalculateByteCount(WriteRequest));
         }
 
         auto* trace =
@@ -495,7 +496,7 @@ private:
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(NCloud::NFileStore::CalculateByteCount(WriteRequest));
+        request->Record.SetLength(NFileStore::CalculateByteCount(WriteRequest));
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             *request->Record.AddBlobIds() = blob.GetBlobId();
         }
@@ -505,7 +506,11 @@ private:
 
         AddStorageStatusInfo(request->Record);
 
-        PrepareTabletRequest(ctx, EFileStoreRequest::AddData, request->Record);
+        PrepareTabletRequest(
+            ctx,
+            EFileStoreRequest::AddData,
+            request->Record,
+            false /* addWriteRangeInfo */);
 
         LOG_DEBUG(
             ctx,
@@ -565,7 +570,7 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            NCloud::NFileStore::CalculateByteCount(WriteRequest),
+            NFileStore::CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
@@ -650,7 +655,7 @@ private:
         if (Range.Offset < BlobRange.Offset) {
             auto& unalignedHead = *ranges.Add();
             unalignedHead.SetOffset(Range.Offset);
-            const auto length = BlobRange.Offset - Range.Offset;
+            const ui64 length = BlobRange.Offset - Range.Offset;
             if (WriteRequest.GetIovecs().empty()) {
                 unalignedHead.SetContent(
                     WriteRequest.GetBuffer().substr(0, length));
@@ -755,7 +760,7 @@ void TStorageServiceActor::HandleWriteData(
 
     ui32 blockSize = filestore.GetBlockSize();
 
-    const auto bytesCount = NCloud::NFileStore::CalculateByteCount(msg->Record);
+    const auto bytesCount = NFileStore::CalculateByteCount(msg->Record);
     const TByteRange range(msg->Record.GetOffset(), bytesCount, blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&
