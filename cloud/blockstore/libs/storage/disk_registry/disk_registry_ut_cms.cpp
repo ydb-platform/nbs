@@ -187,12 +187,6 @@ auto GetVector(const TContainer& container)
     return res;
 }
 
-template<typename T,typename V>
-bool operator==(const TVector<T>& lhs, const TVector<V>& rhs)
-{
-    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1874,7 +1868,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
 
         response = diskRegistry.RegisterAgent(agent);
-        UNIT_ASSERT_VALUES_EQUAL(
+        ASSERT_VECTORS_EQUAL(
             TVector<TString>({"dev-1"}),
             GetVector(response->Record.GetPathsToAttach()));
 
@@ -1894,7 +1888,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.ReconnectPipe();
 
         response = diskRegistry.RegisterAgent(agent);
-        UNIT_ASSERT_VALUES_EQUAL(
+        ASSERT_VECTORS_EQUAL(
             TVector<TString>({"dev-1", "dev-2"}),
             GetVector(response->Record.GetPathsToAttach()));
 
@@ -1903,7 +1897,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         RemoveDevice("agent-1", "dev-2");
 
         response = diskRegistry.RegisterAgent(agent);
-        UNIT_ASSERT_VALUES_EQUAL(
+        ASSERT_VECTORS_EQUAL(
             TVector<TString>({"dev-1"}),
             GetVector(response->Record.GetPathsToAttach()));
     }
