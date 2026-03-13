@@ -270,6 +270,10 @@ protected:
     // Used for all requests until (#5353)
     THashMap<ui64, TPendingConfirmAddData> PendingConfirmation;
 
+    // Recovery gate for data operations: true when startup unconfirmed flow
+    // has completed recovery confirmation.
+    bool UnconfirmedRecoveryReady = false;
+
 public:
     TIndexTabletState();
     ~TIndexTabletState();
@@ -961,6 +965,13 @@ public:
 
 public:
     void ConfirmedDataAdded(TIndexTabletDatabase& db, ui64 commitId);
+
+    void LoadUnconfirmedData(
+        TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries);
+
+    bool HasDataOverlapWithUnconfirmed(
+        ui64 nodeId,
+        const TByteRange& requestRange) const;
 
     //
     // FreshBytes

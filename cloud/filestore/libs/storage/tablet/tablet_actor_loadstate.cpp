@@ -116,6 +116,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db.ReadResponseLog(args.ResponseLog),
         db.ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
         db.ReadOrphanNodes(args.OrphanNodeIds),
+        db.ReadUnconfirmedData(args.UnconfirmedData),
     };
 
     bool ready = std::accumulate(
@@ -321,6 +322,11 @@ void TIndexTabletActor::CompleteTx_LoadState(
             << args.GarbageBlobs.size());
     LoadGarbage(args.NewBlobs, args.GarbageBlobs);
 
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Loading unconfirmed data entries: "
+            << args.UnconfirmedData.size());
+    LoadUnconfirmedData(std::move(args.UnconfirmedData));
+
     CompactionStateLoadStatus.LoadQueue.push_back({
         0,
         Config->GetLoadedCompactionRangesPerTx(),
@@ -488,6 +494,10 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkResponse(
             // Nothing was loaded - it means that there are no more ranges to
             // load => we have already loaded everything
             s.Finished = true;
+
+            // TODO(#5376) Confirm blobs async with load. Load the chunks
+            // required for unconfirmed data earlier.
+            ConfirmBlobs(ctx);
 
             // Background ops can start now - all the required data is in memory
             EnqueueFlushIfNeeded(ctx);

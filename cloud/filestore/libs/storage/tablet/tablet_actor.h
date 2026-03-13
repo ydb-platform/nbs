@@ -692,6 +692,12 @@ private:
         const NActors::TActorContext& ctx,
         TPendingConfirmAddData pending,
         const NProto::TError& error);
+
+    void ConfirmBlobs(const NActors::TActorContext& ctx);
+    void HandleConfirmBlobsCompleted(
+        const TEvIndexTabletPrivate::TEvConfirmBlobsCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void BlobsConfirmed(const NActors::TActorContext& ctx);
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

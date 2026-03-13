@@ -23,6 +23,7 @@ SRCS(
     tablet_actor_cleanupsessions.cpp
     tablet_actor_cluster.cpp
     tablet_actor_collectgarbage.cpp
+    tablet_actor_confirmblobs.cpp
     tablet_actor_compaction.cpp
     tablet_actor_compactionforced.cpp
     tablet_actor_counters.cpp

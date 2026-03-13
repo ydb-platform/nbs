@@ -75,13 +75,16 @@ void TIndexTabletActor::UnconfirmedAddBlobSafePointReached(
             TStringBuilder()
                 << "tabletId: " << TabletID()
                 << ", commitId: " << commitId);
-        Y_DEBUG_ABORT_UNLESS(false);
         return;
     }
 
     ConfirmedData.erase(commitId);
 
-    SendPendingConfirmAddDataResponse(ctx, commitId, error);
+    if (UnconfirmedRecoveryReady) {
+        SendPendingConfirmAddDataResponse(ctx, commitId, error);
+    } else if (ConfirmedData.empty()) {
+        BlobsConfirmed(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
