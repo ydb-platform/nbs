@@ -22,25 +22,17 @@ TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() cons
 {
     TWriteBlocksLocalRequest copiedRecord;
 
-#define COPY_WRITE_BLOCKS_STRUCT_FIELD(field)                    \
-    copiedRecord.Mutable##field()->CopyFrom(this->Get##field())  \
-// COPY_WRITE_BLOCKS_FIELD
+    // Copy all protobuf fields except Blocks (field 4)
+    copiedRecord.MutableHeaders()->CopyFrom(this->GetHeaders());
+    copiedRecord.SetDiskId(this->GetDiskId());
+    copiedRecord.SetStartIndex(this->GetStartIndex());
+    // Skip Blocks field - it's accessed via Sglist
+    copiedRecord.SetFlags(this->GetFlags());
+    copiedRecord.SetSessionId(this->GetSessionId());
+    copiedRecord.SetBlockSize(this->GetBlockSize());
+    copiedRecord.MutableChecksums()->CopyFrom(this->GetChecksums());
 
-#define COPY_WRITE_BLOCKS_FIELD(field)                           \
-    copiedRecord.Set##field(this->Get##field())                  \
-// COPY_WRITE_BLOCKS_FIELD
-
-    COPY_WRITE_BLOCKS_STRUCT_FIELD(Headers);
-    COPY_WRITE_BLOCKS_FIELD(DiskId);
-    COPY_WRITE_BLOCKS_FIELD(StartIndex);
-    COPY_WRITE_BLOCKS_FIELD(Flags);
-    COPY_WRITE_BLOCKS_FIELD(SessionId);
-    COPY_WRITE_BLOCKS_FIELD(BlockSize);
-    COPY_WRITE_BLOCKS_STRUCT_FIELD(Checksums);
-
-#undef COPY_WRITE_BLOCKS_STRUCT_FIELD
-#undef COPY_WRITE_BLOCKS_FIELD
-
+    // Copy non-protobuf fields
     copiedRecord.Sglist = Sglist;
     copiedRecord.BlocksCount = BlocksCount;
     copiedRecord.BlockSize = BlockSize;
