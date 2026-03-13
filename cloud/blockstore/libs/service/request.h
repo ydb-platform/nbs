@@ -97,7 +97,9 @@ struct TWriteBlocksLocalRequest
 
     // If this WriteBlocksLocalRequest doesn't own request data
     // (CopySglistIntoBuffers method was not called). Dependent request will be
-    // invalidated (Sglist.Close() will be called) after this object destruction.
+    // invalidated (Sglist.Close() will be called) after this object
+    // destruction. Doesnt copy Blocks field from TWriteBlocksLocalRequest,
+    // because all blocks can be accessed with Sglist.
     TWriteBlocksLocalRequest CreateDependentRequest() const;
 
     void CopySglistIntoBuffers();
