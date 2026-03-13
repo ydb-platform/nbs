@@ -171,8 +171,17 @@ public:
             TFsPath filePath = DirPath / fileName;
 
             if (NFs::Exists(filePath)) {
-                STORAGE_ERROR("Unlinked file still exists: " << filePath);
-                ++errors;
+                static constexpr EOpenMode OpenMode =
+                    OpenExisting | RdOnly | Seq;
+                TFileHandle f(filePath, OpenMode);
+                if (f.IsOpen()) {
+                    STORAGE_ERROR("Unlinked file still exists: " << filePath);
+                    ++errors;
+                    f.Close();
+                } else {
+                    STORAGE_WARN("Unlinked file still exists: " << filePath
+                        << ", but can't be opened (stale dentry?)");
+                }
             }
         }
 
@@ -235,9 +244,9 @@ private:
         TFsPath filePath = DirPath / fileName;
 
         TString content(Options.FileSize, 'a' + (ThreadId % ('z' - 'a' + 1)));
-        static constexpr EOpenMode OPEN_MODE = CreateAlways | WrOnly | Seq;
+        static constexpr EOpenMode OpenMode = CreateAlways | WrOnly | Seq;
         THPTimer timer;
-        TFile f(filePath, OPEN_MODE);
+        TFile f(filePath, OpenMode);
         Stats.Create.Register(timer.Passed());
 
         TOFStream os(f);
