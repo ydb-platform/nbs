@@ -208,6 +208,14 @@ consteval bool HasResponseHeaders();
 
 TString DumpMessage(const google::protobuf::Message& message);
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TProtoRequest>
+ui64 CalculateByteCount(const TProtoRequest&)
+{
+    return 0;
+}
+
 }   // namespace NCloud::NFileStore
 
 #define FILESTORE_REQUEST_H

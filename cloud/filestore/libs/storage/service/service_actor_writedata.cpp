@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
@@ -84,7 +85,7 @@ void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 
     auto rope = CreateRope(request.GetIovecs());
     auto* buffer = request.MutableBuffer();
-    const auto bytesToCopy = CalculateByteCount(request);
+    const auto bytesToCopy = NCloud::NFileStore::CalculateByteCount(request);
     buffer->ReserveAndResize(bytesToCopy);
     auto bytesCopied =
         TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
@@ -201,7 +202,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            CalculateByteCount(WriteRequest),
+            NCloud::NFileStore::CalculateByteCount(WriteRequest),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -457,7 +458,8 @@ private:
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(CalculateByteCount(WriteRequest));
+        request->Record.SetLength(
+            NCloud::NFileStore::CalculateByteCount(WriteRequest));
         for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
             request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
@@ -586,7 +588,7 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            CalculateByteCount(WriteRequest),
+            NCloud::NFileStore::CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
@@ -739,11 +741,8 @@ void TStorageServiceActor::HandleWriteData(
 
     ui32 blockSize = filestore.GetBlockSize();
 
-    const auto bytesCount = CalculateByteCount(msg->Record);
-    const TByteRange range(
-        msg->Record.GetOffset(),
-        bytesCount,
-        blockSize);
+    const auto bytesCount = NCloud::NFileStore::CalculateByteCount(msg->Record);
+    const TByteRange range(msg->Record.GetOffset(), bytesCount, blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&
         threeStageWriteAllowed &&
