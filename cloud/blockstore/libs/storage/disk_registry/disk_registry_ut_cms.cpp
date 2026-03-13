@@ -183,7 +183,6 @@ auto GetVector(const TContainer& container)
     TVector<typename TContainer::value_type> res{
         container.begin(),
         container.end()};
-    Sort(res);
     return res;
 }
 
@@ -1866,9 +1865,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         AddDevice("agent-1", "dev-1");
 
-
         response = diskRegistry.RegisterAgent(agent);
-        ASSERT_VECTORS_EQUAL(
+        ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1"}),
             GetVector(response->Record.GetPathsToAttach()));
 
@@ -1888,7 +1886,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.ReconnectPipe();
 
         response = diskRegistry.RegisterAgent(agent);
-        ASSERT_VECTORS_EQUAL(
+        ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1", "dev-2"}),
             GetVector(response->Record.GetPathsToAttach()));
 
@@ -1897,7 +1895,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         RemoveDevice("agent-1", "dev-2");
 
         response = diskRegistry.RegisterAgent(agent);
-        ASSERT_VECTORS_EQUAL(
+        ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1"}),
             GetVector(response->Record.GetPathsToAttach()));
     }
