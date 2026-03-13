@@ -277,7 +277,7 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 
 		for _, node := range nodes {
 			node.NodeID = dstNodeID
-			node.Type = nfs.NodeKindLink
+			node.Type = nfs.NODE_KIND_LINK
 			_, err = session.CreateNode(ctx, node)
 			if err != nil {
 				return false, err
