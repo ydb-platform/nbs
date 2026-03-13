@@ -3041,6 +3041,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateBuffer(4096, 'a'));
         reqWrite->In->Body.flags |= O_WRONLY;
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT(write.Wait(WaitTimeout));
 
         auto reqFlush =
             bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
