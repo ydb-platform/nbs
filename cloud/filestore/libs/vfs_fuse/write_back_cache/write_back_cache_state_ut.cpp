@@ -12,6 +12,18 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+namespace NCloud::NProto {
+
+////////////////////////////////////////////////////////////////////////////////
+
+static bool operator == (const TError& lhs, const TError& rhs)
+{
+    return lhs.GetCode() == rhs.GetCode() &&
+        lhs.GetMessage() == rhs.GetMessage();
+}
+
+}   // namespace NCloud::NProto
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 namespace {
@@ -73,7 +85,11 @@ struct TBootstrap
 
     bool Recreate()
     {
-        State = std::make_unique<TWriteBackCacheState>(Processor, Timer, Stats);
+        State = std::make_unique<TWriteBackCacheState>(
+            Processor,
+            Timer,
+            Stats,
+            "[test]");
 
         return State->Init(Storage);
     }
@@ -304,6 +320,111 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(w3.GetValue());
 
         UNIT_ASSERT_VALUES_EQUAL("2", b.DumpEvents());
+    }
+
+    Y_UNIT_TEST(HandleFlushFailures)
+    {
+        TBootstrap b;
+
+        UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 2, "123").GetValue());
+
+        auto f1 = b.State->AddFlushRequest(1);
+
+        UNIT_ASSERT(b.Add(1, 101, 3, "xyz").GetValue());
+
+        auto f2 = b.State->AddFlushRequest(1);
+
+        UNIT_ASSERT(b.Add(2, 201, 10, "789").GetValue());
+
+        auto f3 = b.State->AddFlushAllRequest();
+
+        auto error = MakeError(E_FAIL, "Flush failed");
+
+        b.State->FlushFailed(2, error);
+
+        UNIT_ASSERT(!f1.HasValue());
+        UNIT_ASSERT(!f2.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, f3.GetValue());
+
+        auto f4 = b.State->AddFlushAllRequest();
+
+        UNIT_ASSERT(!f4.HasValue());
+
+        b.State->FlushFailed(1, error);
+
+        UNIT_ASSERT_VALUES_EQUAL(error, f1.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, f2.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, f3.GetValue());
+
+        b.State->FlushSucceeded(1, 3);
+        b.State->FlushSucceeded(2, 1);
+        UNIT_ASSERT(!b.State->HasUnflushedRequests());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->WriteDataRequestDroppedCount);
+    }
+
+    Y_UNIT_TEST(HandleReleaseFailures)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(2);
+
+        UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 102, 2, "123").GetValue());
+
+        auto w1 = b.Add(1, 102, 4, "def");
+        auto w2 = b.Add(1, 103, 5, "456");
+
+        UNIT_ASSERT(!w1.HasValue());
+        UNIT_ASSERT(!w2.HasValue());
+
+        // There are no requests with handle=100 - it immediately succeeds
+        auto c0 = b.State->AddReleaseHandleRequest(1, 100);
+
+        UNIT_ASSERT(c0.HasValue());
+        UNIT_ASSERT(!HasError(c0.GetValue()));
+
+        auto c1 = b.State->AddReleaseHandleRequest(1, 101);
+        UNIT_ASSERT(!c1.HasValue());
+
+        auto c3 = b.State->AddReleaseHandleRequest(1, 103);
+        UNIT_ASSERT(!c3.HasValue());
+
+        // Flush the first request in the queue with handle=101
+        b.State->FlushSucceeded(1, 1);
+
+        UNIT_ASSERT(c1.HasValue());
+        UNIT_ASSERT(!HasError(c1.GetValue()));
+        UNIT_ASSERT(!c3.HasValue());
+
+        UNIT_ASSERT(w1.HasValue());
+        UNIT_ASSERT(w1.GetValue());
+        UNIT_ASSERT(!w2.HasValue());
+
+        auto error = MakeError(E_FAIL, "Flush failed");
+
+        // Nothing happens until all handles are requested to be released
+        b.State->FlushFailed(1, error);
+
+        UNIT_ASSERT(!c3.HasValue());
+
+        auto c2 = b.State->AddReleaseHandleRequest(1, 102);
+
+        UNIT_ASSERT(!c2.HasValue());
+
+        // Cache should be emptied and pending requests should be failed
+        // Two requests are dropped
+        b.State->FlushFailed(1, error);
+
+        UNIT_ASSERT(w2.HasValue());
+        UNIT_ASSERT(!w2.GetValue());
+
+        UNIT_ASSERT(c2.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, c2.GetValue());
+        UNIT_ASSERT(c3.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, c3.GetValue());
+
+        UNIT_ASSERT(!b.State->HasUnflushedRequests());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->WriteDataRequestDroppedCount);
     }
 }
 

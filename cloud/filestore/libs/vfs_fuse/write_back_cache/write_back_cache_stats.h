@@ -64,6 +64,8 @@ struct IWriteBackCacheStats: public IPersistentStorageStats
     virtual void IncrementNodeCount() = 0;
     virtual void DecrementNodeCount() = 0;
 
+    virtual void WriteDataRequestDropped() = 0;
+
     virtual void WriteDataRequestEnteredStatus(
         EWriteDataRequestStatus status) = 0;
 

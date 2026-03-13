@@ -38,9 +38,20 @@ public:
     void Release();
 
     void ScheduleFlushNode(ui64 nodeId);
+
     void CompleteWriteDataPromise(
         NThreading::TPromise<NProto::TWriteDataResponse> promise);
-    void CompleteFlushPromise(NThreading::TPromise<void> promise);
+
+    void FailWriteDataPromise(
+        NThreading::TPromise<NProto::TWriteDataResponse> promise,
+        const NCloud::NProto::TError& error);
+
+    void CompleteFlushOrReleasePromise(
+        NThreading::TPromise<NCloud::NProto::TError> promise);
+
+    void FailFlushOrReleasePromise(
+        NThreading::TPromise<NCloud::NProto::TError> promise,
+        const NCloud::NProto::TError& error);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

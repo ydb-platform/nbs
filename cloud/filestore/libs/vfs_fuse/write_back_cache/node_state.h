@@ -7,9 +7,22 @@
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/hash.h>
 #include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct THandleState
+{
+    // Number of pending and unflushed requests associated with the handle
+    ui64 ActiveWriteDataRequestCount = 0;
+
+    // The promise is fulfilled when |RequestCount| hits 0
+    // Not initialized by default unless ReleaseHandle is requested
+    NThreading::TPromise<NCloud::NProto::TError> ReadyToReleasePromise;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,7 +46,8 @@ struct TFlushRequest
 
     // The promise is fulfilled when there are no pending or unflushed requests
     // with SequenceId <= TFlushRequest::SequenceId (for a node or global)
-    NThreading::TPromise<void> Promise = NThreading::NewPromise();
+    NThreading::TPromise<NCloud::NProto::TError> Promise =
+        NThreading::NewPromise<NCloud::NProto::TError>();
 
     explicit TFlushRequest(ui64 sequenceId)
         : SequenceId(sequenceId)
@@ -63,6 +77,16 @@ struct TNodeState
     // strictly increasing so newer flush requests have larger SequenceId.
     TDeque<TFlushRequest> FlushRequests;
 
+    // Holds active request handles and tracks handle release
+    // Key: handle
+    THashMap<ui64, THandleState> Handles;
+
+    // Number of handles that have been requested for release.
+    // When HandleToReleaseCount == Handles.size(), the next flush failure
+    // will cause all pending requests to be failed and cached data to be
+    // dropped
+    size_t HandleToReleaseCount = 0;
+
     // Cached data extends the node size but until the data is flushed,
     // the changes are not visible to the tablet. FileSystem requests that
     // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
@@ -74,6 +98,8 @@ struct TNodeState
         if (Cache.Empty() && CachedDataPins.empty()) {
             Y_ABORT_UNLESS(FlushRequests.empty());
             Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
+            Y_ABORT_UNLESS(Handles.empty());
+            Y_ABORT_UNLESS(HandleToReleaseCount == 0);
             return true;
         }
         return false;
