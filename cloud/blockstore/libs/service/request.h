@@ -80,9 +80,9 @@ struct TWriteBlocksLocalRequest
     TWriteBlocksLocalRequest& operator=(
         TWriteBlocksLocalRequest&& request) = default;
 
-    // If write blocks local own request data (CopySglistIntoBuffers method was
-    // called). Copied request will be invalidated(will be called
-    // Sglist.Close()) after this object destruction.
+    // If the WriteBlocksLocal owns request data (the CopySglistIntoBuffers
+    // method was called), the copied request will be invalidated
+    // (Sglist.Close() will be called) after this object is destroyed.
     TWriteBlocksLocalRequest CopyRecord() const;
 
     void CopySglistIntoBuffers();
