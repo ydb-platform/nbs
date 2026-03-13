@@ -573,6 +573,9 @@ private:
     void HandleSessionDisconnected(
         const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
         const NActors::TActorContext& ctx);
+    void HandleSessionDisconnectedInWork(
+        const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandleTabletMetrics(
         const NKikimr::TEvLocal::TEvTabletMetrics::TPtr& ev,
@@ -698,6 +701,11 @@ private:
         const TEvIndexTabletPrivate::TEvConfirmBlobsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
+
+    void DeleteUnconfirmedDataForSession(
+        const TString& sessionId,
+        const NActors::TActorContext& ctx);
+
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

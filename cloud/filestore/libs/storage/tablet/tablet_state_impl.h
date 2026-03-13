@@ -30,6 +30,12 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TSessionIds = TVector<TString>;
+using TSessionIdsByPipeServerMap =
+    THashMap<NActors::TActorId, TSessionIds>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TIndexTabletState::TImpl
 {
     TSessionList Sessions;
@@ -37,6 +43,7 @@ struct TIndexTabletState::TImpl
     TSessionMap SessionById;
     TSessionOwnerMap SessionByOwner;
     TSessionClientMap SessionByClient;
+    TSessionIdsByPipeServerMap SessionIdsByPipeServer;
     TSessionHistoryList SessionHistoryList;
 
     TNodeRefsByHandle NodeRefsByHandle;

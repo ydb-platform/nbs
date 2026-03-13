@@ -149,6 +149,11 @@ public:
         ReconnectPipe();
     }
 
+    void DisconnectPipe()
+    {
+        Runtime.ClosePipe(PipeClient, Sender, NodeIdx);
+    }
+
     template <typename TRequest>
     void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {

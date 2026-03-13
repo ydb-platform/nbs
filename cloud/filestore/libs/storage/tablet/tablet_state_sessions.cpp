@@ -246,6 +246,64 @@ NActors::TActorId TIndexTabletState::RecoverSession(
     return oldOwner;
 }
 
+void TIndexTabletState::RegisterSessionByPipeServer(
+    const TActorId& pipeServer,
+    const TString& sessionId)
+{
+    if (!pipeServer || sessionId.Empty()) {
+        return;
+    }
+
+    auto& sessionIds = Impl->SessionIdsByPipeServer[pipeServer];
+    for (const auto& existingSessionId: sessionIds) {
+        if (existingSessionId == sessionId) {
+            return;
+        }
+    }
+
+    sessionIds.push_back(sessionId);
+}
+
+void TIndexTabletState::UnregisterSessionByPipeServer(const TString& sessionId)
+{
+    for (auto it = Impl->SessionIdsByPipeServer.begin();
+         it != Impl->SessionIdsByPipeServer.end();)
+    {
+        auto& sessionIds = it->second;
+        for (auto jt = sessionIds.begin(); jt != sessionIds.end();) {
+            if (*jt == sessionId) {
+                jt = sessionIds.erase(jt);
+            } else {
+                ++jt;
+            }
+        }
+
+        if (sessionIds.empty()) {
+            auto erased = it++;
+            Impl->SessionIdsByPipeServer.erase(erased);
+        } else {
+            ++it;
+        }
+    }
+}
+
+const TVector<TString>& TIndexTabletState::FindSessionIdsByPipeServer(
+    const TActorId& pipeServer) const
+{
+    auto it = Impl->SessionIdsByPipeServer.find(pipeServer);
+    if (it != Impl->SessionIdsByPipeServer.end()) {
+        return it->second;
+    }
+
+    static const TVector<TString> Empty;
+    return Empty;
+}
+
+void TIndexTabletState::RemoveSessionByPipeServer(const TActorId& pipeServer)
+{
+    Impl->SessionIdsByPipeServer.erase(pipeServer);
+}
+
 TSession* TIndexTabletState::FindSession(const TString& sessionId) const
 {
     auto it = Impl->SessionById.find(sessionId);

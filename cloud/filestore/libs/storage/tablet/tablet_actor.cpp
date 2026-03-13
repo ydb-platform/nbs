@@ -737,6 +737,29 @@ void TIndexTabletActor::HandleSessionDisconnected(
     OrphanSession(ev->Sender, ctx.Now());
 }
 
+void TIndexTabletActor::HandleSessionDisconnectedInWork(
+    const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& msg = *ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s Server disconnected, sender: %s, client: %s, server: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str(),
+        msg.ClientId.ToString().c_str(),
+        msg.ServerId.ToString().c_str());
+
+    // TODO (#4962) use proper session id
+    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
+    for (const auto& sessionId: sessionIds) {
+        DeleteUnconfirmedDataForSession(sessionId, ctx);
+    }
+    RemoveSessionByPipeServer(msg.ServerId);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleGetFileSystemConfig(
@@ -1183,7 +1206,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
+        HFunc(
+            TEvTabletPipe::TEvServerDisconnected,
+            HandleSessionDisconnectedInWork);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
