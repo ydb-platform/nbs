@@ -242,7 +242,6 @@ public:
     ui32 GetNodeIndexCacheMaxNodes() const;
 
     bool GetMultiTabletForwardingEnabled() const;
-    bool GetGetNodeAttrBatchEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
     TDuration GetEnqueueBlobIndexOpIfNeededScheduleInterval() const;
