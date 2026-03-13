@@ -85,7 +85,7 @@ void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
 
     auto rope = CreateRope(request.GetIovecs());
     auto* buffer = request.MutableBuffer();
-    const auto bytesToCopy = NCloud::NFileStore::CalculateByteCount(request);
+    const auto bytesToCopy = NFileStore::CalculateByteCount(request);
     buffer->ReserveAndResize(bytesToCopy);
     auto bytesCopied =
         TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
@@ -173,28 +173,11 @@ public:
         request->Record.SetOffset(BlobRange.Offset);
         request->Record.SetLength(BlobRange.Length);
 
-        auto genCallContext = MakeIntrusive<TCallContext>(
-            RequestInfo->CallContext->FileSystemId,
-            RequestInfo->CallContext->RequestId);
-        genCallContext->SetRequestStartedCycles(GetCycleCount());
-        genCallContext->RequestType = EFileStoreRequest::GenerateBlobIds;
-        InFlightRequest.ConstructInPlace(
-            TRequestInfo(
-                RequestInfo->Sender,
-                RequestInfo->Cookie,
-                std::move(genCallContext)),
-            ProfileLog,
-            MediaKind,
-            RequestStats);
-        InFlightRequest->Start(ctx.Now());
-        InitProfileLogRequestInfo(
-            InFlightRequest->AccessProfileLogRequest(),
-            request->Record);
-        auto* trace =
-            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
-        TraceSerializer->BuildTraceRequest(
-            *trace,
-            RequestInfo->CallContext->LWOrbit);
+        PrepareTabletRequest(
+            ctx,
+            EFileStoreRequest::GenerateBlobIds,
+            request->Record,
+            false /* addWriteRangeInfo */);
 
         LOG_DEBUG(
             ctx,
@@ -202,7 +185,7 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             LogTag.c_str(),
-            NCloud::NFileStore::CalculateByteCount(WriteRequest),
+            NFileStore::CalculateByteCount(WriteRequest),
             WriteRequest.GetOffset(),
             BlobRange.Length,
             BlobRange.Offset);
@@ -444,6 +427,61 @@ private:
         }
     }
 
+    template <typename TRecord>
+    void AddStorageStatusInfo(TRecord& record)
+    {
+        record.MutableStorageStatusFlags()->Reserve(StorageStatusFlags.size());
+        for (const auto flags: StorageStatusFlags) {
+            record.AddStorageStatusFlags(flags);
+        }
+        record.MutableApproximateFreeSpaceShares()->Reserve(
+            ApproximateFreeSpaceShares.size());
+        for (const auto share: ApproximateFreeSpaceShares) {
+            record.AddApproximateFreeSpaceShares(share);
+        }
+    }
+
+    template <typename TRecord>
+    void PrepareTabletRequest(
+        const TActorContext& ctx,
+        EFileStoreRequest requestType,
+        TRecord& record,
+        bool addWriteRangeInfo)
+    {
+        auto callContext = MakeIntrusive<TCallContext>(
+            RequestInfo->CallContext->FileSystemId,
+            RequestInfo->CallContext->RequestId);
+        callContext->SetRequestStartedCycles(GetCycleCount());
+        callContext->RequestType = requestType;
+        InFlightRequest.ConstructInPlace(
+            TRequestInfo(
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
+                std::move(callContext)),
+            ProfileLog,
+            MediaKind,
+            RequestStats);
+        InFlightRequest->Start(ctx.Now());
+        InitProfileLogRequestInfo(
+            InFlightRequest->AccessProfileLogRequest(),
+            record);
+
+        if (addWriteRangeInfo) {
+            auto* rangeInfo =
+                InFlightRequest->AccessProfileLogRequest().AddRanges();
+            rangeInfo->SetNodeId(WriteRequest.GetNodeId());
+            rangeInfo->SetHandle(WriteRequest.GetHandle());
+            rangeInfo->SetOffset(WriteRequest.GetOffset());
+            rangeInfo->SetBytes(NFileStore::CalculateByteCount(WriteRequest));
+        }
+
+        auto* trace =
+            record.MutableHeaders()->MutableInternal()->MutableTrace();
+        TraceSerializer->BuildTraceRequest(
+            *trace,
+            RequestInfo->CallContext->LWOrbit);
+    }
+
     void AddData(const TActorContext& ctx)
     {
         FILESTORE_TRACK(
@@ -458,77 +496,21 @@ private:
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(
-            NCloud::NFileStore::CalculateByteCount(WriteRequest));
-        for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
-            request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
+        request->Record.SetLength(NFileStore::CalculateByteCount(WriteRequest));
+        for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
+            *request->Record.AddBlobIds() = blob.GetBlobId();
         }
         request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
-        request->Record.MutableStorageStatusFlags()->Reserve(
-            StorageStatusFlags.size());
-        for (const auto flags: StorageStatusFlags) {
-            request->Record.AddStorageStatusFlags(flags);
-        }
-        request->Record.MutableApproximateFreeSpaceShares()->Reserve(
-            ApproximateFreeSpaceShares.size());
-        for (const auto share: ApproximateFreeSpaceShares) {
-            request->Record.AddApproximateFreeSpaceShares(share);
-        }
 
-        if (Range.Offset < BlobRange.Offset) {
-            auto& unalignedHead = *request->Record.AddUnalignedDataRanges();
-            unalignedHead.SetOffset(Range.Offset);
-            const auto length = BlobRange.Offset - Range.Offset;
-            if (WriteRequest.GetIovecs().empty()) {
-                unalignedHead.SetContent(
-                    WriteRequest.GetBuffer().substr(0, length));
-            } else {
-                TString buffer;
-                auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
-                TABLET_VERIFY(bytesCopied == length);
-                unalignedHead.SetContent(std::move(buffer));
-            }
-        }
+        FillUnalignedDataRanges(*request->Record.MutableUnalignedDataRanges());
 
-        if (Range.End() > BlobRange.End()) {
-            auto& unalignedTail = *request->Record.AddUnalignedDataRanges();
-            unalignedTail.SetOffset(BlobRange.End());
-            const auto offset = BlobRange.End() - Range.Offset;
-            const auto length = Range.End() - BlobRange.End();
-            if (WriteRequest.GetIovecs().empty()) {
-                unalignedTail.SetContent(
-                    WriteRequest.GetBuffer().substr(offset, length));
-            } else {
-                TString buffer;
-                auto bytesCopied =
-                    CopyBufferFromRope(Rope, buffer, offset, length);
-                TABLET_VERIFY(bytesCopied == length);
-                unalignedTail.SetContent(std::move(buffer));
-            }
-        }
+        AddStorageStatusInfo(request->Record);
 
-        auto addCallContext = MakeIntrusive<TCallContext>(
-            RequestInfo->CallContext->FileSystemId,
-            RequestInfo->CallContext->RequestId);
-        addCallContext->SetRequestStartedCycles(GetCycleCount());
-        addCallContext->RequestType = EFileStoreRequest::AddData;
-        InFlightRequest.ConstructInPlace(
-            TRequestInfo(
-                RequestInfo->Sender,
-                RequestInfo->Cookie,
-                std::move(addCallContext)),
-            ProfileLog,
-            MediaKind,
-            RequestStats);
-        InFlightRequest->Start(ctx.Now());
-        InitProfileLogRequestInfo(
-            InFlightRequest->AccessProfileLogRequest(),
-            request->Record);
-        auto* trace =
-            request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
-        TraceSerializer->BuildTraceRequest(
-            *trace,
-            RequestInfo->CallContext->LWOrbit);
+        PrepareTabletRequest(
+            ctx,
+            EFileStoreRequest::AddData,
+            request->Record,
+            false /* addWriteRangeInfo */);
 
         LOG_DEBUG(
             ctx,
@@ -588,7 +570,7 @@ private:
             WriteRequest.GetNodeId(),
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
-            NCloud::NFileStore::CalculateByteCount(WriteRequest),
+            NFileStore::CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
@@ -664,6 +646,43 @@ private:
     {
         Y_UNUSED(ev);
         HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
+    }
+
+    void FillUnalignedDataRanges(
+        google::protobuf::RepeatedPtrField<NProtoPrivate::TFreshDataRange>&
+            ranges)
+    {
+        if (Range.Offset < BlobRange.Offset) {
+            auto& unalignedHead = *ranges.Add();
+            unalignedHead.SetOffset(Range.Offset);
+            const ui64 length = BlobRange.Offset - Range.Offset;
+            if (WriteRequest.GetIovecs().empty()) {
+                unalignedHead.SetContent(
+                    WriteRequest.GetBuffer().substr(0, length));
+            } else {
+                TString buffer;
+                auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedHead.SetContent(std::move(buffer));
+            }
+        }
+
+        if (Range.End() > BlobRange.End()) {
+            auto& unalignedTail = *ranges.Add();
+            unalignedTail.SetOffset(BlobRange.End());
+            const auto offset = BlobRange.End() - Range.Offset;
+            const auto length = Range.End() - BlobRange.End();
+            if (WriteRequest.GetIovecs().empty()) {
+                unalignedTail.SetContent(
+                    WriteRequest.GetBuffer().substr(offset, length));
+            } else {
+                TString buffer;
+                auto bytesCopied =
+                    CopyBufferFromRope(Rope, buffer, offset, length);
+                TABLET_VERIFY(bytesCopied == length);
+                unalignedTail.SetContent(std::move(buffer));
+            }
+        }
     }
 };
 
@@ -741,7 +760,7 @@ void TStorageServiceActor::HandleWriteData(
 
     ui32 blockSize = filestore.GetBlockSize();
 
-    const auto bytesCount = NCloud::NFileStore::CalculateByteCount(msg->Record);
+    const auto bytesCount = NFileStore::CalculateByteCount(msg->Record);
     const TByteRange range(msg->Record.GetOffset(), bytesCount, blockSize);
     const bool threeStageWriteEnabled =
         range.Length >= filestore.GetFeatures().GetThreeStageWriteThreshold() &&
