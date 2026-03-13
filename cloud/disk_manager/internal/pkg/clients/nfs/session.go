@@ -20,7 +20,12 @@ const (
 )
 
 const (
-	NodeKindLink = nfs_client.NodeType(nfs_client.NODE_KIND_LINK)
+	NODE_KIND_INVALID = nfs_client.NodeType(nfs_client.NODE_KIND_INVALID)
+	NODE_KIND_FILE    = nfs_client.NodeType(nfs_client.NODE_KIND_FILE)
+	NODE_KIND_DIR     = nfs_client.NodeType(nfs_client.NODE_KIND_DIR)
+	NODE_KIND_SYMLINK = nfs_client.NodeType(nfs_client.NODE_KIND_SYMLINK)
+	NODE_KIND_LINK    = nfs_client.NodeType(nfs_client.NODE_KIND_LINK)
+	NODE_KIND_SOCK    = nfs_client.NodeType(nfs_client.NODE_KIND_SOCK)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
