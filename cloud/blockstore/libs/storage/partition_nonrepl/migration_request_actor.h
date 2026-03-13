@@ -37,10 +37,11 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NActors::TActorId LeaderPartition;
     const NActors::TActorId FollowerPartition;
-    const typename TMethod::TRequest::ProtoRecordType Request;
     const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 NonreplicatedRequestCounter;
+
+    typename TMethod::TRequest::ProtoRecordType Request;
 
     TVector<TCallContextPtr> ForkedCallContexts;
     ui32 PendingRequests = 0;
@@ -105,10 +106,10 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
     : RequestInfo(std::move(requestInfo))
     , LeaderPartition(leaderPartition)
     , FollowerPartition(followerPartition)
-    , Request(std::move(request))
     , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
+    , Request(std::move(request))
 {
     Y_DEBUG_ABORT_UNLESS(FollowerPartition);
 }
@@ -152,7 +153,7 @@ void TMigrationRequestActor<TMethod>::SendRequest(
             callContext.RequestId);
     }
     ForkedCallContexts.push_back(request->CallContext);
-    request->Record = Request;
+    request->Record = std::move(Request);
 
     auto event = std::make_unique<NActors::IEventHandle>(
         recipient,

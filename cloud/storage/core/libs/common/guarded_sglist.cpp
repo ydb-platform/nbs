@@ -291,7 +291,7 @@ TGuardedSglistOwner::TGuardedSglistOwner(TGuardedSgList guardedSgList)
 TGuardedSglistOwner::TGuardedSglistOwner(TGuardedSglistOwner&& other) noexcept
     : GuardedSgList(std::move(other.GuardedSgList))
 {
-    other.GuardedSgList.reset();
+    other.GuardedSgList = TGuardedSgList();
 }
 
 TGuardedSglistOwner& TGuardedSglistOwner::operator=(
@@ -305,8 +305,8 @@ TGuardedSglistOwner& TGuardedSglistOwner::operator=(
 
 TGuardedSglistOwner::~TGuardedSglistOwner()
 {
-    if (GuardedSgList) {
-        GuardedSgList->Close();
+    if (!GuardedSgList.Empty()) {
+        GuardedSgList.Close();
     }
 }
 

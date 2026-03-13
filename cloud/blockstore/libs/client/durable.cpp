@@ -440,7 +440,8 @@ private:
         }
 
         // copy request without data (only TSgList).
-        return std::make_shared<NProto::TWriteBlocksLocalRequest>(*request);
+        return std::make_shared<NProto::TWriteBlocksLocalRequest>(
+            request->CreateDependentRequest());
     }
 
     template <>

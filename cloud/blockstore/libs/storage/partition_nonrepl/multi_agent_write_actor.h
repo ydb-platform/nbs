@@ -283,7 +283,14 @@ void TMultiAgentWriteActor<TMethod>::SendOrdinaryWriteRequests(
                 callContext.RequestId);
         }
         ForkedCallContexts.push_back(request->CallContext);
-        request->Record = Request;
+
+        if constexpr (
+            std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
+        {
+            request->Record = Request.CreateDependentRequest();
+        } else {
+            request->Record = Request;
+        }
 
         auto event = std::make_unique<NActors::IEventHandle>(
             replica.ActorId,

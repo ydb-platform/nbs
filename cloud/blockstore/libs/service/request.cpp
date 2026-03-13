@@ -8,27 +8,17 @@ namespace NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// On copy dont transfer sglist ownership, to avoid use after free.
-TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
-    const TWriteBlocksLocalRequest& request)
-    : TWriteBlocksRequest(request)
-    , Sglist(request.Sglist)
-    , BlocksCount(request.BlocksCount)
-    , BlockSize(request.BlockSize)
+TWriteBlocksLocalRequest TWriteBlocksLocalRequest::Clone() const
 {
-    Y_DEBUG_ABORT_UNLESS(!request.SglistOwner, "Losing sglist ownership");
+    auto request = CreateDependentRequest();
+    if (SglistOwner) {
+        request.CopySglistIntoBuffers();
+    }
+
+    return request;
 }
 
-TWriteBlocksLocalRequest& TWriteBlocksLocalRequest::operator=(
-    const TWriteBlocksLocalRequest& request)
-{
-    TWriteBlocksLocalRequest tmp{request};
-    *this = std::move(tmp);
-    return *this;
-}
-
-
-TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CopyRecord() const
+TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() const
 {
     TWriteBlocksLocalRequest copiedRecord;
 

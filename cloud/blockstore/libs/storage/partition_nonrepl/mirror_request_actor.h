@@ -133,7 +133,7 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
         if constexpr (
             std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
         {
-            request->Record = Request.CopyRecord();
+            request->Record = Request.CreateDependentRequest();
         } else {
             request->Record = Request;
         }

@@ -174,9 +174,11 @@ public:
 class TGuardedSglistOwner
 {
 private:
-    std::optional<TGuardedSgList> GuardedSgList;
+    TGuardedSgList GuardedSgList;
 
 public:
+    TGuardedSglistOwner() = default;
+
     explicit TGuardedSglistOwner(TGuardedSgList guardedSgList);
 
     TGuardedSglistOwner(const TGuardedSglistOwner& other) = delete;

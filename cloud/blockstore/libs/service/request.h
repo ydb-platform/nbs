@@ -58,6 +58,16 @@ struct TReadBlocksLocalResponse: public TReadBlocksResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TWriteBlocksLocalRequest can be 2 types:
+//
+//     1. Dependent WriteBlocksLocalRequest doesn't own any data. It can access
+//     data with TWriteBlocksLocalRequest::Sglist.
+//
+//     2. Owner WriteBlocksLocalRequest stores request data in
+//     TWriteBlocksRequest field. Sglist will be closed after object
+//     destruction. We can promote dependent request to owner by calling
+//     void TWriteBlocksLocalRequest::CopySglistIntoBuffers() method.
+
 struct TWriteBlocksLocalRequest
     : public TWriteBlocksRequest
 {
@@ -70,20 +80,25 @@ struct TWriteBlocksLocalRequest
 
     TWriteBlocksLocalRequest() = default;
 
-    TWriteBlocksLocalRequest(const TWriteBlocksLocalRequest& request);
+    TWriteBlocksLocalRequest(const TWriteBlocksLocalRequest& request) = delete;
 
     TWriteBlocksLocalRequest(TWriteBlocksLocalRequest&& request) = default;
 
     TWriteBlocksLocalRequest& operator=(
-        const TWriteBlocksLocalRequest& request);
+        const TWriteBlocksLocalRequest& request) = delete;
 
     TWriteBlocksLocalRequest& operator=(
         TWriteBlocksLocalRequest&& request) = default;
 
-    // If the WriteBlocksLocal owns request data (the CopySglistIntoBuffers
-    // method was called), the copied request will be invalidated
-    // (Sglist.Close() will be called) after this object is destroyed.
-    TWriteBlocksLocalRequest CopyRecord() const;
+    // Full request copy. If this is dependent request, after clone we will get
+    // dependent request. If this is owner request, after clone we will get
+    // owner request.
+    TWriteBlocksLocalRequest Clone() const;
+
+    // If this WriteBlocksLocalRequest doesn't own request data
+    // (CopySglistIntoBuffers method was not called). Dependent request will be
+    // invalidated (Sglist.Close() will be called) after this object destruction.
+    TWriteBlocksLocalRequest CreateDependentRequest() const;
 
     void CopySglistIntoBuffers();
 };
