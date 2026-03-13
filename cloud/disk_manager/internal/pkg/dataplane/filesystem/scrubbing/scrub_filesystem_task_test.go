@@ -350,8 +350,9 @@ func TestScrubFilesystemTaskCancel(t *testing.T) {
 		map[uint64]struct{}{}, // nodesToExclude
 		100,                   // limit
 	)
-
+	require.NoError(t, err)
 	require.NotEmpty(t, entries)
+
 	err = task.Cancel(f.ctx, execCtx)
 	require.NoError(t, err)
 
