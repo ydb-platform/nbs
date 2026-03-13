@@ -14,6 +14,7 @@ struct TOptions
     ui32 FilesPerProducer = 1000;
     ui32 TestDurationSec = 60;
     ui32 FileSize = 4096;
+    TString ReportPath;
 
     void Parse(int argc, char** argv);
 };

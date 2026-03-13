@@ -20,6 +20,7 @@ RECURSE_FOR_TESTS(
     fio_index
     fio_index_migration
     fio_migration
+    fmdtest
     fs_posix_compliance
     guest_cache
     loadtest

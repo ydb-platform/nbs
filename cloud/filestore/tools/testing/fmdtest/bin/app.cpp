@@ -2,8 +2,10 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/json/writer/json.h>
 #include <library/cpp/logger/stream.h>
 
+#include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/path.h>
 #include <util/generic/hash_set.h>
@@ -13,8 +15,8 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/system/fs.h>
+#include <util/system/hp_timer.h>
 #include <util/system/thread.h>
-#include <util/datetime/base.h>
 
 #include <atomic>
 #include <csignal>
@@ -33,12 +35,53 @@ struct TFileInfo
     TString Content;
 };
 
+struct TRequestStats
+{
+    TString Name;
+    std::atomic<ui64> Requests{0};
+    std::atomic<ui64> TimeUs{0};
+
+    explicit TRequestStats(TString name)
+        : Name(std::move(name))
+    {}
+
+    void Register(double seconds)
+    {
+        Requests.fetch_add(1, std::memory_order_relaxed);
+        TimeUs.fetch_add(seconds * 1'000'000, std::memory_order_relaxed);
+    }
+
+    auto Load() const
+    {
+        const ui64 cnt = Requests.load(std::memory_order_relaxed);
+        const ui64 timeUs = TimeUs.load(std::memory_order_relaxed);
+        const ui64 lat = cnt ? timeUs / cnt : 0;
+        return std::make_pair(cnt, lat);
+    }
+
+    void Report(TLog& Log) const
+    {
+        const auto [cnt, lat] = Load();
+        STORAGE_INFO(Name << ": count=" << cnt << ", lat-us=" << lat);
+    }
+
+    void Report(NJsonWriter::TBuf& buf) const
+    {
+        const auto [cnt, lat] = Load();
+        buf.WriteKey(Name);
+        buf.WriteULongLong(cnt);
+        buf.WriteKey(Name + "-lat-us");
+        buf.WriteULongLong(lat);
+    }
+};
+
 struct TStats
 {
-    std::atomic<ui64> Creates{0};
-    std::atomic<ui64> Unlinks{0};
-    std::atomic<ui64> Renames{0};
-    std::atomic<ui64> Lists{0};
+    TRequestStats Create{"create"};
+    TRequestStats Stat{"stat"};
+    TRequestStats Unlink{"unlink"};
+    TRequestStats Rename{"rename"};
+    TRequestStats List{"list"};
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -192,17 +235,25 @@ private:
         TFsPath filePath = DirPath / fileName;
 
         TString content(Options.FileSize, 'a' + (ThreadId % ('z' - 'a' + 1)));
-        TFileOutput(filePath).Write(content);
+        static constexpr EOpenMode OPEN_MODE = CreateAlways | WrOnly | Seq;
+        THPTimer timer;
+        TFile f(filePath, OPEN_MODE);
+        Stats.Create.Register(timer.Passed());
 
+        TOFStream os(f);
+        os.Write(content);
+        os.Flush();
+
+        timer.Reset();
         TFileStat stat(filePath);
+        Stats.Stat.Register(timer.Passed());
+
         Files.push_back({
             fileName,
             stat.INode,
             stat.Size,
             content
         });
-
-        Stats.Creates.fetch_add(1);
     }
 
     void DeleteRandomFile()
@@ -215,10 +266,11 @@ private:
         auto& file = Files[idx];
 
         TFsPath filePath = DirPath / file.Name;
+        THPTimer timer;
         const bool removed = NFs::Remove(filePath);
         if (removed) {
+            Stats.Unlink.Register(timer.Passed());
             UnlinkedFiles.push_back(file.Name);
-            Stats.Unlinks.fetch_add(1);
         } else {
             FailedToUnlinkFiles.push_back(file.Name);
         }
@@ -346,8 +398,9 @@ private:
 
         // List files in producer directory
         TVector<TString> files;
+        THPTimer timer;
         producerDir.ListNames(files);
-        Stats.Lists.fetch_add(1);
+        Stats.List.Register(timer.Passed());
 
         if (files.empty()) {
             return;
@@ -364,10 +417,19 @@ private:
             << "stolen_p" << producerIdx << "_" << fileName;
         TFsPath dstPath = DirPath / newFileName;
 
+        timer.Reset();
         bool renamed = NFs::Rename(srcPath, dstPath);
         if (renamed) {
-            // Read file info after moving
+            Stats.Rename.Register(timer.Passed());
+
+            //
+            // Stat and file info after moving
+            //
+
+            timer.Reset();
             TFileStat stat(dstPath);
+            Stats.Stat.Register(timer.Passed());
+
             TString content = TFileInput(dstPath).ReadAll();
 
             StolenFiles.push_back({
@@ -378,8 +440,6 @@ private:
             });
 
             StolenPaths.push_back(srcPath);
-
-            Stats.Renames.fetch_add(1);
         } else {
             FailedToStealPaths.push_back(srcPath);
         }
@@ -410,16 +470,19 @@ public:
 
         StartTime = TInstant::Now();
 
-        TLog log = CreateComponentLog(
+        auto asyncLogger = CreateAsyncLogger();
+        asyncLogger->Start();
+        // capital 'L' letter needed for the logging macros
+        TLog Log = CreateComponentLog(
             "BENCH",
             std::make_shared<TStreamLogBackend>(&Cerr),
-            CreateAsyncLogger());
+            asyncLogger);
 
         // Create producer threads
         TVector<TProducerThread*> producerPtrs;
         for (ui32 i = 0; i < options.ProducerThreads; ++i) {
             auto p = MakeHolder<TProducerThread>(
-                log, options, i, Stats, ShouldStop);
+                Log, options, i, Stats, ShouldStop);
             producerPtrs.push_back(p.Get());
             p->Start();
             ProducerThreads.push_back(std::move(p));
@@ -428,7 +491,7 @@ public:
         // Create stealer threads
         for (ui32 i = 0; i < options.StealerThreads; ++i) {
             auto s = MakeHolder<TStealerThread>(
-                log, options, i, Stats, ShouldStop, producerPtrs);
+                Log, options, i, Stats, ShouldStop, producerPtrs);
             s->Start();
             StealerThreads.push_back(std::move(s));
         }
@@ -441,6 +504,12 @@ public:
             if (elapsed.Seconds() >= options.TestDurationSec) {
                 break;
             }
+
+            Stats.Create.Report(Log);
+            Stats.Unlink.Report(Log);
+            Stats.Rename.Report(Log);
+            Stats.Stat.Report(Log);
+            Stats.List.Report(Log);
         }
 
         // Stop all threads
@@ -471,27 +540,47 @@ public:
             }
         }
 
-        Cout << "\nValidating results..." << Endl;
+        STORAGE_INFO("Validating results...");
+        ui32 errors = 0;
         for (auto& p: ProducerThreads) {
-            p->Validate(vc);
+            errors += p->Validate(vc);
         }
         for (auto& s: StealerThreads) {
-            s->Validate(vc);
+            errors += s->Validate(vc);
         }
 
-        Cout << "\n=== Test Results ===" << Endl;
-        Cout << "Duration: " << durationSec << " seconds" << Endl;
-        Cout << "Total Creates: " << Stats.Creates.load() << Endl;
-        Cout << "Total Unlinks: " << Stats.Unlinks.load() << Endl;
-        Cout << "Total Renames: " << Stats.Renames.load() << Endl;
-        Cout << "Total Lists: " << Stats.Lists.load() << Endl;
-        Cout << "\n=== RPS ===" << Endl;
-        Cout << "Creates RPS: " << (Stats.Creates.load() / durationSec) << Endl;
-        Cout << "Unlinks RPS: " << (Stats.Unlinks.load() / durationSec) << Endl;
-        Cout << "Renames RPS: " << (Stats.Renames.load() / durationSec) << Endl;
-        Cout << "Lists RPS: " << (Stats.Lists.load() / durationSec) << Endl;
+        STORAGE_INFO("=== Test Results ===");
+        STORAGE_INFO("Duration: " << durationSec << " seconds");
+        Stats.Create.Report(Log);
+        Stats.Unlink.Report(Log);
+        Stats.Rename.Report(Log);
+        Stats.Stat.Report(Log);
+        Stats.List.Report(Log);
 
-        return 0;
+        WriteReport(Log, options.ReportPath, errors);
+
+        return errors == 0 ? 0 : 1;
+    }
+
+    void WriteReport(TLog& Log, const TString& reportPath, ui32 errors) const
+    {
+        TOFStream os(reportPath);
+        NJsonWriter::TBuf buf(NJsonWriter::HEM_DONT_ESCAPE_HTML, &os);
+        buf.SetIndentSpaces(4);
+
+        buf.BeginObject();
+        Stats.Create.Report(buf);
+        Stats.Unlink.Report(buf);
+        Stats.Rename.Report(buf);
+        Stats.Stat.Report(buf);
+        Stats.List.Report(buf);
+        buf.WriteKey("errors");
+        buf.WriteULongLong(errors);
+        buf.EndObject();
+
+        os.Flush();
+
+        STORAGE_INFO("Report: " << reportPath << ", errors: " << errors);
     }
 
     void Stop()

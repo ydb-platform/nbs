@@ -1,0 +1,13 @@
+{
+    "create": true,
+    "create-lat-us": true,
+    "unlink": true,
+    "unlink-lat-us": true,
+    "rename": true,
+    "rename-lat-us": true,
+    "stat": true,
+    "stat-lat-us": true,
+    "list": true,
+    "list-lat-us": true,
+    "errors": true
+}

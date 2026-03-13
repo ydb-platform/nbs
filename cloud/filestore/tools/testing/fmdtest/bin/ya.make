@@ -1,4 +1,4 @@
-PROGRAM(filestore-create-unlink-rename-bench)
+PROGRAM(fmdtest)
 
 SRCS(
     app.cpp
@@ -10,6 +10,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     library/cpp/getopt
+    library/cpp/json
 
     util
 )

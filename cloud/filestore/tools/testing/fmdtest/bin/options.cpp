@@ -43,6 +43,13 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(4096)
         .StoreResult(&FileSize);
 
+    opts.AddLongOption(
+            "report-path",
+            "path to the file where the results will be written")
+        .RequiredArgument("STR")
+        .DefaultValue("bench-report.json")
+        .StoreResult(&ReportPath);
+
     TOptsParseResultException(&opts, argc, argv);
 }
 
