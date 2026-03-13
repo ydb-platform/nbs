@@ -8,6 +8,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <google/protobuf/messagext.h>
 
+#include <util/generic/singleton.h>
 #include <util/random/random.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -295,8 +296,7 @@ const TVector<TString>& TIndexTabletState::FindSessionIdsByPipeServer(
         return it->second;
     }
 
-    static const TVector<TString> Empty;
-    return Empty;
+    return Default<TVector<TString>>();
 }
 
 void TIndexTabletState::RemoveSessionByPipeServer(const TActorId& pipeServer)
