@@ -5933,6 +5933,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         renameResponse = service.SendAndRecvRenameNode(
             headers,
+            dir1_1.GetId(),
+            "file",
+            dir2.GetId() + 1111, // nonexistent parent in shard2
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1_1.GetId(),
+            "file",
+            dir2.GetId(),
+            "dir2_1",
+            ProtoFlag(NProto::TRenameNodeRequest::F_NOREPLACE));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_EXIST,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
             dir1.GetId(),
             "dir1_1",
             dir2.GetId(),

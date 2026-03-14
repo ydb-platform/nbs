@@ -131,7 +131,9 @@ void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
             FormatError(msg->GetError()).Quote().c_str());
 
         if (msg->GetError().GetCode() == E_FS_ISDIR
-                || msg->GetError().GetCode() == E_FS_NOTEMPTY)
+                || msg->GetError().GetCode() == E_FS_NOTEMPTY
+                || msg->GetError().GetCode() == E_FS_NOENT
+                || msg->GetError().GetCode() == E_FS_EXIST)
         {
             //
             // These errors may happen during normal operation.
