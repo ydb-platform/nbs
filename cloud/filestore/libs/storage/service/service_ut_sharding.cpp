@@ -5857,6 +5857,115 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldHandleRenameNodeInDestinationError)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+
+        TShardedFileSystemConfig fsConfig{
+            .DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // /
+        // └── dir1             (shard 1)
+        //     └── dir1_1       (shard 1)
+        //         └── file     (shard 1)
+        // └── dir2             (shard 2)
+        //     └── dir2_1       (shard 1)
+        //         └── file     (shard 1)
+
+        auto dir1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1"))->Record.GetNode();
+        auto dir1_1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir1.GetId(), "dir1_1"))
+            ->Record.GetNode();
+        auto dir2 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2"))->Record.GetNode();
+        auto dir2_1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir2.GetId(), "dir2_1"))
+            ->Record.GetNode();
+        auto file1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1_1.GetId(), "file"))->Record.GetNode();
+        auto file2 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2_1.GetId(), "file"))->Record.GetNode();
+
+        //
+        // This condition ensures cross-shard rename data path.
+        //
+
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            ExtractShardNo(dir1.GetId()),
+            ExtractShardNo(dir2.GetId()));
+
+        auto renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1.GetId(),
+            "dir1_1",
+            dir2.GetId(),
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOTEMPTY,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        service.UnlinkNode(headers, dir2_1.GetId(), "file", false /* unlinkDirectory */);
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1_1.GetId(),
+            "file",
+            dir2.GetId(),
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_ISDIR,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1.GetId(),
+            "dir1_1",
+            dir2.GetId(),
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        auto attr = service.GetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            dir2.GetId(),
+            "dir2_1")->Record.GetNode();
+
+        UNIT_ASSERT_VALUES_EQUAL(dir1_1.GetId(), attr.GetId());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/ReceivedNodeOpErrorFromShard");
+
+        //
+        // E_FS_NOTEMPTY and E_FS_ISDIR errors received from shard shouldn't
+        // trigger this critical event.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldRetryRenameNodeInShardUponLeaderRestartWithDirectoriesInShards)
     {
         config.SetMultiTabletForwardingEnabled(true);
