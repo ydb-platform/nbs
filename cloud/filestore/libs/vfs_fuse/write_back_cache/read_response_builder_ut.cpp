@@ -34,7 +34,7 @@ private:
 public:
     TBootstrap()
         : Stats(std::make_shared<TTestWriteBackCacheStats>())
-        , State(*this, std::make_shared<TTestTimer>(), Stats)
+        , State(*this, std::make_shared<TTestTimer>(), Stats, "[tag]")
     {
         State.Init(std::make_shared<TTestStorage>(Stats));
 
