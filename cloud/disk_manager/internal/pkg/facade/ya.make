@@ -27,6 +27,8 @@ RECURSE_FOR_TESTS(
     filesystem_scrubbing_nemesis_test
     filesystem_service_test
     filesystem_snapshot_service_test
+    filesystem_traversal_test
+    filesystem_traversal_nemesis_test
     placement_group_service_nemesis_test
     placement_group_service_test
     private_service_nemesis_test

@@ -443,6 +443,11 @@ FILESYSTEM_DATAPLANE_CONFIG_TEMPLATE = """
             >
             ListNodesMaxBytes: {list_nodes_max_bytes}
         >
+        SnapshotConfig: <
+            TraversalConfig: <
+            >
+            ListNodesMaxBytes: {list_nodes_max_bytes}
+        >
     >
 """
 
