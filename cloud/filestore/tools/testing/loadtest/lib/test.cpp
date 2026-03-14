@@ -559,7 +559,6 @@ private:
                     Config.GetDatashardLikeLoadSpec(),
                     Logging,
                     Session,
-                    Client,
                     FileSystemId,
                     headers);
                 break;

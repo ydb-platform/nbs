@@ -90,7 +90,6 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
-    IFileStoreServicePtr client,
     TString filesystemId,
     NProto::THeaders headers);
 
