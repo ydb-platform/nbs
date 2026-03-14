@@ -123,8 +123,9 @@ void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
         }
 
         const auto message = Sprintf(
-            "RenameNodeInDestination failed for %s, %lu, %s with error %s"
+            "%s RenameNodeInDestination failed for %s, %lu, %s with error %s"
             ", will not retry",
+            LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetNewParentId(),
             Request.GetNewName().c_str(),
@@ -142,8 +143,6 @@ void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
             LOG_INFO(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s %s",
-                LogTag.c_str(),
                 message.c_str());
         } else {
             //
@@ -153,8 +152,6 @@ void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
             LOG_ERROR(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s %s",
-                LogTag.c_str(),
                 message.c_str());
 
             ReportReceivedNodeOpErrorFromShard(message);
