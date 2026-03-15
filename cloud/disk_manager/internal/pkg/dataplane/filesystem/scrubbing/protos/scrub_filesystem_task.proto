@@ -16,3 +16,7 @@ message ScrubFilesystemRequest {
 message ScrubFilesystemTaskState {
     bool RootNodeScheduled = 1;
 }
+
+message RegularScrubFilesystemsTaskState {
+    map<string, uint64> IdempotencyKeyGenerations = 1;
+}
