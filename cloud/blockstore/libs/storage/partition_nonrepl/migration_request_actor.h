@@ -5,8 +5,10 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -153,7 +155,12 @@ void TMigrationRequestActor<TMethod>::SendRequest(
             callContext.RequestId);
     }
     ForkedCallContexts.push_back(request->CallContext);
-    request->Record = std::move(Request);
+    if constexpr (std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
+    {
+        request->Record = Request.CreateDependentRequest();
+    } else {
+        request->Record = Request;
+    }
 
     auto event = std::make_unique<NActors::IEventHandle>(
         recipient,
