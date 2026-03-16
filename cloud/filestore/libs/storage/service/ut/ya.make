@@ -8,6 +8,7 @@ SRCS(
     service_ut_helpers.cpp
     service_ut_parentless.cpp
     service_ut_sharding.cpp
+    service_ut_writedata_unconfirmed.cpp
     service_actor_actions_ut.cpp
 )
 

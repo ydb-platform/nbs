@@ -53,6 +53,7 @@ namespace NCloud::NFileStore{
     xxx(InvalidateTimedOutRegionsError)                                        \
     xxx(NodeCacheInvalidNode)                                                  \
     xxx(ConfirmBlobsFailed)                                                    \
+    xxx(UnconfirmedFlowProxyRetryThresholdReached)                             \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
