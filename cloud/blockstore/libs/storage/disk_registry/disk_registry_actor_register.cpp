@@ -169,19 +169,8 @@ void TDiskRegistryActor::CompleteAddAgent(
         args.DevicesToDisableIO.begin(),
         args.DevicesToDisableIO.end());
 
-
-    TVector<TString> pathsToAttach;
-    if (Config->GetAttachDetachPathsEnabled()) {
-        pathsToAttach =
-            State->GetPathsToAttachOnRegistration(args.Config.GetAgentId());
-    } else if (const auto* agent = State->FindAgent(args.Config.GetAgentId())) {
-        THashSet<TString> agentPaths;
-        for (const auto& device : agent->GetDevices()) {
-            agentPaths.emplace(device.GetDeviceName());
-        }
-
-        pathsToAttach.assign(agentPaths.begin(), agentPaths.end());
-    }
+    TVector<TString> pathsToAttach =
+        State->GetPathsToAttachOnRegistration(args.Config.GetAgentId());
 
     response->Record.MutablePathsToAttach()->Add(
         std::make_move_iterator(pathsToAttach.begin()),
