@@ -484,7 +484,7 @@ void TStatsServiceActor::HandleServiceStatisticsCombined(
     auto* msg = ev->Get();
 
     if (HasError(msg->Error)) {
-        LOG_ERROR(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::STATS_SERVICE,
             "Failed to update volumes statistics. Error: %s",

@@ -63,14 +63,8 @@ void TServiceStatisticsCollectorActor::HandleTimeout(
 {
     Y_UNUSED(ev);
 
-    NCloud::Send(
-        ctx,
-        Owner,
-        std::make_unique<TEvStatsService::TEvServiceStatisticsCombined>(
-            MakeError(E_TIMEOUT, "Failed to update service statistics."),
-            std::move(Response)));
-
-    Die(ctx);
+    LastError = MakeError(E_TIMEOUT, "Failed to update service statistics.");
+    ReplyAndDie(ctx);
 }
 
 void TServiceStatisticsCollectorActor::HandleGetServiceStatisticsResponse(
