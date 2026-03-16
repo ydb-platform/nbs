@@ -251,7 +251,7 @@ void TIndexTabletState::RegisterSessionByPipeServer(
     const TActorId& pipeServer,
     const TString& sessionId)
 {
-    if (!pipeServer || sessionId.Empty()) {
+    if (!pipeServer || sessionId.empty()) {
         return;
     }
 
