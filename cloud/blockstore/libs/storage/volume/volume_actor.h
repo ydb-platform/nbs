@@ -574,7 +574,7 @@ private:
     ui32 GetCurrentConfigVersion() const;
 
     // TOO:_ move to some other place?
-    void SendNeedSwitchVhostDiscardEnabledFlagIfNeeded(
+    void SendEnableVhostDiscardFlagIfNeeded(
         const NActors::TActorContext& ctx);
 
     bool SendBootExternalRequest(

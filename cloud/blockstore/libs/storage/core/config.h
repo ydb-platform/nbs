@@ -396,7 +396,7 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
-    [[nodiscard]] bool IsEnableVhostDiscardEnabledOnVolumeRestartFeatureEnabled(
+    [[nodiscard]] bool IsEnableVhostDiscardOnVolumeRestartFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -768,7 +768,7 @@ public:
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 
-    [[nodiscard]] bool GetEnableVhostDiscardEnabledOnVolumeRestart() const;
+    [[nodiscard]] bool GetEnableVhostDiscardOnVolumeRestart() const;
 
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 

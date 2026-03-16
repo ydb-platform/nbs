@@ -197,21 +197,17 @@ struct TEvService
     };
 
     //
-    // NeedSwitchVhostDiscardEnabledFlag notification
+    // EnableVhostDiscardFlag notification
     //
 
-    struct TNeedSwitchVhostDiscardEnabledFlag
+    struct TEnableVhostDiscardFlag
     {
         const TString DiskId;
-        const bool VhostDiscardEnabled;
 
-        TNeedSwitchVhostDiscardEnabledFlag() = default;
+        TEnableVhostDiscardFlag() = default;
 
-        TNeedSwitchVhostDiscardEnabledFlag(
-                TString diskId,
-                bool vhostDiscardEnabled)
+        TEnableVhostDiscardFlag(TString diskId)
             : DiskId(std::move(diskId))
-            , VhostDiscardEnabled(vhostDiscardEnabled)
         {}
     };
 
@@ -364,7 +360,7 @@ struct TEvService
         EvDestroyVolumeLinkRequest = EvBegin + 97,
         EvDestroyVolumeLinkResponse = EvBegin + 98,
 
-        EvNeedSwitchVhostDiscardEnabledFlag = EvBegin + 99,
+        EvEnableVhostDiscardFlag = EvBegin + 99,
 
         EvEnd
     };
@@ -395,9 +391,9 @@ struct TEvService
         EvVolumeMountStateChanged
     >;
 
-    using TEvNeedSwitchVhostDiscardEnabledFlag = TRequestEvent<
-        TNeedSwitchVhostDiscardEnabledFlag,
-        EvNeedSwitchVhostDiscardEnabledFlag
+    using TEvEnableVhostDiscardFlag = TRequestEvent<
+        TEnableVhostDiscardFlag,
+        EvEnableVhostDiscardFlag
     >;
 };
 

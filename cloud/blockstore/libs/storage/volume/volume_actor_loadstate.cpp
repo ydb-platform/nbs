@@ -209,9 +209,8 @@ void TVolumeActor::CompleteLoadState(
     }
 
     if (State) {
+        SendEnableVhostDiscardFlagIfNeeded(ctx);
         ProcessNextPendingClientRequest(ctx);
-        // TODO:_ ok here?
-        SendNeedSwitchVhostDiscardEnabledFlagIfNeeded(ctx);
     }
 }
 

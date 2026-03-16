@@ -182,7 +182,7 @@ void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
     } else {
         TString diskID = Request.GetDiskId().empty()
                              ? Request.GetDiskId()
-                             : "???";   // TODO:_ need this?
+                             : "";
         if (HasError(error)) {
             LOG_ERROR(
                 ctx,
@@ -356,10 +356,8 @@ STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWaitReady)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO:_ how can we guarantee that SetVhostDiscardEnabledFlagActionActor will not
-// leak in case of multiple lablet reboots?
-void TServiceActor::HandleNeedSwitchVhostDiscardEnabledFlag(
-    const TEvService::TEvNeedSwitchVhostDiscardEnabledFlag::TPtr& ev,
+void TServiceActor::HandleEnableVhostDiscardFlag(
+    const TEvService::TEvEnableVhostDiscardFlag::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -370,29 +368,12 @@ void TServiceActor::HandleNeedSwitchVhostDiscardEnabledFlag(
     NPrivateProto::TSetVhostDiscardEnabledFlagRequest
         setVhostDiscardEnabledFlagRequest;
     setVhostDiscardEnabledFlagRequest.SetDiskId(msg->DiskId);
-    setVhostDiscardEnabledFlagRequest.SetVhostDiscardEnabled(
-        msg->VhostDiscardEnabled);
+    setVhostDiscardEnabledFlagRequest.SetVhostDiscardEnabled(true);
 
     TString input;
     google::protobuf::util::MessageToJsonString(
         setVhostDiscardEnabledFlagRequest,
         &input);
-
-    // NCloud::Register(
-    //     ctx,
-    //     std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
-    //         std::move(requestInfo),
-    //         std::move(input),
-    //         [](NProto::TError error)
-    //         {
-    //             auto response =
-    //                 std::make_unique<TEvService::TEvExecuteActionResponse>(
-    //                     std::move(error));
-    //             google::protobuf::util::MessageToJsonString(
-    //                 NPrivateProto::TSetVhostDiscardEnabledFlagResponse(),
-    //                 response->Record.MutableOutput());
-    //             return response;
-    //         }));
 
     NCloud::Register(
         ctx,
@@ -402,22 +383,6 @@ void TServiceActor::HandleNeedSwitchVhostDiscardEnabledFlag(
             [](NProto::TError error)
             {
                 Y_UNUSED(error);
-                // if (HasError(error)) {
-                //     LOG_ERROR(
-                //         ctx,
-                //         TBlockStoreComponents::SERVICE,
-                //         "SetVhostDiscardEnabledFlag failed for volume %s,"
-                //         " no need to reply; error: %s",
-                //         "AAA",
-                //         FormatError(error).c_str());
-                // } else {
-                //     LOG_DEBUG(
-                //         ctx,
-                //         TBlockStoreComponents::SERVICE,
-                //         "SetVhostDiscardEnabledFlag successful for volume %s,"
-                //         " no need to reply",
-                //         "AAA");
-                // }
                 return std::unique_ptr<TEvService::TEvExecuteActionResponse>();
             }));
 }

@@ -85,8 +85,6 @@ const TString& GetComponentName(int component);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO:_ is this digit important (+ 200 instead of + 100)?
-// How does in work?
 struct TBlockStoreEvents
 {
     enum

@@ -669,7 +669,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
                                                                                \
     xxx(EnableVhostDiscardForNewVolumes,            bool,     false           )\
-    xxx(EnableVhostDiscardEnabledOnVolumeRestart,   bool,     false           )\
+    xxx(EnableVhostDiscardOnVolumeRestart,          bool,     false           )\
                                                                                \
     xxx(TabletExecutorRejectionThreshold,        ui32,     0                  )\
                                                                                \
@@ -719,7 +719,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
     xxx(EnableVhostDiscardForNewVolumes)                                       \
-    xxx(EnableVhostDiscardEnabledOnVolumeRestart)                              \
+    xxx(EnableVhostDiscardOnVolumeRestart)                              \
 
 // BLOCKSTORE_BINARY_FEATURES
 

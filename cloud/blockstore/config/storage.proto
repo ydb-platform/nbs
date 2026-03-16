@@ -1473,5 +1473,5 @@ message TStorageServiceConfig
 
     // If true, the VhostDiscardEnabled flag is enabled on volume restart.
     // Applies to network-ssd and network-hdd disks.
-    optional bool EnableVhostDiscardEnabledOnVolumeRestart = 488;
+    optional bool EnableVhostDiscardOnVolumeRestart = 488;
 }

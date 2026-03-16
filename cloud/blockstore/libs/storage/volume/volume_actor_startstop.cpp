@@ -38,66 +38,6 @@ using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO:_ where should I place this function?
-// TODO:_ add two of the functions to .h file
-void TVolumeActor::SendNeedSwitchVhostDiscardEnabledFlagIfNeeded(
-    const TActorContext& ctx)
-{
-    Y_ABORT_UNLESS(State);
-
-    // TODO:_ check disk type -- ok?
-    if (State->IsDiskRegistryMediaKind()) {
-        return;
-    }
-
-    // TODO:_ need schemeshard release?
-    const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
-    bool discardCurrentlyEnabled = volumeConfig.GetVhostDiscardEnabled();
-
-    bool enableDiscardOnRestart =
-        Config->GetEnableVhostDiscardEnabledOnVolumeRestart() ||
-        Config->IsEnableVhostDiscardEnabledOnVolumeRestartFeatureEnabled(
-            volumeConfig.GetCloudId(),
-            volumeConfig.GetFolderId(),
-            State->GetDiskId());
-
-    if (!enableDiscardOnRestart) {
-        return;
-    }
-
-    bool discardShouldBeEnabled = true;
-
-    if (discardCurrentlyEnabled == discardShouldBeEnabled) {
-        // TODO:_ print as string or as bool?
-        // The same question for other similar places.
-        // TODO:_ do we need this log?
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s skip sending VhostDiscardEnabledKekFlagRequest, "
-            "currently enabled: [%s], should be enabled: [%s]",
-            LogTitle.GetWithTime().c_str(),
-            discardCurrentlyEnabled ? "true" : "false",
-            discardShouldBeEnabled ? "true" : "false");
-        return;
-    }
-
-    auto request =
-        std::make_unique<TEvService::TEvNeedSwitchVhostDiscardEnabledFlag>( // TODO:_ naming: need switch?
-            State->GetDiskId(),
-            discardShouldBeEnabled);
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s sending VhostDiscardEnabledKekFlagRequest, "
-        "currently enabled: [%s], should be enabled: [%s]",
-        LogTitle.GetWithTime().c_str(),
-        discardCurrentlyEnabled ? "true" : "false",
-        discardShouldBeEnabled ? "true" : "false");
-    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
-}
-
 bool TVolumeActor::SendBootExternalRequest(
     const TActorContext& ctx,
     TPartitionInfo& partition)
@@ -1168,6 +1108,50 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
             partTabletId);
     actors.Push(actorId, TActorsStack::EActorPurpose::FreshBlocksWriter);
     return actors;
+}
+
+void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(State);
+
+    if (State->IsDiskRegistryMediaKind()) {
+        return;
+    }
+
+    const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
+
+    bool enableDiscardOnRestart =
+        Config->GetEnableVhostDiscardOnVolumeRestart() ||
+        Config->IsEnableVhostDiscardOnVolumeRestartFeatureEnabled(
+            volumeConfig.GetCloudId(),
+            volumeConfig.GetFolderId(),
+            State->GetDiskId());
+
+    if (!enableDiscardOnRestart) {
+        return;
+    }
+
+    if (volumeConfig.GetVhostDiscardEnabled()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s skiping EnableVhostDiscardFlagRequest for volume %s because it "
+            "is already enabled",
+            LogTitle.GetWithTime().c_str(),
+            State->GetDiskId().c_str());
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s sending EnableVhostDiscardFlagRequest for volume %s",
+        LogTitle.GetWithTime().c_str(),
+        State->GetDiskId().c_str());
+
+    auto request = std::make_unique<TEvService::TEvEnableVhostDiscardFlag>(
+        State->GetDiskId());
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
