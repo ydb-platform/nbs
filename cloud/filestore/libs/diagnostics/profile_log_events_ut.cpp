@@ -543,7 +543,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         NProto::TGetNodeAttrRequest req;
         req.SetNodeId(nodeId);
         req.SetName(name);
-        req.SetHandle(handle);
         req.SetFlags(flags);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
