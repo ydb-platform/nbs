@@ -286,7 +286,6 @@ private:
                     ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
 
                 auto request = CreateRequest<NProto::TSetNodeAttrRequest>();
-                request->SetHandle(handle);
                 request->SetNodeId(response.GetNodeAttr().GetId());
                 request->SetFlags(flags);
                 request->MutableUpdate()->SetSize(InitialFileSize);

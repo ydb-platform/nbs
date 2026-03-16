@@ -521,7 +521,6 @@ void InitProfileLogRequestInfo(
 {
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
-    nodeInfo->SetHandle(request.GetHandle());
     nodeInfo->SetFlags(request.GetFlags());
     nodeInfo->SetMode(request.GetUpdate().GetMode());
 }
@@ -534,7 +533,6 @@ void InitProfileLogRequestInfo(
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
     nodeInfo->SetNodeName(request.GetName());
-    nodeInfo->SetHandle(request.GetHandle());
     nodeInfo->SetFlags(request.GetFlags());
 }
 

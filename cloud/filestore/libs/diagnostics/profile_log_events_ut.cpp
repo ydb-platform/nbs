@@ -511,7 +511,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
 
         NProto::TSetNodeAttrRequest req;
         req.SetNodeId(nodeId);
-        req.SetHandle(handle);
         req.MutableUpdate()->SetMode(mode);
         req.SetFlags(flags);
 

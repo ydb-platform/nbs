@@ -21,18 +21,15 @@ void TFileSystem::SetAttr(
     fuse_ino_t ino,
     struct stat* attr,
     int to_set,
-    fuse_file_info* fi)
+    fuse_file_info*)
 {
-    ui64 handle = fi ? fi->fh : 0;
-    STORAGE_DEBUG("SetAttr #" << ino << " @" << handle
-        << " mask:" << to_set);
+    STORAGE_DEBUG("SetAttr #" << ino << " mask:" << to_set);
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
 
     auto request = StartRequest<NProto::TSetNodeAttrRequest>(ino);
-    request->SetHandle(handle);
 
     auto* update = request->MutableUpdate();
     int flags = 0;
@@ -148,18 +145,15 @@ void TFileSystem::GetAttr(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    fuse_file_info* fi)
+    fuse_file_info*)
 {
-    ui64 handle = fi ? fi->fh : 0;
-    STORAGE_DEBUG("GetAttr #" << ino << " @" << handle);
+    STORAGE_DEBUG("GetAttr #" << ino);
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
 
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(ino);
-    // XXX handle seems to be unneeded
-    request->SetHandle(handle);
 
     // Take into account cached WriteData requests
     const auto cachedNodeSize =
