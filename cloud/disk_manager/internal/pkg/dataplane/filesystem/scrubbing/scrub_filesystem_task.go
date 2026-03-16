@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
 	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -88,7 +89,7 @@ func (t *scrubFilesystemTask) Run(
 		nfs.RootNodeID,
 	)
 
-	return traverser.Traverse(ctx, func(
+	err = traverser.Traverse(ctx, func(
 		ctx context.Context,
 		nodes []nfs.Node,
 		_ listers.FilesystemLister,
@@ -101,6 +102,23 @@ func (t *scrubFilesystemTask) Run(
 
 		return nil
 	})
+
+	if err != nil {
+		return err
+	}
+
+	if t.request.GetIsRegularScrubbing() {
+		// Scrub the filesystem again
+		t.state.RootNodeScheduled = false
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+
+		return errors.NewInterruptExecutionError()
+	}
+
+	return nil
 }
 
 func (t *scrubFilesystemTask) Cancel(

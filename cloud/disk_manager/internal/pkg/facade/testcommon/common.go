@@ -767,6 +767,7 @@ func ScheduleFilesystemScrubbing(
 		scheduler,
 		zoneID,
 		filesystemID,
+		false, // isRegularScrubbing
 	)
 	require.NoError(t, err)
 	return taskID

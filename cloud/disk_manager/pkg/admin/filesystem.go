@@ -346,6 +346,7 @@ type scrubFilesystem struct {
 	commandWithScheduler
 	zoneID       string
 	filesystemID string
+	regular      bool
 }
 
 func (c *scrubFilesystem) run() error {
@@ -363,6 +364,7 @@ func (c *scrubFilesystem) run() error {
 		c.scheduler,
 		c.zoneID,
 		c.filesystemID,
+		c.regular,
 	)
 	if err != nil {
 		return err
@@ -409,6 +411,13 @@ func newScrubFilesystemCmd(
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
+
+	cmd.Flags().BoolVar(
+		&c.regular,
+		"regular",
+		false,
+		"mark scrubbing as regular (scheduled)",
+	)
 
 	return cmd
 }

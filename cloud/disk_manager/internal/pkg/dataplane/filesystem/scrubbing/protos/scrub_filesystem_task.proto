@@ -11,6 +11,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 message ScrubFilesystemRequest {
     types.Filesystem Filesystem = 1;
     string FilesystemCheckpointId = 2;
+    bool IsRegularScrubbing = 3;
 }
 
 message ScrubFilesystemTaskState {

@@ -47,6 +47,7 @@ func ScheduleScrubFilesystem(
 	scheduler tasks.Scheduler,
 	zoneID string,
 	filesystemID string,
+	isRegularScrubbing bool,
 ) (string, error) {
 
 	return scheduler.ScheduleTask(
@@ -58,6 +59,7 @@ func ScheduleScrubFilesystem(
 				ZoneId:       zoneID,
 				FilesystemId: filesystemID,
 			},
+			IsRegularScrubbing: isRegularScrubbing,
 		},
 	)
 }
