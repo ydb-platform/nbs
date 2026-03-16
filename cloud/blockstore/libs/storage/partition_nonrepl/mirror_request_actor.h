@@ -129,14 +129,7 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
                 callContext.RequestId);
         }
         ForkedCallContexts.push_back(request->CallContext);
-
-        if constexpr (
-            std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
-        {
-            request->Record = Request.CreateDependentRequest();
-        } else {
-            request->Record = Request;
-        }
+        request->Record = CopyRequest(Request);
 
         auto event = std::make_unique<NActors::IEventHandle>(
             actorId,

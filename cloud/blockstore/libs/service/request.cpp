@@ -20,16 +20,18 @@ TWriteBlocksLocalRequest TWriteBlocksLocalRequest::Clone() const
 
 TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() const
 {
+    Y_ABORT_UNLESS(GetDescriptor()->field_count() == 8);
+
     TWriteBlocksLocalRequest copiedRecord;
 
     // Copy all protobuf fields except Blocks (field 4)
-    copiedRecord.MutableHeaders()->CopyFrom(this->GetHeaders());
-    copiedRecord.SetDiskId(this->GetDiskId());
-    copiedRecord.SetStartIndex(this->GetStartIndex());
-    copiedRecord.SetFlags(this->GetFlags());
-    copiedRecord.SetSessionId(this->GetSessionId());
-    copiedRecord.SetBlockSize(this->GetBlockSize());
-    copiedRecord.MutableChecksums()->CopyFrom(this->GetChecksums());
+    copiedRecord.MutableHeaders()->CopyFrom(GetHeaders());
+    copiedRecord.SetDiskId(GetDiskId());
+    copiedRecord.SetStartIndex(GetStartIndex());
+    copiedRecord.SetFlags(GetFlags());
+    copiedRecord.SetSessionId(GetSessionId());
+    copiedRecord.SetBlockSize(GetBlockSize());
+    copiedRecord.MutableChecksums()->CopyFrom(GetChecksums());
 
     // Copy non-protobuf fields
     copiedRecord.Sglist = Sglist;
@@ -59,6 +61,21 @@ void TWriteBlocksLocalRequest::CopySglistIntoBuffers()
     TGuardedSgList newGuardedSgList(std::move(newSgList));
     Sglist = newGuardedSgList;
     SglistOwner.emplace(std::move(newGuardedSgList));
+}
+
+TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)
+{
+    return request.CreateDependentRequest();
+}
+
+TWriteBlocksRequest CopyRequest(const TWriteBlocksRequest& request)
+{
+    return request;
+}
+
+TZeroBlocksRequest CopyRequest(const TZeroBlocksRequest& request)
+{
+    return request;
 }
 
 }   // namespace NProto

@@ -153,13 +153,7 @@ void TWriteAndMarkUsedActor<TMethod>::WriteBlocks(const TActorContext& ctx)
 {
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->CallContext = RequestInfo->CallContext;
-
-    if constexpr (std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
-    {
-        request->Record = Request.CreateDependentRequest();
-    } else {
-        request->Record = Request;
-    }
+    request->Record = CopyRequest(Request);
 
     auto event = std::make_unique<NActors::IEventHandle>(
         PartActorId,

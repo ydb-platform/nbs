@@ -95,17 +95,25 @@ struct TWriteBlocksLocalRequest
     // owner request.
     TWriteBlocksLocalRequest Clone() const;
 
-    // If this WriteBlocksLocalRequest doesn't own request data
-    // (CopySglistIntoBuffers method was not called). Dependent request will be
-    // invalidated (Sglist.Close() will be called) after this object
-    // destruction. Doesnt copy Blocks field from TWriteBlocksLocalRequest,
-    // because all blocks can be accessed with Sglist.
+    // If the WriteBlocksLocal owns request data (the CopySglistIntoBuffers
+    // method was called), dependent request will be invalidated (Sglist.Close()
+    // will be called) after this object destruction. Doesn't copy Blocks field
+    // from TWriteBlocksLocalRequest, because all blocks can be accessed via
+    // Sglist.
     TWriteBlocksLocalRequest CreateDependentRequest() const;
 
     void CopySglistIntoBuffers();
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request);
+
+TWriteBlocksRequest CopyRequest(const TWriteBlocksRequest& request);
+
+TZeroBlocksRequest CopyRequest(const TZeroBlocksRequest& request);
 
 }   // namespace NProto
 

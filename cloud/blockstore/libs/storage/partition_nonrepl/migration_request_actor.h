@@ -155,12 +155,7 @@ void TMigrationRequestActor<TMethod>::SendRequest(
             callContext.RequestId);
     }
     ForkedCallContexts.push_back(request->CallContext);
-    if constexpr (std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
-    {
-        request->Record = Request.CreateDependentRequest();
-    } else {
-        request->Record = Request;
-    }
+    request->Record = CopyRequest(Request);
 
     auto event = std::make_unique<NActors::IEventHandle>(
         recipient,
