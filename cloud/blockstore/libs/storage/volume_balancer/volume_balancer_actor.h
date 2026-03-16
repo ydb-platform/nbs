@@ -80,6 +80,8 @@ private:
 
     void SendConfigSubscriptionRequest(const NActors::TActorContext& ctx);
 
+    bool IsMaxInProgressLimitReached() const;
+
     STFUNC(StateWork);
 
     void HandleWakeup(
