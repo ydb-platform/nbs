@@ -27,7 +27,7 @@ namespace NCloud::NBlockStore::NStorage {
 struct TEvService
 {
     //
-    // ChangeVolumeBinding
+    // ChangeVolumeBinding request/response
     //
 
     struct TChangeVolumeBindingRequest
@@ -64,7 +64,7 @@ struct TEvService
     };
 
     //
-    // GetVolumeStats
+    // GetVolumeStats request/response
     //
 
     struct TGetVolumeStatsRequest
@@ -135,16 +135,12 @@ struct TEvService
     };
 
     //
-    // RunVolumeLivenessCheckRequest
+    // RunVolumeLivenessCheck request/response
     //
 
     struct TRunVolumesLivenessCheckRequest
     {
     };
-
-    //
-    // RunVolumeLivenessCheckResponse
-    //
 
     struct TRunVolumesLivenessCheckResponse
     {
@@ -162,7 +158,7 @@ struct TEvService
     };
 
     //
-    // AddTags
+    // AddTags request/response
     //
 
     struct TAddTagsRequest
@@ -184,7 +180,7 @@ struct TEvService
     {};
 
     //
-    // VolumeMountStateChanged
+    // VolumeMountStateChanged notification
     //
 
     struct TVolumeMountStateChanged
@@ -197,6 +193,21 @@ struct TEvService
                 bool value)
             : DiskId(std::move(diskId))
             , HasLocalMount(value)
+        {}
+    };
+
+    //
+    // EnableVhostDiscardFlag notification
+    //
+
+    struct TEnableVhostDiscardFlag
+    {
+        const TString DiskId;
+
+        TEnableVhostDiscardFlag() = default;
+
+        TEnableVhostDiscardFlag(TString diskId)
+            : DiskId(std::move(diskId))
         {}
     };
 
@@ -349,6 +360,8 @@ struct TEvService
         EvDestroyVolumeLinkRequest = EvBegin + 97,
         EvDestroyVolumeLinkResponse = EvBegin + 98,
 
+        EvEnableVhostDiscardFlag = EvBegin + 99,
+
         EvEnd
     };
 
@@ -376,6 +389,11 @@ struct TEvService
     using TEvVolumeMountStateChanged = TRequestEvent<
         TVolumeMountStateChanged,
         EvVolumeMountStateChanged
+    >;
+
+    using TEvEnableVhostDiscardFlag = TRequestEvent<
+        TEnableVhostDiscardFlag,
+        EvEnableVhostDiscardFlag
     >;
 };
 

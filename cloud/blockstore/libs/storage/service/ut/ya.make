@@ -23,6 +23,7 @@ SRCS(
     service_ut_start.cpp
     service_ut_stats.cpp
     service_ut_update_config.cpp
+    service_ut_vhost_discard.cpp
     service_ut.cpp
 )
 

@@ -1474,4 +1474,8 @@ message TStorageServiceConfig
     // Maximum number of inflight attach/detach path requests.
     // VolumeBalancerMaxInProgress == 0 means no limit
     optional uint64 VolumeBalancerMaxInProgress = 488;
+
+    // If true, the VhostDiscardEnabled flag is enabled on volume restart.
+    // Applies to network-ssd and network-hdd disks.
+    optional bool EnableVhostDiscardOnVolumeRestart = 489;
 }

@@ -209,6 +209,7 @@ void TVolumeActor::CompleteLoadState(
     }
 
     if (State) {
+        SendEnableVhostDiscardFlagIfNeeded(ctx);
         ProcessNextPendingClientRequest(ctx);
     }
 }

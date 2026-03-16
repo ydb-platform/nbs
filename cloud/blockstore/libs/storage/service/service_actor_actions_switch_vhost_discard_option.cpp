@@ -36,10 +36,16 @@ private:
     NPrivateProto::TSetVhostDiscardEnabledFlagRequest Request;
     NKikimrBlockStore::TVolumeConfig VolumeConfig;
 
+    using TResponseCreateFunc =
+        std::function<NActors::IEventBasePtr(NProto::TError)>;
+
+    TResponseCreateFunc CreateResponse;
+
 public:
     TSetVhostDiscardEnabledFlagActionActor(
         TRequestInfoPtr requestInfo,
-        TString input);
+        TString input,
+        TResponseCreateFunc createResponse);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -75,9 +81,11 @@ private:
 
 TSetVhostDiscardEnabledFlagActionActor::TSetVhostDiscardEnabledFlagActionActor(
     TRequestInfoPtr requestInfo,
-    TString input)
+    TString input,
+    TResponseCreateFunc createResponse)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , CreateResponse(std::move(createResponse))
 {}
 
 void TSetVhostDiscardEnabledFlagActionActor::Bootstrap(const TActorContext& ctx)
@@ -160,11 +168,7 @@ void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        std::move(error));
-    google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TSetVhostDiscardEnabledFlagResponse(),
-        response->Record.MutableOutput());
+    auto response = CreateResponse(std::move(error));
 
     LWTRACK(
         ResponseSent_Service,
@@ -172,7 +176,26 @@ void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
         "ExecuteAction_setvhostdiscardenabledflag",
         RequestInfo->CallContext->RequestId);
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    if (response) {
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    } else {
+        TString diskID = Request.GetDiskId().empty() ? Request.GetDiskId() : "";
+        if (HasError(error)) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "SetVhostDiscardEnabledFlag failed for volume %s, error: %s",
+                diskID.c_str(),
+                FormatError(error).c_str());
+        } else {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "SetVhostDiscardEnabledFlag successful for volume %s",
+                diskID.c_str());
+        }
+    }
+
     Die(ctx);
 }
 
@@ -328,6 +351,39 @@ STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWaitReady)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TServiceActor::HandleEnableVhostDiscardFlag(
+    const TEvService::TEvEnableVhostDiscardFlag::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    NPrivateProto::TSetVhostDiscardEnabledFlagRequest
+        setVhostDiscardEnabledFlagRequest;
+    setVhostDiscardEnabledFlagRequest.SetDiskId(msg->DiskId);
+    setVhostDiscardEnabledFlagRequest.SetVhostDiscardEnabled(true);
+
+    TString input;
+    google::protobuf::util::MessageToJsonString(
+        setVhostDiscardEnabledFlagRequest,
+        &input);
+
+    NCloud::Register(
+        ctx,
+        std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
+            std::move(requestInfo),
+            std::move(input),
+            [](NProto::TError error)
+            {
+                Y_UNUSED(error);
+                return std::unique_ptr<TEvService::TEvExecuteActionResponse>();
+            }));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TResultOrError<IActorPtr>
 TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor(
     TRequestInfoPtr requestInfo,
@@ -335,7 +391,17 @@ TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor(
 {
     return {std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
         std::move(requestInfo),
-        std::move(input))};
+        std::move(input),
+        [](NProto::TError error)
+        {
+            auto response =
+                std::make_unique<TEvService::TEvExecuteActionResponse>(
+                    std::move(error));
+            google::protobuf::util::MessageToJsonString(
+                NPrivateProto::TSetVhostDiscardEnabledFlagResponse(),
+                response->Record.MutableOutput());
+            return response;
+        })};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
