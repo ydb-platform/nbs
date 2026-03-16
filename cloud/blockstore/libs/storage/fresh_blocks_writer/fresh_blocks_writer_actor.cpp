@@ -271,6 +271,10 @@ bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
             BLOCKSTORE_HANDLE_REQUEST,
             TEvFreshBlocksWriter);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            HandleGetPartCounters);
+
         default:
             return false;
     }
@@ -291,6 +295,10 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
         BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(
             BLOCKSTORE_REJECT_REQUEST,
             TEvFreshBlocksWriter);
+
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            RejectGetPartCounters);
 
         default:
             return false;
