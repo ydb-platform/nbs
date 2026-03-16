@@ -97,6 +97,14 @@ func (t *scrubFilesystemTask) Run(
 
 		t.callback(nodes)
 		for _, node := range nodes {
+			if node.NodeID == nfs.InvalidNodeID {
+				logging.Warn(
+					ctx,
+					"Found corrupted node with invalid ID: %v",
+					node,
+				)
+			}
+
 			logging.Debug(ctx, "scrubbing returned inode %v", node)
 		}
 
