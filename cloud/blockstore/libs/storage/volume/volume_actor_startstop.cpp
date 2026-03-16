@@ -1112,4 +1112,48 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
     return actors;
 }
 
+void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(State);
+
+    if (State->IsDiskRegistryMediaKind()) {
+        return;
+    }
+
+    const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
+
+    bool enableDiscardOnRestart =
+        Config->GetEnableVhostDiscardOnVolumeRestart() ||
+        Config->IsEnableVhostDiscardOnVolumeRestartFeatureEnabled(
+            volumeConfig.GetCloudId(),
+            volumeConfig.GetFolderId(),
+            State->GetDiskId());
+
+    if (!enableDiscardOnRestart) {
+        return;
+    }
+
+    if (volumeConfig.GetVhostDiscardEnabled()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s skiping EnableVhostDiscardFlagRequest for volume %s because it "
+            "is already enabled",
+            LogTitle.GetWithTime().c_str(),
+            State->GetDiskId().c_str());
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s sending EnableVhostDiscardFlagRequest for volume %s",
+        LogTitle.GetWithTime().c_str(),
+        State->GetDiskId().c_str());
+
+    auto request = std::make_unique<TEvService::TEvEnableVhostDiscardFlag>(
+        State->GetDiskId());
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

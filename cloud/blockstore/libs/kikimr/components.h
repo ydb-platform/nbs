@@ -93,7 +93,7 @@ struct TBlockStoreEvents
 
 #define BLOCKSTORE_DECLARE_COMPONENT(component)                                \
         component##_START,                                                     \
-        component##_END = component##_START + 100,                             \
+        component##_END = component##_START + 200,                             \
 // BLOCKSTORE_DECLARE_COMPONENT
 
         BLOCKSTORE_ACTORS(BLOCKSTORE_DECLARE_COMPONENT)
@@ -107,8 +107,8 @@ struct TBlockStoreEvents
         "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::BLOCKSTORE)");
 
     // reserved for SchemeShard integration
-    static_assert(SCHEMESHARD_START == START + 1011,
-        "SCHEMESHARD_START expected to be == START + 1011");
+    static_assert(SCHEMESHARD_START == START + 2011,
+        "SCHEMESHARD_START expected to be == START + 2011");
 };
 
 ////////////////////////////////////////////////////////////////////////////////

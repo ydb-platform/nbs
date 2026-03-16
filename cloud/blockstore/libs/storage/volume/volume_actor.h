@@ -716,6 +716,9 @@ private:
         const NActors::TActorContext& ctx,
         TDataForUpdatingDiskRegistryBasedPartCounters data);
 
+    void SendEnableVhostDiscardFlagIfNeeded(
+        const NActors::TActorContext& ctx);
+
     const TString& GetDiskId() const;
 
     std::optional<TEvStatsService::TVolumePartCounters> GetPartCounters(
