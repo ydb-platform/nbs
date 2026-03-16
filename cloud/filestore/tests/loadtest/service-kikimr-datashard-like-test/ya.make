@@ -14,18 +14,15 @@ DEPENDS(
 
 DATA(
     arcadia/cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test
-    cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test/nfs-storage-config-patch.txt
 )
 
 PEERDIR(
     cloud/filestore/tests/python/lib
-
-    contrib/python/requests/py3
 )
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/service/service-kikimr-parentless-handleless-test/nfs-storage-config-patch.txt
+    cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test/nfs-storage-config-patch.txt
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
