@@ -3,9 +3,10 @@ LIBRARY()
 SRCS(
     helpers.cpp
     leaky_bucket.cpp
-    tablet_throttler.cpp
     tablet_throttler_logger.cpp
     tablet_throttler_policy.cpp
+    tablet_throttler.cpp
+    unspent_cost_bucket.cpp
 )
 
 PEERDIR(
