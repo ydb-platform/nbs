@@ -123,21 +123,39 @@ void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
         }
 
         const auto message = Sprintf(
-            "RenameNodeInDestination failed for %s, %lu, %s with error %s"
+            "%s RenameNodeInDestination failed for %s, %lu, %s with error %s"
             ", will not retry",
+            LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetNewParentId(),
             Request.GetNewName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::TABLET_WORKER,
-            "%s %s",
-            LogTag.c_str(),
-            message.c_str());
+        if (msg->GetError().GetCode() == E_FS_ISDIR
+                || msg->GetError().GetCode() == E_FS_NOTEMPTY
+                || msg->GetError().GetCode() == E_FS_NOENT
+                || msg->GetError().GetCode() == E_FS_EXIST)
+        {
+            //
+            // These errors may happen during normal operation.
+            //
 
-        ReportReceivedNodeOpErrorFromShard(message);
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                message.c_str());
+        } else {
+            //
+            // Other non-retriable errors are not expected.
+            //
+
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                message.c_str());
+
+            ReportReceivedNodeOpErrorFromShard(message);
+        }
 
         ReplyAndDie(ctx, std::move(msg->Record));
         return;
