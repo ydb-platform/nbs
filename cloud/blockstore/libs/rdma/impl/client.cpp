@@ -532,7 +532,7 @@ public:
     bool HandleInputRequests();
     bool HandleCancelRequests();
     bool HandleCompletionEvents();
-    bool AbortRequests() noexcept;
+    void AbortRequests() noexcept;
     bool Flushed() const;
     bool FlushHanging() const;
 
@@ -951,28 +951,24 @@ bool TClientEndpoint::HandleCancelRequests()
     return ret;
 }
 
-bool TClientEndpoint::AbortRequests() noexcept
+void TClientEndpoint::AbortRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
         AbortRequestsEvent.Clear();
     }
 
     if (!CheckState(EEndpointState::Disconnecting)) {
-        return false;
+        return;
     }
-
-    bool ret = false;
 
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
-        ret = true;
     }
 
     while (QueuedRequests) {
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
-
         Counters->RequestDequeued();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
@@ -980,10 +976,7 @@ bool TClientEndpoint::AbortRequests() noexcept
     while (auto req = ActiveRequests.Pop()) {
         Counters->RequestAborted();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
-        ret = true;
     }
-
-    return ret;
 }
 
 void TClientEndpoint::AbortRequest(
@@ -1694,7 +1687,7 @@ private:
                 hasWork |= endpoint->HandleCancelRequests();
                 hasWork |= endpoint->HandleInputRequests();
                 hasWork |= endpoint->HandleCompletionEvents();
-                hasWork |= endpoint->AbortRequests();
+                endpoint->AbortRequests();
             } catch (const TServiceError& e) {
                 RDMA_ERROR(endpoint->Log, e.what());
                 endpoint->Disconnect();
