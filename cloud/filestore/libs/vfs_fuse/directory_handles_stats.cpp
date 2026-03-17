@@ -5,9 +5,8 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 TDirectoryHandlesStats::TDirectoryHandlesStats(ITimerPtr timer)
-    : Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
-    , CacheSize(timer, Counters, "MaxCacheSize")
-    , ChunkCount(std::move(timer), Counters, "MaxChunkCount")
+    : CacheSize(timer)
+    , ChunkCount(std::move(timer))
 {}
 
 TStringBuf TDirectoryHandlesStats::GetName() const
@@ -15,9 +14,14 @@ TStringBuf TDirectoryHandlesStats::GetName() const
     return "DirectoryHandles";
 }
 
-NMonitoring::TDynamicCountersPtr TDirectoryHandlesStats::GetCounters()
+void TDirectoryHandlesStats::RegisterCounters(
+    NMetrics::IMetricsRegistry& localMetricsRegistry,
+    NMetrics::IMetricsRegistry& aggregatableMetricsRegistry)
 {
-    return Counters;
+    Y_UNUSED(aggregatableMetricsRegistry);
+
+    CacheSize.Register(localMetricsRegistry, "MaxCacheSize");
+    ChunkCount.Register(localMetricsRegistry, "MaxChunkCount");
 }
 
 void TDirectoryHandlesStats::ChangeCacheSize(i64 delta)
@@ -50,8 +54,10 @@ void TDirectoryHandlesStats::DecreaseChunkCount(size_t value)
     ChangeChunkCount(-static_cast<i64>(value));
 }
 
-void TDirectoryHandlesStats::UpdateStats()
+void TDirectoryHandlesStats::UpdateStats(TInstant now)
 {
+    Y_UNUSED(now);
+
     CacheSize.UpdateMax();
     ChunkCount.UpdateMax();
 }

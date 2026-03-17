@@ -2,6 +2,8 @@
 
 #include "filesystem_counters.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
@@ -16,6 +18,7 @@ namespace NCloud::NFileStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 using namespace NMonitoring;
+using namespace NMetrics;
 
 namespace {
 
@@ -29,10 +32,9 @@ class TTestModuleStats final: public IModuleStats
 {
 private:
     TString Name;
-    TAtomic Value = 0;
     std::unique_ptr<TMaxCalculator<TestMaxBucketCount>> MaxCalc;
-    TDynamicCountersPtr Counters;
-    TDynamicCounters::TCounterPtr MaxCounter;
+    std::atomic<i64> MaxValue{0};
+    std::atomic<i64> SumValue{0};
 
 public:
     TTestModuleStats(TString name, ITimerPtr timer)
@@ -40,8 +42,6 @@ public:
         , MaxCalc(
               std::make_unique<TMaxCalculator<TestMaxBucketCount>>(
                   std::move(timer)))
-        , Counters(MakeIntrusive<TDynamicCounters>())
-        , MaxCounter(Counters->GetCounter("MaxValue", false))
     {}
 
     TStringBuf GetName() const override
@@ -49,20 +49,31 @@ public:
         return Name;
     }
 
-    TDynamicCountersPtr GetCounters() override
+    void RegisterCounters(
+        IMetricsRegistry& localMetricsRegistry,
+        IMetricsRegistry& aggregatableMetricsRegistry) override
     {
-        return Counters;
+        localMetricsRegistry.Register({CreateSensor("MaxValue")}, MaxValue);
+        aggregatableMetricsRegistry.Register(
+            {CreateSensor("SumValue")},
+            SumValue,
+            EAggregationType::AT_SUM,
+            EMetricType::MT_ABSOLUTE);
     }
 
     void Add(ui64 value)
     {
-        AtomicSet(Value, value);
         MaxCalc->Add(value);
+        SumValue.fetch_add(static_cast<i64>(value), std::memory_order_relaxed);
     }
 
-    void UpdateStats() override
+    void UpdateStats(TInstant now) override
     {
-        MaxCounter->Set(MaxCalc->NextValue());
+        Y_UNUSED(now);
+
+        MaxValue.store(
+            static_cast<i64>(MaxCalc->NextValue()),
+            std::memory_order_release);
     }
 };
 
@@ -80,8 +91,10 @@ struct TBootstrap
     TDynamicCountersPtr Counters = MakeIntrusive<TDynamicCounters>();
     IFsCountersProviderPtr FsCountersProvider =
         CreateFsCountersProvider(Component, Counters);
-    IModuleStatsRegistryPtr Registry =
-        CreateModuleStatsRegistry(FsCountersProvider);
+    IModuleStatsRegistryPtr Registry = CreateModuleStatsRegistry(
+        Timer,
+        FsCountersProvider,
+        Counters->GetSubgroup("component", Component));
 
     std::shared_ptr<TTestModuleStats> CreateAndRegisterStats(
         const TString& moduleName,
@@ -117,6 +130,13 @@ struct TBootstrap
     {
         return GetModuleCounters(moduleName, FileSystemId, ClientId);
     }
+
+    TDynamicCountersPtr GetAggregateModuleCounters(
+        const TString& moduleName) const
+    {
+        return Counters->GetSubgroup("component", Component)
+            ->GetSubgroup("module", moduleName);
+    }
 };
 
 }   // namespace
@@ -131,7 +151,6 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
 
         // Register stats to create the counter hierarchy
         auto stats = b.CreateAndRegisterStats("TestModule");
-        UNIT_ASSERT(stats->GetCounters());
 
         auto fsCounters =
             b.Counters->FindSubgroup("component", b.Component + "_fs");
@@ -233,6 +252,68 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
             fsCounters->FindSubgroup("filesystem", b.FileSystemId);
         UNIT_ASSERT(fsSubgroup);
         UNIT_ASSERT(!fsSubgroup->FindSubgroup("client", b.ClientId));
+    }
+
+    Y_UNIT_TEST(ShouldAggregateStats)
+    {
+        TBootstrap b;
+
+        auto stats1 = b.CreateAndRegisterStats("TestModule", "fs1", "client1");
+        auto stats2 = b.CreateAndRegisterStats("TestModule", "fs2", "client2");
+
+        stats1->Add(100);
+        stats2->Add(200);
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            b.GetModuleCounters("TestModule", "fs1", "client1")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            b.GetModuleCounters("TestModule", "fs2", "client2")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        auto stats3 = b.CreateAndRegisterStats("TestModule", "fs3", "client3");
+        stats3->Add(300);
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            b.GetModuleCounters("TestModule", "fs3", "client3")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            600,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        b.Registry->Unregister("fs1", "client1");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        b.Registry->Unregister("fs2", "client2");
+        b.Registry->Unregister("fs3", "client3");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT(!b.GetAggregateModuleCounters("TestModule")
+                         ->FindCounter("SumValue"));
     }
 }
 

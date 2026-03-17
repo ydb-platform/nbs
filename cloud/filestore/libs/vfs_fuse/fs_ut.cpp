@@ -150,7 +150,10 @@ struct TBootstrap
             Timer,
             CreateUserCounterSupplierStub(),
             FsCountersProvider)}
-        , ModuleStatsRegistry{CreateModuleStatsRegistry(FsCountersProvider)}
+        , ModuleStatsRegistry{CreateModuleStatsRegistry(
+            Timer,
+            FsCountersProvider,
+            Counters->GetSubgroup("component", TString{MetricsComponent}))}
     {
         signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
 
