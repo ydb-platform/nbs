@@ -6,6 +6,11 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// When an operation's actual time spent ("spentCost") is less than its expected
+// cost ("cost"), "Register()" computes the missing delay ("cost - spentCost")
+// and lets the bucket cover part of it (limited by "BudgetSpendRate"),
+// consuming accumulated budget and returning the remaining delay to apply. The
+// budget refills linearly with time and is capped at "MaxBudget".
 class TUnspentCostBucket
 {
 private:
@@ -27,7 +32,7 @@ public:
         TDuration maxBudget,
         TDuration budgetRefillTime,
         double budgetSpendRate,
-        double spentShapingBudgetShare);
+        double spentBudgetShare);
 
     ~TUnspentCostBucket() = default;
 

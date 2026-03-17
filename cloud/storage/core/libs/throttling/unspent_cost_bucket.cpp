@@ -23,7 +23,7 @@ TUnspentCostBucket::TUnspentCostBucket(
     TDuration maxBudget,
     TDuration budgetRefillTime,
     double budgetSpendRate,
-    double spentShapingBudgetShare)
+    double spentBudgetShare)
     : MaxBudget(Max(maxBudget, TDuration::MilliSeconds(1)))
     , BudgetRefillRate(
           budgetRefillTime.GetValue() > 0
@@ -31,7 +31,7 @@ TUnspentCostBucket::TUnspentCostBucket(
                     static_cast<double>(budgetRefillTime.MicroSeconds())
               : 0.)
     , BudgetSpendRate(1.0 / Max(1.0, budgetSpendRate))
-    , CurrentBudget(MaxBudget * (1.0 - spentShapingBudgetShare))
+    , CurrentBudget(MaxBudget * (1.0 - spentBudgetShare))
 {}
 
 TDuration
