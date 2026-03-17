@@ -708,6 +708,7 @@ public:
 
     bool TryLockNodeRef(TNodeRefKey key);
     void UnlockNodeRef(const TNodeRefKey& key);
+    bool IsNodeRefLocked(const TNodeRefKey& key) const;
 
     //
     // Sessions

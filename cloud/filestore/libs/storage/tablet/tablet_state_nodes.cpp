@@ -595,6 +595,11 @@ void TIndexTabletState::UnlockNodeRef(const TNodeRefKey& key)
     Impl->LockedNodeRefs.erase(key);
 }
 
+bool TIndexTabletState::IsNodeRefLocked(const TNodeRefKey& key) const
+{
+    return Impl->LockedNodeRefs.contains(key);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IIndexTabletDatabase& TIndexTabletState::AccessInMemoryIndexState()

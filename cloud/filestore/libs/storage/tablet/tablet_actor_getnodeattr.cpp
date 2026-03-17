@@ -143,6 +143,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         args.TargetNodeId = ref->ChildNodeId;
         args.ShardId = ref->ShardId;
         args.ShardNodeName = ref->ShardNodeName;
+        args.IsNodeRefLocked = IsNodeRefLocked({args.NodeId, args.Name});
     } else {
         args.TargetNodeId = args.NodeId;
     }
@@ -185,6 +186,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
                 args.TargetNodeId,
                 args.TargetNode->Attrs);
         }
+        response->Record.SetIsNodeRefLocked(args.IsNodeRefLocked);
 
         args.RequestMetrics.Update(
             1,
