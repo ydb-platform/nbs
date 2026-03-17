@@ -11,14 +11,16 @@ function reassignChannels(hiveId, tabletId) {
     var url = 'app?TabletID=' + hiveId;
     url += '&page=ReassignTablet';
     url += '&tablet=' + tabletId;
-    $.ajax({ url: url });
+    url += '&wait=0';
+    $.ajax({ type: 'POST', url: url });
 }
 function reassignChannel(hiveId, tabletId, channel) {
     var url = 'app?TabletID=' + hiveId;
     url += '&page=ReassignTablet';
     url += '&tablet=' + tabletId;
     url += '&channel=' + channel;
-    $.ajax({ url: url });
+    url += '&wait=0';
+    $.ajax({ type: 'POST', url: url });
 }
 function forceCompactionAll() {
     document.forms['ForceCompaction'].submit();
