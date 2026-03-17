@@ -96,6 +96,12 @@ public:
         return *this;
     }
 
+    TVolumeBalancerConfigBuilder& WithMaxInProgress(ui64 maxInProgress)
+    {
+        StorageConfig.SetVolumeBalancerMaxInProgress(maxInProgress);
+        return *this;
+    }
+
     NProto::TStorageServiceConfig Build()
     {
         return StorageConfig;
@@ -446,7 +452,7 @@ TString RunState(
         auto ev = testEnv.GrabBindingRequest();
         UNIT_ASSERT(!ev);
 
-        testEnv.GrabVolumesStatsRequest();
+        auto statRequestEvent = testEnv.GrabVolumesStatsRequest();
 
         TVector<NProto::TVolumeBalancerDiskStats> stats;
         for (const auto& v: volumes) {
@@ -463,7 +469,9 @@ TString RunState(
                 : TResultOrError<TDuration>(
                       cpuWait.GetResult() * TDuration::Seconds(15)));
 
-        testEnv.SendVolumesStatsResponse(actorId, stats);
+        if (statRequestEvent.Get() != nullptr) {
+            testEnv.SendVolumesStatsResponse(actorId, stats);
+        }
 
         testEnv.DispatchEvents(TDuration::Seconds(1));
     }
@@ -945,6 +953,118 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             serverGroup
                 ->GetCounter("AppCriticalEvents/CpuWaitCounterReadError", true)
                 ->Val());
+    }
+
+    Y_UNIT_TEST(ShouldRespectInProgressLimitDisabled)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            config.WithType(NProto::PREEMPTION_MOVE_LEAST_HEAVY)
+                .WithMaxInProgress(0),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+
+        testEnv.DispatchEvents();
+
+        auto diskId = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
+
+        auto diskId2 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol2", diskId2);
+    }
+
+    Y_UNIT_TEST(ShouldRespectInProgressLimitSetToOne)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            config.WithType(NProto::PREEMPTION_MOVE_LEAST_HEAVY)
+                .WithMaxInProgress(1),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+
+        testEnv.DispatchEvents();
+
+        auto diskId = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
+
+        // Expect to not get any preemption requests while first one
+        // is in progress
+        auto diskId2 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", false, NProto::EPreemptionSource::SOURCE_BALANCER},
+                {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT(diskId2.empty());
+
+        testEnv.SendChangeVolumeBindingResponse(
+            volumeBindingActorID,
+            "vol1",
+            {});
+
+        auto diskId3 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
+                {"vol1", false, NProto::EPreemptionSource::SOURCE_BALANCER},
+                {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol2", diskId3);
     }
 }
 

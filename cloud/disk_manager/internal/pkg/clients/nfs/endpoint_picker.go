@@ -67,7 +67,7 @@ func (p *endpointPicker) checkHealth(ctx context.Context, endpoint string) {
 			Credentials: p.clientCredentials,
 			Timeout:     &endpointPickerCheckTimeout,
 		},
-		NewNfsClientLog(nfs_client.LOG_DEBUG),
+		logging.GetLogger(ctx),
 	)
 	if err != nil {
 		p.markAsUnhealthy(ctx, endpoint)

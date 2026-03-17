@@ -113,6 +113,9 @@ void TEnsureStateIntegrityActor::HandleBackupDiskRegistryStateResponse(
     const auto* descriptor = NProto::TDiskRegistryStateBackup::descriptor();
     diff.IgnoreField(descriptor->FindFieldByName("UnknownDevices"));
     diff.IgnoreField(descriptor->FindFieldByName("OldDirtyDevices"));
+    diff.IgnoreField(
+        NProto::TDiskRegistryStateBackup::TDirtyDevice::descriptor()
+            ->FindFieldByName("DiskId"));
     diff.TreatAsSmartSet(descriptor->FindFieldByName("Disks"));
     diff.TreatAsSmartSet(descriptor->FindFieldByName("PlacementGroups"));
     diff.TreatAsSmartSet(descriptor->FindFieldByName("Agents"));

@@ -162,7 +162,8 @@ bool TFileSystem::ProcessAsyncRelease(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    ui64 fh)
+    ui64 fh,
+    const NCloud::NProto::TError& writeBackCacheError)
 {
     with_lock (HandleOpsQueueLock) {
         const auto res = HandleOpsQueue->AddDestroyRequest(ino, fh);
@@ -187,7 +188,10 @@ bool TFileSystem::ProcessAsyncRelease(
 
     STORAGE_DEBUG(
         "Destroy handle request added to queue #" << ino << " @" << fh);
-    ReplyError(*callContext, {}, req, 0);
+
+    if (CheckError(*callContext, req, writeBackCacheError)) {
+        ReplyError(*callContext, {}, req, 0);
+    }
     return true;
 }
 
@@ -195,13 +199,32 @@ void TFileSystem::ReleaseImpl(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    ui64 handle)
+    ui64 handle,
+    const NCloud::NProto::TError& writeBackCacheError)
 {
+    // If WriteBackCache was used, Release() previously asked it to flush the
+    // data related to this handle and release the references to it. It could
+    // return an error if data has been lost due to flush failure.
+    //
+    // We should propagate writeBackCacheError to the caller:
+    // - DestroyHandle fails -> return DestroyHandle error;
+    // - DestroyHandle succeeds -> return writeBackCacheError
+
     if (Config->GetAsyncDestroyHandleEnabled()) {
-        if (!ProcessAsyncRelease(callContext, req, ino, handle)) {
+        if (!ProcessAsyncRelease(
+                callContext,
+                req,
+                ino,
+                handle,
+                writeBackCacheError))
+        {
             with_lock (DelayedReleaseQueueLock) {
-                DelayedReleaseQueue.push(
-                    TReleaseRequest(callContext, req, ino, handle));
+                DelayedReleaseQueue.push(TReleaseRequest(
+                    callContext,
+                    req,
+                    ino,
+                    handle,
+                    writeBackCacheError));
             }
         }
         return;
@@ -210,17 +233,23 @@ void TFileSystem::ReleaseImpl(
     auto request = StartRequest<NProto::TDestroyHandleRequest>(ino);
     request->SetHandle(handle);
     Session->DestroyHandle(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=,
+             writeBackCacheError = writeBackCacheError,
+             ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, response.GetError(), req, 0);
-            }
-        });
+                const auto& response = future.GetValue();
+                if (CheckResponse(self, *callContext, req, response) &&
+                    self->CheckError(*callContext, req, writeBackCacheError))
+                {
+                    self->ReplyError(*callContext, {}, req, 0);
+                }
+            });
 }
 
 void TFileSystem::Release(
@@ -238,17 +267,23 @@ void TFileSystem::Release(
     }
 
     if (WriteBackCache) {
-        WriteBackCache.FlushNodeData(ino).Subscribe(
-            [=, ptr = weak_from_this()] (const auto&)
-            {
-                if (auto self = ptr.lock()) {
-                    self->ReleaseImpl(callContext, req, ino, handle);
-                }
-            });
+        // ReleaseHandle ensures that the handle is no longer in use by
+        // WriteBackCache (regardless of its result). It may return an error if
+        // data has been lost due to flush failure - this error should be
+        // propagated to the caller
+        WriteBackCache.ReleaseHandle(ino, handle)
+            .Subscribe(
+                [=, ptr = weak_from_this()](const auto& future)
+                {
+                    if (auto self = ptr.lock()) {
+                        const NProto::TError& error = future.GetValue();
+                        self->ReleaseImpl(callContext, req, ino, handle, error);
+                    }
+                });
         return;
     }
 
-    ReleaseImpl(std::move(callContext), req, ino, handle);
+    ReleaseImpl(std::move(callContext), req, ino, handle, {});
 }
 
 void TFileSystem::ReadLocal(
@@ -363,7 +398,7 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
-    if (!WriteBackCache && Config->GetZeroCopyReadEnabled()) {
+    if (Config->GetZeroCopyReadEnabled()) {
         // TODO(issue-4800): Support ZeroCopyReadEnabled for local filestore
         struct iovec* iov = nullptr;
         int count = 0;
@@ -537,32 +572,6 @@ void TFileSystem::DoWrite(
     FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
     if (wbcState == EServerWriteBackCacheState::Disabled) {
-        if (WriteBackCache) {
-            // Sync writes must include all previously cached data for
-            // the same node, so flush the node cache first and only then submit
-            // this write directly to the session.
-            // For O_DIRECT same file can be opened without O_DIRECT so we try
-            // to flush here as well
-            WriteBackCache.FlushNodeData(request->GetNodeId())
-                .Subscribe(
-                    [ptr = weak_from_this(),
-                     callback = std::move(callback),
-                     callContext = std::move(callContext),
-                     request = std::move(request)](const auto& f) mutable
-                    {
-                        // TODO(#1751): in future commits FlushNodeData() can
-                        // fail and we will need to propagate the failure error
-                        // to caller
-                        f.GetValue();
-                        if (auto self = ptr.lock()) {
-                            self->Session
-                                ->WriteData(callContext, std::move(request))
-                                .Subscribe(std::move(callback));
-                        }
-                    });
-            return;
-        }
-
         Session->WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
@@ -573,19 +582,29 @@ void TFileSystem::DoWrite(
         "Invalid EServerWriteBackCacheState value = %d",
         wbcState);
 
-    WriteBackCache.FlushNodeData(request->GetNodeId())
-        .Subscribe(
-            [ptr = weak_from_this(),
-             callback = std::move(callback),
-             callContext = std::move(callContext),
-             request = std::move(request)](const auto& f) mutable
-            {
-                f.GetValue();
-                if (auto self = ptr.lock()) {
-                    self->Session->WriteData(callContext, std::move(request))
-                        .Subscribe(std::move(callback));
-                }
-            });
+    // Sync writes must include all previously cached data for
+    // the same node, so flush the node cache first and only then submit
+    // this write directly to the session.
+    // For O_DIRECT same file can be opened without O_DIRECT so we try
+    // to flush here as well
+    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
+    flushFuture.Subscribe(
+        [ptr = weak_from_this(),
+         callback = std::move(callback),
+         callContext = std::move(callContext),
+         request = std::move(request)](const auto& f) mutable
+        {
+            const NProto::TError& error = f.GetValue();
+            if (HasError(error)) {
+                // Propagate flush error to the WriteData response
+                NProto::TWriteDataResponse response;
+                *response.MutableError() = error;
+                callback(MakeFuture(std::move(response)));
+            } else if (auto self = ptr.lock()) {
+                self->Session->WriteData(callContext, std::move(request))
+                    .Subscribe(std::move(callback));
+            }
+        });
 }
 
 void TFileSystem::WriteBufLocal(
@@ -847,11 +866,16 @@ void TFileSystem::Flush(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
-            .Apply([] (const auto&) { return MakeError(S_OK); });
-
-        future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino);
+        auto waitAll =
+            NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture);
+        future = waitAll.Apply(
+            [=](const auto&)
+            {
+                const auto& flushError = writeBackCacheFlushFuture.GetValue();
+                const auto& fsyncQueueError = fsyncQueueFuture.GetValue();
+                return HasError(flushError) ? flushError : fsyncQueueError;
+            });
     }
 
     future.Subscribe(std::move(callback));
@@ -1082,16 +1106,16 @@ EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheState(
         return EServerWriteBackCacheState::Disabled;
     }
 
+    if (!Config->GetServerWriteBackCacheEnabled()) {
+        return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
+                                        : EServerWriteBackCacheState::Draining;
+    }
+
     if (fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)) {
-        return EServerWriteBackCacheState::Disabled;
+        return EServerWriteBackCacheState::Draining;
     }
 
-    if (Config->GetServerWriteBackCacheEnabled()) {
-        return EServerWriteBackCacheState::Enabled;
-    }
-
-    return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
-                                    : EServerWriteBackCacheState::Draining;
+    return EServerWriteBackCacheState::Enabled;
 }
 
 }   // namespace NCloud::NFileStore::NFuse

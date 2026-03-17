@@ -39,4 +39,11 @@ type Storage interface {
 		nextCookie string,
 		children []nfs.Node,
 	) error
+
+	// Clears directory listing queue for the given snapshot.
+	ClearDirectoryListingQueue(
+		ctx context.Context,
+		snapshotID string,
+		deletionLimit uint64,
+	) error
 }

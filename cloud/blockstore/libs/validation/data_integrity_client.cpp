@@ -593,8 +593,8 @@ bool TDataIntegrityClient::HandleRequest(
         Y_DEBUG_ABORT_UNLESS(requestByteCount == bytesCopied);
 
         copyGuardedSgList = TGuardedSgList(std::move(copySgList));
-        requestCopy =
-            std::make_shared<NProto::TWriteBlocksLocalRequest>(*request);
+        requestCopy = std::make_shared<NProto::TWriteBlocksLocalRequest>(
+            request->CreateDependentRequest());
         requestCopy->Sglist = copyGuardedSgList.CreateDepender();
     } else {
         requestCopy = std::move(request);

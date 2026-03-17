@@ -16,7 +16,6 @@ enum class EAllocatorTag
     FreshBytes,
     GarbageQueue,
     ReadAheadCache,
-    NodeIndexCache,
     InMemoryNodeIndexCache,
     LargeBlocks,
 

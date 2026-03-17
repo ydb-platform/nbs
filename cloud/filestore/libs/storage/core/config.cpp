@@ -201,7 +201,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
     xxx(ReadAheadMaxGapPercentage,              ui32,       20                )\
     xxx(ReadAheadCacheMaxHandlesPerNode,        ui32,      128                )\
-    xxx(NodeIndexCacheMaxNodes,                 ui32,        0                )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(RegularFileEntryTimeout,         TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
@@ -215,7 +214,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
-    xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(AllowFileStoreDestroyWithOrphanSessions,        bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
@@ -330,7 +328,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
                                                                                \
-    xxx(ForceDestroySizeThreshold,          ui32,       0                      )\
+    xxx(ForceDestroySizeThreshold,          ui32,       0                     )\
+                                                                               \
+    xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
+    xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

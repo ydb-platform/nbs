@@ -2,6 +2,7 @@
 
 #include "node_flush_state.h"
 #include "persistent_storage.h"
+#include "read_response_builder.h"
 #include "sequence_id_generator.h"
 #include "utils.h"
 #include "write_back_cache_state.h"
@@ -10,7 +11,7 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
-#include <cloud/filestore/libs/storage/core/helpers.h>
+#include <cloud/filestore/libs/service/request.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -72,7 +73,7 @@ public:
               args.FileSystemId.c_str(),
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
-        , State(*this, Timer, Stats)
+        , State(*this, Timer, Stats, LogTag)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
@@ -167,43 +168,39 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        const auto nodeId = request->GetNodeId();
-        const auto offset = request->GetOffset();
-        const auto length = request->GetLength();
-
         // Prevent cached data parts from being evicted from storage until
         // the response is completed
-        const auto pinId = State.PinCachedData(nodeId);
-        const auto cachedData = State.GetCachedData(nodeId, offset, length);
+        const auto pinId = State.PinCachedData(request->GetNodeId());
 
-        if (TUtils::IsFullyCoveredByParts(cachedData.Parts, length)) {
-            auto response = TUtils::BuildReadDataResponse(cachedData.Parts);
-            State.UnpinCachedData(nodeId, pinId);
+        TReadResponseBuilder responseBuilder(*request);
+        if (auto response = responseBuilder.TryFullyServeFromCache(State)) {
+            State.UnpinCachedData(request->GetNodeId(), pinId);
             Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
-            return MakeFuture(std::move(response));
+            return MakeFuture(std::move(*response));
         }
 
-        auto callback = [ptr = weak_from_this(), nodeId, offset, length, pinId](
-                            TFuture<NProto::TReadDataResponse> future)
+        auto callback = [ptr = weak_from_this(),
+                         responseBuilder = std::move(responseBuilder),
+                         pinId](TFuture<NProto::TReadDataResponse> future)
         {
             auto response = future.ExtractValue();
 
             if (auto self = ptr.lock()) {
                 if (!HasError(response)) {
-                    const auto cachedData =
-                        self->State.GetCachedData(nodeId, offset, length);
+                    bool cachedDataApplied =
+                        responseBuilder.AugmentResponseWithCachedData(
+                            response,
+                            self->State);
 
-                    if (cachedData.Parts.empty()) {
-                        self->Stats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::Miss);
-                    } else {
+                    if (cachedDataApplied) {
                         self->Stats->AddReadDataStats(
                             EReadDataRequestCacheStatus::PartialHit);
+                    } else {
+                        self->Stats->AddReadDataStats(
+                            EReadDataRequestCacheStatus::Miss);
                     }
-
-                    TUtils::AugmentReadDataResponse(response, cachedData);
                 }
-                self->State.UnpinCachedData(nodeId, pinId);
+                self->State.UnpinCachedData(responseBuilder.GetNodeId(), pinId);
             }
             return response;
         };
@@ -231,14 +228,19 @@ public:
         return State.AddWriteDataRequest(std::move(request));
     }
 
-    TFuture<void> FlushNodeData(ui64 nodeId)
+    TFuture<NProto::TError> FlushNodeData(ui64 nodeId)
     {
         return State.AddFlushRequest(nodeId);
     }
 
-    TFuture<void> FlushAllData()
+    TFuture<NProto::TError> FlushAllData()
     {
         return State.AddFlushAllRequest();
+    }
+
+    TFuture<NProto::TError> ReleaseHandle(ui64 nodeId, ui64 handle)
+    {
+        return State.AddReleaseHandleRequest(nodeId, handle);
     }
 
     bool IsEmpty() const
@@ -304,8 +306,9 @@ private:
             auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
 
             callContext->RequestType = EFileStoreRequest::WriteData;
-            callContext->RequestSize = NStorage::CalculateByteCount(*request) -
-                                       request->GetBufferOffset();
+            callContext->RequestSize =
+                NCloud::NFileStore::CalculateByteCount(*request) -
+                request->GetBufferOffset();
 
             auto callback = [ptr = weak_from_this(), flushState, i](
                                 const auto& future) mutable
@@ -337,15 +340,21 @@ private:
 
         if (HasError(error)) {
             Stats->FlushFailed();
-            ScheduleRetryFlush(std::move(flushState));
-            return;
+
+            auto retryStatus =
+                State.FlushFailed(flushState->GetNodeId(), error);
+
+            if (retryStatus == EFlushRetryStatus::ShouldRetry) {
+                ScheduleRetryFlush(std::move(flushState));
+                return;
+            }
+        } else {
+            State.FlushSucceeded(
+                flushState->GetNodeId(),
+                flushState->GetAffectedUnflushedRequestCount());
         }
 
         Stats->FlushCompleted();
-
-        State.FlushSucceeded(
-            flushState->GetNodeId(),
-            flushState->GetAffectedUnflushedRequestCount());
     }
 
     void ScheduleRetryFlush(std::shared_ptr<TNodeFlushState> flushState)
@@ -390,14 +399,19 @@ TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteData(
     return Impl->WriteData(std::move(callContext), std::move(request));
 }
 
-TFuture<void> TWriteBackCache::FlushNodeData(ui64 nodeId)
+TFuture<NProto::TError> TWriteBackCache::FlushNodeData(ui64 nodeId)
 {
     return Impl->FlushNodeData(nodeId);
 }
 
-TFuture<void> TWriteBackCache::FlushAllData()
+TFuture<NProto::TError> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
+}
+
+TFuture<NProto::TError> TWriteBackCache::ReleaseHandle(ui64 nodeId, ui64 handle)
+{
+    return Impl->ReleaseHandle(nodeId, handle);
 }
 
 bool TWriteBackCache::IsEmpty() const

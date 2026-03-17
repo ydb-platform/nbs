@@ -53,20 +53,21 @@ struct TReleaseRequest
     fuse_req_t Req;
     fuse_ino_t Ino;
     ui64 Fh;
+    NCloud::NProto::TError WriteBackCacheError;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 enum class EServerWriteBackCacheState
 {
-    // Requests should bypass WriteBackCache and go directly to the session
-    // (even if WriteBackCache is initialized)
+    // WriteBackCache is turned off
     Disabled,
 
     // Requests should go to the WriteBackCache
     Enabled,
 
-    // WriteBackCache is in the transition from Enabled to Disabled state.
+    // WriteBackCache is being turned off or a request with
+    // O_DIRECT/O_SYNC/O_DSYNC is made.
     // Requests should wait until WriteBackCache is flushed and then go
     // directly to the session
     Draining
@@ -463,12 +464,14 @@ private:
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
-        ui64 handle);
+        ui64 handle,
+        const NCloud::NProto::TError& writeBackCacheError);
     void ReleaseImpl(
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
-        ui64 handle);
+        ui64 handle,
+        const NCloud::NProto::TError& writeBackCacheError);
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,
         const NProto::TDestroyHandleResponse& response);

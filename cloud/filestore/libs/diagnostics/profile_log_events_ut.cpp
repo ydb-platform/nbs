@@ -158,6 +158,43 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(buffer.length(), rangeInfo.GetBytes());
     }
 
+    Y_UNIT_TEST(ShouldWriteDataRequestWithIovecsInitializeFieldsCorrectly)
+    {
+        const auto nodeId = 12;
+        const auto handle = 34;
+        const auto offset = 56;
+        const TString data1 = "hello";
+        const TString data2 = "world";
+
+        NProto::TWriteDataRequest req;
+        req.SetNodeId(nodeId);
+        req.SetHandle(handle);
+        req.SetOffset(offset);
+
+        auto* iovec1 = req.MutableIovecs()->Add();
+        iovec1->SetBase(reinterpret_cast<ui64>(data1.data()));
+        iovec1->SetLength(data1.size());
+
+        auto* iovec2 = req.MutableIovecs()->Add();
+        iovec2->SetBase(reinterpret_cast<ui64>(data2.data()));
+        iovec2->SetLength(data2.size());
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitProfileLogRequestInfo(profileLogRequest, req);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, profileLogRequest.RangesSize());
+        UNIT_ASSERT(!profileLogRequest.HasNodeInfo());
+        UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+
+        const auto& rangeInfo = profileLogRequest.GetRanges().at(0);
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, rangeInfo.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, rangeInfo.GetHandle());
+        UNIT_ASSERT_VALUES_EQUAL(offset, rangeInfo.GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            data1.size() + data2.size(),
+            rangeInfo.GetBytes());
+    }
+
     Y_UNIT_TEST(ShouldAllocateDataRequestInitializeFieldsCorrectly)
     {
         const auto nodeId = 12;
@@ -468,13 +505,11 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     Y_UNIT_TEST(ShouldSetNodeAttrRequestInitializeFieldsCorrectly)
     {
         const auto nodeId = 12;
-        const auto handle = 34;
         const auto mode = 56;
         const auto flags = 78;
 
         NProto::TSetNodeAttrRequest req;
         req.SetNodeId(nodeId);
-        req.SetHandle(handle);
         req.MutableUpdate()->SetMode(mode);
         req.SetFlags(flags);
 
@@ -493,7 +528,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(flags, nodeInfo.GetFlags());
         UNIT_ASSERT_VALUES_EQUAL(mode, nodeInfo.GetMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());
-        UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
         UNIT_ASSERT(!nodeInfo.HasSize());
     }
 
@@ -501,13 +535,11 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     {
         const auto nodeId = 12;
         const auto name = "name";
-        const auto handle = 34;
         const auto flags = 78;
 
         NProto::TGetNodeAttrRequest req;
         req.SetNodeId(nodeId);
         req.SetName(name);
-        req.SetHandle(handle);
         req.SetFlags(flags);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
@@ -525,7 +557,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(flags, nodeInfo.GetFlags());
         UNIT_ASSERT(!nodeInfo.HasMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());
-        UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
         UNIT_ASSERT(!nodeInfo.HasSize());
     }
 

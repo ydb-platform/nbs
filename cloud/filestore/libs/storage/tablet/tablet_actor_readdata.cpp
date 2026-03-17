@@ -853,6 +853,15 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         args.CommitId = handle->GetCommitId();
     }
 
+    if (!UnconfirmedRecoveryReady &&
+        HasDataOverlapWithUnconfirmed(args.NodeId, args.OriginByteRange))
+    {
+        args.Error = MakeError(
+            E_REJECTED,
+            "read overlaps with unconfirmed recovery data");
+        return false;
+    }
+
     if (args.DescribeOnly) {
         // initializing args.ReadAheadRange in an ugly way since TMaybe doesn't
         // support classes which don't have an assignment operator

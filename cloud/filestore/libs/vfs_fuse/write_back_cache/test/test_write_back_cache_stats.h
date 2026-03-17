@@ -38,6 +38,8 @@ struct TTestWriteBackCacheStats: public IWriteBackCacheStats
 
     ui64 NodeCount = 0;
 
+    ui64 WriteDataRequestDroppedCount = 0;
+
     TTestWriteDataRequestStats PendingStats;
     TTestWriteDataRequestStats UnflushedStats;
     TTestWriteDataRequestStats FlushedStats;
@@ -61,6 +63,8 @@ struct TTestWriteBackCacheStats: public IWriteBackCacheStats
     void IncrementNodeCount() override;
 
     void DecrementNodeCount() override;
+
+    void WriteDataRequestDropped() override;
 
     TTestWriteDataRequestStats& GetWriteStats(EWriteDataRequestStatus status);
 

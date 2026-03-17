@@ -434,7 +434,29 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
         return MakeError(E_REJECTED, "compaction state not loaded yet");
     }
 
+    if (!UnconfirmedRecoveryReady) {
+        return MakeError(E_REJECTED, "unconfirmed recovery not ready yet");
+    }
+
     return {};
+}
+
+bool TIndexTabletActor::CanUseUnconfirmedData() const
+{
+    if (!Config->GetAddingUnconfirmedDataEnabled()) {
+        return false;
+    }
+
+    const ui32 hardLimit = Config->GetUnconfirmedDataCountHardLimit();
+    const size_t unconfirmedDataCount =
+        UnconfirmedData.size() +
+        ConfirmedData.size() +
+        UnconfirmedDataInProgress.size();
+    if (hardLimit && unconfirmedDataCount >= hardLimit) {
+        return false;
+    }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -713,6 +735,29 @@ void TIndexTabletActor::HandleSessionDisconnected(
         ev->Sender.ToString().c_str());
 
     OrphanSession(ev->Sender, ctx.Now());
+}
+
+void TIndexTabletActor::HandleSessionDisconnectedInWork(
+    const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& msg = *ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s Server disconnected, sender: %s, client: %s, server: %s",
+        LogTag.c_str(),
+        ev->Sender.ToString().c_str(),
+        msg.ClientId.ToString().c_str(),
+        msg.ServerId.ToString().c_str());
+
+    // TODO (#4962) use proper session id
+    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
+    for (const auto& sessionId: sessionIds) {
+        DeleteUnconfirmedDataForSession(sessionId, ctx);
+    }
+    RemoveSessionByPipeServer(msg.ServerId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1153,12 +1198,17 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
             HandleEnqueueBlobIndexOpIfNeeded);
+        HFunc(
+            TEvIndexTabletPrivate::TEvConfirmBlobsCompleted,
+            HandleConfirmBlobsCompleted);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
+        HFunc(
+            TEvTabletPipe::TEvServerDisconnected,
+            HandleSessionDisconnectedInWork);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
@@ -1211,6 +1261,8 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
+
+        IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -1286,6 +1338,8 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
+
+        IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -1466,8 +1520,11 @@ bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
     // shards)
     //
     // Note that checking both that ShardFileSystemIds is not empty and that the
-    // DirectoryCreationInShardsEnabled flag is set might be excessive, because
-    // they are both supposed to be set at the same time
+    // DirectoryCreationInShardsEnabled flag is true is necessary because:
+    // * ShardFileSystemIds can be empty even if directory creation in shards is
+    //  enabled - e.g. for small filesystems
+    // * DirectoryCreationInShardsEnabled can be false but ShardFileSystemIds
+    //  can be non-empty - e.g. when strict size enforcement is enabled
     if (headers.GetBehaveAsDirectoryTablet() &&
         !GetFileSystem().GetShardFileSystemIds().empty() &&
         GetFileSystem().GetDirectoryCreationInShardsEnabled())

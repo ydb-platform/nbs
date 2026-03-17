@@ -1,5 +1,6 @@
 #include "service.h"
 #include "service_private.h"
+#include "service_ut_helpers.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
@@ -29,38 +30,6 @@ using namespace NKikimr;
 using namespace NMonitoring;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TTestProfileLog
-    : public IProfileLog
-{
-public:
-    TMap<ui32, TVector<TRecord>> Requests;
-
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    void Write(TRecord record) override
-    {
-        UNIT_ASSERT(record.Request.HasRequestType());
-        Requests[record.Request.GetRequestType()].push_back(std::move(record));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString GenerateValidateData(ui32 size, ui32 seed = 0)
-{
-    TString data(size, 0);
-    for (ui32 i = 0; i < size; ++i) {
-        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
-    }
-    return data;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -3731,7 +3700,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.MutableDestroyFilestoreDenyList()->Add("test");
-        config.SetGetNodeAttrBatchEnabled(true);
 
         TTestEnv env({}, config);
 

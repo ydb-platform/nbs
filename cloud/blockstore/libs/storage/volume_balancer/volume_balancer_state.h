@@ -113,6 +113,11 @@ public:
         VolumesInProgress.erase(std::move(volume));
     }
 
+    auto GetVolumesInProgressCount() const
+    {
+        return VolumesInProgress.size();
+    }
+
 private:
     void RenderLocalVolumes(TStringStream& out) const;
     void RenderPreemptedVolumes(TStringStream& out, TInstant now) const;

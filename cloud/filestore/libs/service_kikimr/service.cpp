@@ -161,7 +161,7 @@ public:
     void SendRequest(
         IActorSystem& actorSystem,
         TCallContextPtr callContext,
-        TRequest request,
+        const TRequest& request,
         TPromise<TResponse> promise,
         TActorId actorId)
     {
@@ -176,7 +176,7 @@ public:
             actorId,
             std::make_unique<TRequestEvent>(
                 std::move(callContext),
-                std::move(request)).release(),
+                request).release(),
             0 /* flags */,
             cookie,
             nullptr /* forwardOnNondelivery */);
@@ -494,7 +494,7 @@ private:
             Handler->SendRequest(
                 *ActorSystem,
                 std::move(callContext),
-                std::move(*request),
+                *request,
                 std::move(response));
             return;
         }

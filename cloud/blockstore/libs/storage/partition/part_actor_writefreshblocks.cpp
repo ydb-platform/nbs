@@ -188,12 +188,24 @@ void TPartitionActor::HandleAddFreshBlocks(
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
+    if (FreshBlocksWriter) {
+        ui64 blocksCount = 0;
+        for (auto& blockRange: msg->BlockRanges) {
+            blocksCount += blockRange.Size();
+        }
+        State->AccessTrimFreshLogBarriers().AcquireBarrierN(
+            msg->CommitId,
+            blocksCount);
+    }
+
     for (size_t i = 0; i < msg->BlockRanges.size(); ++i) {
         auto& blockRange = msg->BlockRanges[i];
 
         if (!msg->WriteHandlers) {
             State->ZeroFreshBlocks(blockRange, msg->CommitId);
-            State->DecrementFreshBlocksInFlight(blockRange.Size());
+            if (!FreshBlocksWriter) {
+                State->DecrementFreshBlocksInFlight(blockRange.Size());
+            }
 
             continue;
         }
@@ -205,7 +217,9 @@ void TPartitionActor::HandleAddFreshBlocks(
         if (auto guard = guardedSgList.Acquire()) {
             const auto& sgList = guard.Get();
             State->WriteFreshBlocks(blockRange, msg->CommitId, sgList);
-            State->DecrementFreshBlocksInFlight(blockRange.Size());
+            if (!FreshBlocksWriter) {
+                State->DecrementFreshBlocksInFlight(blockRange.Size());
+            }
         } else {
             LOG_ERROR(
                 ctx,

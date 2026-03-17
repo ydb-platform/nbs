@@ -784,6 +784,8 @@ public:
 
     [[nodiscard]] TPoolKindToMediaKindMapping
     GetPoolKindToMediaKindMapping() const;
+
+    [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
 };
 
 ui64 GetAllocationUnit(

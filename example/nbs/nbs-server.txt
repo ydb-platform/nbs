@@ -25,4 +25,5 @@ ServerConfig {
   }
   # UseFakeRdmaClient: true
   EnableOverlappingRequestsGuard: true
+  EnableRequestSplitter: true
 }

@@ -267,10 +267,12 @@ void TPartitionActor::WriteBlocks(
     };
 
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
-    const auto writeBlobThreshold =
-        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
 
-    if (requestSize < writeBlobThreshold) {
+    if (IsFreshRequest(
+            *Config,
+            PartitionConfig.GetStorageMediaKind(),
+            requestSize))
+    {
         if (Config->GetWriteRequestBatchingEnabled()) {
             // we will try to batch small writes and, if batching fails,
             // we will accumulate these writes in FreshBlocks table

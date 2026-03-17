@@ -149,6 +149,11 @@ public:
         ReconnectPipe();
     }
 
+    void DisconnectPipe()
+    {
+        Runtime.ClosePipe(PipeClient, Sender, NodeIdx);
+    }
+
     template <typename TRequest>
     void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
@@ -927,6 +932,22 @@ public:
         for (auto& part: unalignedDataParts) {
             *request->Record.AddUnalignedDataRanges() = std::move(part);
         }
+        return request;
+    }
+
+    auto CreateConfirmAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvConfirmAddDataRequest>();
+        request->Record.SetCommitId(commitId);
+        return request;
+    }
+
+    auto CreateCancelAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvCancelAddDataRequest>();
+        request->Record.SetCommitId(commitId);
         return request;
     }
 

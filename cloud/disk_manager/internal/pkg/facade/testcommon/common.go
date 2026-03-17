@@ -399,6 +399,7 @@ func NewNfsTestingClient(
 		ctx,
 		newNfsClientConfig(),
 		metrics.NewEmptyRegistry(),
+		metrics.NewEmptyRegistry(),
 	)
 	client, err := nfsFactory.NewClient(ctx, zoneID)
 	require.NoError(t, err)
@@ -974,7 +975,13 @@ func GetCounters(
 		}
 	}
 
-	require.NotEmpty(t, result, "No counter with name %s", name)
+	require.NotEmpty(
+		t,
+		result,
+		"No counter with name %s, labels %v",
+		name,
+		labels,
+	)
 	return result
 }
 

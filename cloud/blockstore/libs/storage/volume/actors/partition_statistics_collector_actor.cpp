@@ -12,8 +12,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionStatisticsCollectorActor::TPartitionStatisticsCollectorActor(
-        const TActorId& owner,
-        TVector<TActorId> partitions)
+    const TActorId& owner,
+    TVector<TActorId> partitions)
     : Owner(owner)
     , Partitions(std::move(partitions))
 {}
@@ -41,8 +41,7 @@ void TPartitionStatisticsCollectorActor::Bootstrap(const TActorContext& ctx)
     ctx.Schedule(UpdateCountersInterval, new TEvents::TEvWakeup());
 }
 
-void TPartitionStatisticsCollectorActor::ReplyAndDie(
-    const TActorContext& ctx)
+void TPartitionStatisticsCollectorActor::ReplyAndDie(const TActorContext& ctx)
 {
     NCloud::Send(
         ctx,
@@ -86,12 +85,12 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersResponse(
 
     if (HasError(record->Error)) {
         LastError = record->Error;
-        ++FailedResponses;
     } else {
         Response.PartCounters.push_back(std::move(*record));
     }
 
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size()) {
         ReplyAndDie(ctx);
     }
 }
@@ -102,8 +101,10 @@ void TPartitionStatisticsCollectorActor::HandleGetPartCountersUndelivery(
 {
     Y_UNUSED(ev);
 
-    ++FailedResponses;
-    if (Partitions.size() == Response.PartCounters.size() + FailedResponses) {
+    LastError = MakeError(E_REJECTED, "GetPartCountersRequest undelivered");
+
+    ++ResponsesCount;
+    if (ResponsesCount == Partitions.size()) {
         ReplyAndDie(ctx);
     }
 }
@@ -118,8 +119,7 @@ STFUNC(TPartitionStatisticsCollectorActor::StateWork)
             HandleGetPartCountersResponse);
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
-            HandleGetPartCountersUndelivery
-        );
+            HandleGetPartCountersUndelivery);
 
         default:
             HandleUnexpectedEvent(

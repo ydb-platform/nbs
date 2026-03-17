@@ -489,7 +489,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     TTxIndexTablet::TCreateHandle& args)
 {
     for (auto nodeId: args.UpdatedNodes) {
-        InvalidateNodeCaches(nodeId);
+        InvalidateReadAheadCache(nodeId);
     }
 
     if (args.Error.GetCode() == E_ARGUMENT) {

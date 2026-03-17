@@ -189,12 +189,6 @@ void TTabletMetrics::Register(
         EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheHitCount,
-        EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(
-        NodeIndexCacheNodeCount,
-        EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(
         InMemoryIndexStateROCacheHitCount,
         EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(
@@ -354,6 +348,11 @@ void TTabletMetrics::Register(
         "Compaction.DudCount",
         EMetricType::MT_DERIVATIVE);
 
+    REGISTER_AGGREGATABLE_SUM_EXT(
+        ConfirmAddDataExtra.DeferredCount,
+        "ConfirmAddData.DeferredCount",
+        EMetricType::MT_DERIVATIVE);
+
     REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxGarbageBlocksInRange, EMetricType::MT_ABSOLUTE);
@@ -422,6 +421,7 @@ void TTabletMetrics::UpdatePerformanceMetrics(
     calcSufferAndLoad(pp.Read, DescribeData);
     calcSufferAndLoad(pp.Write, WriteData);
     calcSufferAndLoad(pp.Write, AddData);
+    calcSufferAndLoad(pp.Write, AddDataUnconfirmed);
     calcSufferAndLoad(pp.ListNodes, ListNodes);
     calcSufferAndLoad(pp.GetNodeAttr, GetNodeAttr);
     calcSufferAndLoad(pp.CreateHandle, CreateHandle);
@@ -443,7 +443,7 @@ i64 TTabletMetrics::CalculateNetworkRequestBytes(
     i64 sumRequestBytes =
         ReadBlob.RequestBytes + WriteBlob.RequestBytes +
         WriteData.RequestBytes +
-        (DescribeData.Count + AddData.Count + ReadData.Count) *
+        (DescribeData.Count + AddData.Count + AddDataUnconfirmed.Count + ReadData.Count) *
             nonNetworkMetricsBalancingFactor;
     auto delta = sumRequestBytes - LastNetworkMetric;
     LastNetworkMetric = sumRequestBytes;

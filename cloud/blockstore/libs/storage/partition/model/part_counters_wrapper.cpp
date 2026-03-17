@@ -17,4 +17,13 @@ TPartitionDiskCountersPtr TThreadSafePartCounters::Swap(
     return retCounters;
 }
 
+NProto::TPartitionStats TThreadSafePartStats::Swap(
+    NProto::TPartitionStats stats)
+{
+    TGuard guard(Lock);
+    auto retStats = std::move(Stats);
+    Stats = std::move(stats);
+    return retStats;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

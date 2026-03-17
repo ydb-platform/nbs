@@ -87,6 +87,11 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TReadLinkRequest,
 	) (*protos.TReadLinkResponse, error)
+
+	GetNodeAttr(
+		ctx context.Context,
+		req *protos.TGetNodeAttrRequest,
+	) (*protos.TGetNodeAttrResponse, error)
 }
 
 type EndpointClientIface interface {

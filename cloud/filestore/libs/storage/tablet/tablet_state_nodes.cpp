@@ -84,8 +84,6 @@ void TIndexTabletState::UpdateNode(
 
         AddCheckpointNode(db, checkpointId, nodeId);
     }
-
-    InvalidateNodeIndexCache(nodeId);
 }
 
 NProto::TError TIndexTabletState::RemoveNode(
@@ -120,8 +118,6 @@ NProto::TError TIndexTabletState::RemoveNode(
         db.WriteNodeVer(node.NodeId, checkpointId, maxCommitId, node.Attrs);
         AddCheckpointNode(db, checkpointId, node.NodeId);
     }
-
-    InvalidateNodeIndexCache(node.NodeId);
 
     return {};
 }
@@ -235,8 +231,6 @@ void TIndexTabletState::RewriteNode(
         // no need this version any more
         db.DeleteNodeVer(nodeId, minCommitId);
     }
-
-    InvalidateNodeIndexCache(nodeId);
 }
 
 void TIndexTabletState::WriteOrphanNode(
@@ -315,9 +309,6 @@ ui64 TIndexTabletState::UpdateNodeAttr(
     } else {
         DecrementAttrsUsedBytesCount(db, SizeDiff(attr.Value, newValue));
     }
-
-    InvalidateNodeIndexCache(nodeId);
-
     return version;
 }
 
@@ -414,8 +405,6 @@ void TIndexTabletState::RewriteNodeAttr(
         // no need this version any more
         db.DeleteNodeAttrVer(nodeId, minCommitId, attr.Name);
     }
-
-    InvalidateNodeIndexCache(nodeId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -475,8 +464,6 @@ void TIndexTabletState::RemoveNodeRef(
 
         AddCheckpointNode(db, checkpointId, nodeId);
     }
-
-    InvalidateNodeIndexCache(nodeId, childName);
 }
 
 bool TIndexTabletState::ReadNodeRef(
@@ -593,8 +580,6 @@ void TIndexTabletState::RewriteNodeRef(
         // no need this version any more
         db.DeleteNodeRefVer(nodeId, minCommitId, childName);
     }
-
-    InvalidateNodeIndexCache(nodeId, childName);
 }
 
 bool TIndexTabletState::TryLockNodeRef(TNodeRefKey key)
@@ -604,45 +589,15 @@ bool TIndexTabletState::TryLockNodeRef(TNodeRefKey key)
 
 void TIndexTabletState::UnlockNodeRef(const TNodeRefKey& key)
 {
+    // Note that in some cases it is expected that the key is not present in
+    // LockedNodeRefs (e.g. upon self-rename, we may lock the node ref once, but
+    // then try to unlock it twice
     Impl->LockedNodeRefs.erase(key);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-bool TIndexTabletState::TryFillGetNodeAttrResult(
-    ui64 parentNodeId,
-    const TString& name,
-    NProto::TNodeAttr* response)
+bool TIndexTabletState::IsNodeRefLocked(const TNodeRefKey& key) const
 {
-    return Impl->NodeIndexCache.TryFillGetNodeAttrResult(
-        parentNodeId,
-        name,
-        response);
-}
-
-void TIndexTabletState::InvalidateNodeIndexCache(
-    ui64 parentNodeId,
-    const TString& name)
-{
-    Impl->NodeIndexCache.InvalidateCache(parentNodeId, name);
-}
-
-void TIndexTabletState::InvalidateNodeIndexCache(ui64 nodeId)
-{
-    Impl->NodeIndexCache.InvalidateCache(nodeId);
-}
-
-void TIndexTabletState::RegisterGetNodeAttrResult(
-    ui64 parentNodeId,
-    const TString& name,
-    const NProto::TNodeAttr& result)
-{
-    Impl->NodeIndexCache.RegisterGetNodeAttrResult(parentNodeId, name, result);
-}
-
-TNodeIndexCacheStats TIndexTabletState::CalculateNodeIndexCacheStats() const
-{
-    return Impl->NodeIndexCache.GetStats();
+    return Impl->LockedNodeRefs.contains(key);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -671,14 +626,6 @@ void TIndexTabletState::MarkNodeRefsExhaustive(ui64 nodeId)
 TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
 {
     return Impl->InMemoryIndexState.GetStats();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TIndexTabletState::InvalidateNodeCaches(ui64 nodeId)
-{
-    InvalidateReadAheadCache(nodeId);
-    InvalidateNodeIndexCache(nodeId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

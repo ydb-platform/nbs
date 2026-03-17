@@ -76,26 +76,13 @@ void CopySgListIntoRequestBuffers(
     TEvService::TEvWriteBlocksLocalRequest& request)
 {
     auto& record = request.Record;
-    auto g = record.Sglist.Acquire();
-    if (!g) {
-        return;
-    }
-
-    const auto& sgList = g.Get();
     STORAGE_VERIFY_C(
         record.GetBlocks().BuffersSize() == 0,
         TWellKnownEntityTypes::DISK,
         record.GetDiskId(),
         TStringBuilder() << "Buffers: " << record.GetBlocks().BuffersSize());
-    TSgList newSgList;
-    newSgList.reserve(sgList.size());
-    for (const auto& block: sgList) {
-        auto& buffer = *record.MutableBlocks()->AddBuffers();
-        buffer.ReserveAndResize(block.Size());
-        memcpy(buffer.begin(), block.Data(), block.Size());
-        newSgList.emplace_back(buffer.data(), buffer.size());
-    }
-    record.Sglist.SetSgList(std::move(newSgList));
+
+    record.CopySglistIntoBuffers();
 }
 
 template <typename T>

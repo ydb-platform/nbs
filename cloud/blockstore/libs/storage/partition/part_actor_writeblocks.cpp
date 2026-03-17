@@ -280,12 +280,12 @@ void TPartitionActor::WriteBlocks(
     };
 
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
-    const auto writeBlobThreshold =
-        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
+    bool isFreshRequest = IsFreshRequest(
+        *Config,
+        PartitionConfig.GetStorageMediaKind(),
+        requestSize);
 
-    if (!Config->GetFreshBlocksWriterEnabled() &&
-        requestSize < writeBlobThreshold)
-    {
+    if (!Config->GetFreshBlocksWriterEnabled() && isFreshRequest) {
         if (Config->GetWriteRequestBatchingEnabled()) {
             // we will try to batch small writes and, if batching fails,
             // we will accumulate these writes in FreshBlocks table
@@ -306,10 +306,7 @@ void TPartitionActor::WriteBlocks(
     }
 
     // all small zero requests should be handled by TFreshBlocksWriter
-    STORAGE_VERIFY(
-        requestSize >= writeBlobThreshold,
-        TWellKnownEntityTypes::TABLET,
-        TabletID());
+    STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
 
     // large writes could skip FreshBlocks table completely
     WriteMergedBlocks(ctx, std::move(requestInBuffer));

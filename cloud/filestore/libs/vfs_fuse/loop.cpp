@@ -1292,11 +1292,12 @@ private:
 
             WriteBackCache.FlushAllData().Subscribe(
                 [w = weak_from_this(),
-                 s = std::move(stopCompleted)](const TFuture<void>& f) mutable
+                 s = std::move(stopCompleted)](const auto& f) mutable
                 {
-                    f.GetValue();
                     if (auto p = w.lock()) {
-                        p->StopAsyncOnWriteBackCacheFlushed(std::move(s));
+                        p->StopAsyncOnWriteBackCacheFlushed(
+                            std::move(s),
+                            f.GetValue());
                     } else {
                         s.SetValue();
                     }
@@ -1306,11 +1307,24 @@ private:
         }
     }
 
-    void StopAsyncOnWriteBackCacheFlushed(TPromise<void> stopCompleted)
+    void StopAsyncOnWriteBackCacheFlushed(
+        TPromise<void> stopCompleted,
+        const NProto::TError& error)
     {
-        Y_ABORT_UNLESS(
-            WriteBackCache && WriteBackCache.IsEmpty(),
-            "WriteBackCache was not emptied after FlushAllData");
+        if (HasError(error)) {
+            STORAGE_WARN(
+                "[f:%s][c:%s] WriteBackCache::FlushAllData failed at "
+                "DestroySession, unflushed data will be lost. Error: %s",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str(),
+                FormatError(error).c_str());
+        } else if (WriteBackCache && WriteBackCache.IsEmpty()) {
+            ReportWriteBackCacheDataLossError(Sprintf(
+                "[f:%s][c:%s] WriteBackCache was not emptied after successful "
+                "FlushAllData at DestroySession, possible data loss",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str()));
+        }
 
         STORAGE_INFO(
             "[f:%s][c:%s] completed FlushAllData",
@@ -1379,9 +1393,6 @@ private:
 
         // We need to cleanup WriteBackCache file and directories
         if (WriteBackCache) {
-            // Deleting file when it contains unflushed requests
-            // will result in data loss
-            Y_ABORT_UNLESS(WriteBackCache.IsEmpty());
             WriteBackCache = {};
 
             auto error = UnlockAndDeleteFile(

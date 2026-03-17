@@ -242,7 +242,6 @@ public:
     ui32 GetNodeIndexCacheMaxNodes() const;
 
     bool GetMultiTabletForwardingEnabled() const;
-    bool GetGetNodeAttrBatchEnabled() const;
 
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
     TDuration GetEnqueueBlobIndexOpIfNeededScheduleInterval() const;
@@ -392,6 +391,9 @@ public:
     [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
 
     ui32 GetForceDestroySizeThreshold() const;
+
+    [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
+    [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

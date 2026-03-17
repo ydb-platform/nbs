@@ -5,8 +5,10 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -127,7 +129,7 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
                 callContext.RequestId);
         }
         ForkedCallContexts.push_back(request->CallContext);
-        request->Record = Request;
+        request->Record = CopyRequest(Request);
 
         auto event = std::make_unique<NActors::IEventHandle>(
             actorId,

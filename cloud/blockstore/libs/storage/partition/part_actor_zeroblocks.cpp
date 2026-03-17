@@ -283,10 +283,13 @@ void TPartitionActor::HandleZeroBlocks(
     }
 
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
-    const auto writeBlobThreshold =
-        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
+    const bool isFreshRequest = IsFreshRequest(
+        *Config,
+        PartitionConfig.GetStorageMediaKind(),
+        requestSize);
+
     if (!Config->GetFreshBlocksWriterEnabled() &&
-        requestSize < writeBlobThreshold)
+        isFreshRequest)
     {
         // small writes will be accumulated in FreshBlocks table
         ZeroFreshBlocks(
@@ -298,10 +301,7 @@ void TPartitionActor::HandleZeroBlocks(
     }
 
     // all small zero requests should be handled by TFreshBlocksWriter
-    STORAGE_VERIFY(
-        requestSize >= writeBlobThreshold,
-        TWellKnownEntityTypes::TABLET,
-        TabletID());
+    STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
 
     ++WriteAndZeroRequestsInProgress;
 

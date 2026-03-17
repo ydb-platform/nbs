@@ -69,6 +69,17 @@ void TIndexTabletActor::HandleWriteData(
             ProfileLog);
     };
 
+    const ui64 nodeId = msg->Record.GetNodeId();
+
+    if (!UnconfirmedRecoveryReady) {
+        if (HasDataOverlapWithUnconfirmed(nodeId, range)) {
+            replyError(MakeError(
+                E_REJECTED,
+                "write overlaps with unconfirmed recovery data"));
+            return;
+        }
+    }
+
     if (!CompactionStateLoadStatus.Finished) {
         const ui32 limitInQueue =
             Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
@@ -80,7 +91,7 @@ void TIndexTabletActor::HandleWriteData(
                 b < range.FirstBlock() + range.BlockCount();
                 ++b)
         {
-            const auto rangeId = GetMixedRangeIndex(msg->Record.GetNodeId(), b);
+            const auto rangeId = GetMixedRangeIndex(nodeId, b);
 
             if (rangeId > s.MaxLoadedInOrderRangeId
                     && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
@@ -389,7 +400,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
-    InvalidateNodeCaches(args.NodeId);
+    InvalidateReadAheadCache(args.NodeId);
 
     RemoveInFlightRequest(*args.RequestInfo);
 

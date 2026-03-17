@@ -3041,10 +3041,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateBuffer(4096, 'a'));
         reqWrite->In->Body.flags |= O_WRONLY;
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT(write.Wait(WaitTimeout));
 
-        while (writeDataCalled.load() == 0) {
-            bootstrap.Timer->Sleep(TDuration::MilliSeconds(1));
-        }
+        auto reqFlush =
+            bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+
+        UNIT_ASSERT(reqFlush.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
 
     Y_UNIT_TEST(ShouldSupportZeroCopyWriteByWriteBackCache)
@@ -3183,10 +3186,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(!path.Exists());
     }
 
-    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    void TestShouldHandleZeroCopyReadRequest(bool enableWriteBackCache)
     {
         NProto::TFileStoreFeatures features;
         features.SetZeroCopyReadEnabled(true);
+        features.SetServerWriteBackCacheEnabled(enableWriteBackCache);
 
         TBootstrap bootstrap(
             CreateWallClockTimer(),
@@ -3231,6 +3235,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(
             data,
             TString(reinterpret_cast<char*>(&request->Out->Body), size));
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    {
+        TestShouldHandleZeroCopyReadRequest(false);
+        TestShouldHandleZeroCopyReadRequest(true);
     }
 
     Y_UNIT_TEST(ShouldHandleZeroCopyReadRequestFallbackToBuffer)
@@ -4148,6 +4158,77 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             parentNodeId,
             handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldHandleWriteBackCacheFlushFailures)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui64 NodeId = 123;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        // Any attempt to flush data will fail
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto& rq)
+        {
+            NProto::TWriteDataResponse result;
+            if (rq->GetOffset() == 0) {
+                result = TErrorResponse(E_FAIL, "xxx");
+            }
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->DestroyHandleHandler = [&](auto, const auto&)
+        {
+            NProto::TDestroyHandleResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            NodeId, NodeId + 1, 0, CreateBuffer(4096, 'a'));
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        // 1. SetAttr
+        auto setAttr = std::make_shared<TSetAttrRequest>(NodeId, NodeId + 1);
+        setAttr->In->Body.valid = FUSE_SET_ATTR_SIZE;
+        setAttr->In->Body.size = 11;
+        UNIT_ASSERT(bootstrap.Fuse->SendRequest(setAttr).Wait(WaitTimeout));
+        UNIT_ASSERT(setAttr->Out->Header.error);
+
+        // 2. Flush
+        auto flush = std::make_shared<TFlushRequest>(NodeId, NodeId + 1);
+        UNIT_ASSERT(bootstrap.Fuse->SendRequest(flush).Wait(WaitTimeout));
+        UNIT_ASSERT(flush->Out->Header.error);
+
+        // 3. Write with DSYNC - should fail because flush fails
+        auto writeDSync = std::make_shared<TWriteRequest>(
+            NodeId,
+            NodeId + 1,
+            11,
+            CreateBuffer(4096, 'a'));
+        writeDSync->In->Body.flags |= O_DSYNC;
+        writeDSync->In->Body.flags |= O_WRONLY;
+        UNIT_ASSERT(bootstrap.Fuse->SendRequest(writeDSync).Wait(WaitTimeout));
+        UNIT_ASSERT(writeDSync->Out->Header.error);
+
+        // 4. Release - should fail because data is dropped
+        auto release = std::make_shared<TReleaseRequest>(NodeId, NodeId + 1);
+        UNIT_ASSERT(bootstrap.Fuse->SendRequest(release).Wait(WaitTimeout));
+        UNIT_ASSERT(release->Out->Header.error);
+
+        // 5. Release again - success because of no data in the cache
+        auto release2 = std::make_shared<TReleaseRequest>(NodeId, NodeId + 1);
+        UNIT_ASSERT(bootstrap.Fuse->SendRequest(release2).Wait(WaitTimeout));
+        UNIT_ASSERT(!release2->Out->Header.error);
     }
 }
 

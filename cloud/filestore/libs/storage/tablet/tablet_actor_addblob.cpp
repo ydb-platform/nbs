@@ -49,22 +49,32 @@ public:
 
         switch (args.Mode) {
             case EAddBlobMode::Write:
+                args.CommitIdOverflowMessage = "AddBlobWrite";
                 Execute_AddBlob_Write(ctx, db, args);
                 break;
 
+            case EAddBlobMode::WriteUnconfirmed:
+                args.CommitIdOverflowMessage = "AddBlobWriteUnconfirmed";
+                Execute_AddBlob_WriteUnconfirmed(ctx, db, args);
+                break;
+
             case EAddBlobMode::WriteBatch:
+                args.CommitIdOverflowMessage = "AddBlobWriteBatch";
                 Execute_AddBlob_WriteBatch(ctx, db, args);
                 break;
 
             case EAddBlobMode::Flush:
+                args.CommitIdOverflowMessage = "AddBlobFlush";
                 Execute_AddBlob_Flush(db, args);
                 break;
 
             case EAddBlobMode::FlushBytes:
+                args.CommitIdOverflowMessage = "AddBlobFlushBytes";
                 Execute_AddBlob_FlushBytes(db, args);
                 break;
 
             case EAddBlobMode::Compaction:
+                args.CommitIdOverflowMessage = "AddBlobCompaction";
                 Execute_AddBlob_Compaction(db, args);
                 break;
         }
@@ -96,7 +106,6 @@ private:
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
             args.OnCommitIdOverflow();
-            args.CommitIdOverflowMessage = "AddBlobWrite";
             return;
         }
 
@@ -169,6 +178,30 @@ private:
         UpdateNodeAttrs(db, args);
     }
 
+    void Execute_AddBlob_WriteUnconfirmed(
+        const TActorContext& ctx,
+        TIndexTabletDatabase& db,
+        TTxIndexTablet::TAddBlob& args)
+    {
+        // TODO(#5353) Support immediate response before Tx
+        Tablet.UnconfirmedAddBlobSafePointReached(
+            ctx,
+            args.ConfirmedDataRefCommitId,
+            args.Error);
+
+        Execute_AddBlob_Write(ctx, db, args);
+
+        if (args.CommitId == InvalidCommitId) {
+            return;
+        }
+
+        if (HasError(args.Error)) {
+            return;
+        }
+
+        Tablet.ConfirmedDataAdded(db, args.ConfirmedDataRefCommitId);
+    }
+
     void Execute_AddBlob_WriteBatch(
         const TActorContext& ctx,
         TIndexTabletDatabase& db,
@@ -191,7 +224,6 @@ private:
         args.CommitId = Tablet.GenerateCommitId();
         if (args.CommitId == InvalidCommitId) {
             args.OnCommitIdOverflow();
-            args.CommitIdOverflowMessage = "AddBlobWriteBatch";
             return;
         }
 
@@ -472,7 +504,8 @@ void TIndexTabletActor::HandleAddBlob(
         std::move(msg->MixedBlobs),
         std::move(msg->MergedBlobs),
         std::move(msg->WriteRanges),
-        std::move(msg->UnalignedDataParts));
+        std::move(msg->UnalignedDataParts),
+        msg->ConfirmedDataRefCommitId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -524,7 +557,7 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     TTxIndexTablet::TAddBlob& args)
 {
     for (auto [nodeId, _]: args.WriteRanges) {
-        InvalidateNodeCaches(nodeId);
+        InvalidateReadAheadCache(nodeId);
     }
 
     // log request
@@ -539,6 +572,14 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         ResponseSent_Tablet,
         args.RequestInfo->CallContext,
         "AddBlob");
+
+    // For ConfirmedData we already Released barrier and Answered to the client,
+    // nothing left to do and we can skip event
+    if (args.ConfirmedDataRefCommitId != InvalidCommitId) {
+        EnqueueCollectGarbageIfNeeded(ctx);
+        EnqueueBlobIndexOpIfNeeded(ctx);
+        return;
+    }
 
     auto response =
         std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);

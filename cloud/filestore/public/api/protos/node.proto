@@ -389,6 +389,8 @@ message TReadLinkResponse
 
 message TSetNodeAttrRequest
 {
+    reserved 4;
+
     enum EFlags
     {
         F_NONE = 0;
@@ -421,10 +423,6 @@ message TSetNodeAttrRequest
     // Node.
     uint64 NodeId = 3;
 
-    // IO handle.
-    // XXX seems to be unneeded
-    uint64 Handle = 4;
-
     // Update.
     TUpdate Update = 5;
 
@@ -449,6 +447,8 @@ message TSetNodeAttrResponse
 
 message TGetNodeAttrRequest
 {
+    reserved 5;
+
     enum EFlags
     {
         F_NONE = 0;
@@ -466,10 +466,6 @@ message TGetNodeAttrRequest
     // Node.
     bytes Name = 4;
 
-    // IO handle.
-    // XXX seems to be unneeded
-    uint64 Handle = 5;
-
     // Specifies information to get.
     uint32 Flags = 6;
 }
@@ -481,6 +477,11 @@ message TGetNodeAttrResponse
 
     // Node attributes.
     TNodeAttr Node = 2;
+
+    // Whether the requested node-ref is locked by a running write operation
+    // (e.g. UnlinkNode or RenameNode). Valid only for the requests with
+    // parent-id + name pair.
+    bool IsNodeRefLocked = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

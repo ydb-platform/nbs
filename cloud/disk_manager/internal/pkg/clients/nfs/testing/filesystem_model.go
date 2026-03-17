@@ -55,6 +55,7 @@ func NewFactory(ctx context.Context) nfs.Factory {
 			DurableClientTimeout: &clientTimeout,
 		},
 		metrics.NewEmptyRegistry(),
+		metrics.NewEmptyRegistry(),
 	)
 }
 

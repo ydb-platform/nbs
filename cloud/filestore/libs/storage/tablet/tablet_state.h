@@ -17,7 +17,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
-#include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
@@ -27,6 +27,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -35,6 +36,8 @@
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -196,6 +199,27 @@ struct TBackgroundOpsBackpressureStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Stores deferred ConfirmAddData request info until unconfirmed data is either
+// indexed by AddBlob or rejected.
+struct TPendingConfirmAddData
+{
+    NActors::TActorId Sender;
+    ui64 Cookie = 0;
+    TInstant DeferredTs;
+    TCallContextPtr CallContext;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTrackedUnconfirmedData
+{
+    NProto::TUnconfirmedData Data;
+    TString SessionId;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletState
 {
 private:
@@ -231,6 +255,24 @@ private:
 
 protected:
     TString LogTag;
+
+    // Data for which internal AddDataUnconfirmed tx is still executing.
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
+    // Data written to local db but not yet confirmed/indexed
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedData;
+    // Data confirmed but not yet added to index
+    THashMap<ui64, TTrackedUnconfirmedData> ConfirmedData;
+
+    // CommitIds scheduled for unconfirmed-data deletion and waiting for
+    // completion.
+    THashSet<ui64> DeletionQueue;
+    // ConfirmAddData requests that arrived before internal AddData completed.
+    // Used for all requests until (#5353)
+    THashMap<ui64, TPendingConfirmAddData> PendingConfirmation;
+
+    // Recovery gate for data operations: true when startup unconfirmed flow
+    // has completed recovery confirmation.
+    bool UnconfirmedRecoveryReady = false;
 
 public:
     TIndexTabletState();
@@ -666,6 +708,7 @@ public:
 
     bool TryLockNodeRef(TNodeRefKey key);
     void UnlockNodeRef(const TNodeRefKey& key);
+    bool IsNodeRefLocked(const TNodeRefKey& key) const;
 
     //
     // Sessions
@@ -708,6 +751,13 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
+    void RegisterSessionByPipeServer(
+        const NActors::TActorId& pipeServer,
+        const TString& sessionId);
+    void UnregisterSessionByPipeServer(const TString& sessionId);
+    const TVector<TString>& FindSessionIdsByPipeServer(
+        const NActors::TActorId& pipeServer) const;
+    void RemoveSessionByPipeServer(const NActors::TActorId& pipeServer);
     void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(TIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
@@ -916,6 +966,20 @@ public:
         const TBackpressureThresholds& thresholds,
         const TBackpressureValues& values,
         TString* message);
+
+    //
+    // UnconfirmedData / ConfirmedData
+    //
+
+public:
+    void ConfirmedDataAdded(TIndexTabletDatabase& db, ui64 commitId);
+
+    void LoadUnconfirmedData(
+        TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries);
+
+    bool HasDataOverlapWithUnconfirmed(
+        ui64 nodeId,
+        const TByteRange& requestRange) const;
 
     //
     // FreshBytes
@@ -1444,12 +1508,8 @@ private:
 public:
 
     ////////////////////////////////////////////////////////////////////////////
-    // Caching: ReadAhead, NodeIndexCache, InMemoryIndexState
+    // Caching: ReadAhead, InMemoryIndexState
     ////////////////////////////////////////////////////////////////////////////
-
-    // Upon any completion of the RW operation this function is supposed to be
-    // called in order to invalidate potentially cached data
-    void InvalidateNodeCaches(ui64 nodeId);
 
     //
     // ReadAhead.
@@ -1473,19 +1533,8 @@ public:
     TReadAheadCacheStats CalculateReadAheadCacheStats() const;
 
     //
-    // Node index cache
+    // In-memory index state.
     //
-    bool TryFillGetNodeAttrResult(
-        ui64 parentNodeId,
-        const TString& name,
-        NProto::TNodeAttr* response);
-    void InvalidateNodeIndexCache(ui64 parentNodeId, const TString& name);
-    void InvalidateNodeIndexCache(ui64 nodeId);
-    void RegisterGetNodeAttrResult(
-        ui64 parentNodeId,
-        const TString& name,
-        const NProto::TNodeAttr& result);
-    TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
 
     IIndexTabletDatabase& AccessInMemoryIndexState();
     void UpdateInMemoryIndexState(

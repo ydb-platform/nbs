@@ -21,18 +21,15 @@ void TFileSystem::SetAttr(
     fuse_ino_t ino,
     struct stat* attr,
     int to_set,
-    fuse_file_info* fi)
+    fuse_file_info*)
 {
-    ui64 handle = fi ? fi->fh : 0;
-    STORAGE_DEBUG("SetAttr #" << ino << " @" << handle
-        << " mask:" << to_set);
+    STORAGE_DEBUG("SetAttr #" << ino << " mask:" << to_set);
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
 
     auto request = StartRequest<NProto::TSetNodeAttrRequest>(ino);
-    request->SetHandle(handle);
 
     auto* update = request->MutableUpdate();
     int flags = 0;
@@ -51,9 +48,6 @@ void TFileSystem::SetAttr(
     if (to_set & FUSE_SET_ATTR_SIZE) {
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
         update->SetSize(attr->st_size);
-        if (WriteBackCache) {
-            WriteBackCache.SetCachedNodeSize(ino, attr->st_size);
-        }
     }
     if (to_set & FUSE_SET_ATTR_ATIME) {
         flags |= ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_ATIME);
@@ -106,10 +100,17 @@ void TFileSystem::SetAttr(
         }
     };
 
-    // Changing attributes interferes with WriteBackCache
-    auto flushFuture = WriteBackCache
-                           ? WriteBackCache.FlushNodeData(request->GetNodeId())
-                           : NThreading::MakeFuture();
+    const bool shouldSetSize =
+        (request->GetFlags() &
+         ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) != 0;
+
+    if (!shouldSetSize || !WriteBackCache) {
+        Session->SetNodeAttr(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
+
+    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
 
     flushFuture.Subscribe(
         [ptr = weak_from_this(),
@@ -117,11 +118,26 @@ void TFileSystem::SetAttr(
          callback = std::move(callback),
          request = std::move(request)](const auto& future) mutable
         {
-            future.GetValue();
-            if (auto self = ptr.lock()) {
-                self->Session->SetNodeAttr(callContext, std::move(request))
-                    .Subscribe(std::move(callback));
+            auto self = ptr.lock();
+            if (!self) {
+                return;
             }
+
+            // Propagate Flush error to SetAttr response
+            const NProto::TError& flushResult = future.GetValue();
+            if (HasError(flushResult)) {
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableError() = flushResult;
+                callback(NThreading::MakeFuture(std::move(response)));
+                return;
+            }
+
+            self->WriteBackCache.SetCachedNodeSize(
+                request->GetNodeId(),
+                request->GetUpdate().GetSize());
+
+            self->Session->SetNodeAttr(callContext, std::move(request))
+                .Subscribe(std::move(callback));
         });
 }
 
@@ -129,18 +145,15 @@ void TFileSystem::GetAttr(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
-    fuse_file_info* fi)
+    fuse_file_info*)
 {
-    ui64 handle = fi ? fi->fh : 0;
-    STORAGE_DEBUG("GetAttr #" << ino << " @" << handle);
+    STORAGE_DEBUG("GetAttr #" << ino);
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
 
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(ino);
-    // XXX handle seems to be unneeded
-    request->SetHandle(handle);
 
     // Take into account cached WriteData requests
     const auto cachedNodeSize =

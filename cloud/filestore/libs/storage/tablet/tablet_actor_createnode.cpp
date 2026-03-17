@@ -580,8 +580,18 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     const bool isParentNodeLinkRequest =
         args.Request.HasLink() && args.Request.GetLink().GetShardNodeName();
 
+    //
+    // If directory creation in shards is enabled we cannot allow the service
+    // layer to decide where to create the node because we need to perform some
+    // extra checks which the service layer is unable to do.
+    //
+
+    const bool shardIdSelectionEnabled =
+        Config->GetShardIdSelectionInLeaderEnabled()
+        || GetFileSystem().GetDirectoryCreationInShardsEnabled();
+
     if (!BehaveAsShard(args.Request.GetHeaders())
-            && Config->GetShardIdSelectionInLeaderEnabled()
+            && shardIdSelectionEnabled
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || GetFileSystem().GetDirectoryCreationInShardsEnabled()
@@ -877,10 +887,10 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateNode& args)
 {
-    InvalidateNodeCaches(args.TargetNodeId);
-    InvalidateNodeCaches(args.ChildNodeId);
+    InvalidateReadAheadCache(args.TargetNodeId);
+    InvalidateReadAheadCache(args.ChildNodeId);
     if (args.ParentNode) {
-        InvalidateNodeCaches(args.ParentNode->NodeId);
+        InvalidateReadAheadCache(args.ParentNode->NodeId);
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
