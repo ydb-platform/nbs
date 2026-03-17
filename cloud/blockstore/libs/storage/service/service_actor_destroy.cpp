@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -366,9 +367,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
 
     const auto* msg = ev->Get();
 
-    if (msg->GetStatus() ==
-        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-    {
+    if (IsNotFoundSchemeShardError(msg->GetError())) {
         if (Sync) {
             VolumeNotFoundInSS = true;
             DeallocateDisk(ctx);
@@ -486,7 +485,11 @@ void TDestroyVolumeActor::HandleGracefulShutdownResponse(
             DiskId.Quote().data(),
             FormatError(error).data());
 
-        ReplyAndDie(ctx, std::move(error));
+        if (IsNotFoundSchemeShardError(error)) {
+            ReplyAndDie(ctx, MakeError(S_ALREADY, "volume not found"));
+        } else {
+            ReplyAndDie(ctx, std::move(error));
+        }
         return;
     }
 
