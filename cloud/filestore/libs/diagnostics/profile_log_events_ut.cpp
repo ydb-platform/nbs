@@ -505,7 +505,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     Y_UNIT_TEST(ShouldSetNodeAttrRequestInitializeFieldsCorrectly)
     {
         const auto nodeId = 12;
-        const auto handle = 34;
         const auto mode = 56;
         const auto flags = 78;
 
@@ -529,7 +528,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(flags, nodeInfo.GetFlags());
         UNIT_ASSERT_VALUES_EQUAL(mode, nodeInfo.GetMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());
-        UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
         UNIT_ASSERT(!nodeInfo.HasSize());
     }
 
@@ -537,13 +535,11 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     {
         const auto nodeId = 12;
         const auto name = "name";
-        const auto handle = 34;
         const auto flags = 78;
 
         NProto::TGetNodeAttrRequest req;
         req.SetNodeId(nodeId);
         req.SetName(name);
-        req.SetHandle(handle);
         req.SetFlags(flags);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
@@ -561,7 +557,6 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(flags, nodeInfo.GetFlags());
         UNIT_ASSERT(!nodeInfo.HasMode());
         UNIT_ASSERT(!nodeInfo.HasNodeId());
-        UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
         UNIT_ASSERT(!nodeInfo.HasSize());
     }
 
