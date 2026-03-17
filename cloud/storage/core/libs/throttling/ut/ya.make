@@ -8,6 +8,7 @@ SRCS(
     helpers_ut.cpp
     leaky_bucket_ut.cpp
     tablet_throttler_ut.cpp
+    unspent_cost_bucket_ut.cpp
 )
 
 PEERDIR(
