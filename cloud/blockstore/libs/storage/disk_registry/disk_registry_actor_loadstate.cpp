@@ -154,8 +154,8 @@ void TDiskRegistryActor::ExecuteLoadState(
 
     RemovePendingCleanupDevicesInErrorState(
         db,
-        args.Snapshot.agents,
-        args.Snapshot.dirtyDevices);
+        args.Snapshot.Agents,
+        args.Snapshot.DirtyDevices);
 }
 
 void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
