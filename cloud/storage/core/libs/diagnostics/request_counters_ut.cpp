@@ -316,8 +316,10 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             ReadRequestType,
             {
                 {.RequestBytes = 1_MB,
-                 .RequestTime = TDuration::MilliSeconds(101),
-                 .PostponedTime = TDuration::MilliSeconds(50)},
+                 .RequestTime = TDuration::MilliSeconds(401),
+                 .PostponedTime = TDuration::MilliSeconds(50),
+                 .BackoffTime = TDuration::MilliSeconds(200),
+                 .ShapingTime = TDuration::MilliSeconds(100)},
             });
 
         requestCounters.UpdateStats(true);
@@ -351,8 +353,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(200000, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(150000, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(500000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(350000, p50->Val());
         }
 
         {
@@ -1292,17 +1294,35 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
                 WriteRequestType,
                 {
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(8)},
+                     .RequestTime = TDuration::Seconds(11),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(20)},
+                     .RequestTime = TDuration::Seconds(23),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(30)},
+                     .RequestTime = TDuration::Seconds(33),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(37)},
+                     .RequestTime = TDuration::Seconds(40),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(50)},
+                     .RequestTime = TDuration::Seconds(50),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(100)},
+                     .RequestTime = TDuration::Seconds(100),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                 });
         };
 
