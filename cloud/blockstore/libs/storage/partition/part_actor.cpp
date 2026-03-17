@@ -228,6 +228,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         return;
     }
 
+    State->UpdateWithThreadSafeStats();
     const auto& stats = State->GetStats();
 
 #define BLOCKSTORE_PARTITION_UPDATE_COUNTER(name, category, ...)              \
@@ -1241,6 +1242,7 @@ void TPartitionActor::HandleGetPartitionInfo(
         "%s GetPartitionInfo request",
         LogTitle.GetWithTime().c_str());
 
+    State->UpdateWithThreadSafeStats();
     auto json = State->AsJson();
     auto response = std::make_unique<TEvVolume::TEvGetPartitionInfoResponse>();
     response->Record.SetPayload(json.GetStringRobust());
@@ -1317,6 +1319,10 @@ void TPartitionActor::HandleUpdateResourceMetrics(
         Config->GetResourceMetricsUpdateInterval(),
         std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
             .release());
+
+    // Update partition stats from FreshBlocksWriter in case that some stats are
+    // stuck.
+    State->UpdateWithThreadSafeStats();
 }
 
 void TPartitionActor::HandleGetFreshChannelsInfo(
@@ -1334,10 +1340,14 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->PartCounters = IoCompanionCounters;
     response->GroupDowntimes = GroupDowntimes;
 
+    response->PartStats = State->AccessThreadSafeStats();
+
     for (size_t i = 0; i < State->GetChannelCount(); ++i) {
         response->ChannelPermissions.emplace_back(
             State->GetChannelPermissions(i));
     }
+
+    response->CommitIdGenerator = State->GetCommitIdGenerator();
 
     FreshBlocksWriter = ev->Sender;
 

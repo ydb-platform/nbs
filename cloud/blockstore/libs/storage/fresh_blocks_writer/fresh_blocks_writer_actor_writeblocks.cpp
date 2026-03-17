@@ -1,12 +1,14 @@
-#include "part_actor.h"
+#include "fresh_blocks_writer_actor.h"
 
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
@@ -15,21 +17,18 @@
 #include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-
-#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
-
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 
 using namespace NActors;
 
 using namespace NKikimr;
-using namespace NKikimr::NTabletFlatExecutor;
 
 using namespace NCloud::NStorage;
+
+using namespace NPartition;
 
 using MessageDifferencer = google::protobuf::util::MessageDifferencer;
 
@@ -87,7 +86,7 @@ IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::HandleWriteBlocks(
+void TFreshBlocksWriterActor::HandleWriteBlocks(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -95,7 +94,7 @@ void TPartitionActor::HandleWriteBlocks(
         ev, ctx, false);
 }
 
-void TPartitionActor::HandleWriteBlocksLocal(
+void TFreshBlocksWriterActor::HandleWriteBlocksLocal(
     const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -104,12 +103,12 @@ void TPartitionActor::HandleWriteBlocksLocal(
 }
 
 template <typename TMethod>
-void TPartitionActor::HandleWriteBlocksRequest(
+void TFreshBlocksWriterActor::HandleWriteBlocksRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx,
     bool replyLocal)
 {
-    auto msg = ev->Release();
+    auto msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo<TMethod>(
         ev->Sender,
@@ -143,7 +142,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
 
     if (auto guard = sglist.Acquire()) {
         for (const auto& buffer: guard.Get()) {
-            if (!buffer.Size() || buffer.Size() % State->GetBlockSize() != 0) {
+            if (!buffer.Size() || buffer.Size() % PartitionConfig.GetBlockSize() != 0) {
                 replyError(MakeError(
                     E_ARGUMENT,
                     TStringBuilder()
@@ -151,7 +150,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
                 return;
             }
 
-            blocksCount += buffer.Size() / State->GetBlockSize();
+            blocksCount += buffer.Size() / PartitionConfig.GetBlockSize();
         }
 
         if (Config->GetEnableDataIntegrityValidationForYdbBasedDisks() &&
@@ -162,7 +161,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
                     TStringBuilder()
                         << "WriteBlocks: incorrect number of checksums: "
                         << msg->Record.ChecksumsSize() << " (expected 1)",
-                    {{"diskId", State->GetConfig().GetDiskId()},
+                    {{"diskId", PartitionConfig.GetDiskId()},
                      {"range",
                       TBlockRange64::WithLength(
                           msg->Record.GetStartIndex(),
@@ -210,10 +209,21 @@ void TPartitionActor::HandleWriteBlocksRequest(
         return;
     }
 
+    const auto requestSize = writeRange.Size() * PartitionConfig.GetBlockSize();
+
+    if (!IsFreshRequest(
+            *Config,
+            PartitionConfig.GetStorageMediaKind(),
+            requestSize))
+    {
+        ForwardMessageToActor(ev, ctx, PartitionActorId);
+        return;
+    }
+
     auto writeHandler = CreateWriteHandler(
         writeRange,
-        std::unique_ptr<typename TMethod::TRequest>(msg.Release()),
-        State->GetBlockSize());
+        std::unique_ptr<typename TMethod::TRequest>(ev->Release().Release()),
+        PartitionConfig.GetBlockSize());
 
     WriteBlocks(
         ctx,
@@ -224,7 +234,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
     );
 }
 
-void TPartitionActor::WriteBlocks(
+void TFreshBlocksWriterActor::WriteBlocks(
     const TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     const TBlockRange32& writeRange,
@@ -251,19 +261,11 @@ void TPartitionActor::WriteBlocks(
         NCloud::Reply(ctx, *requestInfo, std::move(response));
     };
 
-    if (!State->IsWriteAllowed(EChannelPermission::UserWritesAllowed)) {
+    if (!ChannelsState->IsWriteAllowed(EChannelPermission::UserWritesAllowed)) {
         replyError(ctx, MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
 
         ReassignChannelsIfNeeded(ctx);
 
-        return;
-    }
-
-    if (Config->GetTabletExecutorRejectionThreshold() &&
-        Executor()->GetRejectProbability() * 100 >
-            Config->GetTabletExecutorRejectionThreshold())
-    {
-        replyError(ctx, MakeError(E_REJECTED, "rejected by tablet executor"));
         return;
     }
 
@@ -279,83 +281,30 @@ void TPartitionActor::WriteBlocks(
         }
     };
 
-    const auto requestSize = writeRange.Size() * State->GetBlockSize();
-    bool isFreshRequest = IsFreshRequest(
-        *Config,
-        PartitionConfig.GetStorageMediaKind(),
-        requestSize);
+    // TODO(issue-4875): support batching for fresh blocks writer.
+    // if (Config->GetWriteRequestBatchingEnabled()) {
+        // // we will try to batch small writes and, if batching fails,
+        // // we will accumulate these writes in FreshBlocks table
+        // EnqueueProcessWriteQueueIfNeeded(ctx);
 
-    if (!Config->GetFreshBlocksWriterEnabled() && isFreshRequest) {
-        if (Config->GetWriteRequestBatchingEnabled()) {
-            // we will try to batch small writes and, if batching fails,
-            // we will accumulate these writes in FreshBlocks table
-            EnqueueProcessWriteQueueIfNeeded(ctx);
-
-            LOG_TRACE(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s Enqueueing fresh blocks (range: %s)",
-                LogTitle.GetWithTime().c_str(),
-                DescribeRange(writeRange).c_str());
-            State->AccessWriteBuffer().Put(std::move(requestInBuffer));
-        } else {
-            WriteFreshBlocks(ctx, std::move(requestInBuffer));
-        }
-
-        return;
-    }
-
-    // all small zero requests should be handled by TFreshBlocksWriter
-    STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
-
-    // large writes could skip FreshBlocks table completely
-    WriteMergedBlocks(ctx, std::move(requestInBuffer));
+        // LOG_TRACE(
+        //     ctx,
+        //     TBlockStoreComponents::PARTITION,
+        //     "%s Enqueueing fresh blocks (range: %s)",
+        //     LogTitle.GetWithTime().c_str(),
+        //     DescribeRange(writeRange).c_str());
+        // State->AccessWriteBuffer().Put(std::move(requestInBuffer));
+    // }
+    WriteFreshBlocks(ctx, std::move(requestInBuffer));
 }
 
-void TPartitionActor::HandleWriteBlocksCompleted(
-    const TEvPartitionPrivate::TEvWriteBlocksCompleted::TPtr& ev,
+void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
+    const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
-    HandleWriteBlocksCompletedImpl(
-        ctx,
-        ev->Sender,
-        msg->GetError(),
-        *msg,
-        {
-            .CollectGarbageBarrierAcquired = msg->CollectGarbageBarrierAcquired,
-            .AddingUnconfirmedBlobsRequested =
-                msg->AddingUnconfirmedBlobsRequested,
-            .IsFreshBlocksRequest = false,
-            .BlobsToConfirm = std::move(msg->BlobsToConfirm),
-        });
-}
-
-void TPartitionActor::HandleWriteFreshBlocksCompleted(
-    const TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    HandleWriteBlocksCompletedImpl(
-        ctx,
-        ev->Sender,
-        msg->GetError(),
-        *msg,
-        {
-            .IsFreshBlocksRequest = true,
-        });
-}
-
-void TPartitionActor::HandleWriteBlocksCompletedImpl(
-    const NActors::TActorContext& ctx,
-    NActors::TActorId sender,
-    NProto::TError error,
-    const TEvPartitionCommonPrivate::TOperationCompleted& opCompleted,
-    TWriteBlocksCompleted writeBlocksCompleted)
-{
-    ui64 commitId = opCompleted.CommitId;
+    ui64 commitId = msg->CommitId;
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -363,92 +312,55 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
         LogTitle.GetWithTime().c_str(),
         commitId);
 
-    UpdateStats(opCompleted.Stats);
+    UpdateStats(msg->Stats);
 
-    ui64 blocksCount = opCompleted.Stats.GetUserWriteCounters().GetBlocksCount();
-    ui64 requestBytes = blocksCount * State->GetBlockSize();
+    ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
+    ui64 requestBytes = blocksCount * PartitionConfig.GetBlockSize();
 
-    UpdateCPUUsageStat(ctx.Now(), opCompleted.ExecCycles);
+    ResourceMetricsQueue->Push(
+        NPartition::TUpdateCPUUsageStat{ctx.Now(), msg->ExecCycles});
 
-    auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
+    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     const auto requestCount =
-        opCompleted.Stats.GetUserWriteCounters().GetRequestsCount();
-    PartCounters->RequestCounters.WriteBlocks.AddRequest(
-        time,
-        requestBytes,
-        requestCount
-    );
+        msg->Stats.GetUserWriteCounters().GetRequestsCount();
 
-    if (opCompleted.AffectedBlockInfos) {
+    PartCounters->Access(
+        [&](auto& partCounters)
+        {
+            partCounters->RequestCounters.WriteBlocks.AddRequest(
+                time,
+                requestBytes,
+                requestCount);
+        });
+
+    if (msg->AffectedBlockInfos) {
         IProfileLog::TReadWriteRequestBlockInfos request;
         request.RequestType = EBlockStoreRequest::WriteBlocks;
-        request.BlockInfos = std::move(opCompleted.AffectedBlockInfos);
+        request.BlockInfos = std::move(msg->AffectedBlockInfos);
         request.CommitId = commitId;
 
         IProfileLog::TRecord record;
-        record.DiskId = State->GetConfig().GetDiskId();
+        record.DiskId = PartitionConfig.GetDiskId();
         record.Ts = ctx.Now();
         record.Request = std::move(request);
 
         ProfileLog->Write(std::move(record));
     }
 
-    if (writeBlocksCompleted.AddingUnconfirmedBlobsRequested) {
-        if (HasError(error)) {
-            // blobs are obsolete, delete them directly
-            auto request = std::make_unique<
-                TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsRequest>(
-                MakeIntrusive<TCallContext>(CreateRequestId()),
-                commitId);
-            NCloud::Send(ctx, SelfId(), std::move(request));
-        } else {
-            // blobs are confirmed, but AddBlobs request will be executed
-            // (for this commit) later
-            State->BlobsConfirmed(commitId, std::move(writeBlocksCompleted.BlobsToConfirm));
-        }
-        STORAGE_VERIFY(
-            writeBlocksCompleted.CollectGarbageBarrierAcquired,
-            TWellKnownEntityTypes::TABLET,
-            TabletID());
-        STORAGE_VERIFY(
-            !writeBlocksCompleted.IsFreshBlocksRequest,
-            TWellKnownEntityTypes::TABLET,
-            TabletID());
-        // commit & garbage queue barriers will be released when confirmed
-        // blobs are added or when obsolete blobs are deleted
-    } else {
-        LOG_TRACE(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "%s Releasing commit queue barrier, commit id @%lu",
-            LogTitle.GetWithTime().c_str(),
-            commitId);
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Releasing commit queue barrier, commit id @%lu",
+        LogTitle.GetWithTime().c_str(),
+        commitId);
 
-        State->AccessCommitQueue().ReleaseBarrier(commitId);
-        if (writeBlocksCompleted.CollectGarbageBarrierAcquired) {
-            State->GetGarbageQueue().ReleaseBarrier(commitId);
-        }
-
-        if (writeBlocksCompleted.IsFreshBlocksRequest && HasError(error)) {
-            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
-                commitId,
-                blocksCount);
-        }
-    }
-
-    Actors.Erase(sender);
-
-    if (Executor()->GetStats().IsAnyChannelYellowMove) {
-        ScheduleYellowStateUpdate(ctx);
-    }
+    Actors.Erase(ev->Sender);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
     WriteAndZeroRequestsInProgress -= requestCount;
 
-    DrainActorCompanion.ProcessDrainRequests(ctx);
-    ProcessCommitQueue(ctx);
-    EnqueueFlushIfNeeded(ctx);
-    EnqueueAddConfirmedBlobsIfNeeded(ctx);
+    // TODO(issue-4875): process drain requests
+    // DrainActorCompanion.ProcessDrainRequests(ctx);
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

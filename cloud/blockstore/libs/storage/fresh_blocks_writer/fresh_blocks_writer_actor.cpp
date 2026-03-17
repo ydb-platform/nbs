@@ -4,11 +4,14 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition/part_counters.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 
 namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 
 using namespace NActors;
+
+using namespace NPartition;
 
 namespace {
 
@@ -64,12 +67,14 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
         TStorageConfigPtr config,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
+        ui64 partitionTabletId,
         ui32 partitionIndex,
         ui32 siblingCount,
         NActors::TActorId partitionActorId,
         NActors::TActorId volumeActorId,
         TDiagnosticsConfigPtr diagnosticsConfig,
-        ui64 partitionTabletId)
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IProfileLogPtr profileLog)
     : Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , StorageAccessMode(storageAccessMode)
@@ -78,6 +83,8 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , ProfileLog(std::move(profileLog))
     , PoisonPillHelper(this)
     , LogTitle(
           GetCycleCount(),
@@ -98,7 +105,7 @@ void TFreshBlocksWriterActor::Bootstrap(const NActors::TActorContext& ctx)
     PoisonPillHelper.TakeOwnership(ctx, PartitionActorId);
 
     auto request =
-        std::make_unique<NPartition::TEvPartition::TEvWaitReadyRequest>();
+        std::make_unique<TEvPartition::TEvWaitReadyRequest>();
 
     LOG_INFO(
         ctx,
@@ -138,11 +145,99 @@ void TFreshBlocksWriterActor::UpdateChannelPermissions(
     Y_UNUSED(ctx);
 
     ChannelsState->UpdatePermissions(channel, permissions);
-    //TODO(@vladstepanyuk): add partition notification.
+    //TODO(issue-4875): add partition notification.
+}
+
+void TFreshBlocksWriterActor::Poison(const NActors::TActorContext& ctx)
+{
+    KillActors(ctx);
+
+    CancelPendingRequests(ctx, PendingRequests);
+
+    Die(ctx);
+}
+
+void TFreshBlocksWriterActor::KillActors(const NActors::TActorContext& ctx)
+{
+    for (const auto& actor: Actors.GetActors()) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
+    }
+}
+
+bool TFreshBlocksWriterActor::InitReadWriteBlockRange(
+    ui64 blockIndex,
+    ui32 blockCount,
+    TBlockRange64* range) const
+{
+    if (!blockCount) {
+        return false;
+    }
+
+    *range = TBlockRange64::WithLength(blockIndex, blockCount);
+
+    return CheckBlockRange(*range) &&
+           (range->Size() <= Config->GetMaxReadWriteRangeSize() /
+                                 PartitionConfig.GetBlockSize());
+}
+
+bool TFreshBlocksWriterActor::CheckBlockRange(const TBlockRange64& range) const
+{
+    Y_DEBUG_ABORT_UNLESS(PartitionConfig.GetBlocksCount() <= Max<ui32>());
+    const auto validRange =
+        TBlockRange64::WithLength(0, PartitionConfig.GetBlocksCount());
+    return validRange.Contains(range);
+}
+
+void TFreshBlocksWriterActor::RebootOnCommitIdOverflow(
+    const TActorContext& ctx,
+    const TStringBuf& requestName)
+{
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s CommitId overflow in %s. Restarting fresh blocks writer and "
+        "partition",
+        LogTitle.GetWithTime().c_str(),
+        ToString(requestName).c_str());
+    ReportTabletCommitIdOverflow({{"disk", PartitionConfig.GetDiskId()}});
+    Suicide(ctx);
+}
+
+void TFreshBlocksWriterActor::UpdateStats(const NProto::TPartitionStats& update)
+{
+    PartStats->Access([&](NProto::TPartitionStats& stats)
+                      { UpdatePartitionCounters(stats, update); });
+
+    auto blockSize = PartitionConfig.GetBlockSize();
+
+    PartCounters->Access(
+        [&](auto& partCounters)
+        {
+            partCounters->Cumulative.BytesWritten.Increment(
+                update.GetUserWriteCounters().GetBlocksCount() * blockSize);
+
+            partCounters->Cumulative.BytesRead.Increment(
+                update.GetUserReadCounters().GetBlocksCount() * blockSize);
+
+            partCounters->Cumulative.SysBytesWritten.Increment(
+                update.GetSysWriteCounters().GetBlocksCount() * blockSize);
+
+            partCounters->Cumulative.SysBytesRead.Increment(
+                update.GetSysReadCounters().GetBlocksCount() * blockSize);
+
+            partCounters->Cumulative.RealSysBytesWritten.Increment(
+                update.GetRealSysWriteCounters().GetBlocksCount() * blockSize);
+
+            partCounters->Cumulative.RealSysBytesRead.Increment(
+                update.GetRealSysReadCounters().GetBlocksCount() * blockSize);
+
+            partCounters->Cumulative.BatchCount.Increment(
+                update.GetUserWriteCounters().GetBatchCount());
+        });
 }
 
 void TFreshBlocksWriterActor::HandlePartitionReady(
-    const NPartition::TEvPartition::TEvWaitReadyResponse::TPtr& ev,
+    const TEvPartition::TEvWaitReadyResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
@@ -191,8 +286,7 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
             msg->ChannelPermissions[channel]);
     }
 
-    CommitIdsState =
-        std::make_unique<TCommitIdsState>(TabletGeneration, /*lastCommitId=*/0);
+    CommitIdsState = std::make_unique<TCommitIdsState>(msg->CommitIdGenerator);
     FlushState = std::make_unique<TPartitionFlushState>();
     TrimFreshLogState =
         std::make_unique<TPartitionTrimFreshLogState>(*CommitIdsState);
@@ -217,6 +311,10 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         msg->GroupDowntimes,
         msg->PartCounters);
     Become(&TThis::StateWork);
+
+    ResourceMetricsQueue = msg->ResourceMetricsQueue;
+    PartCounters = msg->PartCounters;
+    PartStats = msg->PartStats;
 
     StateLoaded = true;
     SendPendingRequests(ctx, PendingRequests);
@@ -307,9 +405,7 @@ STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 
         HFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest, HandleWaitReady);
 
-        HFunc(
-            NPartition::TEvPartition::TEvWaitReadyResponse,
-            HandlePartitionReady);
+        HFunc(TEvPartition::TEvWaitReadyResponse, HandlePartitionReady);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse,
@@ -331,6 +427,10 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
+
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,
+            HandleWriteBlocksCompleted);
 
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
