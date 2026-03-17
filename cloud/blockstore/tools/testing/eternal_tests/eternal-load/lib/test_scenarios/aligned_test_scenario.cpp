@@ -53,7 +53,7 @@ struct TRange
         : Config{config}
         , Size{size}
         , Buf{static_cast<char*>(
-                  std::aligned_alloc(NSystemInfo::GetPageSize(), Size)),
+                  std::aligned_alloc(4_KB, Size)),
               std::free}
         , StepInversion{
               CalculateInverse(Config.GetStep(), Config.GetRequestCount())}
