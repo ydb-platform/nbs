@@ -108,11 +108,11 @@ void TDiskRegistryBasedPartitionStatisticsCollectorActor::
 {
     Y_UNUSED(ev);
 
-    ++ResponsesCount;
-
     LastError = MakeError(
         E_REJECTED,
         "GetDiskRegistryBasedPartCountersRequest undelivered");
+
+    ++ResponsesCount;
 
     if (ResponsesCount == StatActorIds.size()) {
         ReplyAndDie(ctx);

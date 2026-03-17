@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/api/stats_service.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -10,24 +10,24 @@ namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TPartitionStatisticsCollectorActor final
-    : public NActors::TActorBootstrapped<TPartitionStatisticsCollectorActor>
+class TServiceStatisticsCollectorActor final
+    : public NActors::TActorBootstrapped<TServiceStatisticsCollectorActor>
 {
 private:
     const NActors::TActorId Owner;
 
-    const TVector<NActors::TActorId> Partitions;
+    const TVector<NActors::TActorId> VolumeActorIds;
 
-    TEvPartitionCommonPrivate::TPartCountersCombined Response;
+    TEvStatsService::TServiceStatisticsCombined Response;
 
     NProto::TError LastError;
 
     size_t ResponsesCount = 0;
 
 public:
-    TPartitionStatisticsCollectorActor(
+    TServiceStatisticsCollectorActor(
         const NActors::TActorId& owner,
-        TVector<NActors::TActorId> partitions);
+        TVector<NActors::TActorId> volumeActorIds);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -41,16 +41,12 @@ private:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandlePoisonPill(
-        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+    void HandleGetServiceStatisticsResponse(
+        TEvStatsService::TEvGetServiceStatisticsResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetPartCountersResponse(
-        TEvPartitionCommonPrivate::TEvGetPartCountersResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleGetPartCountersUndelivery(
-        TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    void HandleGetServiceStatisticsUndelivery(
+        TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

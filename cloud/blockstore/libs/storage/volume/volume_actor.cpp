@@ -262,6 +262,11 @@ void TVolumeActor::UpdateCounters(const TActorContext& ctx)
         return;
     }
 
+    if (Config->GetUsePullSchemeForVolumeStatistics()) {
+        SendStatsToServiceStatisticsCollectorActor(ctx);
+        return;
+    }
+
     SendPartStatsToService(ctx);
     SendSelfStatsToService(ctx);
 }
@@ -476,7 +481,8 @@ void TVolumeActor::DoRegisterVolume(
         auto request = std::make_unique<TEvStatsService::TEvRegisterVolume>(
             volume.GetDiskId(),
             TabletID(),
-            std::move(volume));
+            std::move(volume),
+            SelfId());
         NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
     }
 }
@@ -536,19 +542,6 @@ void TVolumeActor::SendVolumeConfigUpdated(const TActorContext& ctx)
             std::move(volume));
         NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
     }
-}
-
-void TVolumeActor::SendVolumeSelfCounters(const TActorContext& ctx)
-{
-    auto request = std::make_unique<TEvStatsService::TEvVolumeSelfCounters>(
-        State->GetConfig().GetDiskId(),
-        /*IsLocalMount=*/!State->GetLocalMountClientId().empty(),
-        State->HasActiveClients(ctx.Now()),
-        State->IsPreempted(SelfId()),
-        std::move(VolumeSelfCounters),
-        FailedBoots);
-    FailedBoots = 0;
-    NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
 }
 
 void TVolumeActor::ResetThrottlingPolicy()
@@ -678,21 +671,71 @@ void TVolumeActor::HandleUpdateCounters(
 {
     UpdateCountersScheduled = false;
 
-    // if we use pull scheme we must send request to the partitions
-    // to collect statistics
+    // Under these conditions, the counters are updated at the request of the
+    // service.
     if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
         GetVolumeStatus() != EStatus::STATUS_INACTIVE)
     {
-        ScheduleRegularUpdates(ctx);
-        State->IsDiskRegistryMediaKind()
-            ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
-            : SendStatisticRequests(ctx);
         return;
     }
 
     UpdateCounters(ctx);
     ScheduleRegularUpdates(ctx);
     CleanupHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
+}
+
+void TVolumeActor::HandleGetServiceStatistics(
+    const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (StatisticRequestInfo) {
+        NCloud::Reply(
+            ctx,
+            *StatisticRequestInfo,
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Volume " << TabletID() << " gets new request")));
+        StatisticRequestInfo.Reset();
+    }
+
+    if (!State) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Volume " << TabletID() << " state uninitialized")));
+        return;
+    }
+
+    StatisticRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
+    if (GetVolumeStatus() == EStatus::STATUS_INACTIVE) {
+        UpdateCounters(ctx);
+        return;
+    }
+
+    State->IsDiskRegistryMediaKind()
+        ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
+        : SendStatisticRequests(ctx);
+}
+
+void TVolumeActor::RejectGetServiceStatistics(
+    const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::make_unique<TEvStatsService::TEvGetServiceStatisticsResponse>(
+            MakeError(
+                E_REJECTED,
+                TStringBuilder() << "Volume " << TabletID() << " not ready")));
 }
 
 void TVolumeActor::HandleServerConnected(
@@ -924,6 +967,10 @@ STFUNC(TVolumeActor::StateBoot)
             TEvVolumePrivate::TEvRemoveExpiredVolumeParams,
             HandleRemoveExpiredVolumeParams);
 
+        HFunc(
+            TEvStatsService::TEvGetServiceStatisticsRequest,
+            HandleGetServiceStatistics);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvVolume)
 
         default:
@@ -978,6 +1025,10 @@ STFUNC(TVolumeActor::StateInit)
         HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
             HandleGetDrTabletInfoResponse);
+
+        HFunc(
+            TEvStatsService::TEvGetServiceStatisticsRequest,
+            HandleGetServiceStatistics);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvVolume)
 
@@ -1138,6 +1189,10 @@ STFUNC(TVolumeActor::StateWork)
                 TEvGetDiskRegistryBasedPartCountersResponse,
             HandleGetDiskRegistryBasedPartCountersResponse);
 
+        HFunc(
+            TEvStatsService::TEvGetServiceStatisticsRequest,
+            HandleGetServiceStatistics);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1208,6 +1263,9 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
         IgnoreFunc(TEvNonreplPartitionPrivate::
                        TEvGetDiskRegistryBasedPartCountersResponse);
+        HFunc(
+            TEvStatsService::TEvGetServiceStatisticsRequest,
+            RejectGetServiceStatistics);
 
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted);
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished);
