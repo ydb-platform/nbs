@@ -58,6 +58,16 @@ struct TReadBlocksLocalResponse: public TReadBlocksResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TWriteBlocksLocalRequest can be 2 types:
+//
+//     1. Dependent WriteBlocksLocalRequest doesn't own any data. It can access
+//     data with TWriteBlocksLocalRequest::Sglist.
+//
+//     2. Owner WriteBlocksLocalRequest stores request data in
+//     TWriteBlocksRequest field. Sglist will be closed after object
+//     destruction. We can promote dependent request to owner by calling
+//     void TWriteBlocksLocalRequest::CopySglistIntoBuffers() method.
+
 struct TWriteBlocksLocalRequest
     : public TWriteBlocksRequest
 {
@@ -65,9 +75,45 @@ struct TWriteBlocksLocalRequest
     ui32 BlocksCount = 0;
     // TODO: remove BlockSize as it is now in NProto::TWriteBlocksRequest
     ui32 BlockSize = 0;
+
+    std::optional<TGuardedSglistOwner> SglistOwner;
+
+    TWriteBlocksLocalRequest() = default;
+
+    TWriteBlocksLocalRequest(const TWriteBlocksLocalRequest& request) = delete;
+
+    TWriteBlocksLocalRequest(TWriteBlocksLocalRequest&& request) = default;
+
+    TWriteBlocksLocalRequest& operator=(
+        const TWriteBlocksLocalRequest& request) = delete;
+
+    TWriteBlocksLocalRequest& operator=(
+        TWriteBlocksLocalRequest&& request) = default;
+
+    // Full request copy. If this is dependent request, after clone we will get
+    // dependent request. If this is owner request, after clone we will get
+    // owner request.
+    TWriteBlocksLocalRequest Clone() const;
+
+    // If the WriteBlocksLocal owns request data (the CopySglistIntoBuffers
+    // method was called), dependent request will be invalidated (Sglist.Close()
+    // will be called) after this object destruction. Doesn't copy Blocks field
+    // from TWriteBlocksLocalRequest, because all blocks can be accessed via
+    // Sglist.
+    TWriteBlocksLocalRequest CreateDependentRequest() const;
+
+    void CopySglistIntoBuffers();
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request);
+
+TWriteBlocksRequest CopyRequest(const TWriteBlocksRequest& request);
+
+TZeroBlocksRequest CopyRequest(const TZeroBlocksRequest& request);
 
 }   // namespace NProto
 

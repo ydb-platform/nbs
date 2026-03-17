@@ -4,6 +4,82 @@
 
 namespace NCloud::NBlockStore {
 
+namespace NProto {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TWriteBlocksLocalRequest TWriteBlocksLocalRequest::Clone() const
+{
+    auto request = CreateDependentRequest();
+    if (SglistOwner) {
+        request.CopySglistIntoBuffers();
+    }
+
+    return request;
+}
+
+TWriteBlocksLocalRequest TWriteBlocksLocalRequest::CreateDependentRequest() const
+{
+    Y_ABORT_UNLESS(GetDescriptor()->field_count() == 8);
+
+    TWriteBlocksLocalRequest copiedRecord;
+
+    // Copy all protobuf fields except Blocks (field 4)
+    copiedRecord.MutableHeaders()->CopyFrom(GetHeaders());
+    copiedRecord.SetDiskId(GetDiskId());
+    copiedRecord.SetStartIndex(GetStartIndex());
+    copiedRecord.SetFlags(GetFlags());
+    copiedRecord.SetSessionId(GetSessionId());
+    copiedRecord.SetBlockSize(GetBlockSize());
+    copiedRecord.MutableChecksums()->CopyFrom(GetChecksums());
+
+    // Copy non-protobuf fields
+    copiedRecord.Sglist = Sglist;
+    copiedRecord.BlocksCount = BlocksCount;
+    copiedRecord.BlockSize = BlockSize;
+
+    return copiedRecord;
+}
+
+void TWriteBlocksLocalRequest::CopySglistIntoBuffers()
+{
+    auto g = Sglist.Acquire();
+    if (!g) {
+        return;
+    }
+
+    const auto& sgList = g.Get();
+    TSgList newSgList;
+    newSgList.reserve(sgList.size());
+    for (const auto& block: sgList) {
+        auto& buffer = *MutableBlocks()->AddBuffers();
+        buffer.ReserveAndResize(block.Size());
+        memcpy(buffer.begin(), block.Data(), block.Size());
+        newSgList.emplace_back(buffer.data(), buffer.size());
+    }
+
+    TGuardedSgList newGuardedSgList(std::move(newSgList));
+    Sglist = newGuardedSgList;
+    SglistOwner.emplace(std::move(newGuardedSgList));
+}
+
+TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)
+{
+    return request.CreateDependentRequest();
+}
+
+TWriteBlocksRequest CopyRequest(const TWriteBlocksRequest& request)
+{
+    return request;
+}
+
+TZeroBlocksRequest CopyRequest(const TZeroBlocksRequest& request)
+{
+    return request;
+}
+
+}   // namespace NProto
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ...)    #name,

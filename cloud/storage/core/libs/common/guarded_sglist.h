@@ -171,6 +171,27 @@ public:
     TGuardedSgList CreateGuardedSgList(TSgList sglist) const;
 };
 
+class TGuardedSglistOwner
+{
+private:
+    TGuardedSgList GuardedSgList;
+
+public:
+    TGuardedSglistOwner() = default;
+
+    explicit TGuardedSglistOwner(TGuardedSgList guardedSgList);
+
+    TGuardedSglistOwner(const TGuardedSglistOwner& other) = delete;
+
+    TGuardedSglistOwner(TGuardedSglistOwner&& other) noexcept;
+
+    TGuardedSglistOwner& operator=(const TGuardedSglistOwner& other) = delete;
+
+    TGuardedSglistOwner& operator=(TGuardedSglistOwner&& other) noexcept;
+
+    ~TGuardedSglistOwner();
+};
+
 }   // namespace NCloud
 
 #define BLOCKSTORE_INCLUDE_GUARDED_SGLIST_INL
