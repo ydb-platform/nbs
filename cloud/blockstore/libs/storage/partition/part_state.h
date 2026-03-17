@@ -526,6 +526,7 @@ private:
     const ui32 MaxBlobsPerRange;
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
+    ui32 ZeroScore = 0;
 
 public:
     TOperationState& GetCompactionState(ECompactionType type);
@@ -624,6 +625,25 @@ public:
     TInstant GetLastCompactionRangeCountPerRunTime() const
     {
         return LastCompactionRangeCountPerRunTs;
+    }
+
+    void IncrementZeroScore(ui32 delta)
+    {
+        ZeroScore += delta;
+    }
+
+    void DecrementZeroScore(ui32 delta)
+    {
+        if (delta > ZeroScore) {
+            ZeroScore = 0;
+        } else {
+            ZeroScore -= delta;
+        }
+    }
+
+    ui32 GetZeroScore() const
+    {
+        return ZeroScore;
     }
 
     void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);

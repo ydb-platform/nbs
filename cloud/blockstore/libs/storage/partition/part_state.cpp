@@ -599,6 +599,7 @@ void TPartitionState::UnsetUsedBlocks(
 
     DecrementUsedBlocksCount(blockCount);
     DecrementLogicalUsedBlocksCount(logicalBlockCount);
+    IncrementZeroScore(blockCount);
 
     if (blockCount || logicalBlockCount) {
         WriteUsedBlocksToDB(db, range.Start, range.End + 1);
@@ -628,6 +629,7 @@ void TPartitionState::UnsetUsedBlocks(
 
     DecrementUsedBlocksCount(blockCount);
     DecrementLogicalUsedBlocksCount(logicalBlockCount);
+    IncrementZeroScore(blockCount);
 
     if (blockCount || logicalBlockCount) {
         auto first = blocks.begin();

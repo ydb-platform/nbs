@@ -221,6 +221,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
+    TCounter ZeroScore{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter HasBrokenDevice{
@@ -266,6 +270,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),
+        MakeMeta<&TSimpleDiskCounters::ZeroScore>(),
 
         MakeMeta<&TSimpleDiskCounters::HasBrokenDevice>(),
         MakeMeta<&TSimpleDiskCounters::HasBrokenDeviceSilent>(),
@@ -340,6 +345,10 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageThrottlingCount{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -362,6 +371,7 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageThrottlingCount>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };

@@ -1219,6 +1219,17 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
             PartCounters->Cumulative.CompactionByGarbageBlocksPerRange.Increment(1);
         }
 
+        ui32 zeroScore = State->GetZeroScore();
+        ui32 diskSizeInBlocks = State->GetConfig().GetBlocksCount();
+        ui32 zeroScorePercentage = GetPercentage(diskSizeInBlocks, diskSizeInBlocks + zeroScore);
+        // if (zeroScore > 1024) {
+        if (zeroScorePercentage > 5) {
+            throttlingAllowed = true;
+            PartCounters->Cumulative.CompactionGarbageThrottlingCount.Increment(1);
+        } else {
+            throttlingAllowed = false;
+        }
+
         mode = TEvPartitionPrivate::GarbageCompaction;
     } else if (topRange.Stat.CompactionScore.Score >= Config->GetCompactionScoreLimitForThrottling()) {
         throttlingAllowed = false;

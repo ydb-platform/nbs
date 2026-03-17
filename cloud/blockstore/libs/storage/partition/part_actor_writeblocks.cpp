@@ -279,7 +279,14 @@ void TPartitionActor::WriteBlocks(
         }
     };
 
+    // TODO:_ move to a separate func?
+    {
+        ui32 requestSizeInBlocksAmended = (writeRange.Size() * 120) / 100;
+        State->DecrementZeroScore(requestSizeInBlocksAmended);
+    }
+
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
+
     const auto writeBlobThreshold =
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
 

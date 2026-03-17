@@ -85,6 +85,9 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.CompactionRangeCountPerRun.Set(
         State->GetCompactionRangeCountPerRun());
 
+    PartCounters->Simple.ZeroScore.Set(
+        State->GetZeroScore());
+
     PartCounters->Simple.BytesCount.Set(
         State->GetBlocksCount() * State->GetBlockSize());
 
