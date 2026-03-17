@@ -38,7 +38,7 @@ namespace {
     xxx(DontPopulateNodeCacheWhenListingNodes, bool, false                    )\
     xxx(GuestOnlyPermissionsCheckEnabled,      bool, false                    )\
     xxx(MaxResponseEntries,          ui32,          10000                     )\
-    xxx(MaxBackground,               ui32,          0                         )\
+    xxx(MaxBackground,               ui32,          16384                     )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
     xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
