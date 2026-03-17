@@ -68,8 +68,6 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    CommitIdsState->AccessCommitQueue().AcquireBarrier(commitId);
-
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
         Config->IsFreshChannelWriteRequestsFeatureEnabled(
@@ -112,8 +110,6 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         blockRanges.push_back(r.Data.Range);
         writeHandlers.push_back(r.Data.Handler);
     }
-
-    TrimFreshLogState->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
 
     const ui32 channel = ChannelsState->PickNextChannel(
         EChannelDataKind::Fresh,
