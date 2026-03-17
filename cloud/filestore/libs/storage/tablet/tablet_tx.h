@@ -1578,6 +1578,8 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
 
+        bool IsNodeRefLocked = false;
+
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
                 const NProto::TGetNodeAttrRequest& request,
@@ -1601,6 +1603,8 @@ struct TTxIndexTablet
             TargetNode.Clear();
             ShardId.clear();
             ShardNodeName.clear();
+
+            IsNodeRefLocked = false;
         }
     };
 

@@ -478,6 +478,11 @@ message TGetNodeAttrResponse
     // Node attributes.
     TNodeAttr Node = 2;
 
+    // Whether the requested node-ref is locked by a running write operation
+    // (e.g. UnlinkNode or RenameNode). Valid only for the requests with
+    // parent-id + name pair.
+    bool IsNodeRefLocked = 3;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }

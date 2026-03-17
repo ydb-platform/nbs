@@ -79,10 +79,6 @@ private:
         const TEvIndexTablet::TEvGetNodeAttrBatchResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleGetNodeAttrResponse(
-        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
-        const TActorContext& ctx);
-
     void CheckNodeAttrs(const TActorContext& ctx);
 
     void HandleGetNodeAttrResponseCheck(
@@ -339,50 +335,6 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     }
 }
 
-void TListNodesActor::HandleGetNodeAttrResponse(
-    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "GetNodeAttrResponse from shard: %s",
-        msg->Record.GetNode().DebugString().Quote().c_str());
-
-    if (HasError(msg->GetError())) {
-        if (msg->GetError().GetCode() == NoEnt) {
-            MissingNodeIndices.push_back(ev->Cookie);
-
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "Node not found in shard: %s, %s",
-                FormatError(msg->GetError()).Quote().c_str(),
-                Response.GetNames(ev->Cookie).c_str());
-        } else {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "Failed to GetNodeAttr from shard: %s",
-                FormatError(msg->GetError()).Quote().c_str());
-
-            HandleError(ctx, std::move(*msg->Record.MutableError()));
-            return;
-        }
-    } else {
-        TABLET_VERIFY(ev->Cookie < Response.NodesSize());
-        auto* node = Response.MutableNodes(ev->Cookie);
-        *node = std::move(*msg->Record.MutableNode());
-    }
-
-    if (++GetNodeAttrResponses == Response.NodesSize()) {
-        CheckResponseAndReply(ctx);
-        return;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TListNodesActor::CheckNodeAttrs(const TActorContext& ctx)
@@ -427,6 +379,7 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     const auto& name = Response.GetNames(ev->Cookie);
 
     bool exists = true;
+    bool locked = false;
     if (HasError(msg->GetError())) {
         if (msg->GetError().GetCode() == NoEnt) {
             exists = false;
@@ -448,22 +401,44 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     } else {
         const auto& attr = msg->Record.GetNode();
         exists = attr.GetShardNodeName() == node.GetShardNodeName();
+        locked = msg->Record.GetIsNodeRefLocked();
     }
 
     if (exists) {
-        ++LostNodeCount;
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "Node found in leader but missing in shard. Node observed in "
-            "leader: (name: %s, node proto: %s). Listing request proto: %s. "
-            "Validation response proto: %s",
-            name.Quote().c_str(),
-            node.ShortDebugString().Quote().c_str(),
-            ListNodesRequest.ShortDebugString().Quote().c_str(),
-            msg->Record.ShortDebugString().Quote().c_str());
+        if (locked) {
+            //
+            // NodeRef is being processed by a concurrent write operation - e.g.
+            // UnlinkNode or RenameNode. It's ok to temporarily have internal
+            // inconsistency between the directory tablet and the shard in
+            // charge of this node in this case.
+            //
 
-        ReportNodeNotFoundInShard();
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Node found in leader but missing in shard. Node observed in "
+                "leader: (name: %s, node proto: %s). Listing request: %s. "
+                "Validation response: %s",
+                name.Quote().c_str(),
+                node.ShortDebugString().Quote().c_str(),
+                ListNodesRequest.ShortDebugString().Quote().c_str(),
+                msg->Record.ShortDebugString().Quote().c_str());
+        } else {
+            ++LostNodeCount;
+
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Node found in leader but missing in shard. Node observed in "
+                "leader: (name: %s, node proto: %s). Listing request: %s. "
+                "Validation response: %s",
+                name.Quote().c_str(),
+                node.ShortDebugString().Quote().c_str(),
+                ListNodesRequest.ShortDebugString().Quote().c_str(),
+                msg->Record.ShortDebugString().Quote().c_str());
+
+            ReportNodeNotFoundInShard();
+        }
     }
 
     if (++CheckedNodeCount == MissingNodeIndices.size()) {
@@ -567,9 +542,6 @@ STFUNC(TListNodesActor::StateWork)
         HFunc(
             TEvService::TEvListNodesResponse,
             HandleListNodesResponse);
-        HFunc(
-            TEvService::TEvGetNodeAttrResponse,
-            HandleGetNodeAttrResponse);
         HFunc(
             TEvIndexTablet::TEvGetNodeAttrBatchResponse,
             HandleGetNodeAttrBatchResponse);

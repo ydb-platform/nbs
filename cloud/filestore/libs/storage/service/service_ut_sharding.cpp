@@ -5857,6 +5857,104 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldHandleUnlinkedNodeUponListingWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+
+        TShardedFileSystemConfig fsConfig{
+            .DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto dirId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir")
+        )->Record.GetNode().GetId();
+
+        auto subdir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir1")
+        )->Record.GetNode().GetId();
+        Y_UNUSED(subdir1Id);
+
+        auto subdir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir2")
+        )->Record.GetNode().GetId();
+
+        IEventHandlePtr unlinkNodeResponse;
+        bool shouldIntercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeResponse
+                        && shouldIntercept)
+                {
+                    unlinkNodeResponse.reset(event.Release());
+                    return true;
+                }
+
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, dirId, "subdir1", true);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(unlinkNodeResponse);
+
+        auto listing = service.ListNodes(headers, fsConfig.FsId, dirId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(1, listing.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+
+        UNIT_ASSERT_VALUES_EQUAL(subdir2Id, listing.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL("subdir2", listing.GetNames(0));
+
+        shouldIntercept = false;
+        env.GetRuntime().Send(unlinkNodeResponse.release());
+        auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetStatus(),
+            FormatError(unlinkResponse->GetError()));
+
+        shouldIntercept = true;
+        service.SendUnlinkNodeRequest(headers, dirId, "subdir2", true);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(unlinkNodeResponse);
+
+        service.SendListNodesRequest(headers, fsConfig.FsId, dirId);
+        auto listingResponse = service.RecvListNodesResponse();
+        // all the listed node refs point to the nodes that are being unlinked
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            listingResponse->GetStatus(),
+            FormatError(listingResponse->GetError()));
+
+        shouldIntercept = false;
+        env.GetRuntime().Send(unlinkNodeResponse.release());
+        unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetStatus(),
+            FormatError(unlinkResponse->GetError()));
+
+        listing = service.ListNodes(headers, fsConfig.FsId, dirId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0, listing.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listing.NamesSize());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/NodeNotFoundInShard");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldHandleRenameNodeInDestinationError)
     {
         config.SetMultiTabletForwardingEnabled(true);
