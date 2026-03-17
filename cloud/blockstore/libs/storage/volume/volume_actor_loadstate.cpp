@@ -140,6 +140,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.MetaHistory),
             std::move(args.VolumeParams),
             throttlerConfig,
+            throttlerInfo.SpentShapingBudgetShare,
             std::move(args.Clients),
             std::move(volumeHistory),
             std::move(args.CheckpointRequests),

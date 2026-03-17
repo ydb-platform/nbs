@@ -698,8 +698,9 @@ void TVolumeActor::HandleUpdateThrottlerState(
                 .BoostBudget = State->GetThrottlingPolicy()
                                    .GetCurrentBoostBudget()
                                    .MilliSeconds(),
-                // TODO(#5095): Fill this field.
-                .SpentShapingBudgetShare = 0.0});
+                .SpentShapingBudgetShare =
+                    State->GetShapingThrottler()
+                        .CalculateCurrentSpentBudgetShare(ctx.Now())});
     }
 }
 

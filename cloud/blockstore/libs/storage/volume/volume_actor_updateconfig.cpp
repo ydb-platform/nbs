@@ -368,6 +368,7 @@ void TVolumeActor::CompleteUpdateConfig(
             // TODO: will it get updated later?
             {},   // volume params
             throttlerConfig,
+            0.0,                           // spentShapingBudgetShare
             {},                            // clients
             TCachedVolumeMountHistory{},   // history
             {},                            // checkpoint requests

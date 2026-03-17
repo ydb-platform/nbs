@@ -12,6 +12,7 @@ SRCS(
     retry_policy_ut.cpp
     stripe_ut.cpp
     volume_params_ut.cpp
+    volume_shaping_throttler_ut.cpp
     volume_throttling_policy_ut.cpp
 )
 
