@@ -12,8 +12,10 @@
 #include <cloud/contrib/virtiofsd/fuse_lowlevel.h>
 #include <cloud/contrib/virtiofsd/fuse_virtio.h>
 
+#include <inttypes.h>
 #include <stdatomic.h>
 #include <sys/stat.h>
+#include <time.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,6 +44,12 @@ struct fuse_virtio_dev
 struct fuse_virtio_queue
 {
     int queue_index;
+    time_t last_rq_stats_log_ts;
+    uint64_t process_request_total_ns;
+    uint64_t process_request_last_ns;
+    uint64_t process_request_max_ns;
+    uint64_t process_request_count;
+    uint64_t process_request_last_count;
 };
 
 struct fuse_virtio_request
@@ -362,6 +370,83 @@ static void unregister_complete_and_free_dev(void* ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum {
+    VIRTIO_REQUEST_QUEUE_LOG_INTERVAL_SEC = 10,
+};
+
+static uint64_t ns_to_us(uint64_t ns)
+{
+    return ns / 1000;
+}
+
+static uint64_t get_clock_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+}
+
+static void log_request_queue_stats(
+    struct fuse_session* se,
+    int queue_index)
+{
+    struct fuse_virtio_dev* dev = se->virtio_dev;
+    struct fuse_virtio_queue* queue = &dev->queues[queue_index];
+    struct vhd_rq_metrics metrics;
+
+    vhd_get_rq_stat(dev->rqs[queue_index], &metrics);
+
+    if (!metrics.dequeued && !metrics.completed) {
+        return;
+    }
+
+    time_t now = time(NULL);
+    if (queue->last_rq_stats_log_ts &&
+        now - queue->last_rq_stats_log_ts < VIRTIO_REQUEST_QUEUE_LOG_INTERVAL_SEC)
+    {
+        return;
+    }
+
+    queue->last_rq_stats_log_ts = now;
+
+    uint64_t oldest_inflight_age_sec = 0;
+    if (metrics.oldest_inflight_ts && now >= metrics.oldest_inflight_ts) {
+        oldest_inflight_age_sec = now - metrics.oldest_inflight_ts;
+    }
+
+    const uint64_t process_request_avg_us =
+        queue->process_request_count
+            ? ns_to_us(queue->process_request_total_ns / queue->process_request_count)
+            : 0;
+    const uint64_t process_request_last_avg_us =
+        queue->process_request_last_count
+            ? ns_to_us(queue->process_request_last_ns / queue->process_request_last_count)
+            : 0;
+
+    VHD_LOG_INFO(
+        "vhost queue stats: backend_queue=%d enqueued=%" PRIu64
+        " dequeued=%" PRIu64 " completed=%" PRIu64
+        " process_request_last_us=%" PRIu64
+        " process_request_last_avg_us=%" PRIu64
+        " process_request_avg_us=%" PRIu64
+        " process_request_max_us=%" PRIu64
+        " oldest_inflight_age_sec=%" PRIu64,
+        queue_index,
+        metrics.enqueued,
+        metrics.dequeued,
+        metrics.completed,
+        ns_to_us(queue->process_request_last_ns),
+        process_request_last_avg_us,
+        process_request_avg_us,
+        ns_to_us(queue->process_request_max_ns),
+        oldest_inflight_age_sec);
+
+    queue->process_request_last_ns = 0;
+    queue->process_request_last_count = 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 uint64_t fuse_req_unique(fuse_req_t req)
 {
     return req->unique;
@@ -542,11 +627,23 @@ int virtio_session_loop(struct fuse_session* se, int queue_index)
 
         struct vhd_request req;
         while (vhd_dequeue_request(dev->rqs[queue_index], &req)) {
+            uint64_t started_ns = get_clock_ns();
             res = process_request(se, req.io, queue_index);
+            uint64_t elapsed_ns = get_clock_ns() - started_ns;
+            struct fuse_virtio_queue* queue = &dev->queues[queue_index];
+            queue->process_request_total_ns += elapsed_ns;
+            queue->process_request_last_ns += elapsed_ns;
+            queue->process_request_count += 1;
+            queue->process_request_last_count += 1;
+            if (elapsed_ns > queue->process_request_max_ns) {
+                queue->process_request_max_ns = elapsed_ns;
+            }
             if (res < 0) {
                 VHD_LOG_WARN("request processing failure %d", -res);
             }
         }
+
+        log_request_queue_stats(se, queue_index);
     }
 
     return res;

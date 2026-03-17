@@ -154,7 +154,7 @@ void TBootstrapCommon::Init()
         Scheduler,
         BackgroundThreadPool);
 
-    if (Configs->Options->ProfileFile) {
+    if (false  && Configs->Options->ProfileFile) {
         ProfileLog = CreateProfileLog(
             {
                 Configs->Options->ProfileFile,

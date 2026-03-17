@@ -736,14 +736,15 @@ public:
             ISessionPtr session)
         : Config(std::move(config))
         , Logging(std::move(logging))
-        , StatsRegistry(std::move(statsRegistry))
-        , ModuleStatsRegistry(std::move(moduleStatsRegistry))
+        , StatsRegistry(std::move(CreateRequestStatsRegistryStub()))
+        , ModuleStatsRegistry(std::move(CreateModuleStatsRegistryStub()))
         , FsCountersProvider(std::move(fsCountersProvider))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , ProfileLog(std::move(profileLog))
         , Session(std::move(session))
     {
+        Y_UNUSED(statsRegistry, moduleStatsRegistry);
         Log = Logging->CreateLog("NFS_FUSE");
     }
 
