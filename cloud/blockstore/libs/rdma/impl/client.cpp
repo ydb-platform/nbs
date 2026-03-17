@@ -2229,15 +2229,7 @@ void TClient::HandleConnected(
         EEndpointState::Connected);
 
     endpoint->Reconnect.Cancel();
-
-    try {
-        endpoint->StartReceive();
-
-    } catch (const TServiceError& e) {
-        RDMA_ERROR(endpoint->Log, e.what());
-        endpoint->Disconnect();
-        return;
-    }
+    endpoint->StartReceive();
 
     if (endpoint->StartResult.Initialized()) {
         auto startResult = std::move(endpoint->StartResult);
