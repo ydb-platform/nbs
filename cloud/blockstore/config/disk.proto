@@ -373,7 +373,7 @@ message TDiskAgentConfig
     // 1000 means every thousandth or 0.1%.
     optional uint32 ValidatedBlocksRatio = 47;
 
-    // Timeout (in milliseconds) before aborting NVM format command.
+    // Timeout (in milliseconds) before aborting admin command.
     optional uint32 IoctlAdminCmdTimeout = 48;
 }
 
