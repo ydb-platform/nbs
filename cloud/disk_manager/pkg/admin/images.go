@@ -135,6 +135,7 @@ type createImage struct {
 	srcDiskID     string
 	dstImageID    string
 	folderID      string
+	useS3         bool
 }
 
 func (c *createImage) run() error {
@@ -149,6 +150,7 @@ func (c *createImage) run() error {
 	req := &disk_manager.CreateImageRequest{
 		DstImageId: c.dstImageID,
 		FolderId:   c.folderID,
+		UseS3: c.useS3,
 	}
 
 	if c.srcURL != "" {
@@ -207,6 +209,7 @@ func newCreateImageCmd(clientConfig *client_config.ClientConfig) *cobra.Command 
 	cmd.Flags().StringVar(&c.srcSnapshotID, "src-snapshot-id", "", "ID of snapshot to create image from")
 	cmd.Flags().StringVar(&c.srcDiskZoneID, "src-disk-zone-id", "", "ID of zone where source disk is located")
 	cmd.Flags().StringVar(&c.srcDiskID, "src-disk-id", "", "ID of disk to create image from")
+	cmd.Flags().BoolVar(&c.useS3, "use-s3", false, "use S3 for image data")
 
 	cmd.Flags().StringVar(&c.dstImageID, "id", "", "ID of image to create; required")
 	if err := cmd.MarkFlagRequired("id"); err != nil {

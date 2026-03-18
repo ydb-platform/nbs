@@ -33,6 +33,7 @@ message CreateSnapshotRequest {
     string snapshot_id = 2;
     string folder_id = 3;
     bool zonal = 7;
+    bool useS3 = 8;
 }
 
 message CreateSnapshotMetadata {

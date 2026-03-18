@@ -41,6 +41,7 @@ message CreateImageRequest {
     string dst_image_id = 6;
     string folder_id = 7;
     bool pooled = 10;
+    bool useS3 = 11;
 }
 
 message CreateImageMetadata {

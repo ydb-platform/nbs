@@ -36,7 +36,8 @@ func (s *service) CreateSnapshot(
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	useS3 := common.Find(s.config.GetUseS3ForFolder(), req.FolderId) ||
+	useS3 := req.GetUseS3() ||
+		common.Find(s.config.GetUseS3ForFolder(), req.FolderId) ||
 		rand.Uint32()%100 < s.config.GetUseS3Percentage()
 
 	return s.taskScheduler.ScheduleTask(

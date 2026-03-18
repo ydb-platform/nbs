@@ -193,6 +193,7 @@ type createSnapshot struct {
 	srcDiskID     string
 	dstSnapshotID string
 	folderID      string
+	useS3         bool
 }
 
 func (c *createSnapshot) run() error {
@@ -211,6 +212,7 @@ func (c *createSnapshot) run() error {
 		},
 		SnapshotId: c.dstSnapshotID,
 		FolderId:   c.folderID,
+		UseS3:      c.useS3,
 	}
 
 	resp, err := client.CreateSnapshot(getRequestContext(ctx), req)
@@ -254,6 +256,8 @@ func newCreateSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 	if err := cmd.MarkFlagRequired("folder-id"); err != nil {
 		log.Fatalf("Error setting flag folder-id as required: %v", err)
 	}
+
+	cmd.Flags().BoolVar(&c.useS3, "use-s3", false, "use S3 for snapshot data")
 
 	return cmd
 }

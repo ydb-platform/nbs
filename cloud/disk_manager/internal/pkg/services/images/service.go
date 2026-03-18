@@ -26,7 +26,8 @@ func (s *service) CreateImage(
 ) (string, error) {
 
 	rand.Seed(time.Now().UnixNano())
-	useS3 := common.Find(s.config.GetUseS3ForFolder(), req.FolderId) ||
+	useS3 := req.GetUseS3() ||
+		common.Find(s.config.GetUseS3ForFolder(), req.FolderId) ||
 		rand.Uint32()%100 < s.config.GetUseS3Percentage()
 
 	pools := make([]*types.DiskPool, 0)
