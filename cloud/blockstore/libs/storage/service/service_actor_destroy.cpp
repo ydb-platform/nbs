@@ -486,7 +486,7 @@ void TDestroyVolumeActor::HandleGracefulShutdownResponse(
             FormatError(error).data());
 
         if (IsNotFoundSchemeShardError(error)) {
-            ReplyAndDie(ctx, MakeError(S_ALREADY, "volume not found"));
+            DestroyVolume(ctx);
         } else {
             ReplyAndDie(ctx, std::move(error));
         }

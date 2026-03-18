@@ -409,7 +409,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
 
     // Reproduces a race condition: StatVolume finds the volume, which is then
     // deleted during graceful shutdown
-    Y_UNIT_TEST(DestroyNonreplDiskWhenGracefulShutdownFailedToFindTheVolume)
+    Y_UNIT_TEST(ShouldDestroyNonreplDiskWhenGracefulShutdownFailedToFindTheVolume)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -481,7 +481,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
 
             auto response = service.RecvDestroyVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_ALREADY,
+                S_OK,
                 response->GetStatus(),
                 response->GetError());
         }
