@@ -98,16 +98,13 @@ private:
         NCloud::Send<NActors::TEvents::TEvPoisonPill>(ctx, ctx.SelfID);
     }
 
-    void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
-
-    void UpdateYellowState(const NActors::TActorContext& ctx);
-
-    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx);
-
-    void UpdateChannelPermissions(
+    void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
         ui32 channel,
-        EChannelPermissions permissions);
+        ui32 generation,
+        double approximateFreeSpaceShare,
+        bool notifyPartition);
 
     // IMortalActor overrides
 
@@ -152,6 +149,8 @@ private:
 
     void ClearWriteQueue(const NActors::TActorContext& ctx);
 
+    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWaitPartition);
     STFUNC(StateFreshBlobsLoading);
@@ -187,6 +186,14 @@ private:
 
     void HandleProcessWriteQueue(
         const NPartition::TEvPartitionPrivate::TEvProcessWriteQueue::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessStorageStatusFlags(
+        const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCheckBlobstorageStatusResult(
+        const NKikimr::TEvTablet::TEvCheckBlobstorageStatusResult::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

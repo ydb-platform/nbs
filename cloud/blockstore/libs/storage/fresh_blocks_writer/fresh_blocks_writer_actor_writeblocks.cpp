@@ -270,7 +270,6 @@ void TFreshBlocksWriterActor::WriteBlocks(
         replyError(ctx, MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
 
         ReassignChannelsIfNeeded(ctx);
-
         return;
     }
 

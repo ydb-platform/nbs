@@ -24,15 +24,12 @@ namespace NCloud::NBlockStore::NStorage {
 class IIOCompanionClient: public IMortalActor
 {
 public:
-    virtual void ScheduleYellowStateUpdate(
-        const NActors::TActorContext& ctx) = 0;
-    virtual void UpdateYellowState(const NActors::TActorContext& ctx) = 0;
-    virtual void ReassignChannelsIfNeeded(
-        const NActors::TActorContext& ctx) = 0;
-    virtual void UpdateChannelPermissions(
+    virtual void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
         ui32 channel,
-        EChannelPermissions permissions) = 0;
+        ui32 generation,
+        double approximateFreeSpaceShare) = 0;
 
     ~IIOCompanionClient() override = default;
 };

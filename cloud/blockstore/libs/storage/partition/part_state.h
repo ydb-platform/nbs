@@ -17,7 +17,7 @@
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>

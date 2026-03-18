@@ -6,30 +6,20 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIOCompanionClient::ScheduleYellowStateUpdate(
-    const NActors::TActorContext& ctx)
-{
-    Owner.ScheduleYellowStateUpdate(ctx);
-}
-
-void TIOCompanionClient::UpdateYellowState(
-    const NActors::TActorContext& ctx)
-{
-    Owner.UpdateYellowState(ctx);
-}
-
-void TIOCompanionClient::ReassignChannelsIfNeeded(
-    const NActors::TActorContext& ctx)
-{
-    Owner.ReassignChannelsIfNeeded(ctx);
-}
-
-void TIOCompanionClient::UpdateChannelPermissions(
+void TIOCompanionClient::ProcessStorageStatusFlags(
     const NActors::TActorContext& ctx,
+    NKikimr::TStorageStatusFlags flags,
     ui32 channel,
-    EChannelPermissions permissions)
+    ui32 generation,
+    double approximateFreeSpaceShare)
 {
-    Owner.UpdateChannelPermissions(ctx, channel, permissions);
+    Owner.ProcessStorageStatusFlags(
+        ctx,
+        flags,
+        channel,
+        generation,
+        approximateFreeSpaceShare,
+        true);   // notify FreshBlocksWriter
 }
 
 // IMortalActor implements

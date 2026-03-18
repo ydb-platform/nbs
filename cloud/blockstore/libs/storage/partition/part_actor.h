@@ -443,7 +443,7 @@ private:
         ui32 blockCount,
         TBlockRange64* range) const;
 
-    void UpdateChannelPermissions(
+    bool UpdateChannelPermissions(
         const NActors::TActorContext& ctx,
         ui32 channel,
         EChannelPermissions permissions);
@@ -514,6 +514,14 @@ private:
 
     [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
     [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
+
+    void ProcessStorageStatusFlags(
+        const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
+        ui32 channel,
+        ui32 generation,
+        double approximateFreeSpaceShare,
+        bool notifyFreshBlocksWriter);
 
 private:
     STFUNC(StateBoot);
@@ -810,6 +818,14 @@ private:
 
     void HandleExecuteTransactions(
         const TEvPartitionCommonPrivate::TEvExecuteTransactions::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessStorageStatusFlags(
+        const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReassignChannels(
+        const TEvPartitionCommonPrivate::TEvReassignChannels::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
