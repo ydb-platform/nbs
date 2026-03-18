@@ -111,7 +111,8 @@ void TEnsureStateIntegrityActor::HandleBackupDiskRegistryStateResponse(
     diff.set_field_comparator(&comparator);
 
     const auto* descriptor = NProto::TDiskRegistryStateBackup::descriptor();
-    diff.IgnoreField(descriptor->FindFieldByName("UnknownDevices"));
+    diff.IgnoreField(
+        NProto::TAgentConfig::descriptor()->FindFieldByName("UnknownDevices"));
     diff.IgnoreField(descriptor->FindFieldByName("OldDirtyDevices"));
     diff.IgnoreField(
         NProto::TDiskRegistryStateBackup::TDirtyDevice::descriptor()
