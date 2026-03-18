@@ -3342,6 +3342,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 Device("dev-2", "uuid-2", "rack-1", 10_GB),
             });
 
+        auto ensureNoResponseFromDeallocate = [&](auto& runtime)
+        {
+            auto evList = runtime.CaptureEvents();
+            for (auto& ev: evList) {
+                UNIT_ASSERT(
+                    ev->GetTypeRewrite() !=
+                    TEvDiskRegistry::EvDeallocateDiskResponse);
+            }
+            runtime.PushEventsFront(evList);
+        };
+
         NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
         config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
 
@@ -3361,7 +3372,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.AllocateDisk("vol", 20_GB);
 
         runtime->DispatchEvents({}, 10ms);
-        TString deviceUuid = "";
+        TString deviceUuid;
         TActorId recipient, sender;
         ui32 cookie;
         runtime->SetEventFilter(
@@ -3399,24 +3410,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                                      return options;
                                  }()});
 
-        auto request =
+        auto response =
             std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
                 MakeError(E_REJECTED));
 
-        auto evList = runtime->CaptureEvents();
-        for (auto& ev: evList) {
-            UNIT_ASSERT(
-                ev->GetTypeRewrite() !=
-                TEvDiskRegistry::EvDeallocateDiskResponse);
-        }
-        runtime->PushEventsFront(evList);
+        ensureNoResponseFromDeallocate(*runtime);
 
         diskRegistry.ChangeDeviceState(deviceUuid, NProto::DEVICE_STATE_ERROR);
 
         runtime->Send(new IEventHandle(
             sender,
             sender,
-            request.release(),
+            response.release(),
             0,   // flags
             cookie));
 

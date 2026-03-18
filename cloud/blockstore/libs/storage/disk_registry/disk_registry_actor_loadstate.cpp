@@ -86,9 +86,7 @@ void RemovePendingCleanupDevicesInErrorState(
             {
                 db.UpdateDirtyDevice(device.GetDeviceUUID(), "");
                 auto deviceIdx = dirtyDevicesUUID[device.GetDeviceUUID()];
-                dirtyDevices[deviceIdx] = {
-                    .Id = device.GetDeviceUUID(),
-                    .DiskId = {}};
+                dirtyDevices[deviceIdx].DiskId.clear();
             }
         }
     }
