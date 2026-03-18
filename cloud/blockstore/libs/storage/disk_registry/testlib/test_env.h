@@ -608,6 +608,22 @@ public:
             NKikimr::GetPipeConfigWithRetries());
     }
 
+    void ReconnectPipe()
+    {
+        auto* ev = new NActors::IEventHandle(
+            PipeClient,
+            Sender,
+            new NKikimr::TEvents::TEvPoisonPill());
+
+        Runtime.Send(ev, NodeIdx);
+
+        PipeClient = Runtime.ConnectToPipe(
+            TabletId,
+            Sender,
+            NodeIdx,
+            NKikimr::GetPipeConfigWithRetries());
+    }
+
     bool Exists(const TString& id)
     {
         SendDescribeDiskRequest(id);
