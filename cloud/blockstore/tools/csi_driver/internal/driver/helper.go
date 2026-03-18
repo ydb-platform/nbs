@@ -48,13 +48,13 @@ func isDiskRegistryMediaKind(mediaKind storagecoreapi.EStorageMediaKind) bool {
 	}
 }
 
-func getNfsClientIndex(instanceId string, nfsVhostReplicaCount uint) uint {
-	if nfsVhostReplicaCount < 2 {
+func getClientIndex(instanceId string, replicaCount uint) uint {
+	if replicaCount < 2 {
 		return 0
 	}
 
 	h := fnv.New64a()
 	h.Write([]byte(instanceId))
-	index := h.Sum64() % uint64(nfsVhostReplicaCount)
+	index := h.Sum64() % uint64(replicaCount)
 	return uint(index)
 }
