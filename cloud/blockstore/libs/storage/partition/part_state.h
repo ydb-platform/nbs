@@ -579,6 +579,11 @@ public:
         return CompactionMap.GetTopByGarbageBlockCount().Stat.GarbageBlockCount();
     }
 
+    ui32 GetCompactionGarbageWithoutZeroesScore() const
+    {
+        return CompactionMap.GetTopByGarbageWithoutZeroes().Stat.GarbageWithoutZeroes();
+    }
+
     float GetCompactionScore() const
     {
         return CompactionMap.GetTop().Stat.CompactionScore.Score;

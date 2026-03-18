@@ -1234,20 +1234,21 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         const bool diskGarbageWithoutZeroesBelowThreshold =
             diskGarbageWithoutZeroes < Config->GetCompactionGarbageThreshold();
 
-        // if (rangeGarbageWithoutZeroesBelowThreshold) {
-        //     PartCounters->Cumulative.CompactionRangeGarbageWithoutZeroesBelowThreshold
-        //         .Increment(1);
-        // }
-        // if (diskGarbageWithoutZeroesBelowThreshold) {
-        //     PartCounters->Cumulative.CompactionDiskGarbageWithoutZeroesBelowThreshold
-        //         .Increment(1);
-        // }
+        if (rangeGarbageWithoutZeroesBelowThreshold) {
+            PartCounters->Cumulative
+                .CompactionRangeGarbageWithoutZeroesBelowThreshold.Increment(1);
+        }
+        if (diskGarbageWithoutZeroesBelowThreshold) {
+            PartCounters->Cumulative
+                .CompactionDiskGarbageWithoutZeroesBelowThreshold.Increment(1);
+        }
 
-        if (rangeGarbageWithoutZeroesBelowThreshold && diskGarbageWithoutZeroesBelowThreshold)
+        if (rangeGarbageWithoutZeroesBelowThreshold &&
+            diskGarbageWithoutZeroesBelowThreshold)
         {
             throttlingAllowed = true;
-            PartCounters->Cumulative.CompactionGarbageThrottlingCount
-                .Increment(1);
+            PartCounters->Cumulative.CompactionGarbageThrottlingCount.Increment(
+                1);
         } else {
             throttlingAllowed = false;
         }

@@ -201,6 +201,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageWithoutZeroesScore{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
     TCounter ChannelHistorySize{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
@@ -265,6 +269,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::GarbageQueueBytes>(),
         MakeMeta<&TSimpleDiskCounters::CompactionScore>(),
         MakeMeta<&TSimpleDiskCounters::CompactionGarbageScore>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionGarbageWithoutZeroesScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
@@ -349,6 +354,14 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionRangeGarbageWithoutZeroesBelowThreshold{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionDiskGarbageWithoutZeroesBelowThreshold{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -372,6 +385,8 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionGarbageThrottlingCount>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionRangeGarbageWithoutZeroesBelowThreshold>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionDiskGarbageWithoutZeroesBelowThreshold>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };
