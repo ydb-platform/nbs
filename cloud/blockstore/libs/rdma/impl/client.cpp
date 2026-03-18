@@ -887,7 +887,6 @@ void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
 
     auto reqIdForQueue = std::make_unique<TClientRequestId>();
     reqIdForQueue->ClientRequestId = clientRequestId;
-    Counters->RequestEnqueued();
     CancelRequests.Enqueue(std::move(reqIdForQueue));
 
     if (WaitMode == EWaitMode::Poll) {
@@ -922,37 +921,42 @@ bool TClientEndpoint::HandleCancelRequests()
         return false;
     }
 
-    auto requests = CancelRequests.DequeueAll();
-    if (!requests) {
+    THashSet<ui64> clientRequestIdToCancel;
+    for (auto req: CancelRequests.DequeueAll()) {
+        clientRequestIdToCancel.emplace(req.ClientRequestId);
+    }
+    if (clientRequestIdToCancel.empty()) {
         return false;
     }
-    THashSet<ui64> clientRequestIdToCancel;
+    auto wasCancelled = [&](const TRequest& req) {
+        return clientRequestIdToCancel.contains(req.ClientReqId);
+    };
 
-    for (const auto& request: requests) {
-        clientRequestIdToCancel.emplace(request.ClientRequestId);
-    }
-
-    // We should filter input and queued requests from cancelled ones to not
-    // lose cancel requests.
-    QueuedRequests.Append(InputRequests.DequeueAll());
-
-    auto cancelledReqs = QueuedRequests.DequeueIf(
-        [&](const TRequest& req)
-        { return clientRequestIdToCancel.contains(req.ClientReqId); });
-
-    cancelledReqs.Append(
-        ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
-
-    const bool ret = !!cancelledReqs;
-
-    while (auto req = cancelledReqs.Dequeue()) {
+    // cancel input and queued requests
+    auto requests = InputRequests.DequeueAll();
+    auto cancelled = requests.DequeueIf(wasCancelled);
+    cancelled.Append(QueuedRequests.DequeueIf(wasCancelled));
+    while (auto req = cancelled.Dequeue()) {
+        RDMA_TRACE("cancel request " << req->ReqId);
+        Counters->RequestDequeued();
         AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
     }
 
-    // We move requests from input to queued, so we should handle this new
-    // requests.
+    // cancel active requests
+    cancelled.Append(ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
+    while (auto req = cancelled.Dequeue()) {
+        RDMA_TRACE("cancel request " << req->ReqId);
+        Counters->RequestAborted();
+        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
+    }
+
+    if (!requests) {
+        return false;
+    }
+
+    QueuedRequests.Append(std::move(requests));
     HandleQueuedRequests();
-    return ret;
+    return true;
 }
 
 void TClientEndpoint::AbortRequests() noexcept
@@ -1204,6 +1208,7 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
                     << ", expected " << static_cast<int>(RDMA_PROTO_VERSION));
         Counters->RecvResponseCompleted();
         Counters->Error();
+        RecvResponse(recv);
         Disconnect();
         return;
     }
@@ -1273,6 +1278,7 @@ void TClientEndpoint::FlushQueues() noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR("flush error: " << e.what());
+        Counters->Error();
     }
 }
 
@@ -1708,6 +1714,7 @@ private:
                 DurationToCyclesSafe(Config->MaxResponseDelay));
 
             for (auto& request: requests) {
+                endpoint->Counters->RequestAborted();
                 endpoint->AbortRequest(
                     std::move(request),
                     E_TIMEOUT,
@@ -2139,6 +2146,7 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
+        Counters->Error();
         endpoint->Disconnect();
     }
 }
@@ -2156,6 +2164,7 @@ void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
+        Counters->Error();
         endpoint->Disconnect();
     }
 }
@@ -2195,6 +2204,7 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
+        Counters->Error();
         endpoint->Disconnect();
     }
 }
