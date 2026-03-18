@@ -46,6 +46,7 @@ struct INvmeManager
 
 INvmeManagerPtr CreateNvmeManager(
     ILoggingServicePtr logging,
-    TDuration timeout);
+    TDuration formatTimeout,
+    TDuration adminCmdTimeout);
 
 }   // namespace NCloud::NBlockStore::NNvme

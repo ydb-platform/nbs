@@ -175,7 +175,8 @@ NNvme::INvmeManagerPtr CreateNvmeManager(
         case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
             return NNvme::CreateNvmeManager(
                 std::move(logging),
-                config.GetSecureEraseTimeout());
+                config.GetSecureEraseTimeout(),
+                config.GetIoctlAdminCmdTimeout());
     }
 
     return nullptr;

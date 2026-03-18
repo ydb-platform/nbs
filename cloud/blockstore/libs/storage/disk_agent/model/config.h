@@ -77,6 +77,7 @@ public:
     TDuration GetDeviceIOTimeout() const;
     bool GetDeviceIOTimeoutsDisabled() const;
     TDuration GetShutdownTimeout() const;
+    TDuration GetIoctlAdminCmdTimeout() const;
 
     NProto::EDiskAgentBackendType GetBackend() const;
     NProto::EDeviceEraseMethod GetDeviceEraseMethod() const;

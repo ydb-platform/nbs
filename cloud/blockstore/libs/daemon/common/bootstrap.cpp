@@ -802,7 +802,8 @@ void TBootstrapBase::InitLocalService()
 
     NvmeManager = CreateNvmeManager(
         Logging,
-        Configs->DiskAgentConfig->GetSecureEraseTimeout());
+        Configs->DiskAgentConfig->GetSecureEraseTimeout(),
+        Configs->DiskAgentConfig->GetIoctlAdminCmdTimeout());
 
     Service = CreateLocalService(
         config,

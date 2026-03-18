@@ -292,7 +292,8 @@ private:
     TLog Log;
 
     ITaskQueuePtr Executor;
-    TDuration Timeout;  // admin command timeout
+    TDuration FormatTimeout;
+    TDuration AdminCmdTimeout;
 
     void FormatImpl(
         const TString& path,
@@ -302,7 +303,7 @@ private:
 
         Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
 
-        nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device, Timeout);
+        nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
 
         Y_ENSURE(ctrl.fna.format_all_ns == 0, "can't format single namespace");
         Y_ENSURE(ctrl.fna.erase_all_ns == 0, "can't erase single namespace");
@@ -315,7 +316,7 @@ private:
         Y_ENSURE(nsId > 0, "unexpected namespace id");
 
         nvme_ns_data ns =
-            NVMeIdentifyNs(device, static_cast<ui32>(nsId), Timeout);
+            NVMeIdentifyNs(device, static_cast<ui32>(nsId), AdminCmdTimeout);
 
         Y_ENSURE(ns.lbaf[ns.flbas.format].ms == 0, "unexpected metadata");
 
@@ -324,7 +325,7 @@ private:
             .ses = ses
         };
 
-        NVMeFormatImpl(device, nsId, format, Timeout);
+        NVMeFormatImpl(device, nsId, format, FormatTimeout);
     }
 
     void DeallocateImpl(const TString& path, ui64 offsetBytes, ui64 sizeBytes)
@@ -358,10 +359,15 @@ private:
     }
 
 public:
-    TNvmeManager(ILoggingServicePtr logging, ITaskQueuePtr executor, TDuration timeout)
+    TNvmeManager(
+        ILoggingServicePtr logging,
+        ITaskQueuePtr executor,
+        TDuration formatTimeout,
+        TDuration adminCmdTimeout)
         : Logging(std::move(logging))
         , Executor(executor)
-        , Timeout(timeout)
+        , FormatTimeout(formatTimeout)
+        , AdminCmdTimeout(adminCmdTimeout)
     {}
 
     void Start() final
@@ -422,7 +428,7 @@ public:
                 return str(hd.serial_no);
             }
 
-                auto ctrl = NVMeIdentifyCtrl(device, Timeout);
+                auto ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
 
             return str(ctrl.sn);
         });
@@ -457,8 +463,9 @@ public:
 
                 nvme_admin_cmd cmd{
                     .opcode = NVME_OPC_SANITIZE,
-                    .cdw10 = GetSanitizeAction(device, Timeout),
-                    .timeout_ms = static_cast<ui32>(Timeout.MilliSeconds())};
+                    .cdw10 = GetSanitizeAction(device, AdminCmdTimeout),
+                    .timeout_ms =
+                        static_cast<ui32>(AdminCmdTimeout.MilliSeconds())};
 
                 if (ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd)) {
                     int err = errno;
@@ -493,7 +500,8 @@ public:
                     .data_len = sizeof(buffer),
                     .cdw10 = 0x81   // Log Page ID: Sanitize Status
                              | (numd << 16),
-                    .timeout_ms = static_cast<ui32>(Timeout.MilliSeconds())};
+                    .timeout_ms =
+                        static_cast<ui32>(AdminCmdTimeout.MilliSeconds())};
 
                 if (ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd)) {
                     int err = errno;
@@ -546,7 +554,8 @@ public:
                         << "Failed to open file " << ctrlPath.Quote();
                 }
 
-                nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device, Timeout);
+                nvme_ctrlr_data ctrl =
+                    NVMeIdentifyCtrl(device, AdminCmdTimeout);
 
                 STORAGE_DEBUG(
                     "Current NVMe capacity: unallocated="
@@ -565,18 +574,20 @@ public:
 
                 // detach & delete namespaces
 
-                while (auto nsIds = ListAllocatedNamespaces(device, Timeout)) {
+                while (auto nsIds =
+                           ListAllocatedNamespaces(device, AdminCmdTimeout))
+                {
                     for (ui32 nsid: nsIds) {
                         STORAGE_DEBUG("Detach ns: " << nsid << "...");
-                        DetachNamespaceFromAll(device, nsid, Timeout);
+                        DetachNamespaceFromAll(device, nsid, AdminCmdTimeout);
 
                         STORAGE_DEBUG("Delete ns: " << nsid << "...");
-                        DeleteNamespace(device, nsid, Timeout);
+                        DeleteNamespace(device, nsid, AdminCmdTimeout);
                     }
                 }
 
                 // Re-read controller for updated unallocated capacity
-                ctrl = NVMeIdentifyCtrl(device, Timeout);
+                ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
 
                 STORAGE_DEBUG(
                     "NVMe capacity after deleting namespaces: unallocated="
@@ -600,9 +611,9 @@ public:
                     device,
                     totalBlocks,
                     lbaFormatIndex,
-                    Timeout);
+                    AdminCmdTimeout);
 
-                AttachNamespace(device, nsid, ctrl.cntlid, Timeout);
+                AttachNamespace(device, nsid, ctrl.cntlid, AdminCmdTimeout);
 
                 return MakeError(S_OK);
             });
@@ -620,13 +631,13 @@ public:
             device,
             totalBlocks,
             0,   // lbaFormatIndex
-            Timeout);
+            AdminCmdTimeout);
 
         STORAGE_DEBUG("Query formats");
-        auto ns = IdentifyAllocatedNs(device, nsid, Timeout);
+        auto ns = IdentifyAllocatedNs(device, nsid, AdminCmdTimeout);
 
         STORAGE_DEBUG("Delete the temporary namespace");
-        DeleteNamespace(device, nsid, Timeout);
+        DeleteNamespace(device, nsid, AdminCmdTimeout);
 
         std::span formats(ns.lbaf, ns.nlbaf + 1);
 
@@ -646,12 +657,16 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-INvmeManagerPtr CreateNvmeManager(ILoggingServicePtr logging, TDuration timeout)
+INvmeManagerPtr CreateNvmeManager(
+    ILoggingServicePtr logging,
+    TDuration formatTimeout,
+    TDuration adminCmdTimeout)
 {
     return std::make_shared<TNvmeManager>(
         std::move(logging),
         CreateLongRunningTaskExecutor("SecureErase"),
-        timeout);
+        formatTimeout,
+        adminCmdTimeout);
 }
 
 }   // namespace NCloud::NBlockStore::NNvme

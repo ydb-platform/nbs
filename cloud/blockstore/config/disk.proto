@@ -372,6 +372,9 @@ message TDiskAgentConfig
     // The ratio of the validated blocks after deallocation.
     // 1000 means every thousandth or 0.1%.
     optional uint32 ValidatedBlocksRatio = 47;
+
+    // Timeout (in milliseconds) before aborting NVM format command.
+    optional uint32 IoctlAdminCmdTimeout = 48;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
