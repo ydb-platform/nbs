@@ -4,6 +4,7 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
@@ -39,7 +40,8 @@ void InvokeAdminCmd(TFileHandle& file, nvme_admin_cmd& cmd, const char* source)
         << " cdw10: " << cmd.cdw10 << "): " << strerror(err);
 }
 
-auto ListAllocatedNamespaces(TFileHandle& file) -> TVector<ui32>
+auto ListAllocatedNamespaces(TFileHandle& file, TDuration timeout)
+    -> TVector<ui32>
 {
     ui32 namespaceIDs[1024]{};
 
@@ -48,14 +50,18 @@ auto ListAllocatedNamespaces(TFileHandle& file) -> TVector<ui32>
         .addr = std::bit_cast<ui64>(&namespaceIDs[0]),
         .data_len = sizeof(namespaceIDs),
         .cdw10 = NVME_IDENTIFY_ALLOCATED_NS_LIST,
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
 
     InvokeAdminCmd(file, cmd, "identify allocated ns list");
 
     return {std::begin(namespaceIDs), std::ranges::find(namespaceIDs, 0U)};
 }
 
-ui32 CreateNamespace(TFileHandle& file, ui64 totalBlocks, ui8 lbaFormatIndex)
+ui32 CreateNamespace(
+    TFileHandle& file,
+    ui64 totalBlocks,
+    ui8 lbaFormatIndex,
+    TDuration timeout)
 {
     nvme_ns_data data{
         .nsze = totalBlocks,
@@ -71,14 +77,14 @@ ui32 CreateNamespace(TFileHandle& file, ui64 totalBlocks, ui8 lbaFormatIndex)
         .addr = std::bit_cast<ui64>(&data),
         .data_len = sizeof(data),
         .cdw10 = 0,   // create
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
 
     InvokeAdminCmd(file, cmd, "create ns");
 
     return cmd.result;
 }
 
-void DeleteNamespace(TFileHandle& file, ui32 nsid)
+void DeleteNamespace(TFileHandle& file, ui32 nsid, TDuration timeout)
 {
     nvme_admin_cmd cmd = {
         .opcode = NVME_OPC_NS_MANAGEMENT,
@@ -86,11 +92,15 @@ void DeleteNamespace(TFileHandle& file, ui32 nsid)
         .addr = 0,
         .data_len = 0,
         .cdw10 = 1,   // delete
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
     InvokeAdminCmd(file, cmd, "delete ns");
 }
 
-void AttachNamespace(TFileHandle& file, ui32 nsid, ui16 ctrlId)
+void AttachNamespace(
+    TFileHandle& file,
+    ui32 nsid,
+    ui16 ctrlId,
+    TDuration timeout)
 {
     nvme_ctrlr_list ctrlList{.num = 1, .identifiers = {ctrlId}};
 
@@ -100,11 +110,11 @@ void AttachNamespace(TFileHandle& file, ui32 nsid, ui16 ctrlId)
         .addr = std::bit_cast<ui64>(&ctrlList),
         .data_len = sizeof(ctrlList),
         .cdw10 = 0,   // attach
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
     InvokeAdminCmd(file, cmd, "attach ns");
 }
 
-void DetachNamespaceFromAll(TFileHandle& file, ui32 nsid)
+void DetachNamespaceFromAll(TFileHandle& file, ui32 nsid, TDuration timeout)
 {
     nvme_ctrlr_list data{};
 
@@ -114,7 +124,7 @@ void DetachNamespaceFromAll(TFileHandle& file, ui32 nsid)
         .addr = std::bit_cast<ui64>(&data),
         .data_len = sizeof(data),
         .cdw10 = NVME_IDENTIFY_NS_ATTACHED_CTRLR_LIST,
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
 
     InvokeAdminCmd(file, cmd, "identify ns attached ctrlr list");
 
@@ -129,11 +139,12 @@ void DetachNamespaceFromAll(TFileHandle& file, ui32 nsid)
         .addr = std::bit_cast<ui64>(&data),
         .data_len = sizeof(data),
         .cdw10 = 1,   // detach
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
     InvokeAdminCmd(file, cmd, "detach ns from all ctrls");
 }
 
-nvme_ns_data IdentifyAllocatedNs(TFileHandle& device, ui32 nsid)
+nvme_ns_data
+IdentifyAllocatedNs(TFileHandle& device, ui32 nsid, TDuration timeout)
 {
     nvme_ns_data ns{};
     nvme_admin_cmd cmd = {
@@ -142,14 +153,14 @@ nvme_ns_data IdentifyAllocatedNs(TFileHandle& device, ui32 nsid)
         .addr = std::bit_cast<ui64>(&ns),
         .data_len = sizeof(ns),
         .cdw10 = NVME_IDENTIFY_NS_ALLOCATED,
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
 
     InvokeAdminCmd(device, cmd, "identify allocated ns");
 
     return ns;
 }
 
-nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
+nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device, TDuration timeout)
 {
     nvme_ctrlr_data ctrl = {};
 
@@ -157,8 +168,8 @@ nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
         .opcode = NVME_OPC_IDENTIFY,
         .addr = static_cast<ui64>(reinterpret_cast<uintptr_t>(&ctrl)),
         .data_len = sizeof(ctrl),
-        .cdw10 = NVME_IDENTIFY_CTRLR
-    };
+        .cdw10 = NVME_IDENTIFY_CTRLR,
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
 
     int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
 
@@ -171,7 +182,7 @@ nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
     return ctrl;
 }
 
-nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId)
+nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId, TDuration timeout)
 {
     nvme_ns_data ns = {};
 
@@ -180,8 +191,8 @@ nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId)
         .nsid = nsId,
         .addr = static_cast<ui64>(reinterpret_cast<uintptr_t>(&ns)),
         .data_len = sizeof(ns),
-        .cdw10 = NVME_IDENTIFY_NS
-    };
+        .cdw10 = NVME_IDENTIFY_NS,
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
 
     int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
 
@@ -203,8 +214,7 @@ void NVMeFormatImpl(
     nvme_admin_cmd cmd = {
         .opcode = NVME_OPC_FORMAT_NVM,
         .nsid = nsId,
-        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())
-    };
+        .timeout_ms = static_cast<ui32>(timeout.MilliSeconds())};
 
     memcpy(&cmd.cdw10, &format, sizeof(ui32));
 
@@ -256,9 +266,9 @@ TResultOrError<bool> IsRotational(TFileHandle& device)
     return val != 0;
 }
 
-ui32 GetSanitizeAction(TFileHandle& device)
+ui32 GetSanitizeAction(TFileHandle& device, TDuration timeout)
 {
-    nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device);
+    nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device, timeout);
     if (ctrl.sanicap.bits.crypto_erase) {
         return NVME_SANITIZE_ACT_CRYPTO_ERASE;
     }
@@ -292,7 +302,7 @@ private:
 
         Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
 
-        nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device);
+        nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device, Timeout);
 
         Y_ENSURE(ctrl.fna.format_all_ns == 0, "can't format single namespace");
         Y_ENSURE(ctrl.fna.erase_all_ns == 0, "can't erase single namespace");
@@ -304,7 +314,8 @@ private:
 
         Y_ENSURE(nsId > 0, "unexpected namespace id");
 
-        nvme_ns_data ns = NVMeIdentifyNs(device, static_cast<ui32>(nsId));
+        nvme_ns_data ns =
+            NVMeIdentifyNs(device, static_cast<ui32>(nsId), Timeout);
 
         Y_ENSURE(ns.lbaf[ns.flbas.format].ms == 0, "unexpected metadata");
 
@@ -411,7 +422,7 @@ public:
                 return str(hd.serial_no);
             }
 
-            auto ctrl = NVMeIdentifyCtrl(device);
+                auto ctrl = NVMeIdentifyCtrl(device, Timeout);
 
             return str(ctrl.sn);
         });
@@ -446,8 +457,8 @@ public:
 
                 nvme_admin_cmd cmd{
                     .opcode = NVME_OPC_SANITIZE,
-                    .cdw10 = GetSanitizeAction(device),
-                };
+                    .cdw10 = GetSanitizeAction(device, Timeout),
+                    .timeout_ms = static_cast<ui32>(Timeout.MilliSeconds())};
 
                 if (ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd)) {
                     int err = errno;
@@ -482,7 +493,7 @@ public:
                     .data_len = sizeof(buffer),
                     .cdw10 = 0x81   // Log Page ID: Sanitize Status
                              | (numd << 16),
-                };
+                    .timeout_ms = static_cast<ui32>(Timeout.MilliSeconds())};
 
                 if (ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd)) {
                     int err = errno;
@@ -535,7 +546,7 @@ public:
                         << "Failed to open file " << ctrlPath.Quote();
                 }
 
-                nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device);
+                nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device, Timeout);
 
                 STORAGE_DEBUG(
                     "Current NVMe capacity: unallocated="
@@ -554,18 +565,18 @@ public:
 
                 // detach & delete namespaces
 
-                while (auto nsIds = ListAllocatedNamespaces(device)) {
+                while (auto nsIds = ListAllocatedNamespaces(device, Timeout)) {
                     for (ui32 nsid: nsIds) {
                         STORAGE_DEBUG("Detach ns: " << nsid << "...");
-                        DetachNamespaceFromAll(device, nsid);
+                        DetachNamespaceFromAll(device, nsid, Timeout);
 
                         STORAGE_DEBUG("Delete ns: " << nsid << "...");
-                        DeleteNamespace(device, nsid);
+                        DeleteNamespace(device, nsid, Timeout);
                     }
                 }
 
                 // Re-read controller for updated unallocated capacity
-                ctrl = NVMeIdentifyCtrl(device);
+                ctrl = NVMeIdentifyCtrl(device, Timeout);
 
                 STORAGE_DEBUG(
                     "NVMe capacity after deleting namespaces: unallocated="
@@ -585,10 +596,13 @@ public:
                     << static_cast<int>(lbaFormatIndex) << " (" << blockSize
                     << " B)");
 
-                const ui32 nsid =
-                    CreateNamespace(device, totalBlocks, lbaFormatIndex);
+                const ui32 nsid = CreateNamespace(
+                    device,
+                    totalBlocks,
+                    lbaFormatIndex,
+                    Timeout);
 
-                AttachNamespace(device, nsid, ctrl.cntlid);
+                AttachNamespace(device, nsid, ctrl.cntlid, Timeout);
 
                 return MakeError(S_OK);
             });
@@ -605,13 +619,14 @@ public:
         const ui32 nsid = CreateNamespace(
             device,
             totalBlocks,
-            0);   // lbaFormatIndex
+            0,   // lbaFormatIndex
+            Timeout);
 
         STORAGE_DEBUG("Query formats");
-        auto ns = IdentifyAllocatedNs(device, nsid);
+        auto ns = IdentifyAllocatedNs(device, nsid, Timeout);
 
         STORAGE_DEBUG("Delete the temporary namespace");
-        DeleteNamespace(device, nsid);
+        DeleteNamespace(device, nsid, Timeout);
 
         std::span formats(ns.lbaf, ns.nlbaf + 1);
 
