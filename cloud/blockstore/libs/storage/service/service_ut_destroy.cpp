@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -396,6 +397,86 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                 DefaultDiskId,
                 false,   // destroyIfBroken
                 false     // sync
+            );
+
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+        }
+    }
+
+    // Reproduces a race condition: StatVolume finds the volume, which is then
+    // deleted during graceful shutdown
+    Y_UNIT_TEST(ShouldDestroyNonreplDiskWhenGracefulShutdownFailedToFindTheVolume)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        env.GetRuntime().SetLogPriority(
+            TBlockStoreComponents::VOLUME,
+            NLog::PRI_DEBUG);
+
+        env.GetRuntime().SetLogPriority(
+            TBlockStoreComponents::SERVICE,
+            NLog::PRI_DEBUG);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            1_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "", // folderId
+            "", // cloudId
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+        );
+
+        {
+            auto response = service.StatVolume(DefaultDiskId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                response->Record.GetVolume().GetStorageMediaKind());
+        }
+
+        env.GetRuntime().SetEventFilter(
+            [nodeIdx](auto& runtime, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvGracefulShutdownRequest: {
+                        auto response = std::make_unique<
+                            TEvVolume::TEvGracefulShutdownResponse>(
+                                MakeError(MAKE_SCHEMESHARD_ERROR(
+                                    NKikimrScheme::StatusPathDoesNotExist)));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        // Second attempt is for an idempotency check
+        for (int i = 0; i < 2; i++) {
+            service.SendDestroyVolumeRequest(
+                DefaultDiskId,
+                false,   // destroyIfBroken
+                false    // sync
             );
 
             auto response = service.RecvDestroyVolumeResponse();
