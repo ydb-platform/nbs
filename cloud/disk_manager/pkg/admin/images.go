@@ -150,7 +150,7 @@ func (c *createImage) run() error {
 	req := &disk_manager.CreateImageRequest{
 		DstImageId: c.dstImageID,
 		FolderId:   c.folderID,
-		UseS3: c.useS3,
+		UseS3:      c.useS3,
 	}
 
 	if c.srcURL != "" {
