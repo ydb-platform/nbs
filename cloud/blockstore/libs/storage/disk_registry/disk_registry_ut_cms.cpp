@@ -177,15 +177,6 @@ struct TFixture
     }
 };
 
-template<typename  TContainer>
-auto GetVector(const TContainer& container)
-{
-    TVector<typename TContainer::value_type> res{
-        container.begin(),
-        container.end()};
-    return res;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1856,14 +1847,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         auto response = diskRegistry.RegisterAgent(agent);
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1", "dev-2"}),
-            GetVector(response->Record.GetPathsToAttach()));
+            response->Record.GetPathsToAttach());
 
         AddDevice("agent-1", "dev-1");
 
         response = diskRegistry.RegisterAgent(agent);
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1", "dev-2"}),
-            GetVector(response->Record.GetPathsToAttach()));
+            response->Record.GetPathsToAttach());
 
         Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -1883,7 +1874,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         response = diskRegistry.RegisterAgent(agent);
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1", "dev-2"}),
-            GetVector(response->Record.GetPathsToAttach()));
+            response->Record.GetPathsToAttach());
 
         Runtime->SetObserverFunc(TTestActorRuntimeBase::DefaultObserverFunc);
 
@@ -1892,7 +1883,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         response = diskRegistry.RegisterAgent(agent);
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1", "dev-2"}),
-            GetVector(response->Record.GetPathsToAttach()));
+            response->Record.GetPathsToAttach());
     }
 
     Y_UNIT_TEST_F(ShouldPassPathsToAttachOnRegistration, TFixture)
@@ -1929,7 +1920,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         response = diskRegistry.RegisterAgent(agent);
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1"}),
-            GetVector(response->Record.GetPathsToAttach()));
+            response->Record.GetPathsToAttach());
 
         Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -1949,7 +1940,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         response = diskRegistry.RegisterAgent(agent);
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1", "dev-2"}),
-            GetVector(response->Record.GetPathsToAttach()));
+            response->Record.GetPathsToAttach());
 
         Runtime->SetObserverFunc(TTestActorRuntimeBase::DefaultObserverFunc);
 
@@ -1958,7 +1949,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         response = diskRegistry.RegisterAgent(agent);
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TString>({"dev-1"}),
-            GetVector(response->Record.GetPathsToAttach()));
+            response->Record.GetPathsToAttach());
     }
 }
 
