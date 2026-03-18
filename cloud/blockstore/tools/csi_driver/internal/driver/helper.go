@@ -1,6 +1,8 @@
 package driver
 
 import (
+	"hash/fnv"
+
 	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 )
 
@@ -44,4 +46,15 @@ func isDiskRegistryMediaKind(mediaKind storagecoreapi.EStorageMediaKind) bool {
 	default:
 		return false
 	}
+}
+
+func getNfsClientIndex(instanceId string, nfsVhostReplicaCount uint) uint {
+	if nfsVhostReplicaCount < 2 {
+		return 0
+	}
+
+	h := fnv.New64a()
+	h.Write([]byte(instanceId))
+	index := h.Sum64() % uint64(nfsVhostReplicaCount)
+	return uint(index)
 }

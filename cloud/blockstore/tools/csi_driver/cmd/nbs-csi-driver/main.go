@@ -49,6 +49,8 @@ func main() {
 	flag.BoolVar(&cfg.UseDiscardForYDBBasedDisks, "use-discard-for-ydb-based-disks", false, "Enable discard option for mounted filesystem. Applied only for YDB-based disks.")
 	flag.DurationVar(&cfg.RetriableErrorsDurationThreshold, "retriable-errors-threshold", 15*time.Minute,
 		"Report retriable errors per volume after duration threshold exceeded")
+	flag.UintVar(&cfg.NfsVhostReplicaCountUsed, "nfs-vhost-replica-count", 1, "number of replicas of the NFS vhost to use for mounting")
+	flag.UintVar(&cfg.NfsVhostReplicaCountTotal, "nfs-vhost-replica-count-total", 1, "total number of replicas of the NFS vhost on the node")
 	flag.Parse()
 
 	defer klog.Flush()

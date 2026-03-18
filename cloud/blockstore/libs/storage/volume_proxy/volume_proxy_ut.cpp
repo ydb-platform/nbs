@@ -949,6 +949,63 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 statResponse->Record.GetVolume().GetDiskId());
         }
     }
+
+    Y_UNIT_TEST(ShouldNotDescribeVolumeForBaseDiskIfDataPlaneRequest)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+        service.WaitForVolume();
+
+        ui64 volumeTabletId;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->template Get<
+                            TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return false;
+            });
+        service.DescribeVolume();
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                DefaultDiskId,
+                volumeTabletId));
+        service.StatVolume();
+
+        // adjust time to trigger pipe connection destroy
+        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
+        // give a chance to internal messages to complete
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        runtime.ClearCounters();
+
+        auto request = std::make_unique<TEvVolume::TEvDescribeBlocksRequest>();
+        request->Record.SetDiskId(DefaultDiskId);
+        request->Record.SetStartIndex(0);
+        request->Record.SetBlocksCount(1);
+
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        service.StatVolume();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvSSProxy::EvDescribeVolumeResponse));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

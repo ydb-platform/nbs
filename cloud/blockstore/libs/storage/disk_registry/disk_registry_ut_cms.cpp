@@ -1823,6 +1823,134 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                                               .GetDevices(0)
                                               .GetState());
     }
+
+    Y_UNIT_TEST_F(ShouldAlwaysPassAllPathsToAttachOnRegistration, TFixture)
+    {
+        auto agent = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+        agent.SetNodeId(1);
+
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
+
+        agent.SetNodeId(Runtime->GetNodeId(0));
+
+        TDiskRegistryClient diskRegistry(*Runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {}));
+
+        auto response = diskRegistry.RegisterAgent(agent);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({"dev-1", "dev-2"}),
+            response->Record.GetPathsToAttach());
+
+        AddDevice("agent-1", "dev-1");
+
+        response = diskRegistry.RegisterAgent(agent);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({"dev-1", "dev-2"}),
+            response->Record.GetPathsToAttach());
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAttachPathsResponse) {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        AddDevice("agent-1", "dev-2");
+
+        diskRegistry.ReconnectPipe();
+
+        response = diskRegistry.RegisterAgent(agent);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({"dev-1", "dev-2"}),
+            response->Record.GetPathsToAttach());
+
+        Runtime->SetObserverFunc(TTestActorRuntimeBase::DefaultObserverFunc);
+
+        RemoveDevice("agent-1", "dev-2");
+
+        response = diskRegistry.RegisterAgent(agent);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({"dev-1", "dev-2"}),
+            response->Record.GetPathsToAttach());
+    }
+
+    Y_UNIT_TEST_F(ShouldPassPathsToAttachOnRegistration, TFixture)
+    {
+        auto agent = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+        agent.SetNodeId(1);
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetAttachDetachPathsEnabled(true);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        agent.SetNodeId(Runtime->GetNodeId(0));
+
+        TDiskRegistryClient diskRegistry(*Runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {}));
+
+        RegisterAgents(*Runtime, 1);
+
+        auto response = diskRegistry.RegisterAgent(agent);
+        UNIT_ASSERT(response->Record.GetPathsToAttach().empty());
+
+        AddDevice("agent-1", "dev-1");
+
+        response = diskRegistry.RegisterAgent(agent);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({"dev-1"}),
+            response->Record.GetPathsToAttach());
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAttachPathsResponse) {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        AddDevice("agent-1", "dev-2");
+
+        diskRegistry.ReconnectPipe();
+
+        response = diskRegistry.RegisterAgent(agent);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({"dev-1", "dev-2"}),
+            response->Record.GetPathsToAttach());
+
+        Runtime->SetObserverFunc(TTestActorRuntimeBase::DefaultObserverFunc);
+
+        RemoveDevice("agent-1", "dev-2");
+
+        response = diskRegistry.RegisterAgent(agent);
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({"dev-1"}),
+            response->Record.GetPathsToAttach());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
