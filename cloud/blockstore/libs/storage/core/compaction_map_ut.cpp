@@ -182,6 +182,68 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         );
     }
 
+    // Y_UNIT_TEST(ShouldTrackTopByGarbageWithoutZeroes)
+    // {
+    //     TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
+    //     const auto blobCount = 3;
+    //     for (size_t i = 1; i <= 100; ++i) {
+    //         // BlockCount = i * 10, UsedBlockCount = i * 5, NewlyZeroedBlocks = i
+    //         // GarbageWithoutZeroes = BlockCount - UsedBlockCount - NewlyZeroedBlocks
+    //         //                      = i * 10 - i * 5 - i = i * 4
+    //         map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, i, false);
+    //     }
+
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(100),
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+
+    //     // GarbageWithoutZeroes = 1010 - 505 - 50 = 455
+    //     map.Update(GetGroupIndex(50), blobCount, 1010, 505, 50, false);
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(50),
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+
+    //     // GarbageWithoutZeroes = 600 - 1 - 10 = 589
+    //     map.Update(GetGroupIndex(0), blobCount, 600, 1, 10, false);
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(0),
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+
+    //     map.Update(GetGroupIndex(0), 0, 0, 0, 0, false);
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(50),
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+
+    //     map.Update(GetGroupIndex(50), 0, 0, 0, 0, false);
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(100),
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+
+    //     map.Update(GetGroupIndex(100), 0, 0, 0, 0, false);
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(99),
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+
+    //     // GarbageWithoutZeroes = 1030 - 515 - 51 = 464
+    //     map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, 51, false);
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(10) + RangeSize,
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+
+    //     map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, 51, true);
+    //     UNIT_ASSERT_VALUES_EQUAL(
+    //         GetGroupIndex(99),
+    //         map.GetTopByGarbageWithoutZeroes().BlockIndex
+    //     );
+    // }
+
     Y_UNIT_TEST(ShouldBeEmptyAfterClear)
     {
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
