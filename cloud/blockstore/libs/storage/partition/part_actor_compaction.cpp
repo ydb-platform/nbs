@@ -1141,7 +1141,8 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     // TODO: move this logic to TPartitionState to simplify unit testing
     const auto& cm = State->GetCompactionMap();
     auto topRange = cm.GetTop();
-    auto topByGarbageBlockCount = cm.GetTopByGarbageBlockCount();
+    // auto topByGarbageBlockCount = cm.GetTopByGarbageBlockCount();
+    auto topByGarbageBlockCount = cm.GetTopByGarbageWithoutZeroes();
     TEvPartitionPrivate::ECompactionMode mode =
         TEvPartitionPrivate::RangeCompaction;
     bool throttlingAllowed = true;
@@ -1219,22 +1220,34 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
             PartCounters->Cumulative.CompactionByGarbageBlocksPerRange.Increment(1);
         }
 
-        ui32 amendedRangeGarbage = GetPercentage(
-            topByGarbageBlockCount.Stat.UsedOrZeroBlocksEstimate,
-            topByGarbageBlockCount.Stat.BlockCount
-        );
-        const bool amendedRangeGarbageBelowThreshold =
-            amendedRangeGarbage < Config->GetCompactionRangeGarbageThreshold();
+        ui32 rangeGarbageWithoutZeroes = GetPercentage(
+            topByGarbageBlockCount.Stat.UsedBlockCount +
+                topByGarbageBlockCount.Stat.NewlyZeroedBlocks,
+            topByGarbageBlockCount.Stat.BlockCount);
+        const bool rangeGarbageWithoutZeroesBelowThreshold =
+            rangeGarbageWithoutZeroes <
+            Config->GetCompactionRangeGarbageThreshold();
 
-        const auto amendedDiskGarbage =
-            GetPercentage(State->GetUsedOrZeroBlocksEstimate(), blockCount);
-        const bool amendedDiskGarbageBelowThreshold =
-            amendedDiskGarbage < Config->GetCompactionGarbageThreshold();
+        const auto diskGarbageWithoutZeroes = GetPercentage(
+            State->GetUsedBlocksCount() + State->GetNewlyZeroedBlocks(),
+            blockCount);
+        const bool diskGarbageWithoutZeroesBelowThreshold =
+            diskGarbageWithoutZeroes < Config->GetCompactionGarbageThreshold();
 
-        // TODO:_ feature flag!
-        if (amendedDiskGarbageBelowThreshold && amendedRangeGarbageBelowThreshold) {
+        // if (rangeGarbageWithoutZeroesBelowThreshold) {
+        //     PartCounters->Cumulative.CompactionRangeGarbageWithoutZeroesBelowThreshold
+        //         .Increment(1);
+        // }
+        // if (diskGarbageWithoutZeroesBelowThreshold) {
+        //     PartCounters->Cumulative.CompactionDiskGarbageWithoutZeroesBelowThreshold
+        //         .Increment(1);
+        // }
+
+        if (rangeGarbageWithoutZeroesBelowThreshold && diskGarbageWithoutZeroesBelowThreshold)
+        {
             throttlingAllowed = true;
-            PartCounters->Cumulative.CompactionGarbageThrottlingPerDisk.Increment(1);
+            PartCounters->Cumulative.CompactionGarbageThrottlingCount
+                .Increment(1);
         } else {
             throttlingAllowed = false;
         }
@@ -1410,10 +1423,13 @@ void TPartitionActor::HandleCompaction(
         if (batchCompactionEnabled &&
             Config->GetGarbageCompactionRangeCountPerRun() > 1)
         {
-            tops = cm.GetTopByGarbageBlockCount(
+            // tops = cm.GetTopByGarbageBlockCount(
+            //     Config->GetGarbageCompactionRangeCountPerRun());
+            tops = cm.GetTopByGarbageWithoutZeroes(
                 Config->GetGarbageCompactionRangeCountPerRun());
         } else {
-            const auto& top = cm.GetTopByGarbageBlockCount();
+            // const auto& top = cm.GetTopByGarbageBlockCount();
+            const auto& top = cm.GetTopByGarbageWithoutZeroes();
             tops.push_back({top.BlockIndex, top.Stat});
         }
     } else {

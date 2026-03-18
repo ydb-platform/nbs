@@ -512,24 +512,37 @@ private:
                 )
             );
 
-            // TODO:_ initialize estimate on compaction map load?
-            const auto previousZeroAndUsedBlocksEstimate =
-                State.GetCompactionMap().Get(kv.first).UsedOrZeroBlocksEstimate;
-            auto zeroAndUsedBlocksEstimate = usedBlockCount;
-            if (Args.Mode != ADD_COMPACTION_RESULT) {
-                zeroAndUsedBlocksEstimate = std::max(
-                    static_cast<ui32>(previousZeroAndUsedBlocksEstimate),
-                    static_cast<ui32>(usedBlockCount));
+            const auto& prevRangeStat = State.GetCompactionMap().Get(kv.first);
+            const ui32 prevNewlyZeroedBlocks = prevRangeStat.NewlyZeroedBlocks;
+            const ui32 prevUsedBlockCount = prevRangeStat.UsedBlockCount;
+
+            auto newlyZeroedBlocks = prevNewlyZeroedBlocks;
+
+            if (usedBlockCount < prevUsedBlockCount) {
+                const auto diff = prevUsedBlockCount - usedBlockCount;
+                newlyZeroedBlocks += diff;
+            } else {
+                const auto diff = usedBlockCount - prevUsedBlockCount;
+                if (diff > newlyZeroedBlocks) {
+                    newlyZeroedBlocks = 0;
+                } else {
+                    newlyZeroedBlocks -= diff;
+                }
             }
 
-            if (zeroAndUsedBlocksEstimate > previousZeroAndUsedBlocksEstimate) {
-                State.IncrementUsedOrZeroBlocksEstimate(
-                    zeroAndUsedBlocksEstimate -
-                    previousZeroAndUsedBlocksEstimate);
+            if (Args.Mode == ADD_COMPACTION_RESULT) {
+                newlyZeroedBlocks = 0;
+            }
+
+            // TODO:_ initialize estimate on compaction map load?
+
+            // TODO:_ fix state update
+            if (newlyZeroedBlocks > prevNewlyZeroedBlocks) {
+                State.IncrementNewlyZeroedBlocks(
+                    newlyZeroedBlocks - prevNewlyZeroedBlocks);
             } else {
-                State.DecrementUsedOrZeroBlocksEstimate(
-                    previousZeroAndUsedBlocksEstimate -
-                    zeroAndUsedBlocksEstimate);
+                State.DecrementNewlyZeroedBlocks(
+                    prevNewlyZeroedBlocks - newlyZeroedBlocks);
             }
 
             db.WriteCompactionMap(
@@ -542,7 +555,7 @@ private:
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
-                zeroAndUsedBlocksEstimate,
+                newlyZeroedBlocks,
                 Args.Mode == ADD_COMPACTION_RESULT
             );
         }

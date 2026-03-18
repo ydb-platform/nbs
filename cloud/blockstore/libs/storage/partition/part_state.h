@@ -527,7 +527,7 @@ private:
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
     // TODO:_ should use proto counter?
-    ui32 UsedOrZeroBlocksEstimate = 0; // TODO:_ initialization on compaction map load?
+    ui32 NewlyZeroedBlocks = 0; // TODO:_ initialization on compaction map load?
 
 public:
     TOperationState& GetCompactionState(ECompactionType type);
@@ -628,19 +628,19 @@ public:
         return LastCompactionRangeCountPerRunTs;
     }
 
-    void IncrementUsedOrZeroBlocksEstimate(ui32 delta)
+    void IncrementNewlyZeroedBlocks(ui32 delta)
     {
-        UsedOrZeroBlocksEstimate += delta;
+        NewlyZeroedBlocks += delta;
     }
 
-    void DecrementUsedOrZeroBlocksEstimate(ui32 delta)
+    void DecrementNewlyZeroedBlocks(ui32 delta)
     {
-        UsedOrZeroBlocksEstimate -= delta;
+        NewlyZeroedBlocks -= delta;
     }
 
-    ui32 GetUsedOrZeroBlocksEstimate() const
+    ui32 GetNewlyZeroedBlocks() const
     {
-        return UsedOrZeroBlocksEstimate;
+        return NewlyZeroedBlocks;
     }
 
     void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);

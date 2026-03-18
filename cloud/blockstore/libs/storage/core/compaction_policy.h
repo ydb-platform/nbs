@@ -36,7 +36,7 @@ struct TRangeStat
     ui16 ReadRequestCount = 0;
     ui16 ReadRequestBlobCount = 0;
     ui16 ReadRequestBlockCount = 0;
-    ui16 UsedOrZeroBlocksEstimate = 0;
+    ui16 NewlyZeroedBlocks = 0;
     bool Compacted = false;
     TCompactionScore CompactionScore;
 
@@ -72,6 +72,15 @@ struct TRangeStat
         }
 
         return BlockCount - UsedBlockCount;
+    }
+
+    ui16 GarbageWithoutZeroes() const
+    {
+        const auto garbageBlockCount = GarbageBlockCount();
+        if (garbageBlockCount < NewlyZeroedBlocks) {
+            return 0;
+        }
+        return garbageBlockCount - NewlyZeroedBlocks;
     }
 };
 
