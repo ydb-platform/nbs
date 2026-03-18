@@ -1893,6 +1893,140 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         UNIT_ASSERT_GT(failures, 0);
     }
+
+    TABLET_TEST_4K_ONLY(ShouldRetryUnlinkDirectoryInShardUponReboot)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        bool intercepted = false;
+        bool shouldIntercept = true;
+        auto interceptor = [&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvService::EvUnlinkNodeRequest: {
+                    using TRequest = TEvService::TEvUnlinkNodeRequest;
+                    const auto& rec = event->template Get<TRequest>()->Record;
+                    const bool isMainTabletRequest =
+                        rec.GetHeaders().GetBehaveAsDirectoryTablet();
+                    if (shouldIntercept && !isMainTabletRequest) {
+                        intercepted = true;
+                        return true;
+                    }
+                    break;
+                }
+            }
+
+            return false;
+        };
+
+        OverrideDescribeFileStore(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            interceptor);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        //
+        // Setting shardNo to a non-zero value to make the tablet ignore session
+        // checks upon UnlinkNodeInShard request.
+        //
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            true /* directoryCreationInShardsEnabled */);
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        const ui64 nodeId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, uuid1));
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        tablet.SendUnlinkNodeRequest(
+            RootNodeId,
+            name1,
+            true /* unlinkDirectory */,
+            0 /* requestId */,
+            true /* behaveAsDirectoryTablet */);
+
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(intercepted);
+
+        //
+        // NodeRef should still exist.
+        //
+
+        {
+            const auto nodeRef =
+                tablet.UnsafeGetNodeRef(RootNodeId, name1)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(shardId1, nodeRef.GetShardId());
+            UNIT_ASSERT_VALUES_EQUAL(uuid1, nodeRef.GetShardNodeName());
+        }
+
+        //
+        // Node should still exist as well.
+        //
+
+        {
+            const auto node = tablet.UnsafeGetNode(nodeId)->Record.GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(nodeId, node.GetId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui64>(NProto::E_DIRECTORY_NODE),
+                node.GetType());
+        }
+
+        //
+        // Rebooting - Unlink request should be re-sent upon tablet start.
+        //
+
+        shouldIntercept = false;
+        tablet.RebootTablet();
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.RecoverSession();
+
+        //
+        // NodeRef should be deleted.
+        //
+
+        {
+            tablet.SendUnsafeGetNodeRefRequest(RootNodeId, name1);
+            auto response = tablet.RecvUnsafeGetNodeRefResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Node should be deleted as well.
+        //
+
+        {
+            tablet.SendUnsafeGetNodeRequest(nodeId);
+            auto response = tablet.RecvUnsafeGetNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

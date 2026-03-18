@@ -343,11 +343,15 @@ public:
         return request;
     }
 
-    auto CreateConfigureAsShardRequest(ui32 shardNo)
+    auto CreateConfigureAsShardRequest(
+        ui32 shardNo,
+        bool directoryCreationInShardsEnabled = false)
     {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
         request->Record.SetShardNo(shardNo);
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            directoryCreationInShardsEnabled);
 
         return request;
     }
@@ -675,13 +679,16 @@ public:
         ui64 parent,
         const TString& name,
         bool unlinkDirectory,
-        ui64 requestId = 0)
+        ui64 requestId = 0,
+        bool behaveAsDirectoryTablet = false)
     {
         auto request = CreateSessionRequest<TEvService::TEvUnlinkNodeRequest>();
         request->Record.SetNodeId(parent);
         request->Record.SetName(name);
         request->Record.SetUnlinkDirectory(unlinkDirectory);
         request->Record.MutableHeaders()->SetRequestId(requestId);
+        request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(
+            behaveAsDirectoryTablet);
         return request;
     }
 

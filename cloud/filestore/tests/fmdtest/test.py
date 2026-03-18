@@ -23,7 +23,7 @@ def test():
     report_file = "report.json"
 
     ssh(f"{fmdtest_bin} --test-dir {working_dir} --report-path {report_file}"
-        " --duration 30 --stealer-threads 1")
+        " --duration 60 --stealer-threads 1")
 
     ret = ssh(f"sudo cat {report_file}")
     report = json.loads(ret.stdout.decode("utf8"))
