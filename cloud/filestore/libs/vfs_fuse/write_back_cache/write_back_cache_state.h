@@ -132,7 +132,10 @@ public:
     // Successfully acquired barrier ensures that:
     // - all prior WriteData requests are flushed and evicted;
     // - no flush will take place until the barrier is released.
+    // Returns barrierId on success - it should be released by ReleaseBarrier
     NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId);
+
+    // The barrier should be valid and previously acquired via AcquireBarrier
     void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
 
 private:
