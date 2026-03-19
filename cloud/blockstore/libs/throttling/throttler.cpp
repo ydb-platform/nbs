@@ -530,7 +530,7 @@ private:
     {
         TUsedQuota quota;
         with_lock (ThrottlerLock) {
-            quota = ThrottlerPolicy->TakeUsedQuotaShare();
+            quota = ThrottlerPolicy->TakeUsedQuota();
         }
         ThrottlerMetrics->UpdateUsedQuota(quota);
         ThrottlerMetrics->UpdateMaxUsedQuota();

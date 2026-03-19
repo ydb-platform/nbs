@@ -161,7 +161,7 @@ public:
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
     }
 
-    TUsedQuota TakeUsedQuotaShare() override
+    TUsedQuota TakeUsedQuota() override
     {
         TUsedQuota result(UsedQuota, BurstRate);
         UsedQuota.clear();

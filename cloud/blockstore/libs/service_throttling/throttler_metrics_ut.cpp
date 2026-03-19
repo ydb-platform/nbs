@@ -54,7 +54,7 @@ public:
         return PostponeTimeout.GetValue() / 1e6;
     }
 
-    TUsedQuota TakeUsedQuotaShare() override
+    TUsedQuota TakeUsedQuota() override
     {
         THashMap<NProto::EStorageMediaKind, TDuration> quotaMap;
         quotaMap[NProto::STORAGE_MEDIA_SSD] = PostponeTimeout;
@@ -876,7 +876,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
             timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-            metrics->UpdateUsedQuota(policy->TakeUsedQuotaShare());
+            metrics->UpdateUsedQuota(policy->TakeUsedQuota());
             metrics->UpdateMaxUsedQuota();
         };
 
@@ -929,7 +929,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
             timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-            metrics->UpdateUsedQuota(policy->TakeUsedQuotaShare());
+            metrics->UpdateUsedQuota(policy->TakeUsedQuota());
             metrics->UpdateMaxUsedQuota();
 
             // Delete performs on next read

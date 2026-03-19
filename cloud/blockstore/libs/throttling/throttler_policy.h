@@ -43,7 +43,7 @@ struct IThrottlerPolicy
 
     virtual double CalculateCurrentSpentBudgetShare(TInstant ts) const = 0;
 
-    virtual TUsedQuota TakeUsedQuotaShare() = 0;
+    virtual TUsedQuota TakeUsedQuota() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

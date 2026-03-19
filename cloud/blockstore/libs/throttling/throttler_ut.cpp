@@ -139,7 +139,7 @@ public:
         return PostponeDelay.GetValue() / 1e6;
     }
 
-    TUsedQuota TakeUsedQuotaShare() override
+    TUsedQuota TakeUsedQuota() override
     {
         return {};
     }

@@ -127,7 +127,7 @@ struct TTestThrottlerPolicy final
         return 0.0;
     }
 
-    TUsedQuota TakeUsedQuotaShare() override
+    TUsedQuota TakeUsedQuota() override
     {
         return {};
     }
