@@ -40,6 +40,8 @@ private:
     const ui64 NodeId;
     const bool IsAttach;
     const TDuration DiskAgentRequestTimeout;
+    const ui32 DiskRegistryGeneration;
+    const ui64 RequestNumber;
     TVector<TString> Paths;
 
     TRequestInfoPtr RequestInfo;
@@ -55,6 +57,8 @@ public:
         bool isAttach,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
+        ui32 diskRegistryGeneration,
+        ui64 requestNumber,
         TRequestInfoPtr requestInfo,
         NProto::TAction_EType actionType);
 
@@ -116,6 +120,8 @@ TAttachDetachPathActor::TAttachDetachPathActor(
         bool isAttach,
         TVector<TString> paths,
         TDuration diskAgentRequestTimeout,
+        ui32 diskRegistryGeneration,
+        ui64 requestNumber,
         TRequestInfoPtr requestInfo,
         NProto::TAction_EType actionType)
     : Owner(owner)
@@ -123,6 +129,8 @@ TAttachDetachPathActor::TAttachDetachPathActor(
     , NodeId(nodeId)
     , IsAttach(isAttach)
     , DiskAgentRequestTimeout(diskAgentRequestTimeout)
+    , DiskRegistryGeneration(diskRegistryGeneration)
+    , RequestNumber(requestNumber)
     , Paths(std::move(paths))
     , RequestInfo(std::move(requestInfo))
     , ActionType(actionType)
@@ -158,14 +166,26 @@ void TAttachDetachPathActor::Bootstrap(const TActorContext& ctx)
 
 IEventBasePtr TAttachDetachPathActor::CreateAttachDetachRequest()
 {
+    NProto::TControlPlaneRequestNumber controlPlaneRequestNumber;
+    controlPlaneRequestNumber.SetRequestNumber(RequestNumber);
+    controlPlaneRequestNumber.SetDiskRegistryGeneration(DiskRegistryGeneration);
+
     if (IsAttach) {
         auto request = std::make_unique<TEvDiskAgent::TEvAttachPathsRequest>();
         request->Record.MutablePathsToAttach()->Add(Paths.begin(), Paths.end());
+
+        *request->Record.MutableControlPlaneRequestNumber() =
+            std::move(controlPlaneRequestNumber);
+
         return request;
     }
 
     auto request = std::make_unique<TEvDiskAgent::TEvDetachPathsRequest>();
     request->Record.MutablePathsToDetach()->Add(Paths.begin(), Paths.end());
+
+    *request->Record.MutableControlPlaneRequestNumber() =
+        std::move(controlPlaneRequestNumber);
+
     return request;
 }
 
@@ -476,6 +496,8 @@ void TDiskRegistryActor::TryToDetachPaths(
         false,   // detach
         std::move(paths),
         Config->GetAttachDetachPathRequestTimeout(),
+        Executor()->Generation(),
+        TakeRequestNumber(),
         std::move(requestInfo),
         actionType);
     AgentsWithAttachDetachRequestsInProgress[agentId] = actorId;
@@ -544,6 +566,8 @@ void TDiskRegistryActor::ProcessPathsToAttachOnAgent(
         true,   // isAttach
         std::move(pathsToAttach),
         Config->GetAttachDetachPathRequestTimeout(),
+        Executor()->Generation(),
+        TakeRequestNumber(),
         nullptr,   // requestInfo
         NProto::TAction_EType::TAction_EType_ADD_DEVICE);
     AgentsWithAttachDetachRequestsInProgress[agentId] = actorId;
@@ -688,6 +712,11 @@ void TDiskRegistryActor::CompleteUpdatePathAttachState(
 
     SecureErase(ctx);
     ProcessPathsToAttach(ctx);
+}
+
+ui64 TDiskRegistryActor::TakeRequestNumber()
+{
+    return RequestNumber++;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

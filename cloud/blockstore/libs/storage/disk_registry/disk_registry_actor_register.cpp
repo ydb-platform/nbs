@@ -176,6 +176,11 @@ void TDiskRegistryActor::CompleteAddAgent(
         std::make_move_iterator(pathsToAttach.begin()),
         std::make_move_iterator(pathsToAttach.end()));
 
+    response->Record.MutableControlPlaneRequestNumber()
+        ->SetDiskRegistryGeneration(Executor()->Generation());
+    response->Record.MutableControlPlaneRequestNumber()->SetRequestNumber(
+        TakeRequestNumber());
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     SendCachedAcquireRequestsToAgent(ctx, args.Config);
