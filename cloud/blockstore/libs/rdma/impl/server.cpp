@@ -607,9 +607,15 @@ void TServerSession::Flush() noexcept
 {
     RDMA_DEBUG("flush queues");
 
-    struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
-    Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
-    FlushStarted = true;
+    try {
+        struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
+        Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
+        FlushStarted = true;
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR("flush error: " << e.what());
+        Counters->CompletionError();
+    }
 }
 
 bool TServerSession::IsFlushed() const
