@@ -68,7 +68,6 @@ public:
     std::unique_ptr<TCachedWriteDataRequest> DequeueFlushedRequest();
 
     bool Empty() const;
-    ui64 GetMinSequenceId() const;
     ui64 GetMaxSequenceId() const;
 
     bool HasPendingRequests() const;

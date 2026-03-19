@@ -493,50 +493,9 @@ void TFileSystem::Read(
             break;
         }
         case EServerWriteBackCacheState::Draining: {
-            // Read data directly from the underlying storage.
-            // We need to acquire a barrier that ensures:
-            // - all cached writes are flushed;
-            // - no new cached writes will be executed until the barrier is
-            // released
-            auto acquireBarrierFuture =
-                WriteBackCache.AcquireBarrier(request->GetNodeId());
-
-            acquireBarrierFuture.Subscribe(
-                [ptr = weak_from_this(),
-                 callback = std::move(callback),
-                 callContext = std::move(callContext),
-                 request = std::move(request)](const auto& f) mutable
-                {
-                    auto self = ptr.lock();
-                    if (!self) {
-                        return;
-                    }
-
-                    const TResultOrError<ui64>& result = f.GetValue();
-                    if (HasError(result.GetError())) {
-                        // Propagate flush error to ReadData response
-                        NProto::TReadDataResponse response;
-                        *response.MutableError() = result.GetError();
-                        callback(MakeFuture(std::move(response)));
-                        return;
-                    }
-
-                    auto callbackWithReleaseBarrier =
-                        [ptr = std::move(ptr),
-                         ino = request->GetNodeId(),
-                         callback = std::move(callback),
-                         barrierId = result.GetResult()](const auto& future)
-                    {
-                        callback(future);
-
-                        if (auto self = ptr.lock()) {
-                            self->WriteBackCache.ReleaseBarrier(ino, barrierId);
-                        }
-                    };
-
-                    self->Session->ReadData(callContext, std::move(request))
-                        .Subscribe(std::move(callbackWithReleaseBarrier));
-                });
+            WriteBackCache
+                .ReadDataDirect(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
             break;
         }
     }
@@ -634,52 +593,9 @@ void TFileSystem::DoWrite(
             break;
         }
         case EServerWriteBackCacheState::Draining: {
-            // Sync writes must include all previously cached data for
-            // the same node, so we need to acquire a barrier that ensures:
-            // - all cached data is flushed;
-            // - no new cached writes will be executed until the barrier is
-            // released For O_DIRECT same file can be opened without O_DIRECT so
-            // we try to acquire barrier here as well
-            auto acquireBarrierFuture =
-                WriteBackCache.AcquireBarrier(request->GetNodeId());
-
-            acquireBarrierFuture.Subscribe(
-                [ptr = weak_from_this(),
-                 callback = std::move(callback),
-                 callContext = std::move(callContext),
-                 request = std::move(request)](const auto& f) mutable
-                {
-                    auto self = ptr.lock();
-                    if (!self) {
-                        return;
-                    }
-
-                    const TResultOrError<ui64>& result = f.GetValue();
-                    if (HasError(result.GetError())) {
-                        // Propagate flush error to WriteData response
-                        NProto::TWriteDataResponse response;
-                        *response.MutableError() = result.GetError();
-                        callback(MakeFuture(std::move(response)));
-                        return;
-                    }
-
-                    auto callbackWithReleaseBarrier =
-                        [ptr = std::move(ptr),
-                         ino = request->GetNodeId(),
-                         callback = std::move(callback),
-                         barrierId = result.GetResult()](const auto& future)
-                    {
-                        callback(future);
-
-                        if (auto self = ptr.lock()) {
-                            self->WriteBackCache.ResetMaxWrittenOffset(ino);
-                            self->WriteBackCache.ReleaseBarrier(ino, barrierId);
-                        }
-                    };
-
-                    self->Session->WriteData(callContext, std::move(request))
-                        .Subscribe(std::move(callbackWithReleaseBarrier));
-                });
+            WriteBackCache
+                .WriteDataDirect(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
             break;
         }
     }

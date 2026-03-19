@@ -119,20 +119,6 @@ bool TNodeCache::Empty() const
            FlushedRequests.empty();
 }
 
-ui64 TNodeCache::GetMinSequenceId() const
-{
-    if (!FlushedRequests.empty()) {
-        return FlushedRequests.front()->GetSequenceId();
-    }
-    if (!UnflushedRequests.empty()) {
-        return UnflushedRequests.front()->GetSequenceId();
-    }
-    if (!PendingRequests.empty()) {
-        return PendingRequests.front()->GetSequenceId();
-    }
-    Y_ABORT("Cache is empty");
-}
-
 ui64 TNodeCache::GetMaxSequenceId() const
 {
     if (!PendingRequests.empty()) {

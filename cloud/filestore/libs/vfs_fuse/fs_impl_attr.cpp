@@ -103,56 +103,13 @@ void TFileSystem::SetAttr(
         }
     };
 
-    const bool hasSetAttrSizeFlag =
-        (request->GetFlags() &
-         ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) != 0;
-
-    if (!hasSetAttrSizeFlag || !WriteBackCache) {
+    if (WriteBackCache) {
+        WriteBackCache.SetNodeAttr(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+    } else {
         Session->SetNodeAttr(callContext, std::move(request))
             .Subscribe(std::move(callback));
-        return;
     }
-
-    auto acquireBarrierFuture =
-        WriteBackCache.AcquireBarrier(request->GetNodeId());
-
-    acquireBarrierFuture.Subscribe(
-        [ptr = weak_from_this(),
-         callContext = std::move(callContext),
-         callback = std::move(callback),
-         request = std::move(request)](const auto& future) mutable
-        {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
-
-            const TResultOrError<ui64>& result = future.GetValue();
-            if (HasError(result.GetError())) {
-                // Propagate Flush error to SetAttr response
-                NProto::TSetNodeAttrResponse response;
-                *response.MutableError() = result.GetError();
-                callback(NThreading::MakeFuture(std::move(response)));
-                return;
-            }
-
-            auto callbackWithReleaseBarrier =
-                [ptr = std::move(ptr),
-                 ino = request->GetNodeId(),
-                 callback = std::move(callback),
-                 barrierId = result.GetResult()](const auto& future)
-            {
-                callback(future);
-
-                if (auto self = ptr.lock()) {
-                    self->WriteBackCache.ResetMaxWrittenOffset(ino);
-                    self->WriteBackCache.ReleaseBarrier(ino, barrierId);
-                }
-            };
-
-            self->Session->SetNodeAttr(callContext, std::move(request))
-                .Subscribe(std::move(callbackWithReleaseBarrier));
-        });
 }
 
 void TFileSystem::GetAttr(

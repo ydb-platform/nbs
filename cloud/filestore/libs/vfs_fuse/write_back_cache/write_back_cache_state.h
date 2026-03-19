@@ -156,7 +156,7 @@ private:
     void TriggerFlushCompletions(TNodeState& nodeState);
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
-    void TriggerBarrierAcquisitions(TNodeState& nodeState);
+    void CheckAndAcquireBarriers(TNodeState& nodeState);
     void ProcessPendingRequests();
 
     void AddActiveRequestToHandleState(TNodeState& nodeState, ui64 handle);

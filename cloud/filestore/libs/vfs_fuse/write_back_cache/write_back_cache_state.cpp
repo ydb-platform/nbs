@@ -159,7 +159,7 @@ void TWriteBackCacheState::ResetMaxWrittenOffset(ui64 nodeId)
 
     Y_ABORT_UNLESS(
         !nodeState.Barriers.empty() &&
-            nodeState.Barriers.crbegin()->second.IsAcquired,
+            nodeState.Barriers.cbegin()->second.IsAcquired,
         "MaxWrittenOffset can only be reset if the barrier is acquired");
 
     nodeState.Cache.ResetMaxWrittenOffset();
@@ -513,7 +513,7 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     if (nodeState.CanBeDeleted()) {
         Nodes.DeleteNodeState(nodeId);
     } else {
-        TriggerBarrierAcquisitions(nodeState);
+        CheckAndAcquireBarriers(nodeState);
     }
 
     if (entriesEvicted) {
@@ -521,20 +521,30 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     }
 }
 
-void TWriteBackCacheState::TriggerBarrierAcquisitions(TNodeState& nodeState)
+void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
 {
-    if (nodeState.Barriers.empty()) {
+    // Barrier acquisition condition:
+    // all requests with SequenceId <= BarrierId are flushed and evicted
+
+    // (BarrierId1) (BarrierId2) (UnflushedSequenceId1) (BarrierId3) ...
+    //  ^ acquired   ^ acquired                          ^ not acquired
+
+    if (nodeState.Barriers.empty() || nodeState.Cache.HasFlushedRequests()) {
         return;
     }
 
     auto it = nodeState.Barriers.begin();
     if (it->second.IsAcquired) {
+        // Once the front barrier is acquired, it is not possible to flush
+        // any requests - so the acquisition condition for newly added barriers
+        // will not change. Therefore, no need to check it again.
         return;
     }
 
-    const ui64 minSequenceId = nodeState.Cache.Empty()
-                                   ? Max<ui64>()
-                                   : nodeState.Cache.GetMinSequenceId();
+    const ui64 minSequenceId =
+        nodeState.Cache.HasPendingOrUnflushedRequests()
+            ? nodeState.Cache.GetMinPendingOrUnflushedSequenceId()
+            : Max<ui64>();
 
     for (; it != nodeState.Barriers.end(); ++it) {
         Y_ABORT_UNLESS(

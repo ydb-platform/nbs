@@ -61,7 +61,8 @@ struct TFlushRequest
 struct TBarrier
 {
     // The promise is fulfilled when all requests associated with a node with
-    // SequenceId <= TBarrier::SequenceId are evicted
+     // SequenceId less than or equal to the barrier id (the key in
+     // TNodeState::Barriers) are evicted
     NThreading::TPromise<TResultOrError<ui64>> Promise;
 
     bool IsAcquired = false;
@@ -129,6 +130,10 @@ struct TNodeState
         const ui64 minUnflushedSequenceId = Cache.GetMinUnflushedSequenceId();
 
         if (!Barriers.empty()) {
+            // Having a barrier means that there is an operation that wants
+            // the data prior to barrier acquisition to be flushed and evicted.
+            // Therefore, flush should be scheduled if there is such data.
+            // Also, barrier prevents newer data from being flushed.
             return minUnflushedSequenceId < Barriers.cbegin()->first
                        ? ENodeFlushStatus::FlushRequested
                        : ENodeFlushStatus::NothingToFlush;

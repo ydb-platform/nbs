@@ -136,6 +136,29 @@ public:
         ui64 nodeId,
         ui64 handle);
 
+    /* Read directly from the underlying storage.
+     * All prior cached WriteData requests are flushed and evicted.
+     * No new WriteData requests will be flushed until the direct read is
+     * completed.
+     */
+    NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request);
+
+    /* Write directly to the underlying storage.
+     * All prior cached WriteData requests are flushed and evicted.
+     * No new WriteData requests will be flushed until the direct write is
+     * completed.
+     */
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request);
+
+    // Execute SetNodeAttr with taking awareness of changing node size
+    NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TSetNodeAttrRequest> request);
+
     bool IsEmpty() const;
 
     // Keep information about MinNodeSize for flushed nodes
@@ -154,12 +177,16 @@ public:
      * until the barrier is released.
      *
      * Used to execute requests that should not interfere with cache:
-     * SetNodeAddr, ReadData/WriteData with O_DIRECT/O_SYNC/O_DSYNC.
+     * SetNodeAttr, ReadData/WriteData with O_DIRECT/O_SYNC/O_DSYNC.
      *
-     * A error may be returned if flush fails - in this case, a barrier will
+     * On success, returns barrierId - it should be released by ReleaseBarrier.
+     *
+     * An error may be returned if flush fails - in this case, a barrier will
      * not be acquired.
      */
     NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId);
+
+    // Releases a barrier previously acquired by AcquireBarrier
     void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
 };
 
