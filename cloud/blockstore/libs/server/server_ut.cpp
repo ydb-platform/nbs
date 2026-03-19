@@ -575,6 +575,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         ui16 dataPort = portManager.GetPort(9002);
 
         auto writePromise = NewPromise<NProto::TWriteBlocksResponse>();
+        auto writeRequestReceivedPromise = NewPromise<void>();
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -585,6 +586,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         service->WriteBlocksHandler =
             [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
                 Y_UNUSED(request);
+                writeRequestReceivedPromise.SetValue();
                 return writePromise;   // will hang until value is set
             };
 
@@ -618,15 +620,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             std::make_shared<NProto::TWriteBlocksRequest>()
         );
 
-        // control request to ensure client and server completely started
-        {
-            auto future = endpoint->Ping(
-                MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>()
-            );
-            const auto& response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
-        }
+        // wait until server receive write request
+        writeRequestReceivedPromise.GetFuture().GetValue(TDuration::Seconds(5));
 
         server->Stop();
 
