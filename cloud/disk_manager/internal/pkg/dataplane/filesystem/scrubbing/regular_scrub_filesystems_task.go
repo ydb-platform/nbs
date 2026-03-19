@@ -3,6 +3,7 @@ package scrubbing
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -12,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,7 +52,6 @@ func (t *regularScrubFilesystemsTask) Run(
 
 	filesystems := t.config.GetFilesystemsWithRegularScrubbingEnabled()
 
-	taskIDs := make([]string, 0, len(filesystems))
 	taskIDToFilesystemID := make(map[string]string, len(filesystems))
 
 	for _, filesystem := range filesystems {
@@ -75,23 +76,38 @@ func (t *regularScrubFilesystemsTask) Run(
 			return err
 		}
 
-		taskIDs = append(taskIDs, taskID)
 		taskIDToFilesystemID[taskID] = fsID
 	}
 
-	finishedTaskIDs, err := t.scheduler.WaitAnyTasks(ctx, taskIDs)
+	var mu sync.Mutex
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	for taskID, fsID := range taskIDToFilesystemID {
+		taskID := taskID
+		fsID := fsID
+		eg.Go(func() error {
+			err := t.scheduler.WaitTaskEnded(egCtx, taskID)
+			if err != nil {
+				return err
+			}
+
+			mu.Lock()
+			t.state.IdempotencyKeyGenerations[fsID]++
+			mu.Unlock()
+
+			return nil
+		})
+	}
+
+	egErr := eg.Wait()
+
+	err := execCtx.SaveState(ctx)
 	if err != nil {
 		return err
 	}
 
-	for _, taskID := range finishedTaskIDs {
-		fsID := taskIDToFilesystemID[taskID]
-		t.state.IdempotencyKeyGenerations[fsID]++
-	}
-
-	err = execCtx.SaveState(ctx)
-	if err != nil {
-		return err
+	if egErr != nil {
+		return egErr
 	}
 
 	return errors.NewInterruptExecutionError()

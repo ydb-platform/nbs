@@ -125,6 +125,7 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"snapshots.CreateSnapshotFromDisk":              func() proto.Message { return &snapshot_protos.CreateSnapshotFromDiskTaskState{} },
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotTaskState{} },
 	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemTaskState{} },
+	"dataplane.RegularScrubFilesystems":              func() proto.Message { return &filesystem_scrubbing_protos.RegularScrubFilesystemsTaskState{} },
 }
 
 type FormattableDuration struct {
