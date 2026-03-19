@@ -52,8 +52,9 @@ struct TRange
     TRange(TRangeConfig& config, ui64 size)
         : Config{config}
         , Size{size}
-        , Buf{static_cast<char*>(
-                  std::aligned_alloc(NSystemInfo::GetPageSize(), Size)),
+        , Buf{static_cast<char*>(std::aligned_alloc(
+                  NSystemInfo::GetPageSize(),
+                  AlignUp(Size, NSystemInfo::GetPageSize()))),
               std::free}
         , StepInversion{
               CalculateInverse(Config.GetStep(), Config.GetRequestCount())}
