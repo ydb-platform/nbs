@@ -353,21 +353,6 @@ public:
         return State.GetMaxWrittenOffset(nodeId);
     }
 
-    void ResetMaxWrittenOffset(ui64 nodeId)
-    {
-        State.ResetMaxWrittenOffset(nodeId);
-    }
-
-    NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId)
-    {
-        return State.AcquireBarrier(nodeId);
-    }
-
-    void ReleaseBarrier(ui64 nodeId, ui64 barrierId)
-    {
-        State.ReleaseBarrier(nodeId, barrierId);
-    }
-
 private:
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
@@ -626,22 +611,6 @@ void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
 ui64 TWriteBackCache::GetMaxWrittenOffset(ui64 nodeId) const
 {
     return Impl->GetMaxWrittenOffset(nodeId);
-}
-
-void TWriteBackCache::ResetMaxWrittenOffset(ui64 nodeId)
-{
-    Impl->ResetMaxWrittenOffset(nodeId);
-}
-
-NThreading::TFuture<TResultOrError<ui64>> TWriteBackCache::AcquireBarrier(
-    ui64 nodeId)
-{
-    return Impl->AcquireBarrier(nodeId);
-}
-
-void TWriteBackCache::ReleaseBarrier(ui64 nodeId, ui64 barrierId)
-{
-    Impl->ReleaseBarrier(nodeId, barrierId);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

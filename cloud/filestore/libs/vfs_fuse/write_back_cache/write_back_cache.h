@@ -167,27 +167,6 @@ public:
 
     // Used to adjust node size according to cached data
     ui64 GetMaxWrittenOffset(ui64 nodeId) const;
-
-    // Used to clear max written offset in SetNodeAttr handler
-    // Note: a barrier should be acquired via AcquireBarrier
-    void ResetMaxWrittenOffset(ui64 nodeId);
-
-    /* Acquiring a barrier ensures that all prior WriteData requests are flushed
-     * and evicted from cache and no new WriteData requests will be flushed
-     * until the barrier is released.
-     *
-     * Used to execute requests that should not interfere with cache:
-     * SetNodeAttr, ReadData/WriteData with O_DIRECT/O_SYNC/O_DSYNC.
-     *
-     * On success, returns barrierId - it should be released by ReleaseBarrier.
-     *
-     * An error may be returned if flush fails - in this case, a barrier will
-     * not be acquired.
-     */
-    NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId);
-
-    // Releases a barrier previously acquired by AcquireBarrier
-    void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

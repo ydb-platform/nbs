@@ -133,6 +133,31 @@ struct TBootstrap
             });
         return out;
     }
+
+    ui64 AcquireBarrier(ui64 nodeId) const
+    {
+        auto future = State->AcquireBarrier(nodeId);
+        while (!future.HasValue()) {
+            State->FlushSucceeded(nodeId, 1);
+        }
+        const auto& result = future.GetValue();
+        UNIT_ASSERT(!HasError(result.GetError()));
+        return result.GetResult();
+    }
+
+    void ReleaseBarrier(ui64 nodeId, ui64 barrierId) const
+    {
+        State->ReleaseBarrier(nodeId, barrierId);
+    }
+
+    void FlushCache(ui64 nodeId) const
+    {
+        auto flush = State->AddFlushRequest(nodeId);
+        while (!flush.HasValue()) {
+            State->FlushSucceeded(nodeId, 1);
+        }
+        UNIT_ASSERT(!HasError(flush.GetValue()));
+    }
 };
 
 }   // namespace
@@ -601,6 +626,86 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
                 "7:ghi, 10:j, 11:k",
                 b.VisitUnflushedCachedRequests(1));
         }
+    }
+
+
+    Y_UNIT_TEST(ShouldReportNodeSize)
+    {
+        TBootstrap b;
+
+        // The node is not cached
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+
+        // The node is cached but not referenced
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        UNIT_ASSERT(b.Add(1, 101, 2, "def").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(5, b.State->GetMaxWrittenOffset(1));
+        UNIT_ASSERT(b.Add(1, 101, 1, "123").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(5, b.State->GetMaxWrittenOffset(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+
+        // Single reference - flush before release
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        auto ref1 = b.State->PinNodeStates();
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.State->UnpinNodeStates(ref1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+
+        // Single reference - flush after release
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        auto ref2 = b.State->PinNodeStates();
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.State->UnpinNodeStates(ref2);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+
+        // Single reference - resurrect node state
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        auto ref3 = b.State->PinNodeStates();
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.FlushCache(1);
+        UNIT_ASSERT(b.Add(1, 101, 0, "abcd").GetValue());
+        b.State->UnpinNodeStates(ref3);
+        UNIT_ASSERT_VALUES_EQUAL(4, b.State->GetMaxWrittenOffset(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+
+        // Multiple references
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        auto ref4 = b.State->PinNodeStates();
+        auto ref5 = b.State->PinNodeStates();
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.State->UnpinNodeStates(ref5);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.State->UnpinNodeStates(ref4);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+
+        // Newer references don't affect deleted node states
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        auto ref6 = b.State->PinNodeStates();
+        b.FlushCache(1);
+        auto ref7 = b.State->PinNodeStates();
+        b.State->UnpinNodeStates(ref6);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+        b.State->UnpinNodeStates(ref7);
+
+        // Combine with barriers
+        UNIT_ASSERT(b.Add(1, 101, 2, "abc").GetValue());
+        ui64 barrierId = b.AcquireBarrier(1);
+        UNIT_ASSERT_VALUES_EQUAL(5, b.State->GetMaxWrittenOffset(1));
+        UNIT_ASSERT(b.Add(1, 101, 0, "def").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(5, b.State->GetMaxWrittenOffset(1));
+        b.State->ResetMaxWrittenOffset(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.ReleaseBarrier(1, barrierId);
+        UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
     }
 }
 
