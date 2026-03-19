@@ -1249,6 +1249,10 @@ private:
         const TString& diskId,
         TVector<TDeviceId> uuids);
 
+    NProto::TError RemoveDeviceFromPendingCleanup(
+        TDiskRegistryDatabase& db,
+        const TDeviceId& deviceId);
+
     /// Try to update configuration of selected device and its agent
     /// in the disk registry database
     /// @return true if the device updates successfully; otherwise, return false

@@ -6122,11 +6122,8 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
 
     ApplyDeviceStateChange(db, *agentPtr, *devicePtr, now, affectedDisk);
 
-    if (newState == NProto::DEVICE_STATE_ERROR && IsDirtyDevice(deviceId) &&
-        !PendingCleanup.FindDiskId(deviceId).empty())
-    {
-        PendingCleanup.EraseDevice(deviceId);
-        db.UpdateDirtyDevice(deviceId, {});
+    if (newState == NProto::DEVICE_STATE_ERROR) {
+        RemoveDeviceFromPendingCleanup(db, deviceId);
     }
 
     return error;
@@ -7575,6 +7572,24 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
         "Adding devices [%s] to pending cleanup",
         JoinSeq(", ", devicesAllowedToBeCleaned).c_str());
     return PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
+}
+
+NProto::TError TDiskRegistryState::RemoveDeviceFromPendingCleanup(
+    TDiskRegistryDatabase& db,
+    const TDeviceId& deviceId)
+{
+    if (!IsDirtyDevice(deviceId) || PendingCleanup.FindDiskId(deviceId).empty())
+    {
+        return MakeError(
+            S_ALREADY,
+            TStringBuilder()
+                << "Device with UUID " << deviceId << " is clean.");
+    }
+
+    PendingCleanup.EraseDevice(deviceId);
+    db.UpdateDirtyDevice(deviceId, {});
+
+    return {};
 }
 
 NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
