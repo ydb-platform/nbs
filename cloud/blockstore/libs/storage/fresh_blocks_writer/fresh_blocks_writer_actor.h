@@ -205,6 +205,8 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus,        TEvVolume)
     BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange,               TEvVolume)
 
+    BLOCKSTORE_IMPLEMENT_REQUEST(GetPartCounters, TEvPartitionCommonPrivate)
+
     BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(
         BLOCKSTORE_IMPLEMENT_REQUEST,
         TEvFreshBlocksWriter);

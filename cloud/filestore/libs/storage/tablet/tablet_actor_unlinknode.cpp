@@ -786,8 +786,22 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         UnlockNodeRef({args.ParentNodeId, args.Name});
     }
 
-    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Y_DEFER {
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
+    };
+
+    if (!args.RequestInfo) {
+        return;
+    }
+
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (args.IsExplicitRequest) {
         //
@@ -812,13 +826,6 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    FinalizeProfileLogRequestInfo(
-        std::move(args.ProfileLogRequest),
-        ctx.Now(),
-        GetFileSystemId(),
-        args.Error,
-        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -918,7 +925,11 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
         const auto& originalRequest = msg->OriginalRequest;
         auto response = std::get<NProto::TUnlinkNodeResponse>(res);
 
-        AddInFlightRequest<TEvService::TUnlinkNodeMethod>(*msg->RequestInfo);
+        if (msg->RequestInfo) {
+            AddInFlightRequest<TEvService::TUnlinkNodeMethod>(
+                *msg->RequestInfo);
+        }
+
         ExecuteTx<TCompleteUnlinkNode>(
             ctx,
             msg->RequestInfo,

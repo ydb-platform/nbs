@@ -320,33 +320,38 @@ public:
 
     // called from CM thread
     void CreateQP();
-    void Start();
+    void Start() noexcept;
     void Stop() noexcept;
-    void Flush();
+    void Flush() noexcept;
 
     // called from external thread
     void EnqueueRequest(TRequestPtr req) noexcept;
 
     // called from CQ thread
-    void HandleCompletionEvent(ibv_wc* wc) override;
-    bool HandleInputRequests();
-    bool HandleCompletionEvents();
-    bool IsFlushed();
+    void HandleCompletionEvent(ibv_wc* wc) noexcept override;
+    bool HandleInputRequests() noexcept;
+    bool HandleCompletionEvents() noexcept;
+    bool IsFlushed() const;
 
 private:
     // called from CQ thread
-    void HandleQueuedRequests();
-    void RecvRequest(TRecvWr* recv);
-    void RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status);
-    void ReadRequestData(TRequestPtr req, TSendWr* send);
-    void ReadRequestDataCompleted(TSendWr* send, ibv_wc_status status);
-    void ExecuteRequest(TRequestPtr req);
-    void WriteResponseData(TRequestPtr req, TSendWr* send);
-    void WriteResponseDataCompleted(TSendWr* send, ibv_wc_status status);
-    void SendResponse(TRequestPtr req, TSendWr* send);
-    void SendResponseCompleted(TSendWr* send, ibv_wc_status status);
+    void HandleQueuedRequests() noexcept;
+    void RecvRequest(TRecvWr* recv) noexcept;
+    void RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status) noexcept;
+    void ReadRequestData(TRequestPtr req, TSendWr* send) noexcept;
+    void ReadRequestDataCompleted(TSendWr* send, ibv_wc_status status) noexcept;
+    void ExecuteRequest(TRequestPtr req) noexcept;
+    void WriteResponseData(TRequestPtr req, TSendWr* send) noexcept;
+    void WriteResponseDataCompleted(
+        TSendWr* send,
+        ibv_wc_status status) noexcept;
+    void SendResponse(TRequestPtr req, TSendWr* send) noexcept;
+    void SendResponseCompleted(TSendWr* send, ibv_wc_status status) noexcept;
     void FreeRequest(TRequestPtr req, TSendWr* send) noexcept;
-    void RejectRequest(TRequestPtr req, ui32 status, TStringBuf message);
+    void RejectRequest(
+        TRequestPtr req,
+        ui32 status,
+        TStringBuf message) noexcept;
     int ValidateCompletion(ibv_wc* wc) noexcept;
 };
 
@@ -496,7 +501,7 @@ TServerSession::~TServerSession()
     RecvQueue.Clear();
 }
 
-void TServerSession::Start()
+void TServerSession::Start() noexcept
 {
     while (auto* recv = RecvQueue.Pop()) {
         RecvRequest(recv);
@@ -523,7 +528,7 @@ void TServerSession::EnqueueRequest(TRequestPtr req) noexcept
     }
 }
 
-bool TServerSession::HandleInputRequests()
+bool TServerSession::HandleInputRequests() noexcept
 {
     if (Config->WaitMode == EWaitMode::Poll) {
         RequestEvent.Clear();
@@ -539,7 +544,7 @@ bool TServerSession::HandleInputRequests()
     return true;
 }
 
-void TServerSession::HandleQueuedRequests()
+void TServerSession::HandleQueuedRequests() noexcept
 {
     while (QueuedRequests) {
         auto* send = SendQueue.Pop();
@@ -573,35 +578,47 @@ void TServerSession::HandleQueuedRequests()
     }
 }
 
-bool TServerSession::HandleCompletionEvents()
+bool TServerSession::HandleCompletionEvents() noexcept
 {
-    bool hasWork = false;
+    try {
+        ibv_cq* cq = CompletionQueue.get();
 
-    ibv_cq* cq = CompletionQueue.get();
+        if (Config->WaitMode == EWaitMode::Poll) {
+            Verbs->GetCompletionEvent(cq);
+            Verbs->AckCompletionEvents(cq, 1);
+            Verbs->RequestCompletionEvent(cq, 0);
+        }
 
-    if (Config->WaitMode == EWaitMode::Poll) {
-        Verbs->GetCompletionEvent(cq);
-        Verbs->AckCompletionEvents(cq, 1);
-        Verbs->RequestCompletionEvent(cq, 0);
+        if (Verbs->PollCompletionQueue(cq, this)) {
+            HandleQueuedRequests();
+            return true;
+        }
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(e.what());
+        Counters->CompletionError();
+        return true;
     }
 
-    hasWork = Verbs->PollCompletionQueue(cq, this);
-
-    HandleQueuedRequests();
-
-    return hasWork;
+    return false;
 }
 
-void TServerSession::Flush()
+void TServerSession::Flush() noexcept
 {
     RDMA_DEBUG("flush queues");
 
-    struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
-    Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
-    FlushStarted = true;
+    try {
+        struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
+        Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
+        FlushStarted = true;
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR("flush error: " << e.what());
+        Counters->CompletionError();
+    }
 }
 
-bool TServerSession::IsFlushed()
+bool TServerSession::IsFlushed() const
 {
     return FlushStarted
         && SendQueue.Size() == Config->QueueSize
@@ -661,7 +678,7 @@ int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
 }
 
 // implements NVerbs::ICompletionHandler
-void TServerSession::HandleCompletionEvent(ibv_wc* wc)
+void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
 {
     auto id = TWorkRequestId(wc->wr_id);
 
@@ -694,13 +711,22 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc)
     }
 }
 
-void TServerSession::RecvRequest(TRecvWr* recv)
+void TServerSession::RecvRequest(TRecvWr* recv) noexcept
 {
     auto* requestMsg = recv->Message<TRequestMessage>();
     Zero(*requestMsg);
 
-    RDMA_TRACE("RECV " << TWorkRequestId(recv->wr.wr_id));
-    Verbs->PostRecv(Connection->qp, &recv->wr);
+    try {
+        Verbs->PostRecv(Connection->qp, &recv->wr);
+        RDMA_TRACE("RECV " << TWorkRequestId(recv->wr.wr_id) << " posted");
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(
+            "RECV " << TWorkRequestId(recv->wr.wr_id) << " " << e.what());
+        Counters->RecvRequestError();
+        return;
+    }
+
     Counters->RecvRequestStarted();
 }
 
@@ -713,7 +739,9 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
     SendQueue.Push(send);
 }
 
-void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
+void TServerSession::RecvRequestCompleted(
+    TRecvWr* recv,
+    ibv_wc_status status) noexcept
 {
     if (status != IBV_WC_SUCCESS) {
         RDMA_ERROR(
@@ -806,7 +834,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
 void TServerSession::RejectRequest(
     TRequestPtr req,
     ui32 status,
-    TStringBuf message)
+    TStringBuf message) noexcept
 {
     req->State = ERequestState::ExecuteRequest;
     req->Status = status;
@@ -829,7 +857,7 @@ void TServerSession::RejectRequest(
     }
 }
 
-void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send)
+void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
 {
     req->State = ERequestState::ReadRequestData;
 
@@ -849,8 +877,18 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send)
     wr.wr.rdma.rkey = req->In.Key;
     wr.wr.rdma.remote_addr = req->In.Address;
 
-    RDMA_TRACE("READ " << TWorkRequestId(wr.wr_id));
-    Verbs->PostSend(Connection->qp, &wr);
+    try {
+        Verbs->PostSend(Connection->qp, &wr);
+        RDMA_TRACE("READ " << TWorkRequestId(wr.wr_id) << " posted");
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(
+            "READ " << TWorkRequestId(wr.wr_id) << " " << e.what());
+        Counters->ReadRequestError();
+        FreeRequest(std::move(req), send);
+        return;
+    }
+
     Counters->ReadRequestStarted();
 
     LWTRACK(
@@ -863,7 +901,7 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send)
 
 void TServerSession::ReadRequestDataCompleted(
     TSendWr* send,
-    ibv_wc_status status)
+    ibv_wc_status status) noexcept
 {
     auto req = ExtractRequest(send);
 
@@ -896,7 +934,7 @@ void TServerSession::ReadRequestDataCompleted(
     ExecuteRequest(std::move(req));
 }
 
-void TServerSession::ExecuteRequest(TRequestPtr req)
+void TServerSession::ExecuteRequest(TRequestPtr req) noexcept
 {
     req->State = ERequestState::ExecuteRequest;
 
@@ -920,7 +958,7 @@ void TServerSession::ExecuteRequest(TRequestPtr req)
     req.release();  // ownership transferred
 }
 
-void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send)
+void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
 {
     req->State = ERequestState::WriteResponseData;
 
@@ -940,8 +978,18 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send)
     wr.wr.rdma.rkey = req->Out.Key;
     wr.wr.rdma.remote_addr = req->Out.Address;
 
-    RDMA_TRACE("WRITE " << TWorkRequestId(wr.wr_id));
-    Verbs->PostSend(Connection->qp, &wr);
+    try {
+        Verbs->PostSend(Connection->qp, &wr);
+        RDMA_TRACE("WRITE " << TWorkRequestId(wr.wr_id) << " posted");
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(
+            "WRITE " << TWorkRequestId(wr.wr_id) << " " << e.what());
+        Counters->WriteResponseError();
+        FreeRequest(std::move(req), send);
+        return;
+    }
+
     Counters->WriteResponseStarted();
 
     LWTRACK(
@@ -954,7 +1002,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send)
 
 void TServerSession::WriteResponseDataCompleted(
     TSendWr* send,
-    ibv_wc_status status)
+    ibv_wc_status status) noexcept
 {
     auto req = ExtractRequest(send);
 
@@ -986,7 +1034,7 @@ void TServerSession::WriteResponseDataCompleted(
     SendResponse(std::move(req), send);
 }
 
-void TServerSession::SendResponse(TRequestPtr req, TSendWr* send)
+void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
 {
     req->State = ERequestState::SendResponse;
 
@@ -999,8 +1047,18 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send)
     responseMsg->Status = req->Status;
     responseMsg->ResponseBytes = req->ResponseBytes;
 
-    RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id));
-    Verbs->PostSend(Connection->qp, &send->wr);
+    try {
+        Verbs->PostSend(Connection->qp, &send->wr);
+        RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id) << " posted");
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(
+            "SEND " << TWorkRequestId(send->wr.wr_id) << " " << e.what());
+        Counters->SendResponseError();
+        FreeRequest(std::move(req), send);
+        return;
+    }
+
     Counters->SendResponseStarted();
 
     LWTRACK(
@@ -1011,7 +1069,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send)
     StoreRequest(send, std::move(req));
 }
 
-void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
+void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status) noexcept
 {
     auto req = ExtractRequest(send);
 
@@ -1348,18 +1406,14 @@ private:
     {
         auto* session = PtrFromTag<TServerSession>(event.data.ptr);
 
-        try {
-            switch (EventFromTag(event.data.ptr)) {
-                case EPollEvent::Completion:
-                    session->HandleCompletionEvents();
-                    break;
+        switch (EventFromTag(event.data.ptr)) {
+            case EPollEvent::Completion:
+                session->HandleCompletionEvents();
+                break;
 
-                case EPollEvent::Request:
-                    session->HandleInputRequests();
-                    break;
-            }
-        } catch (const TServiceError& e) {
-            RDMA_ERROR(e.what());
+            case EPollEvent::Request:
+                session->HandleInputRequests();
+                break;
         }
     }
 
@@ -1380,16 +1434,11 @@ private:
     bool HandleEvents()
     {
         bool hasWork = false;
-        auto sessions= Sessions.Get();
+        auto sessions = Sessions.Get();
 
         for (const auto& session: *sessions) {
-            try {
-                hasWork |= session->HandleInputRequests();
-                hasWork |= session->HandleCompletionEvents();
-
-            } catch (const TServiceError& e) {
-                RDMA_ERROR(e.what());
-            }
+            hasWork |= session->HandleInputRequests();
+            hasWork |= session->HandleCompletionEvents();
         }
 
         return hasWork;

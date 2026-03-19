@@ -925,6 +925,9 @@ public:
         return AgentsPaths.GetPathsToAttach();
     }
 
+    TVector<TString> GetPathsToAttachOnRegistration(
+        const TAgentId& agentId) const;
+
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);

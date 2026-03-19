@@ -226,6 +226,13 @@ void TPartitionActor::HandleAddFreshBlocks(
                 TBlockStoreComponents::PARTITION,
                 "%s Failed to lock a guardedSgList on AddFreshBlocks",
                 LogTitle.GetWithTime().c_str());
+
+            using TResponse =
+                TEvPartitionCommonPrivate::TEvAddFreshBlocksResponse;
+            auto response = std::make_unique<TResponse>(
+                MakeError(E_ARGUMENT, "Failed to lock a guardedSgList"));
+
+            NCloud::Reply(ctx, *ev, std::move(response));
             Suicide(ctx);
             return;
         }

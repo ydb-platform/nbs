@@ -169,6 +169,13 @@ void TDiskRegistryActor::CompleteAddAgent(
         args.DevicesToDisableIO.begin(),
         args.DevicesToDisableIO.end());
 
+    TVector<TString> pathsToAttach =
+        State->GetPathsToAttachOnRegistration(args.Config.GetAgentId());
+
+    response->Record.MutablePathsToAttach()->Add(
+        std::make_move_iterator(pathsToAttach.begin()),
+        std::make_move_iterator(pathsToAttach.end()));
+
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     SendCachedAcquireRequestsToAgent(ctx, args.Config);

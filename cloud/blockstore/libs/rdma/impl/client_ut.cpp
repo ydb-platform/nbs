@@ -392,6 +392,13 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 // handle the request after timeout
                 handleRequest(*testContext);
             }
+
+            auto counters = monitoring
+                ->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "rdma_client");
+            auto aborted = counters->GetCounter("AbortedRequests");
+            UNIT_ASSERT_EQUAL(aborted->Val(), 1);
         }
     }
 
@@ -507,6 +514,15 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         UNIT_ASSERT(parsed);
         UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
+
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "rdma_client");
+        auto aborted = counters->GetCounter("AbortedRequests");
+        auto queued = counters->GetCounter("QueuedRequests");
+        UNIT_ASSERT_EQUAL(queued->Val(), 0);
+        UNIT_ASSERT_EQUAL(aborted->Val(), 2);
     }
 
     Y_UNIT_TEST(ShouldReconnect)
@@ -706,14 +722,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto active = counters->GetCounter("ActiveRecv");
         auto errors = counters->GetCounter("Errors");
 
-        ibv_recv_wr* wr = context->RecvEvents.back();
-        ibv_recv_wr* wr2 = context->RecvEvents.front();
-
-        // init header to pass the version check
-        auto* msg2 = reinterpret_cast<TResponseMessage*>(wr2->sg_list[0].addr);
-        InitMessageHeader(msg2, RDMA_PROTO_VERSION);
-
-        auto completion = TVector<ibv_wc>();
+        TVector<ibv_recv_wr*> recv;
 
         with_lock(context->CompletionLock) {
             // emulate IBV_QPS_ERR
@@ -727,41 +736,36 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 Y_UNUSED(mask);
                 UNIT_ASSERT_EQUAL(attr->qp_state, IBV_QPS_ERR);
             };
-            // good id, good opcode, error status
-            completion.push_back({
-                .wr_id = wr->wr_id,
-                .status = IBV_WC_RETRY_EXC_ERR,
-                .opcode = IBV_WC_RECV,
-            });
-            // good id and opcode, success status, bad message
-            completion.push_back({
-                .wr_id = wr->wr_id,
-                .opcode = IBV_WC_RECV,
-            });
-            // good id and opcode, success status, good message, unknown request
-            completion.push_back({
-                .wr_id = wr2->wr_id,
-                .opcode = IBV_WC_RECV,
-            });
-            // bad id, good opcode
-            completion.push_back({
-                .wr_id = Max<ui64>(),
-                .opcode = IBV_WC_RECV,
-            });
-            // good id, bad opcode
-            completion.push_back({
-                .wr_id = wr->wr_id,
-                .opcode = IBV_WC_RECV_RDMA_WITH_IMM,
-            });
-            context->HandleCompletionEvent = [&](ibv_wc* wc) {
-                static int i = 0;
-                *wc = completion[i++];
-            };
-            // HandleCompletionEvent will override completions, but we still
-            // need to pass a valid request pointer here
-            for (size_t i = 0; i < completion.size(); i++) {
+            for (size_t i = 0; i < 5; i++) {
+                auto* wr = context->RecvEvents.back();
+                context->RecvEvents.pop_back();
                 context->ProcessedRecvEvents.push_back(wr);
+                recv.push_back(wr);
             }
+            context->HandleCompletionEvent = [&](ibv_wc* wc) {
+                // good id, good opcode, error status
+                if (wc->wr_id == recv[0]->wr_id) {
+                    wc->status = IBV_WC_RETRY_EXC_ERR;
+                    return;
+                }
+                // good id and opcode, success status, good message, but unknown request
+                if (wc->wr_id == recv[1]->wr_id) {
+                    auto* msg = reinterpret_cast<TResponseMessage*>(recv[1]->sg_list[0].addr);
+                    InitMessageHeader(msg, RDMA_PROTO_VERSION);
+                    return;
+                }
+                // bad id, good opcode
+                if (wc->wr_id == recv[2]->wr_id) {
+                    wc->wr_id = Max<ui64>();
+                    return;
+                }
+                // good id, bad opcode
+                if (wc->wr_id == recv[3]->wr_id) {
+                    wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
+                    return;
+                }
+                // good id and opcode, success status, bad message
+            };
             context->CompletionHandle.Set();
         }
 
@@ -776,7 +780,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             }
         };
 
-        wait(errors, 6);
+        wait(errors, 7);
         wait(active, 6);
     }
 };
