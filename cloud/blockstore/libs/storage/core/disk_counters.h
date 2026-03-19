@@ -354,11 +354,43 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionRangeGarbageWithoutZeroesBelowThreshold{
+    TCounter CompactionGarbageZeroesAffectTheTop{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionDiskGarbageWithoutZeroesBelowThreshold{
+    TCounter CompactionGarbageOnDiskWithoutZeroesBelowThreshold{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageNothingToCompact{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageNotEnoughOnDisk{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageReallyNotEnoughInRange{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByGarbageZeroedBlocksPerRange{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByGarbageZeroedBlocksPerDisk{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageZeroedNotEnoughOnDisk{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageZeroedReallyNotEnoughInRange{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageZeroedNothingToCompact{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -385,8 +417,16 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionGarbageThrottlingCount>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionRangeGarbageWithoutZeroesBelowThreshold>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionDiskGarbageWithoutZeroesBelowThreshold>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageZeroesAffectTheTop>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageOnDiskWithoutZeroesBelowThreshold>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageNothingToCompact>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageNotEnoughOnDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageReallyNotEnoughInRange>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageZeroedBlocksPerRange>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageZeroedBlocksPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageZeroedNotEnoughOnDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageZeroedReallyNotEnoughInRange>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionGarbageZeroedNothingToCompact>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };

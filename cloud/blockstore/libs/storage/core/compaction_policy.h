@@ -82,6 +82,11 @@ struct TRangeStat
         }
         return garbageBlockCount - NewlyZeroedBlocks;
     }
+
+    ui16 UsedBlocksWithoutZeroes() const
+    {
+        return UsedBlockCount + NewlyZeroedBlocks;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
