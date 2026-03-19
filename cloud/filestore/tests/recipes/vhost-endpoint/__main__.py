@@ -27,6 +27,7 @@ def start(argv):
     parser.add_argument("--socket-prefix", action="store", default="test.vhost")
     parser.add_argument("--mount-seqno", action="store", default=0)
     parser.add_argument("--shard-count", action="store", default=0, type=int)
+    parser.add_argument("--blocks-count", action="store", default=None, type=int)
     parser.add_argument("--read-only", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--endpoint-count", action="store", default=1, type=int)
@@ -51,7 +52,14 @@ def start(argv):
         verbose=args.verbose,
         cwd=common.output_path())
 
-    client.create(args.filesystem, "test_cloud", "test_folder")
+    if args.blocks_count is None:
+        client.create(args.filesystem, "test_cloud", "test_folder")
+    else:
+        client.create(
+            args.filesystem,
+            "test_cloud",
+            "test_folder",
+            blk_count=args.blocks_count)
 
     if args.shard_count > 0:
         shards = []

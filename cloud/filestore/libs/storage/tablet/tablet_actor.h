@@ -505,8 +505,14 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
-            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {},
-        bool validateSession = true);
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator);
+
+    template <typename TMethod>
+    bool AcceptRequestNoSession(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx,
+        const std::function<NProto::TError(
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator);
 
     template <typename TMethod>
     void CompleteResponse(
