@@ -68,6 +68,8 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
+    CommitIdsState->AccessCommitQueue().AcquireBarrier(commitId);
+
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
         Config->IsFreshChannelWriteRequestsFeatureEnabled(

@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -23,6 +24,8 @@ using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+using namespace NFreshBlocksWriter;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -1459,6 +1462,52 @@ void TPartitionActor::HandleCompaction(
         msg->CompactionOptions,
         std::move(ranges));
 
+    if (FreshBlocksWriter) {
+        STORAGE_VERIFY(
+            !CurrentCompactionTransaction && !CurrentCompactionCommitId,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        CurrentCompactionTransaction = std::move(tx);
+        CurrentCompactionCommitId = commitId;
+
+        NCloud::Send(
+            ctx,
+            FreshBlocksWriter,
+            std::make_unique<TEvFreshBlocksWriter::TEvWaitCommitRequest>(
+                commitId));
+        return;
+    }
+
+    ScheduleCompactionTransaction(ctx, commitId, std::move(tx));
+}
+
+void TPartitionActor::HandleWaitCommitIdsResponse(
+    const NFreshBlocksWriter::TEvFreshBlocksWriter::TEvWaitCommitResponse::TPtr&
+        ev,
+    const NActors::TActorContext& ctx)
+{
+    if (HasError(ev->Get()->GetError())) {
+        Suicide(ctx);
+        return;
+    }
+
+    STORAGE_VERIFY(
+        CurrentCompactionCommitId,
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
+
+    ScheduleCompactionTransaction(
+        ctx,
+        CurrentCompactionCommitId,
+        std::move(CurrentCompactionTransaction));
+    CurrentCompactionCommitId = 0;
+}
+
+void TPartitionActor::ScheduleCompactionTransaction(
+    const NActors::TActorContext& ctx,
+    ui64 commitId,
+    std::unique_ptr<ITransactionBase> tx)
+{
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
     Y_ABORT_UNLESS(minCommitId <= commitId);
 
@@ -1467,26 +1516,24 @@ void TPartitionActor::HandleCompaction(
         ExecuteTx(ctx, std::move(tx));
     } else {
         // delay execution until all previous commits completed
-        State->AccessCommitQueue().Enqueue(std::move(tx), commitId);
+        // wrap tx in std::shared_ptr to be able to store it in the
+        // std::function
+        auto sharedTx = std::make_shared<decltype(tx)>(std::move(tx));
+        auto callback = [self = this, sharedTx](
+                            const NActors::TActorContext& ctx) mutable
+        {
+            self->ExecuteTx(ctx, std::move(*sharedTx));
+        };
+
+        State->AccessCommitQueue().Enqueue(std::move(callback), commitId);
     }
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-
-    while (!State->GetCommitQueue().Empty()) {
-        ui64 commitId = State->GetCommitQueue().Peek();
-        Y_ABORT_UNLESS(minCommitId <= commitId);
-
-        if (minCommitId == commitId) {
-            // start execution
-            ExecuteTx(ctx, State->AccessCommitQueue().Dequeue());
-        } else {
-            // delay execution until all previous commits completed
-            break;
-        }
-    }
+    ::NCloud::NBlockStore::NStorage::NPartition::ProcessCommitQueue(
+        ctx,
+        State->AccessCommitQueue());
 
     // TODO: too many different queues exist
     // Since create checkpoint operation waits for the last commit to complete

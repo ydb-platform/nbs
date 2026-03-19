@@ -358,6 +358,8 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
         LogTitle.GetWithTime().c_str(),
         commitId);
 
+    CommitIdsState->AccessCommitQueue().ReleaseBarrier(commitId);
+
     Actors.Erase(ev->Sender);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
@@ -365,6 +367,8 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
 
     // TODO(issue-4875): process drain requests
     // DrainActorCompanion.ProcessDrainRequests(ctx);
+
+    ProcessCommitQueue(ctx, CommitIdsState->AccessCommitQueue());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

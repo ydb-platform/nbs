@@ -361,6 +361,42 @@ void TFreshBlocksWriterActor::HandleWaitReady(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TFreshBlocksWriterActor::HandleWaitCommit(
+    const TEvFreshBlocksWriter::TEvWaitCommitRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    ui64 minCommitId = CommitIdsState->GetCommitQueue().GetMinCommitId();
+
+    if (msg->CommitId <= minCommitId) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvFreshBlocksWriter::TEvWaitCommitResponse>());
+
+        return;
+    }
+
+    auto reqInfo = CreateRequestInfo<TEvFreshBlocksWriter::TWaitCommitMethod>(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    auto callback =
+        [reqInfo = std::move(reqInfo)](const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *reqInfo,
+            std::make_unique<TEvFreshBlocksWriter::TEvWaitCommitResponse>());
+    };
+
+    // wait for commits to complete
+    CommitIdsState->AccessCommitQueue().Enqueue(
+        std::move(callback),
+        msg->CommitId);
+}
+
 bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {

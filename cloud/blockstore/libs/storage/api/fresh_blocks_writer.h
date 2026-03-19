@@ -11,6 +11,7 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 
 #define BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(xxx, ...)                      \
     xxx(WaitReady,               __VA_ARGS__)                                  \
+    xxx(WaitCommit,              __VA_ARGS__)                                  \
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,6 +26,19 @@ struct TEvFreshBlocksWriter
     };
 
     struct TWaitReadyResponse
+    {
+    };
+
+    //
+    // WaitCommit
+    //
+
+    struct TWaitCommitRequest
+    {
+        ui64 CommitId;
+    };
+
+    struct TWaitCommitResponse
     {
     };
 

@@ -9,6 +9,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -184,6 +185,8 @@ private:
     NActors::TActorId FreshBlocksWriter;
 
     TPartitionSharedStatePtr SharedState;
+    std::unique_ptr<ITransactionBase> CurrentCompactionTransaction;
+    ui64 CurrentCompactionCommitId = 0;
 
     TRequestInfoPtr Poisoner;
 
@@ -513,6 +516,10 @@ private:
     void CreateIOCompanionClient();
 
     bool IsFreshBlocksWriterEnabled() const;
+    void ScheduleCompactionTransaction(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        std::unique_ptr<ITransactionBase> tx);
 
 private:
     STFUNC(StateBoot);
@@ -805,6 +812,11 @@ private:
 
     void HandleUpdateResourceMetrics(
         const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWaitCommitIdsResponse(
+        const NFreshBlocksWriter::TEvFreshBlocksWriter::TEvWaitCommitResponse::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

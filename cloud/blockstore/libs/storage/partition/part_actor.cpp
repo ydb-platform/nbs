@@ -1146,6 +1146,10 @@ STFUNC(TPartitionActor::StateWork)
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
+        HFunc(
+            NFreshBlocksWriter::TEvFreshBlocksWriter::TEvWaitCommitResponse,
+            HandleWaitCommitIdsResponse);
+
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
@@ -1224,6 +1228,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        IgnoreFunc(
+            NFreshBlocksWriter::TEvFreshBlocksWriter::TEvWaitCommitResponse);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with

@@ -4,23 +4,23 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCommitQueue::Enqueue(TTxPtr tx, ui64 commitId)
+void TCommitQueue::Enqueue(TCallback callback, ui64 commitId)
 {
     if (Items) {
         Y_ABORT_UNLESS(Items.back().CommitId < commitId);
     }
-    Items.emplace_back(commitId, std::move(tx));
+    Items.emplace_back(commitId, std::move(callback));
 }
 
-TCommitQueue::TTxPtr TCommitQueue::Dequeue()
+TCommitQueue::TCallback TCommitQueue::Dequeue()
 {
-    TTxPtr tx;
+    TCallback callback;
     if (Items) {
         auto& item = Items.front();
-        tx = std::move(item.Tx);
+        callback = std::move(item.Callback);
         Items.pop_front();
     }
-    return tx;
+    return callback;
 }
 
 ui64 TCommitQueue::Peek() const
@@ -29,6 +29,26 @@ ui64 TCommitQueue::Peek() const
         return Items.front().CommitId;
     }
     return Max();
+}
+
+void ProcessCommitQueue(
+    const NActors::TActorContext& ctx,
+    TCommitQueue& commitQueue)
+{
+    ui64 minCommitId = commitQueue.GetMinCommitId();
+
+    while (!commitQueue.Empty()) {
+        ui64 commitId = commitQueue.Peek();
+
+        if (minCommitId >= commitId) {
+            // start execution
+            auto callback = commitQueue.Dequeue();
+            callback(ctx);
+        } else {
+            // delay execution until all previous commits completed
+            break;
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

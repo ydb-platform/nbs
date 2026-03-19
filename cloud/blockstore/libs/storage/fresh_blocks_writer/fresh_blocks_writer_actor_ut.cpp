@@ -906,7 +906,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                 return event->GetTypeRewrite() ==
                        TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
             });
-
         TPartitionClient partition(runtime);
         partition.WaitReady();
 
@@ -1009,6 +1008,80 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             S_OK,
             response->GetStatus(),
             response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldWaitForAddFreshBlocksBeforeCompaction)
+    {
+        auto testEnv = PrepareTestActorRuntime();
+        auto& runtime = *testEnv.Runtime;
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(0, '0');
+
+        partition.Flush();
+
+        std::unique_ptr<IEventHandle> stollenAddFreshBlocksRequest;
+
+        bool wasWaitCommitRequest = false;
+        bool wasWaitCommitResponse = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
+                {
+                    stollenAddFreshBlocksRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                wasWaitCommitRequest |=
+                    event->GetTypeRewrite() ==
+                    NFreshBlocksWriter::TEvFreshBlocksWriter::
+                        EvWaitCommitRequest;
+                wasWaitCommitResponse |=
+                    event->GetTypeRewrite() ==
+                    NFreshBlocksWriter::TEvFreshBlocksWriter::
+                        EvWaitCommitResponse;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        fbwClient.WriteBlocks(1, '1');
+
+        UNIT_ASSERT(stollenAddFreshBlocksRequest);
+
+        UNIT_ASSERT(!wasWaitCommitRequest);
+
+        partition.SendCompactionRequest();
+
+        runtime.DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(wasWaitCommitRequest);
+        UNIT_ASSERT(!wasWaitCommitResponse);
+
+        runtime.Send(stollenAddFreshBlocksRequest.release());
+
+        auto resp = partition.RecvCompactionResponse();
+        UNIT_ASSERT(!HasError(resp->GetError()));
+
+        UNIT_ASSERT(wasWaitCommitResponse);
+
+        auto actualContent = GetBlocksContent(
+            fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 2)));
+
+        TStringBuilder expectedContent;
+        expectedContent << GetBlockContent('0') << GetBlockContent('1');
+
+        UNIT_ASSERT_EQUAL(expectedContent, actualContent);
     }
 }
 
