@@ -4,6 +4,7 @@
 #include "request.h"
 
 #include <cloud/filestore/public/api/protos/action.pb.h>
+#include <cloud/filestore/public/api/protos/server.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
 #include <cloud/filestore/public/api/protos/cluster.pb.h>
 #include <cloud/filestore/public/api/protos/const.pb.h>
@@ -122,6 +123,25 @@ struct IFileStoreService
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) = 0;
+
+    // Shared memory transport methods (non-pure-virtual: default returns E_FAIL)
+#define FILESTORE_DECLARE_SHM_METHOD(name, ...)                                \
+    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request)                     \
+    {                                                                          \
+        Y_UNUSED(callContext);                                                 \
+        Y_UNUSED(request);                                                     \
+        NProto::T##name##Response response;                                    \
+        *response.MutableError() =                                             \
+            MakeError(E_FAIL, #name " is not supported");                      \
+        return NThreading::MakeFuture(std::move(response));                    \
+    }                                                                          \
+// FILESTORE_DECLARE_SHM_METHOD
+
+    FILESTORE_SHAREDMEM_METHODS(FILESTORE_DECLARE_SHM_METHOD)
+
+#undef FILESTORE_DECLARE_SHM_METHOD
 };
 
 ////////////////////////////////////////////////////////////////////////////////

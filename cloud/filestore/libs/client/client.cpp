@@ -92,6 +92,7 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
     FILESTORE_DECLARE_METHOD(name##Stream, name, name##Stream, __VA_ARGS__)
 
 FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD_FS)
+FILESTORE_SHAREDMEM_METHODS(FILESTORE_DECLARE_METHOD_FS)
 FILESTORE_ENDPOINT_SERVICE(FILESTORE_DECLARE_METHOD_VHOST)
 FILESTORE_DECLARE_METHOD_STREAM(GetSessionEvents)
 
@@ -811,13 +812,14 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Fs##Method>(           \
+        return TBase::template ExecuteRequest<T##name##Fs##Method>(            \
             std::move(callContext),                                            \
             std::move(request));                                               \
     }                                                                          \
 // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
+    FILESTORE_SHAREDMEM_METHODS(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 

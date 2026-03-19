@@ -52,6 +52,9 @@ private:
     TLog Log;
 
     ISessionPtr Session;
+    // When set, data IO (ReadData/WriteData) is routed through this client
+    // instead of Session (used for SHM transport).
+    IFileStoreServicePtr DataClient;
 
     TVector<std::pair<ui64, NProto::EAction>> Actions;
     ui64 TotalRate = 0;
@@ -70,12 +73,14 @@ public:
             NProto::TDatashardLikeLoadSpec spec,
             ILoggingServicePtr logging,
             ISessionPtr session,
+            IFileStoreServicePtr dataClient,
             TString filesystemId,
             NProto::THeaders headers)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
         , Session(std::move(session))
+        , DataClient(std::move(dataClient))
     {
         Log = logging->CreateLog(Headers.GetClientId());
 
@@ -134,11 +139,11 @@ private:
     NProto::EAction PeekNextAction()
     {
         auto number = RandomNumber(TotalRate);
-        auto it = LowerBound(
+        auto it = UpperBound(
             Actions.begin(),
             Actions.end(),
             number,
-            [](const auto& pair, ui64 b) { return pair.first < b; });
+            [](ui64 b, const auto& pair) { return b < pair.first; });
 
         Y_ABORT_UNLESS(it != Actions.end());
         return it->second;
@@ -243,23 +248,35 @@ private:
     TFuture<TCompletedRequest> DoRead()
     {
         TGuard<TMutex> guard(StateLock);
-        if (NodeInfos.empty()) {
+        auto it = std::find_if(
+            NodeInfos.begin(),
+            NodeInfos.end(),
+            [this](const TNodeInfo& n) { return n.Size >= ReadBytes; });
+        if (it == NodeInfos.end()) {
+            guard.Release();
             return DoCreateNode();
         }
 
-        auto nodeInfo = GetNodeInfo();
+        std::swap(*it, NodeInfos.back());
+        auto nodeInfo = NodeInfos.back();
+        NodeInfos.pop_back();
+        guard.Release();
 
         const auto started = TInstant::Now();
         const ui64 slotCount = nodeInfo.Size / ReadBytes;
         const ui64 byteOffset = RandomNumber(slotCount) * ReadBytes;
 
         auto request = CreateRequest<NProto::TReadDataRequest>();
+        request->SetHandle(InvalidHandle);
         request->SetNodeId(nodeInfo.NodeId);
         request->SetOffset(byteOffset);
         request->SetLength(ReadBytes);
 
         auto self = weak_from_this();
-        return Session->ReadData(CreateCallContext(), std::move(request))
+        auto future = DataClient
+            ? DataClient->ReadData(CreateCallContext(), std::move(request))
+            : Session->ReadData(CreateCallContext(), std::move(request));
+        return future
             .Apply(
                 [=](const TFuture<NProto::TReadDataResponse>& future)
                 {
@@ -323,7 +340,10 @@ private:
         *request->MutableBuffer() = std::move(buffer);
 
         auto self = weak_from_this();
-        return Session->WriteData(CreateCallContext(), std::move(request))
+        auto future = DataClient
+            ? DataClient->WriteData(CreateCallContext(), std::move(request))
+            : Session->WriteData(CreateCallContext(), std::move(request));
+        return future
             .Apply(
                 [=](const TFuture<NProto::TWriteDataResponse>& future)
                 {
@@ -407,6 +427,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
+    IFileStoreServicePtr dataClient,
     TString filesystemId,
     NProto::THeaders headers)
 {
@@ -414,6 +435,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
         std::move(spec),
         std::move(logging),
         std::move(session),
+        std::move(dataClient),
         std::move(filesystemId),
         std::move(headers));
 }

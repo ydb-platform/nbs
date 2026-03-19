@@ -108,6 +108,7 @@ def start(argv):
         shared_memory_base_path = os.path.join(common.output_path(), "shm")
         os.makedirs(shared_memory_base_path, exist_ok=True)
         server_config.ServerConfig.SharedMemoryBasePath = shared_memory_base_path
+        set_env("NFS_SHM_BASE_PATH", shared_memory_base_path)
 
     secure = False
     if access_service_port:
