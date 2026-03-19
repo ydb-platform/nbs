@@ -230,9 +230,9 @@ struct TTestVerbs
             TestContext->ProcessedRecvEvents.clear();
         }
 
-        auto handleEvent = [&] (ui64 wrId, ibv_wc_opcode opcode) {
+        auto handleEvent = [&] (ui64 id, ibv_wc_opcode opcode) {
             ibv_wc wc = {
-                .wr_id = wrId,
+                .wr_id = id,
                 .status = IBV_WC_SUCCESS,
                 .opcode = opcode,
             };
@@ -245,7 +245,17 @@ struct TTestVerbs
         };
 
         for (const auto& x: sends) {
-            handleEvent(x->wr_id, IBV_WC_SEND);
+            switch (x->opcode) {
+                case IBV_WR_RDMA_READ:
+                    handleEvent(x->wr_id, IBV_WC_RDMA_READ);
+                    break;
+                case IBV_WR_RDMA_WRITE:
+                    handleEvent(x->wr_id, IBV_WC_RDMA_WRITE);
+                    break;
+                default:
+                    handleEvent(x->wr_id, IBV_WC_SEND);
+            }
+            delete x;
         }
 
         for (const auto& x: recvs) {
@@ -261,11 +271,11 @@ struct TTestVerbs
 
         auto g = Guard(TestContext->CompletionLock);
 
-        const auto* msg =
-            reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
-        TestContext->ReqIds.push_back(msg->ReqId);
+        if (TestContext->PostSend) {
+            TestContext->PostSend(qp, wr);
+        }
 
-        TestContext->SendEvents.push_back(wr);
+        TestContext->SendEvents.push_back(new ibv_send_wr(*wr));
         TestContext->CompletionHandle.Set();
     }
 
@@ -277,7 +287,6 @@ struct TTestVerbs
 
         auto g = Guard(TestContext->CompletionLock);
         TestContext->RecvEvents.push_back(wr);
-
         AtomicIncrement(TestContext->PostRecvCounter);
     }
 
@@ -494,8 +503,12 @@ struct TTestVerbs
 
     void Accept(rdma_cm_id* id, rdma_conn_param* param) override
     {
-        Y_UNUSED(id);
-        Y_UNUSED(param);
+        EnqueueConnectionEvent(
+            TestContext,
+            RDMA_CM_EVENT_ESTABLISHED,
+            id,
+            nullptr,    // listenId
+            param);
     }
 
     void Reject(

@@ -1285,7 +1285,7 @@ void TClientEndpoint::FlushQueues() noexcept
         FlushStartCycles = GetCycleCount();
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR("flush error: " << e.what());
+        RDMA_ERROR(e.what());
         Counters->Error();
     }
 }

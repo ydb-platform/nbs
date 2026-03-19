@@ -7,6 +7,9 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/printf.h>
@@ -211,6 +214,112 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
 
         done.GetFuture().Wait();
         server->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldHandleErrors)
+    {
+        NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+        auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+        auto verbs = NVerbs::CreateTestVerbs(context);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverConfig = std::make_shared<TServerConfig>();
+
+        auto logging = CreateLoggingService(
+            "console",
+            TLogSettings{TLOG_RESOURCES});
+
+        auto server = CreateServer(
+            verbs,
+            logging,
+            monitoring,
+            serverConfig);
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        auto endpoint = server
+            ->StartEndpoint("::", 10020, std::make_shared<TServerHandler>());
+
+        // emulate client connection
+
+        NVerbs::CreateConnection(context);
+
+        // wait for client session
+
+        auto wait = [](auto& counter, auto value) {
+            auto start = GetCycleCount();
+            while (counter->Val() != value) {
+                auto now = GetCycleCount();
+                if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
+                    UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+                }
+                SpinLockPause();
+            }
+        };
+
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "rdma_server");
+
+        auto activeRecv = counters->GetCounter("ActiveRecv");
+        auto abortedRequests = counters->GetCounter("AbortedRequests");
+        auto activeRequests = counters->GetCounter("ActiveRequests");
+        auto errors = counters->GetCounter("Errors");
+
+        wait(activeRecv, serverConfig->QueueSize);
+
+        // emulate exchange with the client
+
+        TVector<ibv_recv_wr*> recv;
+
+        with_lock(context->CompletionLock) {
+            for (size_t i = 0; i < 5; i++) {
+                auto* wr = context->RecvEvents.back();
+                context->RecvEvents.pop_back();
+                context->ProcessedRecvEvents.push_back(wr);
+                recv.push_back(wr);
+            }
+            context->HandleCompletionEvent = [&](ibv_wc* wc) {
+                // good id, good opcode, error status
+                if (wc->wr_id == recv[0]->wr_id) {
+                    wc->status = IBV_WC_RETRY_EXC_ERR;
+                    return;
+                }
+                // bad id, good opcode
+                if (wc->wr_id == recv[1]->wr_id) {
+                    wc->wr_id = Max<ui64>();
+                    return;
+                }
+                // good id, bad opcode
+                if (wc->wr_id == recv[2]->wr_id) {
+                    wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
+                    return;
+                }
+                // good id and opcode, success status, good message
+                if (wc->wr_id == recv[3]->wr_id) {
+                    auto* msg = reinterpret_cast<TRequestMessage*>(recv[3]->sg_list[0].addr);
+                    InitMessageHeader(msg, RDMA_PROTO_VERSION);
+                    msg->In.Length = 4096;
+                    return;
+                }
+                // fail all reads
+                if (wc->opcode == IBV_WC_RDMA_READ) {
+                    wc->status = IBV_WC_GENERAL_ERR;
+                    return;
+                }
+                // good id and opcode, success status, bad message
+            };
+            context->CompletionHandle.Set();
+        }
+
+        wait(errors, 3);
+        wait(activeRecv, 8);
+        wait(abortedRequests, 1);
+        wait(activeRequests, 0);
     }
 };
 
