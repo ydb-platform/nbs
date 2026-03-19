@@ -1,10 +1,14 @@
-PACKAGE()
+IF(USE_BUNDLED_YDBD)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/apps/ydbd/ya.make)
+ELSE()
+    PACKAGE()
 
-FROM_SANDBOX(
-    11058457307
-    AUTOUPDATED ydbd
-    EXECUTABLE
-    OUT ydbd
-)
+    FROM_SANDBOX(
+        11058457307
+        AUTOUPDATED ydbd
+        EXECUTABLE
+        OUT ydbd
+    )
 
-END()
+    END()
+ENDIF()
