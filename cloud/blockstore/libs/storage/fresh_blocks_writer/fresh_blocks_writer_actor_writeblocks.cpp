@@ -286,20 +286,21 @@ void TFreshBlocksWriterActor::WriteBlocks(
         }
     };
 
-    // TODO(issue-4875): support batching for fresh blocks writer.
-    // if (Config->GetWriteRequestBatchingEnabled()) {
-        // // we will try to batch small writes and, if batching fails,
-        // // we will accumulate these writes in FreshBlocks table
-        // EnqueueProcessWriteQueueIfNeeded(ctx);
+    if (Config->GetWriteRequestBatchingEnabled()) {
+        // we will try to batch small writes and, if batching fails,
+        // we will accumulate these writes in FreshBlocks table
+        EnqueueProcessWriteQueueIfNeeded(ctx);
 
-        // LOG_TRACE(
-        //     ctx,
-        //     TBlockStoreComponents::PARTITION,
-        //     "%s Enqueueing fresh blocks (range: %s)",
-        //     LogTitle.GetWithTime().c_str(),
-        //     DescribeRange(writeRange).c_str());
-        // State->AccessWriteBuffer().Put(std::move(requestInBuffer));
-    // }
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Enqueueing fresh blocks (range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            DescribeRange(writeRange).c_str());
+        FlushState->AccessWriteBuffer().Put(std::move(requestInBuffer));
+        return;
+    }
+
     WriteFreshBlocks(ctx, std::move(requestInBuffer));
 }
 

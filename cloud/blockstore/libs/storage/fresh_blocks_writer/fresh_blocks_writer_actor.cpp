@@ -151,8 +151,8 @@ void TFreshBlocksWriterActor::UpdateChannelPermissions(
 void TFreshBlocksWriterActor::Poison(const NActors::TActorContext& ctx)
 {
     KillActors(ctx);
-
     CancelPendingRequests(ctx, PendingRequests);
+    ClearWriteQueue(ctx);
 
     Die(ctx);
 }
@@ -439,6 +439,10 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,
             HandleWriteBlocksCompleted);
+
+        HFunc(
+            TEvPartitionPrivate::TEvProcessWriteQueue,
+            HandleProcessWriteQueue);
 
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
