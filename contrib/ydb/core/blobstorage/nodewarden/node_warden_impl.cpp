@@ -770,7 +770,7 @@ void TNodeWarden::PersistConfig(std::optional<TString> mainYaml, ui64 mainYamlVe
             }
         }
 
-        return [this, saveCtx, success]() { 
+        return [this, saveCtx, success]() {
             if (success) {
                 if (!YamlConfig) {
                     YamlConfig.emplace();
@@ -1359,7 +1359,7 @@ bool NKikimr::NStorage::DeriveStorageConfig(const NKikimrConfig::TAppConfig& app
     } else {
         config->ClearSelfManagementConfig();
     }
-    
+
     const auto& bsFrom = appConfig.GetBlobStorageConfig();
     auto *bsTo = config->MutableBlobStorageConfig();
 
