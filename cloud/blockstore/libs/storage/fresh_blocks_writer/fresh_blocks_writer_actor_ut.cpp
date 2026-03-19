@@ -25,6 +25,8 @@ using namespace NLWTrace;
 
 using namespace NPartition;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -369,6 +371,48 @@ public:
             checkpointId);
     }
 
+    std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest>
+    CreateWriteBlocksLocalRequest(
+        const TBlockRange32& writeRange,
+        TGuardedSgList sglist,
+        ui64 blockSize)
+    {
+        auto request =
+            std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+        request->Record.SetStartIndex(writeRange.Start);
+        request->Record.Sglist = std::move(sglist);
+        request->Record.BlocksCount = writeRange.Size();
+        request->Record.BlockSize = blockSize;
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest>
+    CreateWriteBlocksLocalRequest(
+        const TBlockRange32& writeRange,
+        TStringBuf blockContent)
+    {
+        TSgList sglist;
+        sglist.resize(
+            writeRange.Size(),
+            {blockContent.data(), blockContent.size()});
+
+        return CreateWriteBlocksLocalRequest(
+            writeRange,
+            TGuardedSgList(std::move(sglist)),
+            blockContent.size() / writeRange.Size());
+    }
+
+
+    std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest>
+    CreateWriteBlocksLocalRequest(
+        ui32 blockIndex,
+        TStringBuf blockContent)
+    {
+        return CreateWriteBlocksLocalRequest(
+            TBlockRange32::MakeClosedInterval(blockIndex, blockIndex),
+            std::move(blockContent));
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -691,6 +735,77 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                         << GetBlockContent('D');
 
         UNIT_ASSERT_EQUAL(expectedContent, actualContent);
+    }
+
+    Y_UNIT_TEST(ShouldSupportWriteBlocksLocalRequest)
+    {
+        auto testEnv = PrepareTestActorRuntime();
+        auto& runtime = *testEnv.Runtime;
+
+        std::unique_ptr<IEventHandle> stollenAddFreshBlocksRequest;
+
+        bool writeBlocksCompletedObserved = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+
+                // Drop add fresh blocks response to be sure that we don't wait
+                // partition.
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
+                {
+                    stollenAddFreshBlocksRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+        fbwClient.WaitReady();
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto reassignCounter = counters->GetCounter(
+            "AppImpossibleEvents/AddFreshBlocksResultedInError",
+            true);
+
+        {
+            auto content = GetBlockContent('0');
+
+            TSgList sglist;
+            sglist.resize(1, {content.data(), content.size()});
+            TGuardedSgList guardedSglist(std::move(sglist));
+            fbwClient.WriteBlocksLocal(
+                TBlockRange32::WithLength(0, 1),
+                guardedSglist,
+                4_KB);
+            guardedSglist.Close();
+        }
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                writeBlocksCompletedObserved |=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteFreshBlocksCompleted;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        runtime.SendAsync(stollenAddFreshBlocksRequest.release());
+
+        runtime.DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(writeBlocksCompletedObserved);
+        UNIT_ASSERT_VALUES_EQUAL(0, reassignCounter->Val());
     }
 }
 

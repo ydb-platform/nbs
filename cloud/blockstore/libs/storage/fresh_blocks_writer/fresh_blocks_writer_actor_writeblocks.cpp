@@ -220,6 +220,11 @@ void TFreshBlocksWriterActor::HandleWriteBlocksRequest(
         return;
     }
 
+    if constexpr (std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
+    {
+        msg->Record.CopySglistIntoBuffers();
+    }
+
     auto writeHandler = CreateWriteHandler(
         writeRange,
         std::unique_ptr<typename TMethod::TRequest>(ev->Release().Release()),
