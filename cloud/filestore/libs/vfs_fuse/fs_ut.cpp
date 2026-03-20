@@ -823,14 +823,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
             nodeId, handleId, false /* no data sync */);
         UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
-        UNIT_ASSERT_EQUAL(0, fsyncDirCalledWithDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, fsyncDirCalledWithDataSync.load());
 
         fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
             nodeId, handleId, true /* data sync */);
         UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
-        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalledWithDataSync.load());
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
@@ -1593,7 +1593,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(1, callCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, callCount.load());
         }
     }
 
@@ -1631,7 +1631,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", RootNodeId);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(0, callCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, callCount);
         }
     }
 
@@ -1668,7 +1668,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(2, callCount);
+            UNIT_ASSERT_VALUES_EQUAL(2, callCount.load());
         }
     }
 
@@ -1705,7 +1705,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(2, callCount.load());
+            UNIT_ASSERT_VALUES_EQUAL(2, callCount.load());
         }
     }
 
@@ -1743,7 +1743,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 xattr.GetValue(),
                 yexception,
                 "-61"); // NODATA error code
-            UNIT_ASSERT_EQUAL(1, callCount.load());
+            UNIT_ASSERT_VALUES_EQUAL(1, callCount.load());
         }
     }
 
@@ -1852,8 +1852,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "CreateHandle");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldNotCrashWhenStoppedBeforeFileStoreResponse)
@@ -1976,7 +1976,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         auto create = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
-        UNIT_ASSERT_EQUAL(create.GetValueSync(), handleId); // no interrupted
+        UNIT_ASSERT_VALUES_EQUAL(create.GetValueSync(), handleId); // no interrupted
     }
 
     Y_UNIT_TEST(ShouldNotTriggerFatalErrorForCancelledRequests)
@@ -2009,8 +2009,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "AcquireLock");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldNotTriggerFatalErrorsForNewRequestsDuringFuseStop)
@@ -2056,8 +2056,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "CreateHandle");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldProcessDestroyHandleRequestsAsynchronously)
@@ -2266,7 +2266,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto future =
             bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(
+        UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
@@ -2277,25 +2277,25 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(
             future.GetValue(ExceptionWaitTimeout),
             yexception);
-        UNIT_ASSERT_EQUAL(
+        UNIT_ASSERT_VALUES_EQUAL(
             1,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
         // Process first request.
         scheduler->RunAllScheduledTasks();
         responsePromise.SetValue(NProto::TDestroyHandleResponse{});
-        UNIT_ASSERT_EQUAL(1, handlerCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1u, handlerCalled.load());
 
         // After the first request is processed, the second request should be
         // completed and added to the HandleOpsQueue.
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(
+        UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
         // Check that second request was added to the queue and processed later.
         scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_EQUAL(2, handlerCalled);
+        UNIT_ASSERT_VALUES_EQUAL(2u, handlerCalled.load());
     }
 
     // We want to ensure that the same file cannot be reused for FileRingBuffers
@@ -3017,7 +3017,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Service->WriteDataHandler = [&](auto, const auto& request)
         {
-            UNIT_ASSERT_EQUAL_C(
+            UNIT_ASSERT_VALUES_EQUAL_C(
                 zeroCopyWriteEnabled,
                 !request->GetIovecs().empty(),
                 "Requests generated by TWriteBackCache should use iovecs if "
@@ -3207,8 +3207,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
             auto& iovecs = request->GetIovecs();
-            UNIT_ASSERT_EQUAL(1, iovecs.size());
-            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_VALUES_EQUAL(request->GetLength(), iovecs[0].GetLength());
 
             NProto::TReadDataResponse result;
             memcpy(
@@ -3263,8 +3263,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
             auto& iovecs = request->GetIovecs();
-            UNIT_ASSERT_EQUAL(1, iovecs.size());
-            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_VALUES_EQUAL(request->GetLength(), iovecs[0].GetLength());
 
             NProto::TReadDataResponse result;
             result.MutableBuffer()->assign(data);
@@ -4151,8 +4151,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "ListNodes");
         // counters->OutputPlainText(Cerr);
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("Errors/Fatal")->GetAtomic());
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
             parentNodeId,
@@ -4412,6 +4416,44 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
             UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotReportEnormousMaxTimeWhenCancellingRequest)
+    {
+        TBootstrap bootstrap(CreateWallClockTimer());
+
+        bootstrap.Start();
+
+        const ui64 nodeId = 123;
+
+        auto stopFuture = bootstrap.StopAsync();
+
+        auto future = bootstrap.Fuse->SendRequest<TGetAttrRequest>(nodeId);
+        future.Wait(WaitTimeout);
+
+        // Request is cancelled
+        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+
+        bootstrap.StatsRegistry->UpdateStats(false);
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("request", "GetNodeAttr");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+
+        const auto maxTime = counters->GetCounter("MaxTime")->GetAtomic();
+        UNIT_ASSERT_LE_C(
+            maxTime,
+            1000000000000,
+            "got maxTime " << maxTime);
+
+        UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 }
 
