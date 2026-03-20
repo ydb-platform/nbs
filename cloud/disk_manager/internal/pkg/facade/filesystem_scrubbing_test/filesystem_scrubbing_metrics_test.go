@@ -2,6 +2,7 @@ package tests
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -61,7 +62,7 @@ func TestNfsClientReportsMetrics(t *testing.T) {
 		filesystemID,
 	)
 
-	testcommon.WaitOperationEnded(t, ctx, taskID)
+	testcommon.WaitOperationEnded(t, ctx, taskID, 60*time.Second)
 
 	require.Greater(t, testcommon.GetCountersControlplane(
 		t,
