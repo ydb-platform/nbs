@@ -266,8 +266,6 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 
 	// Should wait here because base disk slot might be released on overlay disk
 	// creation operation cancel (and exact time of this event is unknown).
-	// TODO: add method to internal client allowing to wait until task is
-	// cancelled.
 	time.Sleep(time.Second * 10)
 
 	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
