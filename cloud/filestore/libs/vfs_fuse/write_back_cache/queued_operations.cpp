@@ -52,6 +52,28 @@ struct TFlushOrReleasePromiseFailedEvent
     }
 };
 
+struct TAcquireBarrierPromiseCompletedEvent
+{
+    NThreading::TPromise<TResultOrError<ui64>> Promise;
+    ui64 BarrierId;
+
+    void Invoke()
+    {
+        Promise.SetValue(BarrierId);
+    }
+};
+
+struct TAcquireBarrierPromiseFailedEvent
+{
+    NThreading::TPromise<TResultOrError<ui64>> Promise;
+    NCloud::NProto::TError Error;
+
+    void Invoke()
+    {
+        Promise.SetValue(std::move(Error));
+    }
+};
+
 struct TScheduleFlushEvent
 {
     IQueuedOperationsProcessor& Processor;
@@ -68,6 +90,8 @@ using TEventVariant = std::variant<
     TWriteDataPromiseFailedEvent,
     TFlushOrReleasePromiseCompletedEvent,
     TFlushOrReleasePromiseFailedEvent,
+    TAcquireBarrierPromiseCompletedEvent,
+    TAcquireBarrierPromiseFailedEvent,
     TScheduleFlushEvent>;
 
 }   // namespace
@@ -131,6 +155,22 @@ void TQueuedOperations::FailFlushOrReleasePromise(
 {
     Events.push_back(
         TFlushOrReleasePromiseFailedEvent{std::move(promise), error});
+}
+
+void TQueuedOperations::CompleteAcquireBarrierPromise(
+    NThreading::TPromise<TResultOrError<ui64>> promise,
+    ui64 barrierId)
+{
+    Events.push_back(
+        TAcquireBarrierPromiseCompletedEvent{std::move(promise), barrierId});
+}
+
+void TQueuedOperations::FailAcquireBarrierPromise(
+    NThreading::TPromise<TResultOrError<ui64>> promise,
+    const NCloud::NProto::TError& error)
+{
+    Events.push_back(
+        TAcquireBarrierPromiseFailedEvent{std::move(promise), error});
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

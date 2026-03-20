@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/vector.h>
@@ -51,6 +53,14 @@ public:
 
     void FailFlushOrReleasePromise(
         NThreading::TPromise<NCloud::NProto::TError> promise,
+        const NCloud::NProto::TError& error);
+
+    void CompleteAcquireBarrierPromise(
+        NThreading::TPromise<TResultOrError<ui64>> promise,
+        ui64 barrierId);
+
+    void FailAcquireBarrierPromise(
+        NThreading::TPromise<TResultOrError<ui64>> promise,
         const NCloud::NProto::TError& error);
 };
 

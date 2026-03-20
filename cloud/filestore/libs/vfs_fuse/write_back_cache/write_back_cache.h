@@ -136,14 +136,37 @@ public:
         ui64 nodeId,
         ui64 handle);
 
+    /* Read directly from the underlying storage.
+     * All prior cached WriteData requests are flushed and evicted.
+     * No new WriteData requests will be flushed until the direct read is
+     * completed.
+     */
+    NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request);
+
+    /* Write directly to the underlying storage.
+     * All prior cached WriteData requests are flushed and evicted.
+     * No new WriteData requests will be flushed until the direct write is
+     * completed.
+     */
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request);
+
+    // Execute SetNodeAttr with taking awareness of changing node size
+    NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TSetNodeAttrRequest> request);
+
     bool IsEmpty() const;
 
     // Keep information about MinNodeSize for flushed nodes
     ui64 AcquireNodeStateRef();
     void ReleaseNodeStateRef(ui64 refId);
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+    // Used to adjust node size according to cached data
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

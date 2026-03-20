@@ -76,6 +76,7 @@ void TNodeCache::EnqueueUnflushedRequest(
 
     CachedData.Add(begin, end, request.get());
     UnflushedRequests.push_back(std::move(request));
+    MaxWrittenOffset = Max(MaxWrittenOffset, end);
 }
 
 TCachedWriteDataRequest* TNodeCache::MoveFrontUnflushedRequestToFlushed()
@@ -178,11 +179,16 @@ ui64 TNodeCache::GetMaxFlushedSequenceId() const
 }
 
 void TNodeCache::VisitUnflushedRequests(
-    TCachedWriteDataRequestVisitor visitor) const
+    TCachedWriteDataRequestVisitor visitor, ui64 maxSequenceId) const
 {
     for (const auto& e: UnflushedRequests) {
-        if (!visitor(e.get())) {
-            return;
+        auto* cachedWriteDataRequest = e.get();
+        if (cachedWriteDataRequest->GetSequenceId() > maxSequenceId) {
+            break;
+        }
+        const bool shouldContinue = visitor(cachedWriteDataRequest);
+        if (!shouldContinue) {
+            break;
         }
     }
 }
@@ -213,9 +219,15 @@ TCachedData TNodeCache::GetCachedData(ui64 offset, ui64 byteCount) const
     return result;
 }
 
-ui64 TNodeCache::GetCachedDataEndOffset() const
+ui64 TNodeCache::GetMaxWrittenOffset() const
 {
-    return CachedData.empty() ? 0 : CachedData.rbegin()->second.End;
+    return MaxWrittenOffset;
+}
+
+void TNodeCache::ResetMaxWrittenOffset()
+{
+    Y_ABORT_UNLESS(FlushedRequests.empty());
+    MaxWrittenOffset = CachedData.empty() ? 0 : CachedData.rbegin()->second.End;
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

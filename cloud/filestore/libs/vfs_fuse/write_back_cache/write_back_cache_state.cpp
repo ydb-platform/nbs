@@ -141,24 +141,28 @@ TCachedData TWriteBackCacheState::GetCachedData(
     return nodeState->Cache.GetCachedData(offset, byteCount);
 }
 
-ui64 TWriteBackCacheState::GetCachedNodeSize(ui64 nodeId) const
+ui64 TWriteBackCacheState::GetMaxWrittenOffset(ui64 nodeId) const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
     const auto* nodeState =
         Nodes.GetNodeState(nodeId, /* includeDeleted = */ true);
 
-    return nodeState ? nodeState->CachedNodeSize : 0;
+    return nodeState ? nodeState->Cache.GetMaxWrittenOffset() : 0;
 }
 
-void TWriteBackCacheState::SetCachedNodeSize(ui64 nodeId, ui64 size)
+void TWriteBackCacheState::ResetMaxWrittenOffset(ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    auto* nodeState = Nodes.GetNodeState(nodeId, true);
-    if (nodeState) {
-        nodeState->CachedNodeSize = size;
-    }
+    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+
+    Y_ABORT_UNLESS(
+        !nodeState.Barriers.empty() &&
+            nodeState.Barriers.cbegin()->second.IsAcquired,
+        "MaxWrittenOffset can only be reset if the barrier is acquired");
+
+    nodeState.Cache.ResetMaxWrittenOffset();
 }
 
 TWriteBackCacheState::TPin TWriteBackCacheState::PinCachedData(ui64 nodeId)
@@ -224,7 +228,11 @@ void TWriteBackCacheState::VisitUnflushedRequests(
         return;
     }
 
-    nodeState->Cache.VisitUnflushedRequests(visitor);
+    const ui64 maxSequenceId = nodeState->Barriers.empty()
+                                   ? Max<ui64>()
+                                   : nodeState->Barriers.cbegin()->first;
+
+    nodeState->Cache.VisitUnflushedRequests(visitor, maxSequenceId);
 }
 
 void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
@@ -251,32 +259,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
             cachedRequest->GetHandle());
     }
 
-    // Trigger Flush completions
-    const ui64 sequenceId =
-        nodeState.Cache.HasPendingOrUnflushedRequests()
-            ? nodeState.Cache.GetMinPendingOrUnflushedSequenceId()
-            : Max<ui64>();
-
-    while (!nodeState.FlushRequests.empty() &&
-           nodeState.FlushRequests.front().SequenceId < sequenceId)
-    {
-        QueuedOperations.CompleteFlushOrReleasePromise(
-            std::move(nodeState.FlushRequests.front().Promise));
-        nodeState.FlushRequests.pop_front();
-    }
-
-    // Trigger FlushAll completions
-    const ui64 globalSequenceId =
-        RequestManager.GetMinPendingOrUnflushedSequenceId();
-
-    while (!FlushAllRequestQueue.empty() &&
-           FlushAllRequestQueue.front().SequenceId < globalSequenceId)
-    {
-        QueuedOperations.CompleteFlushOrReleasePromise(
-            std::move(FlushAllRequestQueue.front().Promise));
-        FlushAllRequestQueue.pop_front();
-    }
-
+    TriggerFlushCompletions(nodeState);
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
 }
@@ -310,6 +293,18 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
     nodeState.FlushRequests.clear();
     FlushAllRequestQueue.clear();
 
+    // Fail barrier acquisitions
+    while (!nodeState.Barriers.empty()) {
+        auto it = std::prev(nodeState.Barriers.end());
+        if (it->second.IsAcquired) {
+            break;
+        }
+        QueuedOperations.FailAcquireBarrierPromise(
+            std::move(it->second.Promise),
+            error);
+        nodeState.Barriers.erase(it);
+    }
+
     if (nodeState.Handles.size() == nodeState.HandleToReleaseCount) {
         // All handles with active WriteData requests are to be released
         // Drop node data on flush failure
@@ -321,6 +316,59 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
     // Keep status ENodeFlushStatus::FlushRequested if flush is retried
     return EFlushRetryStatus::ShouldRetry;
 }
+
+NThreading::TFuture<TResultOrError<ui64>> TWriteBackCacheState::AcquireBarrier(
+    ui64 nodeId)
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+
+    const ui64 barrierId = SequenceIdGenerator->GenerateId();
+    auto& barrier = nodeState.Barriers[barrierId];
+
+    if (nodeState.Cache.Empty()) {
+        barrier.IsAcquired = true;
+        return MakeFuture(TResultOrError<ui64>(barrierId));
+    }
+
+    barrier.Promise = NThreading::NewPromise<TResultOrError<ui64>>();
+
+    UpdateFlushStatus(nodeId, nodeState);
+
+    return barrier.Promise.GetFuture();
+}
+
+void TWriteBackCacheState::ReleaseBarrier(ui64 nodeId, ui64 barrierId)
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted= */ false);
+    Y_ABORT_UNLESS(nodeState, "Node %lu not found", nodeId);
+
+    auto it = nodeState->Barriers.find(barrierId);
+    Y_ABORT_UNLESS(
+        it != nodeState->Barriers.end(),
+        "Barrier %lu not found for node %lu",
+        barrierId,
+        nodeId);
+
+    Y_ABORT_UNLESS(
+        it->second.IsAcquired,
+        "Barrier %lu for node %lu has not been acquired",
+        barrierId,
+        nodeId);
+
+    nodeState->Barriers.erase(it);
+
+    if (nodeState->CanBeDeleted()) {
+        Nodes.DeleteNodeState(nodeId);
+    } else {
+        UpdateFlushStatus(nodeId, *nodeState);
+    }
+}
+
+// Private methods
 
 TGuard<TQueuedOperations>
 TWriteBackCacheState::LockStateAndPostponeQueuedOperations() const
@@ -350,7 +398,6 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
     AddActiveRequestToHandleState(nodeState, request->GetHandle());
-    nodeState.CachedNodeSize = Max(nodeState.CachedNodeSize, request->GetEnd());
     nodeState.Cache.EnqueueUnflushedRequest(std::move(request));
 
     UpdateFlushStatus(nodeId, nodeState);
@@ -413,12 +460,41 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
     }
 }
 
+void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
+{
+    // Trigger Flush completions
+    const ui64 sequenceId =
+        nodeState.Cache.HasPendingOrUnflushedRequests()
+            ? nodeState.Cache.GetMinPendingOrUnflushedSequenceId()
+            : Max<ui64>();
+
+    while (!nodeState.FlushRequests.empty() &&
+           nodeState.FlushRequests.front().SequenceId < sequenceId)
+    {
+        QueuedOperations.CompleteFlushOrReleasePromise(
+            std::move(nodeState.FlushRequests.front().Promise));
+        nodeState.FlushRequests.pop_front();
+    }
+
+    // Trigger FlushAll completions
+    const ui64 globalSequenceId =
+        RequestManager.GetMinPendingOrUnflushedSequenceId();
+
+    while (!FlushAllRequestQueue.empty() &&
+           FlushAllRequestQueue.front().SequenceId < globalSequenceId)
+    {
+        QueuedOperations.CompleteFlushOrReleasePromise(
+            std::move(FlushAllRequestQueue.front().Promise));
+        FlushAllRequestQueue.pop_front();
+    }
+}
+
 // nodeState becomes unusable after this call
 void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     ui64 nodeId,
     TNodeState& nodeState)
 {
-    bool entriesDeleted = false;
+    bool entriesEvicted = false;
 
     const ui64 allowedToEvictMaxSequenceId =
         nodeState.CachedDataPins.empty() ? Max<ui64>()
@@ -431,17 +507,63 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         }
         auto cachedRequest = nodeState.Cache.DequeueFlushedRequest();
         RequestManager.Evict(std::move(cachedRequest));
-        entriesDeleted = true;
+        entriesEvicted = true;
     }
 
     if (nodeState.CanBeDeleted()) {
         Nodes.DeleteNodeState(nodeId);
+    } else {
+        CheckAndAcquireBarriers(nodeState);
     }
 
-    if (!entriesDeleted) {
+    if (entriesEvicted) {
+        ProcessPendingRequests();
+    }
+}
+
+void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
+{
+    // Barrier acquisition condition:
+    // all requests with SequenceId <= BarrierId are flushed and evicted
+
+    // (BarrierId1) (BarrierId2) (UnflushedSequenceId1) (BarrierId3) ...
+    //  ^ acquired   ^ acquired                          ^ not acquired
+
+    if (nodeState.Barriers.empty() || nodeState.Cache.HasFlushedRequests()) {
         return;
     }
 
+    auto it = nodeState.Barriers.begin();
+    if (it->second.IsAcquired) {
+        // Once the front barrier is acquired, it is not possible to flush
+        // any requests - so the acquisition condition for newly added barriers
+        // will not change. Therefore, no need to check it again.
+        return;
+    }
+
+    const ui64 minSequenceId =
+        nodeState.Cache.HasPendingOrUnflushedRequests()
+            ? nodeState.Cache.GetMinPendingOrUnflushedSequenceId()
+            : Max<ui64>();
+
+    for (; it != nodeState.Barriers.end(); ++it) {
+        Y_ABORT_UNLESS(
+            !it->second.IsAcquired,
+            "Newer barriers cannot be acquired before older");
+
+        if (it->first > minSequenceId) {
+            break;
+        }
+
+        it->second.IsAcquired = true;
+        QueuedOperations.CompleteAcquireBarrierPromise(
+            std::move(it->second.Promise),
+            it->first);
+    }
+}
+
+void TWriteBackCacheState::ProcessPendingRequests()
+{
     while (RequestManager.HasPendingRequests()) {
         auto request = RequestManager.TryProcessPendingRequest();
         if (!request) {

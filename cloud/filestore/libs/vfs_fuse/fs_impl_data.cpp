@@ -448,14 +448,8 @@ void TFileSystem::Read(
         }
     }
 
-    TFuture<NProto::TReadDataResponse> future;
-    if (WriteBackCache) {
-        future = WriteBackCache.ReadData(callContext, std::move(request));
-    } else {
-        future = Session->ReadData(callContext, std::move(request));
-    }
-
-    future.Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
         auto self = ptr.lock();
         if (!self) {
             return;
@@ -484,7 +478,27 @@ void TFileSystem::Read(
                     buffer.size() - bufferOffset);
             }
         }
-    });
+    };
+
+    const auto wbcState = GetServerWriteBackCacheState(fi);
+    switch (wbcState) {
+        case EServerWriteBackCacheState::Enabled: {
+            WriteBackCache.ReadData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EServerWriteBackCacheState::Disabled: {
+            Session->ReadData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EServerWriteBackCacheState::Draining: {
+            WriteBackCache
+                .ReadDataDirect(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+    }
 }
 
 void TFileSystem::Write(
@@ -563,48 +577,28 @@ void TFileSystem::DoWrite(
         }
     };
 
-    if (wbcState == EServerWriteBackCacheState::Enabled) {
-        WriteBackCache.WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
+    if (wbcState != EServerWriteBackCacheState::Enabled) {
+        FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
     }
 
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
-
-    if (wbcState == EServerWriteBackCacheState::Disabled) {
-        Session->WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
+    switch (wbcState) {
+        case EServerWriteBackCacheState::Enabled: {
+            WriteBackCache.WriteData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EServerWriteBackCacheState::Disabled: {
+            Session->WriteData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EServerWriteBackCacheState::Draining: {
+            WriteBackCache
+                .WriteDataDirect(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
     }
-
-    Y_ABORT_UNLESS(
-        wbcState == EServerWriteBackCacheState::Draining,
-        "Invalid EServerWriteBackCacheState value = %d",
-        wbcState);
-
-    // Sync writes must include all previously cached data for
-    // the same node, so flush the node cache first and only then submit
-    // this write directly to the session.
-    // For O_DIRECT same file can be opened without O_DIRECT so we try
-    // to flush here as well
-    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
-    flushFuture.Subscribe(
-        [ptr = weak_from_this(),
-         callback = std::move(callback),
-         callContext = std::move(callContext),
-         request = std::move(request)](const auto& f) mutable
-        {
-            const NProto::TError& error = f.GetValue();
-            if (HasError(error)) {
-                // Propagate flush error to the WriteData response
-                NProto::TWriteDataResponse response;
-                *response.MutableError() = error;
-                callback(MakeFuture(std::move(response)));
-            } else if (auto self = ptr.lock()) {
-                self->Session->WriteData(callContext, std::move(request))
-                    .Subscribe(std::move(callback));
-            }
-        });
 }
 
 void TFileSystem::WriteBufLocal(

@@ -48,6 +48,12 @@ private:
     TDeque<std::unique_ptr<TCachedWriteDataRequest>> FlushedRequests;
     TDisjointIntervalMap<ui64, TCachedWriteDataRequest*> CachedData;
 
+    // Cached data extends the node size but until the data is flushed,
+    // the changes are not visible to the tablet. FileSystem requests that
+    // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
+    // should have the node size adjusted to these values.
+    ui64 MaxWrittenOffset = 0;
+
 public:
     void EnqueuePendingRequest(
         std::unique_ptr<TPendingWriteDataRequest> request);
@@ -77,10 +83,13 @@ public:
     ui64 GetMinFlushedSequenceId() const;
     ui64 GetMaxFlushedSequenceId() const;
 
-    void VisitUnflushedRequests(TCachedWriteDataRequestVisitor visitor) const;
+    void VisitUnflushedRequests(
+        TCachedWriteDataRequestVisitor visitor,
+        ui64 maxSequenceId) const;
 
     TCachedData GetCachedData(ui64 offset, ui64 byteCount) const;
-    ui64 GetCachedDataEndOffset() const;
+    ui64 GetMaxWrittenOffset() const;
+    void ResetMaxWrittenOffset();
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
