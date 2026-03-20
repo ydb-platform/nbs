@@ -1039,7 +1039,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             }
 
             // Write nodeRefs to DB
-            Cout << "*** write mode: " << (int)writeMode << '\n';
             for (const auto& nodeRef: nodeRefs) {
                 executor.WriteTx(
                     [&](TIndexTabletDatabase db)

@@ -758,5 +758,5 @@ message TStorageConfig
 
     // The way we read and write compact ShardId and ShardNodeName from/to
     // NodeRefs table.
-    optional EShardIdCompressionMode ShardIdCompressionMode = 487;
+    optional EShardIdCompressionMode ShardIdCompressionMode = 490;
 }
