@@ -413,6 +413,24 @@ public:
             std::move(blockContent));
     }
 
+    std::unique_ptr<TEvService::TEvZeroBlocksRequest> CreateZeroBlocksRequest(
+        ui32 blockIndex)
+    {
+        auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
+        request->Record.SetStartIndex(blockIndex);
+        request->Record.SetBlocksCount(1);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvZeroBlocksRequest> CreateZeroBlocksRequest(
+        const TBlockRange32& writeRange)
+    {
+        auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
+        request->Record.SetStartIndex(writeRange.Start);
+        request->Record.SetBlocksCount(writeRange.Size());
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -861,6 +879,75 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 GetBlockContent(i),
                 GetBlockContent(fbwClient.ReadBlocks(i)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSupportFreshZeroRequests)
+    {
+        auto testEnv = PrepareTestActorRuntime();
+        auto& runtime = *testEnv.Runtime;
+
+        // TODO(issue-4875): remove trim events dropping after adding trim
+        // synchronization
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest)
+                {
+                    UNIT_ASSERT_VALUES_UNEQUAL(
+                        testEnv.PartitionActorId,
+                        event->GetRecipientRewrite());
+
+                    return false;
+                }
+                return event->GetTypeRewrite() ==
+                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+            });
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(0, '0');
+        fbwClient.WriteBlocks(1, '1');
+        fbwClient.WriteBlocks(2, '2');
+
+        fbwClient.ZeroBlocks(0);
+        {
+            TStringBuilder expectedContent;
+            expectedContent << GetBlockContent('\0') << GetBlockContent('1')
+                            << GetBlockContent('2');
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedContent,
+                GetBlocksContent(
+                    fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 3))));
+        }
+
+        fbwClient.ZeroBlocks(1);
+        {
+            TStringBuilder expectedContent;
+            expectedContent << GetBlockContent('\0') << GetBlockContent('\0')
+                            << GetBlockContent('2');
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedContent,
+                GetBlocksContent(
+                    fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 3))));
+        }
+
+        fbwClient.ZeroBlocks(2);
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                TString{},
+                GetBlocksContent(
+                    fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 3))));
         }
     }
 }

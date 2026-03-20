@@ -141,6 +141,12 @@ private:
         const NActors::TActorContext& ctx,
         TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer);
 
+    void ZeroFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 writeRange,
+        ui64 commitId);
+
     void RebootOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TStringBuf& requestName);
