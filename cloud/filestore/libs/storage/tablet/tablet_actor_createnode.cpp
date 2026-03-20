@@ -344,7 +344,7 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
         }
 
         //
-        // TODO(#2674): remove this E_FS_INVALID_SESSION check when the change
+        // TODO(#4608): remove this E_FS_INVALID_SESSION check when the change
         // that removes session checks for tablet<->tablet GetNodeAttr requests
         // gets deployed everywhere.
         //
