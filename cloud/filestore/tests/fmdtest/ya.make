@@ -20,12 +20,13 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/client_sharded_dir/nfs-storage.txt
+    cloud/filestore/tests/fmdtest/nfs-storage.txt
 )
 
 SET(QEMU_VIRTIO fs)
 SET(QEMU_INSTANCE_COUNT 1)
 SET(FILESTORE_VHOST_ENDPOINT_COUNT 1)
+SET(FILESTORE_BLOCKS_COUNT 5242880)
 SET(VIRTIOFS_SERVER_COUNT 1)
 SET(QEMU_INVOKE_TEST NO)
 

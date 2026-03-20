@@ -13,6 +13,8 @@ void TIndexTabletActor::HandleDestroyHandle(
     const TEvService::TEvDestroyHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TMethod = TEvService::TDestroyHandleMethod;
+
     if (auto error = IsDataOperationAllowed(); HasError(error)) {
         NCloud::Reply(
             ctx,
@@ -23,7 +25,7 @@ void TIndexTabletActor::HandleDestroyHandle(
         return;
     }
 
-    if (!AcceptRequest<TEvService::TDestroyHandleMethod>(ev, ctx)) {
+    if (!AcceptRequest<TMethod>(ev, ctx, {} /* validator */)) {
         return;
     }
 
@@ -44,7 +46,7 @@ void TIndexTabletActor::HandleDestroyHandle(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvService::TDestroyHandleMethod>(*requestInfo);
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TDestroyHandle>(
         ctx,
