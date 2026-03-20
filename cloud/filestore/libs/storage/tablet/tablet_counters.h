@@ -224,6 +224,7 @@ struct TTabletMetrics
     // Tablet-specific stats
     std::atomic<i64> TabletStartTimestamp{0};
     std::atomic<i64> TabletId{0};
+    std::atomic<i64> TabletGeneration{0};
 
     // Blob compression stats
     std::atomic<i64> UncompressedBytesWritten{0};
