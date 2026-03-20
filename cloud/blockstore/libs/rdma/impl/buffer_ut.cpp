@@ -4,7 +4,6 @@
 
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
-
 #include <util/system/info.h>
 
 namespace NCloud::NBlockStore::NRdma {
