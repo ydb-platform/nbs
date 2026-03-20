@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 
@@ -28,13 +29,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-inline bool IsDynamicGroup(ui32 groupId)
-{
-    return groupId & 0x80000000;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 NPrivateProto::TClusterCapacityInfo ToResponse(
     const NProto::TClusterCapacityInfo& capacityInfo)
 {
@@ -52,6 +46,33 @@ class TGetClusterCapacityActor final
     : public TActorBootstrapped<TGetClusterCapacityActor>
 {
 private:
+    struct TStoragePoolStats
+    {
+        ui64 TotalBytes = 0;
+        ui64 FreeBytes = 0;
+    };
+
+    struct TPoolId
+    {
+        ui64 BoxId = 0;
+        ui64 StoragePoolId = 0;
+
+        bool operator == (const TPoolId& other) const = default;
+    };
+
+    struct TPoolIdIdHash
+    {
+        ui64 operator ()(const TPoolId& poolId) const
+        {
+            return MultiHash(poolId.BoxId, poolId.StoragePoolId);
+        }
+    };
+
+    THashSet<TString> UsedPools;
+    THashMap<NProto::EStorageMediaKind, TStoragePoolStats> Stats;
+    THashMap<TPoolId, NProto::EStorageMediaKind, TPoolIdIdHash> StorageIdToKind;
+    THashMap<ui32, NProto::EStorageMediaKind> GroupIdToKind;
+
     const TRequestInfoPtr RequestInfo;
     TVector<NPrivateProto::TClusterCapacityInfo> Capacities;
 
@@ -78,14 +99,32 @@ private:
 
 private:
     STFUNC(StateGetDiskRegistryBasedCapacity);
-    STFUNC(StateGetYDBBasedCapacity);
+    STFUNC(StateGetYDBStoragePools);
+    STFUNC(StateGetYDBGroups);
+    STFUNC(StateGetYDBVSlots);
+
+    void HandleConnect(
+        TEvTabletPipe::TEvClientConnected::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleDisconnect(
+        TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGetStoragePoolsResponse(
+        const NSysView::TEvSysView::TEvGetStoragePoolsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGetGroupsResponse(
+        const NSysView::TEvSysView::TEvGetGroupsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGetVSlotsResponse(
+        const NSysView::TEvSysView::TEvGetVSlotsResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleGetDiskRegistryCapacityResponse(
         const TEvDiskRegistry::TEvGetClusterCapacityResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleGetYDBCapacityResponse(
-        const TEvBlobStorage::TEvControllerConfigResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -96,7 +135,25 @@ TGetClusterCapacityActor::TGetClusterCapacityActor(
         TStorageConfigPtr config)
     : RequestInfo(std::move(requestInfo))
     , Config(config)
-{}
+{
+    constexpr NProto::EStorageMediaKind kinds[] {
+        NProto::STORAGE_MEDIA_HDD,
+        NProto::STORAGE_MEDIA_SSD,
+        NProto::STORAGE_MEDIA_HYBRID
+    };
+
+    auto prefix = Config->GetSchemeShardDir() + ':';
+
+    for (auto kind: kinds) {
+        const auto pools = GetPoolKinds(*Config, kind, "", "", "");
+        UsedPools.emplace(prefix + pools.Fresh);
+        UsedPools.emplace(prefix + pools.Index);
+        UsedPools.emplace(prefix + pools.Log);
+        UsedPools.emplace(prefix + pools.Merged);
+        UsedPools.emplace(prefix + pools.Mixed);
+        UsedPools.emplace(prefix + pools.System);
+    }
+}
 
 void TGetClusterCapacityActor::Bootstrap(const TActorContext& ctx)
 {
@@ -129,7 +186,7 @@ void TGetClusterCapacityActor::CreateBSControllerPipeClient(
 
     LOG_INFO(
         ctx,
-        TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        TBlockStoreComponents::SERVICE,
         "Tablet client: %lu (remote: %s)",
         MakeBSControllerID(0),
         ToString(BSControllerPipeClient).data());
@@ -162,10 +219,12 @@ void TGetClusterCapacityActor::HandleEmptyClusterCapacity(
     const TActorContext& ctx,
     const TString& component)
 {
-    NProto::TError error;
-    error.SetMessage("Got empty capacity response from " + component);
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        std::move(error));
+        MakeError(
+            E_REJECTED,
+            TStringBuilder() <<
+                "Got empty capacity response from " <<
+                component));
     ReplyAndDie(ctx, std::move(response));
 }
 
@@ -197,135 +256,136 @@ void TGetClusterCapacityActor::HandleGetDiskRegistryCapacityResponse(
         Capacities.push_back(std::move(capacity));
     }
 
-    Become(&TThis::StateGetYDBBasedCapacity);
+    Become(&TThis::StateGetYDBStoragePools);
 
     CreateBSControllerPipeClient(ctx);
 
     auto request =
-        std::make_unique<TEvBlobStorage::TEvControllerConfigRequest>();
-
-    request->Record.MutableRequest()->AddCommand()->MutableQueryBaseConfig();
-    auto& read = *request->Record.MutableRequest()
-                      ->AddCommand()
-                      ->MutableReadStoragePool();
-    read.SetBoxId(UINT64_MAX);
+        std::make_unique<NSysView::TEvSysView::TEvGetStoragePoolsRequest>();
 
     NTabletPipe::SendData(ctx, BSControllerPipeClient, request.release());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
-    const TEvBlobStorage::TEvControllerConfigResponse::TPtr& ev,
+void TGetClusterCapacityActor::HandleGetStoragePoolsResponse(
+    const NSysView::TEvSysView::TEvGetStoragePoolsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& record = ev->Get()->Record.GetResponse();
+    const auto& record = ev->Get()->Record;
 
     LOG_DEBUG_S(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Got BSController capacity response " + record.ShortDebugString());
+        "Got BSController storage pools response " << record.ShortDebugString());
 
-    if (!record.GetSuccess() || !record.StatusSize() ||
-        !record.GetStatus(0).GetSuccess() || !record.GetStatus(1).GetSuccess())
-    {
-        LOG_ERROR_S(
+    for (const auto& storagePool: record.GetEntries()) {
+        const auto& poolKey = storagePool.GetKey();
+        const auto& poolInfo = storagePool.GetInfo();
+
+        LOG_INFO_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Getting BSController capacity failed");
-        HandleEmptyClusterCapacity(ctx, "BSController");
-    }
+            "Observed pool " <<
+            poolInfo.GetName() <<
+            " and kind " <<
+            poolInfo.GetKind());
 
-    std::map<std::pair<ui64, ui64>, NKikimrBlobStorage::TDefineStoragePool>
-        pools;
-    for (const auto& pool: record.GetStatus(1).GetStoragePool()) {
-        pools[{pool.GetBoxId(), pool.GetStoragePoolId()}] = pool;
-    }
-
-    std::map<ui64, TString> poolNameByGroupID;
-    for (const auto& group: record.GetStatus(0).GetBaseConfig().GetGroup()) {
-        if (pools.find({group.GetBoxId(), group.GetStoragePoolId()}) ==
-            pools.end())
-        {
-            LOG_WARN_S(
-                ctx,
-                TBlockStoreComponents::SERVICE,
-                "Got group with unknown pool " << group.DebugString());
+        if (!UsedPools.contains(poolInfo.GetName())) {
             continue;
         }
 
-        poolNameByGroupID[group.GetGroupId()] =
-            pools[{group.GetBoxId(), group.GetStoragePoolId()}].GetName();
-
-        LOG_DEBUG_S(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "Got group " << group.ShortDebugString() << " with pool name "
-                         << poolNameByGroupID[group.GetGroupId()]);
-    }
-
-    const TString hddPoolName = "NBS:rot";
-    const TString ssdPoolName = "NBS:ssd";
-
-    ui64 totalBytesSSD = 0;
-    ui64 freeBytesSSD = 0;
-    ui64 totalBytesHDD = 0;
-    ui64 freeBytesHDD = 0;
-
-    for (const auto& vslot: record.GetStatus(0).GetBaseConfig().GetVSlot()) {
-        LOG_DEBUG_S(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "Got vslot " << vslot.ShortDebugString());
-
-        if (!IsDynamicGroup(vslot.GetGroupId())) {
-            LOG_DEBUG_S(
-                ctx,
-                TBlockStoreComponents::SERVICE,
-                "Skipping non dynamic group " << vslot.GetGroupId()
-                                              << " of vslot "
-                                              << vslot.GetVSlotId());
-            continue;
-        }
-
-        if (poolNameByGroupID.find(vslot.GetGroupId()) ==
-            poolNameByGroupID.end())
-        {
-            LOG_DEBUG_S(
-                ctx,
-                TBlockStoreComponents::SERVICE,
-                "Got vslot " << vslot.GetVSlotId() << " with unknown group id "
-                             << vslot.GetGroupId());
-            continue;
-        }
-
-        if (poolNameByGroupID[vslot.GetGroupId()].find(ssdPoolName) !=
-            TString::npos)
-        {
-            totalBytesSSD += vslot.GetVDiskMetrics().GetAllocatedSize() +
-                             vslot.GetVDiskMetrics().GetAvailableSize();
-            freeBytesSSD += vslot.GetVDiskMetrics().GetAvailableSize();
-        } else if (
-            poolNameByGroupID[vslot.GetGroupId()].find(hddPoolName) !=
-            TString::npos)
-        {
-            totalBytesHDD += vslot.GetVDiskMetrics().GetAllocatedSize() +
-                             vslot.GetVDiskMetrics().GetAvailableSize();
-            freeBytesHDD += vslot.GetVDiskMetrics().GetAvailableSize();
+        const auto YdbPoolToStorageMediaKind = Config->GetPoolKindToMediaKindMapping();
+        auto it = YdbPoolToStorageMediaKind.find(poolInfo.GetKind());
+        if (it != YdbPoolToStorageMediaKind.end()) {
+            const auto key = TPoolId{
+                poolKey.GetBoxId(),
+                poolKey.GetStoragePoolId()};
+            StorageIdToKind[key] = it->second;
         }
     }
 
-    auto& ssdCapacity = Capacities.emplace_back();
-    ssdCapacity.SetStorageMediaKind(
-        NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
-    ssdCapacity.SetFreeBytes(freeBytesSSD);
-    ssdCapacity.SetTotalBytes(totalBytesSSD);
+    Become(&TThis::StateGetYDBGroups);
 
-    auto& hddCapacity = Capacities.emplace_back();
-    hddCapacity.SetStorageMediaKind(
-        NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
-    hddCapacity.SetFreeBytes(freeBytesHDD);
-    hddCapacity.SetTotalBytes(totalBytesHDD);
+    auto request =
+        std::make_unique<NSysView::TEvSysView::TEvGetGroupsRequest>();
+
+    NTabletPipe::SendData(ctx, BSControllerPipeClient, request.release());
+}
+
+void TGetClusterCapacityActor::HandleGetGroupsResponse(
+    const NSysView::TEvSysView::TEvGetGroupsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& record = ev->Get()->Record;
+
+    LOG_DEBUG_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Got BSController groups response " << record.ShortDebugString());
+
+    for (const auto& groupInfo: record.GetEntries()) {
+        const auto& group = groupInfo.GetInfo();
+        const auto key = TPoolId{
+            group.GetBoxId(),
+            group.GetStoragePoolId()};
+        auto it = StorageIdToKind.find(key);
+        if (it == StorageIdToKind.end()) {
+            continue;
+        }
+
+        GroupIdToKind[groupInfo.GetKey().GetGroupId()] = it->second;
+    }
+
+    Become(&TThis::StateGetYDBVSlots);
+
+    auto request =
+        std::make_unique<NSysView::TEvSysView::TEvGetVSlotsRequest>();
+
+    NTabletPipe::SendData(ctx, BSControllerPipeClient, request.release());
+}
+
+void TGetClusterCapacityActor::HandleGetVSlotsResponse(
+    const NSysView::TEvSysView::TEvGetVSlotsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& record = ev->Get()->Record;
+
+    LOG_DEBUG_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Got BSController vslot response " + record.ShortDebugString());
+
+    for (const auto& slotInfo: record.GetEntries()) {
+        const auto& slot = slotInfo.GetInfo();
+        auto it = GroupIdToKind.find(slot.GetGroupId());
+        if (it == GroupIdToKind.end()) {
+            continue;
+        }
+
+        Stats[it->second].TotalBytes +=
+            slot.GetAllocatedSize() + slot.GetAvailableSize();
+
+        Stats[it->second].FreeBytes += slot.GetAvailableSize();
+    }
+
+    for (const auto& [kind, stat]: Stats) {
+        auto& capacity = Capacities.emplace_back();
+        capacity.SetStorageMediaKind(kind);
+        capacity.SetFreeBytes(stat.FreeBytes);
+        capacity.SetTotalBytes(stat.TotalBytes);
+
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Pool " <<
+            NProto::EStorageMediaKind_Name(kind) <<
+            " has " <<
+            capacity.GetFreeBytes() <<
+            " free bytes and " <<
+            capacity.GetTotalBytes() <<
+            " bytes totaly");
+    }
 
     NPrivateProto::TGetClusterCapacityResponse result;
     for (auto& capacity: Capacities) {
@@ -335,6 +395,45 @@ void TGetClusterCapacityActor::HandleGetYDBCapacityResponse(
     TString output;
     google::protobuf::util::MessageToJsonString(result, &output);
     HandleSuccess(ctx, std::move(output));
+}
+
+void TGetClusterCapacityActor::HandleConnect(
+    TEvTabletPipe::TEvClientConnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (msg->Status != NKikimrProto::OK) {
+        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+            "Failed to connect to BSC %lu: %s",
+            msg->TabletId,
+            NKikimrProto::EReplyStatus_Name(msg->Status).data());
+
+        auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
+            MakeError(E_REJECTED, "Pipe to BSC is broken"));
+        ReplyAndDie(ctx, std::move(response));
+
+        return;
+    }
+
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+        "Pipe connected to BSC %lu",
+        msg->TabletId);
+}
+
+void TGetClusterCapacityActor::HandleDisconnect(
+    TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (ev->Sender != BSControllerPipeClient) {
+        return;
+    }
+
+    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE, "Connection to BSC is broken");
+
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        MakeError(E_REJECTED, "Pipe to BSC is broken"));
+    ReplyAndDie(ctx, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -357,16 +456,53 @@ STFUNC(TGetClusterCapacityActor::StateGetDiskRegistryBasedCapacity)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetClusterCapacityActor::StateGetYDBBasedCapacity)
+STFUNC(TGetClusterCapacityActor::StateGetYDBStoragePools)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvBlobStorage::TEvControllerConfigResponse,
-            HandleGetYDBCapacityResponse);
+            NSysView::TEvSysView::TEvGetStoragePoolsResponse,
+            HandleGetStoragePoolsResponse);
 
-        IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientConnected);
-        IgnoreFunc(NKikimr::TEvTabletPipe::TEvClientDestroyed);
-        IgnoreFunc(NKikimr::TEvTabletPipe::TEvServerConnected);
+        HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
+        HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TGetClusterCapacityActor::StateGetYDBGroups)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            NSysView::TEvSysView::TEvGetGroupsResponse,
+            HandleGetGroupsResponse);
+
+        HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
+        HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TGetClusterCapacityActor::StateGetYDBVSlots)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            NSysView::TEvSysView::TEvGetVSlotsResponse,
+            HandleGetVSlotsResponse);
+
+        HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
+        HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
 
         default:
             HandleUnexpectedEvent(

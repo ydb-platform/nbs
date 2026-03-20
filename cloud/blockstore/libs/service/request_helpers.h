@@ -335,6 +335,9 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::DestroyVolumeLink:
         case EBlockStoreRequest::RemoveVolumeClient:
         case EBlockStoreRequest::ListDiskStates:
+        case EBlockStoreRequest::ListNVMeDevices:
+        case EBlockStoreRequest::AcquireNVMeDevice:
+        case EBlockStoreRequest::ReleaseNVMeDevice:
             return true;
         case EBlockStoreRequest::MAX:
             Y_DEBUG_ABORT_UNLESS(false);

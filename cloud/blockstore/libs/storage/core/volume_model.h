@@ -59,6 +59,18 @@ struct TPartitionsInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPoolKinds
+{
+    TString System;
+    TString Log;
+    TString Index;
+    TString Mixed;
+    TString Merged;
+    TString Fresh;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ui64 ComputeBlocksCountPerPartition(
     const ui64 newBlocksCountPerVolume,
     const ui32 blocksPerStripe,
@@ -115,5 +127,12 @@ TVolumeParams ComputeVolumeParams(
     const TString& diskId,
     bool isSystem,
     bool isOverlayDisk);
+
+TPoolKinds GetPoolKinds(
+    const TStorageConfig& config,
+    const NCloud::NProto::EStorageMediaKind mediaKind,
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId);
 
 }   // namespace NCloud::NBlockStore::NStorage

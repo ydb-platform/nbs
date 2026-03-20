@@ -20,6 +20,11 @@ SET(
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
 
+SET(
+    NFS_SERVICE_CONFIG_PATCH
+    cloud/filestore/tests/common_configs/nfs-vhost-newfeatures-patch.txt
+)
+
 SET(FILESTORE_VHOST_QUEUE_COUNT 8)
 
 SET(QEMU_VIRTIO fs)

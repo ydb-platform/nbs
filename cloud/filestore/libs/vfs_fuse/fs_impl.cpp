@@ -160,9 +160,9 @@ TDuration TFileSystem::GetEntryCacheTimeout(
 void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
 {
     if (WriteBackCache) {
-        const auto cachedNodeSize =
-            WriteBackCache.GetCachedNodeSize(attrs.GetId());
-        attrs.SetSize(Max(attrs.GetSize(), cachedNodeSize));
+        const auto maxWrittenOffset =
+            WriteBackCache.GetMaxWrittenOffset(attrs.GetId());
+        attrs.SetSize(Max(attrs.GetSize(), maxWrittenOffset));
     }
 }
 
@@ -369,7 +369,8 @@ void TFileSystem::CompleteAsyncDestroyHandle(
                         nextRequest.CallContext,
                         nextRequest.Req,
                         nextRequest.Ino,
-                        nextRequest.Fh))
+                        nextRequest.Fh,
+                        nextRequest.WriteBackCacheError))
                 {
                     DelayedReleaseQueue.pop();
                 }

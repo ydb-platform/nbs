@@ -23,6 +23,7 @@
 #include <util/generic/hash_set.h>
 #include <util/system/rwlock.h>
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace NCloud::NBlockStore {
@@ -252,7 +253,7 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
-    TDuration InactivityTimeout;
+    bool RemoveByInactivityTimeoutEnabled = true;
     TInstant LastRemountTime;
 
     static TRequestCounters::EOptions GetRequestCountersOptions(
@@ -293,6 +294,16 @@ public:
     TDuration GetPossiblePostponeDuration() const override
     {
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
+    }
+
+    void SetRemoveByInactivityTimeoutEnabled(bool enabled) override
+    {
+        RemoveByInactivityTimeoutEnabled = enabled;
+    }
+
+    bool GetRemoveByInactivityTimeoutEnabled() const override
+    {
+        return RemoveByInactivityTimeoutEnabled;
     }
 
     ui64 RequestStarted(
@@ -512,7 +523,8 @@ public:
 
     bool MountVolumeImpl(
         NProto::TVolume volume,
-        const TRealInstanceId& realInstanceId)
+        const TRealInstanceId& realInstanceId,
+        bool removeByInactivityTimeout)
     {
         bool inserted = false;
 
@@ -537,8 +549,9 @@ public:
             inserted = true;
         }
 
+        instanceIt->second->RemoveByInactivityTimeoutEnabled =
+            removeByInactivityTimeout;
         instanceIt->second->LastRemountTime = Timer->Now();
-        instanceIt->second->InactivityTimeout = InactiveClientsTimeout;
 
         if (!inserted) {
             AlterVolumeImpl(
@@ -562,15 +575,61 @@ public:
             clientId,
             instanceId);
 
-        return MountVolumeImpl(volume, itr->second);
+        return MountVolumeImpl(
+            volume,
+            itr->second,
+            true /* removeByInactivityTimeout */);
+    }
+
+    void UnmountVolumeImpl(const TString& diskId, const TString& clientId)
+    {
+        const auto& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
+
+        auto volumeIt = Volumes.find(logicalDiskId);
+        if (volumeIt == Volumes.end()) {
+            return;
+        }
+
+        auto realInstanceIt = ClientToRealInstance.find(clientId);
+        if (realInstanceIt == ClientToRealInstance.end()) {
+            return;
+        }
+
+        TVolumeMap& infos = volumeIt->second.VolumeInfos;
+
+        auto infoIt = infos.find(realInstanceIt->second);
+        if (infoIt == infos.end()) {
+            return;
+        }
+
+        auto volumeInfo = infoIt->second;
+
+        UnregisterInstance(volumeInfo->VolumeBase, volumeInfo->RealInstanceId);
+
+        std::erase_if(
+            ClientToRealInstance,
+            [&volumeInfo](const auto& client)
+            {
+                return TRealInstanceKeyEqual()(
+                    client.second,
+                    volumeInfo->RealInstanceId);
+            });
+
+        infos.erase(infoIt);
+
+        if (infos.empty()) {
+            UnregisterVolume(volumeInfo->VolumeBase);
+            Volumes.erase(volumeIt);
+        }
     }
 
     void UnmountVolume(
         const TString& diskId,
         const TString& clientId) override
     {
-        Y_UNUSED(clientId);
-        Y_UNUSED(diskId);
+        TWriteGuard guard(Lock);
+
+        UnmountVolumeImpl(diskId, clientId);
     }
 
     void AlterVolumeImpl(
@@ -604,7 +663,10 @@ public:
 
         for (const auto& item: holder.VolumeInfos) {
             const TVolumeInfo& info = *item.second;
-            MountVolumeImpl(volumeConfig, info.RealInstanceId);
+            MountVolumeImpl(
+                volumeConfig,
+                info.RealInstanceId,
+                info.RemoveByInactivityTimeoutEnabled);
         }
     }
 
@@ -665,17 +727,21 @@ public:
     {
         std::erase_if(infos, [this, now] (const auto& item){
             const TVolumeInfo& info = *item.second;
-            if (info.InactivityTimeout &&
-                now - info.LastRemountTime > info.InactivityTimeout)
+            if (info.RemoveByInactivityTimeoutEnabled &&
+                InactiveClientsTimeout &&
+                now - info.LastRemountTime > InactiveClientsTimeout)
             {
                 UnregisterInstance(
                     info.VolumeBase,
                     info.RealInstanceId);
-                std::erase_if(ClientToRealInstance, [&info](const auto& client){
-                    return TRealInstanceKeyEqual().operator()(
-                        client.second,
-                        info.RealInstanceId);
-                });
+                std::erase_if(
+                    ClientToRealInstance,
+                    [&info](const auto& client)
+                    {
+                        return TRealInstanceKeyEqual()(
+                            client.second,
+                            info.RealInstanceId);
+                    });
                 return true;
             }
             return false;
@@ -782,12 +848,21 @@ public:
                 *TotalDownDisksCounter = totalDownDisks;
             }
 
-            ui32 mk = NProto::EStorageMediaKind_MIN;
-            while (mk < NProto::EStorageMediaKind_ARRAYSIZE) {
-                if (DownDisksCounters[mk]) {
-                    *DownDisksCounters[mk] = downDisksCounters[mk];
+            // Two-phase set to combine counters instead of overwriting them
+            // (and hide prev value) in case of some NProto::EStorageMediaKind
+            // attached to a single DownDisksCounters (e.g. HYBRID attached to
+            // HDD counters, see MediaKindToStatsString())
+
+            for (size_t i = 0; i < DownDisksCounters.size(); i++) {
+                if (DownDisksCounters[i]) {
+                    *DownDisksCounters[i] = 0;
                 }
-                ++mk;
+            }
+
+            for (size_t i = 0; i < DownDisksCounters.size(); i++) {
+                if (DownDisksCounters[i]) {
+                    *DownDisksCounters[i] += downDisksCounters[i];
+                }
             }
         }
     }
@@ -965,8 +1040,10 @@ private:
                 while (mk < NProto::EStorageMediaKind_ARRAYSIZE) {
                     DownDisksCounters[mk] =
                         Counters->GetSubgroup("component", "server")
-                            ->GetSubgroup("type", MediaKindToStatsString(
-                                static_cast<NProto::EStorageMediaKind>(mk)))
+                            ->GetSubgroup(
+                                "type",
+                                MediaKindToStatsString(
+                                    static_cast<NProto::EStorageMediaKind>(mk)))
                             ->GetCounter("DownDisks");
                     ++mk;
                 }

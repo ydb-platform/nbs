@@ -7,6 +7,7 @@ SRCS(
     device_handler_ut.cpp
     overlapping_requests_guard_service_ut.cpp
     service_filtered_ut.cpp
+    split_request_service_ut.cpp
     storage_ut.cpp
 )
 

@@ -12,7 +12,7 @@ DEPENDS(
 
 PEERDIR(
     cloud/blockstore/tests/python/lib
-    cloud/blockstore/libs/storage/protos
+    cloud/blockstore/libs/local_nvme/protos
 )
 
 END()

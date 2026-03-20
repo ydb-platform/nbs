@@ -1,0 +1,4 @@
+ParentlessFilesOnly: true
+AllowHandlelessIO: true
+MultiTabletForwardingEnabled: true
+AutomaticShardCreationEnabled: true

@@ -1,5 +1,6 @@
 #include "service.h"
 #include "service_private.h"
+#include "service_ut_helpers.h"
 #include "service_ut_sharding.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
@@ -25,15 +26,6 @@ using namespace NKikimr;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-TString GenerateValidateData(ui32 size, ui32 seed = 0)
-{
-    TString data(size, 0);
-    for (ui32 i = 0; i < size; ++i) {
-        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
-    }
-    return data;
-}
 
 NProto::TStorageConfig MakeStorageConfig()
 {
@@ -1553,11 +1545,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                             auto* msg =
                                 event
                                     ->Get<TEvService::TEvGetNodeAttrResponse>();
-                            if (msg->Record.GetError().GetCode() == E_FS_NOENT)
-                            {
-                                msg->Record.MutableError()->CopyFrom(
-                                    MakeError(E_REJECTED, "error"));
-                            }
+                            msg->Record.MutableError()->CopyFrom(
+                                MakeError(E_REJECTED, "error"));
                             break;
                         }
                     }
@@ -1595,7 +1584,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SIMPLE(ShouldListMultipleNodesWithGetNodeAttrBatch)
     {
         config.SetMultiTabletForwardingEnabled(true);
-        config.SetGetNodeAttrBatchEnabled(true);
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
@@ -5846,6 +5834,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // unlinking the file in subdir
         service.UnlinkNode(headers, subdirId, "file", false);
 
+        // unlinking subdir should fail if UnlinkDirectory==false
+        unlinkResponse = service.SendAndRecvUnlinkNode(
+            headers,
+            dirId,
+            "subdir",
+            false);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_ISDIR,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
         // unlinking subdir should now succeed
         service.UnlinkNode(headers, dirId, "subdir", true);
 
@@ -5878,6 +5877,237 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL("file-link", listing.GetNames(0));
         UNIT_ASSERT_VALUES_EQUAL(dirFileLinkId2, listing.GetNodes(1).GetId());
         UNIT_ASSERT_VALUES_EQUAL("file-link2", listing.GetNames(1));
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldHandleUnlinkedNodeUponListingWithDirectoriesInShards)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+
+        TShardedFileSystemConfig fsConfig{
+            .DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto dirId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir")
+        )->Record.GetNode().GetId();
+
+        auto subdir1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir1")
+        )->Record.GetNode().GetId();
+        Y_UNUSED(subdir1Id);
+
+        auto subdir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dirId, "subdir2")
+        )->Record.GetNode().GetId();
+
+        IEventHandlePtr unlinkNodeResponse;
+        bool shouldIntercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeResponse
+                        && shouldIntercept)
+                {
+                    unlinkNodeResponse.reset(event.Release());
+                    return true;
+                }
+
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, dirId, "subdir1", true);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(unlinkNodeResponse);
+
+        auto listing = service.ListNodes(headers, fsConfig.FsId, dirId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(1, listing.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+
+        UNIT_ASSERT_VALUES_EQUAL(subdir2Id, listing.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL("subdir2", listing.GetNames(0));
+
+        shouldIntercept = false;
+        env.GetRuntime().Send(unlinkNodeResponse.release());
+        auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetStatus(),
+            FormatError(unlinkResponse->GetError()));
+
+        shouldIntercept = true;
+        service.SendUnlinkNodeRequest(headers, dirId, "subdir2", true);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(unlinkNodeResponse);
+
+        service.SendListNodesRequest(headers, fsConfig.FsId, dirId);
+        auto listingResponse = service.RecvListNodesResponse();
+        // all the listed node refs point to the nodes that are being unlinked
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            listingResponse->GetStatus(),
+            FormatError(listingResponse->GetError()));
+
+        shouldIntercept = false;
+        env.GetRuntime().Send(unlinkNodeResponse.release());
+        unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetStatus(),
+            FormatError(unlinkResponse->GetError()));
+
+        listing = service.ListNodes(headers, fsConfig.FsId, dirId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0, listing.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listing.NamesSize());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/NodeNotFoundInShard");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldHandleRenameNodeInDestinationError)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(true);
+
+        TShardedFileSystemConfig fsConfig{
+            .DirectoryCreationInShardsEnabled = true};
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // /
+        // └── dir1             (shard 1)
+        //     └── dir1_1       (shard 1)
+        //         └── file     (shard 1)
+        // └── dir2             (shard 2)
+        //     └── dir2_1       (shard 1)
+        //         └── file     (shard 1)
+
+        auto dir1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1"))->Record.GetNode();
+        auto dir1_1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir1.GetId(), "dir1_1"))
+            ->Record.GetNode();
+        auto dir2 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2"))->Record.GetNode();
+        auto dir2_1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir2.GetId(), "dir2_1"))
+            ->Record.GetNode();
+        auto file1 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir1_1.GetId(), "file"))->Record.GetNode();
+        auto file2 = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(dir2_1.GetId(), "file"))->Record.GetNode();
+
+        //
+        // This condition ensures cross-shard rename data path.
+        //
+
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            ExtractShardNo(dir1.GetId()),
+            ExtractShardNo(dir2.GetId()));
+
+        auto renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1.GetId(),
+            "dir1_1",
+            dir2.GetId(),
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOTEMPTY,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        service.UnlinkNode(headers, dir2_1.GetId(), "file", false /* unlinkDirectory */);
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1_1.GetId(),
+            "file",
+            dir2.GetId(),
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_ISDIR,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1_1.GetId(),
+            "file",
+            dir2.GetId() + 1111, // nonexistent parent in shard2
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1_1.GetId(),
+            "file",
+            dir2.GetId(),
+            "dir2_1",
+            ProtoFlag(NProto::TRenameNodeRequest::F_NOREPLACE));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_EXIST,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        renameResponse = service.SendAndRecvRenameNode(
+            headers,
+            dir1.GetId(),
+            "dir1_1",
+            dir2.GetId(),
+            "dir2_1",
+            0 /* flags */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            renameResponse->GetError().GetCode(),
+            renameResponse->GetError().GetMessage());
+
+        auto attr = service.GetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            dir2.GetId(),
+            "dir2_1")->Record.GetNode();
+
+        UNIT_ASSERT_VALUES_EQUAL(dir1_1.GetId(), attr.GetId());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/ReceivedNodeOpErrorFromShard");
+
+        //
+        // E_FS_NOTEMPTY and E_FS_ISDIR errors received from shard shouldn't
+        // trigger this critical event.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
@@ -7095,6 +7325,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_EQUAL(
             E_FS_NOSPC,
             service.RecvCreateNodeResponse()->GetStatus());
+        UNIT_ASSERT_EQUAL(
+            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            env.GetCounters()
+                ->FindSubgroup("component", "service")
+                ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
+                ->GetAtomic());
+
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "too_many_files",
+            TCreateHandleArgs::CREATE);
+        UNIT_ASSERT_EQUAL(
+            E_FS_NOSPC,
+            service.RecvCreateHandleResponse()->GetStatus());
+        UNIT_ASSERT_EQUAL(
+            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            env.GetCounters()
+                ->FindSubgroup("component", "service")
+                ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
+                ->GetAtomic());
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(

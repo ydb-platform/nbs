@@ -711,6 +711,54 @@ func (client *durableClient) QueryAgentsInfo(
 	return resp.(*protos.TQueryAgentsInfoResponse), err
 }
 
+func (client *durableClient) ListNVMeDevices(
+	ctx context.Context,
+	req *protos.TListNVMeDevicesRequest,
+) (*protos.TListNVMeDevicesResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ListNVMeDevices(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TListNVMeDevicesResponse), err
+}
+
+func (client *durableClient) AcquireNVMeDevice(
+	ctx context.Context,
+	req *protos.TAcquireNVMeDeviceRequest,
+) (*protos.TAcquireNVMeDeviceResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.AcquireNVMeDevice(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TAcquireNVMeDeviceResponse), err
+}
+
+func (client *durableClient) ReleaseNVMeDevice(
+	ctx context.Context,
+	req *protos.TReleaseNVMeDeviceRequest,
+) (*protos.TReleaseNVMeDeviceResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.ReleaseNVMeDevice(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TReleaseNVMeDeviceResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type DurableClientOpts struct {

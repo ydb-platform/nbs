@@ -167,6 +167,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
         {}                                                                    )\
     xxx(ComputeDigestForEveryBlockOnCompaction,     bool,            false    )\
+    xxx(PoolKindToMediaKindMapping,                                            \
+        TPoolKindToMediaKindMapping,                  \
+        (TPoolKindToMediaKindMapping {{               \
+            {"rot", NCloud::NProto::STORAGE_MEDIA_HDD},                        \
+            {"rotmirror", NCloud::NProto::STORAGE_MEDIA_HDD},                  \
+            {"ssd", NCloud::NProto::STORAGE_MEDIA_SSD},                        \
+            {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
+        }})                                                                   )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -671,6 +679,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshBlocksWriterEnabled,             bool,        false              )\
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
+    xxx(OverlappingRequestsPolicy,                                             \
+        NProto::EOverlappingRequestsPolicy,                                    \
+        NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
+    xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -773,6 +785,17 @@ TVector<NProto::TLinkedDiskFillBandwidth> ConvertValue(
     return v;
 }
 
+template <>
+THashMap<TString, NCloud::NProto::EStorageMediaKind> ConvertValue(
+    const google::protobuf::RepeatedPtrField<NProto::TPoolKindToMediaKindMapping>& value)
+{
+    THashMap<TString, NCloud::NProto::EStorageMediaKind> res;
+    for (const auto& pool: value) {
+        res.emplace(pool.GetPoolKind(), pool.GetMediaKind());
+    }
+    return res;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IOutputStream& operator <<(
@@ -806,6 +829,13 @@ IOutputStream& operator<<(
     NProto::ENonreplAllocationPolicy pt)
 {
     return out << NProto::ENonreplAllocationPolicy_Name(pt);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::EOverlappingRequestsPolicy orp)
+{
+    return out << NProto::EOverlappingRequestsPolicy_Name(orp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -847,6 +877,26 @@ void DumpImpl(
         }
         os << value[i];
     }
+}
+
+template <>
+void DumpImpl(
+    const TPoolKindToMediaKindMapping& value,
+    IOutputStream& os)
+{
+    ui32 i = 0;
+    os << "{ ";
+    for (const auto& [pool, kind]: value) {
+        if (i++) {
+            os << ",<br>";
+        }
+        os << "{ "
+            << pool
+            << ", "
+            << NCloud::NProto::EStorageMediaKind_Name(kind)
+            << " }";
+    }
+    os << "}";
 }
 
 ////////////////////////////////////////////////////////////////////////////////

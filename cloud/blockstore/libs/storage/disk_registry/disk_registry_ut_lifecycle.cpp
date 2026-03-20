@@ -3099,39 +3099,74 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
     {
         const auto agent1 = CreateAgentConfig(
             "agent-1",
-            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
-             Device("dev-2", "uuid-2", "rack-1", 10_GB),
-             Device("dev-3", "uuid-3", "rack-1", 10_GB),
-             Device("dev-4", "uuid-4", "rack-1", 10_GB),
-             Device("dev-5", "uuid-5", "rack-1", 10_GB)});
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
 
-        auto runtime = TTestRuntimeBuilder().WithAgents({agent1}).Build();
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
+
+        const auto agent3 = CreateAgentConfig(
+            "agent-3",
+            {
+                Device("dev-1", "uuid-5", "rack-3", 10_GB),
+                Device("dev-2", "uuid-6", "rack-3", 10_GB),
+            });
+
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2, agent3}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agent1, agent2, agent3}));
 
-        RegisterAgents(*runtime, 1);
-        WaitForAgents(*runtime, 1);
-        WaitForSecureErase(*runtime, {agent1});
+        RegisterAgents(*runtime, 3);
+        WaitForAgents(*runtime, 3);
+        WaitForSecureErase(*runtime, {agent1, agent2, agent3});
 
         {
             auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
             UNIT_ASSERT(!result->Record.HasError());
         }
 
-        diskRegistry.AllocateDisk("disk-1", 20_GB);
-        diskRegistry.AllocateDisk("disk-2", 20_GB);
-        diskRegistry.AllocateDisk("disk-3", 10_GB);
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("mirrored-vol");
+        diskRegistry.AllocateDisk(
+            "mirrored-vol",
+            10_GB,
+            DefaultLogicalBlockSize,
+            "",   // placementGroupId
+            0,    // placementPartitionIndex
+            "",   // cloudId
+            "",   // folderId
+            1     // replicaCount
+        );
+
+        diskRegistry.ChangeDeviceState("uuid-1", NProto::DEVICE_STATE_ERROR);
+
         {
             auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
             UNIT_ASSERT(!result->Record.HasError());
         }
 
-        diskRegistry.MarkDiskForCleanup("disk-2");
-        diskRegistry.DeallocateDisk("disk-2");
+        diskRegistry.AllocateDisk("disk-1", 10_GB);
+        diskRegistry.AllocateDisk("disk-2", 10_GB);
+
+        {
+            auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+            UNIT_ASSERT(!result->Record.HasError());
+        }
+
+        diskRegistry.MarkDiskForCleanup("disk-1");
+
         {
             auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
             UNIT_ASSERT(!result->Record.HasError());
@@ -3145,7 +3180,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         diskRegistry.AcquireDisk("disk-1", "session-1");
-        diskRegistry.AcquireDisk("disk-3", "session-2");
 
         {
             auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();

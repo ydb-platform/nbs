@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 #include <cloud/filestore/libs/storage/api/service.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -41,7 +42,7 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     return {
-        CalculateByteCount(request.Record),
+        NCloud::NFileStore::CalculateByteCount(request.Record),
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
         policyVersion
     };

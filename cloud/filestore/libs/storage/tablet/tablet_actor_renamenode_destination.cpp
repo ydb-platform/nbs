@@ -14,16 +14,6 @@ using namespace NKikimr::NTabletFlatExecutor;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-NProto::TError ValidateRequest(
-    const NProtoPrivate::TRenameNodeInDestinationRequest& request)
-{
-    Y_UNUSED(request);
-
-    return {};
-}
-
-////////////////////////////////////////////////////////////////////////////////
 //
 // This actor is needed to prepare the dst node (pointed to by NewName) for
 // unlinking. If the dst node is a directory then special processing needs to
@@ -374,8 +364,9 @@ void TIndexTabletActor::HandleRenameNodeInDestination(
     const TActorContext& ctx)
 {
     using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
-    auto* session = AcceptRequest<TMethod>(ev, ctx, ValidateRequest);
-    if (!session) {
+    const bool accepted =
+        AcceptRequestNoSession<TMethod>(ev, ctx, {} /* validator */);
+    if (!accepted) {
         return;
     }
 
@@ -786,12 +777,12 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
     UnlockNodeRef({args.Request.GetNewParentId(), args.Request.GetNewName()});
     CommitResponseLogEntry(std::move(args.ResponseLogEntry));
 
-    InvalidateNodeCaches(args.NewParentNodeId);
+    InvalidateReadAheadCache(args.NewParentNodeId);
     if (args.NewChildRef) {
-        InvalidateNodeCaches(args.NewChildRef->ChildNodeId);
+        InvalidateReadAheadCache(args.NewChildRef->ChildNodeId);
     }
     if (args.NewParentNode) {
-        InvalidateNodeCaches(args.NewParentNode->NodeId);
+        InvalidateReadAheadCache(args.NewParentNode->NodeId);
     }
 
     if (!HasError(args.Error)) {

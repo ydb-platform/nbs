@@ -97,9 +97,67 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> FlushNodeData(ui64 nodeId);
+    /* The method returns a future that is fulfilled when all WriteData requests
+     * associated with the node and started before the call are flushed - this
+     * also affects pending requests.
+     *
+     * If an error occurs while executing WriteData requests at Flush,
+     * propagates the error to the FlushNodeData result. If multiple WriteData
+     * requests fails, returns an error from any of them.
+     *
+     * Unflushed requests will remain in the cache and will be retried later.
+     * If multiple errors occur, returns any of them.
+     */
+    NThreading::TFuture<NCloud::NProto::TError> FlushNodeData(ui64 nodeId);
 
-    NThreading::TFuture<void> FlushAllData();
+    /* The method returns a future that is fulfilled when all WriteData requests
+     * started before the call are flushed - this also affects pending requests.
+     *
+     * If an error occurs while flushing WriteData requests, returns the error
+     * (the same as for FlushNodeData)
+     */
+    NThreading::TFuture<NCloud::NProto::TError> FlushAllData();
+
+    /* Ensures that the handle is safe to be destroyed.
+     *
+     * The method returns a future that is fulfilled when there are no unflushed
+     * or pending WriteData requests associated with the handle. Unlike
+     * FlushNodeData, it doesn't fail if flush fails and waits instead.
+     *
+     * If all handles used by WriteBackCache for the node are requested for the
+     * release and flush fails:
+     * - unflushed WriteData requests are dropped;
+     * - pending WriteData requests are failed;
+     * - executing ReleaseHandle requests return an error.
+     *
+     * Note: the method doesn't call Session::DestroyHandle
+     */
+    NThreading::TFuture<NProto::TError> ReleaseHandle(
+        ui64 nodeId,
+        ui64 handle);
+
+    /* Read directly from the underlying storage.
+     * All prior cached WriteData requests are flushed and evicted.
+     * No new WriteData requests will be flushed until the direct read is
+     * completed.
+     */
+    NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request);
+
+    /* Write directly to the underlying storage.
+     * All prior cached WriteData requests are flushed and evicted.
+     * No new WriteData requests will be flushed until the direct write is
+     * completed.
+     */
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request);
+
+    // Execute SetNodeAttr with taking awareness of changing node size
+    NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TSetNodeAttrRequest> request);
 
     bool IsEmpty() const;
 
@@ -107,8 +165,8 @@ public:
     ui64 AcquireNodeStateRef();
     void ReleaseNodeStateRef(ui64 refId);
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+    // Used to adjust node size according to cached data
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

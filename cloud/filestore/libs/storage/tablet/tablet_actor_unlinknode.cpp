@@ -497,9 +497,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         // unlocked and not removed until the confirmation from the shard is
         // received that the node is unlinked.
 
-        if (!args.Request.GetUnlinkDirectory() ||
-            !GetFileSystem().GetDirectoryCreationInShardsEnabled())
-        {
+        if (!GetFileSystem().GetDirectoryCreationInShardsEnabled()) {
             UnlinkExternalNode(
                 db,
                 args.ParentNodeId,
@@ -576,10 +574,10 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         FormatError(args.Error).c_str());
 
     if (args.ParentNodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ParentNodeId);
+        InvalidateReadAheadCache(args.ParentNodeId);
     }
     if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ChildNode->NodeId);
+        InvalidateReadAheadCache(args.ChildNode->NodeId);
     }
 
     if (!HasError(args.Error) && !args.ChildRef &&
@@ -591,14 +589,12 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     }
 
     bool shouldUnlockUponCompletion = true;
-    // If the node is external and it's a directory and creation of
-    // directories is enabled for this filesystem and the request is to be
-    // forwarded to the shard, then the nodeRef is not unlocked here as it
-    // is possible that the shard will reject the request. In this case the
-    // nodeRef will be unlocked afterwards
+    // If the node is external and creation of directories in shards is enabled
+    // for this filesystem and the request is to be forwarded to the shard, then
+    // the nodeRef is not unlocked here as it is possible that the shard will
+    // reject the request. In this case the nodeRef will be unlocked afterwards.
     if (HasError(args.Error) ||
         (args.ChildRef && !args.ChildRef.GetOrElse({}).IsExternal()) ||
-        !args.Request.GetUnlinkDirectory() ||
         !GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
         UnlockNodeRef({args.ParentNodeId, args.Name});
@@ -781,10 +777,10 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         FormatError(args.Error).c_str());
 
     if (args.ParentNodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ParentNodeId);
+        InvalidateReadAheadCache(args.ParentNodeId);
     }
     if (args.ChildNode && args.ChildNode->NodeId != InvalidNodeId) {
-        InvalidateNodeCaches(args.ChildNode->NodeId);
+        InvalidateReadAheadCache(args.ChildNode->NodeId);
     }
 
     if (!HasError(args.Error)) {
@@ -799,8 +795,22 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         UnlockNodeRef({args.ParentNodeId, args.Name});
     }
 
-    RemoveInFlightRequest(*args.RequestInfo);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Y_DEFER {
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
+    };
+
+    if (!args.RequestInfo) {
+        return;
+    }
+
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (args.IsExplicitRequest) {
         //
@@ -825,13 +835,6 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    FinalizeProfileLogRequestInfo(
-        std::move(args.ProfileLogRequest),
-        ctx.Now(),
-        GetFileSystemId(),
-        args.Error,
-        ProfileLog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -931,7 +934,11 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
         const auto& originalRequest = msg->OriginalRequest;
         auto response = std::get<NProto::TUnlinkNodeResponse>(res);
 
-        AddInFlightRequest<TEvService::TUnlinkNodeMethod>(*msg->RequestInfo);
+        if (msg->RequestInfo) {
+            AddInFlightRequest<TEvService::TUnlinkNodeMethod>(
+                *msg->RequestInfo);
+        }
+
         ExecuteTx<TCompleteUnlinkNode>(
             ctx,
             msg->RequestInfo,

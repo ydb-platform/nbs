@@ -36,6 +36,14 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
     vhd_complete_bio(io, VHD_BDEV_IOERR);
 }
 
+size_t TotalVhdBuffersSize(const std::span<vhd_buffer>& buffers)
+{
+    return Accumulate(
+        buffers,
+        0,
+        [](size_t sum, const vhd_buffer& buffer) { return sum + buffer.len; });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <bool DoDecrypt>
@@ -147,7 +155,7 @@ void PrepareCompoundIO(
         const bool success = SgListCopyWithOptionalEncryption(
             Log,
             bio->sglist,
-            req->Buffer.get(),
+            req->GetData(),
             encryptor,
             bio->first_sector);
         if (!success) {
@@ -205,23 +213,32 @@ void PrepareCompoundIO(
 
 bool SgListCopyWithOptionalDecryption(
     TLog& Log,
-    const char* src,
+    TBlockDataRef src,
     const vhd_sglist& dst,
     IEncryptor* encryptor,
     ui64 startSector)
 {
     auto buffers = std::span<vhd_buffer>{dst.buffers, dst.nbuffers};
+    const char* srcData = src.data();
+
+    const size_t totalBuffersSize = TotalVhdBuffersSize(buffers);
+    if (src.size() < totalBuffersSize) {
+        STORAGE_ERROR(
+            "Source buffer size less then destination: " << src.size() << " < "
+                                                         << totalBuffersSize);
+        return false;
+    }
 
     if (!encryptor) {
         for (auto& buffer: buffers) {
-            std::memcpy(buffer.base, src, buffer.len);
-            src += buffer.len;
+            std::memcpy(buffer.base, srcData, buffer.len);
+            srcData += buffer.len;
         }
         return true;
     }
 
     for (auto& buffer: buffers) {
-        TBlockDataRef srcRef{src, buffer.len};
+        TBlockDataRef srcRef{srcData, buffer.len};
         TBlockDataRef dstRef{static_cast<const char*>(buffer.base), buffer.len};
         auto err =
             DoCryptoOperation<true>(*encryptor, srcRef, dstRef, startSector);
@@ -233,7 +250,7 @@ bool SgListCopyWithOptionalDecryption(
             return false;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
-        src += buffer.len;
+        srcData += buffer.len;
     }
     return true;
 }
@@ -241,23 +258,32 @@ bool SgListCopyWithOptionalDecryption(
 bool SgListCopyWithOptionalEncryption(
     TLog& Log,
     const vhd_sglist& src,
-    char* dst,
+    TBlockDataRef dst,
     IEncryptor* encryptor,
     ui64 startSector)
 {
     auto buffers = std::span<vhd_buffer>{src.buffers, src.nbuffers};
+    const char* dstData = dst.data();
+
+    const size_t totalBuffersSize = TotalVhdBuffersSize(buffers);
+    if (dst.size() < totalBuffersSize) {
+        STORAGE_ERROR(
+            "Destination buffer size less then source: " << dst.size() << " < "
+                                                         << totalBuffersSize);
+        return false;
+    }
 
     if (!encryptor) {
         for (auto& buffer: buffers) {
-            std::memcpy(dst, buffer.base, buffer.len);
-            dst += buffer.len;
+            std::memcpy(const_cast<char*>(dstData), buffer.base, buffer.len);
+            dstData += buffer.len;
         }
         return true;
     }
 
     for (auto& buffer: buffers) {
         TBlockDataRef srcRef{static_cast<const char*>(buffer.base), buffer.len};
-        TBlockDataRef dstRef{dst, buffer.len};
+        TBlockDataRef dstRef{dstData, buffer.len};
         auto err =
             DoCryptoOperation<false>(*encryptor, srcRef, dstRef, startSector);
         if (HasError(err)) {
@@ -268,7 +294,7 @@ bool SgListCopyWithOptionalEncryption(
             return false;
         }
         startSector += buffer.len / VHD_SECTOR_SIZE;
-        dst += buffer.len;
+        dstData += buffer.len;
     }
     return true;
 }
@@ -340,7 +366,7 @@ void PrepareIO(
         });
 
     const bool needToAllocateBuffer =
-        !isAllBuffersAligned || (encryptor && bio->type == VHD_BDEV_WRITE);
+        !isAllBuffersAligned || encryptor != nullptr;
 
     auto req = TAioRequest::CreateNew(
         needToAllocateBuffer ? 1 : buffers.size(),
@@ -355,7 +381,7 @@ void PrepareIO(
             const bool success = SgListCopyWithOptionalEncryption(
                 Log,
                 bio->sglist,
-                static_cast<char*>(req->Data[0].iov_base),
+                req->GetData(),
                 encryptor,
                 bio->first_sector);
             if (!success) {
@@ -414,12 +440,14 @@ void TAioRequestDeleter::operator()(TAioRequest* obj)
 TAioRequest::TAioRequest(
         size_t allocatedBufferSize,
         ui32 blockSize,
+        ui32 bufferCount,
         vhd_io* io,
         TCpuCycles submitTs)
     : iocb()
     , Io(io)
     , SubmitTs(submitTs)
     , BufferAllocated(allocatedBufferSize != 0)
+    , BufferCount(bufferCount)
 {
     if (allocatedBufferSize) {
         Data[0].iov_len = allocatedBufferSize;
@@ -436,9 +464,12 @@ TAioRequestHolder TAioRequest::CreateNew(
     TCpuCycles submitTs)
 {
     const size_t totalSize = sizeof(TAioRequest) + sizeof(iovec) * bufferCount;
-    return TAioRequestHolder{
-        new (std::calloc(1, totalSize))
-            TAioRequest(allocatedBufferSize, blockSize, io, submitTs)};
+    return TAioRequestHolder{new (std::calloc(1, totalSize)) TAioRequest(
+        allocatedBufferSize,
+        blockSize,
+        bufferCount,
+        io,
+        submitTs)};
 }
 
 // static
@@ -447,6 +478,15 @@ TAioRequestHolder TAioRequest::FromIocb(iocb* cb)
     NSan::Acquire(cb);
     Y_ABORT_UNLESS(cb->data == nullptr);
     return TAioRequestHolder{static_cast<TAioRequest*>(cb)};
+}
+
+TBlockDataRef TAioRequest::GetData() const
+{
+    Y_DEBUG_ABORT_UNLESS(BufferCount == 1);
+
+    return TBlockDataRef{
+        static_cast<const char*>(Data[0].iov_base),
+        Data[0].iov_len};
 }
 
 // static
@@ -491,6 +531,7 @@ TAioCompoundRequest::TAioCompoundRequest(
     : Inflight(inflight)
     , Io(io)
     , SubmitTs(submitTs)
+    , BufferSize(bufferSize)
     , Buffer{
           static_cast<char*>(std::aligned_alloc(blockSize, bufferSize)),
       }
@@ -510,6 +551,11 @@ std::unique_ptr<TAioCompoundRequest> TAioCompoundRequest::CreateNew(
         io,
         bufferSize,
         submitTs);
+}
+
+TBlockDataRef TAioCompoundRequest::GetData() const
+{
+    return TBlockDataRef{Buffer.get(), BufferSize};
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

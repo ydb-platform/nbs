@@ -27,6 +27,9 @@ public:
     void DecrementNodeCount() override
     {}
 
+    void WriteDataRequestDropped() override
+    {}
+
     void WriteDataRequestEnteredStatus(EWriteDataRequestStatus status) override
     {
         Y_UNUSED(status);

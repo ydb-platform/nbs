@@ -163,7 +163,8 @@ struct TBootstrap
                 }
                 out << request->GetOffset() << ":" << request->GetBuffer();
                 return true;
-            });
+            },
+            Max<ui64>());
         return out;
     }
 };

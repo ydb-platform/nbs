@@ -216,16 +216,16 @@ class TWriteBlocksLocalHandler final
 {
 private:
     const TBlockRange64 WriteRange;
-    TGuardedSgList GuardedSgList;
+    NProto::TWriteBlocksLocalRequest Record;
 
 public:
     TWriteBlocksLocalHandler(
             const TBlockRange64& writeRange,
             std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest> request)
         : WriteRange(writeRange)
-        , GuardedSgList(std::move(request->Record.Sglist))
+        , Record(std::move(request->Record))
     {
-        const auto blocksCount = request->Record.BlocksCount;
+        const auto blocksCount = Record.BlocksCount;
         Y_ABORT_UNLESS(WriteRange.Size() == blocksCount);
     }
 
@@ -233,7 +233,7 @@ public:
     {
         Y_ABORT_UNLESS(WriteRange.Contains(range));
 
-        if (auto guard = GuardedSgList.Acquire()) {
+        if (auto guard = Record.Sglist.Acquire()) {
             const auto& sgList = guard.Get();
             TSgList blocks(Reserve(range.Size()));
 
@@ -243,10 +243,10 @@ public:
                 blocks.push_back(sgList[index]);
             }
 
-            return GuardedSgList.Create(std::move(blocks));
+            return Record.Sglist.Create(std::move(blocks));
         }
 
-        return GuardedSgList;
+        return Record.Sglist;
     }
 };
 

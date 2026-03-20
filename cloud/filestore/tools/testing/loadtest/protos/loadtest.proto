@@ -122,6 +122,20 @@ message TReplaySpec
     string ReplayTimeTill = 15;
 }
 
+message TDatashardLikeLoadSpec
+{
+    message TAction
+    {
+        EAction Action = 1;
+        uint32 Rate = 2;
+    }
+
+    uint32 ReadBytes = 2;
+    uint32 WriteBytes = 3;
+    uint64 InitialFileSize = 4;
+    repeated TAction Actions = 5;
+}
+
 message TMigrationSpec
 {
     uint32 MigrationPeriod = 1;
@@ -147,6 +161,7 @@ message TLoadTest
         TDataLoadSpec DataLoadSpec = 5;
         TReplaySpec ReplayFsSpec = 17;
         TReplaySpec ReplayGrpcSpec = 18;
+        TDatashardLikeLoadSpec DatashardLikeLoadSpec = 20;
     }
 
     uint32 IODepth = 10;

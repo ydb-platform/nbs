@@ -229,6 +229,16 @@ consteval bool HasResponseHeaders()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <>
+ui64 CalculateByteCount<NProto::TReadDataRequest>(
+    const NProto::TReadDataRequest& request);
+
+template <>
+ui64 CalculateByteCount<NProto::TWriteDataRequest>(
+    const NProto::TWriteDataRequest& request);
+
+////////////////////////////////////////////////////////////////////////////////
+
 constexpr bool IsDataChannel(NCloud::NProto::ERequestSource source)
 {
     switch (source) {

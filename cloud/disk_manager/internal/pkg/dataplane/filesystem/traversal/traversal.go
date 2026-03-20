@@ -1,4 +1,4 @@
-package filesystemtraversal
+package traversal
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
-	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -18,8 +19,7 @@ type StateSaver func(ctx context.Context) error
 type OnListedNodesFunc func(
 	ctx context.Context,
 	nodes []nfs.Node,
-	session nfs.Session,
-	client nfs.Client,
+	filesystemLister listers.FilesystemLister,
 ) error
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,12 +30,12 @@ type FilesystemTraverser struct {
 	filesystemSnapshotID     string
 	filesystemID             string
 	filesystemCheckpointID   string
-	client                   nfs.Client
+	filesystemListerFactory  listers.FilesystemListerFactory
 	storage                  storage.Storage
 	stateSaver               StateSaver
-	config                   *traversal_config.FilesystemTraversalConfig
+	config                   *config.FilesystemTraversalConfig
 	rootNodeAlreadyScheduled bool
-	listNodesMaxBytes        uint32
+	rootNodeID               uint64
 }
 
 // FilesystemTravers performs parallel traversal of a filesystem.
@@ -60,12 +60,12 @@ func NewFilesystemTraverser(
 	filesystemSnapshotID string,
 	filesystemID string,
 	filesystemCheckpointID string,
-	client nfs.Client,
+	filesystemListerFactory listers.FilesystemListerFactory,
 	snapshotStorage storage.Storage,
 	stateSaver StateSaver,
-	config *traversal_config.FilesystemTraversalConfig,
+	config *config.FilesystemTraversalConfig,
 	rootNodeAlreadyScheduled bool,
-	listNodesMaxBytes uint32,
+	rootNodeID uint64,
 ) *FilesystemTraverser {
 
 	return &FilesystemTraverser{
@@ -74,12 +74,12 @@ func NewFilesystemTraverser(
 		filesystemSnapshotID:     filesystemSnapshotID,
 		filesystemID:             filesystemID,
 		filesystemCheckpointID:   filesystemCheckpointID,
-		client:                   client,
+		filesystemListerFactory:  filesystemListerFactory,
 		storage:                  snapshotStorage,
 		stateSaver:               stateSaver,
 		config:                   config,
 		rootNodeAlreadyScheduled: rootNodeAlreadyScheduled,
-		listNodesMaxBytes:        listNodesMaxBytes,
+		rootNodeID:               rootNodeID,
 	}
 }
 
@@ -99,7 +99,11 @@ func (t *FilesystemTraverser) Traverse(
 
 	if !t.rootNodeAlreadyScheduled {
 		logging.Info(ctx, "Scheduling root node for listing.")
-		err := t.storage.ScheduleRootNodeForListing(ctx, t.filesystemSnapshotID)
+		err := t.storage.SchedulerDirectoryForTraversal(
+			ctx,
+			t.filesystemSnapshotID,
+			t.rootNodeID,
+		)
 		if err != nil {
 			return err
 		}
@@ -174,7 +178,6 @@ func (t *FilesystemTraverser) directoryScheduler(ctx context.Context) error {
 			pendingNodes = append(pendingNodes, &storage.NodeQueueEntry{
 				NodeID: entry.NodeID,
 				Cookie: entry.Cookie,
-				Depth:  entry.Depth,
 			})
 		}
 	}
@@ -185,11 +188,10 @@ func (t *FilesystemTraverser) directoryLister(
 	onListedNodes OnListedNodesFunc,
 ) error {
 
-	session, err := t.client.CreateSession(
+	filesystemLister, err := t.filesystemListerFactory.CreateLister(
 		ctx,
 		t.filesystemID,
 		t.filesystemCheckpointID,
-		true,
 	)
 	if err != nil {
 		return err
@@ -197,7 +199,7 @@ func (t *FilesystemTraverser) directoryLister(
 
 	cleanupCtx := context.WithoutCancel(ctx)
 	defer func() {
-		err = t.client.DestroySession(cleanupCtx, session)
+		err = filesystemLister.Close(cleanupCtx)
 		if err != nil {
 			logging.Error(
 				cleanupCtx,
@@ -216,7 +218,7 @@ func (t *FilesystemTraverser) directoryLister(
 				return nil
 			}
 
-			err := t.listNode(ctx, session, node, onListedNodes)
+			err := t.listNode(ctx, filesystemLister, node, onListedNodes)
 			if err != nil {
 				return err
 			}
@@ -232,27 +234,24 @@ func (t *FilesystemTraverser) directoryLister(
 
 func (t *FilesystemTraverser) listNode(
 	ctx context.Context,
-	session nfs.Session,
+	filesystemLister listers.FilesystemLister,
 	node *storage.NodeQueueEntry,
 	onListedNodes OnListedNodesFunc,
 ) error {
 
 	cookie := node.Cookie
 	for {
-		children, nextCookie, err := t.client.ListNodes(
+		children, nextCookie, err := filesystemLister.ListNodes(
 			ctx,
-			session,
 			node.NodeID,
 			cookie,
-			t.listNodesMaxBytes,
-			false,
 		)
 		if err != nil {
 			return err
 		}
 
 		if len(children) > 0 {
-			err = onListedNodes(ctx, children, session, t.client)
+			err = onListedNodes(ctx, children, filesystemLister)
 			if err != nil {
 				return err
 			}
@@ -263,7 +262,7 @@ func (t *FilesystemTraverser) listNode(
 			// In case of filesystem scrubbing, ListNodes may return InvalidNodeID
 			// for nodes present in index tablet and absent in shard.
 			// See: https://github.com/ydb-platform/nbs/issues/5094
-			if node.NodeID == nfs.InvalidNodeID {
+			if n.NodeID == nfs.InvalidNodeID {
 				continue
 			}
 
@@ -277,7 +276,6 @@ func (t *FilesystemTraverser) listNode(
 			t.filesystemSnapshotID,
 			node.NodeID,
 			nextCookie,
-			node.Depth,
 			childDirs,
 		)
 		if err != nil {

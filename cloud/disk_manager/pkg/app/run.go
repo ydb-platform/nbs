@@ -12,8 +12,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
 	internal_auth "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -187,6 +189,12 @@ func run(
 			logging.Error(ctx, "Failed to register dataplane tasks: %v", err)
 			return err
 		}
+
+		err = scrubbing.Register(taskRegistry)
+		if err != nil {
+			logging.Error(ctx, "Failed to register scrubbing tasks: %v", err)
+			return err
+		}
 	} else {
 		logging.Info(ctx, "Initializing YDB client for snapshot database")
 		snapshotConfig := dataplaneConfig.GetSnapshotConfig()
@@ -284,6 +292,49 @@ func run(
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)
 			return err
+		}
+
+		filesystemConfig := dataplaneConfig.GetFilesystemConfig()
+		persistenceConfig := filesystemConfig.GetPersistenceConfig()
+		if filesystemConfig != nil && persistenceConfig != nil {
+			if config.GetNfsConfig() == nil {
+				logging.Fatal(ctx, "Empty nfs config with enabled dataplane nfs config is not allowed")
+				return err
+			}
+			logging.Info(ctx, "Initializing filesystem dataplane")
+			nfsClientMetricsRegistry := mon.NewRegistry("nfs_client_dataplane")
+			nfsSessionMetricsRegistry := mon.NewRegistry("nfs_session_dataplane")
+			nfsFactory := nfs.NewFactoryWithCreds(
+				ctx,
+				config.GetNfsConfig(),
+				creds,
+				nfsClientMetricsRegistry,
+				nfsSessionMetricsRegistry,
+			)
+
+			filesystemDB, err := persistence.NewYDBClient(
+				ctx,
+				persistenceConfig,
+				ydbClientRegistry,
+				persistence.WithCredentials(creds),
+			)
+			if err != nil {
+				logging.Error(ctx, "Failed to initialize YDB client for filesystem database: %v", err)
+				return err
+			}
+			defer filesystemDB.Close(ctx)
+
+			err = initFilesystemDataplane(
+				ctx,
+				config,
+				taskRegistry,
+				nfsFactory,
+				filesystemDB,
+			)
+			if err != nil {
+				logging.Error(ctx, "Failed to initialize filesystem dataplane: %v", err)
+				return err
+			}
 		}
 	}
 

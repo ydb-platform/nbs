@@ -13,7 +13,8 @@ void TIndexTabletActor::HandleReleaseLock(
     const TEvService::TEvReleaseLockRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TReleaseLockMethod>(ev, ctx)) {
+    using TMethod = TEvService::TReleaseLockMethod;
+    if (!AcceptRequest<TMethod>(ev, ctx, {} /* validator */)) {
         return;
     }
 

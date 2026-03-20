@@ -228,6 +228,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         return;
     }
 
+    State->UpdateWithThreadSafeStats();
     const auto& stats = State->GetStats();
 
 #define BLOCKSTORE_PARTITION_UPDATE_COUNTER(name, category, ...)              \
@@ -1107,8 +1108,16 @@ STFUNC(TPartitionActor::StateWork)
             TEvPartitionCommonPrivate::TEvPatchBlobCompleted,
             IOCompanion->HandlePatchBlobCompleted);
         HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
-        HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,
+            HandleWriteFreshBlocksCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlocksCompleted,
+            HandleWriteBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
+            HandleZeroFreshBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvFlushCompleted, HandleFlushCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
         HFunc(TEvPartitionPrivate::TEvCompactionCompleted, HandleCompactionCompleted);
@@ -1170,7 +1179,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
-        IgnoreFunc(TEvPartitionCommonPrivate::TEvGetPartCountersRequest);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            RejectGetPartCountersRequest);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
@@ -1178,7 +1189,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteBlobCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvReadBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildCompleted);
@@ -1229,6 +1242,7 @@ void TPartitionActor::HandleGetPartitionInfo(
         "%s GetPartitionInfo request",
         LogTitle.GetWithTime().c_str());
 
+    State->UpdateWithThreadSafeStats();
     auto json = State->AsJson();
     auto response = std::make_unique<TEvVolume::TEvGetPartitionInfoResponse>();
     response->Record.SetPayload(json.GetStringRobust());
@@ -1305,6 +1319,10 @@ void TPartitionActor::HandleUpdateResourceMetrics(
         Config->GetResourceMetricsUpdateInterval(),
         std::make_unique<TEvPartitionPrivate::TEvUpdateResourceMetrics>()
             .release());
+
+    // Update partition stats from FreshBlocksWriter in case that some stats are
+    // stuck.
+    State->UpdateWithThreadSafeStats();
 }
 
 void TPartitionActor::HandleGetFreshChannelsInfo(
@@ -1322,10 +1340,14 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->PartCounters = IoCompanionCounters;
     response->GroupDowntimes = GroupDowntimes;
 
+    response->PartStats = State->AccessThreadSafeStats();
+
     for (size_t i = 0; i < State->GetChannelCount(); ++i) {
         response->ChannelPermissions.emplace_back(
             State->GetChannelPermissions(i));
     }
+
+    response->CommitIdGenerator = State->GetCommitIdGenerator();
 
     FreshBlocksWriter = ev->Sender;
 

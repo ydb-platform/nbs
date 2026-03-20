@@ -14,6 +14,7 @@ END()
 
 RECURSE(
     mocks
+    nodes
     protos
     schema
 )

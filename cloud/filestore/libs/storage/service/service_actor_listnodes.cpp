@@ -36,7 +36,6 @@ private:
 
     // Control flags
     const bool MultiTabletForwardingEnabled;
-    const bool GetNodeAttrBatchEnabled;
     const bool Unsafe;
 
     // Response data
@@ -59,7 +58,6 @@ public:
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
         bool multiTabletForwardingEnabled,
-        bool getNodeAttrBatchEnabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog);
 
@@ -79,12 +77,6 @@ private:
 
     void HandleGetNodeAttrBatchResponse(
         const TEvIndexTablet::TEvGetNodeAttrBatchResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void GetNodeAttrs(const TActorContext& ctx);
-
-    void HandleGetNodeAttrResponse(
-        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void CheckNodeAttrs(const TActorContext& ctx);
@@ -108,14 +100,12 @@ TListNodesActor::TListNodesActor(
         TRequestInfoPtr requestInfo,
         NProto::TListNodesRequest listNodesRequest,
         bool multiTabletForwardingEnabled,
-        bool getNodeAttrBatchEnabled,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(ListNodesRequest.GetFileSystemId())
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
-    , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
     , Unsafe(ListNodesRequest.GetUnsafe())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
@@ -209,44 +199,6 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
     }
 }
 
-void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
-{
-    if (!MultiTabletForwardingEnabled) {
-        GetNodeAttrResponses = Response.NodesSize();
-        return;
-    }
-
-    for (ui64 cookie = 0; cookie < Response.NodesSize(); ++cookie) {
-        const auto& node = Response.GetNodes(cookie);
-        if (node.GetShardFileSystemId()) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "[%s] Executing GetNodeAttr in shard for %s, %s",
-                LogTag.c_str(),
-                node.GetShardFileSystemId().c_str(),
-                node.GetShardNodeName().Quote().c_str());
-
-            auto request =
-                std::make_unique<TEvService::TEvGetNodeAttrRequest>();
-            request->Record.MutableHeaders()->CopyFrom(
-                ListNodesRequest.GetHeaders());
-            request->Record.SetFileSystemId(node.GetShardFileSystemId());
-            request->Record.SetNodeId(RootNodeId);
-            request->Record.SetName(node.GetShardNodeName());
-
-            // forward request through tablet proxy
-            ctx.Send(
-                MakeIndexTabletProxyServiceId(),
-                request.release(),
-                0, // flags
-                cookie);
-        } else {
-            ++GetNodeAttrResponses;
-        }
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TListNodesActor::HandleListNodesResponse(
@@ -261,11 +213,8 @@ void TListNodesActor::HandleListNodesResponse(
     }
 
     Response = std::move(msg->Record);
-    if (GetNodeAttrBatchEnabled) {
-        GetNodeAttrsBatch(ctx);
-    } else {
-        GetNodeAttrs(ctx);
-    }
+    GetNodeAttrsBatch(ctx);
+
 
     if (GetNodeAttrResponses == Response.NodesSize()) {
         LOG_DEBUG(
@@ -386,50 +335,6 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     }
 }
 
-void TListNodesActor::HandleGetNodeAttrResponse(
-    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "GetNodeAttrResponse from shard: %s",
-        msg->Record.GetNode().DebugString().Quote().c_str());
-
-    if (HasError(msg->GetError())) {
-        if (msg->GetError().GetCode() == NoEnt) {
-            MissingNodeIndices.push_back(ev->Cookie);
-
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "Node not found in shard: %s, %s",
-                FormatError(msg->GetError()).Quote().c_str(),
-                Response.GetNames(ev->Cookie).c_str());
-        } else {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "Failed to GetNodeAttr from shard: %s",
-                FormatError(msg->GetError()).Quote().c_str());
-
-            HandleError(ctx, std::move(*msg->Record.MutableError()));
-            return;
-        }
-    } else {
-        TABLET_VERIFY(ev->Cookie < Response.NodesSize());
-        auto* node = Response.MutableNodes(ev->Cookie);
-        *node = std::move(*msg->Record.MutableNode());
-    }
-
-    if (++GetNodeAttrResponses == Response.NodesSize()) {
-        CheckResponseAndReply(ctx);
-        return;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TListNodesActor::CheckNodeAttrs(const TActorContext& ctx)
@@ -474,6 +379,7 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     const auto& name = Response.GetNames(ev->Cookie);
 
     bool exists = true;
+    bool locked = false;
     if (HasError(msg->GetError())) {
         if (msg->GetError().GetCode() == NoEnt) {
             exists = false;
@@ -495,22 +401,44 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     } else {
         const auto& attr = msg->Record.GetNode();
         exists = attr.GetShardNodeName() == node.GetShardNodeName();
+        locked = msg->Record.GetIsNodeRefLocked();
     }
 
     if (exists) {
-        ++LostNodeCount;
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "Node found in leader but missing in shard. Node observed in "
-            "leader: (name: %s, node proto: %s). Listing request proto: %s. "
-            "Validation response proto: %s",
-            name.Quote().c_str(),
-            node.ShortDebugString().Quote().c_str(),
-            ListNodesRequest.ShortDebugString().Quote().c_str(),
-            msg->Record.ShortDebugString().Quote().c_str());
+        if (locked) {
+            //
+            // NodeRef is being processed by a concurrent write operation - e.g.
+            // UnlinkNode or RenameNode. It's ok to temporarily have internal
+            // inconsistency between the directory tablet and the shard in
+            // charge of this node in this case.
+            //
 
-        ReportNodeNotFoundInShard();
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Node found in leader but missing in shard. Node observed in "
+                "leader: (name: %s, node proto: %s). Listing request: %s. "
+                "Validation response: %s",
+                name.Quote().c_str(),
+                node.ShortDebugString().Quote().c_str(),
+                ListNodesRequest.ShortDebugString().Quote().c_str(),
+                msg->Record.ShortDebugString().Quote().c_str());
+        } else {
+            ++LostNodeCount;
+
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Node found in leader but missing in shard. Node observed in "
+                "leader: (name: %s, node proto: %s). Listing request: %s. "
+                "Validation response: %s",
+                name.Quote().c_str(),
+                node.ShortDebugString().Quote().c_str(),
+                ListNodesRequest.ShortDebugString().Quote().c_str(),
+                msg->Record.ShortDebugString().Quote().c_str());
+
+            ReportNodeNotFoundInShard();
+        }
     }
 
     if (++CheckedNodeCount == MissingNodeIndices.size()) {
@@ -615,9 +543,6 @@ STFUNC(TListNodesActor::StateWork)
             TEvService::TEvListNodesResponse,
             HandleListNodesResponse);
         HFunc(
-            TEvService::TEvGetNodeAttrResponse,
-            HandleGetNodeAttrResponse);
-        HFunc(
             TEvIndexTablet::TEvGetNodeAttrBatchResponse,
             HandleGetNodeAttrBatchResponse);
 
@@ -714,7 +639,6 @@ void TStorageServiceActor::HandleListNodes(
         std::move(requestInfo),
         std::move(msg->Record),
         multiTabletForwardingEnabled,
-        StorageConfig->GetGetNodeAttrBatchEnabled(),
         session->RequestStats,
         ProfileLog);
 

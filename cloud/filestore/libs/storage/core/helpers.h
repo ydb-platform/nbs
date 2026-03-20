@@ -32,8 +32,4 @@ ui64 CalculateByteCount(const TProtoRequest& request)
     return request.GetLength();
 }
 
-template <>
-ui64 CalculateByteCount<NProto::TWriteDataRequest>(
-    const NProto::TWriteDataRequest& request);
-
 }   // namespace NCloud::NFileStore::NStorage

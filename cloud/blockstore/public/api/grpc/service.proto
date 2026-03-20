@@ -7,6 +7,7 @@ import "cloud/blockstore/public/api/protos/discovery.proto";
 import "cloud/blockstore/public/api/protos/disk.proto";
 import "cloud/blockstore/public/api/protos/endpoints.proto";
 import "cloud/blockstore/public/api/protos/io.proto";
+import "cloud/blockstore/public/api/protos/local_nvme.proto";
 import "cloud/blockstore/public/api/protos/local_ssd.proto";
 import "cloud/blockstore/public/api/protos/metrics.proto";
 import "cloud/blockstore/public/api/protos/mount.proto";
@@ -411,6 +412,31 @@ service TBlockStoreService
     rpc ListDiskStates(TListDiskStatesRequest) returns (TListDiskStatesResponse) {
         option (google.api.http) = {
             post: "/list_disk_states"
+            body: "*"
+        };
+    }
+
+    //
+    // Local NVMe
+    //
+
+    rpc ListNVMeDevices(TListNVMeDevicesRequest) returns (TListNVMeDevicesResponse) {
+        option (google.api.http) = {
+            post: "/list_nvme_devices"
+            body: "*"
+        };
+    }
+
+    rpc AcquireNVMeDevice(TAcquireNVMeDeviceRequest) returns (TAcquireNVMeDeviceResponse) {
+        option (google.api.http) = {
+            post: "/acquire_nvme_device"
+            body: "*"
+        };
+    }
+
+    rpc ReleaseNVMeDevice(TReleaseNVMeDeviceRequest) returns (TReleaseNVMeDeviceResponse) {
+        option (google.api.http) = {
+            post: "/release_nvme_device"
             body: "*"
         };
     }

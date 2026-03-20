@@ -24,6 +24,21 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EFlushRetryStatus
+{
+    // Flusher should stop trying to flush data and wait for the next
+    // IQueuedOperationProcessor::ScheduleFlushNode call.
+    // This may happen when a client has requested to release all handles with
+    // active requests and flush fails.
+    ShouldNotRetry,
+
+    // TNodeState::FlushStatus remains in ENodeFlushStatus::FlushRequested
+    // state, the flusher should retry attempts to flush data
+    ShouldRetry
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // The class is thread safe
 class TWriteBackCacheState
 {
@@ -31,6 +46,7 @@ private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
     const IWriteBackCacheStatsPtr Stats;
+    const TString LogTag;
 
     TNodeStateHolder Nodes;
     TDeque<TFlushRequest> FlushAllRequestQueue;
@@ -53,7 +69,8 @@ public:
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats);
+        IWriteBackCacheStatsPtr stats,
+        TString logTag);
 
     // Read state from the persistent storage
     bool Init(IPersistentStoragePtr persistentStorage);
@@ -65,17 +82,29 @@ public:
     NThreading::TFuture<NProto::TWriteDataResponse> AddWriteDataRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> AddFlushRequest(ui64 nodeId);
+    NThreading::TFuture<NCloud::NProto::TError> AddFlushRequest(ui64 nodeId);
 
-    NThreading::TFuture<void> AddFlushAllRequest();
+    NThreading::TFuture<NCloud::NProto::TError> AddFlushAllRequest();
+
+    NThreading::TFuture<NCloud::NProto::TError> AddReleaseHandleRequest(
+        ui64 nodeId,
+        ui64 handle);
 
     void TriggerPeriodicFlushAll();
 
     // Includes both flushed and unflushed data
     TCachedData GetCachedData(ui64 nodeId, ui64 offset, ui64 byteCount) const;
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+    // Used to adjust node size according to cached data
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const;
+
+    // Used to clear max written offset in SetNodeAttr handler
+    // Note: a barrier should be acquired via AcquireBarrier
+    void ResetMaxWrittenOffset(ui64 nodeId);
+
+    // Prevent WriteData requests from being evicted from cache after flush
+    TPin PinCachedData(ui64 nodeId);
+    void UnpinCachedData(ui64 nodeId, TPin pinId);
 
     // Keep NodeStates alive
     // Used to prevent data race and return correct node size
@@ -91,12 +120,32 @@ public:
     // been flushed
     void FlushSucceeded(ui64 nodeId, size_t requestCount);
 
-    NThreading::TFuture<void> LockRead(ui64 nodeId, ui64 begin, ui64 end);
-    NThreading::TFuture<void> LockWrite(ui64 nodeId, ui64 begin, ui64 end);
-    void UnlockRead(ui64 nodeId, ui64 begin, ui64 end);
-    void UnlockWrite(ui64 nodeId, ui64 begin, ui64 end);
+    // Inform that the flush has failed - the error should be propagated to
+    // Flush, FlushAll and ReleaseHandle requests
+    EFlushRetryStatus FlushFailed(
+        ui64 nodeId,
+        const NCloud::NProto::TError& error);
+
+    // Barriers enforce sequencing and allow execution of operations without
+    // interfering with cache (such as SetNodeAttr or ReadData/WriteData with
+    // O_DIRECT/O_SYNC/O_DSYNC)
+    // Successfully acquired barrier ensures that:
+    // - all prior WriteData requests are flushed and evicted;
+    // - no flush will take place until the barrier is released.
+    // Returns barrierId on success - it should be released by ReleaseBarrier
+    NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId);
+
+    // The barrier should be valid and previously acquired via AcquireBarrier
+    void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
 
 private:
+    // Combines acquiring mutex and executing queued operations on mutex release
+    // TQueuedOperations has custom Release method that:
+    // 1. Copies the accumulated operations to a temporary vector.
+    // 2. Releases mutex.
+    // 3. Executes the operations from the temporary vector.
+    TGuard<TQueuedOperations> LockStateAndPostponeQueuedOperations() const;
+
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TPendingWriteDataRequest> request);
 
@@ -107,8 +156,19 @@ private:
 
     ENodeFlushStatus GetFlushStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
+    void TriggerFlushCompletions(TNodeState& nodeState);
 
-    void EvictFlushedEntries(ui64 nodeId, TNodeState& nodeState);
+    void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
+    void CheckAndAcquireBarriers(TNodeState& nodeState);
+    void ProcessPendingRequests();
+
+    void AddActiveRequestToHandleState(TNodeState& nodeState, ui64 handle);
+    void RemoveActiveRequestFromHandleState(TNodeState& nodeState, ui64 handle);
+
+    void DropCachedData(
+        ui64 nodeId,
+        TNodeState& nodeState,
+        const NCloud::NProto::TError& error);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

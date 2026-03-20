@@ -2,6 +2,7 @@
 
 #include "node_flush_state.h"
 #include "persistent_storage.h"
+#include "read_response_builder.h"
 #include "sequence_id_generator.h"
 #include "utils.h"
 #include "write_back_cache_state.h"
@@ -10,9 +11,7 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
-#include <cloud/filestore/libs/storage/core/helpers.h>
-
-#include <util/system/mutex.h>
+#include <cloud/filestore/libs/service/request.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -23,15 +22,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPendingReadDataRequest
-{
-    TCallContextPtr CallContext;
-    std::shared_ptr<NProto::TReadDataRequest> Request;
-    TPromise<NProto::TReadDataResponse> Promise;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TFlushConfig
 {
     TDuration AutomaticFlushPeriod;
@@ -39,6 +29,17 @@ struct TFlushConfig
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class F, class TResponse>
+concept TRequestExecutor =
+    std::invocable<F> &&
+    std::same_as<std::invoke_result_t<F>, TFuture<TResponse>>;
+
+template <class F, class TResponse>
+concept TResponseProcessor =
+    std::invocable<F, const TResponse&>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,8 +59,6 @@ private:
     const TString LogTag;
     const TString FileSystemId;
 
-    // All fields below should be protected by this lock
-    TMutex Lock;
     IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
 
@@ -85,7 +84,7 @@ public:
               args.FileSystemId.c_str(),
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
-        , State(*this, Timer, Stats)
+        , State(*this, Timer, Stats, LogTag)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
@@ -180,44 +179,45 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        auto nodeId = request->GetNodeId();
-        auto offset = request->GetOffset();
-        auto end = request->GetOffset() + request->GetLength();
+        // Prevent cached data parts from being evicted from storage until
+        // the response is completed
+        const auto pinId = State.PinCachedData(request->GetNodeId());
 
-        auto unlocker =
-            [ptr = weak_from_this(), nodeId, offset, end](const auto&)
+        TReadResponseBuilder responseBuilder(*request);
+        if (auto response = responseBuilder.TryFullyServeFromCache(State)) {
+            State.UnpinCachedData(request->GetNodeId(), pinId);
+            Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
+            return MakeFuture(std::move(*response));
+        }
+
+        auto callback = [ptr = weak_from_this(),
+                         responseBuilder = std::move(responseBuilder),
+                         pinId](TFuture<NProto::TReadDataResponse> future)
         {
+            auto response = future.ExtractValue();
+
             if (auto self = ptr.lock()) {
-                self->State.UnlockRead(nodeId, offset, end);
+                if (!HasError(response)) {
+                    bool cachedDataApplied =
+                        responseBuilder.AugmentResponseWithCachedData(
+                            response,
+                            self->State);
+
+                    if (cachedDataApplied) {
+                        self->Stats->AddReadDataStats(
+                            EReadDataRequestCacheStatus::PartialHit);
+                    } else {
+                        self->Stats->AddReadDataStats(
+                            EReadDataRequestCacheStatus::Miss);
+                    }
+                }
+                self->State.UnpinCachedData(responseBuilder.GetNodeId(), pinId);
             }
+            return response;
         };
 
-        TPendingReadDataRequest pendingRequest = {
-            .CallContext = std::move(callContext),
-            .Request = std::move(request),
-            .Promise = NewPromise<NProto::TReadDataResponse>()};
-
-        auto result = pendingRequest.Promise.GetFuture();
-        result.Subscribe(std::move(unlocker));
-
-        auto locker =
-            [ptr = weak_from_this(),
-             pendingRequest = std::move(pendingRequest)](const auto& f) mutable
-        {
-            f.GetValue();
-            auto self = ptr.lock();
-            // Lock action is invoked immediately or from
-            // UnlockRead/UnlockWrite calls that can be made only when
-            // TImpl is alive
-            Y_DEBUG_ABORT_UNLESS(self);
-            if (self) {
-                self->StartPendingReadDataRequest(std::move(pendingRequest));
-            }
-        };
-
-        State.LockRead(nodeId, offset, end).Apply(std::move(locker));
-
-        return result;
+        return Session->ReadData(std::move(callContext), std::move(request))
+            .Apply(std::move(callback));
     }
 
     TFuture<NProto::TWriteDataResponse> WriteData(
@@ -236,43 +236,101 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        const auto nodeId = request->GetNodeId();
-        const auto offset = request->GetOffset();
-        const auto end = NStorage::CalculateByteCount(*request) -
-                         request->GetBufferOffset() + offset;
-
-        Y_ABORT_UNLESS(offset < end);
-
-        auto unlocker =
-            [ptr = weak_from_this(), nodeId, offset, end](const auto&)
-        {
-            if (auto self = ptr.lock()) {
-                self->State.UnlockWrite(nodeId, offset, end);
-            }
-        };
-
-        auto future =
-            State.LockWrite(nodeId, offset, end)
-                .Apply(
-                    [this, request = std::move(request)](const auto& f) mutable
-                    {
-                        f.GetValue();
-                        return State.AddWriteDataRequest(std::move(request));
-                    });
-
-        future.Subscribe(std::move(unlocker));
-
-        return future;
+        return State.AddWriteDataRequest(std::move(request));
     }
 
-    TFuture<void> FlushNodeData(ui64 nodeId)
+    TFuture<NProto::TError> FlushNodeData(ui64 nodeId)
     {
         return State.AddFlushRequest(nodeId);
     }
 
-    TFuture<void> FlushAllData()
+    TFuture<NProto::TError> FlushAllData()
     {
         return State.AddFlushAllRequest();
+    }
+
+    TFuture<NProto::TError> ReleaseHandle(ui64 nodeId, ui64 handle)
+    {
+        return State.AddReleaseHandleRequest(nodeId, handle);
+    }
+
+    TFuture<NProto::TReadDataResponse> ReadDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request)
+    {
+        return ExecuteRequestUnderBarrier<NProto::TReadDataResponse>(
+            request->GetNodeId(),
+            [this,
+             callContext = std::move(callContext),
+             request = std::move(request)]() mutable
+            {
+                return Session->ReadData(
+                    std::move(callContext),
+                    std::move(request));
+            });
+    }
+
+    TFuture<NProto::TWriteDataResponse> WriteDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request)
+    {
+        return ExecuteRequestUnderBarrier<NProto::TWriteDataResponse>(
+            request->GetNodeId(),
+            [this,
+             callContext = std::move(callContext),
+             request = std::move(request)]() mutable
+            {
+                return Session->WriteData(
+                    std::move(callContext),
+                    std::move(request));
+            });
+    }
+
+    TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TSetNodeAttrRequest> request)
+    {
+        const bool attrSizeNotAffected =
+            (request->GetFlags() &
+             ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) == 0;
+
+        if (attrSizeNotAffected) {
+            return Session->SetNodeAttr(
+                std::move(callContext),
+                std::move(request));
+        }
+
+        // MaxWrittenOffset is used to adjust node size in GetAttr/ReadDir
+        // responses according to the cached data. After WriteData requests are
+        // flushed and evicted, MaxWrittenOffset doesn't automatically shrink
+        // back in order to prevent data race.
+        //
+        // SetNodeAttr request may interfere with the requests being flushed.
+        // In order to prevent data race, we need to acquire a barrier and
+        // execute SetNodeAttr under a barrier.
+
+        const ui64 nodeId = request->GetNodeId();
+
+        auto executor = [this,
+                         callContext = std::move(callContext),
+                         request = std::move(request)]() mutable
+        {
+            return Session->SetNodeAttr(
+                std::move(callContext),
+                std::move(request));
+        };
+
+        auto callback = [this, nodeId](const auto& response)
+        {
+            if (!HasError(response)) {
+                State.ResetMaxWrittenOffset(nodeId);
+            }
+        };
+
+        return ExecuteRequestUnderBarrier<NProto::TSetNodeAttrResponse>(
+            nodeId,
+            std::move(executor),
+            std::move(callback));
     }
 
     bool IsEmpty() const
@@ -290,177 +348,12 @@ public:
         State.UnpinNodeStates(refId);
     }
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const
     {
-        return State.GetCachedNodeSize(nodeId);
-    }
-
-    void SetCachedNodeSize(ui64 nodeId, ui64 size)
-    {
-        State.SetCachedNodeSize(nodeId, size);
+        return State.GetMaxWrittenOffset(nodeId);
     }
 
 private:
-    TVector<TCachedDataPart> CalculateDataPartsToReadAndFillBuffer(
-        ui64 nodeId,
-        ui64 offset,
-        ui64 length,
-        TString* buffer)
-    {
-        with_lock (Lock) {
-            auto data = State.GetCachedData(nodeId, offset, length);
-            if (data.ReadDataByteCount == 0) {
-                return {};
-            }
-            *buffer = TString(data.ReadDataByteCount, 0);
-            for (const auto& part: data.Parts) {
-                part.Data.copy(
-                    buffer->begin() + part.RelativeOffset,
-                    part.Data.size());
-            }
-            return data.Parts;
-        }
-    }
-
-    static bool IsIntervalFullyCoveredByParts(
-        const TVector<TCachedDataPart>& parts,
-        ui64 length)
-    {
-        if (parts.empty() || parts.front().RelativeOffset != 0 ||
-            parts.back().RelativeOffset + parts.back().Data.size() != length)
-        {
-            return false;
-        }
-
-        for (size_t i = 1; i < parts.size(); i++) {
-            const ui64 prevEnd =
-                parts[i - 1].RelativeOffset + parts[i - 1].Data.size();
-
-            Y_DEBUG_ABORT_UNLESS(prevEnd <= parts[i].RelativeOffset);
-            if (prevEnd != parts[i].RelativeOffset) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    struct TReadDataState
-    {
-        ui64 StartingFromOffset = 0;
-        ui64 Length = 0;
-        TString Buffer;
-        TVector<TCachedDataPart> Parts;
-        TPromise<NProto::TReadDataResponse> Promise;
-    };
-
-    void StartPendingReadDataRequest(TPendingReadDataRequest request)
-    {
-        auto nodeId = request.Request->GetNodeId();
-
-        TReadDataState state;
-        state.StartingFromOffset = request.Request->GetOffset();
-        state.Length = request.Request->GetLength();
-        state.Promise = std::move(request.Promise);
-
-        state.Parts = CalculateDataPartsToReadAndFillBuffer(
-            nodeId,
-            state.StartingFromOffset,
-            state.Length,
-            &state.Buffer);
-
-        if (IsIntervalFullyCoveredByParts(
-                state.Parts,
-                state.Length))
-        {
-            // Serve request from cache
-            Y_ABORT_UNLESS(state.Buffer.size() == state.Length);
-            NProto::TReadDataResponse response;
-            response.SetBuffer(std::move(state.Buffer));
-            Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
-            state.Promise.SetValue(std::move(response));
-            return;
-        }
-
-        auto cacheState = state.Parts.empty()
-            ? EReadDataRequestCacheStatus::Miss
-            : EReadDataRequestCacheStatus::PartialHit;
-
-        Stats->AddReadDataStats(cacheState);
-
-        // Cache is not sufficient to serve the request - read all the data
-        // and merge with the cached parts
-        auto future = Session->ReadData(
-            std::move(request.CallContext),
-            std::move(request.Request));
-
-        future.Subscribe(
-            [state = std::move(state)](auto future) mutable
-            {
-                auto response = future.ExtractValue();
-
-                if (HasError(response)) {
-                    state.Promise.SetValue(std::move(response));
-                } else {
-                    HandleReadDataResponse(
-                        std::move(state),
-                        std::move(response));
-                }
-            });
-    }
-
-    static void HandleReadDataResponse(
-        TReadDataState state,
-        NProto::TReadDataResponse response)
-    {
-        Y_ABORT_UNLESS(
-            response.GetBuffer().length() >= response.GetBufferOffset(),
-            "reponse buffer length %lu is expected to be >= buffer offset %u",
-            response.GetBuffer().length(),
-            response.GetBufferOffset());
-
-        auto responseBufferLength =
-            response.GetBuffer().length() - response.GetBufferOffset();
-
-        Y_ABORT_UNLESS(
-            responseBufferLength <= state.Length,
-            "response buffer length %lu is expected to be <= request length %lu",
-            responseBufferLength,
-            state.Length);
-
-        if (state.Buffer.empty()) {
-            // Cache miss
-            state.Promise.SetValue(std::move(response));
-            return;
-        }
-
-        if (response.GetBuffer().empty()) {
-            *response.MutableBuffer() = std::move(state.Buffer);
-            state.Promise.SetValue(std::move(response));
-            return;
-        }
-
-        if (responseBufferLength < state.Buffer.size()) {
-            response.SetBuffer(response.GetBuffer()
-                                   .substr(response.GetBufferOffset())
-                                   .resize(state.Buffer.size(), 0));
-            response.SetBufferOffset(0);
-        }
-
-        char* responseBufferData =
-            response.MutableBuffer()->begin() + response.GetBufferOffset();
-
-        // be careful and don't take data from parts here as it
-        // may be already deleted
-        for (const auto& part: state.Parts) {
-            const char* from = state.Buffer.data() + part.RelativeOffset;
-            char* to = responseBufferData + part.RelativeOffset;
-            MemCopy(to, from, part.Data.size());
-        }
-
-        state.Promise.SetValue(std::move(response));
-    }
-
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
@@ -498,8 +391,9 @@ private:
             auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
 
             callContext->RequestType = EFileStoreRequest::WriteData;
-            callContext->RequestSize = NStorage::CalculateByteCount(*request) -
-                                       request->GetBufferOffset();
+            callContext->RequestSize =
+                NCloud::NFileStore::CalculateByteCount(*request) -
+                request->GetBufferOffset();
 
             auto callback = [ptr = weak_from_this(), flushState, i](
                                 const auto& future) mutable
@@ -517,11 +411,6 @@ private:
 
                     case EWriteDataRequestCompletedAction::ContinueExecution:
                         break;
-
-                    default:
-                        Y_ABORT(
-                            "Unexpected action - %d",
-                            static_cast<int>(action));
                 }
             };
 
@@ -536,17 +425,21 @@ private:
 
         if (HasError(error)) {
             Stats->FlushFailed();
-            ScheduleRetryFlush(std::move(flushState));
-            return;
-        }
 
-        Stats->FlushCompleted();
+            auto retryStatus =
+                State.FlushFailed(flushState->GetNodeId(), error);
 
-        with_lock (Lock) {
+            if (retryStatus == EFlushRetryStatus::ShouldRetry) {
+                ScheduleRetryFlush(std::move(flushState));
+                return;
+            }
+        } else {
             State.FlushSucceeded(
                 flushState->GetNodeId(),
                 flushState->GetAffectedUnflushedRequestCount());
         }
+
+        Stats->FlushCompleted();
     }
 
     void ScheduleRetryFlush(std::shared_ptr<TNodeFlushState> flushState)
@@ -562,6 +455,79 @@ private:
                     self->ExecuteFlush(flushState);
                 }
             });
+    }
+
+    // TRequestExecutorCallable: () -> TFuture<TResponse>, may capture [this]
+    // TResponseProcessorCallable: (const TResponse&), may capture [this]
+    template <class TResponse>
+    TFuture<TResponse> ExecuteRequestUnderBarrier(
+        ui64 nodeId,
+        TRequestExecutor<TResponse> auto requestExecutor,
+        TResponseProcessor<TResponse> auto responseProcessor)
+    {
+        auto promise = NewPromise<TResponse>();
+        auto resultFuture = promise.GetFuture();
+
+        auto acquireBarrierCallback =
+            [ptr = weak_from_this(),
+             requestExecutor = std::move(requestExecutor),
+             responseProcessor = std::move(responseProcessor),
+             promise = std::move(promise),
+             nodeId](const auto& future) mutable
+        {
+            const TResultOrError<ui64>& acquireBarrierResult =
+                future.GetValue();
+
+            if (HasError(acquireBarrierResult.GetError())) {
+                // Barrier acquisition failed - propagate the error
+                TResponse response;
+                *response.MutableError() = acquireBarrierResult.GetError();
+                promise.SetValue(std::move(response));
+                return;
+            }
+
+            auto self = ptr.lock();
+            if (!self) {
+                TResponse response;
+                *response.MutableError() =
+                    MakeError(E_REJECTED, "WriteBackCache is destroyed");
+                promise.SetValue(std::move(response));
+                return;
+            }
+
+            auto requestCallback =
+                [ptr = std::move(ptr),
+                 responseProcessor = std::move(responseProcessor),
+                 barrierId = acquireBarrierResult.GetResult(),
+                 promise = std::move(promise),
+                 nodeId](const TFuture<TResponse>& future) mutable
+            {
+                const auto& response = future.GetValue();
+                if (auto self = ptr.lock()) {
+                    responseProcessor(response);
+                    self->State.ReleaseBarrier(nodeId, barrierId);
+                }
+                promise.SetValue(response);
+            };
+
+            requestExecutor().Subscribe(std::move(requestCallback));
+        };
+
+        State.AcquireBarrier(nodeId).Subscribe(
+            std::move(acquireBarrierCallback));
+
+        return resultFuture;
+    }
+
+    template <class TResponse>
+    TFuture<TResponse> ExecuteRequestUnderBarrier(
+        ui64 nodeId,
+        TRequestExecutor<TResponse> auto requestExecutor)
+    {
+        return ExecuteRequestUnderBarrier<TResponse>(
+            nodeId,
+            std::move(requestExecutor),
+            [](const auto&) {});
     }
 };
 
@@ -591,14 +557,40 @@ TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteData(
     return Impl->WriteData(std::move(callContext), std::move(request));
 }
 
-TFuture<void> TWriteBackCache::FlushNodeData(ui64 nodeId)
+TFuture<NProto::TError> TWriteBackCache::FlushNodeData(ui64 nodeId)
 {
     return Impl->FlushNodeData(nodeId);
 }
 
-TFuture<void> TWriteBackCache::FlushAllData()
+TFuture<NProto::TError> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
+}
+
+TFuture<NProto::TError> TWriteBackCache::ReleaseHandle(ui64 nodeId, ui64 handle)
+{
+    return Impl->ReleaseHandle(nodeId, handle);
+}
+
+TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadDataDirect(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TReadDataRequest> request)
+{
+    return Impl->ReadDataDirect(std::move(callContext), std::move(request));
+}
+
+TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteDataDirect(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TWriteDataRequest> request)
+{
+    return Impl->WriteDataDirect(std::move(callContext), std::move(request));
+}
+
+TFuture<NProto::TSetNodeAttrResponse> TWriteBackCache::SetNodeAttr(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TSetNodeAttrRequest> request)
+{
+    return Impl->SetNodeAttr(std::move(callContext), std::move(request));
 }
 
 bool TWriteBackCache::IsEmpty() const
@@ -616,14 +608,9 @@ void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
     Impl->ReleaseNodeStateRef(refId);
 }
 
-ui64 TWriteBackCache::GetCachedNodeSize(ui64 nodeId) const
+ui64 TWriteBackCache::GetMaxWrittenOffset(ui64 nodeId) const
 {
-    return Impl->GetCachedNodeSize(nodeId);
-}
-
-void TWriteBackCache::SetCachedNodeSize(ui64 nodeId, ui64 size)
-{
-    Impl->SetCachedNodeSize(nodeId, size);
+    return Impl->GetMaxWrittenOffset(nodeId);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -1,0 +1,6 @@
+AddingUnconfirmedDataEnabled: true
+UnconfirmedDataCountHardLimit: 10000
+ThreeStageWriteEnabled: true
+UnalignedThreeStageWriteEnabled: true
+MultiTabletForwardingEnabled: true
+MaxTabletStep:2000

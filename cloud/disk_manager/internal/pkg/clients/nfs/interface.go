@@ -33,6 +33,43 @@ type FilesystemModel struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type Session interface {
+	ListNodes(
+		ctx context.Context,
+		parentNodeID uint64,
+		cookie string,
+		maxBytes uint32,
+		unsafe bool,
+	) ([]Node, string, error)
+
+	CreateCheckpoint(
+		ctx context.Context,
+		filesystemID string,
+		checkpointID string,
+		nodeID uint64,
+	) error
+
+	CreateNode(
+		ctx context.Context,
+		node Node,
+	) (uint64, error)
+
+	ReadLink(
+		ctx context.Context,
+		nodeID uint64,
+	) ([]byte, error)
+
+	GetNodeAttr(
+		ctx context.Context,
+		parentNodeID uint64,
+		name string,
+	) (Node, error)
+
+	Close(ctx context.Context) error
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Client interface {
 	Close() error
 
@@ -55,14 +92,6 @@ type Client interface {
 		kind types.FilesystemKind,
 	) (FilesystemModel, error)
 
-	CreateCheckpoint(
-		ctx context.Context,
-		session Session,
-		filesystemID string,
-		checkpointID string,
-		nodeID uint64,
-	) error
-
 	DestroyCheckpoint(
 		ctx context.Context,
 		filesystemID string,
@@ -75,29 +104,6 @@ type Client interface {
 		checkpointID string,
 		readonly bool,
 	) (Session, error)
-
-	DestroySession(ctx context.Context, session Session) error
-
-	ListNodes(
-		ctx context.Context,
-		session Session,
-		parentNodeID uint64,
-		cookie string,
-		maxBytes uint32,
-		unsafe bool,
-	) ([]Node, string, error)
-
-	CreateNode(
-		ctx context.Context,
-		session Session,
-		node Node,
-	) (uint64, error)
-
-	ReadLink(
-		ctx context.Context,
-		session Session,
-		nodeID uint64,
-	) ([]byte, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

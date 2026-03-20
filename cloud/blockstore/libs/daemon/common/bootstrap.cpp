@@ -43,6 +43,7 @@
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
 #include <cloud/blockstore/libs/local_nvme/device_provider.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
+#include <cloud/blockstore/libs/local_nvme/service_proxy.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
@@ -60,6 +61,7 @@
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/service_filtered.h>
 #include <cloud/blockstore/libs/service/service_null.h>
+#include <cloud/blockstore/libs/service/split_request_service.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/service_local/service_local.h>
@@ -242,6 +244,10 @@ void TBootstrapBase::Init()
     }
 
     STORAGE_INFO("Service initialized");
+
+    if (Configs->ServerConfig->GetEnableRequestSplitter()) {
+        Service = CreateSplitRequestService(std::move(Service));
+    }
 
     if (Configs->ServerConfig->GetEnableOverlappingRequestsGuard()) {
         Service = CreateOverlappingRequestsGuardsService(std::move(Service));
@@ -676,6 +682,11 @@ void TBootstrapBase::Init()
             clientInactivityTimeout);
 
         STORAGE_INFO("ValidationService initialized");
+    }
+
+    if (LocalNVMeService) {
+        Service =
+            CreateLocalNVMeServiceProxy(std::move(Service), LocalNVMeService);
     }
 
     Server = CreateServer(

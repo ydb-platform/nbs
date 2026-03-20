@@ -7,8 +7,8 @@ SRCS(
     node_state_holder.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
-    read_write_range_lock.cpp
     queued_operations.cpp
+    read_response_builder.cpp
     sequence_id_generator.cpp
     utils.cpp
     write_back_cache.cpp

@@ -31,7 +31,7 @@ def build_report(report_name, logs_dir):
     report = etree.Element("report")
     report.set("name", report_name)
 
-    done_pattern = re.compile("([0-9]+): \[DONE\] (.*)")
+    done_pattern = re.compile(r"([0-9]+): \[DONE\] (.*)")
     result_pattern = re.compile("([0-9]+)% tests passed, ([0-9]+) tests failed out of ([0-9]+)")
 
     for root, dir, files in os.walk(logs_dir):

@@ -65,21 +65,21 @@ def setup_cms_configs(kikimr_client):
 
     # filestore-server
     storage = TStorageConfig()
-    storage.NodeIndexCacheMaxNodes = 100
+    storage.PreferredBlockSizeMultiplier = 100
     storage.SchemeShardDir = "/Root/nfs"
 
     update_cms_config(kikimr_client, 'StorageConfig', storage, 'filestore_server')
 
     # vhost
     storage = TStorageConfig()
-    storage.NodeIndexCacheMaxNodes = 200
+    storage.PreferredBlockSizeMultiplier = 200
     storage.SchemeShardDir = "/Root/nfs"
 
     update_cms_config(kikimr_client, 'StorageConfig', storage, 'filestore_vhost')
 
     # global
     storage = TStorageConfig()
-    storage.NodeIndexCacheMaxNodes = 300
+    storage.PreferredBlockSizeMultiplier = 300
     storage.SchemeShardDir = "/Root/nfs"
 
     update_cms_config(kikimr_client, 'StorageConfig', storage, '')
@@ -160,7 +160,7 @@ def check_filestore_server(server, port):
     filestore_client_binary_path = yatest_common.binary_path("cloud/filestore/apps/client/filestore-client")
 
     client = FilestoreCliClient(filestore_client_binary_path, port)
-    result = client.get_storage_service_config().get("NodeIndexCacheMaxNodes") == 100
+    result = client.get_storage_service_config().get("PreferredBlockSizeMultiplier") == 100
 
     return result
 

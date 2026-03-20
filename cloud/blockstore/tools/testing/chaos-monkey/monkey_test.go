@@ -23,6 +23,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type nbsService struct {
+	nbsgrpc.UnimplementedTBlockStoreServiceServer
+
 	drStateJSON             []byte
 	diskID2FreshDeviceCount map[string]int
 }

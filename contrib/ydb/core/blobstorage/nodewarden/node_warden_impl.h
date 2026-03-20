@@ -121,6 +121,7 @@ namespace NKikimr::NStorage {
         struct TEvPrivate {
             enum EEv {
                 EvSendDiskMetrics = EventSpaceBegin(TEvents::ES_PRIVATE),
+                EvUpdateStats,
                 EvUpdateNodeDrives,
                 EvReadCache,
                 EvGetGroup,
@@ -128,6 +129,7 @@ namespace NKikimr::NStorage {
             };
 
             struct TEvSendDiskMetrics : TEventLocal<TEvSendDiskMetrics, EvSendDiskMetrics> {};
+            struct TEvUpdateStats : TEventLocal<TEvUpdateStats, EvUpdateStats> {};
             struct TEvUpdateNodeDrives : TEventLocal<TEvUpdateNodeDrives, EvUpdateNodeDrives> {};
         };
 
@@ -163,7 +165,7 @@ namespace NKikimr::NStorage {
         TControlWrapper PredictedDelayMultiplier;
         TControlWrapper PredictedDelayMultiplierHDD;
         TControlWrapper PredictedDelayMultiplierSSD;
-    
+
         TControlWrapper MaxNumOfSlowDisks;
         TControlWrapper MaxNumOfSlowDisksHDD;
         TControlWrapper MaxNumOfSlowDisksSSD;
@@ -558,6 +560,7 @@ namespace NKikimr::NStorage {
         void Handle(TEvBlobStorage::TEvControllerGroupMetricsExchange::TPtr ev);
         void Handle(TEvPrivate::TEvSendDiskMetrics::TPtr&);
         void Handle(TEvPrivate::TEvUpdateNodeDrives ::TPtr&);
+        void Handle(TEvPrivate::TEvUpdateStats::TPtr&);
         void Handle(NMon::TEvHttpInfo::TPtr&);
         void RenderJsonGroupInfo(IOutputStream& out, const std::set<ui32>& groupIds);
         void RenderWholePage(IOutputStream&);
@@ -674,6 +677,7 @@ namespace NKikimr::NStorage {
                 hFunc(TEvBlobStorage::TEvControllerUpdateDiskStatus, Handle);
                 hFunc(TEvBlobStorage::TEvControllerGroupMetricsExchange, Handle);
                 hFunc(TEvPrivate::TEvSendDiskMetrics, Handle);
+                hFunc(TEvPrivate::TEvUpdateStats, Handle);
                 hFunc(TEvPrivate::TEvUpdateNodeDrives, Handle);
                 hFunc(NMon::TEvHttpInfo, Handle);
                 cFunc(NActors::TEvents::TSystem::Poison, PassAway);

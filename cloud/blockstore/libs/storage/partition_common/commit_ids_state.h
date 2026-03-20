@@ -58,6 +58,11 @@ public:
     {
         Checkpoints.GetCommitIds(result);
     }
+
+    [[nodiscard]] auto GetCommitIdGenerator() const
+    {
+        return CommitIdGenerator;
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -143,6 +143,7 @@ struct TWriteBlob
 enum class EAddBlobMode
 {
     Write,
+    WriteUnconfirmed,
     WriteBatch,
     Flush,
     FlushBytes,
@@ -406,6 +407,8 @@ struct TEvIndexTabletPrivate
         TVector<TMergedBlobMeta> MergedBlobs;
         TVector<TWriteRange> WriteRanges;
         TVector<TBlockBytesMeta> UnalignedDataParts;
+        // Used only in unconfirmed data flow
+        ui64 ConfirmedDataRefCommitId = InvalidCommitId;
     };
 
     struct TAddBlobResponse
@@ -1159,6 +1162,24 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // ConfirmBlobs - used during crash recovery to confirm blobs in blob storage
+    //
+
+    struct TConfirmBlobsCompleted
+    {
+        const ui64 StartCycleCount;
+        TVector<TPartialBlobId> UnrecoverableBlobs;
+        NProto::TError Error;
+
+        TConfirmBlobsCompleted(
+                ui64 startCycleCount,
+                TVector<TPartialBlobId> unrecoverableBlobs)
+            : StartCycleCount(startCycleCount)
+            , UnrecoverableBlobs(std::move(unrecoverableBlobs))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -1197,6 +1218,8 @@ struct TEvIndexTabletPrivate
         EvLoadNodes,
 
         EvEnqueueBlobIndexOpIfNeeded,
+
+        EvConfirmBlobsCompleted,
 
         EvEnd
     };
@@ -1263,6 +1286,9 @@ struct TEvIndexTabletPrivate
 
     using TEvEnqueueBlobIndexOpIfNeeded =
         TRequestEvent<TEmpty, EvEnqueueBlobIndexOpIfNeeded>;
+
+    using TEvConfirmBlobsCompleted =
+        TResponseEvent<TConfirmBlobsCompleted, EvConfirmBlobsCompleted>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

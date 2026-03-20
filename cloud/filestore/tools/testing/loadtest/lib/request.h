@@ -86,4 +86,11 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     TString filesystemId,
     NProto::THeaders headers);
 
+IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
+    NProto::TDatashardLikeLoadSpec spec,
+    ILoggingServicePtr logging,
+    NClient::ISessionPtr session,
+    TString filesystemId,
+    NProto::THeaders headers);
+
 }   // namespace NCloud::NFileStore::NLoadTest

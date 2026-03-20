@@ -238,6 +238,45 @@ func (client *Client) RefreshEndpoint(
 	return err
 }
 
+func (client *Client) ListNVMeDevices(
+	ctx context.Context,
+) ([]*protos.TNVMeDeviceDesc, error) {
+
+	req := &protos.TListNVMeDevicesRequest{}
+
+	resp, err := client.Impl.ListNVMeDevices(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetDevices(), nil
+}
+
+func (client *Client) AcquireNVMeDevice(
+	ctx context.Context,
+	serialNumber string,
+) error {
+
+	req := &protos.TAcquireNVMeDeviceRequest{
+		SerialNumber: serialNumber,
+	}
+
+	_, err := client.Impl.AcquireNVMeDevice(ctx, req)
+	return err
+}
+
+func (client *Client) ReleaseNVMeDevice(
+	ctx context.Context,
+	serialNumber string,
+) error {
+
+	req := &protos.TReleaseNVMeDeviceRequest{
+		SerialNumber: serialNumber,
+	}
+
+	_, err := client.Impl.ReleaseNVMeDevice(ctx, req)
+	return err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func IsDiskNotFoundError(e error) bool {

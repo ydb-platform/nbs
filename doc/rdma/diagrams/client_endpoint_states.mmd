@@ -1,0 +1,17 @@
+stateDiagram-v2
+    note: Each transition is performed by a single thread
+    note: CM - ConnectionPoller
+    note: CQ - CompletionPoller
+
+    [*] --> Disconnected
+    Disconnected --> ResolvingAddress: CM
+    ResolvingAddress --> ResolvingRoute: CM
+    ResolvingRoute --> Connecting: CM
+    Connecting --> Connected: CM
+    Connected --> Disconnecting: CM
+    Disconnecting --> Disconnected: CQ
+    Disconnected --> [*]
+
+    ResolvingAddress --> Disconnected: CM
+    ResolvingRoute --> Disconnected: CM
+    Connecting --> Disconnected: CM

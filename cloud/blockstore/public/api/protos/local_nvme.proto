@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNVMeDeviceDesc
+{
+    // Serial number.
+    string SerialNumber = 1;
+
+    // PCI address.
+    string PCIAddress = 2;
+
+    // IOMMU group number.
+    optional uint32 IOMMUGroup = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TListNVMeDevicesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+}
+
+message TListNVMeDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of NVMe devices.
+    repeated TNVMeDeviceDesc Devices = 2;
+}
+
+message TAcquireNVMeDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Device Serial number.
+    string SerialNumber = 2;
+}
+
+message TAcquireNVMeDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TReleaseNVMeDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Device Serial number.
+    string SerialNumber = 2;
+}
+
+message TReleaseNVMeDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

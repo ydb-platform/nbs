@@ -271,6 +271,9 @@ message TServerConfig
 
     // Enables protection from executing overlapping zero or write requests.
     optional bool EnableOverlappingRequestsGuard = 128;
+
+    // Enables splitting requests across device and stripe boundaries.
+    optional bool EnableRequestSplitter = 129;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

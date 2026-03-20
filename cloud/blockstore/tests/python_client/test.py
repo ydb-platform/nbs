@@ -14,6 +14,24 @@ from cloud.blockstore.public.sdk.python.client.discovery import CreateDiscoveryC
 from cloud.blockstore.public.sdk.python.client.error import ClientError
 
 
+LOCAL_NVME_DEVICES = [
+    protos.TNVMeDeviceDesc(
+        SerialNumber="NVME_0",
+        PCIAddress="0000:f1:00.0",
+        IOMMUGroup=10,
+    ),
+    protos.TNVMeDeviceDesc(
+        SerialNumber="NVME_1",
+        PCIAddress="0000:f2:00.0",
+    ),
+    protos.TNVMeDeviceDesc(
+        SerialNumber="NVME_2",
+        PCIAddress="0000:f3:00.0",
+        IOMMUGroup=42,
+    ),
+]
+
+
 class NbsServiceMock(service_pb2_grpc.TBlockStoreServiceServicer):
 
     def __init__(self, endpoint):
@@ -88,6 +106,27 @@ class NbsServiceMock(service_pb2_grpc.TBlockStoreServiceServicer):
         agent.Devices.append(device)
         response = protos.TQueryAgentsInfoResponse()
         response.Agents.append(agent)
+        return response
+
+    def ListNVMeDevices(self, request, context):
+        return protos.TListNVMeDevicesResponse(
+            Devices=LOCAL_NVME_DEVICES,
+        )
+
+    def AcquireNVMeDevice(self, request,  context):
+        response = protos.TAcquireNVMeDeviceResponse()
+
+        if not any(x.SerialNumber == request.SerialNumber for x in LOCAL_NVME_DEVICES):
+            response.Error.Code = EResult.E_NOT_FOUND.value
+
+        return response
+
+    def ReleaseNVMeDevice(self, request,  context):
+        response = protos.TReleaseNVMeDeviceResponse()
+
+        if not any(x.SerialNumber == request.SerialNumber for x in LOCAL_NVME_DEVICES):
+            response.Error.Code = EResult.E_NOT_FOUND.value
+
         return response
 
 
@@ -222,4 +261,37 @@ def test_query_agents_info():
         assert device.DeviceName == "vol-1"
         assert device.DeviceSerialNumber == "123456"
         assert device.DeviceTotalSpaceInBytes == 93*1024**3
+        client.close()
+
+
+def test_list_nvme_devices():
+    logging.basicConfig()
+
+    with NbsServer() as nbs:
+        client = CreateClient(nbs.endpoint)
+
+        response = client.list_nvme_devices()
+        assert list(response.Devices) == LOCAL_NVME_DEVICES
+
+        client.close()
+
+
+def test_acquire_and_release_nvme_device():
+    logging.basicConfig()
+
+    with NbsServer() as nbs:
+        client = CreateClient(nbs.endpoint)
+
+        sn = LOCAL_NVME_DEVICES[0].SerialNumber
+
+        client.acquire_nvme_device(sn)
+
+        with pytest.raises(ClientError):
+            client.acquire_nvme_device("unknown")
+
+        client.release_nvme_device(sn)
+
+        with pytest.raises(ClientError):
+            client.release_nvme_device("unknown")
+
         client.close()

@@ -2587,4 +2587,50 @@ TIndexTabletDatabaseProxy::ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref)
             .ShardNodeName = ref.ShardNodeName}};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// UnconfirmedData
+
+void TIndexTabletDatabase::WriteUnconfirmedData(
+    ui64 commitId,
+    const NProto::TUnconfirmedData& data)
+{
+    using TTable = TIndexTabletSchema::UnconfirmedData;
+
+    Table<TTable>()
+        .Key(commitId)
+        .Update<TTable::RequestData>(data);
+}
+
+void TIndexTabletDatabase::DeleteUnconfirmedData(ui64 commitId)
+{
+    using TTable = TIndexTabletSchema::UnconfirmedData;
+    Table<TTable>().Key(commitId).Delete();
+}
+
+bool TIndexTabletDatabase::ReadUnconfirmedData(
+    TVector<TUnconfirmedDataEntry>& entries)
+{
+    using TTable = TIndexTabletSchema::UnconfirmedData;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        TUnconfirmedDataEntry entry;
+        entry.CommitId = it.GetValue<TTable::CommitId>();
+        entry.Data = it.GetValue<TTable::RequestData>();
+        entries.push_back(std::move(entry));
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

@@ -93,6 +93,31 @@ enum ENonreplAllocationPolicy
     NONREPL_ALLOC_POLICY_USER_ANTI_AFFINITY = 1;
 }
 
+enum EOverlappingRequestsPolicy
+{
+    // Overlapping requests are processed as usual.
+    ORP_ENABLE = 0;
+
+    // Overlapping requests are processed as usual, but when an overlapping
+    // request appears, the CritEvent raised.
+    ORP_ENABLE_WITH_CRIT_EVENT = 1;
+
+    // Protection against overlapping requests is disabled. It is assumed that
+    // the protection is implemented on couple layers above volume.
+    ORP_DISABLE = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPoolKindToMediaKindMapping
+{
+    // YDB storage pool kind.
+    optional string PoolKind = 1;
+
+    // Corresponding NBS storage media kind
+    optional NCloud.NProto.EStorageMediaKind MediaKind = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
@@ -1436,4 +1461,17 @@ message TStorageServiceConfig
 
     // Maximum number of inflight attach/detach path requests.
     optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 485;
+
+    // Policy for overlapping requests handling in TVolumeActor.
+    // It is preferable to enable handling overlapping requests via
+    // EnableOverlappingRequestsGuard in the Storage config.
+    optional EOverlappingRequestsPolicy OverlappingRequestsPolicy = 486;
+
+    // Pool kind to storage media kind mapping.
+    // Used for cluster capacity estimation (getclustercapacity private api).
+    repeated TPoolKindToMediaKindMapping PoolKindToMediaKindMapping = 487;
+
+    // Maximum number of inflight attach/detach path requests.
+    // VolumeBalancerMaxInProgress == 0 means no limit
+    optional uint64 VolumeBalancerMaxInProgress = 488;
 }

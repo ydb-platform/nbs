@@ -1,6 +1,8 @@
 LIBRARY()
 
 SRCS(
+    fresh_blocks_writer_actor_writeblocks.cpp
+    fresh_blocks_writer_actor_writefreshblocks.cpp
     fresh_blocks_writer_actor_forward.cpp
     fresh_blocks_writer_actor.cpp
     io_companion_client.cpp

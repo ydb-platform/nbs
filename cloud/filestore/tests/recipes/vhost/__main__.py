@@ -45,6 +45,7 @@ def start(argv):
     parser.add_argument("--restart-flag", action="store", default=None)
     parser.add_argument("--restart-flag-on-demand", action="store_true", default=False)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--service-config-patch", action="store", default=None)
     parser.add_argument("--local-service-config-patch", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
@@ -71,7 +72,15 @@ def start(argv):
     set_env("NFS_VHOST_ENDPOINT_STORAGE_DIR", endpoint_storage_dir)
 
     config = TVhostAppConfig()
-    config.VhostServiceConfig.CopyFrom(TVhostServiceConfig())
+
+    if args.service_config_patch:
+        with open(common.source_path(args.service_config_patch)) as p:
+            config.VhostServiceConfig.CopyFrom(text_format.Parse(
+                p.read(),
+                TVhostServiceConfig()))
+    else:
+        config.VhostServiceConfig.CopyFrom(TVhostServiceConfig())
+
     config.VhostServiceConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
     config.VhostServiceConfig.EndpointStorageDir = endpoint_storage_dir
 

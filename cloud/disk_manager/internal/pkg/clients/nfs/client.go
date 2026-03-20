@@ -3,9 +3,9 @@ package nfs
 import (
 	"context"
 
+	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	nfs_protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -14,15 +14,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type Node nfs_client.Node
-type Session nfs_client.Session
-
-////////////////////////////////////////////////////////////////////////////////
-
 const (
 	maxConsecutiveRetries = 3
-	InvalidNodeID         = uint64(nfs_protos.ENodeConstants_E_INVALID_NODE_ID)
-	RootNodeID            = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
 )
 
 func getStorageMediaKind(
@@ -89,22 +82,26 @@ func setupStderrLogger(ctx context.Context) context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type clientMetrics struct {
-	registry metrics.Registry
-	errors   metrics.Counter
-}
-
-func (m *clientMetrics) OnError(err nfs_client.ClientError) {
-	// TODO: split metrics into types (retriable, fatal, etc.)
-	m.errors.Inc()
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 type client struct {
-	nfs     *nfs_client.Client
-	metrics clientMetrics
-	zoneID  string
+	nfs                    nfs_client.ClientInterface
+	metrics                client_metrics.Metrics
+	sessionMetricsRegistry metrics.Registry
+	zoneID                 string
+}
+
+func NewClient(
+	nfs nfs_client.ClientInterface,
+	metrics client_metrics.Metrics,
+	sessionMetricsRegistry metrics.Registry,
+	zoneID string,
+) Client {
+
+	return &client{
+		nfs:                    nfs,
+		metrics:                metrics,
+		sessionMetricsRegistry: sessionMetricsRegistry,
+		zoneID:                 zoneID,
+	}
 }
 
 func (c *client) ZoneID() string {
@@ -119,7 +116,9 @@ func (c *client) Create(
 	ctx context.Context,
 	filesystemID string,
 	params CreateFilesystemParams,
-) error {
+) (err error) {
+
+	defer c.metrics.StatRequest("CreateFileStore")(&err)
 
 	mediaKind, err := getStorageMediaKind(params.Kind)
 	if err != nil {
@@ -145,9 +144,11 @@ func (c *client) Delete(
 	ctx context.Context,
 	filesystemID string,
 	force bool,
-) error {
+) (err error) {
 
-	err := c.nfs.DestroyFileStore(ctx, filesystemID, force)
+	defer c.metrics.StatRequest("DestroyFileStore")(&err)
+
+	err = c.nfs.DestroyFileStore(ctx, filesystemID, force)
 	return wrapError(err)
 }
 
@@ -155,7 +156,9 @@ func (c *client) Resize(
 	ctx context.Context,
 	filesystemID string,
 	size uint64,
-) error {
+) (err error) {
+
+	defer c.metrics.StatRequest("ResizeFileStore")(&err)
 
 	retries := 0
 	for {
@@ -211,7 +214,9 @@ func (c *client) DescribeModel(
 	blocksCount uint64,
 	blockSize uint32,
 	kind types.FilesystemKind,
-) (FilesystemModel, error) {
+) (_ FilesystemModel, err error) {
+
+	defer c.metrics.StatRequest("DescribeFileStoreModel")(&err)
 
 	mediaKind, err := getStorageMediaKind(kind)
 	if err != nil {
@@ -242,35 +247,20 @@ func (c *client) DescribeModel(
 	}, nil
 }
 
-func (c *client) CreateCheckpoint(
-	ctx context.Context,
-	session Session,
-	filesystemID string,
-	checkpointID string,
-	nodeID uint64,
-) error {
-
-	return c.nfs.CreateCheckpoint(
-		ctx,
-		nfs_client.Session(session),
-		filesystemID,
-		&nfs_client.CreateCheckpointOpts{
-			CheckpointID: checkpointID,
-			NodeID:       nodeID,
-		},
-	)
-}
-
 func (c *client) DestroyCheckpoint(
 	ctx context.Context,
 	filesystemID string,
 	checkpointID string,
-) error {
+) (err error) {
 
-	return c.nfs.DestroyCheckpoint(
-		ctx,
-		filesystemID,
-		checkpointID,
+	defer c.metrics.StatRequest("DestroyCheckpoint")(&err)
+
+	return wrapError(
+		c.nfs.DestroyCheckpoint(
+			ctx,
+			filesystemID,
+			checkpointID,
+		),
 	)
 }
 
@@ -279,61 +269,24 @@ func (c *client) CreateSession(
 	fileSystemID string,
 	checkpointID string,
 	readonly bool,
-) (Session, error) {
+) (_ Session, err error) {
 
-	session, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
-	return Session(session), wrapError(err)
-}
+	defer c.metrics.StatRequest("CreateSession")(&err)
 
-func (c *client) DestroySession(ctx context.Context, session Session) error {
-	return wrapError(c.nfs.DestroySession(ctx, nfs_client.Session(session)))
-}
-
-func (c *client) ListNodes(
-	ctx context.Context,
-	session Session,
-	parentNodeID uint64,
-	cookie string,
-	maxBytes uint32,
-	unsafe bool,
-) ([]Node, string, error) {
-
-	nodes, cookie, err := c.nfs.ListNodes(
-		ctx,
-		nfs_client.Session(session),
-		parentNodeID,
-		cookie,
-		maxBytes,
-		unsafe,
-	)
-	resultNodes := make([]Node, len(nodes))
-	for i := range nodes {
-		resultNodes[i] = Node(nodes[i])
+	s, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
+	if err != nil {
+		return nil, wrapError(err)
 	}
 
-	return resultNodes, cookie, wrapError(err)
-}
-
-func (c *client) CreateNode(
-	ctx context.Context,
-	session Session,
-	node Node,
-) (uint64, error) {
-
-	nodeID, err := c.nfs.CreateNode(
-		ctx,
-		nfs_client.Session(session),
-		nfs_client.Node(node),
-	)
-	return nodeID, wrapError(err)
-}
-
-func (c *client) ReadLink(
-	ctx context.Context,
-	session Session,
-	nodeID uint64,
-) ([]byte, error) {
-
-	data, err := c.nfs.ReadLink(ctx, nfs_client.Session(session), nodeID)
-	return data, wrapError(err)
+	return &session{
+		nfs:     c.nfs,
+		session: s,
+		metrics: client_metrics.NewSessionMetrics(
+			c.sessionMetricsRegistry,
+			map[string]string{
+				"filesystem": fileSystemID,
+				"checkpoint": checkpointID,
+			},
+		),
+	}, nil
 }

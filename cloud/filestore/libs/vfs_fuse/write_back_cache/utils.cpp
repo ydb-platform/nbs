@@ -2,9 +2,10 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <fcntl.h>
-
+#include <util/stream/mem.h>
 #include <util/string/printf.h>
+
+#include <fcntl.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -27,6 +28,27 @@ NCloud::NProto::TError TUtils::ValidateReadDataRequest(
 
     if (request.GetLength() == 0) {
         return MakeError(E_ARGUMENT, "ReadData request has zero length");
+    }
+
+    if (!request.GetIovecs().empty()) {
+        ui64 totalLength = 0;
+        for (const auto& iovec: request.GetIovecs()) {
+            if (iovec.GetLength() == 0) {
+                return MakeError(
+                    E_ARGUMENT,
+                    "ReadData request contains an Iovec with zero length");
+            }
+            totalLength += iovec.GetLength();
+        }
+        if (totalLength < request.GetLength()) {
+            return MakeError(
+                E_ARGUMENT,
+                Sprintf(
+                    "Total length of Iovecs %lu is less than request Length "
+                    "%lu",
+                    totalLength,
+                    request.GetLength()));
+        }
     }
 
     return {};

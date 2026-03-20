@@ -459,6 +459,8 @@ private:
         {}
     };
 
+    TRequestInfoPtr StatisticRequestInfo;
+
 public:
     TVolumeActor(
         const NActors::TActorId& owner,
@@ -629,9 +631,7 @@ private:
     void ProcessNextAcquireReleaseDiskRequest(const NActors::TActorContext& ctx);
     void OnClientListUpdate(const NActors::TActorContext& ctx);
 
-    void UpdateDelayCounter(
-        TVolumeThrottlingPolicy::EOpType opType,
-        TDuration time);
+    void UpdateDelayCounter(EVolumeThrottlingOpType opType, TDuration time);
 
     void ResetServicePipes(const NActors::TActorContext& ctx);
 
@@ -644,7 +644,6 @@ private:
         const NActors::TActorContext& ctx,
         const TString& diskId);
     void SendVolumeConfigUpdated(const NActors::TActorContext& ctx);
-    void SendVolumeSelfCounters(const NActors::TActorContext& ctx);
 
     TDuration GetLoadTime() const
     {
@@ -718,6 +717,15 @@ private:
         TDataForUpdatingDiskRegistryBasedPartCounters data);
 
     const TString& GetDiskId() const;
+
+    std::optional<TEvStatsService::TVolumePartCounters> GetPartCounters(
+        const TString& diskId);
+
+    TEvStatsService::TVolumeSelfCounters GetVolumeSelfCounters(
+        const NActors::TActorContext& ctx);
+
+    void SendStatsToServiceStatisticsCollectorActor(
+        const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateBoot);
@@ -1350,6 +1358,14 @@ private:
         const NActors::TActorContext& ctx,
         TActorsStack actors,
         ui64 partTabletId);
+
+    void HandleGetServiceStatistics(
+        const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectGetServiceStatistics(
+        const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolumePrivate)

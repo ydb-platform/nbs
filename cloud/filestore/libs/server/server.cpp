@@ -64,23 +64,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-ui64 CalculateRequestSize(const T&)
-{
-    return 0;
-}
-
-template <>
-ui64 CalculateRequestSize(const NProto::TWriteDataRequest& request)
-{
-    return request.GetBuffer().size();
-}
-
-template <>
-ui64 CalculateRequestSize(const NProto::TReadDataRequest& request)
-{
-    return request.GetLength();
-}
 
 NProto::TError MakeGrpcError(const grpc::Status& status)
 {
@@ -686,7 +669,7 @@ private:
 
         CallContext->FileSystemId = GetFileSystemId(*Request);
         CallContext->RequestId = RequestId;
-        CallContext->RequestSize = CalculateRequestSize(*Request);
+        CallContext->RequestSize = CalculateByteCount(*Request);
         CallContext->RequestType = TMethod::RequestType;
     }
 

@@ -486,15 +486,31 @@ void TIndexTabletActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TMethod = TEvService::TCreateNodeMethod;
     auto* msg = ev->Get();
 
     const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
 
-    auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
-        ev,
-        ctx,
-        ValidateRequest,
-        !behaveAsShard /* validateSession */);
+    TSession* session = nullptr;
+    if (behaveAsShard) {
+        const bool accepted = AcceptRequestNoSession<TMethod>(
+            ev,
+            ctx,
+            ValidateRequest);
+
+        if (!accepted) {
+            return;
+        }
+    } else {
+        session = AcceptRequest<TMethod>(
+            ev,
+            ctx,
+            ValidateRequest);
+
+        if (!session) {
+            return;
+        }
+    }
 
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
@@ -506,10 +522,6 @@ void TIndexTabletActor::HandleCreateNode(
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
     if (!behaveAsShard) {
-        if (!session) {
-            return;
-        }
-
         const auto requestId = GetRequestId(msg->Record);
         if (const auto* e = session->LookupDupEntry(requestId)) {
             auto response =
@@ -554,7 +566,7 @@ void TIndexTabletActor::HandleCreateNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvService::TCreateNodeMethod>(*requestInfo);
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TCreateNode>(
         ctx,
@@ -580,8 +592,18 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     const bool isParentNodeLinkRequest =
         args.Request.HasLink() && args.Request.GetLink().GetShardNodeName();
 
+    //
+    // If directory creation in shards is enabled we cannot allow the service
+    // layer to decide where to create the node because we need to perform some
+    // extra checks which the service layer is unable to do.
+    //
+
+    const bool shardIdSelectionEnabled =
+        Config->GetShardIdSelectionInLeaderEnabled()
+        || GetFileSystem().GetDirectoryCreationInShardsEnabled();
+
     if (!BehaveAsShard(args.Request.GetHeaders())
-            && Config->GetShardIdSelectionInLeaderEnabled()
+            && shardIdSelectionEnabled
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || GetFileSystem().GetDirectoryCreationInShardsEnabled()
@@ -877,10 +899,10 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateNode& args)
 {
-    InvalidateNodeCaches(args.TargetNodeId);
-    InvalidateNodeCaches(args.ChildNodeId);
+    InvalidateReadAheadCache(args.TargetNodeId);
+    InvalidateReadAheadCache(args.ChildNodeId);
     if (args.ParentNode) {
-        InvalidateNodeCaches(args.ParentNode->NodeId);
+        InvalidateReadAheadCache(args.ParentNode->NodeId);
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {

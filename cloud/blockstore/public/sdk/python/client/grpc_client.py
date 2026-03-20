@@ -20,22 +20,6 @@ from cloud.blockstore.public.api.grpc.service_pb2_grpc import TBlockStoreService
 MAX_MESSAGE_SIZE = 8 * 1024 * 1024
 
 
-def _to_camel_case(method_name):
-    message_name = method_name[0].upper()
-
-    i = 1
-    while i < len(method_name):
-        c = method_name[i]
-        if c == '_':
-            i += 1
-            message_name += method_name[i].upper()
-        else:
-            message_name += c
-        i += 1
-
-    return message_name
-
-
 class GrpcClient(_BaseClient):
 
     def __init__(
@@ -86,7 +70,13 @@ class GrpcClient(_BaseClient):
         self.close()
 
     def _resolve(self, method_name):
-        return getattr(self.stub, _to_camel_case(method_name)).future
+        # list_nvme_devices -> listnvmedevices
+        normalized = method_name.replace('_', '').lower()
+
+        for attr in dir(self.stub):
+            if attr.lower() == normalized:
+                return getattr(self.stub, attr).future
+        raise AttributeError(f"No method matching '{method_name}' on stub")
 
     @_handle_errors
     def _send_request(

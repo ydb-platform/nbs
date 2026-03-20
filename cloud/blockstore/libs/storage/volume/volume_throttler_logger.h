@@ -8,8 +8,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeThrottlerLogger final
-    : public ITabletThrottlerLogger
+class TVolumeThrottlerLogger final: public ITabletThrottlerLogger
 {
 private:
     struct TImpl;
@@ -18,7 +17,8 @@ private:
 public:
     explicit TVolumeThrottlerLogger(
         ui64 tabletId,
-        std::function<void(ui32, TDuration)> updateDelayCounter);
+        std::function<void(EVolumeThrottlingOpType, TDuration)>
+            updateDelayCounter);
 
     ~TVolumeThrottlerLogger();
 

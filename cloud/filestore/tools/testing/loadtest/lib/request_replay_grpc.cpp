@@ -311,7 +311,6 @@ private:
                     ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
 
                 auto request = CreateRequest<NProto::TSetNodeAttrRequest>();
-                request->SetHandle(handle);
                 request->SetNodeId(response.GetNodeAttr().GetId());
                 request->SetFlags(Flags);
                 request->MutableUpdate()->SetSize(InitialFileSize);
@@ -580,8 +579,8 @@ private:
                 break;
             }
             case NProto::E_SYMLINK_NODE:
-                // TODO(proller):
-                //  request->MutableSymlink()->SetTargetPath();
+                request->MutableSymLink()->SetTargetPath(
+                    logRequest.GetNodeInfo().GetNodeName());
                 break;
             case NProto::E_SOCK_NODE:
                 request->MutableSocket()->SetMode(

@@ -4,8 +4,6 @@
 #   include<cloud/contrib/virtiofsd/fuse.h>
 #endif
 
-#include <util/system/align.h>
-
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -99,13 +97,16 @@ NProto::TError ResetAttrTimeout(
             }
         }
 
-        const ui64 fullSize = sizeof(fuse_direntplus)
-            + AlignUp<ui64>(de->dirent.namelen, sizeof(ui64));
+        const ui64 fullSize = FUSE_DIRENTPLUS_SIZE(de);
 
         if (remainingLen < fullSize) {
-            return MakeError(E_INVALID_STATE, TStringBuilder() << "expected >= "
-                << fullSize << " bytes of dir content, have " << remainingLen
-                << " bytes");
+            //
+            // We should be ready to see a direntry cut right at the name field
+            // boundary because the logic that limits the returned directory
+            // chunks is not aware of the format.
+            //
+
+            break;
         }
 
         remainingLen -= fullSize;

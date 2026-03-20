@@ -1,5 +1,7 @@
 #pragma once
 
+#include "node_cache.h"
+
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/protos/error.pb.h>

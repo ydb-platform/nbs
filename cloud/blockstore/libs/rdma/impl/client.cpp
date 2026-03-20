@@ -437,7 +437,6 @@ private:
     TCompletionPoller* Poller = nullptr;
 
     std::atomic<EEndpointState> State = EEndpointState::Disconnected;
-    std::atomic<ui32> Status = S_OK;
     std::atomic_flag StopFlag = ATOMIC_FLAG_INIT;
 
     NVerbs::TCompletionChannelPtr CompletionChannel = NVerbs::NullPtr;
@@ -446,7 +445,7 @@ private:
     TPromise<IClientEndpointPtr> StartResult = NewPromise<IClientEndpointPtr>();
     TPromise<void> StopResult = NewPromise<void>();
 
-    ui64 FlushStartCycles = 0;
+    std::atomic<ui64> FlushStartCycles = 0;
 
     TBufferPool SendBuffers;
     TBufferPool RecvBuffers;
@@ -474,6 +473,7 @@ private:
     TLockFreeList<TClientRequestId> CancelRequests;
     TEventHandle CancelRequestEvent;
     TEventHandle RequestEvent;
+    TEventHandle AbortRequestsEvent;
     TEventHandle DisconnectEvent;
 
     TSimpleList<TRequest> QueuedRequests;
@@ -500,18 +500,19 @@ public:
 
     // called from CM and CQ threads
     bool CheckState(EEndpointState expectedState) const;
-    void ChangeState(EEndpointState expectedState, EEndpointState newState);
-    void ChangeState(EEndpointState newState) noexcept;
+    void ChangeState(EEndpointState expectedState, EEndpointState newState) noexcept;
     void Disconnect() noexcept;
-    void FlushQueues() noexcept;
 
     // called from CM thread
     void CreateQP();
     void DestroyQP() noexcept;
-    void StartReceive();
+    void StartReceive() noexcept;
     void SetConnection(NVerbs::TConnectionPtr connection) noexcept;
-    int ReconnectTimerHandle() const;
+    void FlushQueues() noexcept;
+    void ClearDisconnectEvent() noexcept;
     bool ShouldStop() const;
+    int ReconnectTimerHandle() const;
+    int DisconnectEventHandle() const;
 
     // called from external thread
     TResultOrError<TClientRequestPtr> AllocateRequest(
@@ -527,21 +528,21 @@ public:
     TFuture<void> Stop() noexcept override;
 
     // called from CQ thread
-    void HandleCompletionEvent(ibv_wc* wc) override;
-    bool HandleInputRequests();
-    bool HandleCancelRequests();
-    bool HandleCompletionEvents();
-    bool AbortRequests() noexcept;
+    void HandleCompletionEvent(ibv_wc* wc) noexcept override;
+    bool HandleInputRequests() noexcept;
+    bool HandleCancelRequests() noexcept;
+    bool HandleCompletionEvents() noexcept;
+    void AbortRequests() noexcept;
     bool Flushed() const;
     bool FlushHanging() const;
 
 private:
     // called from CQ thread
-    void HandleQueuedRequests();
-    void SendRequest(TRequestPtr req, TSendWr* send);
+    void HandleQueuedRequests() noexcept;
+    void SendRequest(TRequestPtr req, TSendWr* send) noexcept;
     void SendRequestCompleted(TSendWr* send) noexcept;
-    void RecvResponse(TRecvWr* recv);
-    void RecvResponseCompleted(TRecvWr* recv);
+    void RecvResponse(TRecvWr* recv) noexcept;
+    void RecvResponseCompleted(TRecvWr* recv) noexcept;
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     int ValidateCompletion(ibv_wc* wc) noexcept;
@@ -587,14 +588,18 @@ TClientEndpoint::TClientEndpoint(
         return TStringBuilder() << "[" << Id << "] " << msg;
     });
 
-    RDMA_INFO("start endpoint " << Host
-        << " [send_magic=" << Hex(SendMagic, HF_FULL)
+    RDMA_INFO(
+        "start endpoint [host="
+        << Host << " send_magic=" << Hex(SendMagic, HF_FULL)
         << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
 }
 
 TClientEndpoint::~TClientEndpoint()
 {
     // release any leftover resources if endpoint hasn't been properly stopped
+    if (Connection) {
+        RDMA_INFO("release resources");
+    }
     DestroyQP();
     RDMA_INFO("stop endpoint");
 }
@@ -606,7 +611,7 @@ bool TClientEndpoint::CheckState(EEndpointState expectedState) const
 
 void TClientEndpoint::ChangeState(
     EEndpointState expectedState,
-    EEndpointState newState)
+    EEndpointState newState) noexcept
 {
     auto actualState = State.exchange(newState);
 
@@ -617,14 +622,6 @@ void TClientEndpoint::ChangeState(
         GetEndpointStateName(actualState));
 
     RDMA_DEBUG(GetEndpointStateName(expectedState)
-        << " -> " << GetEndpointStateName(newState));
-}
-
-void TClientEndpoint::ChangeState(EEndpointState newState) noexcept
-{
-    auto currentState = State.exchange(newState);
-
-    RDMA_DEBUG(GetEndpointStateName(currentState)
         << " -> " << GetEndpointStateName(newState));
 }
 
@@ -754,7 +751,7 @@ void TClientEndpoint::DestroyQP() noexcept
     FlushStartCycles = 0;
 }
 
-void TClientEndpoint::StartReceive()
+void TClientEndpoint::StartReceive() noexcept
 {
     while (auto* recv = RecvQueue.Pop()) {
         RecvResponse(recv);
@@ -769,7 +766,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     size_t responseBytes) noexcept
 {
     if (!CheckState(EEndpointState::Connected)) {
-        return MakeError(Status, "unable to allocate request");
+        return MakeError(E_RDMA_UNAVAILABLE, "unable to allocate request");
     }
 
     if (requestBytes > Config.MaxBufferSize) {
@@ -826,7 +823,7 @@ ui64 TClientEndpoint::SendRequest(
         req->CallContext->RequestId);
 
     if (!CheckState(EEndpointState::Connected)) {
-        AbortRequest(std::move(req), Status, "endpoint is unavailable");
+        AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
         return clientReqId;
     }
 
@@ -841,10 +838,14 @@ ui64 TClientEndpoint::SendRequest(
     return clientReqId;
 }
 
-bool TClientEndpoint::HandleInputRequests()
+bool TClientEndpoint::HandleInputRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Clear();
+    }
+
+    if (!CheckState(EEndpointState::Connected)) {
+        return false;
     }
 
     auto requests = InputRequests.DequeueAll();
@@ -857,11 +858,12 @@ bool TClientEndpoint::HandleInputRequests()
     return true;
 }
 
-void TClientEndpoint::HandleQueuedRequests()
+void TClientEndpoint::HandleQueuedRequests() noexcept
 {
     if (!CheckState(EEndpointState::Connected)) {
         return;
     }
+
     while (QueuedRequests) {
         auto* send = SendQueue.Pop();
         if (!send) {
@@ -885,7 +887,6 @@ void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
 
     auto reqIdForQueue = std::make_unique<TClientRequestId>();
     reqIdForQueue->ClientRequestId = clientRequestId;
-    Counters->RequestEnqueued();
     CancelRequests.Enqueue(std::move(reqIdForQueue));
 
     if (WaitMode == EWaitMode::Poll) {
@@ -910,74 +911,80 @@ void TClientEndpoint::TryForceReconnect() noexcept
     Reconnect.InstantReschedule(MIN_CONNECT_TIMEOUT / 2);
 }
 
-bool TClientEndpoint::HandleCancelRequests()
+bool TClientEndpoint::HandleCancelRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
         CancelRequestEvent.Clear();
     }
 
-    auto requests = CancelRequests.DequeueAll();
-    if (!requests) {
+    if (!CheckState(EEndpointState::Connected)) {
         return false;
     }
+
     THashSet<ui64> clientRequestIdToCancel;
-
-    for (const auto& request: requests) {
-        clientRequestIdToCancel.emplace(request.ClientRequestId);
+    for (auto req: CancelRequests.DequeueAll()) {
+        clientRequestIdToCancel.emplace(req.ClientRequestId);
     }
+    if (clientRequestIdToCancel.empty()) {
+        return false;
+    }
+    auto wasCancelled = [&](const TRequest& req) {
+        return clientRequestIdToCancel.contains(req.ClientReqId);
+    };
 
-    // We should filter input and queued requests from cancelled ones to not
-    // lose cancel requests.
-    QueuedRequests.Append(InputRequests.DequeueAll());
-
-    auto cancelledReqs = QueuedRequests.DequeueIf(
-        [&](const TRequest& req)
-        { return clientRequestIdToCancel.contains(req.ClientReqId); });
-
-    cancelledReqs.Append(
-        ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
-
-    const bool ret = !!cancelledReqs;
-
-    while (auto req = cancelledReqs.Dequeue()) {
+    // cancel input and queued requests
+    auto requests = InputRequests.DequeueAll();
+    auto cancelled = requests.DequeueIf(wasCancelled);
+    cancelled.Append(QueuedRequests.DequeueIf(wasCancelled));
+    while (auto req = cancelled.Dequeue()) {
+        RDMA_TRACE("cancel request " << req->ReqId);
+        Counters->RequestDequeued();
         AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
     }
 
-    // We move requests from input to queued, so we should handle this new
-    // requests.
+    // cancel active requests
+    cancelled.Append(ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
+    while (auto req = cancelled.Dequeue()) {
+        RDMA_TRACE("cancel request " << req->ReqId);
+        Counters->RequestAborted();
+        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
+    }
+
+    if (!requests) {
+        return false;
+    }
+
+    QueuedRequests.Append(std::move(requests));
     HandleQueuedRequests();
-    return ret;
+    return true;
 }
 
-bool TClientEndpoint::AbortRequests() noexcept
+void TClientEndpoint::AbortRequests() noexcept
 {
-    bool ret = false;
-
     if (WaitMode == EWaitMode::Poll) {
-        DisconnectEvent.Clear();
+        AbortRequestsEvent.Clear();
+    }
+
+    if (!CheckState(EEndpointState::Disconnecting)) {
+        return;
     }
 
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
-        ret = true;
     }
 
     while (QueuedRequests) {
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
-
         Counters->RequestDequeued();
-        AbortRequest(std::move(req), Status, "endpoint is unavailable");
+        AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
 
     while (auto req = ActiveRequests.Pop()) {
         Counters->RequestAborted();
-        AbortRequest(std::move(req), Status, "endpoint is unavailable");
-        ret = true;
+        AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
-
-    return ret;
 }
 
 void TClientEndpoint::AbortRequest(
@@ -994,18 +1001,32 @@ void TClientEndpoint::AbortRequest(
     handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, len);
 }
 
-bool TClientEndpoint::HandleCompletionEvents()
+bool TClientEndpoint::HandleCompletionEvents() noexcept
 {
-    ibv_cq* cq = CompletionQueue.get();
-
-    if (WaitMode == EWaitMode::Poll) {
-        Verbs->GetCompletionEvent(cq);
-        Verbs->AckCompletionEvents(cq, 1);
-        Verbs->RequestCompletionEvent(cq, 0);
+    if (!CheckState(EEndpointState::Connected) &&
+        !CheckState(EEndpointState::Disconnecting))
+    {
+        return false;
     }
 
-    if (Verbs->PollCompletionQueue(cq, this)) {
-        HandleQueuedRequests();
+    try {
+        ibv_cq* cq = CompletionQueue.get();
+
+        if (WaitMode == EWaitMode::Poll) {
+            Verbs->GetCompletionEvent(cq);
+            Verbs->AckCompletionEvents(cq, 1);
+            Verbs->RequestCompletionEvent(cq, 0);
+        }
+
+        if (Verbs->PollCompletionQueue(cq, this)) {
+            HandleQueuedRequests();
+            return true;
+        }
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(e.what());
+        Counters->Error();
+        Disconnect();
         return true;
     }
 
@@ -1024,9 +1045,7 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
         }
         if (wc->status != IBV_WC_SUCCESS) {
             RDMA_ERROR(
-                "SEND " << id << " " << NVerbs::PrintCompletion(wc)
-                        << " failed with "
-                        << NVerbs::GetStatusString(wc->status));
+                "SEND " << id << " " << NVerbs::GetStatusString(wc->status));
             Counters->Error();
             Counters->SendRequestCompleted();
             SendQueue.Push(&SendWrs[id.Index]);
@@ -1034,8 +1053,8 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
         }
         if (wc->opcode != IBV_WC_SEND) {
             RDMA_ERROR(
-                "SEND " << id << " " << NVerbs::PrintCompletion(wc)
-                        << " unexpected opcode");
+                "SEND " << id << " unexpected opcode "
+                        << NVerbs::GetOpcodeName(wc->opcode));
             Counters->Error();
             Counters->SendRequestCompleted();
             SendQueue.Push(&SendWrs[id.Index]);
@@ -1052,9 +1071,7 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
         }
         if (wc->status != IBV_WC_SUCCESS) {
             RDMA_ERROR(
-                "RECV " << id << " " << NVerbs::PrintCompletion(wc)
-                        << " failed with "
-                        << NVerbs::GetStatusString(wc->status));
+                "RECV " << id << " " << NVerbs::GetStatusString(wc->status));
             Counters->Error();
             Counters->RecvResponseCompleted();
             RecvQueue.Push(&RecvWrs[id.Index]);
@@ -1062,8 +1079,8 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
         }
         if (wc->opcode != IBV_WC_RECV) {
             RDMA_ERROR(
-                "RECV " << id << " " << NVerbs::PrintCompletion(wc)
-                        << " unexpected opcode");
+                "RECV " << id << " unexpected opcode "
+                        << NVerbs::GetOpcodeName(wc->opcode));
             Counters->Error();
             Counters->RecvResponseCompleted();
             RecvQueue.Push(&RecvWrs[id.Index]);
@@ -1078,14 +1095,11 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
 }
 
 // implements NVerbs::ICompletionHandler
-void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
+void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
 {
     auto id = TWorkRequestId(wc->wr_id);
 
-    RDMA_TRACE(
-        NVerbs::GetOpcodeName(wc->opcode)
-        << " " << id << " completed with "
-        << NVerbs::GetStatusString(wc->status));
+    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id << " completed");
 
     if (ValidateCompletion(wc)) {
         Disconnect();
@@ -1106,10 +1120,11 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
     }
 }
 
-void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
+void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 {
     req->ReqId = ActiveRequests.CreateId();
 
+    auto id = TWorkRequestId(send->wr.wr_id);
     auto* requestMsg = send->Message<TRequestMessage>();
     Zero(*requestMsg);
 
@@ -1119,16 +1134,12 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
     requestMsg->In = req->InBuffer;
     requestMsg->Out = req->OutBuffer;
 
-    RDMA_TRACE(
-        "SEND " << TWorkRequestId(send->wr.wr_id) << " posted " << req->ReqId);
-
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
+        RDMA_TRACE("SEND " << id << " posted request " << req->ReqId);
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            "SEND " << TWorkRequestId(send->wr.wr_id) << " " << e.what());
-
+        RDMA_ERROR("SEND " << id << " " << e.what());
         SendQueue.Push(send);
         Counters->Error();
         Counters->RequestEnqueued();
@@ -1156,29 +1167,31 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
     Counters->SendRequestCompleted();
     SendQueue.Push(send);
 
-    if (auto* req = ActiveRequests.Get(reqId)) {
-        LWTRACK(
-            SendRequestCompleted,
-            req->CallContext->LWOrbit,
-            req->CallContext->RequestId);
-    } else {
-        RDMA_ERROR(
-            "SEND " << wrId << " request not found. Current wrId "
+    auto* req = ActiveRequests.Get(reqId);
+    if (!req) {
+        RDMA_WARN(
+            "SEND " << wrId << " request " << reqId
+                    << " not found, last active request id "
                     << ActiveRequests.GetCurrentId());
         Counters->Error();
+        return;
     }
+
+    LWTRACK(
+        SendRequestCompleted,
+        req->CallContext->LWOrbit,
+        req->CallContext->RequestId);
 }
 
-void TClientEndpoint::RecvResponse(TRecvWr* recv)
+void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
 {
     auto id = TWorkRequestId(recv->wr.wr_id);
     auto* responseMsg = recv->Message<TResponseMessage>();
     Zero(*responseMsg);
 
-    RDMA_TRACE("RECV " << id << " posted");
-
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
+        RDMA_TRACE("RECV " << id << " posted");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR("RECV " << id << " " << e.what());
@@ -1191,7 +1204,7 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv)
     Counters->RecvResponseStarted();
 }
 
-void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
+void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
 {
     const auto wrId = TWorkRequestId(recv->wr.wr_id);
     auto* msg = recv->Message<TResponseMessage>();
@@ -1200,10 +1213,10 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR(
             "RECV " << wrId << " incompatible protocol version " << version
-                    << ", expected " << int(RDMA_PROTO_VERSION));
-
+                    << ", expected " << static_cast<int>(RDMA_PROTO_VERSION));
         Counters->RecvResponseCompleted();
         Counters->Error();
+        RecvResponse(recv);
         Disconnect();
         return;
     }
@@ -1217,7 +1230,10 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv)
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
-        RDMA_ERROR("RECV " << wrId << " request " << reqId << " not found");
+        RDMA_WARN(
+            "RECV " << wrId << " request " << reqId
+                    << " not found, last active request id "
+                    << ActiveRequests.GetCurrentId());
         Counters->Error();
         return;
     }
@@ -1270,13 +1286,22 @@ void TClientEndpoint::FlushQueues() noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR("flush error: " << e.what());
+        Counters->Error();
     }
+}
+
+int TClientEndpoint::DisconnectEventHandle() const
+{
+    return DisconnectEvent.Handle();
+}
+
+void TClientEndpoint::ClearDisconnectEvent() noexcept
+{
+    DisconnectEvent.Clear();
 }
 
 void TClientEndpoint::Disconnect() noexcept
 {
-    Status = E_RDMA_UNAVAILABLE;
-
     switch (State) {
         // queues are empty, reconnect is scheduled, nothing to do
         case EEndpointState::Disconnecting:
@@ -1287,24 +1312,14 @@ void TClientEndpoint::Disconnect() noexcept
         // schedule reconnect
         case EEndpointState::ResolvingAddress:
         case EEndpointState::ResolvingRoute:
-            break;
+            Reconnect.Schedule();
+            return;
 
-        // flush queues, signal the poller and schedule reconnect
+        // disconnect
         case EEndpointState::Connected:
-            RDMA_INFO("disconnect");
-
-            ChangeState(
-                EEndpointState::Connected,
-                EEndpointState::Disconnecting);
-
-            FlushQueues();
-
-            if (WaitMode == EWaitMode::Poll) {
-                DisconnectEvent.Set();
-            }
+            DisconnectEvent.Set();
+            return;
     }
-
-    Reconnect.Schedule();
 }
 
 bool TClientEndpoint::Flushed() const
@@ -1315,8 +1330,9 @@ bool TClientEndpoint::Flushed() const
 
 bool TClientEndpoint::FlushHanging() const
 {
-    return FlushStartCycles && CyclesToDurationSafe(GetCycleCount() -
-        FlushStartCycles) >= FLUSH_TIMEOUT;
+    auto start = FlushStartCycles.load();
+    return start &&
+           CyclesToDurationSafe(GetCycleCount() - start) >= FLUSH_TIMEOUT;
 }
 
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
@@ -1340,6 +1356,7 @@ struct IConnectionEventHandler
 
     virtual void HandleConnectionEvent(NVerbs::TConnectionEventPtr event) = 0;
     virtual void Reconnect(TClientEndpoint* endpoint) = 0;
+    virtual void Disconnect(TClientEndpoint* endpoint) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1349,10 +1366,12 @@ class TConnectionPoller final
     , private ISimpleThread
 {
 private:
+    // events must fit into EVENT_MASK
     enum EPollEvent
     {
         ConnectionEvent = 0,
         ReconnectTimer = 1,
+        DisconnectEvent = 2,
     };
 
 private:
@@ -1411,6 +1430,11 @@ public:
     void Attach(TClientEndpoint* endpoint)
     {
         PollHandle.Attach(
+            endpoint->DisconnectEventHandle(),
+            EPOLLIN,
+            PtrEventTag(endpoint, EPollEvent::DisconnectEvent));
+
+        PollHandle.Attach(
             endpoint->ReconnectTimerHandle(),
             EPOLLIN | EPOLLET,
             PtrEventTag(endpoint, EPollEvent::ReconnectTimer));
@@ -1450,6 +1474,11 @@ private:
                         EventHandler->Reconnect(
                             PtrFromTag<TClientEndpoint>(event.data.ptr));
                         break;
+
+                    case EPollEvent::DisconnectEvent:
+                        EventHandler->Disconnect(
+                            PtrFromTag<TClientEndpoint>(event.data.ptr));
+                        break;
                 }
             }
         }
@@ -1483,11 +1512,12 @@ class TCompletionPoller final
     , private ISimpleThread
 {
 private:
+    // events must fit into EVENT_MASK
     enum EPollEvent
     {
         Completion = 0,
         Request = 1,
-        Disconnect = 2,
+        AbortRequests = 2,
         CancelRequest = 3,
     };
 
@@ -1566,9 +1596,9 @@ public:
                 PtrEventTag(endpoint, EPollEvent::CancelRequest));
 
             PollHandle.Attach(
-                endpoint->DisconnectEvent.Handle(),
+                endpoint->AbortRequestsEvent.Handle(),
                 EPOLLIN,
-                PtrEventTag(endpoint, EPollEvent::Disconnect));
+                PtrEventTag(endpoint, EPollEvent::AbortRequests));
 
             Verbs->RequestCompletionEvent(endpoint->CompletionQueue.get(), 0);
         }
@@ -1580,7 +1610,7 @@ public:
             PollHandle.Detach(endpoint->CompletionChannel->fd);
             PollHandle.Detach(endpoint->RequestEvent.Handle());
             PollHandle.Detach(endpoint->CancelRequestEvent.Handle());
-            PollHandle.Detach(endpoint->DisconnectEvent.Handle());
+            PollHandle.Detach(endpoint->AbortRequestsEvent.Handle());
         }
     }
 
@@ -1621,27 +1651,22 @@ private:
     {
         auto* endpoint = PtrFromTag<TClientEndpoint>(event.data.ptr);
 
-        try {
-            switch (EventFromTag(event.data.ptr)) {
-                case EPollEvent::Completion:
-                    endpoint->HandleCompletionEvents();
-                    break;
+        switch (EventFromTag(event.data.ptr)) {
+            case EPollEvent::Completion:
+                endpoint->HandleCompletionEvents();
+                break;
 
-                case EPollEvent::Request:
-                    endpoint->HandleInputRequests();
-                    break;
+            case EPollEvent::Request:
+                endpoint->HandleInputRequests();
+                break;
 
-                case EPollEvent::CancelRequest:
-                    endpoint->HandleCancelRequests();
-                    break;
+            case EPollEvent::CancelRequest:
+                endpoint->HandleCancelRequests();
+                break;
 
-                case EPollEvent::Disconnect:
-                    endpoint->AbortRequests();
-                    break;
-            }
-        } catch (const TServiceError& e) {
-            RDMA_ERROR(endpoint->Log, e.what());
-            endpoint->Disconnect();
+            case EPollEvent::AbortRequests:
+                endpoint->AbortRequests();
+                break;
         }
     }
 
@@ -1665,20 +1690,10 @@ private:
         auto hasWork = false;
 
         for (const auto& endpoint: *endpoints) {
-            try {
-                hasWork |= endpoint->HandleCancelRequests();
-                if (endpoint->CheckState(EEndpointState::Connected)) {
-                    hasWork |= endpoint->HandleInputRequests();
-                    hasWork |= endpoint->HandleCompletionEvents();
-                }
-                if (endpoint->CheckState(EEndpointState::Disconnecting)) {
-                    hasWork |= endpoint->HandleCompletionEvents();
-                    hasWork |= endpoint->AbortRequests();
-                }
-            } catch (const TServiceError& e) {
-                RDMA_ERROR(endpoint->Log, e.what());
-                endpoint->Disconnect();
-            }
+            hasWork |= endpoint->HandleCancelRequests();
+            hasWork |= endpoint->HandleInputRequests();
+            hasWork |= endpoint->HandleCompletionEvents();
+            endpoint->AbortRequests();
         }
 
         return hasWork;
@@ -1697,6 +1712,7 @@ private:
                 DurationToCyclesSafe(Config->MaxResponseDelay));
 
             for (auto& request: requests) {
+                endpoint->Counters->RequestAborted();
                 endpoint->AbortRequest(
                     std::move(request),
                     E_TIMEOUT,
@@ -1726,6 +1742,8 @@ private:
             endpoint->ChangeState(
                 EEndpointState::Disconnecting,
                 EEndpointState::Disconnected);
+
+            RDMA_INFO(endpoint->Log, "disconnected");
         }
     }
 
@@ -1802,6 +1820,7 @@ private:
 
     // called from CM thread
     void Reconnect(TClientEndpoint* endpont) noexcept override;
+    void Disconnect(TClientEndpoint* endpont) noexcept override;
     void BeginResolveAddress(TClientEndpoint* endpoint) noexcept;
     void BeginResolveRoute(TClientEndpoint* endpoint) noexcept;
     void BeginConnect(TClientEndpoint* endpoint) noexcept;
@@ -1838,7 +1857,7 @@ void TClient::Start() noexcept
 {
     Log = Logging->CreateLog("BLOCKSTORE_RDMA");
 
-    RDMA_DEBUG("start client");
+    RDMA_INFO("start client");
 
     auto counters = Monitoring->GetCounters();
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
@@ -1875,7 +1894,7 @@ void TClient::Stop() noexcept
     }
     CompletionPollers.clear();
 
-    RDMA_DEBUG("stop client");
+    RDMA_INFO("stop client");
 }
 
 // implements IClient
@@ -1922,7 +1941,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 {
     TClientEndpoint* endpoint = TClientEndpoint::FromEvent(event.get());
 
-    RDMA_DEBUG(endpoint->Log, "received " << NVerbs::GetEventName(event->event));
+    RDMA_INFO(endpoint->Log, NVerbs::GetEventName(event->event) << " received");
 
     switch (event->event) {
         case RDMA_CM_EVENT_CONNECT_REQUEST:
@@ -1975,8 +1994,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 
 void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
 {
-    RDMA_INFO(endpoint->Log, "detach endpoint and close connection");
-
+    RDMA_INFO(endpoint->Log, "release resources");
     ConnectionPoller->Detach(endpoint);
     if (endpoint->CompletionChannel) {
         endpoint->Poller->Detach(endpoint);
@@ -2008,19 +2026,21 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 
             auto startResult = std::move(endpoint->StartResult);
             startResult.SetException(std::make_exception_ptr(TServiceError(
-                MakeError(endpoint->Status, "connection timeout"))));
+                MakeError(E_RDMA_UNAVAILABLE, "connection timeout"))));
 
             StopEndpoint(endpoint);
             return;
         }
         // otherwise keep trying
-        RDMA_WARN(endpoint->Log, "connection is hanging");
     }
 
-    RDMA_DEBUG(endpoint->Log, "reconnect timer hit in "
-        << GetEndpointStateName(endpoint->State) << " state");
+    auto state = endpoint->State.load();
 
-    switch (endpoint->State) {
+    RDMA_DEBUG(
+        endpoint->Log,
+        "reconnect timer hit in " << GetEndpointStateName(state) << " state");
+
+    switch (state) {
         // wait for completion poller to flush WRs
         case EEndpointState::Disconnecting:
             endpoint->Reconnect.Schedule();
@@ -2028,11 +2048,24 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 
         // didn't even start to connect, try again
         case EEndpointState::ResolvingAddress:
+            endpoint->ChangeState(
+                EEndpointState::ResolvingAddress,
+                EEndpointState::Disconnected);
+            break;
+
         case EEndpointState::ResolvingRoute:
+            endpoint->ChangeState(
+                EEndpointState::ResolvingRoute,
+                EEndpointState::Disconnected);
             break;
 
         // create new connection and try again
         case EEndpointState::Connecting:
+            endpoint->ChangeState(
+                EEndpointState::Connecting,
+                EEndpointState::Disconnected);
+            // fallthrough
+
         case EEndpointState::Disconnected:
             endpoint->Poller->Detach(endpoint);
             endpoint->DestroyQP();
@@ -2045,8 +2078,31 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
             return;
     }
 
-    endpoint->ChangeState(EEndpointState::Disconnected);
+    RDMA_WARN("unable to connect, try again");
     BeginResolveAddress(endpoint);
+}
+
+// implements IConnectionEventHandler
+void TClient::Disconnect(TClientEndpoint* endpoint) noexcept
+{
+    endpoint->ClearDisconnectEvent();
+
+    if (!endpoint->CheckState(EEndpointState::Connected)) {
+        return;
+    }
+
+    RDMA_INFO(endpoint->Log, "disconnect from " << endpoint->Host);
+
+    endpoint->ChangeState(
+        EEndpointState::Connected,
+        EEndpointState::Disconnecting);
+
+    endpoint->FlushQueues();
+    endpoint->Reconnect.Schedule();
+
+    if (endpoint->WaitMode == EWaitMode::Poll) {
+        endpoint->AbortRequestsEvent.Set();
+    }
 }
 
 void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
@@ -2081,13 +2137,14 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
         auto addrinfo = Verbs->GetAddressInfo(
             endpoint->Host, endpoint->Port, &hints);
 
-        RDMA_DEBUG(endpoint->Log, "resolve server address");
+        RDMA_DEBUG(endpoint->Log, "resolve address");
 
         Verbs->ResolveAddress(endpoint->Connection.get(), addrinfo->ai_src_addr,
             addrinfo->ai_dst_addr, RESOLVE_TIMEOUT);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
+        Counters->Error();
         endpoint->Disconnect();
     }
 }
@@ -2105,6 +2162,7 @@ void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
+        Counters->Error();
         endpoint->Disconnect();
     }
 }
@@ -2114,6 +2172,8 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
     Y_ABORT_UNLESS(endpoint);
 
     try {
+        RDMA_INFO(endpoint->Log, "connect to " << endpoint->Host);
+
         endpoint->ChangeState(
             EEndpointState::ResolvingRoute,
             EEndpointState::Connecting);
@@ -2138,13 +2198,11 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .rnr_retry_count = 7,
         };
 
-        RDMA_INFO(endpoint->Log, "connect "
-            << NVerbs::PrintConnectionParams(&param));
-
         Verbs->Connect(endpoint->Connection.get(), &param);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(endpoint->Log, e.what());
+        Counters->Error();
         endpoint->Disconnect();
     }
 }
@@ -2155,8 +2213,7 @@ void TClient::HandleConnected(
 {
     const rdma_conn_param* param = &event->param.conn;
 
-    RDMA_DEBUG(endpoint->Log, "validate "
-        << NVerbs::PrintConnectionParams(param));
+    RDMA_DEBUG(endpoint->Log, "validate");
 
     if (param->private_data == nullptr ||
         param->private_data_len < sizeof(TAcceptMessage) ||
@@ -2172,16 +2229,9 @@ void TClient::HandleConnected(
         EEndpointState::Connected);
 
     endpoint->Reconnect.Cancel();
-    endpoint->Status = S_OK;
+    endpoint->StartReceive();
 
-    try {
-        endpoint->StartReceive();
-
-    } catch (const TServiceError& e) {
-        RDMA_ERROR(endpoint->Log, e.what());
-        endpoint->Disconnect();
-        return;
-    }
+    RDMA_INFO(endpoint->Log, "connected");
 
     if (endpoint->StartResult.Initialized()) {
         auto startResult = std::move(endpoint->StartResult);
@@ -2227,8 +2277,8 @@ void TClient::HandleRejected(
 
 void TClient::HandleDisconnected(TClientEndpoint* endpoint) noexcept
 {
-    // we can't reset config right away, because disconnect needs to know queue
-    // size to reap flushed WRs
+    // we can't reset config right away, because we need to know queue size to
+    // clean up flushed WRs
     endpoint->ResetConfig = true;
     endpoint->Disconnect();
 }

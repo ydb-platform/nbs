@@ -12,6 +12,8 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -340,6 +342,79 @@ func newResizeFilesystemCmd(clientConfig *client_config.ClientConfig) *cobra.Com
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scrubFilesystem struct {
+	commandWithScheduler
+	zoneID       string
+	filesystemID string
+}
+
+func (c *scrubFilesystem) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := scrubbing.ScheduleScrubFilesystem(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.ScrubFilesystem_"+c.filesystemID+"_"+generateID(),
+		),
+		c.scheduler,
+		c.zoneID,
+		c.filesystemID,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScrubFilesystemCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &scrubFilesystem{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use: "scrub",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+		Short: "Scrub filesystem to check for inconsistencies",
+	}
+
+	cmd.Flags().StringVar(
+		&c.zoneID,
+		"zone-id",
+		"",
+		"zone ID where filesystem is located; required",
+	)
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.filesystemID,
+		"id",
+		"",
+		"filesystem ID; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newFilesystemCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -356,6 +431,7 @@ func newFilesystemCmd(
 		newCreateFilesystemCmd(clientConfig),
 		newDeleteFilesystemCmd(clientConfig),
 		newResizeFilesystemCmd(clientConfig),
+		newScrubFilesystemCmd(clientConfig, serverConfig),
 	)
 
 	return cmd

@@ -141,6 +141,7 @@ struct TVolumeStatsInfo
     // VolumeInfo contains logical disk identifier.
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
+    NActors::TActorId VolumeActorId;
 
     bool IsLocalMount = false;
     NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;

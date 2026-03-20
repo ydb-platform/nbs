@@ -201,7 +201,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
     xxx(ReadAheadMaxGapPercentage,              ui32,       20                )\
     xxx(ReadAheadCacheMaxHandlesPerNode,        ui32,      128                )\
-    xxx(NodeIndexCacheMaxNodes,                 ui32,        0                )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(RegularFileEntryTimeout,         TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
@@ -215,7 +214,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
-    xxx(GetNodeAttrBatchEnabled,                        bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(AllowFileStoreDestroyWithOrphanSessions,        bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
@@ -329,6 +327,11 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
+                                                                               \
+    xxx(ForceDestroySizeThreshold,          ui32,       0                     )\
+                                                                               \
+    xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
+    xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
                                                                                \
     xxx(ShardIdCompressionMode,                                                \
         NProto::EShardIdCompressionMode,                                       \
@@ -581,7 +584,7 @@ void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
 ////////////////////////////////////////////////////////////////////////////////
 
 void TStorageConfig::SetFeaturesConfig(
-    NFeatures::TFeaturesConfigPtr featuresConfig)
+    NFeatures::TFeaturesConfig featuresConfig)
 {
     FeaturesConfig = std::move(featuresConfig);
 }
@@ -591,10 +594,6 @@ void TStorageConfig::SetCloudFolderEntity(
     const TString& folderId,
     const TString& entityId)
 {
-    if (!FeaturesConfig) {
-        return;
-    }
-
     const google::protobuf::Descriptor* descriptor =
         ProtoConfig.GetDescriptor();
     const auto* reflection = ProtoConfig.GetReflection();
@@ -607,7 +606,7 @@ void TStorageConfig::SetCloudFolderEntity(
         {
             const auto& name = field->name();
             if (FeaturesConfig
-                    ->IsFeatureEnabled(cloudId, folderId, entityId, name))
+                    .IsFeatureEnabled(cloudId, folderId, entityId, name))
             {
                 reflection->SetBool(&ProtoConfig, field, true);
             }

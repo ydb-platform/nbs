@@ -919,6 +919,10 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            RejectGetDiskRegistryBasedPartCounters);
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvInconsistentDiskAgent)
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
@@ -940,9 +944,6 @@ STFUNC(TMirrorPartitionActor::StateZombie)
         IgnoreFunc(TEvPartition::TEvLockAndDrainRangeRequest);
 
         IgnoreFunc(TEvPartition::TEvReleaseRange);
-
-        IgnoreFunc(TEvNonreplPartitionPrivate::
-                       TEvGetDiskRegistryBasedPartCountersRequest);
         IgnoreFunc(TEvNonreplPartitionPrivate::
                        TEvDiskRegistryBasedPartCountersCombined);
 

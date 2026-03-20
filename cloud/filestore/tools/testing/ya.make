@@ -1,5 +1,6 @@
 RECURSE(
     directory_handles_test
+    fmdtest
     fs_posix_compliance
     loadtest
     open_close_bench

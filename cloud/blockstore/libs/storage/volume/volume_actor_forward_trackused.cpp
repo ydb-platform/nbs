@@ -26,7 +26,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 {
     static_assert(IsReadMethod<TMethod> || IsWriteMethod<TMethod>);
 
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     const bool overlayDiskRegistryBasedDisk =
         State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().empty();

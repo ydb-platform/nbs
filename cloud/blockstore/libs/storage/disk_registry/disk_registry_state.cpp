@@ -8570,4 +8570,41 @@ void TDiskRegistryState::AttachDetachPathIfNeeded(
     }
 }
 
+TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
+    const TAgentId& agentId) const
+{
+    const auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return {};
+    }
+
+    if (!StorageConfig->GetAttachDetachPathsEnabled()) {
+        TVector<TString> paths;
+        for (const auto& device: agent->GetDevices()) {
+            paths.emplace_back(device.GetDeviceName());
+        }
+        for (const auto& [path, _]: agent->GetPathAttachStates()) {
+            paths.emplace_back(path);
+        }
+        for (const auto& device: agent->GetUnknownDevices()) {
+            paths.emplace_back(device.GetDeviceName());
+        }
+        SortUnique(paths);
+
+        return paths;
+    }
+
+    TVector<TString> pathsToAttach;
+
+    for (const auto& [path, attachState]: agent->GetPathAttachStates()) {
+        if (attachState == NProto::PATH_ATTACH_STATE_ATTACHED ||
+            attachState == NProto::PATH_ATTACH_STATE_ATTACHING)
+        {
+            pathsToAttach.emplace_back(path);
+        }
+    }
+
+    return pathsToAttach;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

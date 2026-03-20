@@ -9026,6 +9026,82 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             "DuplicatedRequestReceived_Volume"));
     }
 
+    Y_UNIT_TEST(ShouldReportOverlappingRequestsDetected)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetOverlappingRequestsPolicy(
+            NProto::EOverlappingRequestsPolicy::ORP_ENABLE_WITH_CRIT_EVENT);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+
+        bool gotVolumeActorId = false;
+        TActorId volumeActor;
+        TAutoPtr<IEventHandle> delayedRequest;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvBlockStore::EvUpdateVolumeConfigResponse: {
+                        if (!gotVolumeActorId) {
+                            volumeActor = ev->Sender;
+                            gotVolumeActorId = true;
+                        }
+                        break;
+                    }
+                    case TEvService::EvWriteBlocksRequest: {
+                        if (!gotVolumeActorId || ev->Sender != volumeActor) {
+                            break;
+                        }
+                        if (!delayedRequest) {
+                            delayedRequest = ev.Release();
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            });
+
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto overlappingRequestsCounter = counters->GetCounter(
+            "AppImpossibleEvents/OverlappingRequestsDetected",
+            true);
+
+        // Send first request
+        volume.SendToPipe(volume.CreateWriteBlocksRequest(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1));
+
+        // Send overlapping request
+        volume.SendToPipe(volume.CreateWriteBlocksRequest(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1));
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->Send(delayedRequest.Release());
+
+        auto duplicateResponse = volume.RecvWriteBlocksResponse();
+        auto response = volume.RecvWriteBlocksResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, overlappingRequestsCounter->Val());
+    }
+
     Y_UNIT_TEST(ShouldDescribeFromBaseDisk)
     {
         NProto::TStorageServiceConfig storageServiceConfig;

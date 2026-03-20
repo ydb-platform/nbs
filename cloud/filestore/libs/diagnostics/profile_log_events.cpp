@@ -5,7 +5,6 @@
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
-#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
@@ -318,13 +317,29 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TConfirmAddDataRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TCancelAddDataRequest& request)
+{
+    Y_UNUSED(profileLogRequest, request);
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TWriteDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
     rangeInfo->SetNodeId(request.GetNodeId());
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(NStorage::CalculateByteCount(request));
+    rangeInfo->SetBytes(CalculateByteCount(request));
 }
 
 template <>
@@ -394,6 +409,7 @@ void InitProfileLogRequestInfo(
         nodeInfo->SetType(NProto::E_SOCK_NODE);
     } else if (request.HasSymLink()) {
         nodeInfo->SetType(NProto::E_SYMLINK_NODE);
+        nodeInfo->SetNodeName(request.GetSymLink().GetTargetPath());
     } else if (request.HasFifo()) {
         nodeInfo->SetType(NProto::E_FIFO_NODE);
     } else if (request.HasCharDevice()) {
@@ -505,7 +521,6 @@ void InitProfileLogRequestInfo(
 {
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
-    nodeInfo->SetHandle(request.GetHandle());
     nodeInfo->SetFlags(request.GetFlags());
     nodeInfo->SetMode(request.GetUpdate().GetMode());
 }
@@ -518,7 +533,6 @@ void InitProfileLogRequestInfo(
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
     nodeInfo->SetNodeName(request.GetName());
-    nodeInfo->SetHandle(request.GetHandle());
     nodeInfo->SetFlags(request.GetFlags());
 }
 
@@ -672,6 +686,8 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(ConfirmAddData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(CancelAddData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
     IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
 

@@ -149,6 +149,11 @@ public:
         ReconnectPipe();
     }
 
+    void DisconnectPipe()
+    {
+        Runtime.ClosePipe(PipeClient, Sender, NodeIdx);
+    }
+
     template <typename TRequest>
     void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
@@ -338,11 +343,15 @@ public:
         return request;
     }
 
-    auto CreateConfigureAsShardRequest(ui32 shardNo)
+    auto CreateConfigureAsShardRequest(
+        ui32 shardNo,
+        bool directoryCreationInShardsEnabled = false)
     {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
         request->Record.SetShardNo(shardNo);
+        request->Record.SetDirectoryCreationInShardsEnabled(
+            directoryCreationInShardsEnabled);
 
         return request;
     }
@@ -670,13 +679,16 @@ public:
         ui64 parent,
         const TString& name,
         bool unlinkDirectory,
-        ui64 requestId = 0)
+        ui64 requestId = 0,
+        bool behaveAsDirectoryTablet = false)
     {
         auto request = CreateSessionRequest<TEvService::TEvUnlinkNodeRequest>();
         request->Record.SetNodeId(parent);
         request->Record.SetName(name);
         request->Record.SetUnlinkDirectory(unlinkDirectory);
         request->Record.MutableHeaders()->SetRequestId(requestId);
+        request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(
+            behaveAsDirectoryTablet);
         return request;
     }
 
@@ -927,6 +939,22 @@ public:
         for (auto& part: unalignedDataParts) {
             *request->Record.AddUnalignedDataRanges() = std::move(part);
         }
+        return request;
+    }
+
+    auto CreateConfirmAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvConfirmAddDataRequest>();
+        request->Record.SetCommitId(commitId);
+        return request;
+    }
+
+    auto CreateCancelAddDataRequest(ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvCancelAddDataRequest>();
+        request->Record.SetCommitId(commitId);
         return request;
     }
 

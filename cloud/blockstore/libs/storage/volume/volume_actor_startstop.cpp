@@ -1100,12 +1100,14 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
             std::move(config),
             std::move(partitionConfig),
             storageAccessMode,
+            partTabletId,
             partitionIndex,
             siblingCount,
             actors.GetTop(),
             ctx.SelfID,
             DiagnosticsConfig,
-            partTabletId);
+            BlockDigestGenerator,
+            ProfileLog);
     actors.Push(actorId, TActorsStack::EActorPurpose::FreshBlocksWriter);
     return actors;
 }

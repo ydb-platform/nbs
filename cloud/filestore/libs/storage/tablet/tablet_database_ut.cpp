@@ -820,6 +820,168 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldStoreUnconfirmedData)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TIndexTabletDatabase db) { db.InitSchema(); });
+
+        auto makeEntry = [&](ui64 nodeId,
+                             ui64 offset,
+                             ui64 length,
+                             ui64 unalignedOffset1,
+                             TString unalignedContent1,
+                             ui64 unalignedOffset2,
+                             TString unalignedContent2)
+        {
+            NProto::TUnconfirmedData e;
+            e.SetNodeId(nodeId);
+            e.SetOffset(offset);
+            e.SetLength(length);
+
+            auto* r1 = e.AddUnalignedDataRanges();
+            r1->SetOffset(unalignedOffset1);
+            r1->SetContent(std::move(unalignedContent1));
+
+            auto* r2 = e.AddUnalignedDataRanges();
+            r2->SetOffset(unalignedOffset2);
+            r2->SetContent(std::move(unalignedContent2));
+            return e;
+        };
+
+        executor.WriteTx(
+            [&](TIndexTabletDatabase db)
+            {
+                db.WriteUnconfirmedData(
+                    100,
+                    makeEntry(1000, 10, 20, 1, "h0", 19, "t0"));
+                db.WriteUnconfirmedData(
+                    101,
+                    makeEntry(1001, 11, 21, 2, "h1", 20, "t1"));
+                db.WriteUnconfirmedData(
+                    102,
+                    makeEntry(1002, 12, 22, 3, "h2", 21, "t2"));
+            });
+
+        executor.ReadTx(
+            [&](TIndexTabletDatabase db)
+            {
+                TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries;
+                UNIT_ASSERT(db.ReadUnconfirmedData(entries));
+                UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(100, entries[0].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1000, entries[0].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(10, entries[0].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(20, entries[0].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[0].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    entries[0].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h0",
+                    entries[0].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    19,
+                    entries[0].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t0",
+                    entries[0].Data.GetUnalignedDataRanges(1).GetContent());
+
+                UNIT_ASSERT_VALUES_EQUAL(101, entries[1].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1001, entries[1].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(11, entries[1].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(21, entries[1].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[1].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[1].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h1",
+                    entries[1].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    20,
+                    entries[1].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t1",
+                    entries[1].Data.GetUnalignedDataRanges(1).GetContent());
+
+                UNIT_ASSERT_VALUES_EQUAL(102, entries[2].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1002, entries[2].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(12, entries[2].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(22, entries[2].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[2].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    3,
+                    entries[2].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h2",
+                    entries[2].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    21,
+                    entries[2].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t2",
+                    entries[2].Data.GetUnalignedDataRanges(1).GetContent());
+            });
+
+        executor.WriteTx([&](TIndexTabletDatabase db)
+                         { db.DeleteUnconfirmedData(101); });
+
+        executor.ReadTx(
+            [&](TIndexTabletDatabase db)
+            {
+                TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> entries;
+                UNIT_ASSERT(db.ReadUnconfirmedData(entries));
+                UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(100, entries[0].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1000, entries[0].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(10, entries[0].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(20, entries[0].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[0].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    entries[0].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h0",
+                    entries[0].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    19,
+                    entries[0].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t0",
+                    entries[0].Data.GetUnalignedDataRanges(1).GetContent());
+
+                UNIT_ASSERT_VALUES_EQUAL(102, entries[1].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(1002, entries[1].Data.GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(12, entries[1].Data.GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(22, entries[1].Data.GetLength());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    entries[1].Data.UnalignedDataRangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    3,
+                    entries[1].Data.GetUnalignedDataRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "h2",
+                    entries[1].Data.GetUnalignedDataRanges(0).GetContent());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    21,
+                    entries[1].Data.GetUnalignedDataRanges(1).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "t2",
+                    entries[1].Data.GetUnalignedDataRanges(1).GetContent());
+            });
+    }
+
     Y_UNIT_TEST(ShouldReadAndWriteNodeRefsInDifferentModes)
     {
         TTestExecutor executor;

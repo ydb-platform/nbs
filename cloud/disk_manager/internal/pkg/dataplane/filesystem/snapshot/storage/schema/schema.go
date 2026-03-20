@@ -54,12 +54,11 @@ func Create(
 		"node_refs",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("depth", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("parent_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("name", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("child_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("node_type", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "depth", "parent_node_id", "name"),
+			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "parent_node_id", "name"),
 		),
 		dropUnusedColumns,
 	)
@@ -76,12 +75,13 @@ func Create(
 			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("mode", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithColumn("uid", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithColumn("gid", persistence.Optional(persistence.TypeUint32)),
+			persistence.WithColumn("uid", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("gid", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("atime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("mtime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("ctime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("links", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("symlink_target", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),
@@ -110,6 +110,27 @@ func Create(
 	}
 
 	logging.Info(ctx, "Created hardlinks table")
+
+	// table which maps node ids between source/destination filesystems/filesystem snapshots
+	// used during restore.
+	err = db.CreateOrAlterTable(
+		ctx,
+		storageFolder,
+		"restoration_node_ids_mapping",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("source_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("destination_filesystem_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("source_node_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("destination_node_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithPrimaryKeyColumn("source_snapshot_id", "destination_filesystem_id", "source_node_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "Created restoration_node_ids_mapping table")
 	logging.Info(ctx, "Created schema for dataplane filesystem snapshot storage")
 
 	return nil
@@ -152,6 +173,12 @@ func Drop(
 		return err
 	}
 	logging.Info(ctx, "Dropped hardlinks table")
+
+	err = db.DropTable(ctx, storageFolder, "restoration_node_ids_mapping")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped restoration_node_ids_mapping table")
 
 	logging.Info(ctx, "Dropped schema for dataplane filesystem snapshot storage")
 

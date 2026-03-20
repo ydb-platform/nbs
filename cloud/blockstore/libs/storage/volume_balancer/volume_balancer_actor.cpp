@@ -255,6 +255,14 @@ void TVolumeBalancerActor::SendConfigSubscriptionRequest(
         std::move(req));
 }
 
+bool TVolumeBalancerActor::IsMaxInProgressLimitReached() const
+{
+    return StorageConfig &&
+           StorageConfig->GetVolumeBalancerMaxInProgress() > 0 && State &&
+           State->GetVolumesInProgressCount() >=
+               StorageConfig->GetVolumeBalancerMaxInProgress();
+}
+
 void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
     const TEvService::TEvGetVolumeStatsResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -328,12 +336,22 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
             *CpuWaitCounter,
             ctx.Now());
 
-        if (IsBalancerEnabled()) {
+        if (IsBalancerEnabled() && !IsMaxInProgressLimitReached()) {
             if (auto vol = State->GetVolumeToPush()) {
                 SendVolumeToHive(ctx, std::move(vol));
             } else if (auto vol = State->GetVolumeToPull()) {
                 PullVolumeFromHive(ctx, std::move(vol));
             }
+        } else if (IsMaxInProgressLimitReached()) {
+            // StorageConfig isn't nullptr as limit wouldn't
+            // be in effect otherwise
+            LOG_INFO_S(
+                ctx,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                "Skipping balancer operation: "
+                    << State->GetVolumesInProgressCount() << "/"
+                    << StorageConfig->GetVolumeBalancerMaxInProgress()
+                    << " volumes already in progress");
         }
 
         ctx.Schedule(Timeout, new TEvents::TEvWakeup());

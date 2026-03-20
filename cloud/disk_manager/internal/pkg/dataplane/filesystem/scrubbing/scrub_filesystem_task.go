@@ -7,9 +7,10 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	scrubbing_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
 	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
-	filesystem_traversal "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
 	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -28,6 +29,13 @@ type scrubFilesystemTask struct {
 	request  *scrubbing_protos.ScrubFilesystemRequest
 	state    *scrubbing_protos.ScrubFilesystemTaskState
 	callback OnScrubbedCallback
+}
+
+func (t *scrubFilesystemTask) getSnapshotID(
+	execCtx tasks.ExecutionContext,
+) string {
+
+	return fmt.Sprintf("scrubbing_%s", execCtx.GetTaskID())
 }
 
 func (t *scrubFilesystemTask) Save() ([]byte, error) {
@@ -57,12 +65,19 @@ func (t *scrubFilesystemTask) Run(
 	}
 	defer client.Close()
 
+	filesystemListerFactory := listers.NewFilestoreListerFactory(
+		client,
+		t.config.GetListNodesMaxBytes(),
+		true, // readOnly
+		true, // unsafe
+	)
+
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()
-	traverser := filesystem_traversal.NewFilesystemTraverser(
-		fmt.Sprintf("scrubbing_%s", execCtx.GetTaskID()),
+	traverser := traversal.NewFilesystemTraverser(
+		t.getSnapshotID(execCtx),
 		filesystem.GetFilesystemId(),
 		t.request.GetFilesystemCheckpointId(),
-		client,
+		filesystemListerFactory,
 		t.storage,
 		func(ctx context.Context) error {
 			t.state.RootNodeScheduled = true
@@ -70,14 +85,13 @@ func (t *scrubFilesystemTask) Run(
 		},
 		t.config.GetTraversalConfig(),
 		rootNodeAlreadyScheduled,
-		t.config.GetListNodesMaxBytes(),
+		nfs.RootNodeID,
 	)
 
 	return traverser.Traverse(ctx, func(
 		ctx context.Context,
 		nodes []nfs.Node,
-		_ nfs.Session,
-		_ nfs.Client,
+		_ listers.FilesystemLister,
 	) error {
 
 		t.callback(nodes)
@@ -94,7 +108,11 @@ func (t *scrubFilesystemTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return nil
+	return t.storage.ClearDirectoryListingQueue(
+		ctx,
+		t.getSnapshotID(execCtx),
+		t.config.GetTraversalQueueDeletionLimit(),
+	)
 }
 
 func (t *scrubFilesystemTask) GetMetadata(

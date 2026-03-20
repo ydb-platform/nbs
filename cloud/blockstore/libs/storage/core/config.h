@@ -28,6 +28,10 @@ struct TLinkedDiskFillBandwidth
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+using TPoolKindToMediaKindMapping =
+    THashMap<TString, NCloud::NProto::EStorageMediaKind>;
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TStorageConfig
 {
@@ -774,6 +778,14 @@ public:
     [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 
     [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
+
+    [[nodiscard]] NProto::EOverlappingRequestsPolicy
+    GetOverlappingRequestsPolicy() const;
+
+    [[nodiscard]] TPoolKindToMediaKindMapping
+    GetPoolKindToMediaKindMapping() const;
+
+    [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
 };
 
 ui64 GetAllocationUnit(

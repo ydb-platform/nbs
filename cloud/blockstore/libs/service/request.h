@@ -9,13 +9,14 @@
 #include <cloud/blockstore/public/api/protos/disk.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 #include <cloud/blockstore/public/api/protos/io.pb.h>
+#include <cloud/blockstore/public/api/protos/local_nvme.pb.h>
 #include <cloud/blockstore/public/api/protos/local_ssd.pb.h>
 #include <cloud/blockstore/public/api/protos/metrics.pb.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
 #include <cloud/blockstore/public/api/protos/ping.pb.h>
 #include <cloud/blockstore/public/api/protos/placement.pb.h>
-#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 
@@ -57,6 +58,16 @@ struct TReadBlocksLocalResponse: public TReadBlocksResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TWriteBlocksLocalRequest can be 2 types:
+//
+//     1. Dependent WriteBlocksLocalRequest doesn't own any data. It can access
+//     data with TWriteBlocksLocalRequest::Sglist.
+//
+//     2. Owner WriteBlocksLocalRequest stores request data in
+//     TWriteBlocksRequest field. Sglist will be closed after object
+//     destruction. We can promote dependent request to owner by calling
+//     void TWriteBlocksLocalRequest::CopySglistIntoBuffers() method.
+
 struct TWriteBlocksLocalRequest
     : public TWriteBlocksRequest
 {
@@ -64,9 +75,45 @@ struct TWriteBlocksLocalRequest
     ui32 BlocksCount = 0;
     // TODO: remove BlockSize as it is now in NProto::TWriteBlocksRequest
     ui32 BlockSize = 0;
+
+    std::optional<TGuardedSglistOwner> SglistOwner;
+
+    TWriteBlocksLocalRequest() = default;
+
+    TWriteBlocksLocalRequest(const TWriteBlocksLocalRequest& request) = delete;
+
+    TWriteBlocksLocalRequest(TWriteBlocksLocalRequest&& request) = default;
+
+    TWriteBlocksLocalRequest& operator=(
+        const TWriteBlocksLocalRequest& request) = delete;
+
+    TWriteBlocksLocalRequest& operator=(
+        TWriteBlocksLocalRequest&& request) = default;
+
+    // Full request copy. If this is dependent request, after clone we will get
+    // dependent request. If this is owner request, after clone we will get
+    // owner request.
+    TWriteBlocksLocalRequest Clone() const;
+
+    // If the WriteBlocksLocal owns request data (the CopySglistIntoBuffers
+    // method was called), dependent request will be invalidated (Sglist.Close()
+    // will be called) after this object destruction. Doesn't copy Blocks field
+    // from TWriteBlocksLocalRequest, because all blocks can be accessed via
+    // Sglist.
+    TWriteBlocksLocalRequest CreateDependentRequest() const;
+
+    void CopySglistIntoBuffers();
 };
 
 using TWriteBlocksLocalResponse = TWriteBlocksResponse;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request);
+
+TWriteBlocksRequest CopyRequest(const TWriteBlocksRequest& request);
+
+TZeroBlocksRequest CopyRequest(const TZeroBlocksRequest& request);
 
 }   // namespace NProto
 
@@ -124,9 +171,16 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(RefreshEndpoint,                    __VA_ARGS__)                       \
 // BLOCKSTORE_ENDPOINT_SERVICE
 
+#define BLOCKSTORE_LOCAL_NVME_SERVICE(xxx, ...)                                \
+    xxx(ListNVMeDevices,                    __VA_ARGS__)                       \
+    xxx(AcquireNVMeDevice,                  __VA_ARGS__)                       \
+    xxx(ReleaseNVMeDevice,                  __VA_ARGS__)                       \
+// BLOCKSTORE_LOCAL_NVME_SERVICE
+
 #define BLOCKSTORE_GRPC_SERVICE(xxx, ...)                                      \
     BLOCKSTORE_GRPC_STORAGE_SERVICE(xxx,    __VA_ARGS__)                       \
     BLOCKSTORE_ENDPOINT_SERVICE(xxx,        __VA_ARGS__)                       \
+    BLOCKSTORE_LOCAL_NVME_SERVICE(xxx,      __VA_ARGS__)                       \
 // BLOCKSTORE_GRPC_SERVICE
 
 #define BLOCKSTORE_GRPC_DATA_SERVICE(xxx, ...)                                 \
@@ -151,6 +205,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
 #define BLOCKSTORE_SERVICE(xxx, ...)                                           \
     BLOCKSTORE_STORAGE_SERVICE(xxx,         __VA_ARGS__)                       \
     BLOCKSTORE_ENDPOINT_SERVICE(xxx,        __VA_ARGS__)                       \
+    BLOCKSTORE_LOCAL_NVME_SERVICE(xxx,      __VA_ARGS__)                       \
 // BLOCKSTORE_SERVICE
 
 #define BLOCKSTORE_DATA_SERVICE(xxx, ...)                                      \

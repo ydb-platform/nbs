@@ -326,9 +326,7 @@ message TStorageConfig
 
     optional bool NewLocalDBCompactionPolicyEnabled = 352 [deprecated = true];
 
-    // If greater than 0, the node index cache will be used. It caches
-    // GetNodeAttrRequests to avoid executing GetNodeAttr tx for hot nodes.
-    optional uint32 NodeIndexCacheMaxNodes = 353;
+    optional uint32 NodeIndexCacheMaxNodes = 353 [deprecated = true];
 
     // By default, the blocksize, provided by the GetNodeAttr request, is set to
     // the filestore blocksize. Due to the fact that every 64 blocks are stored in
@@ -347,9 +345,7 @@ message TStorageConfig
     // Allow to destroy filestore with active sessions
     optional bool AllowFileStoreForceDestroy = 357;
 
-    // Enables usage of GetNodeAttrBatch requests instead of GetNodeAttr when
-    // appropriate.
-    optional bool GetNodeAttrBatchEnabled = 358;
+    optional bool GetNodeAttrBatchEnabled = 358 [deprecated = true];
 
     // Max number of items to delete during TrimBytes.
     optional uint64 TrimBytesItemCount = 359;
@@ -749,6 +745,16 @@ message TStorageConfig
 
     // Frequency of tablet regular task runs (e.g. ResponseLogEntry cleanup).
     optional uint32 TabletRegularTasksSchedulePeriod = 486;
+
+    // Allow to destroy filestore with active sessions
+    // with size less than threshold(in bytes)
+    optional uint32 ForceDestroySizeThreshold = 487;
+
+    // Enable adding unconfirmed data for write operations
+    optional bool AddingUnconfirmedDataEnabled = 488;
+
+    // Limits unconfirmed (and confirmed but not added to the index) data count.
+    optional uint32 UnconfirmedDataCountHardLimit = 489;
 
     // The way we read and write compact ShardId and ShardNodeName from/to
     // NodeRefs table.

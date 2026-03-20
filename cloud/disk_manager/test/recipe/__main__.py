@@ -68,6 +68,8 @@ def parse_args(args):
     parser.add_argument("--cell-selection-policy", type=str, default="FIRST_IN_CONFIG")
     parser.add_argument("--allow-filestore-force-destroy", action='store_true', default=False)
     parser.add_argument("--without-shadow-disks", action='store_true', default=False)
+    parser.add_argument("--filesystem-dataplane-enabled", action='store_true', default=False)
+    parser.add_argument("--list-nodes-max-bytes", type=int, default=0)
     args, _ = parser.parse_known_args(args=args)
     return args
 
@@ -337,6 +339,7 @@ def start(argv):
     disk_managers = []
 
     controlplane_disk_manager_count = 2 if args.multiple_disk_managers else 1
+    controlplane_mon_ports = []
     for _ in range(0, controlplane_disk_manager_count):
         idx = len(disk_managers)
         disk_manager = DiskManagerLauncher(
@@ -372,10 +375,15 @@ def start(argv):
         append_recipe_err_files(
             ERR_LOG_FILE_NAMES_FILE, disk_manager.disk_manager.stderr_file_name
         )
+        controlplane_mon_ports.append(disk_manager.monitoring_port)
 
-    set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT", str(disk_managers[0].monitoring_port))
+    set_env(
+        "DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT",
+        ",".join(map(str, controlplane_mon_ports)),
+    )
 
     dataplane_disk_managers_count = 1
+    dataplane_monitoring_ports = []
     for _ in range(0, dataplane_disk_managers_count):
         idx = len(disk_managers)
         disk_manager = DiskManagerLauncher(
@@ -392,17 +400,28 @@ def start(argv):
             is_dataplane=True,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
+            nfs_port=nfs.port,
+            nfs2_port=nfs2.port,
+            nfs3_port=nfs3.port,
             s3_port=s3.port,
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
             proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
+            filesystem_dataplane_enabled=args.filesystem_dataplane_enabled,
+            list_nodes_max_bytes=args.list_nodes_max_bytes,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
         append_recipe_err_files(
             ERR_LOG_FILE_NAMES_FILE, disk_manager.disk_manager.stderr_file_name
         )
+        dataplane_monitoring_ports.append(disk_manager.monitoring_port)
+
+    set_env(
+        "DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT",
+        ",".join(map(str, dataplane_monitoring_ports)),
+    )
 
     # First node is always control plane.
     set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_PORT", str(disk_managers[0].port))

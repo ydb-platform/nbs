@@ -205,83 +205,6 @@ void SetupVolumeChannel(
     profile->SetWriteBandwidth(1_MB);
 }
 
-struct TPoolKinds
-{
-    TString System;
-    TString Log;
-    TString Index;
-    TString Mixed;
-    TString Merged;
-    TString Fresh;
-};
-
-TPoolKinds GetPoolKinds(
-    const TStorageConfig& config,
-    const NCloud::NProto::EStorageMediaKind mediaKind,
-    const TString& cloudId,
-    const TString& folderId,
-    const TString& diskId)
-{
-    switch (mediaKind) {
-        case NCloud::NProto::STORAGE_MEDIA_HDD: {
-            return {
-                config.GetHDDSystemChannelPoolKind(),
-                config.GetHDDLogChannelPoolKind(),
-                config.GetHDDIndexChannelPoolKind(),
-                config.GetHDDMixedChannelPoolKind(),
-                config.GetHDDMergedChannelPoolKind(),
-                config.GetHDDFreshChannelPoolKind()
-            };
-        }
-
-        case NCloud::NProto::STORAGE_MEDIA_SSD: {
-            auto systemChannelPoolKind =
-                config.GetSSDSystemChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
-            if (systemChannelPoolKind.empty()) {
-                systemChannelPoolKind = config.GetSSDSystemChannelPoolKind();
-            }
-            auto logChannelPoolKind =
-                config.GetSSDLogChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
-            if (logChannelPoolKind.empty()) {
-                logChannelPoolKind = config.GetSSDLogChannelPoolKind();
-            }
-            auto indexChannelPoolKind =
-                config.GetSSDIndexChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
-            if (indexChannelPoolKind.empty()) {
-                indexChannelPoolKind = config.GetSSDIndexChannelPoolKind();
-            }
-            auto freshChannelPoolKind =
-                config.GetSSDFreshChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
-            if (freshChannelPoolKind.empty()) {
-                freshChannelPoolKind = config.GetSSDFreshChannelPoolKind();
-            }
-            return {
-                std::move(systemChannelPoolKind),
-                std::move(logChannelPoolKind),
-                std::move(indexChannelPoolKind),
-                config.GetSSDMixedChannelPoolKind(),
-                config.GetSSDMergedChannelPoolKind(),
-                std::move(freshChannelPoolKind)
-            };
-        }
-
-        default: {
-            return {
-                config.GetHybridSystemChannelPoolKind(),
-                config.GetHybridLogChannelPoolKind(),
-                config.GetHybridIndexChannelPoolKind(),
-                config.GetHybridMixedChannelPoolKind(),
-                config.GetHybridMergedChannelPoolKind(),
-                config.GetHybridFreshChannelPoolKind()
-            };
-        }
-    }
-}
-
 void SetExplicitChannelProfiles(
     const TStorageConfig& config,
     ui64 diskSize,
@@ -975,6 +898,73 @@ TVolumeParams ComputeVolumeParams(
         volumeParams.PartitionsCount = 1;
     }
     return volumeParams;
+}
+
+TPoolKinds GetPoolKinds(
+    const TStorageConfig& config,
+    const NCloud::NProto::EStorageMediaKind mediaKind,
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId)
+{
+    switch (mediaKind) {
+        case NCloud::NProto::STORAGE_MEDIA_HDD: {
+            return {
+                .System=config.GetHDDSystemChannelPoolKind(),
+                .Log=config.GetHDDLogChannelPoolKind(),
+                .Index=config.GetHDDIndexChannelPoolKind(),
+                .Mixed=config.GetHDDMixedChannelPoolKind(),
+                .Merged=config.GetHDDMergedChannelPoolKind(),
+                .Fresh=config.GetHDDFreshChannelPoolKind()
+            };
+        }
+
+        case NCloud::NProto::STORAGE_MEDIA_SSD: {
+            auto systemChannelPoolKind =
+                config.GetSSDSystemChannelPoolKindFeatureValue(
+                    cloudId, folderId, diskId);
+            if (systemChannelPoolKind.empty()) {
+                systemChannelPoolKind = config.GetSSDSystemChannelPoolKind();
+            }
+            auto logChannelPoolKind =
+                config.GetSSDLogChannelPoolKindFeatureValue(
+                    cloudId, folderId, diskId);
+            if (logChannelPoolKind.empty()) {
+                logChannelPoolKind = config.GetSSDLogChannelPoolKind();
+            }
+            auto indexChannelPoolKind =
+                config.GetSSDIndexChannelPoolKindFeatureValue(
+                    cloudId, folderId, diskId);
+            if (indexChannelPoolKind.empty()) {
+                indexChannelPoolKind = config.GetSSDIndexChannelPoolKind();
+            }
+            auto freshChannelPoolKind =
+                config.GetSSDFreshChannelPoolKindFeatureValue(
+                    cloudId, folderId, diskId);
+            if (freshChannelPoolKind.empty()) {
+                freshChannelPoolKind = config.GetSSDFreshChannelPoolKind();
+            }
+            return {
+                .System=std::move(systemChannelPoolKind),
+                .Log=std::move(logChannelPoolKind),
+                .Index=std::move(indexChannelPoolKind),
+                .Mixed=config.GetSSDMixedChannelPoolKind(),
+                .Merged=config.GetSSDMergedChannelPoolKind(),
+                .Fresh=std::move(freshChannelPoolKind)
+            };
+        }
+
+        default: {
+            return {
+                .System=config.GetHybridSystemChannelPoolKind(),
+                .Log=config.GetHybridLogChannelPoolKind(),
+                .Index=config.GetHybridIndexChannelPoolKind(),
+                .Mixed=config.GetHybridMixedChannelPoolKind(),
+                .Merged=config.GetHybridMergedChannelPoolKind(),
+                .Fresh=config.GetHybridFreshChannelPoolKind()
+            };
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

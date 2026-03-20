@@ -51,6 +51,15 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
 }
 
+template <typename TMethod>
+constexpr bool IsDataPlaneMethod =
+    std::is_same_v<TMethod, TEvVolume::TDescribeBlocksMethod> ||
+    std::is_same_v<TMethod, TEvService::TReadBlocksMethod> ||
+    std::is_same_v<TMethod, TEvService::TWriteBlocksMethod> ||
+    std::is_same_v<TMethod, TEvService::TZeroBlocksMethod> ||
+    std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod> ||
+    std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // VolumeProxy discovers the volume specified in the DiskId field of request,
@@ -771,6 +780,12 @@ void TVolumeProxyActor::HandleRequest(
 
                 conn.TabletId = baseDisk->TabletId;
                 conn.IsConnectionToBaseDisk = true;
+
+                if constexpr (IsDataPlaneMethod<TMethod>) {
+                    PostponeRequest(conn, IEventHandlePtr(ev.Release()));
+                    HandleBaseDiskDescribeResponse(&conn, {}, ctx);
+                    break;
+                }
             }
 
             DescribeVolume(ctx, conn);

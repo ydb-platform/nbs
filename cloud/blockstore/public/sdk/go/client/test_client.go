@@ -47,6 +47,9 @@ type alterPlacementGroupMembershipHandlerFunc func(ctx context.Context, req *pro
 type listPlacementGroupsHandlerFunc func(ctx context.Context, req *protos.TListPlacementGroupsRequest) (*protos.TListPlacementGroupsResponse, error)
 type cmsActionHandlerFunc func(ctx context.Context, req *protos.TCmsActionRequest) (*protos.TCmsActionResponse, error)
 type queryAgentsInfoHandler func(ctx context.Context, req *protos.TQueryAgentsInfoRequest) (*protos.TQueryAgentsInfoResponse, error)
+type listNVMeDevicesHandler func(ctx context.Context, req *protos.TListNVMeDevicesRequest) (*protos.TListNVMeDevicesResponse, error)
+type acquireNVMeDeviceHandler func(ctx context.Context, req *protos.TAcquireNVMeDeviceRequest) (*protos.TAcquireNVMeDeviceResponse, error)
+type releaseNVMeDeviceHandler func(ctx context.Context, req *protos.TReleaseNVMeDeviceRequest) (*protos.TReleaseNVMeDeviceResponse, error)
 type closeHandlerFunc func() error
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,6 +94,9 @@ type testClient struct {
 	ListPlacementGroupsHandler           listPlacementGroupsHandlerFunc
 	CmsActionHandler                     cmsActionHandlerFunc
 	QueryAgentsInfoHandler               queryAgentsInfoHandler
+	ListNVMeDevicesHandler               listNVMeDevicesHandler
+	AcquireNVMeDeviceHandler             acquireNVMeDeviceHandler
+	ReleaseNVMeDeviceHandler             releaseNVMeDeviceHandler
 	CloseHandlerFunc                     closeHandlerFunc
 }
 
@@ -568,4 +574,40 @@ func (client *testClient) QueryAgentsInfo(
 	}
 
 	return &protos.TQueryAgentsInfoResponse{}, nil
+}
+
+func (client *testClient) ListNVMeDevices(
+	ctx context.Context,
+	req *protos.TListNVMeDevicesRequest,
+) (*protos.TListNVMeDevicesResponse, error) {
+
+	if client.ListNVMeDevicesHandler != nil {
+		return client.ListNVMeDevicesHandler(ctx, req)
+	}
+
+	return &protos.TListNVMeDevicesResponse{}, nil
+}
+
+func (client *testClient) AcquireNVMeDevice(
+	ctx context.Context,
+	req *protos.TAcquireNVMeDeviceRequest,
+) (*protos.TAcquireNVMeDeviceResponse, error) {
+
+	if client.AcquireNVMeDeviceHandler != nil {
+		return client.AcquireNVMeDeviceHandler(ctx, req)
+	}
+
+	return &protos.TAcquireNVMeDeviceResponse{}, nil
+}
+
+func (client *testClient) ReleaseNVMeDevice(
+	ctx context.Context,
+	req *protos.TReleaseNVMeDeviceRequest,
+) (*protos.TReleaseNVMeDeviceResponse, error) {
+
+	if client.ReleaseNVMeDeviceHandler != nil {
+		return client.ReleaseNVMeDeviceHandler(ctx, req)
+	}
+
+	return &protos.TReleaseNVMeDeviceResponse{}, nil
 }

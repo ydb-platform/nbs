@@ -24,6 +24,8 @@ import (
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
+	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
+	filesystem_scrubbing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
@@ -391,16 +393,17 @@ func NewNfsTestingClient(
 	t *testing.T,
 	ctx context.Context,
 	zoneID string,
-) nfs.Client {
+) nfs_testing.TestingClient {
 
 	nfsFactory := nfs.NewFactory(
 		ctx,
 		newNfsClientConfig(),
 		metrics.NewEmptyRegistry(),
+		metrics.NewEmptyRegistry(),
 	)
 	client, err := nfsFactory.NewClient(ctx, zoneID)
 	require.NoError(t, err)
-	return client
+	return nfs_testing.NewTestingClient(t, client)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -746,6 +749,29 @@ func WaitOperationEnded(
 	require.NoError(t, err)
 }
 
+func ScheduleFilesystemScrubbing(
+	t *testing.T,
+	ctx context.Context,
+	zoneID string,
+	filesystemID string,
+) string {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+	lastReqNumber++
+	taskID, err := filesystem_scrubbing.ScheduleScrubFilesystem(
+		tasks_headers.SetIncomingIdempotencyKey(
+			ctx,
+			fmt.Sprintf("scrubbing_%v_%v", t.Name(), lastReqNumber),
+		),
+		scheduler,
+		zoneID,
+		filesystemID,
+	)
+	require.NoError(t, err)
+	return taskID
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func CheckBaseSnapshot(
@@ -926,11 +952,50 @@ func httpGetWithRetries(url string) (*http.Response, error) {
 	return retryableClient.Get(url)
 }
 
-func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
+func parseMetricsPorts(envVariable string) []string {
+	return strings.Split(envVariable, ",")
+}
+
+func GetCounters(
+	t *testing.T,
+	ports []string,
+	name string,
+	labels map[string]string,
+) []float64 {
+	result := make([]float64, 0)
+	for _, port := range ports {
+		value, ok := GetCounter(
+			t,
+			port,
+			name,
+			labels,
+		)
+		if ok {
+			result = append(result, value)
+		}
+	}
+
+	require.NotEmpty(
+		t,
+		result,
+		"No counter with name %s, labels %v",
+		name,
+		labels,
+	)
+	return result
+}
+
+func GetCounter(
+	t *testing.T,
+	port string,
+	name string,
+	labels map[string]string,
+) (float64, bool) {
+
 	resp, err := httpGetWithRetries(
 		fmt.Sprintf(
 			"http://localhost:%s/metrics/",
-			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+			port,
 		),
 	)
 	require.NoError(t, err)
@@ -944,12 +1009,11 @@ func GetCounter(t *testing.T, name string, labels map[string]string) float64 {
 	require.True(t, ok)
 	for _, metricValue := range retrievedMetrics.GetMetric() {
 		if metricMatchesLabel(labels, metricValue) {
-			return metricValue.GetCounter().GetValue()
+			return metricValue.GetCounter().GetValue(), true
 		}
 	}
 
-	require.Failf(t, "No counter with name %s", name)
-	return 0
+	return 0, false
 }
 
 func metricMatchesLabel(
@@ -974,4 +1038,36 @@ func metricMatchesLabel(
 	}
 
 	return true
+}
+
+func GetCountersControlplane(
+	t *testing.T,
+	name string,
+	labels map[string]string,
+) []float64 {
+
+	return GetCounters(
+		t,
+		parseMetricsPorts(
+			os.Getenv("DISK_MANAGER_RECIPE_DISK_MANAGER_MON_PORT"),
+		),
+		name,
+		labels,
+	)
+}
+
+func GetCountersDataplane(
+	t *testing.T,
+	name string,
+	labels map[string]string,
+) []float64 {
+
+	return GetCounters(
+		t,
+		parseMetricsPorts(
+			os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
+		),
+		name,
+		labels,
+	)
 }

@@ -17,6 +17,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+var emptyNodesToExclude = map[uint64]struct{}{}
+
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
@@ -111,9 +113,10 @@ func TestNodesScheduling(t *testing.T) {
 	defer f.teardown()
 
 	filesystemSnapshotID := "snapshot"
-	err := f.storage.ScheduleRootNodeForListing(
+	err := f.storage.SchedulerDirectoryForTraversal(
 		f.ctx,
 		filesystemSnapshotID,
+		nfs.RootNodeID,
 	)
 	require.NoError(t, err)
 
@@ -124,7 +127,6 @@ func TestNodesScheduling(t *testing.T) {
 			filesystemSnapshotID,
 			1,
 			"cookie1",
-			0,
 			[]nfs.Node{
 				{NodeID: 2, ParentID: 1},
 				{NodeID: 3, ParentID: 1},
@@ -140,7 +142,6 @@ func TestNodesScheduling(t *testing.T) {
 			filesystemSnapshotID,
 			2,
 			"cookie2",
-			1,
 			[]nfs.Node{
 				{NodeID: 4, ParentID: 2},
 			},
@@ -148,7 +149,11 @@ func TestNodesScheduling(t *testing.T) {
 	)
 
 	otherSnapshot := "other"
-	err = f.storage.ScheduleRootNodeForListing(f.ctx, otherSnapshot)
+	err = f.storage.SchedulerDirectoryForTraversal(
+		f.ctx,
+		otherSnapshot,
+		nfs.RootNodeID,
+	)
 	require.NoError(t, err)
 	require.NoError(
 		t,
@@ -157,7 +162,6 @@ func TestNodesScheduling(t *testing.T) {
 			otherSnapshot,
 			1, // nodeID
 			"cookie99",
-			0, // depth
 			[]nfs.Node{
 				{NodeID: 99, ParentID: 1},
 				{NodeID: 100, ParentID: 1},
@@ -168,8 +172,8 @@ func TestNodesScheduling(t *testing.T) {
 	entries, err := f.storage.SelectNodesToList(
 		f.ctx,
 		filesystemSnapshotID,
-		map[uint64]struct{}{}, // nodesToExclude
-		100,                   // limit
+		emptyNodesToExclude, // nodesToExclude
+		100,                 // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 2, 3, 4, 5, 6})
@@ -187,8 +191,8 @@ func TestNodesScheduling(t *testing.T) {
 	entries, err = f.storage.SelectNodesToList(
 		f.ctx,
 		filesystemSnapshotID,
-		map[uint64]struct{}{}, // nodesToExclude
-		1,                     // limit
+		emptyNodesToExclude, // nodesToExclude
+		1,                   // limit
 	)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
@@ -210,16 +214,191 @@ func TestNodesScheduling(t *testing.T) {
 		otherSnapshot,
 		99,                                      // nodeID
 		"",                                      // nextCookie
-		1,                                       // depth
 		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
 	)
 	require.NoError(t, err)
 	entries, err = f.storage.SelectNodesToList(
 		f.ctx,
 		otherSnapshot,
-		map[uint64]struct{}{}, // nodesToExclude
-		100,                   // limit
+		emptyNodesToExclude, // nodesToExclude
+		100,                 // limit
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, getNodeIDs(entries), []uint64{1, 100, 101})
+}
+
+func TestClearDirectoryListingQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	s := f.storage.(*storageYDB)
+
+	snapshot1 := "snapshot1"
+	snapshot2 := "snapshot2"
+	snapshot3 := "snapshot3"
+
+	// 1. Schedule root nodes for snapshot1 and snapshot2.
+	err := f.storage.SchedulerDirectoryForTraversal(f.ctx, snapshot1, nfs.RootNodeID)
+	require.NoError(t, err)
+	err = f.storage.SchedulerDirectoryForTraversal(f.ctx, snapshot2, nfs.RootNodeID)
+	require.NoError(t, err)
+
+	// 2. Schedule 10 nodes for snapshot1 and 5 nodes for snapshot2
+	//    with intersecting IDs.
+	require.NoError(t, f.storage.ScheduleChildNodesForListing(
+		f.ctx,
+		snapshot1,
+		nfs.RootNodeID,
+		"cookie1",
+		[]nfs.Node{
+			{NodeID: 2, ParentID: nfs.RootNodeID},
+			{NodeID: 3, ParentID: nfs.RootNodeID},
+			{NodeID: 4, ParentID: nfs.RootNodeID},
+			{NodeID: 5, ParentID: nfs.RootNodeID},
+			{NodeID: 1001, ParentID: nfs.RootNodeID},
+			{NodeID: 1002, ParentID: nfs.RootNodeID},
+			{NodeID: 1003, ParentID: nfs.RootNodeID},
+			{NodeID: 1004, ParentID: nfs.RootNodeID},
+			{NodeID: 1005, ParentID: nfs.RootNodeID},
+			{NodeID: 1006, ParentID: nfs.RootNodeID},
+		},
+	))
+
+	require.NoError(t, f.storage.ScheduleChildNodesForListing(
+		f.ctx,
+		snapshot2,
+		nfs.RootNodeID,
+		"cookie2",
+		[]nfs.Node{
+			{NodeID: 2, ParentID: nfs.RootNodeID},
+			{NodeID: 3, ParentID: nfs.RootNodeID},
+			{NodeID: 4, ParentID: nfs.RootNodeID},
+			{NodeID: 1002, ParentID: nfs.RootNodeID},
+			{NodeID: 1005, ParentID: nfs.RootNodeID},
+		},
+	))
+
+	snapshot1ExpectedIDs := []uint64{
+		nfs.RootNodeID, 2, 3, 4, 5, 1001, 1002, 1003, 1004, 1005, 1006,
+	}
+	snapshot2ExpectedIDs := []uint64{
+		nfs.RootNodeID, 2, 3, 4, 1002, 1005,
+	}
+
+	// 3. List nodes for snapshot1 and snapshot2: 11 and 6 entries.
+	entries1, err := f.storage.SelectNodesToList(
+		f.ctx, snapshot1, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodeIDs(entries1), snapshot1ExpectedIDs)
+
+	entries2, err := f.storage.SelectNodesToList(
+		f.ctx, snapshot2, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodeIDs(entries2), snapshot2ExpectedIDs)
+
+	// 4. Delete 1 element from snapshot1, check 10 remain,
+	//    check snapshot2 still has 6 elements matching expected IDs.
+	var remains bool
+	err = s.db.Execute(
+		f.ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			remains, err = s.clearDirectoryListingQueue(
+				ctx, session, snapshot1, 1,
+			)
+			return err
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, remains)
+
+	entries1, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot1, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.Len(t, entries1, 10)
+	savedSnapshot1IDs := getNodeIDs(entries1)
+
+	entries2, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot2, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodeIDs(entries2), snapshot2ExpectedIDs)
+
+	// 5. Delete 2 elements from snapshot2, check snapshot1 unchanged,
+	//    save snapshot2 entries. Require remains = true (6 - 2 = 4, limit 2 == deleted 2).
+	err = s.db.Execute(
+		f.ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			remains, err = s.clearDirectoryListingQueue(
+				ctx, session, snapshot2, 2,
+			)
+			return err
+		},
+	)
+	require.True(t, remains)
+	require.NoError(t, err)
+
+	entries1, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot1, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodeIDs(entries1), savedSnapshot1IDs)
+
+	entries2, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot2, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.Len(t, entries2, 4)
+	savedSnapshot2IDs := getNodeIDs(entries2)
+
+	// 6. Delete from snapshot3 (nonexistent), require no error,
+	//    require remains = false.
+	err = s.db.Execute(
+		f.ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			remains, err = s.clearDirectoryListingQueue(
+				ctx, session, snapshot3, 100,
+			)
+			return err
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, remains)
+
+	// 7. Delete 100 elements from snapshot1, require remains = false.
+	err = s.db.Execute(
+		f.ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			remains, err = s.clearDirectoryListingQueue(
+				ctx, session, snapshot1, 100,
+			)
+			return err
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, remains)
+
+	entries1, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot1, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.Len(t, entries1, 0)
+
+	entries2, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot2, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, getNodeIDs(entries2), savedSnapshot2IDs)
+
+	// 8. Delete from snapshot2 using public method, require no elements remain.
+	err = f.storage.ClearDirectoryListingQueue(f.ctx, snapshot2, 2)
+	require.NoError(t, err)
+
+	entries2, err = f.storage.SelectNodesToList(
+		f.ctx, snapshot2, emptyNodesToExclude, 100,
+	)
+	require.NoError(t, err)
+	require.Len(t, entries2, 0)
 }

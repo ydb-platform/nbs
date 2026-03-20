@@ -188,3 +188,11 @@ func (client *testClient) ReadLink(
 
 	return &protos.TReadLinkResponse{}, nil
 }
+
+func (client *testClient) GetNodeAttr(
+	ctx context.Context,
+	req *protos.TGetNodeAttrRequest,
+) (*protos.TGetNodeAttrResponse, error) {
+
+	return &protos.TGetNodeAttrResponse{}, nil
+}

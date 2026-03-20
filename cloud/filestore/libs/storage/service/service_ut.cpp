@@ -1,5 +1,6 @@
 #include "service.h"
 #include "service_private.h"
+#include "service_ut_helpers.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
@@ -29,38 +30,6 @@ using namespace NKikimr;
 using namespace NMonitoring;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TTestProfileLog
-    : public IProfileLog
-{
-public:
-    TMap<ui32, TVector<TRecord>> Requests;
-
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    void Write(TRecord record) override
-    {
-        UNIT_ASSERT(record.Request.HasRequestType());
-        Requests[record.Request.GetRequestType()].push_back(std::move(record));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString GenerateValidateData(ui32 size, ui32 seed = 0)
-{
-    TString data(size, 0);
-    for (ui32 i = 0; i < size; ++i) {
-        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
-    }
-    return data;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -3616,6 +3585,73 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetForceDestroySizeThreshold(1_GB);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        // Size less than ForceDestroySizeThreshold
+        const auto initialBlockCount = 80_MB / DefaultBlockSize;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldNotDestroyFileStoreWithActiveSessionWithForceDestroySizeThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetForceDestroySizeThreshold(1_GB);
+
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        // Size more than ForceDestroySizeThreshold
+        const auto initialBlockCount = 2_GB / DefaultBlockSize;
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initialBlockCount);
+
+        auto headers = THeaders{fsId, "client", ""};
+        auto createSessionResponse = service.CreateSession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createSessionResponse->GetStatus(),
+            createSessionResponse->GetErrorReason());
+        service.AssertDestroyFileStoreFailed(fsId);
+
+        headers.SessionId =
+            createSessionResponse->Record.GetSession().GetSessionId();
+        auto destroySessionResponse = service.DestroySession(headers);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroySessionResponse->GetStatus(),
+            destroySessionResponse->GetErrorReason());
+
+        auto destroyFileStoreResponse = service.DestroyFileStore(fsId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            destroyFileStoreResponse->GetStatus(),
+            destroyFileStoreResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(DestroyDestroyedFileStoreShouldNotFail)
     {
         TTestEnv env;
@@ -3664,7 +3700,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.MutableDestroyFilestoreDenyList()->Add("test");
-        config.SetGetNodeAttrBatchEnabled(true);
 
         TTestEnv env({}, config);
 
