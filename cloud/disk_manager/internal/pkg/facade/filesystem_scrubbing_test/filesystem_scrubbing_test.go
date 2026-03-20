@@ -62,6 +62,6 @@ func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
 		filesystemID,
 	)
 
-	testcommon.WaitTaskSync(t, ctx, taskID, 60*time.Second)
+	testcommon.WaitOperationEnded(t, ctx, taskID, 60*time.Second)
 	testcommon.CheckConsistency(t, ctx)
 }

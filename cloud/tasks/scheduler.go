@@ -74,6 +74,13 @@ type Scheduler interface {
 	// Synchronously waits until task is finished successfully or cancelled.
 	WaitTaskEnded(ctx context.Context, taskID string) error
 
+	// Same as WaitTaskEnded but with adjustable timeout.
+	WaitTaskEndedWithTimeout(
+		ctx context.Context,
+		taskID string,
+		timeout time.Duration,
+	) error
+
 	GetTaskMetadata(ctx context.Context, taskID string) (proto.Message, error)
 
 	SendEvent(ctx context.Context, taskID string, event int64) error

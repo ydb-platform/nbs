@@ -62,7 +62,7 @@ func TestNfsClientReportsMetrics(t *testing.T) {
 		filesystemID,
 	)
 
-	testcommon.WaitTaskSync(t, ctx, taskID, 60 * time.Second)
+	testcommon.WaitOperationEnded(t, ctx, taskID, 60*time.Second)
 
 	require.Greater(t, testcommon.GetCountersControlplane(
 		t,

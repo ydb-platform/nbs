@@ -334,8 +334,17 @@ func (s *scheduler) WaitTaskEnded(
 	taskID string,
 ) error {
 
+	return s.WaitTaskEndedWithTimeout(ctx, taskID, s.taskWaitingTimeout)
+}
+
+func (s *scheduler) WaitTaskEndedWithTimeout(
+	ctx context.Context,
+	taskID string,
+	timeoutDuration time.Duration,
+) error {
+
 	ctx = withComponentLoggingField(ctx)
-	timeout := time.After(s.taskWaitingTimeout)
+	timeout := time.After(timeoutDuration)
 
 	for {
 		state, err := s.storage.GetTask(ctx, taskID)
