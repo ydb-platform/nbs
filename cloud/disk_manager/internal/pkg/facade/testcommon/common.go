@@ -749,6 +749,20 @@ func WaitOperationEnded(
 	require.NoError(t, err)
 }
 
+func WaitTaskSync(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+	timeout time.Duration,
+) {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	_, err = scheduler.WaitTaskSync(ctx, taskID, timeout)
+	require.NoError(t, err)
+}
+
 func ScheduleFilesystemScrubbing(
 	t *testing.T,
 	ctx context.Context,
