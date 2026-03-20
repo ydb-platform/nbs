@@ -519,6 +519,8 @@ private:
 
     void CreateIOCompanionClient();
 
+    bool IsFreshBlocksWriterEnabled() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

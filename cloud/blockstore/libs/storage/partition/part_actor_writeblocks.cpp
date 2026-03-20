@@ -285,7 +285,7 @@ void TPartitionActor::WriteBlocks(
         PartitionConfig.GetStorageMediaKind(),
         requestSize);
 
-    if (!Config->GetFreshBlocksWriterEnabled() && isFreshRequest) {
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         if (Config->GetWriteRequestBatchingEnabled()) {
             // we will try to batch small writes and, if batching fails,
             // we will accumulate these writes in FreshBlocks table
