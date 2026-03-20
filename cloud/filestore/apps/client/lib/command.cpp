@@ -34,7 +34,8 @@ namespace {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(1);
 
-const TString DefaultConfigFile = "/Berkanavt/nfs-server/cfg/nfs-client.txt";
+const TString DefaultServerConfigFile = "/Berkanavt/nfs-server/cfg/nfs-client.txt";
+const TString DefaultVhostConfigFile = "/Berkanavt/nfs-vhost/cfg/nfs-client.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nfs-server/cfg/nfs-iam.txt";
 const TString DefaultIamTokenFile = "~/.nfs-client/iam-token";
 
@@ -78,7 +79,7 @@ TCommand::TCommand()
 
     Opts.AddLongOption("verbose")
         .OptionalArgument("STR")
-        .DefaultValue("warn")
+        .DefaultValue("info")
         .StoreResult(&VerboseLevel);
 
     Opts.AddLongOption("mon-address")
@@ -119,9 +120,10 @@ TCommand::TCommand()
     Opts.AddLongOption("config")
         .Help(TStringBuilder()
             << "config file name. Default is "
-            << DefaultConfigFile)
-        .RequiredArgument("STR")
-        .DefaultValue(DefaultConfigFile)
+            << DefaultServerConfigFile
+            << " and "
+            << DefaultVhostConfigFile)
+        .OptionalArgument("STR")
         .StoreResult(&ConfigFile);
 
     Opts.AddLongOption("iam-config")
@@ -200,9 +202,22 @@ void TCommand::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
 
+    TString configFile;
+
     NProto::TClientAppConfig appConfig;
-    if (NFs::Exists(ConfigFile)) {
-        ParseFromTextFormat(ConfigFile, appConfig);
+    if (ConfigFile && NFs::Exists(ConfigFile)) {
+        configFile = ConfigFile;
+    } else if (NFs::Exists(DefaultServerConfigFile)) {
+        configFile = DefaultServerConfigFile;
+    } else if (NFs::Exists(DefaultVhostConfigFile)) {
+        configFile = DefaultVhostConfigFile;
+    }
+
+    if (configFile) {
+        STORAGE_INFO("Using config file " << configFile);
+        ParseFromTextFormat(configFile, appConfig);
+    } else {
+        STORAGE_WARN("Config file is not found");
     }
 
     auto& config = *appConfig.MutableClientConfig();
