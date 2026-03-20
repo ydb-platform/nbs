@@ -503,15 +503,13 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBackpressureValues(),
         GetHandlesStats());
 
-    // TabletStartTimestamp and TabletId are intialised once per tablet lifetime
-    // and thus it is acceptable to set it in RegisterStatCounters if it is not
-    // set yet.
+    // TabletStartTimestamp should be set only once
     i64 expected = 0;
     Metrics.TabletStartTimestamp.compare_exchange_strong(
         expected,
         now.MicroSeconds());
-    expected = 0;
-    Metrics.TabletId.compare_exchange_strong(expected, TabletID());
+    Metrics.TabletId.store(TabletID());
+    Metrics.TabletGeneration.store(GetGeneration());
 
     Metrics.Register(fsId, fs.GetCloudId(), fs.GetFolderId(), storageMediaKind);
 }

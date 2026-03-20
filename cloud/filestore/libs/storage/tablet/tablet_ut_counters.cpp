@@ -857,6 +857,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
         tablet.InitSession("client", "session");
 
 
@@ -872,6 +873,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              [tabletId](i64 val)
              {
                  return val == static_cast<i64>(tabletId);
+             }},
+            {{{"sensor", "TabletGeneration"}, {"filesystem", "test"}},
+             [](i64 val)
+             {
+                 return val > 0;
              }},
         });
     }
