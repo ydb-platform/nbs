@@ -6,6 +6,8 @@
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <util/generic/guid.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NKikimr;
@@ -512,23 +514,111 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
 ////////////////////////////////////////////////////////////////////////////////
 // NodeRefs
 
+namespace {
+
+// Type of compression of ShardId and ShardNodeName
+constexpr char ShardIdAsBinaryStream = 1;
+
+#define lengthof(arr) sizeof(arr) / sizeof(arr[0])
+
+template<typename TNumType>
+void numberFromByteStream(TNumType& num, const char*& byteStream)
+{
+    num = 0;
+    for (size_t i = 0; i < sizeof(num); ++i) {
+        TNumType byte = static_cast<unsigned char>(byteStream[i]);
+        num |= (byte << (i * CHAR_BIT));
+    }
+    byteStream += sizeof(num);
+}
+
+template<typename TNumType>
+void appendStringByNumber(TNumType num, TString& str)
+{
+    for (size_t i = 0; i < sizeof(num); ++i) {
+        str.append(static_cast<char>(num));
+        num >>= CHAR_BIT;
+    }
+}
+
+inline bool IsEncoded(const TIndexTabletDatabase::TNodeRef& nodeRef)
+{
+    return !nodeRef.ShardId.empty() &&
+           nodeRef.ShardId[0] == ShardIdAsBinaryStream;
+}
+
+// Expand ShardId and ShardNodeName if they are written in a compact way
+void DecodeShardId(TIndexTabletDatabase::TNodeRef& nodeRef, const TString& fsName)
+{
+    // One byte for the version, two bytes for the shard number
+    Y_VERIFY(nodeRef.ShardId.size() == 3);
+    ui16 shardNo{};
+    const char* ptr = nodeRef.ShardId.data() + 1;
+    numberFromByteStream(shardNo, ptr);
+    nodeRef.ShardId = TStringBuilder() << fsName << "_s" << shardNo;
+
+    Y_VERIFY(nodeRef.ShardNodeName.size() == sizeof(TGUID::dw));
+    TGUID guid;
+    ptr = nodeRef.ShardNodeName.data();
+    for (size_t i = 0; i < lengthof(guid.dw); ++i) {
+        numberFromByteStream(guid.dw[i], ptr);
+    }
+    nodeRef.ShardNodeName = guid.AsGuidString();
+}
+
+void EncodeShardId(TString& shardId, TString& shardNodeName)
+{
+    size_t pos = shardId.rfind("_s") + 2;
+    Y_VERIFY(pos < shardId.size());
+    char* p_end{};
+    ui32 shardNo = std::strtoul(shardId.c_str() + pos, &p_end, 10);
+    Y_VERIFY(shardNo <= Max<ui16>());
+
+    shardId.clear();
+    shardId.append(ShardIdAsBinaryStream);
+    appendStringByNumber(static_cast<ui16>(shardNo), shardId);
+
+    TGUID guid;
+    Y_VERIFY(GetGuid(shardNodeName, guid));
+    shardNodeName.clear();
+    for (size_t i = 0; i < lengthof(guid.dw); ++i) {
+        appendStringByNumber(guid.dw[i], shardNodeName);
+    }
+}
+
+}
+
 void TIndexTabletDatabase::WriteNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
     ui64 childNodeId,
     const TString& shardId,
-    const TString& shardNodeName)
+    const TString& shardNodeName,
+    NProto::EShardIdCompressionMode shardIdMode)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
+
+    const TString* shardIdPtr = &shardId;
+    const TString* shardNodeNamePtr = &shardNodeName;
+
+    TString encodedShardId;
+    TString encodedShardNodeName;
+    if (shardIdMode >= NProto::SICM_READ_WRITE && !shardId.empty()) {
+        encodedShardId = shardId;
+        encodedShardNodeName = shardNodeName;
+        EncodeShardId(encodedShardId, encodedShardNodeName);
+        shardIdPtr = &encodedShardId;
+        shardNodeNamePtr = &encodedShardNodeName;
+    }
 
     Table<TTable>()
         .Key(nodeId, name)
         .Update(
             NIceDb::TUpdate<TTable::CommitId>(commitId),
             NIceDb::TUpdate<TTable::ChildId>(childNodeId),
-            NIceDb::TUpdate<TTable::ShardId>(shardId),
-            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName)
+            NIceDb::TUpdate<TTable::ShardId>(*shardIdPtr),
+            NIceDb::TUpdate<TTable::ShardNodeName>(*shardNodeNamePtr)
         );
 }
 
@@ -545,8 +635,12 @@ bool TIndexTabletDatabase::ReadNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<TNodeRef>& ref)
+    TMaybe<TNodeRef>& ref,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& fsId)
 {
+    Y_UNUSED(shardIdMode, fsId);
+
     using TTable = TIndexTabletSchema::NodeRefs;
 
     auto it = Table<TTable>()
@@ -571,6 +665,10 @@ bool TIndexTabletDatabase::ReadNodeRef(
                 minCommitId,
                 maxCommitId
             };
+
+            if (shardIdMode >= NProto::SICM_READ && IsEncoded(ref.GetRef())) {
+                DecodeShardId(ref.GetRef(), fsId);
+            }
         }
     }
 
@@ -584,10 +682,13 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& fsId,
     TString* next,
     ui32* skippedRefs,
     NProto::EListNodesSizeMode sizeMode)
 {
+    Y_UNUSED(shardIdMode, fsId);
 
     using TTableBase = typename TIndexTabletSchema::NodeRefs;
     auto it = Table<TTable>()
@@ -616,12 +717,16 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
                 maxCommitId
             });
 
-            const auto& ref = refs.back();
+            auto& ref = refs.back();
             // TODO(#5148): consider other size calculation modes
             if (sizeMode == NProto::LNSM_FULL_ROW) {
                 bytes += ref.CalculateByteSize();
             } else {
                 bytes += ref.Name.size();
+            }
+
+            if (shardIdMode >= NProto::SICM_READ && IsEncoded(ref)) {
+                DecodeShardId(ref, fsId);
             }
         } else {
             ++skipped;
@@ -654,6 +759,8 @@ TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefs>(
     const TString&,
     TVector<TNodeRef>&,
     ui32,
+    NProto::EShardIdCompressionMode,
+    const TString& fsId,
     TString*,
     ui32*,
     NProto::EListNodesSizeMode);
@@ -665,6 +772,8 @@ TIndexTabletDatabase::ReadNodeRefsBase<TIndexTabletSchema::NodeRefsNoPrecharge>(
     const TString&,
     TVector<TNodeRef>&,
     ui32,
+    NProto::EShardIdCompressionMode,
+    const TString& fsId,
     TString*,
     ui32*,
     NProto::EListNodesSizeMode);
@@ -675,6 +784,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& fsId,
     TString* next,
     ui32* skippedRefs,
     bool noAutoPrecharge,
@@ -687,6 +798,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
             cookie,
             refs,
             maxBytes,
+            shardIdMode,
+            fsId,
             next,
             skippedRefs,
             sizeMode);
@@ -697,6 +810,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
         cookie,
         refs,
         maxBytes,
+        shardIdMode,
+        fsId,
         next,
         skippedRefs,
         sizeMode);
@@ -708,8 +823,12 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     ui64 maxCount,
     TVector<TNodeRef>& refs,
     ui64& nextNodeId,
-    TString& nextCookie)
+    TString& nextCookie,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& fsId)
 {
+    Y_UNUSED(shardIdMode, fsId);
+
     using TTable = TIndexTabletSchema::NodeRefs;
 
     if (!startNodeId && startCookie.empty()) {
@@ -2292,10 +2411,17 @@ bool TIndexTabletDatabaseProxy::ReadNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<TNodeRef>& ref)
+    TMaybe<TNodeRef>& ref,
+    NProto::EShardIdCompressionMode mode,
+    const TString& fsId)
 {
-    auto result =
-        TIndexTabletDatabase::ReadNodeRef(nodeId, commitId, name, ref);
+    const bool result = TIndexTabletDatabase::ReadNodeRef(
+        nodeId,
+        commitId,
+        name,
+        ref,
+        mode,
+        fsId);
     if (result && ref) {
         // If ReadNodeRef was successful, it is reasonable to update the cache
         // with the value that has just been read.
@@ -2310,6 +2436,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     const TString& cookie,
     TVector<TNodeRef>& refs,
     ui32 maxBytes,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& fsId,
     TString* next,
     ui32* skippedRefs,
     bool noAutoPrecharge,
@@ -2325,6 +2453,8 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
         cookie,
         refs,
         maxBytes,
+        shardIdMode,
+        fsId,
         next,
         skippedRefs,
         noAutoPrecharge,
@@ -2360,7 +2490,9 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
     ui64 maxCount,
     TVector<TNodeRef>& refs,
     ui64& nextNodeId,
-    TString& nextCookie)
+    TString& nextCookie,
+    NProto::EShardIdCompressionMode shardIdMode,
+    const TString& fsId)
 {
     auto result = TIndexTabletDatabase::ReadNodeRefs(
         startNodeId,
@@ -2368,7 +2500,9 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
         maxCount,
         refs,
         nextNodeId,
-        nextCookie);
+        nextCookie,
+        shardIdMode,
+        fsId);
     if (result) {
         // If ReadNodeRefs was successful, it is reasonable to update the cache
         // with the values that have just been read.
@@ -2385,7 +2519,8 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
     const TString& name,
     ui64 childNode,
     const TString& shardId,
-    const TString& shardNodeName)
+    const TString& shardNodeName,
+    NProto::EShardIdCompressionMode shardIdMode)
 {
     TIndexTabletDatabase::WriteNodeRef(
         nodeId,
@@ -2393,7 +2528,8 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
         name,
         childNode,
         shardId,
-        shardNodeName);
+        shardNodeName,
+        shardIdMode);
     NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
         .NodeRefsKey = {nodeId, name},
         .NodeRefsRow = {

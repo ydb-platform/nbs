@@ -63,6 +63,8 @@ struct TIndexTabletSchema
             : Column<25, NKikimr::NScheme::NTypeIds::Uint64> {};
 
         struct HasXAttrs            : Column<26, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct ShardIdCompressionState
+            : Column<27, NKikimr::NScheme::NTypeIds::Uint64> {};
 
         using TKey = TableKey<Id>;
 
@@ -92,7 +94,8 @@ struct TIndexTabletSchema
             StorageConfig,
             DeletedFreshBytesCount,
             LargeDeletionMarkersCount,
-            HasXAttrs
+            HasXAttrs,
+            ShardIdCompressionState
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

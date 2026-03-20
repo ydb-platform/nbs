@@ -329,6 +329,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
+                                                                               \
+    xxx(ShardIdCompressionMode,                                                \
+        NProto::EShardIdCompressionMode,                                       \
+        NProto::SICM_NO_COMPRESSION                                           )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -409,6 +413,13 @@ IOutputStream& operator <<(
     NProto::EListNodesSizeMode mode)
 {
     return out << EListNodesSizeMode_Name(mode);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EShardIdCompressionMode mode)
+{
+    return out << EShardIdCompressionMode_Name(mode);
 }
 
 template <typename T>

@@ -115,6 +115,29 @@ void CheckShardsSize(
         shard2Stats.GetStats().GetTotalBlocksCount());
 }
 
+NProtoPrivate::TChangeStorageConfigResponse ChangeStorageConfig(
+    const TString& fsId,
+    NProto::TStorageConfig config,
+    TServiceClient& service,
+    bool mergeWithConfig)
+{
+    NProtoPrivate::TChangeStorageConfigRequest request;
+    request.SetFileSystemId(fsId);
+
+    *request.MutableStorageConfig() = std::move(config);
+    request.SetMergeWithStorageConfigFromTabletDB(mergeWithConfig);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+
+    auto jsonResponse = service.ExecuteAction(
+        "changestorageconfig", buf);
+    NProtoPrivate::TChangeStorageConfigResponse response;
+    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+        jsonResponse->Record.GetOutput(), &response).ok());
+    return response;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -7140,6 +7163,98 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 0,   // flags
                 0),
             nodeIdx);
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldReadAndWriteCompressedShardId)
+    {
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 4;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+
+        const TString fsId = "computefilesystem-e0tdfty89a5fjdpg6k";
+
+        TTestEnv env({}, config);
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+        WaitForTabletStart(service);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        constexpr ui32 filesCount = 16;
+        ui32 fileNum = 0;
+
+        NProto::TStorageConfig newStorageConfig;
+        auto setMode = [&](const NProto::EShardIdCompressionMode mode) {
+            newStorageConfig.SetShardIdCompressionMode(mode);
+            ChangeStorageConfig(fsId, newStorageConfig, service, true);
+            WaitForTabletStart(service);
+            headers = service.InitSession(fsId, "client");
+        };
+
+        // For each mode in NProto::EShardIdCompressionMode we create several
+        // files. Then, in every mode that is greater than or equal to the one
+        // in which the files were created, we create handles for all of those
+        // files.
+
+        for (int writeModeNum =
+                 NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
+             writeModeNum <=
+             NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT;
+             ++writeModeNum)
+        {
+            const NProto::EShardIdCompressionMode writeMode =
+                static_cast<NProto::EShardIdCompressionMode>(writeModeNum);
+            setMode(writeMode);
+
+            // Create files
+            TVector<ui64> nodeIds;
+            for (ui32 i = 0; i < filesCount; ++i) {
+                nodeIds.push_back(
+                    service
+                        .CreateNode(
+                            headers,
+                            TCreateNodeArgs::File(
+                                RootNodeId,
+                                TStringBuilder() << "file_" << fileNum))
+                        ->Record.GetNode()
+                        .GetId());
+                fileNum++;
+            }
+
+            for (int readModeNum = writeModeNum;
+                 readModeNum <=
+                 NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT;
+                 ++readModeNum)
+            {
+                const NProto::EShardIdCompressionMode readMode =
+                    static_cast<NProto::EShardIdCompressionMode>(readModeNum);
+                setMode(readMode);
+
+                // Create handles
+                for (const auto nodeId: nodeIds) {
+                    const ui64 handle = service
+                        .CreateHandle(
+                            headers,
+                            fsId,
+                            nodeId,
+                            "",
+                            TCreateHandleArgs::RDWR)
+                        ->Record.GetHandle();
+                    service
+                        .DestroyHandle(headers, fsId, nodeId, handle);
+                }
+            }
+        }
     }
 }
 }   // namespace NCloud::NFileStore::NStorage

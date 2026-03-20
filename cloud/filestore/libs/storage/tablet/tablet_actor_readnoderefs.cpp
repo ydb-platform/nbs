@@ -32,7 +32,9 @@ bool TIndexTabletActor::PrepareTx_ReadNodeRefs(
         args.Limit,
         args.Refs,
         args.NextNodeId,
-        args.NextCookie);
+        args.NextCookie,
+        Config->GetShardIdCompressionMode(),
+        GetFileSystemId());
 
     LOG_DEBUG(
         ctx,

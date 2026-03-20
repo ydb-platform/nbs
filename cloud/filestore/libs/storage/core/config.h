@@ -390,6 +390,8 @@ public:
 
     [[nodiscard]] TDuration GetTabletRegularTasksSchedulePeriod() const;
     [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
+
+    NProto::EShardIdCompressionMode GetShardIdCompressionMode() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
