@@ -4,6 +4,7 @@
 
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
+#include <util/system/info.h>
 
 namespace NCloud::NBlockStore::NRdma {
 
@@ -17,7 +18,7 @@ Y_UNIT_TEST_SUITE(TBufferPoolTest)
         pool.Init(nullptr, nullptr, 0);
 
         auto buffer = pool.AcquireBuffer(1234);
-        UNIT_ASSERT(buffer.Length == 4_KB);
+        UNIT_ASSERT(buffer.Length == NSystemInfo::GetPageSize());
     }
 
     Y_UNIT_TEST(ShouldAllocateSmallBuffersInOneChunk)
@@ -28,7 +29,7 @@ Y_UNIT_TEST_SUITE(TBufferPoolTest)
         const auto& stats = pool.GetStats();
 
         auto buffer = pool.AcquireBuffer(4_KB);
-        UNIT_ASSERT(buffer.Length == 4_KB);
+        UNIT_ASSERT(buffer.Length == NSystemInfo::GetPageSize());
 
         UNIT_ASSERT_EQUAL(stats.ActiveChunksCount, 1);
         UNIT_ASSERT_EQUAL(stats.CustomChunksCount, 0);
