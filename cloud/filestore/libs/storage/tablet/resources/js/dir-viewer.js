@@ -149,6 +149,31 @@ function render() {
         return li;
     }
 
+    function buildNextCookieEntry(nextCookie) {
+        var li = document.createElement('li');
+        var entry = document.createElement('span');
+        entry.className = 'dv-entry';
+
+        var toggle = document.createElement('span');
+        toggle.className = 'dv-toggle';
+        toggle.textContent = ' ';
+        entry.appendChild(toggle);
+
+        var icon = document.createElement('span');
+        icon.className = 'dv-icon';
+        icon.textContent = '🍪';
+        entry.appendChild(icon);
+
+        var nameEl = document.createElement('span');
+        nameEl.className = 'dv-name';
+        nameEl.textContent = nextCookie;
+        entry.appendChild(nameEl);
+
+        li.appendChild(entry);
+
+        return li;
+    }
+
     function loadDir(tabletId, nodeId, ul) {
         var loadingLi = document.createElement('li');
         loadingLi.className = 'dv-loading';
@@ -178,6 +203,9 @@ function render() {
                 data.entries.forEach(function(e) {
                     ul.appendChild(buildEntry(tabletId, e.name, e.node));
                 });
+                if (data.nextCookie) {
+                    ul.appendChild(buildNextCookieEntry(data.nextCookie));
+                }
             })
             .catch(function(err) {
                 ul.removeChild(loadingLi);

@@ -64,7 +64,8 @@ void OutputTemplate(
 void DumpDirViewerJson(
     IOutputStream& out,
     const TVector<TString>& names,
-    const TVector<NProto::TNodeAttr>& nodes)
+    const TVector<NProto::TNodeAttr>& nodes,
+    const TString& nextCookie)
 {
     NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
 
@@ -120,6 +121,10 @@ void DumpDirViewerJson(
     }
 
     writer.EndList();
+    if (nextCookie) {
+        writer.WriteKey("nextCookie");
+        writer.WriteString(nextCookie);
+    }
     writer.EndObject();
 }
 
@@ -155,6 +160,7 @@ private:
 
     TVector<TString> Names;
     TVector<NProto::TNodeAttr> Nodes;
+    TString NextCookie;
 
     // Response data
     ui32 Responses = 0;
@@ -230,7 +236,19 @@ void TDirViewerActor::ListNodes(const TActorContext& ctx)
     request->Record.SetFileSystemId(DirectoryShardId);
     request->Record.SetNodeId(NodeId);
     request->Record.SetUnsafe(true);
+    const ui64 sizeLimit = 128_KB;
+    request->Record.SetMaxBytes(sizeLimit);
     request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(true);
+
+    //
+    // Right now DirViewer deliberately requests only the first page of each
+    // directory. Think about doing the following:
+    // 1. request the first and the last page
+    // 2. somehow estimate and show the number of files
+    //
+    // OR just make 'nextCookie' clickable - to load next pages by clicking on
+    // it.
+    //
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -328,6 +346,7 @@ void TDirViewerActor::HandleListNodesResponse(
         Names[i] = std::move(names[i]);
         Nodes[i] = std::move(nodes[i]);
     }
+    NextCookie = msg->Record.GetCookie();
 
     GetNodeAttrsBatch(ctx);
 }
@@ -450,7 +469,7 @@ void TDirViewerActor::HandlePoisonPill(
 void TDirViewerActor::ReplyAndDie(const TActorContext& ctx)
 {
     TStringStream out;
-    DumpDirViewerJson(out, Names, Nodes);
+    DumpDirViewerJson(out, Names, Nodes, NextCookie);
     NCloud::Reply(
         ctx,
         *RequestInfo,
