@@ -150,6 +150,12 @@ TString JsonError(const NProto::TError& e)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/*
+ * This code is similar to the TListNodesActor code in storage service but it's
+ * not exactly the same and probably it will diverge more in the future so it's
+ * more convenient not to generalize it and just keep a separate implementation
+ * here.
+ */
 class TDirViewerActor final: public TActorBootstrapped<TDirViewerActor>
 {
 private:
@@ -442,7 +448,11 @@ void TDirViewerActor::HandleGetNodeAttrBatchResponse(
             continue;
         }
 
+        auto shardId = std::move(*Nodes[i].MutableShardFileSystemId());
+        auto shardNodeName = std::move(*Nodes[i].MutableShardNodeName());
         Nodes[i] = std::move(*responseIter->MutableNode());
+        Nodes[i].SetShardFileSystemId(std::move(shardId));
+        Nodes[i].SetShardNodeName(std::move(shardNodeName));
 
         ++responseIter;
     }
