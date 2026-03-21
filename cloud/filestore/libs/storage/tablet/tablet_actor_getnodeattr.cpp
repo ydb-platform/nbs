@@ -52,9 +52,23 @@ void TIndexTabletActor::HandleGetNodeAttr(
     const TEvService::TEvGetNodeAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
     using TMethod = TEvService::TGetNodeAttrMethod;
-    if (!AcceptRequest<TMethod>(ev, ctx, ValidateRequest)) {
+    auto* msg = ev->Get();
+
+    const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
+    if (behaveAsShard) {
+        //
+        // TODO(#1923): think about the right way to pass CheckpointId
+        //
+        // Probably it's better to pass it via request headers and not rely on
+        // sessions. Making sure that sessions always exist and aren't orphaned
+        // whenever a tablet<->tablet request is sent looks more complex.
+        //
+
+        if (!AcceptRequestNoSession<TMethod>(ev, ctx, ValidateRequest)) {
+            return;
+        }
+    } else if (!AcceptRequest<TMethod>(ev, ctx, ValidateRequest)) {
         return;
     }
 
@@ -64,7 +78,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto& requestMetrics = BehaveAsShard(msg->Record.GetHeaders())
+    auto& requestMetrics = behaveAsShard
         ? Metrics.GetNodeAttrInShard : Metrics.GetNodeAttr;
 
     AddInFlightRequest<TMethod>(*requestInfo);
@@ -88,17 +102,11 @@ bool TIndexTabletActor::ValidateTx_GetNodeAttr(
         args.ClientId,
         args.SessionId,
         args.SessionSeqNo);
-    if (!session) {
-        args.Error = ErrorInvalidSession(
-            args.ClientId,
-            args.SessionId,
-            args.SessionSeqNo);
-        return false;
-    }
 
-    args.CommitId = GetReadCommitId(session->GetCheckpointId());
+    const TString& checkpointId = session ? session->GetCheckpointId() : "";
+    args.CommitId = GetReadCommitId(checkpointId);
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
+        args.Error = ErrorInvalidCheckpoint(checkpointId);
         return false;
     }
 
@@ -208,12 +216,23 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
     const TEvIndexTablet::TEvGetNodeAttrBatchRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TMethod = TEvIndexTablet::TGetNodeAttrBatchMethod;
     auto* msg = ev->Get();
-    bool accepted = AcceptRequest<TEvIndexTablet::TGetNodeAttrBatchMethod>(
-        ev,
-        ctx,
-        ValidateBatchRequest);
-    if (!accepted) {
+
+    const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
+    if (behaveAsShard) {
+        //
+        // TODO(#1923): think about the right way to pass CheckpointId
+        //
+        // Probably it's better to pass it via request headers and not rely on
+        // sessions. Making sure that sessions always exist and aren't orphaned
+        // whenever a tablet<->tablet request is sent looks more complex.
+        //
+
+        if (!AcceptRequestNoSession<TMethod>(ev, ctx, ValidateBatchRequest)) {
+            return;
+        }
+    } else if (!AcceptRequest<TMethod>(ev, ctx, ValidateBatchRequest)) {
         return;
     }
 
@@ -243,17 +262,11 @@ bool TIndexTabletActor::ValidateTx_GetNodeAttrBatch(
         args.ClientId,
         args.SessionId,
         args.SessionSeqNo);
-    if (!session) {
-        args.Error = ErrorInvalidSession(
-            args.ClientId,
-            args.SessionId,
-            args.SessionSeqNo);
-        return false;
-    }
 
-    args.CommitId = GetReadCommitId(session->GetCheckpointId());
+    const TString& checkpointId = session ? session->GetCheckpointId() : "";
+    args.CommitId = GetReadCommitId(checkpointId);
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
+        args.Error = ErrorInvalidCheckpoint(checkpointId);
         return false;
     }
 
