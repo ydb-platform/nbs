@@ -70,12 +70,12 @@ function render() {
         return (sz / 1024 / 1024 / 1024 / 1024).toFixed(1) + 'TiB';
     }
 
-    function buildEntry(tabletId, name, node, isExternal) {
+    function buildEntry(tabletId, name, node) {
         var li = document.createElement('li');
         var entry = document.createElement('span');
         entry.className = 'dv-entry';
 
-        var isDir = !isExternal && node.type == 2;
+        var isDir = node.type == 2;
 
         var toggle = document.createElement('span');
         toggle.className = 'dv-toggle';
@@ -84,7 +84,7 @@ function render() {
 
         var icon = document.createElement('span');
         icon.className = 'dv-icon';
-        icon.textContent = isExternal ? '🔀' : nodeTypeIcon(node.type);
+        icon.textContent = nodeTypeIcon(node.type);
         entry.appendChild(icon);
 
         var nameEl = document.createElement('span');
@@ -92,23 +92,21 @@ function render() {
         nameEl.textContent = name;
         entry.appendChild(nameEl);
 
-        if (!isExternal) {
-            var meta = document.createElement('span');
-            meta.className = 'dv-meta';
-            var parts = ['#' + node.id];
-            if (node.size) parts.push(formatSize(node.size));
-            meta.textContent = '(' + parts.join(', ') + ')';
-            entry.appendChild(meta);
-        }
+        var meta = document.createElement('span');
+        meta.className = 'dv-meta';
+        var parts = ['#' + node.id];
+        if (node.size) parts.push(formatSize(node.size));
+        meta.textContent = '(' + parts.join(', ') + ')';
+        entry.appendChild(meta);
 
-        if (isExternal || node.shardId) {
-            var sid = isExternal ? node.shardId : node.shardId;
+        if (node.shardId) {
             var badge = document.createElement('span');
             badge.className = 'dv-shard-badge';
-            badge.style.background = getShardColor(sid);
-            badge.title = 'shard: ' + sid
+            badge.style.background = getShardColor(node.shardId);
+            badge.title = 'shard: ' + node.shardId
                 + (node.shardNodeName ? ', node: ' + node.shardNodeName : '');
-            badge.textContent = sid.length > 16 ? sid.slice(-12) : sid;
+            badge.textContent = node.shardId.length > 16
+                ? node.shardId.slice(-12) : node.shardId;
             entry.appendChild(badge);
         }
 
@@ -178,8 +176,7 @@ function render() {
                     return;
                 }
                 data.entries.forEach(function(e) {
-                    ul.appendChild(
-                        buildEntry(tabletId, e.name, e.node, e.external));
+                    ul.appendChild(buildEntry(tabletId, e.name, e.node));
                 });
             })
             .catch(function(err) {

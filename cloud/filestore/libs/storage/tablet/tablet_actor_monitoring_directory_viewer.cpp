@@ -67,42 +67,48 @@ void DumpDirViewerJson(
     const TVector<IIndexTabletDatabase::TNode>& nodes)
 {
     NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
+
+    Y_DEBUG_ABORT_UNLESS(refs.size() == nodes.size());
+    if (refs.size() != nodes.size()) {
+        writer.BeginObject();
+        writer.WriteKey("error");
+        writer.WriteString(TStringBuilder() << "refs size " << refs.size()
+            << " != nodes size " << nodes.size());
+        writer.EndObject();
+        return;
+    }
+
     writer.BeginObject();
     writer.WriteKey("entries");
     writer.BeginList();
 
-    size_t j = 0;
-    for (const auto& ref: refs) {
+    for (ui32 i = 0; i < refs.size(); ++i) {
+        const auto& ref = refs[i];
+        const auto& node = nodes[i];
+
         writer.BeginObject();
         writer.WriteKey("name");
         writer.WriteString(ref.Name);
 
-        writer.WriteKey("node");
-        writer.BeginObject();
-        if (ref.ShardId) {
-            writer.WriteKey("external");
-            writer.WriteBool(true);
+        {
+            writer.WriteKey("node");
+            writer.BeginObject();
             writer.WriteKey("shardId");
             writer.WriteString(ref.ShardId);
             writer.WriteKey("shardNodeName");
             writer.WriteString(ref.ShardNodeName);
-        } else {
-            writer.WriteKey("external");
-            writer.WriteBool(true);
 
-            if (j < nodes.size()) {
-                const auto& node = nodes[j++];
-                writer.WriteKey("id");
-                writer.WriteULongLong(node.NodeId);
-                writer.WriteKey("type");
-                writer.WriteULongLong(node.Attrs.GetType());
-                writer.WriteKey("size");
-                writer.WriteULongLong(node.Attrs.GetSize());
-                writer.WriteKey("mode");
-                writer.WriteULongLong(node.Attrs.GetMode());
-            }
+            writer.WriteKey("id");
+            writer.WriteULongLong(node.NodeId);
+            writer.WriteKey("type");
+            writer.WriteULongLong(node.Attrs.GetType());
+            writer.WriteKey("size");
+            writer.WriteULongLong(node.Attrs.GetSize());
+            writer.WriteKey("mode");
+            writer.WriteULongLong(node.Attrs.GetMode());
+
+            writer.EndObject();
         }
-        writer.EndObject();
 
         writer.EndObject();
     }
@@ -429,6 +435,7 @@ void TIndexTabletActor::HandleHttpInfo_DirViewer(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
+    ui32 shardNo = 0;
     if (params.Has("nodeId")) {
         ui64 nodeId = RootNodeId;
         if (const auto& p = params.Get("nodeId"); !TryFromString(p, nodeId)) {
@@ -440,6 +447,8 @@ void TIndexTabletActor::HandleHttpInfo_DirViewer(
                         << "can't parse nodeId: " << p))));
             return;
         }
+
+        shardNo = ExtractShardNo(nodeId);
 
         ExecuteTx<TDirViewerListDir>(
             ctx,
@@ -522,6 +531,16 @@ void TIndexTabletActor::CompleteTx_DirViewerListDir(
     const TActorContext& ctx,
     TTxIndexTablet::TDirViewerListDir& args)
 {
+    if (HasError(args.Error)) {
+        TStringStream out;
+        out << JsonError(args.Error);
+        NCloud::Reply(
+            ctx,
+            *args.RequestInfo,
+            std::make_unique<NMon::TEvRemoteJsonInfoRes>(std::move(out.Str())));
+        return;
+    }
+
     auto actor = std::make_unique<TGetAttrsActor>(
         args.RequestInfo,
         std::move(args.Refs),
