@@ -87,8 +87,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReadData,                           __VA_ARGS__)                       \
                                                                                \
     xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
-                                                                               \
-    xxx(DirViewerListDir,                   __VA_ARGS__)                       \
 // FILESTORE_TABLET_RO_TRANSACTIONS
 
 #define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
@@ -3243,39 +3241,6 @@ struct TTxIndexTablet
             NextCookie.clear();
         }
    };
-
-    //
-    // DirViewerListDir
-    //
-
-    struct TDirViewerListDir
-        : TTxIndexTabletBase
-        , TErrorAware
-        , TIndexStateNodeUpdates
-    {
-        const TRequestInfoPtr RequestInfo;
-        const ui64 NodeId;
-
-        ui64 CommitId = InvalidCommitId;
-        TVector<IIndexTabletDatabase::TNodeRef> Refs;
-        TVector<IIndexTabletDatabase::TNode> Nodes;
-
-        TDirViewerListDir(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId)
-            : RequestInfo(std::move(requestInfo))
-            , NodeId(nodeId)
-        {}
-
-        void Clear() override
-        {
-            TErrorAware::Clear();
-            TIndexStateNodeUpdates::Clear();
-            CommitId = InvalidCommitId;
-            Refs.clear();
-            Nodes.clear();
-        }
-    };
 };
 
 }   // namespace NCloud::NFileStore::NStorage

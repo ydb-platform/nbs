@@ -63,16 +63,16 @@ void OutputTemplate(
 
 void DumpDirViewerJson(
     IOutputStream& out,
-    const TVector<IIndexTabletDatabase::TNodeRef>& refs,
-    const TVector<IIndexTabletDatabase::TNode>& nodes)
+    const TVector<TString>& names,
+    const TVector<NProto::TNodeAttr>& nodes)
 {
     NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
 
-    Y_DEBUG_ABORT_UNLESS(refs.size() == nodes.size());
-    if (refs.size() != nodes.size()) {
+    Y_DEBUG_ABORT_UNLESS(names.size() == nodes.size());
+    if (names.size() != nodes.size()) {
         writer.BeginObject();
         writer.WriteKey("error");
-        writer.WriteString(TStringBuilder() << "refs size " << refs.size()
+        writer.WriteString(TStringBuilder() << "names size " << names.size()
             << " != nodes size " << nodes.size());
         writer.EndObject();
         return;
@@ -82,30 +82,36 @@ void DumpDirViewerJson(
     writer.WriteKey("entries");
     writer.BeginList();
 
-    for (ui32 i = 0; i < refs.size(); ++i) {
-        const auto& ref = refs[i];
+    for (ui32 i = 0; i < names.size(); ++i) {
+        const auto& name = names[i];
         const auto& node = nodes[i];
 
         writer.BeginObject();
         writer.WriteKey("name");
-        writer.WriteString(ref.Name);
+        writer.WriteString(name);
 
         {
             writer.WriteKey("node");
             writer.BeginObject();
             writer.WriteKey("shardId");
-            writer.WriteString(ref.ShardId);
+            writer.WriteString(node.GetShardFileSystemId());
             writer.WriteKey("shardNodeName");
-            writer.WriteString(ref.ShardNodeName);
+            writer.WriteString(node.GetShardNodeName());
 
             writer.WriteKey("id");
-            writer.WriteULongLong(node.NodeId);
+
+            //
+            // JSON parsers may convert numbers to double so not all our 64 bit
+            // values would fit.
+            //
+
+            writer.WriteString(ToString(node.GetId()));
             writer.WriteKey("type");
-            writer.WriteULongLong(node.Attrs.GetType());
+            writer.WriteULongLong(node.GetType());
             writer.WriteKey("size");
-            writer.WriteULongLong(node.Attrs.GetSize());
+            writer.WriteULongLong(node.GetSize());
             writer.WriteKey("mode");
-            writer.WriteULongLong(node.Attrs.GetMode());
+            writer.WriteULongLong(node.GetMode());
 
             writer.EndObject();
         }
@@ -139,16 +145,16 @@ TString JsonError(const NProto::TError& e)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetAttrsActor final: public TActorBootstrapped<TGetAttrsActor>
+class TDirViewerActor final: public TActorBootstrapped<TDirViewerActor>
 {
 private:
-    // Original request
     const TRequestInfoPtr RequestInfo;
-    TVector<IIndexTabletDatabase::TNodeRef> Refs;
-    TVector<IIndexTabletDatabase::TNode> Nodes;
-
-    // Filesystem-specific params
     const TString LogTag;
+    const ui64 NodeId;
+    const TString DirectoryShardId;
+
+    TVector<TString> Names;
+    TVector<NProto::TNodeAttr> Nodes;
 
     // Response data
     ui32 Responses = 0;
@@ -157,18 +163,24 @@ private:
     TVector<TString> Cookie2ShardId;
 
 public:
-    TGetAttrsActor(
+    TDirViewerActor(
         TRequestInfoPtr requestInfo,
-        TVector<IIndexTabletDatabase::TNodeRef> refs,
-        TVector<IIndexTabletDatabase::TNode> nodes,
-        TString logTag);
+        TString logTag,
+        ui64 nodeId,
+        TString directoryShardId);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
 
+    void ListNodes(const TActorContext& ctx);
+
     void GetNodeAttrsBatch(const TActorContext& ctx);
+
+    void HandleListNodesResponse(
+        const TEvService::TEvListNodesResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleGetNodeAttrBatchResponse(
         const TEvIndexTablet::TEvGetNodeAttrBatchResponse::TPtr& ev,
@@ -184,27 +196,49 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetAttrsActor::TGetAttrsActor(
+TDirViewerActor::TDirViewerActor(
         TRequestInfoPtr requestInfo,
-        TVector<IIndexTabletDatabase::TNodeRef> refs,
-        TVector<IIndexTabletDatabase::TNode> nodes,
-        TString logTag)
+        TString logTag,
+        ui64 nodeId,
+        TString directoryShardId)
     : RequestInfo(std::move(requestInfo))
-    , Refs(std::move(refs))
-    , Nodes(std::move(nodes))
     , LogTag(std::move(logTag))
+    , NodeId(nodeId)
+    , DirectoryShardId(std::move(directoryShardId))
 {
 }
 
-void TGetAttrsActor::Bootstrap(const TActorContext& ctx)
+void TDirViewerActor::Bootstrap(const TActorContext& ctx)
 {
-    GetNodeAttrsBatch(ctx);
+    ListNodes(ctx);
     Become(&TThis::StateWork);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetAttrsActor::GetNodeAttrsBatch(const TActorContext& ctx)
+void TDirViewerActor::ListNodes(const TActorContext& ctx)
+{
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Executing ListNodes in directory shard %s for %lu",
+        LogTag.c_str(),
+        DirectoryShardId.c_str(),
+        NodeId);
+
+    auto request = std::make_unique<TEvService::TEvListNodesRequest>();
+    request->Record.SetFileSystemId(DirectoryShardId);
+    request->Record.SetNodeId(NodeId);
+    request->Record.SetUnsafe(true);
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(true);
+
+    // forward request through tablet proxy
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDirViewerActor::GetNodeAttrsBatch(const TActorContext& ctx)
 {
     struct TBatch
     {
@@ -213,18 +247,18 @@ void TGetAttrsActor::GetNodeAttrsBatch(const TActorContext& ctx)
     };
     THashMap<TString, TBatch> batches;
 
-    for (ui32 i = 0; i < Refs.size(); ++i) {
-        const auto& ref = Refs[i];
-        if (ref.ShardId) {
-            auto& batch = batches[ref.ShardId];
+    for (ui32 i = 0; i < Nodes.size(); ++i) {
+        const auto& node = Nodes[i];
+        if (node.GetShardFileSystemId()) {
+            auto& batch = batches[node.GetShardFileSystemId()];
             if (batch.Record.GetHeaders().GetSessionId().empty()) {
                 auto* headers = batch.Record.MutableHeaders();
                 headers->SetBehaveAsDirectoryTablet(false);
-                batch.Record.SetFileSystemId(ref.ShardId);
+                batch.Record.SetFileSystemId(node.GetShardFileSystemId());
                 batch.Record.SetNodeId(RootNodeId);
             }
 
-            batch.Record.AddNames(ref.ShardNodeName);
+            batch.Record.AddNames(node.GetShardNodeName());
             batch.NodeIndices.push_back(i);
         } else {
             ++Responses;
@@ -268,7 +302,39 @@ void TGetAttrsActor::GetNodeAttrsBatch(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetAttrsActor::HandleGetNodeAttrBatchResponse(
+void TDirViewerActor::HandleListNodesResponse(
+    const TEvService::TEvListNodesResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        HandleError(ctx, *msg->Record.MutableError());
+        return;
+    }
+
+    auto& names = *msg->Record.MutableNames();
+    auto& nodes = *msg->Record.MutableNodes();
+    if (names.size() != nodes.size()) {
+        HandleError(ctx, MakeError(E_INVALID_STATE, TStringBuilder()
+            << "names size " << names.size()
+            << " != nodes size " << nodes.size()));
+        return;
+    }
+
+    Names.resize(names.size());
+    Nodes.resize(nodes.size());
+    for (int i = 0; i < names.size(); ++i) {
+        Names[i] = std::move(names[i]);
+        Nodes[i] = std::move(nodes[i]);
+    }
+
+    GetNodeAttrsBatch(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDirViewerActor::HandleGetNodeAttrBatchResponse(
     const TEvIndexTablet::TEvGetNodeAttrBatchResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -286,7 +352,7 @@ void TGetAttrsActor::HandleGetNodeAttrBatchResponse(
                 if (names) {
                     names << ", ";
                 }
-                names << Refs[i].Name.Quote();
+                names << Names[i].Quote();
             }
 
             LOG_ERROR(
@@ -338,7 +404,7 @@ void TGetAttrsActor::HandleGetNodeAttrBatchResponse(
         if (responseIter->GetError().GetCode() == E_FS_NOENT) {
             LOG_WARN(ctx, TFileStoreComponents::TABLET_WORKER, TStringBuilder()
                 << "Node not found in shard: "
-                << Refs[i].Name.Quote() << ", ShardId: "
+                << Names[i].Quote() << ", ShardId: "
                 << shardId << ", Error: "
                 << FormatError(responseIter->GetError()).Quote());
             ++responseIter;
@@ -350,15 +416,14 @@ void TGetAttrsActor::HandleGetNodeAttrBatchResponse(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
                 "Failed to GetNodeAttr from shard: %s, %s, %s",
-                Refs[i].Name.Quote().c_str(),
+                Names[i].Quote().c_str(),
                 shardId.c_str(),
                 FormatError(responseIter->GetError()).Quote().c_str());
             ++responseIter;
             continue;
         }
 
-        ConvertAttrsToNode(responseIter->GetNode(), &Nodes[i].Attrs);
-        Nodes[i].NodeId = responseIter->GetNode().GetId();
+        Nodes[i] = std::move(*responseIter->MutableNode());
 
         ++responseIter;
     }
@@ -372,7 +437,7 @@ void TGetAttrsActor::HandleGetNodeAttrBatchResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetAttrsActor::HandlePoisonPill(
+void TDirViewerActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -382,10 +447,10 @@ void TGetAttrsActor::HandlePoisonPill(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetAttrsActor::ReplyAndDie(const TActorContext& ctx)
+void TDirViewerActor::ReplyAndDie(const TActorContext& ctx)
 {
     TStringStream out;
-    DumpDirViewerJson(out, Refs, Nodes);
+    DumpDirViewerJson(out, Names, Nodes);
     NCloud::Reply(
         ctx,
         *RequestInfo,
@@ -393,7 +458,7 @@ void TGetAttrsActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
-void TGetAttrsActor::HandleError(
+void TDirViewerActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
@@ -408,10 +473,12 @@ void TGetAttrsActor::HandleError(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetAttrsActor::StateWork)
+STFUNC(TDirViewerActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(TEvService::TEvListNodesResponse, HandleListNodesResponse);
 
         HFunc(
             TEvIndexTablet::TEvGetNodeAttrBatchResponse,
@@ -435,117 +502,51 @@ void TIndexTabletActor::HandleHttpInfo_DirViewer(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    ui32 shardNo = 0;
-    if (params.Has("nodeId")) {
-        ui64 nodeId = RootNodeId;
-        if (const auto& p = params.Get("nodeId"); !TryFromString(p, nodeId)) {
-            NCloud::Reply(
-                ctx,
-                *requestInfo,
-                std::make_unique<NMon::TEvRemoteJsonInfoRes>(
-                    JsonError(MakeError(E_ARGUMENT, TStringBuilder()
-                        << "can't parse nodeId: " << p))));
-            return;
-        }
-
-        shardNo = ExtractShardNo(nodeId);
-
-        ExecuteTx<TDirViewerListDir>(
-            ctx,
-            std::move(requestInfo),
-            nodeId);
-        return;
-    }
-
-    TStringStream out;
-    DumpDirViewerPage(out, TabletID(), RootNodeId);
-
-    NCloud::Reply(
-        ctx,
-        *requestInfo,
-        std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool TIndexTabletActor::ValidateTx_DirViewerListDir(
-    const TActorContext& ctx,
-    TTxIndexTablet::TDirViewerListDir& args)
-{
-    Y_UNUSED(ctx);
-    args.CommitId = GetCurrentCommitId();
-    return true;
-}
-
-bool TIndexTabletActor::PrepareTx_DirViewerListDir(
-    const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
-    TTxIndexTablet::TDirViewerListDir& args)
-{
-    Y_UNUSED(ctx);
-
-    TMaybe<IIndexTabletDatabase::TNode> node;
-    if (!ReadNode(db, args.NodeId, args.CommitId, node)) {
-        return false;   // not ready
-    }
-
-    if (!node || node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
-        args.Error = ErrorInvalidTarget(args.NodeId);
-        return true;
-    }
-
-    TString next;
-    bool ready = ReadNodeRefs(
-        db,
-        args.NodeId,
-        args.CommitId,
-        {} /* cookie */,
-        args.Refs,
-        Max<ui32>() /* maxBytes */,
-        &next,
-        false /* noAutoPrecharge */,
-        NProto::LNSM_NAME_ONLY);
-
-    if (!ready) {
-        return false;
-    }
-
-    args.Nodes.reserve(args.Refs.size());
-    for (const auto& ref: args.Refs) {
-        if (ref.ShardId) {
-            args.Nodes.emplace_back();
-            continue;
-        }
-        TMaybe<IIndexTabletDatabase::TNode> child;
-        if (!ReadNode(db, ref.ChildNodeId, args.CommitId, child)) {
-            return false;
-        }
-        TABLET_VERIFY(child);
-        args.Nodes.emplace_back(std::move(child.GetRef()));
-    }
-
-    return true;
-}
-
-void TIndexTabletActor::CompleteTx_DirViewerListDir(
-    const TActorContext& ctx,
-    TTxIndexTablet::TDirViewerListDir& args)
-{
-    if (HasError(args.Error)) {
+    if (!params.Has("nodeId")) {
         TStringStream out;
-        out << JsonError(args.Error);
+        DumpDirViewerPage(out, TabletID(), RootNodeId);
+
         NCloud::Reply(
             ctx,
-            *args.RequestInfo,
-            std::make_unique<NMon::TEvRemoteJsonInfoRes>(std::move(out.Str())));
+            *requestInfo,
+            std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
         return;
     }
 
-    auto actor = std::make_unique<TGetAttrsActor>(
-        args.RequestInfo,
-        std::move(args.Refs),
-        std::move(args.Nodes),
-        LogTag);
+    ui64 nodeId = RootNodeId;
+    TString directoryShardId = GetFileSystem().GetFileSystemId();
+    if (const auto& p = params.Get("nodeId"); !TryFromString(p, nodeId)) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+                JsonError(MakeError(E_ARGUMENT, TStringBuilder()
+                    << "can't parse nodeId: " << p))));
+        return;
+    }
+
+    ui32 shardNo = ExtractShardNo(nodeId);
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    if (shardNo > static_cast<ui32>(shardIds.size())) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+                JsonError(MakeError(E_ARGUMENT, TStringBuilder()
+                    << "incorrect shardNo: " << shardNo << " > "
+                    << shardIds.size()))));
+        return;
+    }
+
+    if (shardNo) {
+        directoryShardId = shardIds[shardNo - 1];
+    }
+
+    auto actor = std::make_unique<TDirViewerActor>(
+        std::move(requestInfo),
+        LogTag,
+        nodeId,
+        std::move(directoryShardId));
 
     NCloud::Register(ctx, std::move(actor));
 }
