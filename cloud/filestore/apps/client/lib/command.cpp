@@ -36,6 +36,8 @@ constexpr TDuration WaitTimeout = TDuration::Seconds(1);
 
 const TString DefaultServerConfigFile = "/Berkanavt/nfs-server/cfg/nfs-client.txt";
 const TString DefaultVhostConfigFile = "/Berkanavt/nfs-vhost/cfg/nfs-client.txt";
+const TString DefaultVhostLocalConfigFile =
+    "/Berkanavt/nfs-vhost/cfg/nfs-client-local.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nfs-server/cfg/nfs-iam.txt";
 const TString DefaultIamTokenFile = "~/.nfs-client/iam-token";
 
@@ -122,7 +124,9 @@ TCommand::TCommand()
             << "config file name. Default is "
             << DefaultServerConfigFile
             << " and "
-            << DefaultVhostConfigFile)
+            << DefaultVhostConfigFile
+            << " and "
+            << DefaultVhostLocalConfigFile)
         .OptionalArgument("STR")
         .StoreResult(&ConfigFile);
 
@@ -211,6 +215,8 @@ void TCommand::Init()
         configFile = DefaultServerConfigFile;
     } else if (NFs::Exists(DefaultVhostConfigFile)) {
         configFile = DefaultVhostConfigFile;
+    } else if (NFs::Exists(DefaultVhostLocalConfigFile)) {
+        configFile = DefaultVhostLocalConfigFile;
     }
 
     if (configFile) {
