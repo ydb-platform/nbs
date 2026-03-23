@@ -50,6 +50,13 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue("bench-report.json")
         .StoreResult(&ReportPath);
 
+    opts.AddLongOption(
+            "mpi-cross-rank-stealing",
+            "allow stealers to steal from producers on other MPI ranks "
+            "(requires shared filesystem)")
+        .NoArgument()
+        .SetFlag(&MpiCrossRankStealing);
+
     TOptsParseResultException(&opts, argc, argv);
 }
 

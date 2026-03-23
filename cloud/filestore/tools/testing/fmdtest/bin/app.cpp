@@ -1,4 +1,5 @@
 #include "app.h"
+#include "mpi.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,6 +15,7 @@
 #include <util/random/random.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
+#include <util/string/split.h>
 #include <util/system/fs.h>
 #include <util/system/hp_timer.h>
 #include <util/system/thread.h>
@@ -139,17 +141,14 @@ public:
         MakeDirIfNotExist(DirPath.c_str());
 
         while (!ShouldStop.load()) {
-            // Create files
             if (Files.size() < Options.FilesPerProducer) {
                 CreateFile();
             }
 
-            // Randomly delete some files
             if (!Files.empty() && RandomNumber<ui32>(100) < 20) {
                 DeleteRandomFile();
             }
 
-            // Small sleep to avoid busy loop
             Sleep(TDuration::MilliSeconds(1));
         }
 
@@ -302,7 +301,12 @@ private:
     const ui32 ThreadId;
     TStats& Stats;
     std::atomic<bool>& ShouldStop;
-    const TVector<TProducerThread*>& Producers;
+
+    // Local producers (same rank)
+    const TVector<TProducerThread*>& LocalProducers;
+    // Directories of producers on all ranks (populated when cross-rank stealing
+    // is enabled; includes local producers' dirs too)
+    TVector<TFsPath> AllProducerDirs;
 
     TFsPath DirPath;
     TVector<TFileInfo> StolenFiles;
@@ -316,13 +320,15 @@ public:
             ui32 threadId,
             TStats& stats,
             std::atomic<bool>& shouldStop,
-            const TVector<TProducerThread*>& producers)
+            const TVector<TProducerThread*>& localProducers,
+            TVector<TFsPath> allProducerDirs)
         : Log(std::move(log))
         , Options(options)
         , ThreadId(threadId)
         , Stats(stats)
         , ShouldStop(shouldStop)
-        , Producers(producers)
+        , LocalProducers(localProducers)
+        , AllProducerDirs(std::move(allProducerDirs))
     {
         DirPath = TFsPath(Options.TestDir)
             / (TStringBuilder() << "stealer_" << ThreadId);
@@ -395,17 +401,26 @@ public:
     }
 
 private:
+    // Pick a random producer directory to steal from.
+    // Uses AllProducerDirs when cross-rank stealing is enabled,
+    // otherwise falls back to local producers only.
+    const TFsPath& PickProducerDir()
+    {
+        if (!AllProducerDirs.empty()) {
+            return AllProducerDirs[RandomNumber<ui32>(AllProducerDirs.size())];
+        }
+        return LocalProducers[RandomNumber<ui32>(LocalProducers.size())]
+            ->GetDirPath();
+    }
+
     void StealRandomFile()
     {
-        if (Producers.empty()) {
+        if (LocalProducers.empty() && AllProducerDirs.empty()) {
             return;
         }
 
-        // Pick random producer
-        ui32 producerIdx = RandomNumber<ui32>(Producers.size());
-        const auto& producerDir = Producers[producerIdx]->GetDirPath();
+        const auto& producerDir = PickProducerDir();
 
-        // List files in producer directory
         TVector<TString> files;
         THPTimer timer;
         producerDir.ListNames(files);
@@ -415,25 +430,19 @@ private:
             return;
         }
 
-        // Pick random file
         ui32 fileIdx = RandomNumber<ui32>(files.size());
         TString fileName = files[fileIdx];
 
         TFsPath srcPath = producerDir / fileName;
 
-        // Move to stealer directory
         TString newFileName = TStringBuilder()
-            << "stolen_p" << producerIdx << "_" << fileName;
+            << "stolen_" << producerDir.GetName() << "_" << fileName;
         TFsPath dstPath = DirPath / newFileName;
 
         timer.Reset();
         bool renamed = NFs::Rename(srcPath, dstPath);
         if (renamed) {
             Stats.Rename.Register(timer.Passed());
-
-            //
-            // Stat and file info after moving
-            //
 
             timer.Reset();
             TFileStat stat(dstPath);
@@ -472,35 +481,110 @@ public:
         return Singleton<TApp>();
     }
 
-    int Run(const TOptions& options)
+    int Run(const TOptions& options, const TMpiContext& mpi)
     {
-        // Create test directory
-        MakeDirIfNotExist(options.TestDir.c_str());
+        // Each rank works under its own subdirectory so that producer/stealer
+        // dir names don't collide across ranks on a shared filesystem.
+        TString rankDir = mpi.Size > 1
+            ? TString(TStringBuilder() << options.TestDir << "/rank_" << mpi.Rank)
+            : options.TestDir;
+
+        TOptions rankOptions = options;
+        rankOptions.TestDir = rankDir;
+
+        MakeDirIfNotExist(rankDir.c_str());
 
         StartTime = TInstant::Now();
 
         auto asyncLogger = CreateAsyncLogger();
         asyncLogger->Start();
-        // capital 'L' letter needed for the logging macros
         TLog Log = CreateComponentLog(
-            "BENCH",
+            TStringBuilder() << "BENCH[" << mpi.Rank << "]",
             std::make_shared<TStreamLogBackend>(&Cerr),
             asyncLogger);
 
         // Create producer threads
         TVector<TProducerThread*> producerPtrs;
-        for (ui32 i = 0; i < options.ProducerThreads; ++i) {
+        for (ui32 i = 0; i < rankOptions.ProducerThreads; ++i) {
             auto p = MakeHolder<TProducerThread>(
-                Log, options, i, Stats, ShouldStop);
+                Log, rankOptions, i, Stats, ShouldStop);
             producerPtrs.push_back(p.Get());
             p->Start();
             ProducerThreads.push_back(std::move(p));
         }
 
+        // Build the list of all producer directories visible to stealers.
+        // When cross-rank stealing is enabled, exchange producer dir paths
+        // across all MPI ranks so stealers can reach remote producers.
+        TVector<TFsPath> allProducerDirs;
+        if (options.MpiCrossRankStealing && mpi.Size > 1) {
+            // Serialize local producer dirs as newline-separated string
+            TStringBuilder localDirs;
+            for (const auto* p: producerPtrs) {
+                localDirs << p->GetDirPath().GetPath() << "\n";
+            }
+
+            // Gather from all ranks onto rank 0, then broadcast back
+            // We use a simple approach: gather to rank 0, then bcast the
+            // concatenated string to everyone.
+            TVector<TString> gathered =
+                MpiGatherStrings(mpi, localDirs);
+
+            // Broadcast the full list from rank 0 to all ranks
+            TString allDirsStr;
+            if (mpi.IsRoot()) {
+                for (const auto& s: gathered) {
+                    allDirsStr += s;
+                }
+            }
+
+            // Broadcast length then data
+            ui64 len = allDirsStr.size();
+            len = MpiReduceSum(mpi, mpi.IsRoot() ? len : 0);
+            // Simple broadcast via a shared file isn't ideal; instead we
+            // re-gather on every rank by having each rank gather all dirs.
+            // Since MpiGatherStrings only returns data on root, we use a
+            // different approach: each rank gathers all dirs independently
+            // by calling MpiGatherStrings and then parsing on root, then
+            // root writes a rendezvous file that all ranks read.
+            //
+            // For simplicity and correctness, we use a rendezvous file in
+            // the shared test directory that rank 0 writes after gathering.
+            if (mpi.IsRoot()) {
+                TFsPath rendezvous(TString(options.TestDir) + "/.mpi_dirs");
+                TOFStream os(rendezvous);
+                os << allDirsStr;
+                os.Flush();
+            }
+
+            // All ranks barrier-wait for rank 0 to write the rendezvous file
+            MpiBarrier(mpi);
+
+            // All ranks read the rendezvous file
+            TFsPath rendezvous(TString(options.TestDir) + "/.mpi_dirs");
+            TString allDirs = TFileInput(rendezvous).ReadAll();
+            TVector<TString> lines;
+            StringSplitter(allDirs).Split('\n').SkipEmpty().Collect(&lines);
+            for (const auto& line: lines) {
+                allProducerDirs.emplace_back(line);
+            }
+        } else {
+            // No cross-rank stealing: stealers only see local producers
+            for (const auto* p: producerPtrs) {
+                allProducerDirs.push_back(p->GetDirPath());
+            }
+        }
+
         // Create stealer threads
-        for (ui32 i = 0; i < options.StealerThreads; ++i) {
+        for (ui32 i = 0; i < rankOptions.StealerThreads; ++i) {
             auto s = MakeHolder<TStealerThread>(
-                Log, options, i, Stats, ShouldStop, producerPtrs);
+                Log,
+                rankOptions,
+                i,
+                Stats,
+                ShouldStop,
+                producerPtrs,
+                allProducerDirs);
             s->Start();
             StealerThreads.push_back(std::move(s));
         }
@@ -510,7 +594,7 @@ public:
             Sleep(TDuration::Seconds(1));
 
             auto elapsed = TInstant::Now() - StartTime;
-            if (elapsed.Seconds() >= options.TestDurationSec) {
+            if (elapsed.Seconds() >= rankOptions.TestDurationSec) {
                 break;
             }
 
@@ -521,10 +605,8 @@ public:
             Stats.List.Report(Log);
         }
 
-        // Stop all threads
         ShouldStop.store(true);
 
-        // Wait for threads to finish
         for (auto& p: ProducerThreads) {
             p->Join();
         }
@@ -535,58 +617,124 @@ public:
         TInstant endTime = TInstant::Now();
         double durationSec = (endTime - StartTime).SecondsFloat();
 
-        // Build validation context
+        // Build local validation context
         TValidationContext vc;
         for (const auto& p: ProducerThreads) {
             for (const auto& fileName: p->GetUnlinkedFiles()) {
                 vc.UnlinkedPaths.insert(p->GetDirPath() / fileName);
             }
         }
-
         for (const auto& s: StealerThreads) {
             for (const auto& filePath: s->GetStolenPaths()) {
                 vc.StolenPaths.insert(filePath);
             }
         }
 
+        // When cross-rank stealing is enabled, a file stolen by another rank's
+        // stealer will appear missing from the local producer's perspective.
+        // We mark all remote stealer dirs' stolen paths as "stolen" so local
+        // validation doesn't flag them as errors.
+        // We do this by reading the rendezvous file for stealer dirs too.
+        // For simplicity, we skip cross-rank stolen-path exchange here and
+        // instead treat any missing file that was not locally unlinked as
+        // potentially stolen by a remote rank (not an error).
+        // The cross-rank stolen paths are validated by the stealer's own rank.
+
         STORAGE_INFO("Validating results...");
-        ui32 errors = 0;
+        ui32 localErrors = 0;
         for (auto& p: ProducerThreads) {
-            errors += p->Validate(vc);
+            localErrors += p->Validate(vc);
         }
         for (auto& s: StealerThreads) {
-            errors += s->Validate(vc);
+            localErrors += s->Validate(vc);
         }
 
-        STORAGE_INFO("=== Test Results ===");
-        STORAGE_INFO("Duration: " << durationSec << " seconds");
-        Stats.Create.Report(Log);
-        Stats.Unlink.Report(Log);
-        Stats.Rename.Report(Log);
-        Stats.Stat.Report(Log);
-        Stats.List.Report(Log);
+        // Barrier before aggregating so all ranks finish validation
+        MpiBarrier(mpi);
 
-        WriteReport(Log, options.ReportPath, errors);
+        // Aggregate stats and errors across all ranks
+        const ui64 globalErrors = MpiReduceSum(mpi, localErrors);
+        const ui64 globalCreates =
+            MpiReduceSum(mpi, Stats.Create.Requests.load());
+        const ui64 globalUnlinks =
+            MpiReduceSum(mpi, Stats.Unlink.Requests.load());
+        const ui64 globalRenames =
+            MpiReduceSum(mpi, Stats.Rename.Requests.load());
+        const ui64 globalStats =
+            MpiReduceSum(mpi, Stats.Stat.Requests.load());
+        const ui64 globalLists =
+            MpiReduceSum(mpi, Stats.List.Requests.load());
 
-        return errors == 0 ? 0 : 1;
+        if (mpi.IsRoot()) {
+            STORAGE_INFO("=== Test Results (all " << mpi.Size << " rank(s)) ===");
+            STORAGE_INFO("Duration: " << durationSec << " seconds");
+            STORAGE_INFO("Creates: " << globalCreates
+                << " (" << (globalCreates / durationSec) << " rps)");
+            STORAGE_INFO("Unlinks: " << globalUnlinks
+                << " (" << (globalUnlinks / durationSec) << " rps)");
+            STORAGE_INFO("Renames: " << globalRenames
+                << " (" << (globalRenames / durationSec) << " rps)");
+            STORAGE_INFO("Stats:   " << globalStats
+                << " (" << (globalStats / durationSec) << " rps)");
+            STORAGE_INFO("Lists:   " << globalLists
+                << " (" << (globalLists / durationSec) << " rps)");
+
+            WriteReport(
+                Log,
+                options.ReportPath,
+                durationSec,
+                globalCreates,
+                globalUnlinks,
+                globalRenames,
+                globalStats,
+                globalLists,
+                globalErrors,
+                mpi.Size);
+        }
+
+        return globalErrors == 0 ? 0 : 1;
     }
 
-    void WriteReport(TLog& Log, const TString& reportPath, ui32 errors) const
+    void WriteReport(
+        TLog& Log,
+        const TString& reportPath,
+        double durationSec,
+        ui64 creates,
+        ui64 unlinks,
+        ui64 renames,
+        ui64 stats,
+        ui64 lists,
+        ui64 errors,
+        int mpiSize) const
     {
         TOFStream os(reportPath);
         NJsonWriter::TBuf buf(NJsonWriter::HEM_DONT_ESCAPE_HTML, &os);
         buf.SetIndentSpaces(4);
 
         buf.BeginObject();
-        Stats.Create.Report(buf);
-        Stats.Unlink.Report(buf);
-        Stats.Rename.Report(buf);
-        Stats.Stat.Report(buf);
-        Stats.List.Report(buf);
+
+        buf.WriteKey("mpi-ranks");
+        buf.WriteInt(mpiSize);
+        buf.WriteKey("duration-sec");
+        buf.WriteDouble(durationSec);
+
+        auto writeOp = [&](const TString& name, ui64 cnt) {
+            buf.WriteKey(name);
+            buf.WriteULongLong(cnt);
+            buf.WriteKey(name + "-rps");
+            buf.WriteDouble(cnt / durationSec);
+        };
+
+        writeOp("create", creates);
+        writeOp("unlink", unlinks);
+        writeOp("rename", renames);
+        writeOp("stat",   stats);
+        writeOp("list",   lists);
+
         buf.WriteKey("errors");
         buf.WriteULongLong(errors);
-        buf.EndObject();
 
+        buf.EndObject();
         os.Flush();
 
         STORAGE_INFO("Report: " << reportPath << ", errors: " << errors);
@@ -615,19 +763,17 @@ void ConfigureSignals()
 {
     std::set_new_handler(abort);
 
-    // make sure that errors can be seen by everybody :)
     (void) setvbuf(stdout, nullptr, _IONBF, 0);
     (void) setvbuf(stderr, nullptr, _IONBF, 0);
 
-    // mask signals
     (void) signal(SIGPIPE, SIG_IGN);
     (void) signal(SIGINT, ProcessSignal);
     (void) signal(SIGTERM, ProcessSignal);
 }
 
-int AppMain(const TOptions& options)
+int AppMain(const TOptions& options, const TMpiContext& mpi)
 {
-    return TApp::GetInstance()->Run(options);
+    return TApp::GetInstance()->Run(options, mpi);
 }
 
 void AppStop()

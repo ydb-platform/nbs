@@ -16,6 +16,10 @@ struct TOptions
     ui32 FileSize = 4096;
     TString ReportPath;
 
+    // When true, stealers may steal files from producers on other MPI ranks.
+    // Requires a shared filesystem visible to all ranks under the same path.
+    bool MpiCrossRankStealing = true;
+
     void Parse(int argc, char** argv);
 };
 
