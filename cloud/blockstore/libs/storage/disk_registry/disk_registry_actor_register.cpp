@@ -179,7 +179,7 @@ void TDiskRegistryActor::CompleteAddAgent(
     response->Record.MutableControlPlaneRequestNumber()
         ->SetDiskRegistryGeneration(Executor()->Generation());
     response->Record.MutableControlPlaneRequestNumber()->SetRequestNumber(
-        TakeRequestNumber());
+        NextRequestNumber());
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 

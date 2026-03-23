@@ -350,7 +350,7 @@ private:
 
     void ProcessPathsToAttach(const NActors::TActorContext& ctx);
 
-    ui64 TakeRequestNumber();
+    ui64 NextRequestNumber();
 
 private:
     STFUNC(StateBoot);
