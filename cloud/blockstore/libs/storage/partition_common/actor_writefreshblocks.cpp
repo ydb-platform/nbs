@@ -363,7 +363,7 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
         ReportAddFreshBlocksResultedInError(
             "unexpected error in AddFreshBlocksResponse",
             {{"error", FormatError(ev->Get()->GetError())},
-             {"tabletId", ToString(TabletId)}});
+             {"tabletId", TabletId}});
     }
 
     ReplyAllAndDie(ctx, {});
