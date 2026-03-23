@@ -292,7 +292,7 @@ private:
     TLog Log;
 
     ITaskQueuePtr Executor;
-    TDuration FormatTimeout;
+    TDuration SecureEraseTimeout;
     TDuration AdminCmdTimeout;
 
     void FormatImpl(
@@ -325,7 +325,7 @@ private:
             .ses = ses
         };
 
-        NVMeFormatImpl(device, nsId, format, FormatTimeout);
+        NVMeFormatImpl(device, nsId, format, SecureEraseTimeout);
     }
 
     void DeallocateImpl(const TString& path, ui64 offsetBytes, ui64 sizeBytes)
@@ -362,11 +362,11 @@ public:
     TNvmeManager(
         ILoggingServicePtr logging,
         ITaskQueuePtr executor,
-        TDuration formatTimeout,
+        TDuration secureEraseTimeout,
         TDuration adminCmdTimeout)
         : Logging(std::move(logging))
         , Executor(executor)
-        , FormatTimeout(formatTimeout)
+        , SecureEraseTimeout(secureEraseTimeout)
         , AdminCmdTimeout(adminCmdTimeout)
     {}
 
@@ -659,13 +659,13 @@ public:
 
 INvmeManagerPtr CreateNvmeManager(
     ILoggingServicePtr logging,
-    TDuration formatTimeout,
+    TDuration secureEraseTimeout,
     TDuration adminCmdTimeout)
 {
     return std::make_shared<TNvmeManager>(
         std::move(logging),
         CreateLongRunningTaskExecutor("SecureErase"),
-        formatTimeout,
+        secureEraseTimeout,
         adminCmdTimeout);
 }
 
