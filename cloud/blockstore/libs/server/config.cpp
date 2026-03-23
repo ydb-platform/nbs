@@ -107,6 +107,7 @@ constexpr TDuration Seconds(int s)
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
     xxx(VhostWriteZeroesEnabled,     bool,                   true             )\
+    xxx(DropDiscardRequests,         bool,                   false            )\
     xxx(VhostOptimalIoSize,          ui32,                   0                )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
     xxx(EncryptZeroPolicy,                                                     \

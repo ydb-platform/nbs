@@ -139,6 +139,7 @@ public:
     NProto::TChecksumFlags GetChecksumFlags() const;
     bool GetVhostDiscardEnabled() const;
     bool GetVhostWriteZeroesEnabled() const;
+    bool GetDropDiscardRequests() const;
     ui32 GetVhostOptimalIoSize() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;
