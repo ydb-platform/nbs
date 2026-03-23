@@ -121,6 +121,7 @@ struct TEndpointCounters
     TDynamicCounters::TCounterPtr QueuedRequests;
     TDynamicCounters::TCounterPtr ActiveRequests;
     TDynamicCounters::TCounterPtr CompletedRequests;
+    TDynamicCounters::TCounterPtr AbortedRequests;
     TDynamicCounters::TCounterPtr ThrottledRequests;
 
     TDynamicCounters::TCounterPtr ActiveSend;
@@ -128,18 +129,14 @@ struct TEndpointCounters
     TDynamicCounters::TCounterPtr ActiveRead;
     TDynamicCounters::TCounterPtr ActiveWrite;
 
-    TDynamicCounters::TCounterPtr SendErrors;
-    TDynamicCounters::TCounterPtr RecvErrors;
-    TDynamicCounters::TCounterPtr ReadErrors;
-    TDynamicCounters::TCounterPtr WriteErrors;
-
-    TDynamicCounters::TCounterPtr CompletionErrors;
+    TDynamicCounters::TCounterPtr Errors;
 
     void Register(TDynamicCounters& counters)
     {
         QueuedRequests = counters.GetCounter("QueuedRequests");
         ActiveRequests = counters.GetCounter("ActiveRequests");
         CompletedRequests = counters.GetCounter("CompletedRequests", true);
+        AbortedRequests = counters.GetCounter("AbortedRequests", true);
         ThrottledRequests = counters.GetCounter("ThrottledRequests", true);
 
         ActiveSend = counters.GetCounter("ActiveSend");
@@ -147,12 +144,7 @@ struct TEndpointCounters
         ActiveRead = counters.GetCounter("ActiveRead");
         ActiveWrite = counters.GetCounter("ActiveWrite");
 
-        SendErrors = counters.GetCounter("SendErrors", true);
-        RecvErrors = counters.GetCounter("RecvErrors", true);
-        ReadErrors = counters.GetCounter("ReadErrors", true);
-        WriteErrors = counters.GetCounter("WriteErrors", true);
-
-        CompletionErrors = counters.GetCounter("CompletionErrors", true);
+        Errors = counters.GetCounter("Errors", true);
     }
 
     void RequestEnqueued()
@@ -173,6 +165,10 @@ struct TEndpointCounters
     void RecvRequestCompleted()
     {
         ActiveRecv->Dec();
+    }
+
+    void RequestStarted()
+    {
         ActiveRequests->Inc();
     }
 
@@ -204,47 +200,28 @@ struct TEndpointCounters
     void SendResponseCompleted()
     {
         ActiveSend->Dec();
-        ActiveRequests->Dec();
-        CompletedRequests->Inc();
-    }
-
-    void RecvRequestError()
-    {
-        ActiveRecv->Dec();
-        RecvErrors->Inc();
-    }
-
-    void ReadRequestError()
-    {
-        ActiveRead->Dec();
-        ActiveRequests->Dec();
-        ReadErrors->Inc();
-    }
-
-    void WriteResponseError()
-    {
-        ActiveWrite->Dec();
-        ActiveRequests->Dec();
-        WriteErrors->Inc();
-    }
-
-    void SendResponseError()
-    {
-        ActiveSend->Dec();
-        ActiveRequests->Dec();
-        SendErrors->Inc();
     }
 
     void RequestThrottled()
     {
-        ActiveSend->Dec();
-        ActiveRequests->Dec();
         ThrottledRequests->Inc();
     }
 
-    void CompletionError()
+    void RequestCompleted()
     {
-        CompletionErrors->Inc();
+        ActiveRequests->Dec();
+        CompletedRequests->Inc();
+    }
+
+    void RequestAborted()
+    {
+        ActiveRequests->Dec();
+        AbortedRequests->Inc();
+    }
+
+    void Error()
+    {
+        Errors->Inc();
     }
 };
 
@@ -337,22 +314,21 @@ private:
     // called from CQ thread
     void HandleQueuedRequests() noexcept;
     void RecvRequest(TRecvWr* recv) noexcept;
-    void RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status) noexcept;
+    void RecvRequestCompleted(TRecvWr* recv) noexcept;
     void ReadRequestData(TRequestPtr req, TSendWr* send) noexcept;
-    void ReadRequestDataCompleted(TSendWr* send, ibv_wc_status status) noexcept;
+    void ReadRequestDataCompleted(TSendWr* send) noexcept;
     void ExecuteRequest(TRequestPtr req) noexcept;
     void WriteResponseData(TRequestPtr req, TSendWr* send) noexcept;
-    void WriteResponseDataCompleted(
-        TSendWr* send,
-        ibv_wc_status status) noexcept;
+    void WriteResponseDataCompleted(TSendWr* send) noexcept;
     void SendResponse(TRequestPtr req, TSendWr* send) noexcept;
-    void SendResponseCompleted(TSendWr* send, ibv_wc_status status) noexcept;
+    void SendResponseCompleted(TSendWr* send) noexcept;
     void FreeRequest(TRequestPtr req, TSendWr* send) noexcept;
     void RejectRequest(
         TRequestPtr req,
         ui32 status,
         TStringBuf message) noexcept;
     int ValidateCompletion(ibv_wc* wc) noexcept;
+    TString HandleSendError(TSendWr* send) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,9 +357,11 @@ TServerSession::TServerSession(
         return TStringBuilder() << "[" << Id << "] " << msg;
     });
 
-    RDMA_INFO("start session " << Verbs->GetPeer(Connection.get())
-        << " [send_magic=" << Hex(SendMagic, HF_FULL)
-        << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
+    RDMA_INFO(
+        "start session [host=" << Verbs->GetPeer(Connection.get())
+                               << " send_magic=" << Hex(SendMagic, HF_FULL)
+                               << " recv_magic=" << Hex(RecvMagic, HF_FULL)
+                               << "]");
 }
 
 void TServerSession::CreateQP()
@@ -513,7 +491,7 @@ void TServerSession::Stop() noexcept
     try {
         Verbs->Disconnect(Connection.get());
 
-    } catch (const TServiceError &e) {
+    } catch (const TServiceError& e) {
         RDMA_ERROR("unable to disconnect session");
     }
 }
@@ -596,7 +574,7 @@ bool TServerSession::HandleCompletionEvents() noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(e.what());
-        Counters->CompletionError();
+        Counters->Error();
         return true;
     }
 
@@ -614,7 +592,7 @@ void TServerSession::Flush() noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR("flush error: " << e.what());
-        Counters->CompletionError();
+        Counters->Error();
     }
 }
 
@@ -631,19 +609,27 @@ int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
 
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
         if (wc->status == IBV_WC_WR_FLUSH_ERR) {
-            SendQueue.Push(&SendWrs[id.Index]);
+            HandleSendError(&SendWrs[id.Index]);
+            return -1;
+        }
+
+        if (wc->status != IBV_WC_SUCCESS) {
+            auto opcode = HandleSendError(&SendWrs[id.Index]);
+            RDMA_ERROR(
+                opcode << " " << id << " "
+                       << NVerbs::GetStatusString(wc->status));
+            Counters->Error();
             return -1;
         }
 
         if (wc->opcode != IBV_WC_SEND && wc->opcode != IBV_WC_RDMA_READ &&
             wc->opcode != IBV_WC_RDMA_WRITE)
         {
+            auto opcode = HandleSendError(&SendWrs[id.Index]);
             RDMA_ERROR(
-                "completion error " << NVerbs::PrintCompletion(wc)
-                                    << ": unexpected opcode");
-
-            Counters->CompletionError();
-            SendQueue.Push(&SendWrs[id.Index]);
+                opcode << " " << id << " unexpected opcode "
+                       << NVerbs::GetOpcodeName(wc->opcode));
+            Counters->Error();
             return -1;
         }
 
@@ -652,16 +638,26 @@ int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
 
     if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
         if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+            Counters->RecvRequestCompleted();
+            RecvQueue.Push(&RecvWrs[id.Index]);
+            return -1;
+        }
+
+        if (wc->status != IBV_WC_SUCCESS) {
+            RDMA_ERROR(
+                "RECV " << id << " " << NVerbs::GetStatusString(wc->status));
+            Counters->Error();
+            Counters->RecvRequestCompleted();
             RecvQueue.Push(&RecvWrs[id.Index]);
             return -1;
         }
 
         if (wc->opcode != IBV_WC_RECV) {
             RDMA_ERROR(
-                "completion error " << NVerbs::PrintCompletion(wc)
-                                    << ": unexpected opcode");
-
-            Counters->CompletionError();
+                "RECV " << id << " unexpected opcode "
+                        << NVerbs::GetOpcodeName(wc->opcode));
+            Counters->Error();
+            Counters->RecvRequestCompleted();
             RecvQueue.Push(&RecvWrs[id.Index]);
             return -1;
         }
@@ -669,11 +665,8 @@ int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
         return 0;
     }
 
-    RDMA_ERROR(
-        "completion error " << NVerbs::PrintCompletion(wc)
-                            << ": unexpected wr_id");
-
-    Counters->CompletionError();
+    RDMA_ERROR("unexpected wr_id " << NVerbs::PrintCompletion(wc));
+    Counters->Error();
     return -1;
 }
 
@@ -682,8 +675,7 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
 {
     auto id = TWorkRequestId(wc->wr_id);
 
-    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
-        << " completed with " << NVerbs::GetStatusString(wc->status));
+    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id << " completed");
 
     if (ValidateCompletion(wc)) {
         return;
@@ -691,19 +683,19 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
 
     switch (wc->opcode) {
         case IBV_WC_RECV:
-            RecvRequestCompleted(&RecvWrs[id.Index], wc->status);
+            RecvRequestCompleted(&RecvWrs[id.Index]);
             break;
 
         case IBV_WC_RDMA_READ:
-            ReadRequestDataCompleted(&SendWrs[id.Index], wc->status);
+            ReadRequestDataCompleted(&SendWrs[id.Index]);
             break;
 
         case IBV_WC_RDMA_WRITE:
-            WriteResponseDataCompleted(&SendWrs[id.Index], wc->status);
+            WriteResponseDataCompleted(&SendWrs[id.Index]);
             break;
 
         case IBV_WC_SEND:
-            SendResponseCompleted(&SendWrs[id.Index], wc->status);
+            SendResponseCompleted(&SendWrs[id.Index]);
             break;
 
         default:
@@ -723,46 +715,56 @@ void TServerSession::RecvRequest(TRecvWr* recv) noexcept
     } catch (const TServiceError& e) {
         RDMA_ERROR(
             "RECV " << TWorkRequestId(recv->wr.wr_id) << " " << e.what());
-        Counters->RecvRequestError();
+        Counters->Error();
         return;
     }
 
     Counters->RecvRequestStarted();
 }
 
+TString TServerSession::HandleSendError(TSendWr* send) noexcept
+{
+    auto opcode = "SEND";
+    auto req = ExtractRequest(send);
+    if (req) {
+        if (req->State == ERequestState::ReadRequestData) {
+            Counters->ReadRequestCompleted();
+            opcode = "READ";
+        }
+        if (req->State == ERequestState::WriteResponseData) {
+            Counters->WriteResponseCompleted();
+            opcode = "WRITE";
+        }
+    }
+    Counters->RequestAborted();
+    FreeRequest(std::move(req), send);
+    return opcode;
+}
+
 void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 {
+    if (req == nullptr) {
+        return;
+    }
     RecvBuffers.ReleaseBuffer(req->InBuffer);
     SendBuffers.ReleaseBuffer(req->OutBuffer);
     MaxInflightBytes += req->In.Length + req->Out.Length;
-
     SendQueue.Push(send);
 }
 
-void TServerSession::RecvRequestCompleted(
-    TRecvWr* recv,
-    ibv_wc_status status) noexcept
+void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
 {
-    if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR(
-            "RECV " << TWorkRequestId(recv->wr.wr_id) << ": "
-                    << NVerbs::GetStatusString(status));
-
-        Counters->RecvRequestError();
-        RecvQueue.Push(recv);   // can't post, because QP is in error state
-        return;
-    }
-
     const auto* msg = recv->Message<TRequestMessage>();
     const int version = ParseMessageHeader(msg);
 
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR(
             "RECV " << TWorkRequestId(recv->wr.wr_id)
-            << "incompatible protocol version " << version
-            << " != " << static_cast<int>(RDMA_PROTO_VERSION));
+                    << " incompatible protocol version " << version
+                    << ", expected " << static_cast<int>(RDMA_PROTO_VERSION));
 
-        Counters->RecvRequestError();
+        Counters->RecvRequestCompleted();
+        Counters->Error();
         RecvRequest(recv);  // should always be posted
         return;
     }
@@ -775,39 +777,49 @@ void TServerSession::RecvRequestCompleted(
     req->In = msg->In;
     req->Out = msg->Out;
 
-    Counters->RecvRequestCompleted();
+    LWTRACK(
+        RecvRequestCompleted,
+        req->CallContext->LWOrbit,
+        req->CallContext->RequestId);
+
     RecvRequest(recv);  // should always be posted
+    Counters->RecvRequestCompleted();
+    Counters->RequestStarted();
 
     if (req->In.Length > Config->MaxBufferSize) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": request exceeds maximum supported size "
+            << " request exceeds maximum supported size "
             << req->In.Length << " > " << Config->MaxBufferSize);
 
-        Counters->RecvRequestError();
+        Counters->Error();
+        RejectRequest(
+            std::move(req),
+            RDMA_PROTO_INVALID_REQUEST,
+            "request is too big");
         return;
     }
 
     if (req->Out.Length > Config->MaxBufferSize) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": request exceeds maximum supported size "
+            << " response exceeds maximum supported size "
             << req->Out.Length << " > " << Config->MaxBufferSize);
 
-        Counters->RecvRequestError();
+        Counters->Error();
+        RejectRequest(
+            std::move(req),
+            RDMA_PROTO_INVALID_REQUEST,
+            "response is too big");
         return;
     }
-
-    LWTRACK(
-        RecvRequestCompleted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
 
     if (MaxInflightBytes < req->In.Length + req->Out.Length) {
         RDMA_INFO(LogThrottler.Inflight, Log, "reached inflight limit, "
             << MaxInflightBytes << "/" << Config->MaxInflightBytes
             << " bytes available");
 
-        return RejectRequest(std::move(req), RDMA_PROTO_THROTTLED,
-            "throttled");
+        Counters->RequestThrottled();
+        RejectRequest(std::move(req), RDMA_PROTO_THROTTLED, "throttled");
+        return;
     }
 
     MaxInflightBytes -= req->In.Length + req->Out.Length;
@@ -884,7 +896,7 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
     } catch (const TServiceError& e) {
         RDMA_ERROR(
             "READ " << TWorkRequestId(wr.wr_id) << " " << e.what());
-        Counters->ReadRequestError();
+        Counters->Error();
         FreeRequest(std::move(req), send);
         return;
     }
@@ -899,25 +911,14 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
     StoreRequest(send, std::move(req));
 }
 
-void TServerSession::ReadRequestDataCompleted(
-    TSendWr* send,
-    ibv_wc_status status) noexcept
+void TServerSession::ReadRequestDataCompleted(TSendWr* send) noexcept
 {
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        RDMA_WARN("READ " << TWorkRequestId(send->wr.wr_id)
-            << ": request is empty");
-        return;
-    }
-
-    if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR(
-            "READ " << TWorkRequestId(send->wr.wr_id) << ": "
-                    << NVerbs::GetStatusString(status));
-
-        Counters->ReadRequestError();
-        FreeRequest(std::move(req), send);
+        RDMA_WARN(
+            "RDMA_READ " << TWorkRequestId(send->wr.wr_id)
+                         << " request is empty");
         return;
     }
 
@@ -985,7 +986,8 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
     } catch (const TServiceError& e) {
         RDMA_ERROR(
             "WRITE " << TWorkRequestId(wr.wr_id) << " " << e.what());
-        Counters->WriteResponseError();
+        Counters->Error();
+        Counters->RequestAborted();
         FreeRequest(std::move(req), send);
         return;
     }
@@ -1000,25 +1002,14 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
     StoreRequest(send, std::move(req));
 }
 
-void TServerSession::WriteResponseDataCompleted(
-    TSendWr* send,
-    ibv_wc_status status) noexcept
+void TServerSession::WriteResponseDataCompleted(TSendWr* send) noexcept
 {
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        RDMA_WARN("WRITE " << TWorkRequestId(send->wr.wr_id)
-            << ": request is empty");
-        return;
-    }
-
-    if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR(
-            TStringBuilder() << "WRITE " << TWorkRequestId(send->wr.wr_id)
-                             << ": " << NVerbs::GetStatusString(status));
-
-        Counters->WriteResponseError();
-        FreeRequest(std::move(req), send);
+        RDMA_WARN(
+            "RDMA_WRITE " << TWorkRequestId(send->wr.wr_id)
+                          << " request is empty");
         return;
     }
 
@@ -1054,7 +1045,8 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
     } catch (const TServiceError& e) {
         RDMA_ERROR(
             "SEND " << TWorkRequestId(send->wr.wr_id) << " " << e.what());
-        Counters->SendResponseError();
+        Counters->Error();
+        Counters->RequestAborted();
         FreeRequest(std::move(req), send);
         return;
     }
@@ -1069,39 +1061,25 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
     StoreRequest(send, std::move(req));
 }
 
-void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status) noexcept
+void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
 {
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        RDMA_WARN("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": request is empty");
-        return;
-    }
-
-    if (status != IBV_WC_SUCCESS) {
-        RDMA_ERROR(
-            TStringBuilder() << "SEND " << TWorkRequestId(send->wr.wr_id)
-                             << ": " << NVerbs::GetStatusString(status));
-
-        Counters->SendResponseError();
-        FreeRequest(std::move(req), send);
+        RDMA_WARN(
+            "SEND " << TWorkRequestId(send->wr.wr_id) << " request is empty");
         return;
     }
 
     Y_ABORT_UNLESS(req->State == ERequestState::SendResponse);
-
-    if (req->Status == RDMA_PROTO_THROTTLED) {
-        Counters->RequestThrottled();
-    } else {
-        Counters->SendResponseCompleted();
-    }
 
     LWTRACK(
         SendResponseCompleted,
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
 
+    Counters->SendResponseCompleted();
+    Counters->RequestCompleted();
     FreeRequest(std::move(req), send);
 }
 
@@ -1265,7 +1243,7 @@ private:
         try {
             return Verbs->GetConnectionEvent(EventChannel.get());
 
-        } catch (const TServiceError &e) {
+        } catch (const TServiceError& e) {
             RDMA_ERROR(e.what());
             return NVerbs::NullPtr;
         }
@@ -1579,8 +1557,9 @@ void TServer::Start()
         ConnectionPoller = std::make_unique<TConnectionPoller>(Verbs, this, Log);
         ConnectionPoller->Start();
 
-    } catch (const TServiceError &e) {
+    } catch (const TServiceError& e) {
         RDMA_ERROR("unable to start server: " << e.what());
+        Counters->Error();
         Stop();
     }
 }
@@ -1630,6 +1609,7 @@ IServerEndpointPtr TServer::StartEndpoint(
 
     } catch (const TServiceError& e) {
         RDMA_ERROR("unable to start endpoint: " << e.what());
+        Counters->Error();
         return nullptr;
     }
 }
@@ -1679,30 +1659,24 @@ void TServer::DumpHtml(IOutputStream& out) const
                     TABLEH() { out << "ActiveRequests"; }
                     TABLEH() { out << "CompletedRequests"; }
                     TABLEH() { out << "ThrottledRequests"; }
+                    TABLEH() { out << "AbortedRequests"; }
                     TABLEH() { out << "ActiveSend"; }
                     TABLEH() { out << "ActiveRecv"; }
                     TABLEH() { out << "ActiveRead"; }
                     TABLEH() { out << "ActiveWrite"; }
-                    TABLEH() { out << "SendErrors"; }
-                    TABLEH() { out << "RecvErrors"; }
-                    TABLEH() { out << "ReadErrors"; }
-                    TABLEH() { out << "WriteErrors"; }
-                    TABLEH() { out << "CompletionErrors"; }
+                    TABLEH() { out << "Errors"; }
                 }
                 TABLER() {
                     TABLED() { out << Counters->QueuedRequests->Val(); }
                     TABLED() { out << Counters->ActiveRequests->Val(); }
                     TABLED() { out << Counters->CompletedRequests->Val(); }
                     TABLED() { out << Counters->ThrottledRequests->Val(); }
+                    TABLED() { out << Counters->AbortedRequests->Val(); }
                     TABLED() { out << Counters->ActiveSend->Val(); }
                     TABLED() { out << Counters->ActiveRecv->Val(); }
                     TABLED() { out << Counters->ActiveRead->Val(); }
                     TABLED() { out << Counters->ActiveWrite->Val(); }
-                    TABLED() { out << Counters->SendErrors->Val(); }
-                    TABLED() { out << Counters->RecvErrors->Val(); }
-                    TABLED() { out << Counters->ReadErrors->Val(); }
-                    TABLED() { out << Counters->WriteErrors->Val(); }
-                    TABLED() { out << Counters->CompletionErrors->Val(); }
+                    TABLED() { out << Counters->Errors->Val(); }
                 }
             }
         }
@@ -1773,7 +1747,7 @@ void TServer::DumpHtml(IOutputStream& out) const
 // implements IConnectionEventHandler
 void TServer::HandleConnectionEvent(rdma_cm_event* event) noexcept
 {
-    RDMA_DEBUG(NVerbs::GetEventName(event->event) << " received");
+    RDMA_INFO(NVerbs::GetEventName(event->event) << " received");
 
     switch (event->event) {
         case RDMA_CM_EVENT_ADDR_RESOLVED:
@@ -1821,8 +1795,7 @@ void TServer::HandleConnectRequest(
 {
     const rdma_conn_param* connectParams = &event->param.conn;
 
-    RDMA_DEBUG("validate " << Verbs->GetPeer(event->id) << " "
-        << NVerbs::PrintConnectionParams(connectParams));
+    RDMA_DEBUG("validate " << Verbs->GetPeer(event->id));
 
     if (connectParams->private_data == nullptr ||
         connectParams->private_data_len < sizeof(TConnectMessage) ||
@@ -1874,9 +1847,7 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
             .rnr_retry_count = 7,
         };
 
-        RDMA_INFO(session->Log, "accept "
-            << NVerbs::PrintConnectionParams(&acceptParams));
-
+        RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
         Verbs->Accept(event->id, &acceptParams);
 
         // transfer session ownership to the poller
@@ -1884,6 +1855,7 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(e.what())
+        Counters->Error();
         Reject(event->id, RDMA_PROTO_FAIL);
     }
 }
@@ -1893,16 +1865,20 @@ void TServer::HandleConnected(TServerSession* session) noexcept
     try {
         session->Start();
         session->CompletionPoller->Attach(session);
+        RDMA_INFO(session->Log, "connected");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(e.what());
+        Counters->Error();
         session->Stop();
     }
 }
 
 void TServer::HandleDisconnected(TServerSession* session) noexcept
 {
-    RDMA_INFO(session->Log, "disconnect")
+    RDMA_INFO(
+        session->Log,
+        "disconnect from " << Verbs->GetPeer(session->Connection.get()));
     session->Flush();
 }
 
@@ -1921,6 +1897,7 @@ void TServer::Reject(rdma_cm_id* id, int status) noexcept
         Verbs->Reject(id, &rejectMsg, sizeof(TRejectMessage));
 
     } catch (const TServiceError& e) {
+        Counters->Error();
         RDMA_ERROR(e.what());
     }
 }

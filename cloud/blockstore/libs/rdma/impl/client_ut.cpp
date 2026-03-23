@@ -270,6 +270,13 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
 
+        testContext->PostSend = [&](auto* qp, auto* wr) {
+            Y_UNUSED(qp);
+            const auto* msg =
+                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+            testContext->ReqIds.push_back(msg->ReqId);
+        };
+
         struct TResponse
         {
             bool Received = false;
@@ -566,6 +573,13 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto clientEndpoint = client->StartEndpoint(
             "::",
             10020);
+
+        testContext->PostSend = [&](auto* qp, auto* wr) {
+            Y_UNUSED(qp);
+            const auto* msg =
+                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+            testContext->ReqIds.push_back(msg->ReqId);
+        };
 
         auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
 
