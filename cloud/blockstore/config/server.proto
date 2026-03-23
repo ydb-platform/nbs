@@ -286,9 +286,8 @@ message TServerConfig
     // network-ssd and network-hdd disks.
     optional bool VhostWriteZeroesEnabled = 131;
 
-    // Enable WriteZeroes feature for vhost devices. Applies to
-    // network-ssd and network-hdd disks.
-    optional bool VhostWriteZeroesEnabled = 132;
+    // Drop all discard requests without processing them.
+    optional bool DropDiscardRequests = 132;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

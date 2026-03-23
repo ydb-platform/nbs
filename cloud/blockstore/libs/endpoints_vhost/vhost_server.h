@@ -20,6 +20,7 @@ IEndpointListenerPtr CreateVhostEndpointListener(
     const NProto::TChecksumFlags& checksumFlags,
     bool vhostDiscardEnabled,
     bool vhostWriteZeroesEnabled,
+    bool dropDiscardRequests,
     ui32 maxZeroBlocksSubRequestSize,
     ui32 optimalIoSize);
 

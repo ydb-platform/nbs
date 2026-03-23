@@ -108,6 +108,7 @@ constexpr TDuration Seconds(int s)
     xxx(VhostDiscardEnabled,         bool,                   false            )\
     xxx(VhostDiscardOnlyEnabled,     bool,                   false            )\
     xxx(VhostWriteZeroesEnabled,     bool,                   false            )\
+    xxx(DropDiscardRequests,         bool,                   false            )\
     xxx(VhostOptimalIoSize,          ui32,                   0                )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
     xxx(EncryptZeroPolicy,                                                     \
