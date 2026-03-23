@@ -20,16 +20,17 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
     auto session = FindSession(clientId, sessionId, sessionSeqNo);
 
-    const auto makeResponse = [&sessionSeqNo, this](const TSessionPtr& session)
+    const auto& cloudId = Store.GetCloudId();
+    const auto& folderId = Store.GetFolderId();
+    const auto& fsId = Store.GetFileSystemId();
+
+    const auto makeResponse = [&sessionSeqNo, &cloudId, &folderId, &fsId, this](
+                                  const TSessionPtr& session)
     {
         NProto::TCreateSessionResponse response;
         session->GetInfo(*response.MutableSession(), sessionSeqNo);
 
         *response.MutableFileStore() = Store;
-
-        const auto& cloudId = Store.GetCloudId();
-        const auto& folderId = Store.GetFolderId();
-        const auto& fsId = Store.GetFileSystemId();
 
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
@@ -44,7 +45,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetGuestPageCacheDisabled(
             Config->GetGuestPageCacheDisabled());
         features->SetExtendedAttributesDisabled(
-            Config->GetExtendedAttributesDisabled());
+            Config->GetExtendedAttributesDisabled(cloudId, folderId, fsId));
         features->SetServerWriteBackCacheEnabled(
             Config->GetServerWriteBackCacheEnabled());
         features->SetMaxBackground(Config->GetMaxBackground());
@@ -69,7 +70,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
                 Config->GetDirectoryHandlesTableSize());
         }
         features->SetGuestHandleKillPrivV2Enabled(
-            Config->GetGuestHandleKillPrivV2Enabled());
+            Config->GetGuestHandleKillPrivV2Enabled(cloudId, folderId, fsId));
         return response;
     };
 
@@ -108,7 +109,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetMaxHandlePerSessionCount(),
         Config->GetOpenNodeByHandleEnabled(),
         Config->GetNodeCleanupBatchSize(),
-        Config->GetSnapshotsDirEnabled(),
+        Config->GetSnapshotsDirEnabled(cloudId, folderId, fsId),
         Config->GetSnapshotsDirRefreshInterval(),
         Logging);
 
