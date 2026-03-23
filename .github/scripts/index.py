@@ -117,10 +117,11 @@ def get_ttl_for_prefix(prefix, ttl_config):
     return False
 
 
-def ensure_content_type(s3, bucket, key, filename_patterns, content_type, apply_changes):
+def ensure_content_type(
+    s3, bucket, key, filename_patterns, content_type, apply_changes
+):
     if not any(
-        re.fullmatch(pattern, os.path.basename(key))
-        for pattern in filename_patterns
+        re.fullmatch(pattern, os.path.basename(key)) for pattern in filename_patterns
     ):
         return
 
