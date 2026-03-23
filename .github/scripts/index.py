@@ -12,8 +12,8 @@ from jinja2 import Environment, FileSystemLoader
 from datetime import datetime, timedelta, timezone
 
 FORCE_TEXT_PLAIN_PATTERNS = (
-    r"stdout.*",
-    r"stderr.*",
+    r".*stdout.*",
+    r".*stderr.*",
 )
 
 
