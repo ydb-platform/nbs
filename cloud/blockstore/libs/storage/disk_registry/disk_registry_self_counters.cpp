@@ -33,8 +33,8 @@ void TDiskRegistrySelfCounters::Init(
     PathsInAttachedState = counters->GetCounter("PathsInAttachedState");
     PathsInAttachingState = counters->GetCounter("PathsInAttachingState");
     PathsInDetachedState = counters->GetCounter("PathsInDetachedState");
-    NotAttachedDevicesInOnlineState =
-        counters->GetCounter("NotAttachedDevicesInOnlineState");
+    DetachedDevicesInOnlineState =
+        counters->GetCounter("DetachedDevicesInOnlineState");
 
     DisksInWarningState = counters->GetCounter("DisksInWarningState");
     MaxWarningTime = counters->GetCounter("MaxWarningTime");

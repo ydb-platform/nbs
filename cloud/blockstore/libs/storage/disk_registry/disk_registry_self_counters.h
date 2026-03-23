@@ -65,7 +65,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr PathsInAttachedState;
     TCounterPtr PathsInAttachingState;
     TCounterPtr PathsInDetachedState;
-    TCounterPtr NotAttachedDevicesInOnlineState;
+    TCounterPtr DetachedDevicesInOnlineState;
 
     TCounterPtr DisksInWarningState;
     TCounterPtr MaxWarningTime;

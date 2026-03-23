@@ -4352,7 +4352,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     ui64 pathsInAttachedState = 0;
     ui64 pathsInAttachingState = 0;
     ui64 pathsInDetachedState = 0;
-    ui64 notAttachedDevicesInOnlineState = 0;
+    ui64 detachedDevicesInOnlineState = 0;
 
     for (const auto& agent: AgentList.GetAgents()) {
         const auto agentState = agent.GetState();
@@ -4429,7 +4429,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                     if (StorageConfig->GetAttachDetachPathsEnabled() &&
                         deviceShouldBeAttached && !deviceIsAttached)
                     {
-                        ++notAttachedDevicesInOnlineState;
+                        ++detachedDevicesInOnlineState;
                     }
                     break;
                 }
@@ -4652,8 +4652,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.PathsInAttachedState->Set(pathsInAttachedState);
     SelfCounters.PathsInAttachingState->Set(pathsInAttachingState);
     SelfCounters.PathsInDetachedState->Set(pathsInDetachedState);
-    SelfCounters.NotAttachedDevicesInOnlineState->Set(
-        notAttachedDevicesInOnlineState);
+    SelfCounters.DetachedDevicesInOnlineState->Set(
+        detachedDevicesInOnlineState);
 
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
