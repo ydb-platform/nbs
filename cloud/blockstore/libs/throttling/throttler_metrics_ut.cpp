@@ -80,8 +80,8 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         Throttler->Unregister("Disk-1", "Client-2");
         UNIT_ASSERT(!instanceCounter->FindCounter("UsedQuota"));
         UNIT_ASSERT(!instanceCounter->FindCounter("MaxUsedQuota"));
-        UNIT_ASSERT(TotalGroup->FindCounter("UsedQuota"));
-        UNIT_ASSERT(TotalGroup->FindCounter("MaxUsedQuota"));
+        UNIT_ASSERT(!TotalGroup->FindCounter("UsedQuota"));
+        UNIT_ASSERT(!TotalGroup->FindCounter("MaxUsedQuota"));
     }
 
     Y_UNIT_TEST_F(ShouldTrim, TThrottlerFixture)
@@ -99,8 +99,8 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         Throttler->Trim(Timer->Now() + TRIM_THROTTLER_METRICS_INTERVAL);
         UNIT_ASSERT(!instanceCounter->FindCounter("UsedQuota"));
         UNIT_ASSERT(!instanceCounter->FindCounter("MaxUsedQuota"));
-        UNIT_ASSERT(TotalGroup->FindCounter("UsedQuota"));
-        UNIT_ASSERT(TotalGroup->FindCounter("MaxUsedQuota"));
+        UNIT_ASSERT(!TotalGroup->FindCounter("UsedQuota"));
+        UNIT_ASSERT(!TotalGroup->FindCounter("MaxUsedQuota"));
     }
 
     Y_UNIT_TEST_F(ShouldRemountTrim, TThrottlerFixture)
@@ -131,8 +131,8 @@ Y_UNIT_TEST_SUITE(TThrottlerBaseTests)
         Throttler->Trim(Timer->Now() + TRIM_THROTTLER_METRICS_INTERVAL);
         UNIT_ASSERT(!instanceCounter->FindCounter("UsedQuota"));
         UNIT_ASSERT(!instanceCounter->FindCounter("MaxUsedQuota"));
-        UNIT_ASSERT(TotalGroup->FindCounter("UsedQuota"));
-        UNIT_ASSERT(TotalGroup->FindCounter("MaxUsedQuota"));
+        UNIT_ASSERT(!TotalGroup->FindCounter("UsedQuota"));
+        UNIT_ASSERT(!TotalGroup->FindCounter("MaxUsedQuota"));
     }
 
     Y_UNIT_TEST_F(ShouldUpdateQuota, TThrottlerFixture)

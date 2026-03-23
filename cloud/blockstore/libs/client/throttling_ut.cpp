@@ -1258,9 +1258,6 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             auto maxUsedQuotaCounter = totalCounters
                 ->GetSubgroup("component", "server")
                 ->FindCounter(maxUsedQuota);
-            auto maxUsedQuotaCounterSSD = totalCounters
-                ->GetSubgroup("component", "server")->GetSubgroup("type", "ssd")
-                ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter = getCounterFunction(
                 volumeId,
                 instanceId,
@@ -1271,11 +1268,11 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 maxUsedQuota);
 
             UNIT_ASSERT_C(
-                usedQuotaCounter,
-                "UsedQuota counter should be initialized");
+                !usedQuotaCounter,
+                "UsedQuota counter should not be initialized");
             UNIT_ASSERT_C(
-                maxUsedQuotaCounter,
-                "MaxUsedQuota counters should be initialized");
+                !maxUsedQuotaCounter,
+                "MaxUsedQuota counters should not be initialized");
             UNIT_ASSERT_C(
                 !usedQuotaVolumeCounter,
                 "UsedQuota counter should not be initialized");
@@ -1513,11 +1510,11 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 maxUsedQuota);
 
             UNIT_ASSERT_C(
-                usedQuotaCounter,
-                "UsedQuota counter should be initialized");
+                !usedQuotaCounter,
+                "UsedQuota counter should not be initialized");
             UNIT_ASSERT_C(
-                maxUsedQuotaCounter,
-                "MaxUsedQuota counters should be initialized");
+                !maxUsedQuotaCounter,
+                "MaxUsedQuota counters should not be initialized");
             UNIT_ASSERT_C(
                 !usedQuotaVolumeCounter,
                 "UsedQuota counter should not be initialized");
@@ -1729,11 +1726,11 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 maxUsedQuota);
 
             UNIT_ASSERT_C(
-                usedQuotaCounter,
-                "UsedQuota counter should be initialized");
+                !usedQuotaCounter,
+                "UsedQuota counter should not be initialized");
             UNIT_ASSERT_C(
-                maxUsedQuotaCounter,
-                "MaxUsedQuota counters should be initialized");
+                !maxUsedQuotaCounter,
+                "MaxUsedQuota counters should not be initialized");
             UNIT_ASSERT_C(
                 !usedQuotaVolumeCounter,
                 "UsedQuota counter should not be initialized");
@@ -1978,12 +1975,12 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         {
             UNIT_ASSERT_C(
-                totalCounters
+                !totalCounters
                     ->GetSubgroup("component", "server")
                     ->FindCounter(usedQuota),
-                "UsedQuota should be initialized");
+                "UsedQuota should not be initialized");
             UNIT_ASSERT_C(
-                totalCounters
+                !totalCounters
                     ->GetSubgroup("component", "server")
                     ->FindCounter(maxUsedQuota),
                 "MaxUsedQuota should be initialized");
@@ -2021,7 +2018,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 instanceId,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(178, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());

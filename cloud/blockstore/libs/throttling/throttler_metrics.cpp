@@ -239,6 +239,7 @@ void TThrottlerMetrics::UpdateMaxUsedQuota()
 
 void TThrottlerMetrics::UnregisterAll()
 {
+    Total.Metrics.Unregister();
     Total.MountTime = TInstant::Zero();
     for (ui32 i = 0; i < DEFAULT_BUCKET_COUNT; ++i) {
         MaxCalc.Add(0);
