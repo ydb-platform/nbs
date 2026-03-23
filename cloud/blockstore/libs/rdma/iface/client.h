@@ -19,6 +19,10 @@ namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TEndpointDisconnectHandler = std::function<void(void)>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TClientConfig
 {
     ui32 QueueSize = 10;
@@ -131,6 +135,11 @@ struct IClient
     virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) = 0;
+
+    virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
+        TString host,
+        ui32 port,
+        TEndpointDisconnectHandler disconnectHandler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 
