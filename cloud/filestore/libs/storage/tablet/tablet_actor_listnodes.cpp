@@ -52,11 +52,19 @@ void TIndexTabletActor::HandleListNodes(
     const TEvService::TEvListNodesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TListNodesMethod>(ev, ctx, ValidateRequest)) {
+    using TMethod = TEvService::TListNodesMethod;
+    auto* msg = ev->Get();
+
+    const bool shouldValidateSession = !msg->Record.GetUnsafe();
+
+    if (shouldValidateSession) {
+        if (!AcceptRequest<TMethod>(ev, ctx, ValidateRequest)) {
+            return;
+        }
+    } else if (!AcceptRequestNoSession<TMethod>(ev, ctx, ValidateRequest)) {
         return;
     }
 
-    auto* msg = ev->Get();
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -99,17 +107,11 @@ bool TIndexTabletActor::ValidateTx_ListNodes(
         args.ClientId,
         args.SessionId,
         args.SessionSeqNo);
-    if (!session) {
-        args.Error = ErrorInvalidSession(
-            args.ClientId,
-            args.SessionId,
-            args.SessionSeqNo);
-        return false;
-    }
 
-    args.CommitId = GetReadCommitId(session->GetCheckpointId());
+    const TString& checkpointId = session ? session->GetCheckpointId() : "";
+    args.CommitId = GetReadCommitId(checkpointId);
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
+        args.Error = ErrorInvalidCheckpoint(checkpointId);
         return false;
     }
 
