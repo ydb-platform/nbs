@@ -1,5 +1,7 @@
 #include "ss_proxy_fallback_actor.h"
 
+#include "ss_proxy_actor.h"
+
 #include "path.h"
 
 #include <cloud/filestore/libs/storage/core/config.h>
@@ -74,7 +76,7 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
     const auto* msg = ev->Get();
 
     auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(
-        std::move(msg->Error));
+        TranslateSchemeShardError(msg->Error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -84,7 +86,9 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
 STFUNC(TDescribeFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvDescribeSchemeResponse,
+            HandleDescribeSchemeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -113,7 +117,8 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
         .PipeClientMinRetryTime = Config->GetPipeClientMinRetryTime(),
         .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
         .SchemeShardDir = Config->GetSchemeShardDir(),
-        .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+        .PathDescriptionBackupFilePath =
+            Config->GetPathDescriptionBackupFilePath(),
     });
     StorageSSProxy = NCloud::Register(ctx, std::move(actor));
 }
@@ -185,7 +190,7 @@ void TSSProxyFallbackActor::HandleDescribeFileStore(
         std::move(requestInfo),
         Config->GetSchemeShardDir(),
         StorageSSProxy,
-        std::move(msg->FileSystemId));
+        msg->FileSystemId);
 }
 
 void TSSProxyFallbackActor::HandleCreateFileStore(

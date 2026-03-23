@@ -153,7 +153,8 @@ void TDescribeFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(error);
+    auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(
+        TranslateSchemeShardError(error));
     ReplyAndDie(ctx, std::move(response));
 }
 

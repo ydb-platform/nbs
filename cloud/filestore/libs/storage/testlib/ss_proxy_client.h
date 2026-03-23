@@ -76,10 +76,10 @@ public:
         return std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(path);
     }
 
-    auto CreateCreateFileStoreRequest(
+    auto MakeConfig(
         const TString& fileSystemId,
         ui64 blocksCount,
-        ui32 blockSize = DefaultBlockSize)
+        ui32 blockSize) const
     {
         NKikimrFileStore::TConfig config;
         config.SetFileSystemId(fileSystemId);
@@ -95,7 +95,25 @@ public:
             {}      // clientPerformanceProfile
         );
 
-        return std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(config);
+        return config;
+    }
+
+    auto CreateCreateFileStoreRequest(
+        const TString& fileSystemId,
+        ui64 blocksCount,
+        ui32 blockSize = DefaultBlockSize)
+    {
+        return std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(
+            MakeConfig(fileSystemId, blocksCount, blockSize));
+    }
+
+    auto CreateAlterFileStoreRequest(
+        const TString& fileSystemId,
+        ui64 blocksCount,
+        ui32 blockSize = DefaultBlockSize)
+    {
+        return std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
+            MakeConfig(fileSystemId, blocksCount, blockSize));
     }
 
     auto CreateDestroyFileStoreRequest(const TString& fileSystemId)
