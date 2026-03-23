@@ -30,6 +30,7 @@ struct TStorageOptions
     bool UnalignedRequestsDisabled = false;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     bool DiscardEnabled = false;
+    bool WriteZeroesEnabled = false;
     ui32 MaxZeroBlocksSubRequestSize = 0;
     ui32 OptimalIoSize = 0;
 };

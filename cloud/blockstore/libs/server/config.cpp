@@ -21,7 +21,7 @@ constexpr TDuration Seconds(int s)
 {
     return TDuration::Seconds(s);
 }
-
+// TODO:_ VhostWriteZeroesEnabled should be true by default. Don't forget to deploy configs first. See https://wiki.yandex-team.ru/users/gayurgin/proizvoditelnost-nbs/zadachi/nbs-6163-vkljuchit-discardzeroblocks/#kak-razdelyaem-flagi
 ////////////////////////////////////////////////////////////////////////////////
 // clang-format off
 #define BLOCKSTORE_SERVER_CONFIG(xxx)                                          \
@@ -106,6 +106,7 @@ constexpr TDuration Seconds(int s)
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
+    xxx(VhostWriteZeroesEnabled,     bool,                   true             )\
     xxx(VhostOptimalIoSize,          ui32,                   0                )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
     xxx(EncryptZeroPolicy,                                                     \

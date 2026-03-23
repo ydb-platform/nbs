@@ -477,6 +477,7 @@ void TBootstrapBase::Init()
             VhostServer,
             checksumFlags,
             Configs->ServerConfig->GetVhostDiscardEnabled(),
+            Configs->ServerConfig->GetVhostWriteZeroesEnabled(),
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             Configs->ServerConfig->GetVhostOptimalIoSize());
 
