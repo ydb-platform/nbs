@@ -2027,6 +2027,50 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 FormatError(response->GetError()));
         }
     }
+
+    TABLET_TEST_4K_ONLY(ShouldNotRequireActiveSessionForGetNodeAttrToShard)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        //
+        // Setting shardNo to a non-zero value to make the tablet ignore session
+        // checks.
+        //
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            false /* directoryCreationInShardsEnabled, doesn't matter*/);
+
+        const ui64 nodeId = 111;
+        const TString name = "name";
+        tablet.UnsafeCreateNode(nodeId, 4_KB);
+        tablet.UnsafeCreateNodeRef(
+            RootNodeId,
+            name,
+            nodeId,
+            "" /* shardId */,
+            "" /* shardNodeName */);
+
+        const auto attr = tablet.GetNodeAttr(nodeId)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, attr.GetId());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, attr.GetSize());
+
+        const auto responses = tablet.GetNodeAttrBatch(
+            RootNodeId,
+            TVector<TString>{name})->Record.GetResponses();
+        UNIT_ASSERT_VALUES_EQUAL(1, responses.size());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, responses[0].GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, responses[0].GetNode().GetSize());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -45,7 +45,8 @@ void TIndexTabletActor::HandleTestLock(
     const TEvService::TEvTestLockRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TTestLockMethod>(ev, ctx)) {
+    using TMethod = TEvService::TTestLockMethod;
+    if (!AcceptRequest<TMethod>(ev, ctx, {} /* validator */)) {
         return;
     }
 
@@ -56,7 +57,7 @@ void TIndexTabletActor::HandleTestLock(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvService::TTestLockMethod>(*requestInfo);
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TTestLock>(
         ctx,

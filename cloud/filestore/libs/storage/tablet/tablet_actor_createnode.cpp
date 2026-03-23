@@ -343,6 +343,12 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
             return;
         }
 
+        //
+        // TODO(#4608): remove this E_FS_INVALID_SESSION check when the change
+        // that removes session checks for tablet<->tablet GetNodeAttr requests
+        // gets deployed everywhere.
+        //
+
         if (msg->GetError().GetCode() == E_FS_INVALID_SESSION &&
             SyncSessionsAttempts < MaxSyncSessionsAttempts)
         {
@@ -486,15 +492,31 @@ void TIndexTabletActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TMethod = TEvService::TCreateNodeMethod;
     auto* msg = ev->Get();
 
     const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
 
-    auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
-        ev,
-        ctx,
-        ValidateRequest,
-        !behaveAsShard /* validateSession */);
+    TSession* session = nullptr;
+    if (behaveAsShard) {
+        const bool accepted = AcceptRequestNoSession<TMethod>(
+            ev,
+            ctx,
+            ValidateRequest);
+
+        if (!accepted) {
+            return;
+        }
+    } else {
+        session = AcceptRequest<TMethod>(
+            ev,
+            ctx,
+            ValidateRequest);
+
+        if (!session) {
+            return;
+        }
+    }
 
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
@@ -506,10 +528,6 @@ void TIndexTabletActor::HandleCreateNode(
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
     if (!behaveAsShard) {
-        if (!session) {
-            return;
-        }
-
         const auto requestId = GetRequestId(msg->Record);
         if (const auto* e = session->LookupDupEntry(requestId)) {
             auto response =
@@ -554,7 +572,7 @@ void TIndexTabletActor::HandleCreateNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvService::TCreateNodeMethod>(*requestInfo);
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TCreateNode>(
         ctx,

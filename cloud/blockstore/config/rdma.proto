@@ -52,6 +52,9 @@ message TRdmaClient
 
     // use ibv_create_qp instead of rdma_create_qp
     bool VerbsQP = 10;
+
+    uint64 MaxReconnectDelay = 11;  // in milliseconds
+    uint64 MaxResponseDelay = 12;   // in milliseconds
 }
 
 message TRdmaTarget

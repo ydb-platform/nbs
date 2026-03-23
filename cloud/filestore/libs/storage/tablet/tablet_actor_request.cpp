@@ -18,8 +18,39 @@ TSession* TIndexTabletActor::AcceptRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx,
     const std::function<NProto::TError(
-        const typename TMethod::TRequest::ProtoRecordType&)>& validator,
-    bool validateSession)
+        const typename TMethod::TRequest::ProtoRecordType&)>& validator)
+{
+    if (!AcceptRequestNoSession<TMethod>(ev, ctx, validator)) {
+        return nullptr;
+    }
+
+    auto* msg = ev->Get();
+    auto& request = msg->Record;
+
+    auto* session = FindSession(
+         GetClientId(request),
+         GetSessionId(request),
+         GetSessionSeqNo(request));
+
+    if (!session) {
+        auto response = std::make_unique<typename TMethod::TResponse>(
+            ErrorInvalidSession(
+                GetClientId(request),
+                GetSessionId(request),
+                GetSessionSeqNo(request)));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return nullptr;
+    }
+
+    return session;
+}
+
+template <typename TMethod>
+bool TIndexTabletActor::AcceptRequestNoSession(
+    const typename TMethod::TRequest::TPtr& ev,
+    const NActors::TActorContext& ctx,
+    const std::function<NProto::TError(
+        const typename TMethod::TRequest::ProtoRecordType&)>& validator)
 {
     auto* msg = ev->Get();
     auto& request = msg->Record;
@@ -55,29 +86,10 @@ TSession* TIndexTabletActor::AcceptRequest(
     if (FAILED(error.GetCode())) {
         auto response = std::make_unique<typename TMethod::TResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
-        return nullptr;
+        return false;
     }
 
-    if (!validateSession) {
-        return nullptr;
-    }
-
-    auto* session = FindSession(
-         GetClientId(request),
-         GetSessionId(request),
-         GetSessionSeqNo(request));
-
-    if (!session) {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            ErrorInvalidSession(
-                GetClientId(request),
-                GetSessionId(request),
-                GetSessionSeqNo(request)));
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return nullptr;
-    }
-
-    return session;
+    return true;
 }
 
 template <typename TMethod>
@@ -129,8 +141,13 @@ template TSession* TIndexTabletActor::AcceptRequest<ns::T##name##Method>(       
     const ns::T##name##Method::TRequest::TPtr& ev,                                    \
     const TActorContext& ctx,                                                         \
     const std::function<NProto::TError(                                               \
-        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator,  \
-    bool validateSession);                                                            \
+        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator); \
+                                                                                      \
+template bool TIndexTabletActor::AcceptRequestNoSession<ns::T##name##Method>(         \
+    const ns::T##name##Method::TRequest::TPtr& ev,                                    \
+    const TActorContext& ctx,                                                         \
+    const std::function<NProto::TError(                                               \
+        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator); \
                                                                                       \
 template void TIndexTabletActor::CompleteResponse<ns::T##name##Method>(               \
     ns::TEv##name##Response::ProtoRecordType& response,                               \

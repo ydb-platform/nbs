@@ -505,8 +505,14 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
-            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {},
-        bool validateSession = true);
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator);
+
+    template <typename TMethod>
+    bool AcceptRequestNoSession(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx,
+        const std::function<NProto::TError(
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator);
 
     template <typename TMethod>
     void CompleteResponse(
@@ -566,6 +572,10 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
     void HandleHttpInfo_DumpCompactionRange(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+    void HandleHttpInfo_DirViewer(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

@@ -32,6 +32,17 @@ struct TFlushConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <class F, class TResponse>
+concept TRequestExecutor =
+    std::invocable<F> &&
+    std::same_as<std::invoke_result_t<F>, TFuture<TResponse>>;
+
+template <class F, class TResponse>
+concept TResponseProcessor =
+    std::invocable<F, const TResponse&>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBackCache::TImpl final
     : public std::enable_shared_from_this<TImpl>
     , private IQueuedOperationsProcessor
@@ -243,6 +254,85 @@ public:
         return State.AddReleaseHandleRequest(nodeId, handle);
     }
 
+    TFuture<NProto::TReadDataResponse> ReadDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request)
+    {
+        return ExecuteRequestUnderBarrier<NProto::TReadDataResponse>(
+            request->GetNodeId(),
+            [this,
+             callContext = std::move(callContext),
+             request = std::move(request)]() mutable
+            {
+                return Session->ReadData(
+                    std::move(callContext),
+                    std::move(request));
+            });
+    }
+
+    TFuture<NProto::TWriteDataResponse> WriteDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request)
+    {
+        return ExecuteRequestUnderBarrier<NProto::TWriteDataResponse>(
+            request->GetNodeId(),
+            [this,
+             callContext = std::move(callContext),
+             request = std::move(request)]() mutable
+            {
+                return Session->WriteData(
+                    std::move(callContext),
+                    std::move(request));
+            });
+    }
+
+    TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TSetNodeAttrRequest> request)
+    {
+        const bool attrSizeNotAffected =
+            (request->GetFlags() &
+             ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) == 0;
+
+        if (attrSizeNotAffected) {
+            return Session->SetNodeAttr(
+                std::move(callContext),
+                std::move(request));
+        }
+
+        // MaxWrittenOffset is used to adjust node size in GetAttr/ReadDir
+        // responses according to the cached data. After WriteData requests are
+        // flushed and evicted, MaxWrittenOffset doesn't automatically shrink
+        // back in order to prevent data race.
+        //
+        // SetNodeAttr request may interfere with the requests being flushed.
+        // In order to prevent data race, we need to acquire a barrier and
+        // execute SetNodeAttr under a barrier.
+
+        const ui64 nodeId = request->GetNodeId();
+
+        auto executor = [this,
+                         callContext = std::move(callContext),
+                         request = std::move(request)]() mutable
+        {
+            return Session->SetNodeAttr(
+                std::move(callContext),
+                std::move(request));
+        };
+
+        auto callback = [this, nodeId](const auto& response)
+        {
+            if (!HasError(response)) {
+                State.ResetMaxWrittenOffset(nodeId);
+            }
+        };
+
+        return ExecuteRequestUnderBarrier<NProto::TSetNodeAttrResponse>(
+            nodeId,
+            std::move(executor),
+            std::move(callback));
+    }
+
     bool IsEmpty() const
     {
         return !State.HasUnflushedRequests();
@@ -258,14 +348,9 @@ public:
         State.UnpinNodeStates(refId);
     }
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const
     {
-        return State.GetCachedNodeSize(nodeId);
-    }
-
-    void SetCachedNodeSize(ui64 nodeId, ui64 size)
-    {
-        State.SetCachedNodeSize(nodeId, size);
+        return State.GetMaxWrittenOffset(nodeId);
     }
 
 private:
@@ -371,6 +456,79 @@ private:
                 }
             });
     }
+
+    // TRequestExecutorCallable: () -> TFuture<TResponse>, may capture [this]
+    // TResponseProcessorCallable: (const TResponse&), may capture [this]
+    template <class TResponse>
+    TFuture<TResponse> ExecuteRequestUnderBarrier(
+        ui64 nodeId,
+        TRequestExecutor<TResponse> auto requestExecutor,
+        TResponseProcessor<TResponse> auto responseProcessor)
+    {
+        auto promise = NewPromise<TResponse>();
+        auto resultFuture = promise.GetFuture();
+
+        auto acquireBarrierCallback =
+            [ptr = weak_from_this(),
+             requestExecutor = std::move(requestExecutor),
+             responseProcessor = std::move(responseProcessor),
+             promise = std::move(promise),
+             nodeId](const auto& future) mutable
+        {
+            const TResultOrError<ui64>& acquireBarrierResult =
+                future.GetValue();
+
+            if (HasError(acquireBarrierResult.GetError())) {
+                // Barrier acquisition failed - propagate the error
+                TResponse response;
+                *response.MutableError() = acquireBarrierResult.GetError();
+                promise.SetValue(std::move(response));
+                return;
+            }
+
+            auto self = ptr.lock();
+            if (!self) {
+                TResponse response;
+                *response.MutableError() =
+                    MakeError(E_REJECTED, "WriteBackCache is destroyed");
+                promise.SetValue(std::move(response));
+                return;
+            }
+
+            auto requestCallback =
+                [ptr = std::move(ptr),
+                 responseProcessor = std::move(responseProcessor),
+                 barrierId = acquireBarrierResult.GetResult(),
+                 promise = std::move(promise),
+                 nodeId](const TFuture<TResponse>& future) mutable
+            {
+                const auto& response = future.GetValue();
+                if (auto self = ptr.lock()) {
+                    responseProcessor(response);
+                    self->State.ReleaseBarrier(nodeId, barrierId);
+                }
+                promise.SetValue(response);
+            };
+
+            requestExecutor().Subscribe(std::move(requestCallback));
+        };
+
+        State.AcquireBarrier(nodeId).Subscribe(
+            std::move(acquireBarrierCallback));
+
+        return resultFuture;
+    }
+
+    template <class TResponse>
+    TFuture<TResponse> ExecuteRequestUnderBarrier(
+        ui64 nodeId,
+        TRequestExecutor<TResponse> auto requestExecutor)
+    {
+        return ExecuteRequestUnderBarrier<TResponse>(
+            nodeId,
+            std::move(requestExecutor),
+            [](const auto&) {});
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -414,6 +572,27 @@ TFuture<NProto::TError> TWriteBackCache::ReleaseHandle(ui64 nodeId, ui64 handle)
     return Impl->ReleaseHandle(nodeId, handle);
 }
 
+TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadDataDirect(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TReadDataRequest> request)
+{
+    return Impl->ReadDataDirect(std::move(callContext), std::move(request));
+}
+
+TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteDataDirect(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TWriteDataRequest> request)
+{
+    return Impl->WriteDataDirect(std::move(callContext), std::move(request));
+}
+
+TFuture<NProto::TSetNodeAttrResponse> TWriteBackCache::SetNodeAttr(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TSetNodeAttrRequest> request)
+{
+    return Impl->SetNodeAttr(std::move(callContext), std::move(request));
+}
+
 bool TWriteBackCache::IsEmpty() const
 {
     return Impl->IsEmpty();
@@ -429,14 +608,9 @@ void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
     Impl->ReleaseNodeStateRef(refId);
 }
 
-ui64 TWriteBackCache::GetCachedNodeSize(ui64 nodeId) const
+ui64 TWriteBackCache::GetMaxWrittenOffset(ui64 nodeId) const
 {
-    return Impl->GetCachedNodeSize(nodeId);
-}
-
-void TWriteBackCache::SetCachedNodeSize(ui64 nodeId, ui64 size)
-{
-    Impl->SetCachedNodeSize(nodeId, size);
+    return Impl->GetMaxWrittenOffset(nodeId);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

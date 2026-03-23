@@ -410,8 +410,8 @@ const char* GetOpcodeName(ibv_wc_opcode opcode)
 {
     static const char* names[] = {
         "SEND",
-        "RDMA_WRITE",
-        "RDMA_READ",
+        "WRITE",
+        "READ",
         "COMP_SWAP",
         "FETCH_ADD",
         "BIND_MW",
@@ -421,7 +421,7 @@ const char* GetOpcodeName(ibv_wc_opcode opcode)
 
     static const char* names2[] = {
         "RECV",
-        "RECV_RDMA_WITH_IMM",
+        "RECV_WITH_IMM",
         "TM_ADD",
         "TM_DEL",
         "TM_SYNC",

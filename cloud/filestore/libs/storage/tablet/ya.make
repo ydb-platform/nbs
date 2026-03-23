@@ -53,6 +53,7 @@ SRCS(
     tablet_actor_loadstate_noderefs.cpp
     tablet_actor_loadstate_nodes.cpp
     tablet_actor_monitoring.cpp
+    tablet_actor_monitoring_directory_viewer.cpp
     tablet_actor_oplog.cpp
     tablet_actor_readblob.cpp
     tablet_actor_readdata.cpp
@@ -110,6 +111,7 @@ PEERDIR(
     cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
+    cloud/filestore/libs/storage/tablet/resources
 
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common

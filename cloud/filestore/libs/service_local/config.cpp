@@ -139,6 +139,9 @@ FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #define FILESTORE_BINARY_FEATURES(xxx)                                         \
     xxx(DirectoryHandlesStorageEnabled)                                        \
+    xxx(ExtendedAttributesDisabled)                                            \
+    xxx(SnapshotsDirEnabled)                                                   \
+    xxx(GuestHandleKillPrivV2Enabled)                                          \
 
 // FILESTORE_BINARY_FEATURES
 
@@ -160,11 +163,13 @@ bool TLocalFileStoreConfig::Get##name(                                         \
         return Get##name();                                                    \
     }                                                                          \
                                                                                \
-    return FeaturesConfig->IsFeatureEnabled(                                   \
-        cloudId,                                                               \
-        folderId,                                                              \
-        fsId,                                                                  \
-        #name);                                                                \
+    if (!FeaturesConfig->IsFeatureEnabled(cloudId, folderId, fsId, #name)) {   \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    auto val = FeaturesConfig->GetFeatureValue(cloudId, folderId, fsId, #name);\
+    val.to_lower();                                                            \
+    return val != "false";                                                     \
 }                                                                              \
 
 // FILESTORE_BINARY_FEATURE_GETTER

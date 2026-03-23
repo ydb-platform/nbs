@@ -740,12 +740,13 @@ func WaitOperationEnded(
 	t *testing.T,
 	ctx context.Context,
 	operationID string,
+	timeout time.Duration,
 ) {
 
 	scheduler, err := newScheduler(ctx)
 	require.NoError(t, err)
 
-	err = scheduler.WaitTaskEnded(ctx, operationID)
+	err = scheduler.WaitTaskEndedWithTimeout(ctx, operationID, timeout)
 	require.NoError(t, err)
 }
 

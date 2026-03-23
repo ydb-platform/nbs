@@ -87,6 +87,16 @@ func (s *SchedulerMock) WaitTaskEnded(
 	return args.Error(0)
 }
 
+func (s *SchedulerMock) WaitTaskEndedWithTimeout(
+	ctx context.Context,
+	taskID string,
+	timeout time.Duration,
+) error {
+
+	args := s.Called(ctx, taskID, timeout)
+	return args.Error(0)
+}
+
 func (s *SchedulerMock) GetTaskMetadata(
 	ctx context.Context,
 	taskID string,

@@ -988,6 +988,7 @@ void TIndexTabletActor::HandleHttpInfo(
 
     static const THttpHandlers getActions {{
         {"dumpRange",       &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange },
+        {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
     }};
 
     const auto* msg = ev->Get();
@@ -1062,6 +1063,11 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             FormatByteSize(GetBlocksCount() * GetBlockSize()) << ")";
         }
         DIV() { out << "Tablet host: " << FQDNHostName(); }
+
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=dirViewer'>Directory Viewer</a>";
+        }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         if (shardIds.size()) {

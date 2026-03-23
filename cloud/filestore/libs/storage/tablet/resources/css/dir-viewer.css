@@ -1,0 +1,92 @@
+.dv-container {
+    font-family: monospace;
+    font-size: 13px;
+    padding: 10px;
+}
+.dv-tree ul {
+    list-style: none;
+    padding-left: 18px;
+    margin: 0;
+}
+.dv-tree > ul {
+    padding-left: 0;
+}
+.dv-tree li {
+    margin: 2px 0;
+    white-space: nowrap;
+}
+.dv-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: default;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.dv-entry:hover {
+    background: #f0f0f0;
+}
+.dv-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: inline-block;
+    width: 14px;
+    text-align: center;
+    color: #666;
+}
+.dv-icon {
+    font-size: 14px;
+}
+.dv-name {
+    color: #222;
+}
+.dv-name.dv-dir {
+    color: #1a5276;
+    font-weight: bold;
+    cursor: pointer;
+}
+.dv-name.dv-dir:hover {
+    text-decoration: underline;
+}
+.dv-meta {
+    color: #888;
+    font-size: 11px;
+    margin-left: 4px;
+}
+.dv-shard-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    color: #fff;
+    margin-left: 4px;
+    font-weight: bold;
+}
+.dv-loading {
+    color: #888;
+    font-style: italic;
+    padding-left: 4px;
+}
+.dv-error {
+    color: #c0392b;
+    font-style: italic;
+    padding-left: 4px;
+}
+.dv-legend {
+    margin: 8px 0 12px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
+}
+.dv-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.dv-legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    display: inline-block;
+}

@@ -40,6 +40,8 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
     SET(MaxBufferSize);
     SET(WaitMode, Convert);
     SET(PollerThreads);
+    SET(MaxReconnectDelay, TDuration::MilliSeconds);
+    SET(MaxResponseDelay, TDuration::MilliSeconds);
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
     SET(AlignedDataEnabled);
