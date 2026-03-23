@@ -240,6 +240,26 @@ public:
         return TVolumeProcessingPolicy::GetVolumeInfo(diskId, clientId);
     }
 
+    void SetRemoveVolumeInfoByInactivityTimeoutEnabled(
+        const TString& diskId,
+        const TString& clientId,
+        bool enabled) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(enabled);
+    }
+
+    [[nodiscard]] bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
+        const TString& diskId,
+        const TString& clientId) const override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+
+        return false;
+    }
+
     NProto::EStorageMediaKind GetStorageMediaKind(
         const TString& diskId) const override
     {

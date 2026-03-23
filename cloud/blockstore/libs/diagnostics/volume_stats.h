@@ -110,7 +110,7 @@ struct IVolumeStats
         const TString& clientId,
         bool enabled) = 0;
 
-    virtual bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
+    [[nodiscard]] virtual bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
         const TString& diskId,
         const TString& clientId) const = 0;
 

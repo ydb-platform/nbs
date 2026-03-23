@@ -712,7 +712,7 @@ public:
         }
     }
 
-    bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
+    [[nodiscard]] bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
         const TString& diskId,
         const TString& clientId) const override
     {
@@ -1139,7 +1139,7 @@ struct TVolumeStatsStub final
         Y_UNUSED(enabled);
     }
 
-    bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
+    [[nodiscard]] bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
         const TString& diskId,
         const TString& clientId) const override
     {
