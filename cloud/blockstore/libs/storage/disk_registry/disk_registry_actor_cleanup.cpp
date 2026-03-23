@@ -1,6 +1,7 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -125,9 +126,7 @@ void TCleanupActor::HandleDescribeVolumeResponse(
     const auto* msg = ev->Get();
     const auto index = ev->Cookie;
 
-    if (msg->GetStatus() ==
-        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-    {
+    if (IsDiskNotFoundError(msg->GetError())) {
         DeallocateDisk(ctx, index);
     } else {
         const auto& id = DiskIds[index];

@@ -262,7 +262,7 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeTest)
             service.SendDescribeVolumeRequest(DefaultDiskId, true);
             auto response = service.RecvDescribeVolumeResponse();
             UNIT_ASSERT_C(
-                IsNotFoundSchemeShardError(response->GetError()),
+                IsDiskNotFoundError(response->GetError()),
                 FormatError(response->GetError()));
         }
 

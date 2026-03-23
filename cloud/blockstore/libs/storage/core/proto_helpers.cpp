@@ -575,4 +575,14 @@ bool IsNotFoundSchemeShardError(const NProto::TError& error)
                error.GetCode())) == NKikimrScheme::StatusPathDoesNotExist;
 }
 
+bool IsDiskNotFoundError(const NProto::TError& error)
+{
+    if (error.GetCode() == E_NOT_FOUND) {
+        return true;
+    }
+
+    // TODO(svartmetal): get rid of this in #2718
+    return IsNotFoundSchemeShardError(error);
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

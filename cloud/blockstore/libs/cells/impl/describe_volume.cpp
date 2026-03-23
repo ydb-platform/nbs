@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -327,12 +328,7 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
                          << HostInfo.Fqdn);
 
     if (EErrorKind::ErrorRetriable != GetErrorKind(response.GetError())) {
-        auto code = response.GetError().GetCode();
-        const bool volumeNotFoundError =
-            code == E_NOT_FOUND ||
-            code ==
-                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
-        Y_DEBUG_ABORT_UNLESS(volumeNotFoundError);
+        Y_DEBUG_ABORT_UNLESS(IsDiskNotFoundError(response.GetError()));
     }
     Cell.DescribeResults[CellResultIndex] = std::move(response.GetError());
 

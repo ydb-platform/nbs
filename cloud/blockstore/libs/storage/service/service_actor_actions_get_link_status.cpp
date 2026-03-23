@@ -207,7 +207,7 @@ void TGetLinkStatusActionActor::HandleGetLinkStatusResponse(
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    if (ev->Cookie == QueryLeader && IsNotFoundSchemeShardError(error)) {
+    if (ev->Cookie == QueryLeader && IsDiskNotFoundError(error)) {
         SendRequestToFollower(ctx);
         return;
     }

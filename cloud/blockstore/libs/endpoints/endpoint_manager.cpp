@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/log_prefix.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -1150,10 +1151,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointFallback(
     const auto& removeClientResponse = Executor->WaitFor(removeClientFuture);
     const auto& error = removeClientResponse.GetError();
 
-    if (HasError(error) &&
-        error.GetCode() !=
-            MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-    {
+    if (IsDiskNotFoundError(error)) {
         return TErrorResponse(removeClientResponse.GetError());
     }
 
@@ -1907,9 +1905,7 @@ void TEndpointManager::HandleRestoredEndpoint(
     if (HasError(error)) {
         STORAGE_ERROR("Failed to start endpoint " << socketPath.Quote()
             << ", error:" << FormatError(error));
-        if (error.GetCode() ==
-            MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-        {
+        if (IsDiskNotFoundError(error)) {
             STORAGE_INFO(
                 "Remove endpoint for non-existing volume. endpoint id: "
                 << endpointId.Quote());
