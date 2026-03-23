@@ -1475,6 +1475,15 @@ private:
         callContext->RequestSize = requestSize;
         callContext->LoopThreadId = TThread::CurrentThreadNumericId();
 
+        FILESTORE_TRACK(
+            RequestReceived,
+            callContext,
+            name,
+            callContext->FileSystemId,
+            pThis->StorageMediaKind,
+            callContext->RequestSize);
+        pThis->RequestStats->RequestStarted(Log, *callContext);
+
         if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext)) {
             STORAGE_DEBUG("driver is stopping, cancel request");
             callContext->CancellationCode = *cancelCode;
@@ -1485,15 +1494,6 @@ private:
                 req);
             return;
         }
-
-        FILESTORE_TRACK(
-            RequestReceived,
-            callContext,
-            name,
-            callContext->FileSystemId,
-            pThis->StorageMediaKind,
-            callContext->RequestSize);
-        pThis->RequestStats->RequestStarted(Log, *callContext);
 
         try {
             auto* fs = pThis->FileSystem.get();
