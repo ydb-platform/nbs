@@ -699,6 +699,48 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, r3.ConfigMismatchErrors.size());
     }
+
+    Y_UNIT_TEST_F(
+        ShouldMarkDevicesWithSpecificModelToZeroFillEraseMethod,
+        TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "vendora-defective"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "vendorb-defective"},
+            {"NVMENBS04", "D"},
+        };
+
+        auto newConfig = DefaultConfig;
+        newConfig.MutableModelsRegExpForcedZeroFill()->Add(
+            "^(?=.*defective).*");
+
+        auto future = InitializeStorage(
+            Logging->CreateLog("Test"),
+            StorageConfig,
+            std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
+            StorageProvider,
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
+
+        const auto& r = future.GetValueSync();
+
+        ui32 count = 0;
+        for (const auto& config: r.Configs) {
+            if (config.GetDeviceModel().EndsWith("defective")) {
+                UNIT_ASSERT(config.GetForcedZeroFillMethod());
+                count += 1;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(count, 16);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -198,6 +198,10 @@ message TDeviceConfig
 
     // Device model.
     string DeviceModel = 20;
+
+    // If true SecureErase will ignore DeviceEraseMethod specified in
+    // TDiskAgentConfig and use DEVICE_ERASE_METHOD_ZERO_FILL instead.
+    bool ForcedZeroFillMethod = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

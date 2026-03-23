@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
@@ -7213,6 +7214,54 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 1,
                 FindProcessesWithOpenFile(device).size());
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldCountForcedToZeroFillCountDevices, TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {PartLabelsPath / "NVMENBS01", "vendora-defective"},
+            {PartLabelsPath / "NVMENBS02", "B"},
+            {PartLabelsPath / "NVMENBS03", "vendorb-defective"},
+            {PartLabelsPath / "NVMENBS04", "D"},
+        };
+
+        auto diskAgentConfig = CreateDiskAgentConfig();
+        diskAgentConfig.MutableModelsRegExpForcedZeroFill()->Add(
+            "^(?=.*defective).*");
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(diskAgentConfig)
+                       .With(
+                           std::make_shared<TTestNvmeManager>(
+                               pathToSerial,
+                               pathToModel))
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.RegisterAgent();
+
+        auto counters = CreateMonitoringServiceStub()->GetCounters();
+
+        auto rootGroup = counters->GetSubgroup("counters", "blockstore");
+        auto totalCounters = rootGroup->GetSubgroup("component", "disk_agent");
+
+        auto ForcedToZeroFillMethodDevices =
+            totalCounters->GetCounter("ForcedToZeroFillMethodDevices");
+
+        Runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(ForcedToZeroFillMethodDevices);
+        UNIT_ASSERT_VALUES_EQUAL(ForcedToZeroFillMethodDevices->Val(), 2);
     }
 }
 }   // namespace NCloud::NBlockStore::NStorage

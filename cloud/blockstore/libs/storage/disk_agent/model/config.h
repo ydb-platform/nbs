@@ -146,6 +146,11 @@ public:
     NProto::EDataIntegrityValidationPolicy
     GetDataIntegrityValidationPolicyForDrBasedDisks() const;
 
+    const auto& GetModelsRegExpForcedZeroFill() const
+    {
+        return Config.GetModelsRegExpForcedZeroFill();
+    }
+
     [[nodiscard]] bool HasChaosConfig() const;
     [[nodiscard]] const NProto::TChaosConfig& GetChaosConfig() const;
 

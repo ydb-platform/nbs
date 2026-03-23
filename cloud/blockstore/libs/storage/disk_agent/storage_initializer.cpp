@@ -28,6 +28,7 @@
 #include <util/system/mutex.h>
 
 #include <cstring>
+#include <regex>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -187,6 +188,8 @@ private:
 
     TString GetDeviceModel(const TString& path);
     void SetupDeviceModels(TVector<NProto::TFileDeviceArgs>& fileDevices);
+    void MarkDeviceToZeroFillMethod(
+        TVector<NProto::TFileDeviceArgs>& fileDevices);
 
     auto ProcessConfigCache(const THashSet<TString>& allowedPaths = {})
         -> TResultOrError<TVector<NProto::TFileDeviceArgs>>;
@@ -396,6 +399,23 @@ void TInitializer::SetupDeviceModels(
     }
 }
 
+void TInitializer::MarkDeviceToZeroFillMethod(
+    TVector<NProto::TFileDeviceArgs>& fileDevices)
+{
+    for (auto& file: fileDevices) {
+        for (auto& regExp: AgentConfig->GetModelsRegExpForcedZeroFill()) {
+            const std::regex re{
+                regExp.c_str(),
+                std::regex_constants::ECMAScript};
+            std::smatch match;
+            if (std::regex_match(file.GetDeviceModel().c_str(), match, re)) {
+                file.SetForcedZeroFillMethod(true);
+                break;
+            }
+        }
+    }
+}
+
 void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
 {
     if (!ValidateStorageDiscoveryConfig()) {
@@ -431,6 +451,7 @@ void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
     SortBy(files, GetDeviceId);
     SetupSerialNumbers(files);
     SetupDeviceModels(files);
+    MarkDeviceToZeroFillMethod(files);
 
     if (!ValidateGeneratedConfigs(files)) {
         ReportDiskAgentConfigMismatchEvent("Bad generated config");
@@ -748,6 +769,7 @@ NProto::TDeviceConfig TInitializer::CreateConfig(
     config.SetSerialNumber(device.GetSerialNumber());
     config.SetPhysicalOffset(device.GetOffset());
     config.SetDeviceModel(device.GetDeviceModel());
+    config.SetForcedZeroFillMethod(device.GetForcedZeroFillMethod());
 
     return config;
 }
