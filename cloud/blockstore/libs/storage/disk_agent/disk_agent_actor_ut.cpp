@@ -159,7 +159,7 @@ struct TTestNvmeManager: NNvme::INvmeManager
             return MakeError(E_FAIL, CurrentExceptionMessage());
         }
 
-        auto it = PathToModel.find(device);
+        auto it = PathToModel.find(path);
         if (it == PathToModel.end()) {
             return MakeError(MAKE_SYSTEM_ERROR(42), path);
         }
@@ -5537,7 +5537,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 file.SetSerialNumber(pathToSerial[i].second);
                 file.SetDeviceId(IDs[i]);
                 file.SetBlockSize(4_KB);
-                file.SetDeviceModel(pathToModel[i].second);
             }
 
             auto error = SaveDiskAgentConfig(CachedConfigPath, config);
