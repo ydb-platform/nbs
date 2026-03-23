@@ -471,6 +471,7 @@ public:
             options.BlocksCount,
             options.VhostQueuesCount,
             options.DiscardEnabled,
+            options.WriteZeroesEnabled,
             options.OptimalIoSize,
             endpoint.get(),
             AppCtx.Callbacks);
