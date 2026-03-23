@@ -1249,7 +1249,7 @@ private:
         const TString& diskId,
         TVector<TDeviceId> uuids);
 
-    NProto::TError RemoveDeviceFromPendingCleanup(
+    void RemoveDeviceFromPendingCleanup(
         TDiskRegistryDatabase& db,
         const TDeviceId& deviceId);
 

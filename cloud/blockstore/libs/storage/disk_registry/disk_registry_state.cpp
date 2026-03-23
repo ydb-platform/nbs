@@ -7574,22 +7574,17 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
     return PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
 }
 
-NProto::TError TDiskRegistryState::RemoveDeviceFromPendingCleanup(
+void TDiskRegistryState::RemoveDeviceFromPendingCleanup(
     TDiskRegistryDatabase& db,
     const TDeviceId& deviceId)
 {
     if (!IsDirtyDevice(deviceId) || PendingCleanup.FindDiskId(deviceId).empty())
     {
-        return MakeError(
-            S_ALREADY,
-            TStringBuilder()
-                << "Device with UUID " << deviceId << " is clean.");
+        return;
     }
 
     PendingCleanup.EraseDevice(deviceId);
     db.UpdateDirtyDevice(deviceId, {});
-
-    return {};
 }
 
 NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
