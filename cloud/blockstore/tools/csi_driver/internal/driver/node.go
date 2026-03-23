@@ -633,6 +633,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		},
 	}
 
+	// Use index 0, as multiple blockstore servers are not supported in legacy VM mode
 	nbsClient := s.getNbsClient(0)
 	_, err := nbsClient.StartEndpoint(ctx,
 		s.resolveEndpoint(ctx, startEndpointRequest, nbsClient))
@@ -1029,6 +1030,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 		},
 	}
 
+	// Use index 0, as multiple blockstore servers are supported only in VM mode
 	nbsClient := s.getNbsClient(0)
 	resp, err := nbsClient.StartEndpoint(ctx,
 		s.resolveEndpoint(ctx, startEndpointRequest, nbsClient))
@@ -1408,6 +1410,7 @@ func (s *nodeService) nodeUnstageVolume(
 	}
 
 	endpointDir := s.getEndpointDir("", diskId)
+	// Use index 0, as multiple blockstore servers are supported only in VM mode
 	nbsClient := s.getNbsClient(0)
 	if nbsClient != nil {
 		_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
@@ -1466,6 +1469,8 @@ func (s *nodeService) nodeUnpublishVolume(
 		// Trying to stop both NBS and NFS endpoints,
 		// because the endpoint's backend service is unknown here.
 		// When we miss we get S_FALSE/S_ALREADY code (err == nil).
+
+		// Use index 0, as multiple blockstore servers are not supported in legacy VM mode
 		nbsClient := s.getNbsClient(0)
 		if nbsClient != nil {
 			_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
@@ -2006,6 +2011,7 @@ func (s *nodeService) NodeExpandVolume(
 		return s.nodeExpandVolumeVmMode(ctx, req)
 	}
 
+	// Use index 0, as multiple blockstore servers are supported only in VM mode.
 	nbsClient := s.getNbsClient(0)
 	if nbsClient == nil {
 		return nil, fmt.Errorf("NodeExpandVolume is not supported")
