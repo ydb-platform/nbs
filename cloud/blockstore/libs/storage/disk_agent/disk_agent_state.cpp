@@ -323,7 +323,8 @@ NProto::TError CompareConfigs(
                 &NProto::TDeviceConfig::GetPhysicalOffset,
                 &NProto::TDeviceConfig::GetSerialNumber,
                 &NProto::TDeviceConfig::GetPoolName,
-                &NProto::TDeviceConfig::GetDeviceName);
+                &NProto::TDeviceConfig::GetDeviceName,
+                &NProto::TDeviceConfig::GetDeviceModel);
         });
 
     if (it1 != expectedConfigs.end()) {

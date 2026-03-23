@@ -195,6 +195,9 @@ message TDeviceConfig
 
     // Physical offset in bytes.
     uint64 PhysicalOffset = 19;
+
+    // Device model.
+    string DeviceModel = 20;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
