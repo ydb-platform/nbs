@@ -11,7 +11,10 @@ from concurrent.futures import ThreadPoolExecutor
 from jinja2 import Environment, FileSystemLoader
 from datetime import datetime, timedelta, timezone
 
-FORCE_TEXT_PLAIN_FILES = {"stdout", "stderr"}
+FORCE_TEXT_PLAIN_PATTERNS = (
+    r"stdout.*",
+    r"stderr.*",
+)
 
 
 def set_logging_level(verbosity):
@@ -114,8 +117,11 @@ def get_ttl_for_prefix(prefix, ttl_config):
     return False
 
 
-def ensure_content_type(s3, bucket, key, filenames, content_type, apply_changes):
-    if os.path.basename(key) not in filenames:
+def ensure_content_type(s3, bucket, key, filename_patterns, content_type, apply_changes):
+    if not any(
+        re.fullmatch(pattern, os.path.basename(key))
+        for pattern in filename_patterns
+    ):
         return
 
     try:
@@ -239,7 +245,7 @@ def process_directory(
     for f in files:
         key = f["Key"]
         ensure_content_type(
-            s3, bucket, key, FORCE_TEXT_PLAIN_FILES, "text/plain", apply_changes
+            s3, bucket, key, FORCE_TEXT_PLAIN_PATTERNS, "text/plain", apply_changes
         )
 
     # Filter out the 'index.html' file if present
