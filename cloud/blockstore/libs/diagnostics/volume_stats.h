@@ -105,14 +105,9 @@ struct IVolumeStats
         const TString& diskId,
         const TString& clientId) const = 0;
 
-    virtual void SetRemoveVolumeInfoByInactivityTimeoutEnabled(
+    virtual void DisableRemoveVolumeInfoByInactivityTimeout(
         const TString& diskId,
-        const TString& clientId,
-        bool enabled) = 0;
-
-    [[nodiscard]] virtual bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
-        const TString& diskId,
-        const TString& clientId) const = 0;
+        const TString& clientId) = 0;
 
     virtual NProto::EStorageMediaKind GetStorageMediaKind(
         const TString& diskId) const = 0;

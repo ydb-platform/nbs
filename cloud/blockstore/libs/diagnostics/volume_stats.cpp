@@ -699,30 +699,16 @@ public:
         return GetVolumeInfoImpl(diskId, clientId);
     }
 
-    void SetRemoveVolumeInfoByInactivityTimeoutEnabled(
+    void DisableRemoveVolumeInfoByInactivityTimeout(
         const TString& diskId,
-        const TString& clientId,
-        bool enabled) override
+        const TString& clientId) override
     {
         TWriteGuard guard(Lock);
 
         auto volumeInfo = GetVolumeInfoImpl(diskId, clientId);
         if (volumeInfo) {
-            volumeInfo->RemoveByInactivityTimeoutEnabled = enabled;
+            volumeInfo->RemoveByInactivityTimeoutEnabled = false;
         }
-    }
-
-    [[nodiscard]] bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
-        const TString& diskId,
-        const TString& clientId) const override
-    {
-        TReadGuard guard(Lock);
-
-        auto volumeInfo = GetVolumeInfoImpl(diskId, clientId);
-        if (volumeInfo) {
-            return volumeInfo->RemoveByInactivityTimeoutEnabled;
-        }
-        return false;
     }
 
     NProto::EStorageMediaKind GetStorageMediaKind(
@@ -1129,24 +1115,12 @@ struct TVolumeStatsStub final
         return nullptr;
     }
 
-    void SetRemoveVolumeInfoByInactivityTimeoutEnabled(
+    void DisableRemoveVolumeInfoByInactivityTimeout(
         const TString& diskId,
-        const TString& clientId,
-        bool enabled) override
+        const TString& clientId) override
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
-        Y_UNUSED(enabled);
-    }
-
-    [[nodiscard]] bool GetRemoveVolumeInfoByInactivityTimeoutEnabled(
-        const TString& diskId,
-        const TString& clientId) const override
-    {
-        Y_UNUSED(diskId);
-        Y_UNUSED(clientId);
-
-        return false;
     }
 
     NProto::EStorageMediaKind GetStorageMediaKind(
