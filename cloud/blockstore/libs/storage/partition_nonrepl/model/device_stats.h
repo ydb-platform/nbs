@@ -8,8 +8,9 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceStat
+class TDeviceStat
 {
+public:
     enum class EDeviceStatus
     {
         Ok,

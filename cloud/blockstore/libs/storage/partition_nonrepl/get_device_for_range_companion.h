@@ -9,7 +9,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceStat;
+class TDeviceStat;
 
 // A companion for processing EvGetDeviceForRangeRequest requests. Finds how
 // many requests needs for processing the range. If only one request is
