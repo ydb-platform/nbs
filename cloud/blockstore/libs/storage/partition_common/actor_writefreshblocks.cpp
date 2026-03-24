@@ -359,7 +359,7 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
     const TActorContext& ctx)
 {
     const auto& error = ev->Get()->GetError();
-    if (HasError(error) && GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+    if (HasError(error) && GetErrorKind(error) != EErrorKind::ErrorRetriable) {
         ReportAddFreshBlocksResultedInError(
             "unexpected error in AddFreshBlocksResponse",
             {{"error", FormatError(ev->Get()->GetError())},
