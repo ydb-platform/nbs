@@ -87,8 +87,8 @@ bool TNonreplicatedPartitionActor::CalculateHasBrokenDeviceCounterValue(
         DeviceStats,
         [&](const TDeviceStat& stat)
         {
-            return stat.DeviceStatus == EDeviceStatus::Broken ||
-                   (stat.DeviceStatus == EDeviceStatus::SilentBroken &&
+            return stat.GetDeviceStatus() == EDeviceStatus::Broken ||
+                   (stat.GetDeviceStatus() == EDeviceStatus::SilentBroken &&
                     (silent || stat.CooldownPassed(
                                    ctx.Now(),
                                    Config->GetNonReplicatedAgentMaxTimeout())));
@@ -112,7 +112,7 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
         worstRequestTime =
             Max(worstRequestTime, deviceStats.WorstRequestTime());
 
-        if (deviceStats.DeviceStatus == EDeviceStatus::SilentBroken &&
+        if (deviceStats.GetDeviceStatus() == EDeviceStatus::SilentBroken &&
             deviceStats.CooldownPassed(
                 now,
                 Config->GetNonReplicatedAgentMaxTimeout()))
@@ -120,7 +120,7 @@ TRequestTimeoutPolicy TNonreplicatedPartitionActor::MakeTimeoutPolicyForRequest(
             worstDeviceStatus = EDeviceStatus::Broken;
         } else {
             worstDeviceStatus =
-                Max(worstDeviceStatus, deviceStats.DeviceStatus);
+                Max(worstDeviceStatus, deviceStats.GetDeviceStatus());
         }
     }
 
@@ -331,8 +331,8 @@ bool TNonreplicatedPartitionActor::InitRequests(
         TDeviceStat& deviceStat = DeviceStats[dr.DeviceIdx];
         if (dr.Device.GetNodeId() == 0) {
             // Accessing a non-allocated device causes the disk to break.
-            deviceStat.BrokenTransitionTs = ctx.Now();
-            deviceStat.DeviceStatus = EDeviceStatus::Broken;
+            deviceStat.SetBrokenTransitionTs(ctx.Now());
+            deviceStat.SetDeviceStatus(EDeviceStatus::Broken);
 
             reply(
                 ctx,
@@ -344,7 +344,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         }
 
         if (PartConfig->GetLaggingDevicesAllowed() &&
-            deviceStat.DeviceStatus == EDeviceStatus::Ok &&
+            deviceStat.GetDeviceStatus() == EDeviceStatus::Ok &&
             deviceStat.GetTimedOutStateDuration(ctx.Now()) >
                 Config->GetLaggingDeviceTimeoutThreshold())
         {
@@ -461,11 +461,11 @@ void TNonreplicatedPartitionActor::OnRequestSuccess(
     TInstant now)
 {
     auto& stat = DeviceStats[deviceIndex];
-    stat.FirstTimedOutRequestStartTs = {};
-    stat.LastSuccessfulRequestStartTs = now - executionTime;
-    stat.ResponseTimes.PushBack(executionTime);
-    stat.DeviceStatus = EDeviceStatus::Ok;
-    stat.BrokenTransitionTs = {};
+    stat.SetFirstTimedOutRequestStartTs({});
+    stat.SetLastSuccessfulRequestStartTs(now - executionTime);
+    stat.AddResponseTime(executionTime);
+    stat.SetDeviceStatus(EDeviceStatus::Ok);
+    stat.SetBrokenTransitionTs({});
 }
 
 void TNonreplicatedPartitionActor::OnRequestTimeout(
@@ -478,22 +478,22 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
     const TInstant requestStartTs = now - executionTime;
     // Request timeout can be delivered with delay. Ignore ones that were
     // started before the last successful request.
-    if (requestStartTs < stat.LastSuccessfulRequestStartTs) {
+    if (requestStartTs < stat.GetLastSuccessfulRequestStartTs()) {
         return;
     }
 
-    if (!stat.FirstTimedOutRequestStartTs) {
-        stat.FirstTimedOutRequestStartTs = requestStartTs;
+    if (!stat.GetFirstTimedOutRequestStartTs()) {
+        stat.SetFirstTimedOutRequestStartTs(requestStartTs);
     }
 
-    switch (stat.DeviceStatus) {
+    switch (stat.GetDeviceStatus()) {
         case EDeviceStatus::Ok:
         case EDeviceStatus::Unavailable: {
             if (stat.GetTimedOutStateDuration(now) >
                 GetMaxTimedOutDeviceStateDuration())
             {
-                stat.DeviceStatus = EDeviceStatus::SilentBroken;
-                stat.BrokenTransitionTs = now;
+                stat.SetDeviceStatus(EDeviceStatus::SilentBroken);
+                stat.SetBrokenTransitionTs(now);
             }
             break;
         }
@@ -502,7 +502,7 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
                     now,
                     Config->GetNonReplicatedAgentMaxTimeout()))
             {
-                stat.DeviceStatus = EDeviceStatus::Broken;
+                stat.SetDeviceStatus(EDeviceStatus::Broken);
             }
             break;
         }
@@ -574,8 +574,8 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
         laggingRows.insert(laggingDevice.GetRowIndex());
 
         if (getAgentIdByRow(laggingDevice.GetRowIndex()) == laggingAgentId) {
-            DeviceStats[laggingDevice.GetRowIndex()].DeviceStatus =
-                EDeviceStatus::Unavailable;
+            DeviceStats[laggingDevice.GetRowIndex()].SetDeviceStatus(
+                EDeviceStatus::Unavailable);
         }
     }
 
@@ -622,10 +622,10 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
     for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {
         const auto& device = PartConfig->GetDevices()[i];
         if (device.GetAgentId() == msg->AgentId &&
-            DeviceStats[i].DeviceStatus <= EDeviceStatus::Unavailable)
+            DeviceStats[i].GetDeviceStatus() <= EDeviceStatus::Unavailable)
         {
-            DeviceStats[i].DeviceStatus = EDeviceStatus::Ok;
-            DeviceStats[i].FirstTimedOutRequestStartTs = {};
+            DeviceStats[i].SetDeviceStatus(EDeviceStatus::Ok);
+            DeviceStats[i].SetFirstTimedOutRequestStartTs({});
         }
     }
 }

@@ -19,6 +19,27 @@ public:
         Broken,
     };
 
+    [[nodiscard]] EDeviceStatus GetDeviceStatus() const;
+    [[nodiscard]] TInstant GetBrokenTransitionTs() const;
+    [[nodiscard]] TInstant GetFirstTimedOutRequestStartTs() const;
+    [[nodiscard]] TInstant GetLastSuccessfulRequestStartTs() const;
+
+    void SetDeviceStatus(EDeviceStatus status);
+    void SetBrokenTransitionTs(TInstant ts);
+    void SetFirstTimedOutRequestStartTs(TInstant ts);
+    void SetLastSuccessfulRequestStartTs(TInstant ts);
+    void AddResponseTime(TDuration duration);
+
+    // Returns the maximum request execution time among the latest.
+    [[nodiscard]] TDuration WorstRequestTime() const;
+
+    [[nodiscard]] TDuration GetTimedOutStateDuration(TInstant now) const;
+
+    [[nodiscard]] bool CooldownPassed(
+        TInstant now,
+        TDuration cooldownTimeout) const;
+
+private:
     // The start time of the first timed out request.
     TInstant FirstTimedOutRequestStartTs;
 
@@ -33,15 +54,6 @@ public:
 
     // When the device was considered broken.
     TInstant BrokenTransitionTs;
-
-    // Returns the maximum request execution time among the latest.
-    [[nodiscard]] TDuration WorstRequestTime() const;
-
-    [[nodiscard]] TDuration GetTimedOutStateDuration(TInstant now) const;
-
-    [[nodiscard]] bool CooldownPassed(
-        TInstant now,
-        TDuration cooldownTimeout) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
