@@ -721,6 +721,11 @@ func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
 
 func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
 	taskRegistry := tasks.NewRegistry()
+	err := filesystem_scrubbing.Register(taskRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	taskStorage, err := NewTaskStorage(ctx)
 	if err != nil {
 		return nil, err
