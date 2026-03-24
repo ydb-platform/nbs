@@ -147,6 +147,10 @@ private:
 
     void UpdateStats(const NProto::TPartitionStats& update);
 
+    void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
+
+    void ClearWriteQueue(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWaitPartition);
     STFUNC(StateFreshBlobsLoading);
@@ -177,6 +181,10 @@ private:
 
     void HandleZeroBlocksCompleted(
         const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessWriteQueue(
+        const NPartition::TEvPartitionPrivate::TEvProcessWriteQueue::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

@@ -807,6 +807,62 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         UNIT_ASSERT(writeBlocksCompletedObserved);
         UNIT_ASSERT_VALUES_EQUAL(0, reassignCounter->Val());
     }
+
+    Y_UNIT_TEST(ShouldBatchSmallWritesInOneWriteBlobRequest)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThresholdSSD(128_KB);
+        config.SetWriteRequestBatchingEnabled(true);
+
+        auto testEnv = PrepareTestActorRuntime(config);
+        auto& runtime = *testEnv.Runtime;
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+        fbwClient.WaitReady();
+
+        const ui32 blockCount = 1000;
+        ui64 writeBlobRequestCount = 0;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    ++writeBlobRequestCount;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        for (ui32 i = 0; i < blockCount; ++i) {
+            fbwClient.SendWriteBlocksRequest(i, i);
+        }
+
+        for (ui32 i = 0; i < blockCount; ++i) {
+            auto response = fbwClient.RecvWriteBlocksResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+
+        const ui64 blocksCountInOneBatch =
+            config.GetWriteBlobThresholdSSD() / 4_KB  - 1;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui64>(
+                std::ceil((1.0 * blockCount) / blocksCountInOneBatch)),
+            writeBlobRequestCount);
+
+        for (ui32 i = 0; i < blockCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(i),
+                GetBlockContent(fbwClient.ReadBlocks(i)));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
