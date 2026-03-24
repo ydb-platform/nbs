@@ -34,3 +34,15 @@ func TestGetClientError(t *testing.T) {
 	require.Equal(t, code, e.Code)
 	require.Equal(t, message, e.Message)
 }
+
+func TestIsDiskNotFoundError(t *testing.T) {
+	clientErr := &ClientError{}
+	var err error
+	err = clientErr
+
+	clientErr.Code = E_NOT_IMPLEMENTED
+	require.False(t, IsDiskNotFoundError(err))
+
+	clientErr.Code = E_NOT_FOUND
+	require.True(t, IsDiskNotFoundError(err))
+}
