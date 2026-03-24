@@ -34,7 +34,8 @@ void TFreshBlocksWriterActor::HandleProcessWriteQueue(
     auto guard = FlushState->AccessWriteBuffer().Flush();
     auto& requests = guard.Get();
 
-    auto writeBlobThreshold = GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
+    auto writeBlobThreshold =
+        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
     auto maxBlocksInBlob = writeBlobThreshold / PartitionConfig.GetBlockSize();
 
     STORAGE_VERIFY(

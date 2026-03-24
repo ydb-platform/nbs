@@ -287,8 +287,6 @@ void TFreshBlocksWriterActor::WriteBlocks(
     };
 
     if (Config->GetWriteRequestBatchingEnabled()) {
-        // we will try to batch small writes and, if batching fails,
-        // we will accumulate these writes in FreshBlocks table
         EnqueueProcessWriteQueueIfNeeded(ctx);
 
         LOG_TRACE(
