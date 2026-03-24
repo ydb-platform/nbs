@@ -61,6 +61,14 @@ struct TTestThrottlerPolicy: IThrottlerPolicy
 
         return PostponeTimeout.GetValue() / 1e6;
     }
+
+    TUsedQuota TakeUsedQuota() override
+    {
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaMap;
+        quotaMap[NProto::STORAGE_MEDIA_SSD] = PostponeTimeout;
+        TUsedQuota quota(quotaMap, 1.0);
+        return {quotaMap, 1.0};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1182,12 +1190,18 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             getDiskGroupFunction(volumeId),
             "Subgroup should be initialized");
 
-        metrics->UpdateUsedQuota(12);
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaMap;
+        quotaMap[NProto::STORAGE_MEDIA_SSD] = TDuration::Seconds(0.12);
+        TUsedQuota quota(quotaMap, 1.0);
+        metrics->UpdateUsedQuota(quota);
         metrics->UpdateMaxUsedQuota();
 
         {
             auto usedQuotaCounter = totalCounters
                 ->GetSubgroup("component", "server")
+                ->FindCounter(usedQuota);
+            auto usedQuotaCounterSSD = totalCounters
+                ->GetSubgroup("component", "server")->GetSubgroup("type", "ssd")
                 ->FindCounter(usedQuota);
             auto maxUsedQuotaCounter = totalCounters
                 ->GetSubgroup("component", "server")
@@ -1205,6 +1219,9 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 usedQuotaCounter,
                 "UsedQuota counter should be initialized");
             UNIT_ASSERT_C(
+                usedQuotaCounterSSD,
+                "UsedQuotaSSD counter should be initialized");
+            UNIT_ASSERT_C(
                 maxUsedQuotaCounter,
                 "MaxUsedQuota counters should be initialized");
             UNIT_ASSERT_C(
@@ -1215,6 +1232,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 "MaxUsedQuota counters should be initialized");
 
             UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounterSSD->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaVolumeCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
@@ -1355,7 +1373,10 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-        metrics->UpdateUsedQuota(12);
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaMap;
+        quotaMap[NProto::STORAGE_MEDIA_SSD] = TDuration::Seconds(0.12);
+        TUsedQuota quota(quotaMap, 1.0);
+        metrics->UpdateUsedQuota(quota);
         metrics->UpdateMaxUsedQuota();
         metrics->Trim(timer->Now());
 
@@ -1363,8 +1384,14 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             auto usedQuotaCounter = totalCounters
                 ->GetSubgroup("component", "server")
                 ->FindCounter(usedQuota);
+            auto usedQuotaCounterSSD = totalCounters
+                ->GetSubgroup("component", "server")->GetSubgroup("type", "ssd")
+                ->FindCounter(usedQuota);
             auto maxUsedQuotaCounter = totalCounters
                 ->GetSubgroup("component", "server")
+                ->FindCounter(maxUsedQuota);
+            auto maxUsedQuotaCounterSSD = totalCounters
+                ->GetSubgroup("component", "server")->GetSubgroup("type", "ssd")
                 ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter = getCounterFunction(
                 volumeId,
@@ -1382,6 +1409,12 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 maxUsedQuotaCounter,
                 "MaxUsedQuota counters should be initialized");
             UNIT_ASSERT_C(
+                usedQuotaCounterSSD,
+                "UsedQuota counter with ssd type should be initialized");
+            UNIT_ASSERT_C(
+                maxUsedQuotaCounterSSD,
+                "MaxUsedQuota counters with ssd type should be initialized");
+            UNIT_ASSERT_C(
                 usedQuotaVolumeCounter,
                 "UsedQuota counter should be initialized");
             UNIT_ASSERT_C(
@@ -1390,6 +1423,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
             UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounterSSD->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaCounterSSD->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaVolumeCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
         }
@@ -1409,6 +1444,12 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             auto maxUsedQuotaCounter = totalCounters
                 ->GetSubgroup("component", "server")
                 ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounterSSD = totalCounters
+                ->GetSubgroup("component", "server")->GetSubgroup("type", "ssd")
+                ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounterSSD = totalCounters
+                ->GetSubgroup("component", "server")->GetSubgroup("type", "ssd")
+                ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter = getCounterFunction(
                 volumeId,
                 instanceId,
@@ -1425,6 +1466,12 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 maxUsedQuotaCounter,
                 "MaxUsedQuota counters should be initialized");
             UNIT_ASSERT_C(
+                usedQuotaCounterSSD,
+                "UsedQuota counter with ssd type should be initialized");
+            UNIT_ASSERT_C(
+                maxUsedQuotaCounterSSD,
+                "MaxUsedQuota counters with ssd type should be initialized");
+            UNIT_ASSERT_C(
                 usedQuotaVolumeCounter,
                 "UsedQuota counter should be initialized");
             UNIT_ASSERT_C(
@@ -1433,6 +1480,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
             UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounterSSD->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaCounterSSD->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaVolumeCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
         }
@@ -1566,7 +1615,10 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-        metrics->UpdateUsedQuota(12);
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaMap;
+        quotaMap[NProto::STORAGE_MEDIA_SSD] = TDuration::Seconds(0.12);
+        TUsedQuota quota(quotaMap, 1.0);
+        metrics->UpdateUsedQuota(quota);
         metrics->UpdateMaxUsedQuota();
 
         {
@@ -1611,7 +1663,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-        metrics->UpdateUsedQuota(0);
+        metrics->UpdateUsedQuota(TUsedQuota());
         metrics->UpdateMaxUsedQuota();
         metrics->Trim(timer->Now());
 
@@ -1644,9 +1696,9 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 maxUsedQuotaVolumeCounter,
                 "MaxUsedQuota counters should be initialized");
 
-            UNIT_ASSERT_VALUES_EQUAL(0, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(0, usedQuotaVolumeCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaVolumeCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
         }
 
@@ -1766,8 +1818,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
             timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-            metrics->UpdateUsedQuota(static_cast<ui64>(
-                policy->CalculateCurrentSpentBudgetShare(timer->Now()) * 100.));
+            metrics->UpdateUsedQuota(policy->TakeUsedQuota());
             metrics->UpdateMaxUsedQuota();
         };
 
@@ -1821,8 +1872,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
             timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-            metrics->UpdateUsedQuota(static_cast<ui64>(
-                policy->CalculateCurrentSpentBudgetShare(timer->Now()) * 100.));
+            metrics->UpdateUsedQuota(policy->TakeUsedQuota());
             metrics->UpdateMaxUsedQuota();
 
             // Delete performs on next read
@@ -1887,9 +1937,9 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 instanceId,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter1->Val());
@@ -1914,9 +1964,9 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 instanceId,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(120, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(120, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
         }
 
@@ -1933,7 +1983,45 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 !totalCounters
                     ->GetSubgroup("component", "server")
                     ->FindCounter(maxUsedQuota),
-                "MaxUsedQuota should not be initialized");
+                "MaxUsedQuota should be initialized");
+        }
+
+        policy->PostponeTimeout = TDuration::MilliSeconds(500);
+        mountVolumeFunction(diskIds[0], instanceId);
+
+        {
+            UNIT_ASSERT_C(
+                totalCounters
+                    ->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota),
+                "UsedQuota should be initialized");
+            UNIT_ASSERT_C(
+                totalCounters
+                    ->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota),
+                "MaxUsedQuota should be initialized");
+        }
+
+        {
+            auto usedQuotaCounter = totalCounters
+                ->GetSubgroup("component", "server")
+                ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter = totalCounters
+                ->GetSubgroup("component", "server")
+                ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter0 = getCounterFunction(
+                diskIds[0],
+                instanceId,
+                usedQuota);
+            auto maxUsedQuotaVolumeCounter0 = getCounterFunction(
+                diskIds[0],
+                instanceId,
+                maxUsedQuota);
+
+            UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
         }
     }
 
