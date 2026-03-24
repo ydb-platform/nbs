@@ -49,6 +49,7 @@ func (t *regularScrubFilesystemsTask) Run(
 	if t.state.IdempotencyKeyGenerations == nil {
 		t.state.IdempotencyKeyGenerations = make(map[string]uint64)
 	}
+	t.state.LastScheduledTaskIds = nil
 
 	filesystems := t.config.GetFilesystemsWithRegularScrubbingEnabled()
 
@@ -79,6 +80,16 @@ func (t *regularScrubFilesystemsTask) Run(
 		taskIDToFilesystemID[taskID] = fsID
 	}
 
+	t.state.LastScheduledTaskIds = make([]string, 0, len(taskIDToFilesystemID))
+	for taskID := range taskIDToFilesystemID {
+		t.state.LastScheduledTaskIds = append(t.state.LastScheduledTaskIds, taskID)
+	}
+
+	err := execCtx.SaveState(ctx)
+	if err != nil {
+		return err
+	}
+
 	var mu sync.Mutex
 
 	eg, egCtx := errgroup.WithContext(ctx)
@@ -101,7 +112,7 @@ func (t *regularScrubFilesystemsTask) Run(
 
 	egErr := eg.Wait()
 
-	err := execCtx.SaveState(ctx)
+	err = execCtx.SaveState(ctx)
 	if err != nil {
 		return err
 	}
@@ -125,7 +136,9 @@ func (t *regularScrubFilesystemsTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	return &empty.Empty{}, nil
+	return &scrubbing_protos.RegularScrubFilesystemsMetadata{
+		TaskIds: t.state.GetLastScheduledTaskIds(),
+	}, nil
 }
 
 func (t *regularScrubFilesystemsTask) GetResponse() proto.Message {

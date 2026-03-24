@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/hashicorp/go-retryablehttp"
 	prometheus_client "github.com/prometheus/client_model/go"
@@ -747,6 +748,19 @@ func WaitOperationEnded(
 
 	err = scheduler.WaitTaskEnded(ctx, operationID)
 	require.NoError(t, err)
+}
+
+func GetTaskMetadata(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) proto.Message {
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	metadata, err := scheduler.GetTaskMetadata(ctx, taskID)
+	require.NoError(t, err)
+	return metadata
 }
 
 func ScheduleFilesystemScrubbing(

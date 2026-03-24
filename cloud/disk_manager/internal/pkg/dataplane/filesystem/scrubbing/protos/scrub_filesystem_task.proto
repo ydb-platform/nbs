@@ -19,4 +19,9 @@ message ScrubFilesystemTaskState {
 
 message RegularScrubFilesystemsTaskState {
     map<string, uint64> IdempotencyKeyGenerations = 1;
+    repeated string LastScheduledTaskIds = 2;
+}
+
+message RegularScrubFilesystemsMetadata {
+    repeated string TaskIds = 1;
 }
