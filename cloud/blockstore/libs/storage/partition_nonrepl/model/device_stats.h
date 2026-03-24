@@ -19,6 +19,23 @@ public:
         Broken,
     };
 
+private:
+    // The start time of the first timed out request.
+    TInstant FirstTimedOutRequestStartTs;
+
+    // The start time of the last successful request.
+    TInstant LastSuccessfulRequestStartTs;
+
+    // Execution times of the last 10 requests.
+    TSimpleRingBuffer<TDuration> ResponseTimes{10};
+
+    // The current status of the device.
+    EDeviceStatus DeviceStatus = EDeviceStatus::Ok;
+
+    // When the device was considered broken.
+    TInstant BrokenTransitionTs;
+
+public:
     [[nodiscard]] EDeviceStatus GetDeviceStatus() const;
 
     void SetDeviceStatus(EDeviceStatus status);
@@ -41,22 +58,6 @@ public:
     [[nodiscard]] bool CooldownPassed(
         TInstant now,
         TDuration cooldownTimeout) const;
-
-private:
-    // The start time of the first timed out request.
-    TInstant FirstTimedOutRequestStartTs;
-
-    // The start time of the last successful request.
-    TInstant LastSuccessfulRequestStartTs;
-
-    // Execution times of the last 10 requests.
-    TSimpleRingBuffer<TDuration> ResponseTimes{10};
-
-    // The current status of the device.
-    EDeviceStatus DeviceStatus = EDeviceStatus::Ok;
-
-    // When the device was considered broken.
-    TInstant BrokenTransitionTs;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
