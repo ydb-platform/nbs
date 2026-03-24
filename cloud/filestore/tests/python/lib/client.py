@@ -75,6 +75,16 @@ class FilestoreCliClient:
 
         return result
 
+    def describe(self, fs):
+        cmd = [
+            self.__binary_path, "describe",
+            "--filesystem", fs,
+            "--json",
+        ] + self.__cmd_opts()
+
+        logger.info("describing filestore: " + " ".join(cmd))
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def destroy(self, fs):
         cmd = [
             self.__binary_path, "destroy",

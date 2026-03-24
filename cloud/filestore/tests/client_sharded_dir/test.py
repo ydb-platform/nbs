@@ -1,5 +1,6 @@
 import json
 import os
+import requests
 import time
 
 import yatest.common as common
@@ -83,6 +84,19 @@ def __fill_fs(client, fs_id, items):
                 client.touch(fs_id, item.path)
         else:
             client.ln(fs_id, item.path, "--symlink", item.data)
+
+
+def __fetch_dir_viewer_entries(tablet_id, node_id):
+    mon_port = os.getenv("NFS_MON_PORT")
+    response = requests.get(
+        url=f"http://localhost:{mon_port}/tablets/app?"
+            f"TabletID={tablet_id}&action=dirViewer&nodeId={node_id}")
+    response.raise_for_status()
+    entries = response.json()["entries"]
+    for entry in entries:
+        del entry["node"]["shardNodeName"]
+        del entry["node"]["id"]
+    return entries
 
 
 def test_nonsharded_vs_sharded_fs():
@@ -183,9 +197,6 @@ def test_nonsharded_vs_sharded_fs():
     out += __exec_ls(client, "fs1", "/", "--disable-multitablet-forwarding")
     out += client.diff("fs0", "fs1")
 
-    client.destroy("fs0")
-    client.destroy("fs1")
-
     with open(results_path, "wb") as results_file:
         results_file.write(out)
 
@@ -207,6 +218,26 @@ def test_nonsharded_vs_sharded_fs():
                              "fs1",
                              "filestore-server profile log",
                              results_path)
+
+    #
+    # Querying dirViewer for the root node, dumping the result w/o unstable
+    # fields.
+    #
+
+    tablet_id = json.loads(client.describe("fs1"))["FileStore"]["MainTabletId"]
+    root_node_id = 1
+    entries = __fetch_dir_viewer_entries(tablet_id, root_node_id)
+    result = json.dumps(entries, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('dirViewer(1):\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # Destroying the filesystems - important to do it after querying dirViewer.
+    #
+
+    client.destroy("fs0")
+    client.destroy("fs1")
 
     ret = common.canonical_file(results_path, local=True)
     return ret
