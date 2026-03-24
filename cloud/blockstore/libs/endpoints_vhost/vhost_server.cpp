@@ -1,6 +1,7 @@
 #include "vhost_server.h"
 
 #include <cloud/blockstore/libs/client/session.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/vhost/server.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -61,7 +62,8 @@ public:
             ShouldEnableVhostDiscardForVolume(VhostDiscardEnabled, volume);
         options.WriteZeroesEnabled =
             VhostWriteZeroesEnabled && !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
-        options.DropDiscardRequests = DropDiscardRequests;
+        options.DropDiscardRequests =
+            DropDiscardRequests || volume.GetTags().contains(DropDiscardRequestsTagName);
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
         options.OptimalIoSize = OptimalIoSize;
 
