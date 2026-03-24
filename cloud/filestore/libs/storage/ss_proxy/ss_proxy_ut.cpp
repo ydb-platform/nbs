@@ -394,6 +394,34 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
         }
     }
+
+    Y_UNIT_TEST(ShouldReturnCorrectErrorForNonExistentFilestore)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TSSProxyClient ssProxy(env.GetStorageConfig(), env.GetRuntime(), nodeIdx);
+
+        {
+            const ui64 blocksCount = 1000;
+            ssProxy.SendAlterFileStoreRequest("nonexistent", blocksCount);
+            auto response = ssProxy.RecvAlterFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_NOT_FOUND,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            ssProxy.SendDescribeFileStoreRequest("nonexistent");
+            auto response = ssProxy.RecvDescribeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_NOT_FOUND,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

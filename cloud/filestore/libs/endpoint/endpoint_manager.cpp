@@ -267,9 +267,7 @@ private:
         if (HasError(error)) {
             STORAGE_ERROR("Failed to start endpoint: "
                 << FormatError(error));
-            if (error.GetCode() ==
-                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-            {
+            if (error.GetCode() == E_NOT_FOUND) {
                 STORAGE_INFO(
                     "Remove endpoint for non-existing filesystem. endpoint id: "
                     << endpointId.Quote());
