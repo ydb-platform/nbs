@@ -889,7 +889,9 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	err = nil
 	defer func() {
 		if err != nil {
-			s.cleanupNbsEndpoint(ctx, instanceId, diskId, 0)
+			// Use index 0, as multiple blockstore servers are supported only in VM mode.
+			clientIndex := uint(0)
+			s.cleanupNbsEndpoint(ctx, instanceId, diskId, clientIndex)
 		}
 	}()
 
@@ -964,7 +966,9 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	err = s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
 
 	if err != nil {
-		s.cleanupNbsEndpoint(ctx, instanceId, diskId, 0)
+		// Use index 0, as multiple blockstore servers are supported only in VM mode.
+		clientIndex := uint(0)
+		s.cleanupNbsEndpoint(ctx, instanceId, diskId, clientIndex)
 	}
 	return err
 }
@@ -1860,8 +1864,7 @@ func (s *nodeService) NodeGetVolumeStats(
 		return nil, fmt.Errorf("NodeGetVolumeStats is not supported in vmMode")
 	}
 
-	nbsClient := s.getNbsClient(0)
-	if nbsClient == nil {
+	if len(s.nbsClients) == 0 {
 		return nil, fmt.Errorf("NBS client is not available")
 	}
 
