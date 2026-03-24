@@ -1817,6 +1817,10 @@ public:
     void Stop() noexcept override;
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
+        ui32 port,
+        TEndpointDisconnectHandler handler) noexcept override;
+    TFuture<IClientEndpointPtr> StartEndpoint(
+        TString host,
         ui32 port) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
     bool IsAlignedDataEnabled() const override;
@@ -1931,7 +1935,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
             Config,
             Counters,
             Log,
-            std::move(disconnectHandler));
+            std::move(handler));
 
         auto future = endpoint->StartResult.GetFuture();
 
