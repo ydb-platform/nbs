@@ -13168,7 +13168,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             new NMonitoring::TDynamicCounters();
         InitCriticalEventsCounter(counters);
         auto freshBlocksResultedInErrorCounter = counters->GetCounter(
-            "AppImpossibleEvents/AddFreshBlocksResultedInError",
+            "AppCriticalEvents/AddFreshBlocksResultedInError",
             true);
 
         partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);

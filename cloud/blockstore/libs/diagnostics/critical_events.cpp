@@ -162,7 +162,7 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             FormatKeyValueList(keyValues),                                     \
-            false); /* verifyDebug */                                          \
+            true); /* verifyDebug */                                          \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
