@@ -9,21 +9,6 @@ TDeviceStat::EDeviceStatus TDeviceStat::GetDeviceStatus() const
     return DeviceStatus;
 }
 
-TInstant TDeviceStat::GetBrokenTransitionTs() const
-{
-    return BrokenTransitionTs;
-}
-
-TInstant TDeviceStat::GetFirstTimedOutRequestStartTs() const
-{
-    return FirstTimedOutRequestStartTs;
-}
-
-TInstant TDeviceStat::GetLastSuccessfulRequestStartTs() const
-{
-    return LastSuccessfulRequestStartTs;
-}
-
 void TDeviceStat::SetDeviceStatus(EDeviceStatus status)
 {
     DeviceStatus = status;
@@ -39,14 +24,48 @@ void TDeviceStat::SetFirstTimedOutRequestStartTs(TInstant ts)
     FirstTimedOutRequestStartTs = ts;
 }
 
-void TDeviceStat::SetLastSuccessfulRequestStartTs(TInstant ts)
+void TDeviceStat::MarkOk(TInstant requestStartTs, TDuration executionTime)
 {
-    LastSuccessfulRequestStartTs = ts;
+    FirstTimedOutRequestStartTs = {};
+    LastSuccessfulRequestStartTs = requestStartTs;
+    ResponseTimes.PushBack(executionTime);
+    DeviceStatus = EDeviceStatus::Ok;
+    BrokenTransitionTs = {};
 }
 
-void TDeviceStat::AddResponseTime(TDuration duration)
+void TDeviceStat::HandleTimeout(
+    TInstant requestStartTs,
+    TInstant now,
+    TDuration maxTimedOutStateDuration,
+    TDuration agentMaxTimeout)
 {
-    ResponseTimes.PushBack(duration);
+    if (requestStartTs < LastSuccessfulRequestStartTs) {
+        return;
+    }
+
+    if (!FirstTimedOutRequestStartTs) {
+        FirstTimedOutRequestStartTs = requestStartTs;
+    }
+
+    switch (DeviceStatus) {
+        case EDeviceStatus::Ok:
+        case EDeviceStatus::Unavailable: {
+            if (GetTimedOutStateDuration(now) > maxTimedOutStateDuration) {
+                BrokenTransitionTs = now;
+                DeviceStatus = EDeviceStatus::SilentBroken;
+            }
+            break;
+        }
+        case EDeviceStatus::SilentBroken: {
+            if (CooldownPassed(now, agentMaxTimeout)) {
+                DeviceStatus = EDeviceStatus::Broken;
+            }
+            break;
+        }
+        case EDeviceStatus::Broken: {
+            break;
+        }
+    }
 }
 
 TDuration TDeviceStat::WorstRequestTime() const

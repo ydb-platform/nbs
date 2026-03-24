@@ -20,15 +20,18 @@ public:
     };
 
     [[nodiscard]] EDeviceStatus GetDeviceStatus() const;
-    [[nodiscard]] TInstant GetBrokenTransitionTs() const;
-    [[nodiscard]] TInstant GetFirstTimedOutRequestStartTs() const;
-    [[nodiscard]] TInstant GetLastSuccessfulRequestStartTs() const;
 
     void SetDeviceStatus(EDeviceStatus status);
     void SetBrokenTransitionTs(TInstant ts);
     void SetFirstTimedOutRequestStartTs(TInstant ts);
-    void SetLastSuccessfulRequestStartTs(TInstant ts);
-    void AddResponseTime(TDuration duration);
+
+    void MarkOk(TInstant requestStartTs, TDuration executionTime);
+
+    void HandleTimeout(
+        TInstant requestStartTs,
+        TInstant now,
+        TDuration maxTimedOutStateDuration,
+        TDuration agentMaxTimeout);
 
     // Returns the maximum request execution time among the latest.
     [[nodiscard]] TDuration WorstRequestTime() const;

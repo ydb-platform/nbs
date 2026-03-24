@@ -460,12 +460,7 @@ void TNonreplicatedPartitionActor::OnRequestSuccess(
     TDuration executionTime,
     TInstant now)
 {
-    auto& stat = DeviceStats[deviceIndex];
-    stat.SetFirstTimedOutRequestStartTs({});
-    stat.SetLastSuccessfulRequestStartTs(now - executionTime);
-    stat.AddResponseTime(executionTime);
-    stat.SetDeviceStatus(EDeviceStatus::Ok);
-    stat.SetBrokenTransitionTs({});
+    DeviceStats[deviceIndex].MarkOk(now - executionTime, executionTime);
 }
 
 void TNonreplicatedPartitionActor::OnRequestTimeout(
@@ -473,43 +468,11 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
     TDuration executionTime,
     TInstant now)
 {
-    auto& stat = DeviceStats[deviceIndex];
-
-    const TInstant requestStartTs = now - executionTime;
-    // Request timeout can be delivered with delay. Ignore ones that were
-    // started before the last successful request.
-    if (requestStartTs < stat.GetLastSuccessfulRequestStartTs()) {
-        return;
-    }
-
-    if (!stat.GetFirstTimedOutRequestStartTs()) {
-        stat.SetFirstTimedOutRequestStartTs(requestStartTs);
-    }
-
-    switch (stat.GetDeviceStatus()) {
-        case EDeviceStatus::Ok:
-        case EDeviceStatus::Unavailable: {
-            if (stat.GetTimedOutStateDuration(now) >
-                GetMaxTimedOutDeviceStateDuration())
-            {
-                stat.SetDeviceStatus(EDeviceStatus::SilentBroken);
-                stat.SetBrokenTransitionTs(now);
-            }
-            break;
-        }
-        case EDeviceStatus::SilentBroken: {
-            if (stat.CooldownPassed(
-                    now,
-                    Config->GetNonReplicatedAgentMaxTimeout()))
-            {
-                stat.SetDeviceStatus(EDeviceStatus::Broken);
-            }
-            break;
-        }
-        case EDeviceStatus::Broken: {
-            break;
-        }
-    }
+    DeviceStats[deviceIndex].HandleTimeout(
+        now - executionTime,
+        now,
+        GetMaxTimedOutDeviceStateDuration(),
+        Config->GetNonReplicatedAgentMaxTimeout());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
