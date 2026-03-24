@@ -40,7 +40,6 @@ CreateFileStore
 CreateHandle
 CreateNode
 CreateSession
-DestroyFileStore
 DestroySession
 GetNodeAttr
 ListNodes
@@ -50,3 +49,33 @@ RenameNode
 RenameNodeInDestination
 UnlinkNode
 WriteData
+dirViewer(1):
+[
+    {
+        "name": "a0",
+        "node": {
+            "shardId": "fs1_s1",
+            "type": 2,
+            "size": 0,
+            "mode": 511
+        }
+    },
+    {
+        "name": "a1",
+        "node": {
+            "shardId": "fs1_s2",
+            "type": 2,
+            "size": 0,
+            "mode": 511
+        }
+    },
+    {
+        "name": "f18.txt",
+        "node": {
+            "shardId": "fs1_s2",
+            "type": 1,
+            "size": 62,
+            "mode": 0
+        }
+    }
+]
