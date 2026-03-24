@@ -63,7 +63,7 @@ public:
         options.WriteZeroesEnabled =
             VhostWriteZeroesEnabled && !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.DropDiscardRequests =
-            DropDiscardRequests || volume.GetTags().contains(DropDiscardRequestsTagName);
+            ShouldDropDiscardRequestsForVolume(DropDiscardRequests, volume);
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
         options.OptimalIoSize = OptimalIoSize;
 
@@ -118,6 +118,18 @@ bool ShouldEnableVhostDiscardForVolume(
 {
     return (vhostDiscardEnabled || volume.GetVhostDiscardEnabled()) &&
            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
+}
+
+bool ShouldDropDiscardRequestsForVolume(
+    bool dropDiscardRequests,
+    const NProto::TVolume& volume)
+{
+    return dropDiscardRequests ||
+           volume.GetTags().contains(DropDiscardRequestsTagName) ||
+           IsDiskRegistryMediaKind(
+               volume.GetStorageMediaKind());   // There is no implementation of
+                                                // ZeroBlocks for disk registry
+                                                // based disks yet.
 }
 
 IEndpointListenerPtr CreateVhostEndpointListener(

@@ -15,6 +15,10 @@ bool ShouldEnableVhostDiscardForVolume(
     bool vhostDiscardEnabled,
     const NProto::TVolume& volume);
 
+bool ShouldDropDiscardRequestsForVolume(
+    bool dropDiscardRequests,
+    const NProto::TVolume& volume);
+
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
