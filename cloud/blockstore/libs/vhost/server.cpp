@@ -330,7 +330,6 @@ private:
             *request->CallContext);
 
         if (Options.DropDiscardRequests && vhostRequest->IsDiscardRequest) {
-            // TODO:_ debug log?
             CompleteRequest(*request, NProto::TError{});
             return nullptr;
         }
