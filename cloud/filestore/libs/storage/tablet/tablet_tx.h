@@ -164,6 +164,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeDeleteNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeUpdateNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeCreateHandle,                 __VA_ARGS__)                       \
+                                                                               \
+    xxx(UpdateLocalDbStats,                 __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
@@ -270,6 +272,8 @@ struct TTxIndexTabletBase
     // state upon transaction restart
     virtual void OnRestart()
     {}
+
+    static constexpr bool ShouldAccountInCounters = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3241,6 +3245,40 @@ struct TTxIndexTablet
             NextCookie.clear();
         }
    };
+
+    //
+    // UpdateLocalDbStats
+    //
+
+    struct TLocalDbTableStat
+    {
+        ui32 TableId = 0;
+        ui64 EstimatedRowSize = 0;
+        ui64 MemSize = 0;
+        ui64 MemRowCount = 0;
+        ui64 MemOpsCount = 0;
+        ui64 IndexSize = 0;
+        ui64 SearchHeight = 0;
+    };
+
+    struct TUpdateLocalDbStats: TTxIndexTabletBase
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+
+        TVector<TLocalDbTableStat> TableStats;
+
+        void Clear() override
+        {
+            TableStats.clear();
+        }
+
+        // Since this transaction is only used to update counters and its
+        // prepare stage always returns true, we can skip accounting it in
+        // counters
+        static constexpr bool ShouldAccountInCounters = false;
+    };
 };
 
 }   // namespace NCloud::NFileStore::NStorage

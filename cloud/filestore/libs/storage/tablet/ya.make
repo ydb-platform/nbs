@@ -78,6 +78,7 @@ SRCS(
     tablet_actor_unlinknode_abort.cpp
     tablet_actor_unlinknode_prepare.cpp
     tablet_actor_unsafe_node_ops.cpp
+    tablet_actor_update_local_db_stats.cpp
     tablet_actor_updateconfig.cpp
     tablet_actor_waitready.cpp
     tablet_actor_writebatch.cpp

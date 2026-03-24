@@ -600,6 +600,8 @@ void TIndexTabletActor::HandleUpdateCounters(
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
 
+    ExecuteTx<TUpdateLocalDbStats>(ctx);
+
     if (CachedStatsFetchingStartTs != TInstant::Zero()) {
         const auto delay = ctx.Now() - CachedStatsFetchingStartTs;
         const auto maxDelay = TDuration::Minutes(15);

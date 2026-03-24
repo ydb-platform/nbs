@@ -1010,6 +1010,47 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         tablet.DestroyHandle(handle2);
         checkHandlesCounters(0, 0);
     }
+
+    Y_UNIT_TEST_F(ShouldRegisterLocalDbTableStats, TEnv)
+    {
+        auto registry = Env.GetRegistry();
+
+        Tablet->AdvanceTime(TDuration::Seconds(15));
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        registry->Visit(TInstant::Zero(), Visitor);
+
+        const auto any = [](i64)
+        {
+            return true;
+        };
+        Visitor.ValidateExpectedCountersWithPredicate({
+            {{{{"filesystem", "test"},
+               {"sensor", "EstimatedRowSize"},
+               {"table", "Nodes"}}},
+             any},
+            {{{{"filesystem", "test"},
+               {"sensor", "MemSize"},
+               {"table", "NodeAttrs"}}},
+             any},
+            {{{{"filesystem", "test"},
+               {"sensor", "MemRowCount"},
+               {"table", "NodeRefs"}}},
+             any},
+            {{{{"filesystem", "test"},
+               {"sensor", "MemOpsCount"},
+               {"table", "FreshBlocks"}}},
+             any},
+            {{{{"filesystem", "test"},
+               {"sensor", "IndexSize"},
+               {"table", "MixedBlocks"}}},
+             any},
+            {{{{"filesystem", "test"},
+               {"sensor", "SearchHeight"},
+               {"table", "DeletionMarkers"}}},
+             any},
+        });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
