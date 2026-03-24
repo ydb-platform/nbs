@@ -12802,6 +12802,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
         }
 
+        bool stopTrimming = false;
         bool saveBlobs = false;
         TSet<ui64> expectedBlobs;
 
@@ -12812,7 +12813,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg = ev->Get<TEvBlobStorage::TEvCollectGarbage>();
                         if (msg->Channel == FreshChannelId) {
-                            return true;
+                            return stopTrimming;
                         }
                         break;
                     }
@@ -12856,10 +12857,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // update TrimFreshLogToCommitId in meta to gen:step = 0:0
         partition.Flush();
+        partition.TrimFreshLog();
 
         runtime->DispatchEvents(TDispatchOptions{}, TDuration::Seconds(1));
 
         saveBlobs = true;
+        stopTrimming = true;
 
         partition.WriteBlocks(4, 4);
         partition.WriteBlocks(5, 5);

@@ -950,7 +950,7 @@ public:
 
     void UpdateTrimFreshLogToCommitIdInMeta()
     {
-        Meta.SetTrimFreshLogToCommitId(GetTrimFreshLogToCommitId());
+        Meta.SetTrimFreshLogToCommitId(GetLastTrimFreshLogToCommitId());
     }
 
     //

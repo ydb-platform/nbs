@@ -1010,6 +1010,75 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             response->GetStatus(),
             response->GetErrorReason());
     }
+
+    Y_UNIT_TEST(ShouldNotLooseInFlightWritesOnReboot)
+    {
+        auto testEnv = PrepareTestActorRuntime();
+        auto& runtime = *testEnv.Runtime;
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+        fbwClient.WaitReady();
+
+        std::unique_ptr<IEventHandle> stollenPutRequest;
+        bool steelPutRequest = true;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                    !stollenPutRequest && steelPutRequest)
+                {
+                    Cerr << "Stollen put request" << Endl;
+                    stollenPutRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvTrimFreshLogRequest)
+                {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        fbwClient.SendWriteBlocksRequest(0, '1');
+        runtime.DispatchEvents({}, 10ms);
+
+        fbwClient.WriteBlocks(1, '2');
+
+        partition.Flush();
+
+        fbwClient.WriteBlocks(2, '3');
+
+        partition.Flush();
+
+        steelPutRequest = false;
+        runtime.SendAsync(stollenPutRequest.release());
+
+        auto response = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient newFbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+        newFbwClient.WaitReady();
+
+        auto actualContent = GetBlocksContent(
+            newFbwClient.ReadBlocks(TBlockRange32::WithLength(0, 3)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuilder() << GetBlockContent('1') << GetBlockContent('2')
+                             << GetBlockContent('3'),
+            actualContent);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

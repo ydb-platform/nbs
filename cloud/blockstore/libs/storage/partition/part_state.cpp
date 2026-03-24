@@ -97,6 +97,7 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
     InitChannels();
+    SetLastTrimFreshLogToCommitId(Meta.GetTrimFreshLogToCommitId());
 }
 
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
