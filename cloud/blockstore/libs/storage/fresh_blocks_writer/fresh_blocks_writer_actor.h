@@ -161,6 +161,7 @@ private:
     STFUNC(StateWaitPartition);
     STFUNC(StateFreshBlobsLoading);
     STFUNC(StateWork);
+    STFUNC(StateZombie);
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
