@@ -1130,11 +1130,7 @@ message TWriteResponseLogEntryRequest
     // FileSystem (shard) identifier.
     string FileSystemId = 2;
 
-    // Client tablet (the tablet that issued the original request) identifier.
-    uint64 ClientTabletId = 3;
-
-    // Request id of that request.
-    uint64 RequestId = 4;
+    reserved 3, 4;
 
     // The entry.
     TResponseLogEntry Entry = 5;
