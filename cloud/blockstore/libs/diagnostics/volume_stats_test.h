@@ -44,16 +44,6 @@ class TTestVolumeInfo final
 public:
     NProto::TVolume Volume;
 
-    void SetRemoveByInactivityTimeoutEnabled(bool enabled) override
-    {
-        Y_UNUSED(enabled);
-    }
-
-    bool GetRemoveByInactivityTimeoutEnabled() const override
-    {
-        return true;
-    }
-
     const NProto::TVolume& GetInfo() const override
     {
         return Volume;
@@ -248,6 +238,14 @@ public:
         const TString& clientId) const override
     {
         return TVolumeProcessingPolicy::GetVolumeInfo(diskId, clientId);
+    }
+
+    void DisableRemoveVolumeInfoByInactivityTimeout(
+        const TString& diskId,
+        const TString& clientId) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
     }
 
     NProto::EStorageMediaKind GetStorageMediaKind(
