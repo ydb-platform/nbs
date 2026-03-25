@@ -38,7 +38,12 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
-{}
+{
+    const auto& devices = PartConfig->GetDevices();
+    for (ui32 i = 0; i < DeviceStats.size(); ++i) {
+        DeviceStats[i].Init(devices[i].GetDeviceUUID(), this);
+    }
+}
 
 TNonreplicatedPartitionActor::~TNonreplicatedPartitionActor() = default;
 
@@ -331,8 +336,9 @@ bool TNonreplicatedPartitionActor::InitRequests(
         TDeviceStat& deviceStat = DeviceStats[dr.DeviceIdx];
         if (dr.Device.GetNodeId() == 0) {
             // Accessing a non-allocated device causes the disk to break.
-            deviceStat.SetBrokenTransitionTs(ctx.Now());
-            deviceStat.SetDeviceStatus(EDeviceStatus::Broken);
+            CurrentCtx = &ctx;
+            deviceStat.MarkBroken(ctx.Now());
+            CurrentCtx = nullptr;
 
             reply(
                 ctx,
@@ -433,9 +439,12 @@ template bool TNonreplicatedPartitionActor::InitRequests<
 
 void TNonreplicatedPartitionActor::OnRequestCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
-    TInstant now)
+    const TActorContext& ctx)
 {
+    CurrentCtx = &ctx;
+
     using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
+    const TInstant now = ctx.Now();
     switch (operation.Status) {
         case EStatus::Success: {
             for (const auto& [deviceIndex, _]: operation.RequestResults) {
@@ -453,6 +462,8 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
             break;
         }
     }
+
+    CurrentCtx = nullptr;
 }
 
 void TNonreplicatedPartitionActor::OnRequestSuccess(
@@ -473,6 +484,31 @@ void TNonreplicatedPartitionActor::OnRequestTimeout(
         now,
         GetMaxTimedOutDeviceStateDuration(),
         Config->GetNonReplicatedAgentMaxTimeout());
+}
+
+void TNonreplicatedPartitionActor::OnDeviceBroken(
+    const TString& deviceUUID,
+    TInstant brokenTs)
+{
+    Y_ABORT_UNLESS(CurrentCtx);
+    NCloud::Send(
+        *CurrentCtx,
+        VolumeActorId,
+        std::make_unique<
+            TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification>(
+            deviceUUID,
+            brokenTs));
+}
+
+void TNonreplicatedPartitionActor::OnDeviceRecovered(const TString& deviceUUID)
+{
+    Y_ABORT_UNLESS(CurrentCtx);
+    NCloud::Send(
+        *CurrentCtx,
+        VolumeActorId,
+        std::make_unique<
+            TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification>(
+            deviceUUID));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -537,8 +573,7 @@ void TNonreplicatedPartitionActor::HandleAgentIsUnavailable(
         laggingRows.insert(laggingDevice.GetRowIndex());
 
         if (getAgentIdByRow(laggingDevice.GetRowIndex()) == laggingAgentId) {
-            DeviceStats[laggingDevice.GetRowIndex()].SetDeviceStatus(
-                EDeviceStatus::Unavailable);
+            DeviceStats[laggingDevice.GetRowIndex()].MarkUnavailable();
         }
     }
 
@@ -584,11 +619,8 @@ void TNonreplicatedPartitionActor::HandleAgentIsBackOnline(
 
     for (int i = 0; i < PartConfig->GetDevices().size(); ++i) {
         const auto& device = PartConfig->GetDevices()[i];
-        if (device.GetAgentId() == msg->AgentId &&
-            DeviceStats[i].GetDeviceStatus() <= EDeviceStatus::Unavailable)
-        {
-            DeviceStats[i].SetDeviceStatus(EDeviceStatus::Ok);
-            DeviceStats[i].SetFirstTimedOutRequestStartTs({});
+        if (device.GetAgentId() == msg->AgentId) {
+            DeviceStats[i].MarkBackOnline();
         }
     }
 }

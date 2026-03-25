@@ -4,33 +4,56 @@ namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+void TDeviceStat::Init(TString deviceUUID, IDeviceStatObserver* observer)
+{
+    DeviceUUID = std::move(deviceUUID);
+    Observer = observer;
+}
+
 TDeviceStat::EDeviceStatus TDeviceStat::GetDeviceStatus() const
 {
     return DeviceStatus;
 }
 
-void TDeviceStat::SetDeviceStatus(EDeviceStatus status)
-{
-    DeviceStatus = status;
-}
-
-void TDeviceStat::SetBrokenTransitionTs(TInstant ts)
-{
-    BrokenTransitionTs = ts;
-}
-
-void TDeviceStat::SetFirstTimedOutRequestStartTs(TInstant ts)
-{
-    FirstTimedOutRequestStartTs = ts;
-}
-
 void TDeviceStat::MarkOk(TInstant requestStartTs, TDuration executionTime)
 {
+    const bool wasBroken = DeviceStatus == EDeviceStatus::Broken ||
+                           DeviceStatus == EDeviceStatus::SilentBroken;
+
     FirstTimedOutRequestStartTs = {};
     LastSuccessfulRequestStartTs = requestStartTs;
     ResponseTimes.PushBack(executionTime);
     DeviceStatus = EDeviceStatus::Ok;
     BrokenTransitionTs = {};
+
+    if (wasBroken && Observer) {
+        Observer->OnDeviceRecovered(DeviceUUID);
+    }
+}
+
+void TDeviceStat::MarkBroken(TInstant now)
+{
+    if (DeviceStatus == EDeviceStatus::Broken) {
+        return;
+    }
+    BrokenTransitionTs = now;
+    DeviceStatus = EDeviceStatus::Broken;
+    if (Observer) {
+        Observer->OnDeviceBroken(DeviceUUID, now);
+    }
+}
+
+void TDeviceStat::MarkUnavailable()
+{
+    DeviceStatus = EDeviceStatus::Unavailable;
+}
+
+void TDeviceStat::MarkBackOnline()
+{
+    if (DeviceStatus <= EDeviceStatus::Unavailable) {
+        DeviceStatus = EDeviceStatus::Ok;
+        FirstTimedOutRequestStartTs = {};
+    }
 }
 
 void TDeviceStat::HandleTimeout(
@@ -53,12 +76,18 @@ void TDeviceStat::HandleTimeout(
             if (GetTimedOutStateDuration(now) > maxTimedOutStateDuration) {
                 BrokenTransitionTs = now;
                 DeviceStatus = EDeviceStatus::SilentBroken;
+                if (Observer) {
+                    Observer->OnDeviceBroken(DeviceUUID, now);
+                }
             }
             break;
         }
         case EDeviceStatus::SilentBroken: {
             if (CooldownPassed(now, agentMaxTimeout)) {
                 DeviceStatus = EDeviceStatus::Broken;
+                if (Observer) {
+                    Observer->OnDeviceBroken(DeviceUUID, now);
+                }
             }
             break;
         }

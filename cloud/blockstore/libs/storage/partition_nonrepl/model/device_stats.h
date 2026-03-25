@@ -4,7 +4,21 @@
 
 #include <library/cpp/containers/ring_buffer/ring_buffer.h>
 
+#include <util/generic/string.h>
+
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class IDeviceStatObserver
+{
+public:
+    virtual void OnDeviceBroken(
+        const TString& deviceUUID,
+        TInstant brokenTs) = 0;
+    virtual void OnDeviceRecovered(const TString& deviceUUID) = 0;
+    virtual ~IDeviceStatObserver() = default;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -35,14 +49,18 @@ private:
     // When the device was considered broken.
     TInstant BrokenTransitionTs;
 
+    TString DeviceUUID;
+    IDeviceStatObserver* Observer = nullptr;
+
 public:
+    void Init(TString deviceUUID, IDeviceStatObserver* observer);
+
     [[nodiscard]] EDeviceStatus GetDeviceStatus() const;
 
-    void SetDeviceStatus(EDeviceStatus status);
-    void SetBrokenTransitionTs(TInstant ts);
-    void SetFirstTimedOutRequestStartTs(TInstant ts);
-
     void MarkOk(TInstant requestStartTs, TDuration executionTime);
+    void MarkBroken(TInstant now);
+    void MarkUnavailable();
+    void MarkBackOnline();
 
     void HandleTimeout(
         TInstant requestStartTs,

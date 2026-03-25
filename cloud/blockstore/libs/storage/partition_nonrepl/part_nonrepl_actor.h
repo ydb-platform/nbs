@@ -48,6 +48,7 @@ struct TRequestTimeoutPolicy
 
 class TNonreplicatedPartitionActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionActor>
+    , public IDeviceStatObserver
 {
 private:
     using EDeviceStatus = TDeviceStat::EDeviceStatus;
@@ -57,6 +58,7 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
+    const NActors::TActorContext* CurrentCtx = nullptr;
 
     TVector<TDeviceStat> DeviceStats;
 
@@ -100,6 +102,10 @@ public:
     ~TNonreplicatedPartitionActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
+
+    // IDeviceStatObserver
+    void OnDeviceBroken(const TString& deviceUUID, TInstant brokenTs) override;
+    void OnDeviceRecovered(const TString& deviceUUID) override;
 
 private:
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
@@ -154,7 +160,7 @@ private:
 
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
-        TInstant now);
+        const NActors::TActorContext& ctx);
     void
     OnRequestSuccess(ui32 deviceIndex, TDuration executionTime, TInstant now);
     void

@@ -282,7 +282,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveReadRequest(ev->Sender);
-    OnRequestCompleted(*msg, ctx.Now());
+    OnRequestCompleted(*msg, ctx);
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);
     }

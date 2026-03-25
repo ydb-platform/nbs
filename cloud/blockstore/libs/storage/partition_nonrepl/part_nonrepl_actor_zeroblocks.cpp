@@ -271,7 +271,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveWriteRequest(ev->Sender);
-    OnRequestCompleted(*msg, ctx.Now());
+    OnRequestCompleted(*msg, ctx);
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {
