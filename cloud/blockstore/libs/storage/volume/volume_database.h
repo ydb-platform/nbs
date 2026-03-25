@@ -133,7 +133,8 @@ public:
 
     struct TThrottlerStateInfo
     {
-        ui64 Budget = 0;
+        ui64 BoostBudget = 0;
+        double SpentShapingBudgetShare = 0;
     };
 
     void WriteThrottlerState(const TThrottlerStateInfo& stateInfo);

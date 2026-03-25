@@ -224,8 +224,13 @@ struct TVolumeSchema
         {
         };
 
+        struct SpentShapingBudgetShare
+            : public Column<3, NKikimr::NScheme::NTypeIds::Double>
+        {
+        };
+
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id, Budget>;
+        using TColumns = TableColumns<Id, Budget, SpentShapingBudgetShare>;
     };
 
     struct MetaHistory

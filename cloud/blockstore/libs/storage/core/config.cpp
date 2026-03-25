@@ -175,6 +175,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssd", NCloud::NProto::STORAGE_MEDIA_SSD},                        \
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
+    xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
