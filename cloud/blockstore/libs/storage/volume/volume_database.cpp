@@ -841,4 +841,50 @@ bool TVolumeDatabase::ReadLeaders(TLeaderDisks& leaders)
     return true;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeDatabase::WriteBrokenDevice(
+    const TString& deviceUUID,
+    TInstant brokenTs)
+{
+    using TTable = TVolumeSchema::BrokenDevices;
+
+    Table<TTable>()
+        .Key(deviceUUID)
+        .Update(NIceDb::TUpdate<TTable::BrokenTs>(brokenTs.MicroSeconds()));
+}
+
+void TVolumeDatabase::DeleteBrokenDevice(const TString& deviceUUID)
+{
+    using TTable = TVolumeSchema::BrokenDevices;
+
+    Table<TTable>().Key(deviceUUID).Delete();
+}
+
+bool TVolumeDatabase::ReadBrokenDevices(TVector<TBrokenDeviceInfo>& devices)
+{
+    using TTable = TVolumeSchema::BrokenDevices;
+
+    devices.clear();
+
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        devices.push_back(
+            TBrokenDeviceInfo{
+                .DeviceUUID = it.GetValue<TTable::DeviceUUID>(),
+                .BrokenTs =
+                    TInstant::MicroSeconds(it.GetValue<TTable::BrokenTs>())});
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
