@@ -4560,7 +4560,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
 
-        // Use WriteBackCache in order to stop when CompletionQueue is stopped
+        // StopAsync and GetAttrRequest are executed concurrently:
+        // - if StopAsync is completed before GetAttrRequest, it will not be
+        //   processed at all;
+        // - if GetAttrRequest is completed before StopAsync, it will not be
+        //   canceled and will return with success.
+        //
+        // We use WriteBackCache in order to prevent race and enforce strict
+        // ordering between StopAsync and GetAttrRequest execution.
+        //
+        // WriteBackCache::FlushAll is executed after CompletionQueue is stopped
+        // (new requests will be canceled) and before FUSE loop is unmounted.
+        //
+        // We catch the moment when FlushAll is called by listening to
+        // WriteData requests.
+
         features.SetServerWriteBackCacheEnabled(true);
 
         const ui64 NodeId = 123;
