@@ -207,15 +207,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         tablet.AssertReadLinkFailed(id2);
 
         auto response = tablet.ReadLink(id3);
-        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetSymLink(), "/test1/test2");
+        UNIT_ASSERT_VALUES_EQUAL("/test1/test2", response->Record.GetSymLink());
 
         response = tablet.ReadLink(id4);
-        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetSymLink(), "/ttt");
+        UNIT_ASSERT_VALUES_EQUAL("/ttt", response->Record.GetSymLink());
 
         response = tablet.ReadLink(id5);
         UNIT_ASSERT_VALUES_EQUAL(
-            response->Record.GetSymLink(),
-            TString("\1\2\3\4\5"));
+            TString("\1\2\3\4\5"),
+            response->Record.GetSymLink());
     }
 
     Y_UNIT_TEST(ShouldCreateCharDevNode)
