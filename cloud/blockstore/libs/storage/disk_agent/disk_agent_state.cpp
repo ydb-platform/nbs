@@ -1020,7 +1020,8 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
     }
 
     auto deviceEraseMethod = AgentConfig->GetDeviceEraseMethod();
-    if (Devices.FindPtr(uuid)->Config.GetForcedZeroFillMethod()) {
+    auto* deviceState = Devices.FindPtr(uuid);
+    if (deviceState && deviceState->Config.GetForcedZeroFillMethod()) {
         deviceEraseMethod = NProto::DEVICE_ERASE_METHOD_ZERO_FILL;
     }
 

@@ -661,11 +661,12 @@ struct TTestStorage final
         NProto::EDeviceEraseMethod method) override
     {
         switch (method) {
-        case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
-            return Impl->EraseDevice(method);
+            case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
+            case NProto::DEVICE_ERASE_METHOD_DEALLOCATE:
+                return Impl->EraseDevice(method);
 
-        default:
-            return MakeFuture(NProto::TError());
+            default:
+                return MakeFuture(NProto::TError());
         }
     }
 
@@ -723,7 +724,7 @@ IStorageProviderPtr CreateTestStorageProvider(
         NServer::CreateLocalStorageProvider(
             NServer::CreateSingleFileIOServiceProvider(std::move(fileIO)),
             std::move(nvmeManager),
-            {.DirectIO = false, .UseSubmissionThread = false}));
+            {.DirectIO = true, .UseSubmissionThread = false}));
 }
 
 NProto::TDiskAgentConfig CreateDefaultAgentConfig()
