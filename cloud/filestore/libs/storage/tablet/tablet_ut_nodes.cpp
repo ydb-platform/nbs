@@ -192,20 +192,30 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         // it is OK to symlink anything
         auto id4 = CreateNode(tablet, TCreateNodeArgs::SymLink(id1, "test4", "/ttt"));
+        // it is OK to symlink even non-utf8 targets
+        auto id5 = CreateNode(
+            tablet,
+            TCreateNodeArgs::SymLink(id1, "test5", TString("\1\2\3\4\5")));
 
         tablet.AccessNode(id1);
         tablet.AccessNode(id2);
         tablet.AccessNode(id3);
         tablet.AccessNode(id4);
+        tablet.AccessNode(id5);
 
         tablet.AssertReadLinkFailed(id1);
         tablet.AssertReadLinkFailed(id2);
 
         auto response = tablet.ReadLink(id3);
-        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetSymLink(), "/test1/test2");
+        UNIT_ASSERT_VALUES_EQUAL("/test1/test2", response->Record.GetSymLink());
 
         response = tablet.ReadLink(id4);
-        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetSymLink(), "/ttt");
+        UNIT_ASSERT_VALUES_EQUAL("/ttt", response->Record.GetSymLink());
+
+        response = tablet.ReadLink(id5);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString("\1\2\3\4\5"),
+            response->Record.GetSymLink());
     }
 
     Y_UNIT_TEST(ShouldCreateCharDevNode)

@@ -861,3 +861,24 @@ def test_io_telemetry():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_symlink_non_utf8_path():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    non_utf8_target = os.fsdecode(b"\xff\xfe\x80\x81")
+    client.ln("fs0", "/non_utf8_link", "--symlink", non_utf8_target)
+
+    stat = json.loads(client.stat("fs0", "/non_utf8_link"))
+    del stat["ATime"]
+    del stat["MTime"]
+    del stat["CTime"]
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        json.dump(stat, results_file, indent=4)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret

@@ -374,7 +374,8 @@ class FilestoreCliClient:
                     "--filesystem", fs,
                     "--path", path,
                 ] + self.__cmd_opts() + [*custom_opts]
-                logger.info("executing" + input_arg + ": " + " ".join(cmd))
+                cmd_str = " ".join(cmd).encode("utf-8", errors="backslashreplace").decode("utf-8")
+                logger.info("executing" + input_arg + ": " + cmd_str)
                 return function(self, cmd)
 
             return wrapper
