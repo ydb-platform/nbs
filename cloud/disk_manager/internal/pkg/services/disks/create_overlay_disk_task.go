@@ -168,17 +168,20 @@ func (t *createOverlayDiskTask) Cancel(
 
 	if diskMeta == nil {
 		if len(t.state.SelectedCellId) == 0 {
+			// The disk does not exist, and the base disk slot was not acquired.
+			// Nothing to do.
 			return nil
 		}
 
-		overlayDisk, err := t.getOverlayDisk()
+		// Even though the overlay disk doesn't exist, the task may have
+		// acquired a slot for it (if the disk was deleted by another task).
+		// So we still need to release the slot.
+		_, err = t.releaseBaseDisk(ctx, execCtx)
 		if err != nil {
 			return err
 		}
 
-		// Even if the overlay disk doesn't exist, the task may have acquired a
-		// slot for it, so we still need to release the slot.
-		return t.releaseBaseDisk(ctx, execCtx, overlayDisk)
+		return nil
 	}
 
 	overlayDisk, err := t.getOverlayDisk()
@@ -196,7 +199,7 @@ func (t *createOverlayDiskTask) Cancel(
 		return err
 	}
 
-	err = t.releaseBaseDisk(ctx, execCtx, overlayDisk)
+	_, err = t.releaseBaseDisk(ctx, execCtx)
 	if err != nil {
 		return err
 	}
@@ -231,8 +234,12 @@ func (t *createOverlayDiskTask) getOverlayDisk() (*types.Disk, error) {
 func (t *createOverlayDiskTask) releaseBaseDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	overlayDisk *types.Disk,
-) error {
+) (proto.Message, error) {
+
+	overlayDisk, err := t.getOverlayDisk()
+	if err != nil {
+		return nil, err
+	}
 
 	selfTaskID := execCtx.GetTaskID()
 
@@ -243,15 +250,10 @@ func (t *createOverlayDiskTask) releaseBaseDisk(
 		},
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return t.scheduler.WaitTask(ctx, execCtx, taskID)
 }
 
 func parseAcquireBaseDiskResponse(
