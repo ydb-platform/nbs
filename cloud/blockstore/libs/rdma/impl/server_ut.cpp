@@ -316,7 +316,7 @@ Y_UNIT_TEST_SUITE(TRdmaServerTest)
             context->CompletionHandle.Set();
         }
 
-        wait(errors, 3);
+        wait(errors, 5);
         wait(activeRecv, 8);
         wait(abortedRequests, 1);
         wait(activeRequests, 0);
