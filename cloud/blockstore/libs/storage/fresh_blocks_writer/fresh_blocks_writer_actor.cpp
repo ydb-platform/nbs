@@ -444,6 +444,10 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
             TEvPartitionPrivate::TEvProcessWriteQueue,
             HandleProcessWriteQueue);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
+            HandleZeroBlocksCompleted);
+
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
                 !HandleRequests(ev))
