@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"os/user"
@@ -163,17 +164,6 @@ func getNfsClients(mockNfsClients []*mocks.NfsEndpointClientMock) []nfsclient.En
 	return nfsClients
 }
 
-func getNfsClient(
-	mockNfsClients []*mocks.NfsEndpointClientMock,
-	instanceId string,
-	nfsVhostReplicaCount uint) *mocks.NfsEndpointClientMock {
-	if instanceId == "" {
-		return mockNfsClients[0]
-	}
-
-	return mockNfsClients[getClientIndex(instanceId, nfsVhostReplicaCount)]
-}
-
 func getNbsClients(mockNbsClients []*mocks.NbsClientMock) []nbsclient.ClientIface {
 	nbsClients := []nbsclient.ClientIface{}
 	for _, mockNbsClient := range mockNbsClients {
@@ -183,15 +173,71 @@ func getNbsClients(mockNbsClients []*mocks.NbsClientMock) []nbsclient.ClientIfac
 	return nbsClients
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func getNbsClient(
 	mockNbsClients []*mocks.NbsClientMock,
-	instanceId string,
-	nbsServerReplicaCount uint) *mocks.NbsClientMock {
-	if instanceId == "" {
-		return mockNbsClients[0]
+	listEndpointsResponses []nbs.TListEndpointsResponse,
+) *mocks.NbsClientMock {
+
+	clientIndex := 0
+	for index, listEndpointsResponse := range listEndpointsResponses {
+		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+			clientIndex = index
+		}
 	}
 
-	return mockNbsClients[getClientIndex(instanceId, nbsServerReplicaCount)]
+	return mockNbsClients[clientIndex]
+}
+
+func getNfsClient(
+	mockNfsClients []*mocks.NfsEndpointClientMock,
+	listEndpointsResponses []nfs.TListEndpointsResponse,
+) *mocks.NfsEndpointClientMock {
+
+	clientIndex := 0
+	for index, listEndpointsResponse := range listEndpointsResponses {
+		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+			clientIndex = index
+		}
+	}
+
+	return mockNfsClients[clientIndex]
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func generateNbsListEndpointsResponses(nbsServerReplicaCount uint) []nbs.TListEndpointsResponse {
+	responses := make([]nbs.TListEndpointsResponse, nbsServerReplicaCount)
+
+	for i := uint(0); i < nbsServerReplicaCount; i++ {
+		endpointsCount := rand.Intn(10)
+		endpoints := []*nbs.TStartEndpointRequest{}
+		for j := 0; j < endpointsCount; j++ {
+			startEndpointRequest := nbs.TStartEndpointRequest{}
+			endpoints = append(endpoints, &startEndpointRequest)
+		}
+		responses[i].Endpoints = endpoints
+		responses[i].EndpointsWereRestored = true
+	}
+
+	return responses
+}
+
+func generateNfsListEndpointsResponses(nfsServerReplicaCount uint) []nfs.TListEndpointsResponse {
+	responses := make([]nfs.TListEndpointsResponse, nfsServerReplicaCount)
+
+	for i := uint(0); i < nfsServerReplicaCount; i++ {
+		endpointsCount := rand.Intn(10)
+		endpoints := []*nfs.TEndpointConfig{}
+		for j := 0; j < endpointsCount; j++ {
+			endpointConfig := nfs.TEndpointConfig{}
+			endpoints = append(endpoints, &endpointConfig)
+		}
+		responses[i].Endpoints = endpoints
+	}
+
+	return responses
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -279,7 +325,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 
 	vhostQueuesCount := defaultVhostQueuesCount // explicit default value for unset behavior
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	if backend == "nbs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
@@ -308,7 +354,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
-	nfsClient := getNfsClient(testCtx.nfsClients, "", testCtx.nfsVhostReplicaCount)
+	nfsClient := testCtx.nfsClients[0]
 	if backend == "nfs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
@@ -531,14 +577,18 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 
 	vhostQueuesCount := defaultVhostQueuesCount // explicit default value for unset behavior
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	nbsClient := getNbsClient(testCtx.nbsClients, defaultInstanceId, testCtx.nbsServerReplicaCount)
+	nbsListEndpointsResponses := generateNbsListEndpointsResponses(testCtx.nbsServerReplicaCount)
+	nbsClient := getNbsClient(testCtx.nbsClients, nbsListEndpointsResponses)
 	if backend == "nbs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
 			vhostQueuesCount = virtioBlkVhostQueuesCount(*requestQueuesCountOpt)
 		}
-		nbsClient.On("ListEndpoints",
-			ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
+		for index, client := range testCtx.nbsClients {
+			client.On("ListEndpoints",
+				ctx, &nbs.TListEndpointsRequest{}).Return(&nbsListEndpointsResponses[index], nil)
+		}
+
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			Headers:          getDefaultStartEndpointRequestHeaders(),
 			UnixSocketPath:   testCtx.nbsSocketPath,
@@ -561,7 +611,8 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
-	expectedNfsClient := getNfsClient(testCtx.nfsClients, defaultInstanceId, testCtx.nfsVhostReplicaCount)
+	nfsListEndpointsResponses := generateNfsListEndpointsResponses(testCtx.nfsVhostReplicaCount)
+	expectedNfsClient := getNfsClient(testCtx.nfsClients, nfsListEndpointsResponses)
 	if localFsOverride == LocalFsOverrideLegacyEnabled || localFsOverride == LocalFsOverrideEnabled {
 		expectedNfsClient = testCtx.nfsLocalClient
 	}
@@ -589,6 +640,13 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		expectedFsId := defaultDiskId
 		if localFsOverride == LocalFsOverrideEnabled {
 			expectedFsId = fmt.Sprintf("%s-%s", defaultDiskId, defaultInstanceId)
+		}
+
+		if testCtx.nfsVhostReplicaCount > 1 {
+			for index, client := range testCtx.nfsClients {
+				client.On("ListEndpoints",
+					ctx, &nfs.TListEndpointsRequest{}).Return(&nfsListEndpointsResponses[index], nil)
+			}
 		}
 
 		expectedNfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
@@ -960,7 +1018,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	volumeContext := map[string]string{}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		Headers:          getDefaultStartEndpointRequestHeaders(),
@@ -1128,7 +1186,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nbsClient.On("ListEndpoints",
 		ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
@@ -1243,7 +1301,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	err = os.MkdirAll(testCtx.targetPathMountMode, info.Mode())
 	require.NoError(t, err)
 
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1313,7 +1371,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		defaultNbsServerReplicaCount,
 	)
 
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1376,7 +1434,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		backendVolumeContextKey: "nbs",
 	}
 
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1475,7 +1533,7 @@ func TestExternaFs(t *testing.T) {
 
 	testCtx.localFsOverrides[defaultDiskId] = fsConfig
 
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1652,7 +1710,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
 		&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
@@ -1746,7 +1804,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	if backend == "nbs" {
 		nbsClient.On("ListEndpoints",
 			ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
@@ -1836,7 +1894,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	nbsClient := getNbsClient(testCtx.nbsClients, "", testCtx.nbsServerReplicaCount)
+	nbsClient := testCtx.nbsClients[0]
 	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
 		&nbs.TListEndpointsResponse{}, nil)
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
