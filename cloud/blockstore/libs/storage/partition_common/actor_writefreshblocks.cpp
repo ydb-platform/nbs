@@ -1,7 +1,7 @@
 #include "actor_writefreshblocks.h"
-#include "cloud/blockstore/libs/storage/core/block_handler.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
@@ -358,11 +358,12 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
     const TEvPartitionCommonPrivate::TEvAddFreshBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (HasError(ev->Get()->GetError())) {
+    const auto& error = ev->Get()->GetError();
+    if (HasError(error) && GetErrorKind(error) != EErrorKind::ErrorRetriable) {
         ReportAddFreshBlocksResultedInError(
             "unexpected error in AddFreshBlocksResponse",
             {{"error", FormatError(ev->Get()->GetError())},
-             {"tabletId", ToString(TabletId)}});
+             {"tabletId", TabletId}});
     }
 
     ReplyAllAndDie(ctx, {});
