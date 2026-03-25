@@ -5200,6 +5200,78 @@ func TestStorageYDBNonCancellableTask(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
+	metricsRegistry := mocks.NewRegistryMock()
+
+	storage, err := newStorage(
+		t,
+		ctx,
+		db,
+		&tasks_config.TasksConfig{},
+		metricsRegistry,
+	)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		status         TaskStatus
+		expectedResult bool
+	}{
+		{TaskStatusReadyToRun, false},
+		{TaskStatusWaitingToRun, false},
+		{TaskStatusRunning, false},
+		{TaskStatusFinished, true},
+		{TaskStatusReadyToCancel, false},
+		{TaskStatusWaitingToCancel, false},
+		{TaskStatusCancelling, false},
+		{TaskStatusCancelled, true},
+	}
+
+	taskType := "task1"
+
+	for _, tc := range testCases {
+		taskState := TaskState{
+			IdempotencyKey: getIdempotencyKeyForTest(t),
+			TaskType:       taskType,
+			Description:    "Some task",
+			CreatedAt:      time.Now(),
+			CreatedBy:      "some_user",
+			ModifiedAt:     time.Now(),
+			GenerationID:   0,
+			Status:         tc.status,
+			State:          []byte{},
+			Dependencies:   common.NewStringSet(),
+		}
+
+		metricsRegistry.GetCounter(
+			"created",
+			map[string]string{"type": taskType},
+		).On("Add", int64(1)).Once()
+
+		taskID, err := storage.CreateTask(ctx, taskState)
+		require.NoError(t, err)
+		require.NotZero(t, taskID)
+
+		isEnded, err := storage.IsTaskEnded(ctx, taskID)
+		require.NoError(t, err)
+		require.Equal(t, tc.expectedResult, isEnded)
+	}
+
+	nonExistentTaskID := "non-existent-task-id"
+	_, err = storage.IsTaskEnded(ctx, nonExistentTaskID)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.True(t, errors.Is(err, errors.NewNotFoundErrorWithTaskID(
+		nonExistentTaskID,
+	)))
+}
+
+func TestStorageYDBIsTaskEnded(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
 	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"

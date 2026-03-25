@@ -275,6 +275,15 @@ func (s *StorageMock) GetNode(
 	return args.Get(0).(tasks_storage.Node), args.Error(1)
 }
 
+func (s *StorageMock) IsTaskEnded(
+	ctx context.Context,
+	taskID string,
+) (bool, error) {
+
+	args := s.Called(ctx, taskID)
+	return args.Bool(0), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

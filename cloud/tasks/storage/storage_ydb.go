@@ -507,3 +507,21 @@ func (s *storageYDB) ResumeTask(ctx context.Context, taskID string) error {
 		},
 	)
 }
+
+func (s *storageYDB) IsTaskEnded(
+	ctx context.Context,
+	taskID string,
+) (bool, error) {
+
+	var isEnded bool
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			isEnded, err = s.isTaskEnded(ctx, session, taskID)
+			return err
+		},
+	)
+	return isEnded, err
+}

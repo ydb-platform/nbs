@@ -2170,3 +2170,42 @@ func (s *storageYDB) resumeTask(
 
 	return tx.Commit(ctx)
 }
+
+func (s *storageYDB) isTaskEnded(
+	ctx context.Context,
+	session *persistence.Session,
+	taskID string,
+) (bool, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select status
+		from tasks
+		where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return false, errors.NewNonRetriableError(
+			errors.NewNotFoundErrorWithTaskID(taskID),
+		)
+	}
+
+	var status TaskStatus
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("status", &status),
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return IsEnded(status), nil
+}
