@@ -2604,6 +2604,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             8 * DefaultBlockSize / block);
         storageConfig.SetCleanupThresholdForBackpressure(20);
         storageConfig.SetFlushBytesThresholdForBackpressure(block / 2);
+        storageConfig.SetFlushBytesItemCountThresholdForBackpressure(10);
 
         TTestEnv env({}, std::move(storageConfig));
 
@@ -2693,6 +2694,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
+        auto checkFlushBytesItemCountBackpressureValues =
+            [&](i64 value, i64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "FlushBytesItemCountBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "FlushBytesItemCountBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
         checkIsWriteAllowed(true);
         checkFlushBackpressureValues(0, 2 * block);
 
@@ -2767,6 +2785,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.FlushBytes(); // 2 blobs
+
+        for (ui32 i = 0; i < 10; i++) {
+            tablet.WriteData(handle, i * 2, 1, '0');
+        }
+
+        // backpressure due to FlushBytesItemCountThresholdForBackpressure
+        tablet.SendWriteDataRequest(handle, 100, 1, '0');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkFlushBytesItemCountBackpressureValues(10, 10);
+        }
+
+        tablet.FlushBytes();
 
         // no backpressure after FlushBytes
         tablet.WriteData(handle, 0, block / 4, '0'); // 2 blobs, block / 4 fresh bytes

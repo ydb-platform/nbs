@@ -337,6 +337,12 @@ void TIndexTabletActor::UpdateMetrics(
         Metrics.FlushBytesBackpressureThreshold,
         backpressureThresholds.FlushBytes);
     Store(
+        Metrics.FlushBytesItemCountBackpressureValue,
+        backpressureValues.FlushBytesItemCount);
+    Store(
+        Metrics.FlushBytesItemCountBackpressureThreshold,
+        backpressureThresholds.FlushBytesItemCount);
+    Store(
         Metrics.CompactionBackpressureValue,
         backpressureValues.CompactionScore);
     Store(

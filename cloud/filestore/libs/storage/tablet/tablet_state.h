@@ -181,20 +181,9 @@ struct TBackgroundOpsBackpressureStatus
 {
     const EBackgroundOpBackpressureStatus Flush;
     const EBackgroundOpBackpressureStatus FlushBytes;
+    const EBackgroundOpBackpressureStatus FlushBytesItemCount;
     const EBackgroundOpBackpressureStatus Compaction;
     const EBackgroundOpBackpressureStatus Cleanup;
-
-    TBackgroundOpsBackpressureStatus(
-            EBackgroundOpBackpressureStatus flush,
-            EBackgroundOpBackpressureStatus flushBytes,
-            EBackgroundOpBackpressureStatus compaction,
-            EBackgroundOpBackpressureStatus cleanup)
-        : Flush(flush)
-        , FlushBytes(flushBytes)
-        , Compaction(compaction)
-        , Cleanup(cleanup)
-    {
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -942,22 +931,11 @@ public:
 
     struct TBackpressureThresholds
     {
-        ui64 Flush;
-        ui64 FlushBytes;
-        ui64 CompactionScore;
-        ui64 CleanupScore;
-
-        TBackpressureThresholds(
-                const ui64 flush,
-                const ui64 flushBytes,
-                const ui64 compactionScore,
-                const ui64 cleanupScore)
-            : Flush(flush)
-            , FlushBytes(flushBytes)
-            , CompactionScore(compactionScore)
-            , CleanupScore(cleanupScore)
-        {
-        }
+        const ui64 Flush;
+        const ui64 FlushBytes;
+        const ui64 FlushBytesItemCount;
+        const ui64 CompactionScore;
+        const ui64 CleanupScore;
     };
 
     using TBackpressureValues = TBackpressureThresholds;
