@@ -2581,7 +2581,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // StrictFileSystemSizeEnforcementEnabled
         service.ResizeFileStore(
             fsConfig.FsId,
-            fsConfig.MainFsBlockCount(),
+            fsConfig.MainFsBlockCount,
             false /* force */,
             0 /* shardCount */,
             true /* enableStrictSizeMode */,
@@ -2614,10 +2614,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // After resizing and turning on StrictFileSystemSizeEnforcement every
         // shard should have the same TotalBytesCount equal to that of the main
         // filesystem
-        CheckShardsSize(fsConfig, service, fsConfig.MainFsBlockCount());
+        CheckShardsSize(fsConfig, service, fsConfig.MainFsBlockCount);
 
         // Downsize the filesystem by force
-        const auto newBlocksCount = fsConfig.MainFsBlockCount() / 2;
+        const auto newBlocksCount = fsConfig.MainFsBlockCount / 2;
         service.ResizeFileStore(
             fsConfig.FsId,
             newBlocksCount,
@@ -2699,7 +2699,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // After we replied with error to the main filesystem resize:
         // 1. Main filesystem is actually resized.
         // 2. No shards are resized, and no configure requests were sent.
-        const ui64 newBlocksCount = fsConfig.MainFsBlockCount() * 23 / 20;
+        const ui64 newBlocksCount = fsConfig.MainFsBlockCount * 23 / 20;
         service.AssertResizeFileStoreFailed(fsConfig.FsId, newBlocksCount);
         {
             const auto response = GetStorageStats(service, fsConfig.FsId);
@@ -2707,10 +2707,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_EQUAL(2, stats.GetShardStats().size());
             UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetTotalBlocksCount());
             UNIT_ASSERT_EQUAL(
-                fsConfig.MainFsBlockCount(),
+                fsConfig.MainFsBlockCount,
                 stats.GetShardStats()[0].GetTotalBlocksCount());
             UNIT_ASSERT_EQUAL(
-                fsConfig.MainFsBlockCount(),
+                fsConfig.MainFsBlockCount,
                 stats.GetShardStats()[1].GetTotalBlocksCount());
         }
 
@@ -7234,7 +7234,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     void DoShouldShardedFileSystemHitNodesCountLimit(
         NProto::TStorageConfig config,
-        const bool strictFileSystemSizeEnforcementEnabled)
+        const bool strictFileSystemSizeEnforcementEnabled,
+        const bool updateMainFsCounters)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 512;
@@ -7262,18 +7263,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetSizeToNodesRatio(sizeToNodeRatio);
         config.SetDefaultNodesLimit(filesPerFs / 2);
 
-        const TString fsId = "test";
+        TShardedFileSystemConfig fsConfig = {
+            .ShardBlockCount = shardBlockCount,
+            .MainFsBlockCount = fsSize
+        };
 
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, fsSize);
 
-        WaitForTabletStart(service);
+        TFileSystemInfo fsInfo = CreateFileSystem(service, fsConfig);
 
-        THeaders headers = service.InitSession(fsId, "client");
+        THeaders headers = service.InitSession(fsConfig.FsId, "client");
 
         // Create maximum allowed number of files.
         for (ui64 i = 0; i < filesPerFs; ++i) {
@@ -7287,23 +7290,47 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Update statistics to have correct AggregateNodesCount
         // in the main FS and all the shards.
         if (strictFileSystemSizeEnforcementEnabled) {
-            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+            auto updateCounters = [&](TActorId actorId) {
+                using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+                env.GetRuntime().Send(
+                    new IEventHandle(
+                        actorId, // recipient
+                        TActorId(), // sender
+                        new TRequest(),
+                        0, // flags
+                        0),
+                    nodeIdx);
+            };
+
+            if (updateMainFsCounters) {
+                updateCounters(fsInfo.MainTabletActorId);
+            }
+            updateCounters(fsInfo.Shard1ActorId);
+            updateCounters(fsInfo.Shard2ActorId);
+
             NActors::TDispatchOptions options;
             options.FinalEvents.emplace_back(
                 TDispatchOptions::TFinalEventCondition(
                     TEvIndexTabletPrivate::EvUpdateCounters,
-                    shardCount + 2));
+                    shardCount + static_cast<ui64>(updateMainFsCounters)));
             env.GetRuntime().DispatchEvents(options);
         }
+
+        const ui32 critEventCount =
+            strictFileSystemSizeEnforcementEnabled ? 0 : 1;
+        const ui32 response =
+            (!strictFileSystemSizeEnforcementEnabled || updateMainFsCounters)
+                ? E_FS_NOSPC
+                : S_OK;
 
         service.SendCreateNodeRequest(
             headers,
             TCreateNodeArgs::File(RootNodeId, "too_many_files"));
         UNIT_ASSERT_EQUAL(
-            E_FS_NOSPC,
+            response,
             service.RecvCreateNodeResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            critEventCount,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
@@ -7311,15 +7338,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "too_many_files",
             TCreateHandleArgs::CREATE);
         UNIT_ASSERT_EQUAL(
-            E_FS_NOSPC,
+            response,
             service.RecvCreateHandleResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            critEventCount,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
@@ -7329,8 +7356,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldShardedFileSystemHitNodesCountLimit)
     {
-        DoShouldShardedFileSystemHitNodesCountLimit(config, true);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true, true);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, false, true);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
@@ -7370,7 +7398,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 return false;
             });
 
-        service.ResizeFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount() * 2);
+        service.ResizeFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount * 2);
 
         env.GetRuntime().SetEventFilter(
             &TTestActorRuntimeBase::DefaultFilterFunc);
