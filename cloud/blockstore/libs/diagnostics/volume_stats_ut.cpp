@@ -1367,9 +1367,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->FindSubgroup("folder", DefaultFolderId));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
         }
-        volumeStats->DisableRemoveVolumeInfoByInactivityTimeout(
-            "disk-1",
-            "client-1");
+        volumeStats->GetVolumeInfo("disk-1", "client-1")
+            ->SetRemoveByInactivityTimeoutEnabled(false);
 
         Timer->AdvanceTime(inactivityTimeout * 0.5);
 
@@ -1395,9 +1394,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->FindSubgroup("folder", DefaultFolderId));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
         }
-        volumeStats->DisableRemoveVolumeInfoByInactivityTimeout(
-            "disk-2",
-            "client-2");
+        volumeStats->GetVolumeInfo("disk-2", "client-2")
+            ->SetRemoveByInactivityTimeoutEnabled(false);
 
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();

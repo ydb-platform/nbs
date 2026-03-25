@@ -150,14 +150,6 @@ struct TVolumeStatsTestMock final: public IVolumeStats
         return nullptr;
     }
 
-    void DisableRemoveVolumeInfoByInactivityTimeout(
-        const TString& diskId,
-        const TString& clientId) override
-    {
-        Y_UNUSED(diskId);
-        Y_UNUSED(clientId);
-    }
-
     NProto::EStorageMediaKind GetStorageMediaKind(
         const TString& diskId) const override
     {
