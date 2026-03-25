@@ -9078,7 +9078,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             new NMonitoring::TDynamicCounters();
         InitCriticalEventsCounter(counters);
         auto overlappingRequestsCounter = counters->GetCounter(
-            "AppImpossibleEvents/OverlappingRequestsDetected",
+            "AppCriticalEvents/OverlappingRequestsDetected",
             true);
 
         // Send first request

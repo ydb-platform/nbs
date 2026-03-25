@@ -85,6 +85,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(TrimFreshLogTimeout)                                                   \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
     xxx(AddFreshBlocksResultedInError)                                         \
+    xxx(OverlappingRequestsDetected)                                           \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
@@ -138,7 +139,6 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(InflightRequestInvariantViolation)                                     \
     xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
-    xxx(OverlappingRequestsDetected)                                           \
     xxx(DiskDevicesSizeViolation)                                              \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
