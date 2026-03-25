@@ -1475,16 +1475,10 @@ bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::HasNodesLeft(bool behaveAsShard) const
+bool TIndexTabletActor::HasNodesLeft() const
 {
     if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
         return GetUsedNodesCount() < GetNodesCount();
-    }
-
-    // In the strict mode nodes count is not enforced in shards, it's enforced
-    // in the main filesystem
-    if (behaveAsShard) {
-        return true;
     }
 
     // A new way to count available nodes uses the count aggregated across all

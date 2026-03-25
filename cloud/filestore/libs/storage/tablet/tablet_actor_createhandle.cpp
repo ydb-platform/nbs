@@ -235,8 +235,13 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
 
-            // validate there are enough free inodes
-            if (!HasNodesLeft(behaveAsShard)) {
+            // Validate there are enough free inodes.
+            // In the strict mode the restriction is not enforced if the
+            // request comes from the main FS to the shard.
+            if (!HasNodesLeft() &&
+                (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled() ||
+                 !behaveAsShard))
+            {
                 args.Error = ErrorNoSpaceLeft();
                 return true;
             }
