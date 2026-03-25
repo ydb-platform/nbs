@@ -1,5 +1,5 @@
 function render() {
-    // Palette for shard coloring - up to 10 distinct shards
+    // Palette for shard coloring - up to 10 distinct shard colors
     var SHARD_COLORS = [
         '#e74c3c', '#2980b9', '#27ae60', '#8e44ad',
         '#e67e22', '#16a085', '#c0392b', '#2471a3',
@@ -20,7 +20,9 @@ function render() {
 
     function updateLegend() {
         var legend = document.getElementById('dv-legend');
-        if (!legend) return;
+        if (!legend) {
+            return;
+        }
         legend.innerHTML =
             '<span style="font-weight:bold;margin-right:6px">Shards:</span>';
         for (var sid in shardColorMap) {
@@ -95,7 +97,9 @@ function render() {
         var meta = document.createElement('span');
         meta.className = 'dv-meta';
         var parts = ['#' + node.id];
-        if (node.size) parts.push(formatSize(node.size));
+        if (node.size) {
+            parts.push(formatSize(node.size));
+        }
         meta.textContent = '(' + parts.join(', ') + ')';
         entry.appendChild(meta);
 
@@ -218,7 +222,9 @@ function render() {
 
     window.dvInit = function(tabletId, rootNodeId) {
         var container = document.getElementById('dv-root');
-        if (!container) return;
+        if (!container) {
+            return;
+        }
         var ul = document.createElement('ul');
         container.appendChild(ul);
 

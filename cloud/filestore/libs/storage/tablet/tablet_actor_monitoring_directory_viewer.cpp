@@ -2,17 +2,14 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/tablet/model/simple_template.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
-#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
-
 #include <library/cpp/json/writer/json.h>
-#include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/resource/resource.h>
 
 #include <util/stream/str.h>
 #include <util/string/builder.h>
-#include <util/system/hostname.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -20,44 +17,6 @@ using namespace NActors;
 using namespace NActors::NMon;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-void OutputTemplate(
-    const TString& templateName,
-    const THashMap<TString, TString>& vars,
-    IOutputStream& out)
-{
-    TString content = NResource::Find(
-        TStringBuilder() << "html/" << templateName << ".html");
-    TStringBuf contentRef(content);
-    const TStringBuf b = "{{ ";
-    const TStringBuf e = " }}";
-    ui64 prevIdx = 0;
-    while (true) {
-        const ui64 idx = contentRef.find(b, prevIdx);
-        if (idx == TString::npos) {
-            out << contentRef.substr(prevIdx);
-            break;
-        }
-
-        out << contentRef.substr(prevIdx, idx - prevIdx);
-        const ui64 nextIdx = contentRef.find(e, idx + b.size());
-        if (nextIdx == TString::npos) {
-            out << contentRef.substr(idx);
-            break;
-        }
-
-        auto varName = contentRef.substr(
-            idx + b.size(),
-            nextIdx - idx - b.size());
-        if (const auto* varValue = vars.FindPtr(varName)) {
-            out << *varValue;
-        }
-
-        prevIdx = nextIdx + e.size();
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -130,7 +89,7 @@ void DumpDirViewerJson(
 
 void DumpDirViewerPage(IOutputStream& out, ui64 tabletId, ui32 nodeId)
 {
-    OutputTemplate("dir-viewer-main", {
+    OutputTemplate(NResource::Find("html/dir-viewer-main.html"), {
         {"STYLE", NResource::Find("css/dir-viewer.css")},
         {"JS", NResource::Find("js/dir-viewer.js")},
         {"TABLET_ID", ToString(tabletId)},
