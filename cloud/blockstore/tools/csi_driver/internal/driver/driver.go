@@ -73,6 +73,8 @@ type Config struct {
 	RetriableErrorsDurationThreshold time.Duration
 	NfsVhostReplicaCountUsed         uint
 	NfsVhostReplicaCountTotal        uint
+	NbsServerReplicaCountUsed        uint
+	NbsServerReplicaCountTotal       uint
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,36 +86,49 @@ type Driver struct {
 
 type driverClients struct {
 	nbsClientID             string
-	nbsClient               client.ClientIface
+	nbsClients              []client.ClientIface
 	nfsFilestoreClient      nfsclient.ClientIface
 	nfsEndpointClients      []nfsclient.EndpointClientIface
 	nfsLocalFilestoreClient nfsclient.ClientIface
 	nfsLocalEndpointClient  nfsclient.EndpointClientIface
 }
 
-func getNfsVhostSocket(nfsSocket string, index uint) string {
+func getSocketName(socket string, index uint) string {
 	if index == 0 {
-		return nfsSocket
+		return socket
 	}
 
-	name, suffix, _ := strings.Cut(nfsSocket, ".")
+	name, suffix, _ := strings.Cut(socket, ".")
 	return name + strconv.FormatUint(uint64(index), 10) + "." + suffix
+}
+
+func getPort(port uint, index uint) uint {
+	return port + index*100
 }
 
 func createClients(cfg Config) (*driverClients, error) {
 	nbsClientID := fmt.Sprintf("%s-%s", cfg.DriverName, cfg.NodeID)
-	nbsClient, err := nbsclient.NewGrpcClient(
-		&nbsclient.GrpcClientOpts{
-			Endpoint: getEndpoint(cfg.NbsSocket, cfg.NbsHost, cfg.NbsPort),
-			ClientId: nbsClientID,
-			Timeout:  &cfg.GrpcRequestTimeout,
-		}, nbsclient.NewStderrLog(nbsclient.LOG_DEBUG),
-	)
-	if err != nil {
-		return nil, err
+
+	var nbsClients []client.ClientIface
+	for i := 0; i < int(cfg.NbsServerReplicaCountTotal); i++ {
+		nbsSocket := getSocketName(cfg.NbsSocket, uint(i))
+		nbsPort := getPort(cfg.NbsPort, uint(i))
+		nbsClient, err := nbsclient.NewGrpcClient(
+			&nbsclient.GrpcClientOpts{
+				Endpoint: getEndpoint(nbsSocket, cfg.NbsHost, nbsPort),
+				ClientId: nbsClientID,
+				Timeout:  &cfg.GrpcRequestTimeout,
+			}, nbsclient.NewStderrLog(nbsclient.LOG_DEBUG),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		nbsClients = append(nbsClients, nbsClient)
 	}
 
 	var nfsFilestoreClient nfsclient.ClientIface
+	err := error(nil)
 	if cfg.NfsServerSocket != "" || cfg.NfsServerPort != 0 {
 		nfsFilestoreClient, err = nfsclient.NewGrpcClient(
 			&nfsclient.GrpcClientOpts{
@@ -139,19 +154,18 @@ func createClients(cfg Config) (*driverClients, error) {
 
 	var nfsEndpointClients []nfsclient.EndpointClientIface
 	if cfg.NfsVhostSocket != "" || cfg.NfsVhostPort != 0 {
-		if cfg.NfsVhostSocket != "" {
-			for i := 0; i < int(cfg.NfsVhostReplicaCountTotal); i++ {
-				nfsVhostSocket := getNfsVhostSocket(cfg.NfsVhostSocket, uint(i))
-				nfsEndpointClient, err := nfsclient.NewGrpcEndpointClient(
-					&nfsclient.GrpcClientOpts{
-						Endpoint: getEndpoint(nfsVhostSocket, cfg.NfsVhostHost, cfg.NfsVhostPort),
-					}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
-				)
-				if err != nil {
-					return nil, err
-				}
-				nfsEndpointClients = append(nfsEndpointClients, nfsEndpointClient)
+		for i := 0; i < int(cfg.NfsVhostReplicaCountTotal); i++ {
+			nfsVhostSocket := getSocketName(cfg.NfsVhostSocket, uint(i))
+			nfsVhostPort := getPort(cfg.NbsPort, uint(i))
+			nfsEndpointClient, err := nfsclient.NewGrpcEndpointClient(
+				&nfsclient.GrpcClientOpts{
+					Endpoint: getEndpoint(nfsVhostSocket, cfg.NfsVhostHost, nfsVhostPort),
+				}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
+			)
+			if err != nil {
+				return nil, err
 			}
+			nfsEndpointClients = append(nfsEndpointClients, nfsEndpointClient)
 		}
 	}
 
@@ -169,7 +183,7 @@ func createClients(cfg Config) (*driverClients, error) {
 
 	return &driverClients{
 		nbsClientID:             nbsClientID,
-		nbsClient:               nbsClient,
+		nbsClients:              nbsClients,
 		nfsFilestoreClient:      nfsFilestoreClient,
 		nfsEndpointClients:      nfsEndpointClients,
 		nfsLocalFilestoreClient: nfsLocalFilestoreClient,
@@ -199,6 +213,12 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil,
 			fmt.Errorf("Invalid nfs-vhost replica count values. NfsVhostReplicaCountUsed %q must be less than or equal to NfsVhostReplicaCountTotal %q",
 				cfg.NfsVhostReplicaCountUsed, cfg.NfsVhostReplicaCountTotal)
+	}
+
+	if cfg.NbsServerReplicaCountUsed > cfg.NbsServerReplicaCountTotal {
+		return nil,
+			fmt.Errorf("Invalid NBS server replica count values. NbsServerReplicaCountUsed %q must be less than or equal to NbsServerReplicaCountTotal %q",
+				cfg.NbsServerReplicaCountUsed, cfg.NbsServerReplicaCountTotal)
 	}
 
 	clients, err := createClients(cfg)
@@ -249,7 +269,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	csi.RegisterControllerServer(
 		grpcServer,
 		newNBSServerControllerService(
-			clients.nbsClient,
+			clients.nbsClients[0],
 			clients.nfsFilestoreClient))
 
 	csi.RegisterNodeServer(
@@ -262,7 +282,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
 			externalFsOverrides,
-			clients.nbsClient,
+			clients.nbsClients,
 			clients.nfsEndpointClients,
 			clients.nfsLocalEndpointClient,
 			clients.nfsLocalFilestoreClient,
@@ -270,7 +290,9 @@ func NewDriver(cfg Config) (*Driver, error) {
 			strings.Split(cfg.MountOptions, ","),
 			cfg.UseDiscardForYDBBasedDisks,
 			cfg.StartEndpointRequestTimeout,
-			cfg.NfsVhostReplicaCountUsed))
+			cfg.NfsVhostReplicaCountUsed,
+			cfg.NbsServerReplicaCountUsed,
+		))
 
 	return &Driver{
 		grpcServer: grpcServer,
