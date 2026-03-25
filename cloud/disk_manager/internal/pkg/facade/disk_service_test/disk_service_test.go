@@ -262,11 +262,13 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 
 	testcommon.DeleteDisk(t, ctx, client, diskID)
 
-	_ = internal_client.WaitOperation(ctx, client, createOp.Id)
+	tasksStorage, err := testcommon.NewTaskStorage(ctx)
+	require.NoError(t, err)
 
-	// Should wait here because base disk slot might be released on overlay disk
-	// creation operation cancel (and exact time of this event is unknown).
-	time.Sleep(time.Second * 10)
+	require.Eventually(t, func() bool {
+		ended, err := tasksStorage.IsTaskEnded(ctx, createOp.Id)
+		return err == nil && ended
+	}, 30*time.Second, 100*time.Millisecond)
 
 	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
