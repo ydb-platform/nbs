@@ -91,6 +91,7 @@ public:
     NProto::ECompactionType GetSSDCompactionType() const;
     NProto::ECompactionType GetHDDCompactionType() const;
     bool GetV1GarbageCompactionEnabled() const;
+    bool GetZeroedCompactionEnabled() const;
     ui32 GetCompactionGarbageThreshold() const;
     ui32 GetCompactionGarbageBlobLimit() const;
     ui32 GetCompactionGarbageBlockLimit() const;

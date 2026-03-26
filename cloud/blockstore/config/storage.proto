@@ -1554,4 +1554,6 @@ message TStorageServiceConfig
 
     // Max skipped blobs during range compaction for HDD disks.
     optional uint32 MaxSkippedBlobsDuringCompactionHDD = 493;
+
+    optional uint64 ZeroedCompactionEnabled = 494;
 }

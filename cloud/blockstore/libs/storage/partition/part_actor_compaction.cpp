@@ -1586,7 +1586,23 @@ void TPartitionActor::HandleCompaction(
             }
         }
         State->OnNewCompactionRange(msg->RangeBlockIndices.size());
-    } else if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
+    } else if (
+        msg->Mode == TEvPartitionPrivate::GarbageCompaction &&
+        Config->GetZeroedCompactionEnabled())
+    {
+        if (batchCompactionEnabled &&
+            Config->GetGarbageCompactionRangeCountPerRun() > 1)
+        {
+            tops = cm.GetTopByGarbageWithoutZeroes(
+                Config->GetGarbageCompactionRangeCountPerRun());
+        } else {
+            const auto& top = cm.GetTopByGarbageWithoutZeroes();
+            tops.push_back({top.BlockIndex, top.Stat});
+        }
+    } else if (
+        msg->Mode == TEvPartitionPrivate::GarbageCompaction ||
+        msg->Mode == TEvPartitionPrivate::ZeroedCompaction)
+    {
         if (batchCompactionEnabled &&
             Config->GetGarbageCompactionRangeCountPerRun() > 1)
         {
