@@ -313,9 +313,9 @@ func (s *nodeService) NodeStageVolume(
 					clientIndex := uint(0)
 					if nfsBackend {
 						backend = "nfs"
-						clientIndex = getClientIndex(instanceId, s.nfsVhostReplicaCount)
+						clientIndex = s.getNfsClientIndex(ctx)
 					} else {
-						clientIndex = getClientIndex(instanceId, s.nbsServerReplicaCount)
+						clientIndex = s.getNbsClientIndex(ctx)
 					}
 					stageData = &StageData{
 						Backend:       backend,
@@ -420,6 +420,50 @@ func (s *nodeService) NodeUnstageVolume(
 	}
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
+}
+
+func (s *nodeService) getNbsClientIndex(ctx context.Context) uint {
+	if s.nbsServerReplicaCount < 2 {
+		return 0
+	}
+	endpointsCount := math.MaxInt32
+	nbsClientIndex := uint(0)
+	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
+		listEndpointsResp, err := s.nbsClients[index].ListEndpoints(ctx,
+			&nbsapi.TListEndpointsRequest{})
+		if err != nil {
+			continue
+		}
+
+		if len(listEndpointsResp.Endpoints) < endpointsCount {
+			endpointsCount = len(listEndpointsResp.Endpoints)
+			nbsClientIndex = uint(index)
+		}
+	}
+
+	return nbsClientIndex
+}
+
+func (s *nodeService) getNfsClientIndex(ctx context.Context) uint {
+	if s.nfsVhostReplicaCount < 2 {
+		return 0
+	}
+	endpointsCount := math.MaxInt32
+	nfsClientIndex := uint(0)
+	for index := uint(0); index < s.nfsVhostReplicaCount; index++ {
+		listEndpointsResp, err := s.nfsClients[index].ListEndpoints(ctx,
+			&nfsapi.TListEndpointsRequest{})
+		if err != nil {
+			continue
+		}
+
+		if len(listEndpointsResp.Endpoints) < endpointsCount {
+			endpointsCount = len(listEndpointsResp.Endpoints)
+			nfsClientIndex = uint(index)
+		}
+	}
+
+	return nfsClientIndex
 }
 
 func (s *nodeService) NodePublishVolume(
