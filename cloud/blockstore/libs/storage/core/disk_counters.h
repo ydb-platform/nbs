@@ -201,6 +201,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageWithoutZeroesScore{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
     TCounter ChannelHistorySize{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
@@ -221,6 +225,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
+    TCounter NewlyZeroedBlocks{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter HasBrokenDevice{
@@ -261,11 +269,13 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::GarbageQueueBytes>(),
         MakeMeta<&TSimpleDiskCounters::CompactionScore>(),
         MakeMeta<&TSimpleDiskCounters::CompactionGarbageScore>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionGarbageWithoutZeroesScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),
+        MakeMeta<&TSimpleDiskCounters::NewlyZeroedBlocks>(),
 
         MakeMeta<&TSimpleDiskCounters::HasBrokenDevice>(),
         MakeMeta<&TSimpleDiskCounters::HasBrokenDeviceSilent>(),
@@ -340,6 +350,14 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByZeroedBlocksPerRange{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByZeroedBlocksPerDisk{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -362,6 +380,8 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByZeroedBlocksPerRange>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByZeroedBlocksPerDisk>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };
