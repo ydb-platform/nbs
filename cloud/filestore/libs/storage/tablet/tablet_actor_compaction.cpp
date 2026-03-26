@@ -424,12 +424,18 @@ void TIndexTabletActor::AddBlobIndexOpIfNeeded(
         ? static_cast<int>(backpressureStatus.FlushBytes)
         : 0;
 
+    const int flushBytesItemCountPriority =
+        shouldFlushBytesByFreshBytesItemCount
+            ? static_cast<int>(backpressureStatus.FlushBytesItemCount)
+            : 0;
+
     // Prioritize background operations whose optimization targets are close
     // to their backpressure thresholds
     const int maxPriority = Max(
         compactionPriority,
         cleanupPriority,
-        flushBytesPriority);
+        flushBytesPriority,
+        flushBytesItemCountPriority);
 
     if (maxPriority == 0) {
         // No background operations are needed to run
@@ -490,7 +496,7 @@ void TIndexTabletActor::AddBlobIndexOpIfNeeded(
     // FlushBytes operation will run for a long time and this will result
     // in high delays for user operations.
     // Therefore FlushBytes operation is enqueued at any priority level.
-    if (flushBytesPriority > 0) {
+    if (flushBytesPriority > 0 || flushBytesItemCountPriority > 0) {
         AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
     }
 }

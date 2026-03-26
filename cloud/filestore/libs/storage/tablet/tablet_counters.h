@@ -202,6 +202,8 @@ struct TTabletMetrics
     std::atomic<i64> FlushBackpressureThreshold{0};
     std::atomic<i64> FlushBytesBackpressureValue{0};
     std::atomic<i64> FlushBytesBackpressureThreshold{0};
+    std::atomic<i64> FlushBytesItemCountBackpressureValue{0};
+    std::atomic<i64> FlushBytesItemCountBackpressureThreshold{0};
     std::atomic<i64> CompactionBackpressureValue{0};
     std::atomic<i64> CompactionBackpressureThreshold{0};
     std::atomic<i64> CleanupBackpressureValue{0};

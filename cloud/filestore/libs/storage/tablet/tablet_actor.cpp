@@ -300,11 +300,13 @@ using TThresholds = TIndexTabletState::TBackpressureThresholds;
 TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
 {
     return {
-        Config->GetFlushThresholdForBackpressure(),
-        Config->GetFlushBytesThresholdForBackpressure(),
-        ScaleCompactionThreshold(
+        .Flush = Config->GetFlushThresholdForBackpressure(),
+        .FlushBytes = Config->GetFlushBytesThresholdForBackpressure(),
+        .FlushBytesItemCount =
+            Config->GetFlushBytesItemCountThresholdForBackpressure(),
+        .CompactionScore = ScaleCompactionThreshold(
             Config->GetCompactionThresholdForBackpressure()),
-        Config->GetCleanupThresholdForBackpressure(),
+        .CleanupScore = Config->GetCleanupThresholdForBackpressure(),
     };
 }
 
@@ -312,10 +314,11 @@ TIndexTabletState::TBackpressureValues
 TIndexTabletActor::GetBackpressureValues() const
 {
     return {
-        GetFreshBlocksCount() * GetBlockSize(),
-        GetFreshBytesCount(),
-        GetRangeToCompact().Score,
-        GetRangeToCleanup().Score,
+        .Flush = GetFreshBlocksCount() * GetBlockSize(),
+        .FlushBytes = GetFreshBytesCount(),
+        .FlushBytesItemCount = GetFreshBytesItemCount(),
+        .CompactionScore = GetRangeToCompact().Score,
+        .CleanupScore = GetRangeToCleanup().Score,
     };
 }
 
@@ -678,16 +681,19 @@ TBackgroundOpsBackpressureStatus
     const auto bpThresholds = BuildBackpressureThresholds();
     const auto bpValues = GetBackpressureValues();
     return {
-        GetBackgroundOpBackpressureStatus(
+        .Flush = GetBackgroundOpBackpressureStatus(
             bpThresholds.Flush,
             bpValues.Flush),
-        GetBackgroundOpBackpressureStatus(
+        .FlushBytes = GetBackgroundOpBackpressureStatus(
             bpThresholds.FlushBytes,
             bpValues.FlushBytes),
-        GetBackgroundOpBackpressureStatus(
+        .FlushBytesItemCount = GetBackgroundOpBackpressureStatus(
+            bpThresholds.FlushBytesItemCount,
+            bpValues.FlushBytesItemCount),
+        .Compaction = GetBackgroundOpBackpressureStatus(
             bpThresholds.CompactionScore,
             bpValues.CompactionScore),
-        GetBackgroundOpBackpressureStatus(
+        .Cleanup = GetBackgroundOpBackpressureStatus(
             bpThresholds.CleanupScore,
             bpValues.CleanupScore),
     };
