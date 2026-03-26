@@ -298,6 +298,12 @@ public:
 
     void SetRemoveByInactivityTimeoutEnabled(bool enabled) override
     {
+        Cerr << ">>>>> 1 VolumeInfo[" << intptr_t(this)
+             << "]: " << (enabled ? "unlock" : "lock")
+             << " [c: " << RealInstanceId.GetClientId() << "]"
+             << " [i: " << RealInstanceId.GetInstanceId() << "]"
+             << " [d: " << VolumeBase->Volume.GetDiskId() << "]" << Endl;
+
         RemoveByInactivityTimeoutEnabled = enabled;
     }
 
@@ -604,6 +610,12 @@ public:
 
         auto volumeInfo = infoIt->second;
 
+        Cerr << ">>>>> 1 VolumeInfo[" << intptr_t(volumeInfo.get()) << "]: rem"
+             << " [c: " << volumeInfo->RealInstanceId.GetClientId() << "]"
+             << " [i: " << volumeInfo->RealInstanceId.GetInstanceId() << "]"
+             << " [d: " << volumeInfo->VolumeBase->Volume.GetDiskId() << "]"
+             << Endl;
+
         UnregisterInstance(volumeInfo->VolumeBase, volumeInfo->RealInstanceId);
 
         std::erase_if(
@@ -656,8 +668,15 @@ public:
         Volumes.erase(volumeIt);
 
         for (const auto& item: holder.VolumeInfos) {
-            const TVolumeInfo& info = *item.second;
-            UnregisterInstance(info.VolumeBase, info.RealInstanceId);
+            const TVolumeInfo& volumeInfo = *item.second;
+            Cerr << ">>>>> 2 VolumeInfo[" << intptr_t(&volumeInfo) << "]: rem"
+                 << " [c: " << volumeInfo.RealInstanceId.GetClientId() << "]"
+                 << " [i: " << volumeInfo.RealInstanceId.GetInstanceId() << "]"
+                 << " [d: " << volumeInfo.VolumeBase->Volume.GetDiskId() << "]"
+                 << Endl;
+            UnregisterInstance(
+                volumeInfo.VolumeBase,
+                volumeInfo.RealInstanceId);
         }
         UnregisterVolume(holder.VolumeBase);
 
@@ -725,27 +744,38 @@ public:
 
     bool TrimInstance(TInstant now, TVolumeMap& infos)
     {
-        std::erase_if(infos, [this, now] (const auto& item){
-            const TVolumeInfo& info = *item.second;
-            if (info.RemoveByInactivityTimeoutEnabled &&
-                InactiveClientsTimeout &&
-                now - info.LastRemountTime > InactiveClientsTimeout)
+        std::erase_if(
+            infos,
+            [this, now](const auto& item)
             {
-                UnregisterInstance(
-                    info.VolumeBase,
-                    info.RealInstanceId);
-                std::erase_if(
-                    ClientToRealInstance,
-                    [&info](const auto& client)
-                    {
-                        return TRealInstanceKeyEqual()(
-                            client.second,
-                            info.RealInstanceId);
-                    });
-                return true;
-            }
-            return false;
-        });
+                const TVolumeInfo& volumeInfo = *item.second;
+                if (volumeInfo.RemoveByInactivityTimeoutEnabled &&
+                    InactiveClientsTimeout &&
+                    now - volumeInfo.LastRemountTime > InactiveClientsTimeout)
+                {
+                    Cerr << ">>>>> 3 VolumeInfo[" << intptr_t(&volumeInfo)
+                         << "]: rem"
+                         << " [c: " << volumeInfo.RealInstanceId.GetClientId()
+                         << "]"
+                         << " [i: " << volumeInfo.RealInstanceId.GetInstanceId()
+                         << "]"
+                         << " [d: " << volumeInfo.VolumeBase->Volume.GetDiskId()
+                         << "]" << Endl;
+                    UnregisterInstance(
+                        volumeInfo.VolumeBase,
+                        volumeInfo.RealInstanceId);
+                    std::erase_if(
+                        ClientToRealInstance,
+                        [&volumeInfo](const auto& client)
+                        {
+                            return TRealInstanceKeyEqual()(
+                                client.second,
+                                volumeInfo.RealInstanceId);
+                        });
+                    return true;
+                }
+                return false;
+            });
         return infos.empty();
     }
 
@@ -940,17 +970,18 @@ private:
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
-        Cerr << ">>>>> VolumeInfo: add"
-             << " [c: " << realInstanceId.GetClientId() << "]"
-             << " [i: " << realInstanceId.GetInstanceId() << "]"
-             << " [d: " << volumeBase->Volume.GetDiskId() << "]" << Endl;
-
-        auto info = std::make_shared<TVolumeInfo>(
+        auto volumeInfo = std::make_shared<TVolumeInfo>(
             volumeBase,
             Timer,
             realInstanceId,
             DiagnosticsConfig->GetHistogramCounterOptions(),
             ExecutionTimeSizeClasses);
+
+        Cerr << ">>>>> 1 VolumeInfo[" << intptr_t(volumeInfo.get()) << "]: add"
+             << " [c: " << volumeInfo->RealInstanceId.GetClientId() << "]"
+             << " [i: " << volumeInfo->RealInstanceId.GetInstanceId() << "]"
+             << " [d: " << volumeInfo->VolumeBase->Volume.GetDiskId() << "]"
+             << Endl;
 
         if (!Counters) {
             InitCounters();
@@ -966,8 +997,9 @@ private:
                 ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
                 ->GetSubgroup("cloud", volumeConfig.GetCloudId())
                 ->GetSubgroup("folder", volumeConfig.GetFolderId());
-        info->RequestCounters.Register(*countersGroup);
-        info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
+        volumeInfo->RequestCounters.Register(*countersGroup);
+        volumeInfo->HasDowntimeCounter =
+            countersGroup->GetCounter("HasDowntime");
 
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
@@ -983,18 +1015,13 @@ private:
             DiagnosticsConfig->GetHistogramCounterOptions(),
             countersGroup);
 
-        return info;
+        return volumeInfo;
     }
 
     void UnregisterInstance(
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
-        Cerr << ">>>>> VolumeInfo: rem"
-             << " [c: " << realInstanceId.GetClientId() << "]"
-             << " [i: " << realInstanceId.GetInstanceId() << "]"
-             << " [d: " << volumeBase->Volume.GetDiskId() << "]" << Endl;
-
         if (!Counters) {
             InitCounters();
         }

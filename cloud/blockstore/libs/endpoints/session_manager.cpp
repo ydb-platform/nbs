@@ -290,16 +290,18 @@ public:
         const TString instanceId = request->GetInstanceId();
 
         if (!Mounted) {
-            Cerr << ">>>>> TStorageDataClient: mount"
-                 << " [c: " << ClientId << "]"
-                 << " [i: " << instanceId << "]"
-                 << " [d: " << request->GetDiskId() << "]" << Endl;
-
-            Y_ABORT_IF(
-                VolumeStats->GetVolumeInfo(request->GetDiskId(), ClientId) !=
+            STORAGE_VERIFY_C(
+                VolumeStats->GetVolumeInfo(request->GetDiskId(), ClientId) ==
                     nullptr,
+                "",
+                "",
                 ">>>>> Dangling VolumeInfo before mount");
         }
+
+        Cerr << ">>>>> TStorageDataClient: " << (Mounted ? "remount" : "mount")
+             << " [c: " << ClientId << "]"
+             << " [i: " << instanceId << "]"
+             << " [d: " << request->GetDiskId() << "]" << Endl;
 
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
         auto future = Service->MountVolume(
@@ -311,18 +313,31 @@ public:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
+                    Cerr << ">>>>> TStorageDataClient: mount response after "
+                            "object deleted"
+                         << " [c: " << self->ClientId << "]"
+                         << " [i: " << instanceId << "]"
+                         << " [d: " << f.GetValue().GetVolume().GetDiskId()
+                         << "]" << Endl;
                     return f;
                 }
-                if (self->Unmounted) {
-                    Y_ABORT(
-                        ">>>>> TStorageDataClient MountVolume responce after "
-                        "UnmountVolume done. Possible dangling VolumeInfo "
-                        "left");
-                }
+                STORAGE_VERIFY_C(
+                    !self->Unmounted,
+                    "",
+                    "",
+                    ">>>>> TStorageDataClient MountVolume response after "
+                    "UnmountVolume done. Possible dangling VolumeInfo "
+                    "left");
 
                 const auto& response = f.GetValue();
 
                 if (!HasError(response) && response.HasVolume()) {
+                    Cerr << ">>>>> TStorageDataClient: mount response OK"
+                         << " [c: " << self->ClientId << "]"
+                         << " [i: " << instanceId << "]"
+                         << " [d: " << response.GetVolume().GetDiskId() << "]"
+                         << Endl;
+
                     self->ServerStats->MountVolume(
                         response.GetVolume(),
                         self->ClientId,
@@ -333,19 +348,26 @@ public:
                         response.GetVolume().GetDiskId(),
                         self->ClientId);
 
-                    if (volumeInfo) {
-                        volumeInfo->SetRemoveByInactivityTimeoutEnabled(false);
-                    }
                     if (!self->Mounted) {
                         Cerr << ">>>>> ServerStats: mounted"
                              << " [c: " << self->ClientId << "]"
                              << " [i: " << instanceId << "]"
                              << " [d: " << response.GetVolume().GetDiskId()
                              << "]" << Endl;
+                        self->Mounted = 1;
                     }
-                    self->Mounted = 1;
+
+                    if (volumeInfo) {
+                        volumeInfo->SetRemoveByInactivityTimeoutEnabled(false);
+                    } else {
+                        Cerr << ">>>>> TStorageDataClient: not found VolumeInfo"
+                             << " [c: " << self->ClientId << "]"
+                             << " [i: " << instanceId << "]"
+                             << " [d: " << response.GetVolume().GetDiskId()
+                             << "]" << Endl;
+                    }
                 } else {
-                    Cerr << ">>>>> TStorageDataClient: ERROR mount"
+                    Cerr << ">>>>> TStorageDataClient: mount responce ERROR"
                          << " [c: " << self->ClientId << "]"
                          << " [i: " << instanceId << "]"
                          << " [d: " << response.GetVolume().GetDiskId() << "]"
@@ -375,7 +397,10 @@ public:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
-                    Y_ABORT(
+                    STORAGE_VERIFY_C(
+                        false,
+                        "",
+                        "",
                         ">>>>> TStorageDataClient destroyed before "
                         "UnmountVolume response was processed. Possible "
                         "dangling VolumeInfo left");
@@ -699,10 +724,12 @@ NProto::TError TSessionManager::RemoveSessionImpl(
 
     auto error = endpoint->Stop(std::move(callContext), headers);
 
-    Y_ABORT_IF(
+    STORAGE_VERIFY_C(
         VolumeStats->GetVolumeInfo(
             endpoint->GetDiskId(),
-            endpoint->GetClientId()) != nullptr,
+            endpoint->GetClientId()) == nullptr,
+        "",
+        "",
         ">>>>> Dangling VolumeInfo after endpoint stopped");
 
     endpoint.reset();

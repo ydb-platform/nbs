@@ -83,4 +83,4 @@ ConfigDispatcherSettings {
   }
 }
 
-ClientRemountPeriod: 10
+ClientRemountPeriod: 100
