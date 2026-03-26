@@ -213,6 +213,8 @@ private:
     const TString ClientId;
     const TDuration RequestTimeout;
     const ui32 BlockSize;
+    TAtomic Mounted = 0;
+    TAtomic Unmounted = 0;
 
 public:
     TStorageDataClient(
@@ -230,7 +232,16 @@ public:
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
         , BlockSize(blockSize)
-    {}
+    {
+        Cerr << ">>>>> TStorageDataClient: create"
+             << " [c: " << ClientId << "]" << Endl;
+    }
+
+    ~TStorageDataClient()
+    {
+        Cerr << ">>>>> TStorageDataClient: destroy"
+             << " [c: " << ClientId << "]" << Endl;
+    }
 
     void Start() override
     {}
@@ -266,6 +277,12 @@ public:
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
     {
         const TString instanceId = request->GetInstanceId();
+
+        Cerr << ">>>>> TStorageDataClient: mount"
+             << " [c: " << ClientId << "]"
+             << " [i: " << instanceId << "]"
+             << " [d: " << request->GetDiskId() << "]" << Endl;
+
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
         auto future = Service->MountVolume(
             std::move(callContext),
@@ -277,6 +294,12 @@ public:
                 auto self = weakSelf.lock();
                 if (!self) {
                     return f;
+                }
+                if (self->Unmounted) {
+                    Y_ABORT(
+                        "TStorageDataClient MountVolume responce after "
+                        "UnmountVolume done. Possible dangling VolumeStats "
+                        "left");
                 }
 
                 const auto& response = f.GetValue();
@@ -295,6 +318,20 @@ public:
                     if (volumeInfo) {
                         volumeInfo->SetRemoveByInactivityTimeoutEnabled(false);
                     }
+                    if (!self->Mounted) {
+                        Cerr << ">>>>> TStorageDataClient: mounted"
+                             << " [c: " << self->ClientId << "]"
+                             << " [i: " << instanceId << "]"
+                             << " [d: " << response.GetVolume().GetDiskId()
+                             << "]" << Endl;
+                    }
+                    self->Mounted = 1;
+                } else {
+                    Cerr << ">>>>> TStorageDataClient: ERROR mount"
+                         << " [c: " << self->ClientId << "]"
+                         << " [i: " << instanceId << "]"
+                         << " [d: " << response.GetVolume().GetDiskId() << "]"
+                         << Endl;
                 }
                 return f;
             });
@@ -306,6 +343,10 @@ public:
     {
         auto diskId = request->GetDiskId();
 
+        Cerr << ">>>>> TStorageDataClient: unmount"
+             << " [c: " << ClientId << "]"
+             << " [d: " << diskId << "]" << Endl;
+
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
         auto future = Service->UnmountVolume(
             std::move(callContext),
@@ -316,15 +357,27 @@ public:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
+                    Y_ABORT(
+                        "TStorageDataClient destroyed befor UnmountVolume "
+                        "response was processed. Possible dangling VolumeStats "
+                        "left");
                     return f;
                 }
 
                 const auto& response = f.GetValue();
 
                 if (!HasError(response)) {
+                    self->Unmounted = 1;
                     self->ServerStats->UnmountVolume(
                         diskId,
                         self->ClientId);
+                    Cerr << ">>>>> TStorageDataClient: unmounted"
+                         << " [c: " << self->ClientId << "]"
+                         << " [d: " << diskId << "]" << Endl;
+                } else {
+                    Cerr << ">>>>> TStorageDataClient: ERROR unmount"
+                         << " [c: " << self->ClientId << "]"
+                         << " [d: " << diskId << "]" << Endl;
                 }
                 return f;
             });

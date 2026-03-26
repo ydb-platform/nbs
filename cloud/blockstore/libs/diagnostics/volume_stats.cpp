@@ -940,6 +940,11 @@ private:
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
+        Cerr << ">>>>> VolumeInfo: add"
+             << " [c: " << realInstanceId.GetClientId() << "]"
+             << " [i: " << realInstanceId.GetInstanceId() << "]"
+             << " [d: " << volumeBase->Volume.GetDiskId() << "]" << Endl;
+
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
             Timer,
@@ -985,6 +990,11 @@ private:
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
+        Cerr << ">>>>> VolumeInfo: rem"
+             << " [c: " << realInstanceId.GetClientId() << "]"
+             << " [i: " << realInstanceId.GetInstanceId() << "]"
+             << " [d: " << volumeBase->Volume.GetDiskId() << "]" << Endl;
+
         if (!Counters) {
             InitCounters();
         }
