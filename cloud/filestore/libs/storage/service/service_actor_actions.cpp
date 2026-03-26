@@ -139,7 +139,19 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "unsafecreatehandle",
             &TStorageServiceActor::CreateUnsafeCreateHandleActor
-        }
+        },
+        {
+            "writeresponselogentry",
+            &TStorageServiceActor::CreateWriteResponseLogEntryActor
+        },
+        {
+            "deleteresponselogentry",
+            &TStorageServiceActor::CreateDeleteResponseLogEntryActor
+        },
+        {
+            "getresponselogentry",
+            &TStorageServiceActor::CreateGetResponseLogEntryActor
+        },
     };
 
     using TInstantAction = void (TStorageServiceActor::*)(

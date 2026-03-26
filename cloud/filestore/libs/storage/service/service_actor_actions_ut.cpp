@@ -414,7 +414,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.DestroySession(headers);
     }
 
-
     Y_UNIT_TEST(ShouldPerformUnsafeNodeRefManipulations)
     {
         NProto::TStorageConfig config;
@@ -612,6 +611,95 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 shardNodeName2,
                 r.GetNodes(0).GetShardNodeName());
+        }
+
+        service.DestroySession(headers);
+    }
+
+    Y_UNIT_TEST(ShouldPerformResponseLogEntryManipulations)
+    {
+        NProto::TStorageConfig config;
+        // being explicit
+        config.SetMultiTabletForwardingEnabled(false);
+        TTestEnv env{{}, config};
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        const ui64 clientTabletId = 111;
+        const ui64 requestId = 222;
+        const ui32 responseCode = E_FS_ISDIR;
+        service.CreateFileStore(fsId, 1'000);
+
+        auto headers = service.InitSession("test", "client");
+
+        {
+            NProtoPrivate::TWriteResponseLogEntryRequest request;
+            request.SetFileSystemId(fsId);
+            auto* entry = request.MutableEntry();
+            entry->SetClientTabletId(clientTabletId);
+            entry->SetRequestId(requestId);
+            auto* rr = entry->MutableRenameNodeInDestinationResponse();
+            rr->MutableError()->SetCode(responseCode);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("WriteResponseLogEntry", buf);
+        }
+
+        {
+            NProtoPrivate::TGetResponseLogEntryRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetClientTabletId(clientTabletId);
+            request.SetRequestId(requestId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("GetResponseLogEntry", buf);
+            auto r = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                r->GetStatus(),
+                FormatError(r->GetError()));
+            NProtoPrivate::TGetResponseLogEntryResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                r->Record.GetOutput(),
+                &response).ok());
+            UNIT_ASSERT(response.HasEntry());
+            UNIT_ASSERT_VALUES_EQUAL(
+                responseCode,
+                response.GetEntry().GetRenameNodeInDestinationResponse()
+                    .GetError().GetCode());
+        }
+
+        {
+            NProtoPrivate::TDeleteResponseLogEntryRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetClientTabletId(clientTabletId);
+            request.SetRequestId(requestId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("DeleteResponseLogEntry", buf);
+        }
+
+        {
+            NProtoPrivate::TGetResponseLogEntryRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetClientTabletId(clientTabletId);
+            request.SetRequestId(requestId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("GetResponseLogEntry", buf);
+            auto r = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                r->GetStatus(),
+                FormatError(r->GetError()));
+            NProtoPrivate::TGetResponseLogEntryResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                r->Record.GetOutput(),
+                &response).ok());
+            UNIT_ASSERT(!response.HasEntry());
         }
 
         service.DestroySession(headers);

@@ -239,4 +239,43 @@ IActorPtr TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor(
         std::move(input));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ResponseLog ops
+
+IActorPtr TStorageServiceActor::CreateWriteResponseLogEntryActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TWriteResponseLogEntryActor = TTabletActionActor<
+        TEvIndexTablet::TEvWriteResponseLogEntryRequest,
+        TEvIndexTablet::TEvWriteResponseLogEntryResponse>;
+    return std::make_unique<TWriteResponseLogEntryActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateDeleteResponseLogEntryActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TDeleteResponseLogEntryActor = TTabletActionActor<
+        TEvIndexTablet::TEvDeleteResponseLogEntryRequest,
+        TEvIndexTablet::TEvDeleteResponseLogEntryResponse>;
+    return std::make_unique<TDeleteResponseLogEntryActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateGetResponseLogEntryActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TGetResponseLogEntryActor = TTabletActionActor<
+        TEvIndexTablet::TEvGetResponseLogEntryRequest,
+        TEvIndexTablet::TEvGetResponseLogEntryResponse>;
+    return std::make_unique<TGetResponseLogEntryActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 }   // namespace NCloud::NFileStore::NStorage
