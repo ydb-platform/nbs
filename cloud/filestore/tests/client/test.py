@@ -823,7 +823,13 @@ def test_io_telemetry():
             component = parts[1]
             message = parts[3]
             if component == ":NFS_TRACE":
-                track = json.loads(message)
+                track = ""
+                try:
+                    track = json.loads(message)
+                except json.JSONDecodeError:
+                    logging.warning(
+                        "failed to deserialize message to JSON: %s" % message)
+                    continue
                 for probe in track:
                     if len(probe) < 3:
                         continue
