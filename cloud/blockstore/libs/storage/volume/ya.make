@@ -15,6 +15,7 @@ SRCS(
     volume_actor_forward.cpp
     volume_actor_forward_trackused.cpp
     volume_actor_initschema.cpp
+    volume_actor_broken_devices.cpp
     volume_actor_lagging_agents.cpp
     volume_actor_leader.cpp
     volume_actor_link_status.cpp
