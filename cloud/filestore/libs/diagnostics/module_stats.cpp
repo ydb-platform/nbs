@@ -3,6 +3,7 @@
 #include "filesystem_counters.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <util/generic/hash.h>
@@ -20,6 +21,7 @@ namespace {
 
 struct TModuleStatsEntry
 {
+    // DynamicCounters are automatically deleted when the registry is deleted
     IMetricsRegistryPtr LocalMetricsRegistry;
     IMetricsRegistryPtr AggregatableMetricsRegistry;
     IModuleStatsPtr ModuleStats;
@@ -30,6 +32,9 @@ struct TModuleStatsEntry
 struct TFileSystemStatsEntry
 {
     IMainMetricsRegistryPtr FileSystemMetricsRegistry;
+
+    // Key: ModuleName
+    // Value: IModuleStatsPtr + metric registries
     THashMap<TString, TModuleStatsEntry> ModuleStatsMap;
 
     explicit TFileSystemStatsEntry(NMonitoring::TDynamicCountersPtr fsCounters)
@@ -39,8 +44,8 @@ struct TFileSystemStatsEntry
 
     void UpdateStats(TInstant now) const
     {
-        for (const auto& [key, entry]: ModuleStatsMap) {
-            entry.ModuleStats->UpdateStats(now);
+        for (const auto& [_, moduleStatsEntry]: ModuleStatsMap) {
+            moduleStatsEntry.ModuleStats->UpdateStats(now);
         }
         FileSystemMetricsRegistry->Update(now);
     }

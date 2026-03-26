@@ -11,6 +11,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <atomic>
 #include <memory>
 
 namespace NCloud::NFileStore {
@@ -64,16 +65,14 @@ public:
     void Add(ui64 value)
     {
         MaxCalc->Add(value);
-        SumValue.fetch_add(static_cast<i64>(value), std::memory_order_relaxed);
+        SumValue.fetch_add(static_cast<i64>(value));
     }
 
     void UpdateStats(TInstant now) override
     {
         Y_UNUSED(now);
 
-        MaxValue.store(
-            static_cast<i64>(MaxCalc->NextValue()),
-            std::memory_order_release);
+        MaxValue.store(static_cast<i64>(MaxCalc->NextValue()));
     }
 };
 
