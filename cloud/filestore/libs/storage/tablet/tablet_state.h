@@ -42,6 +42,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <functional>
+
 namespace NCloud::NFileStore::NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -698,6 +700,8 @@ public:
     bool TryLockNodeRef(TNodeRefKey key);
     void UnlockNodeRef(const TNodeRefKey& key);
     bool IsNodeRefLocked(const TNodeRefKey& key) const;
+    using TNodeRefLockVisitor = std::function<void(const TNodeRefKey&)>;
+    void VisitNodeRefLocks(const TNodeRefLockVisitor& visitor) const;
 
     //
     // Sessions
