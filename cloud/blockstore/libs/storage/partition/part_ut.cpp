@@ -2378,6 +2378,66 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSplitFlushBlobsByCompactionRangeBoundaries)
+    {
+        constexpr ui32 rangeSize = 1024;
+        constexpr ui32 blockCount = rangeSize * 3;
+
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(4_MB);
+
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 i = 1022; i < 1026; ++i) {
+            partition.WriteBlocks(i, 1);
+        }
+        for (ui32 i = 1500; i < 1505; ++i) {
+            partition.WriteBlocks(i, 2);
+        }
+        for (ui32 i = 2045; i < 2050; ++i) {
+            partition.WriteBlocks(i, 3);
+        }
+
+        ui32 mixedBlobsCount = 0;
+        TVector<TVector<ui32>> blobIndexes;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+                            mixedBlobsCount = msg->FreshBlobs.size();
+
+                            for (const auto& blob: msg->FreshBlobs) {
+                                blobIndexes.emplace_back();
+                                for (const auto& block: blob.Blocks) {
+                                    blobIndexes.back().push_back(block.BlockIndex);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        partition.Flush();
+
+        // Expect 3 blobs: [1022-1023], [1024-1025] + [1500-1504] + [2045-2047],
+        // [2048-2049]
+        UNIT_ASSERT_VALUES_EQUAL(3, mixedBlobsCount);
+
+        for (const auto& blobBlocks: blobIndexes) {
+            ui32 rangeIndex = blobBlocks.front() / rangeSize;
+            for (auto blockIdx: blobBlocks) {
+                UNIT_ASSERT_VALUES_EQUAL(rangeIndex, blockIdx / rangeSize);
+            }
+        }
+    }
 
     Y_UNIT_TEST(ShouldMergeVersionsOnRead)
     {
