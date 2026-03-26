@@ -37,8 +37,7 @@ func TestGetClientError(t *testing.T) {
 
 func TestIsDiskNotFoundError(t *testing.T) {
 	clientErr := &ClientError{}
-	var err error
-	err = clientErr
+	err := clientErr
 
 	clientErr.Code = E_NOT_IMPLEMENTED
 	require.False(t, IsDiskNotFoundError(err))
