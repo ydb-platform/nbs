@@ -137,6 +137,11 @@ public:
         return DiskId;
     }
 
+    TString GetClientId() const
+    {
+        return ClientId;
+    }
+
     NProto::TClientPerformanceProfile GetPerformanceProfile() const
     {
         return ThrottlerProvider->GetPerformanceProfile(ClientId);
@@ -244,10 +249,16 @@ public:
     }
 
     void Start() override
-    {}
+    {
+        Cerr << ">>>>> TStorageDataClient: start"
+             << " [c: " << ClientId << "]" << Endl;
+    }
 
     void Stop() override
-    {}
+    {
+        Cerr << ">>>>> TStorageDataClient: stop"
+             << " [c: " << ClientId << "]" << Endl;
+    }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -278,10 +289,17 @@ public:
     {
         const TString instanceId = request->GetInstanceId();
 
-        Cerr << ">>>>> TStorageDataClient: mount"
-             << " [c: " << ClientId << "]"
-             << " [i: " << instanceId << "]"
-             << " [d: " << request->GetDiskId() << "]" << Endl;
+        if (!Mounted) {
+            Cerr << ">>>>> TStorageDataClient: mount"
+                 << " [c: " << ClientId << "]"
+                 << " [i: " << instanceId << "]"
+                 << " [d: " << request->GetDiskId() << "]" << Endl;
+
+            Y_ABORT_IF(
+                VolumeStats->GetVolumeInfo(request->GetDiskId(), ClientId) !=
+                    nullptr,
+                ">>>>> Dangling VolumeInfo before mount");
+        }
 
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
         auto future = Service->MountVolume(
@@ -297,8 +315,8 @@ public:
                 }
                 if (self->Unmounted) {
                     Y_ABORT(
-                        "TStorageDataClient MountVolume responce after "
-                        "UnmountVolume done. Possible dangling VolumeStats "
+                        ">>>>> TStorageDataClient MountVolume responce after "
+                        "UnmountVolume done. Possible dangling VolumeInfo "
                         "left");
                 }
 
@@ -319,7 +337,7 @@ public:
                         volumeInfo->SetRemoveByInactivityTimeoutEnabled(false);
                     }
                     if (!self->Mounted) {
-                        Cerr << ">>>>> TStorageDataClient: mounted"
+                        Cerr << ">>>>> ServerStats: mounted"
                              << " [c: " << self->ClientId << "]"
                              << " [i: " << instanceId << "]"
                              << " [d: " << response.GetVolume().GetDiskId()
@@ -358,9 +376,9 @@ public:
                 auto self = weakSelf.lock();
                 if (!self) {
                     Y_ABORT(
-                        "TStorageDataClient destroyed befor UnmountVolume "
-                        "response was processed. Possible dangling VolumeStats "
-                        "left");
+                        ">>>>> TStorageDataClient destroyed before "
+                        "UnmountVolume response was processed. Possible "
+                        "dangling VolumeInfo left");
                     return f;
                 }
 
@@ -371,7 +389,7 @@ public:
                     self->ServerStats->UnmountVolume(
                         diskId,
                         self->ClientId);
-                    Cerr << ">>>>> TStorageDataClient: unmounted"
+                    Cerr << ">>>>> ServerStats: unmounted"
                          << " [c: " << self->ClientId << "]"
                          << " [d: " << diskId << "]" << Endl;
                 } else {
@@ -680,6 +698,12 @@ NProto::TError TSessionManager::RemoveSessionImpl(
     }
 
     auto error = endpoint->Stop(std::move(callContext), headers);
+
+    Y_ABORT_IF(
+        VolumeStats->GetVolumeInfo(
+            endpoint->GetDiskId(),
+            endpoint->GetClientId()) != nullptr,
+        ">>>>> Dangling VolumeInfo after endpoint stopped");
 
     endpoint.reset();
     ThrottlerProvider->Clean();
