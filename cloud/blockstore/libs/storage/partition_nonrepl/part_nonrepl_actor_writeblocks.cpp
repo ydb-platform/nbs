@@ -465,7 +465,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveWriteRequest(ev->Sender);
-    OnRequestCompleted(*msg, ctx);
+    OnRequestCompleted(*msg, ctx.Now());
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
 

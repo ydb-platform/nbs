@@ -4,11 +4,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void TDeviceStat::Init(TString deviceUUID, IDeviceStatObserver* observer)
-{
-    DeviceUUID = std::move(deviceUUID);
-    Observer = observer;
-}
+TDeviceStat::TDeviceStat(TString deviceUUID, IDeviceStatObserver* observer)
+    : DeviceUUID(std::move(deviceUUID))
+    , Observer(observer)
+{}
 
 TDeviceStat::EDeviceStatus TDeviceStat::GetDeviceStatus() const
 {

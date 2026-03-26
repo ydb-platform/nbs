@@ -53,7 +53,7 @@ private:
     IDeviceStatObserver* Observer = nullptr;
 
 public:
-    void Init(TString deviceUUID, IDeviceStatObserver* observer);
+    TDeviceStat(TString deviceUUID, IDeviceStatObserver* observer);
 
     [[nodiscard]] EDeviceStatus GetDeviceStatus() const;
 

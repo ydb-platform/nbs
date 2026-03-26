@@ -33,8 +33,7 @@ Y_UNIT_TEST_SUITE(TDeviceStatTest)
     Y_UNIT_TEST(ShouldNotifyObserverOnBrokenTransitions)
     {
         TTestObserver observer;
-        TDeviceStat stat;
-        stat.Init("uuid-1", &observer);
+        TDeviceStat stat("uuid-1", &observer);
 
         const auto now = TInstant::Seconds(100);
         const auto maxDuration = TDuration::Seconds(10);
@@ -72,8 +71,7 @@ Y_UNIT_TEST_SUITE(TDeviceStatTest)
     Y_UNIT_TEST(ShouldNotifyObserverOnRecovery)
     {
         TTestObserver observer;
-        TDeviceStat stat;
-        stat.Init("uuid-1", &observer);
+        TDeviceStat stat("uuid-1", &observer);
 
         const auto now = TInstant::Seconds(100);
 

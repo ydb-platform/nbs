@@ -58,7 +58,6 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
-    const NActors::TActorContext* CurrentCtx = nullptr;
 
     TVector<TDeviceStat> DeviceStats;
 
@@ -160,7 +159,7 @@ private:
 
     void OnRequestCompleted(
         const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
-        const NActors::TActorContext& ctx);
+        TInstant now);
     void
     OnRequestSuccess(ui32 deviceIndex, TDuration executionTime, TInstant now);
     void

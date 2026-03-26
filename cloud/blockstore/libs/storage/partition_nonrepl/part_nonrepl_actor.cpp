@@ -23,6 +23,25 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+TVector<TDeviceStat> CreateDeviceStats(
+    const TNonreplicatedPartitionConfig& partConfig,
+    IDeviceStatObserver* observer)
+{
+    const auto& devices = partConfig.GetDevices();
+    TVector<TDeviceStat> stats;
+    stats.reserve(devices.size());
+    for (const auto& device: devices) {
+        stats.emplace_back(device.GetDeviceUUID(), observer);
+    }
+    return stats;
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
@@ -34,16 +53,11 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
-    , DeviceStats(PartConfig->GetDevices().size())
+    , DeviceStats(CreateDeviceStats(*PartConfig, this))
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
-{
-    const auto& devices = PartConfig->GetDevices();
-    for (ui32 i = 0; i < DeviceStats.size(); ++i) {
-        DeviceStats[i].Init(devices[i].GetDeviceUUID(), this);
-    }
-}
+{}
 
 TNonreplicatedPartitionActor::~TNonreplicatedPartitionActor() = default;
 
@@ -336,9 +350,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         TDeviceStat& deviceStat = DeviceStats[dr.DeviceIdx];
         if (dr.Device.GetNodeId() == 0) {
             // Accessing a non-allocated device causes the disk to break.
-            CurrentCtx = &ctx;
             deviceStat.MarkBroken(ctx.Now());
-            CurrentCtx = nullptr;
 
             reply(
                 ctx,
@@ -439,12 +451,9 @@ template bool TNonreplicatedPartitionActor::InitRequests<
 
 void TNonreplicatedPartitionActor::OnRequestCompleted(
     const TEvNonreplPartitionPrivate::TOperationCompleted& operation,
-    const TActorContext& ctx)
+    TInstant now)
 {
-    CurrentCtx = &ctx;
-
     using EStatus = TEvNonreplPartitionPrivate::TOperationCompleted::EStatus;
-    const TInstant now = ctx.Now();
     switch (operation.Status) {
         case EStatus::Success: {
             for (const auto& [deviceIndex, _]: operation.RequestResults) {
@@ -462,8 +471,6 @@ void TNonreplicatedPartitionActor::OnRequestCompleted(
             break;
         }
     }
-
-    CurrentCtx = nullptr;
 }
 
 void TNonreplicatedPartitionActor::OnRequestSuccess(
@@ -490,9 +497,7 @@ void TNonreplicatedPartitionActor::OnDeviceBroken(
     const TString& deviceUUID,
     TInstant brokenTs)
 {
-    Y_ABORT_UNLESS(CurrentCtx);
-    NCloud::Send(
-        *CurrentCtx,
+    TActivationContext::Send(
         VolumeActorId,
         std::make_unique<
             TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification>(
@@ -502,9 +507,7 @@ void TNonreplicatedPartitionActor::OnDeviceBroken(
 
 void TNonreplicatedPartitionActor::OnDeviceRecovered(const TString& deviceUUID)
 {
-    Y_ABORT_UNLESS(CurrentCtx);
-    NCloud::Send(
-        *CurrentCtx,
+    TActivationContext::Send(
         VolumeActorId,
         std::make_unique<
             TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification>(
