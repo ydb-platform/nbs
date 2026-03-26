@@ -7312,14 +7312,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             options.FinalEvents.emplace_back(
                 TDispatchOptions::TFinalEventCondition(
                     TEvIndexTabletPrivate::EvUpdateCounters,
-                    shardCount + static_cast<ui64>(updateMainFsCounters)));
+                    shardCount + updateMainFsCounters));
             env.GetRuntime().DispatchEvents(options);
         }
 
-        const ui32 critEventCount =
-            strictFileSystemSizeEnforcementEnabled ? 0 : 1;
         const ui32 response =
-            (!strictFileSystemSizeEnforcementEnabled || updateMainFsCounters)
+            (strictFileSystemSizeEnforcementEnabled && updateMainFsCounters)
                 ? E_FS_NOSPC
                 : S_OK;
 
@@ -7330,7 +7328,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             response,
             service.RecvCreateNodeResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            critEventCount,
+            0,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
@@ -7346,7 +7344,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             response,
             service.RecvCreateHandleResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            critEventCount,
+            0,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
