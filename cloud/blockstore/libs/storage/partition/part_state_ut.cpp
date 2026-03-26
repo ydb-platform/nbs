@@ -363,11 +363,11 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         constexpr ui32 rangeIdx = 0;
         TVector<TMixedBlock> blocks = {
-            { {1, 1}, 1, 1, 1 },
-            { {2, 2}, 2, 2, 2 },
-            { {3, 3}, 3, 3, 3 },
-            { {4, 4}, 4, 4, 4 },
-            { {5, 5}, 5, 5, 5 }
+            { {1, 1}, 1, 1, 1, 1},
+            { {2, 2}, 2, 2, 2, 2},
+            { {3, 3}, 3, 3, 3, 3},
+            { {4, 4}, 4, 4, 4, 4},
+            { {5, 5}, 5, 5, 5, 5}
         };
 
         auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs) {
@@ -385,7 +385,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         TVector<TMixedBlock> actual;
 
         struct TVisitor final
-            : public IBlocksIndexVisitor
+            : public IMixedBlocksIndexVisitor
         {
             TVector<TMixedBlock>& Blocks;
 
@@ -393,13 +393,19 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 : Blocks(blocks)
             {}
 
-            bool Visit(
+            bool VisitBlock(
                 ui32 blockIndex,
                 ui64 commitId,
                 const TPartialBlobId& blobId,
-                ui16 blobOffset) override
+                ui16 blobOffset,
+                ui32 blobAlignment) override
             {
-                Blocks.emplace_back(blobId, commitId, blockIndex, blobOffset);
+                Blocks.emplace_back(
+                    blobId,
+                    commitId,
+                    blockIndex,
+                    blobOffset,
+                    blobAlignment);
                 return true;
             }
 

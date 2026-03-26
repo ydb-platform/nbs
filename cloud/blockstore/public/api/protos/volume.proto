@@ -413,6 +413,12 @@ message TVolumeStats
 
     // Current trim fresh log as commit id
     uint64 TrimFreshLogToCommitId = 29;
+
+    // Number of read block masks during compaction.
+    uint64 BlockMaskReadedDuringCompaction = 30;
+
+    // Number of blobs processed during compaction.
+    uint64 BlobsProcessedDuringCompaction = 31;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

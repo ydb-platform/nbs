@@ -642,7 +642,11 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blockIndices.emplace_back(blockIndex);
                 }
             }
-            mixedBlobs.emplace_back(blobId, std::move(blockIndices), blockChecksums);
+            mixedBlobs.emplace_back(
+                blobId,
+                std::move(blockIndices),
+                blockChecksums,
+                0);   // unknown blob alignment
             mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else {
             LOG_ERROR(
@@ -1035,6 +1039,7 @@ STFUNC(TCompactionActor::StateWork)
 class TCompactionBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
     , public IBlobsVisitor
 {
 private:
@@ -1079,8 +1084,35 @@ public:
         return true;
     }
 
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 blobAlignment) override
+    {
+        if (commitId > MaxCommitId) {
+            return true;
+        }
+
+        auto& ab = Args.AffectedBlobs[blobId];
+        ab.BlobAlignment = blobAlignment;
+
+        Args.MarkBlock(
+            blockIndex,
+            commitId,
+            blobId,
+            blobOffset,
+            KeepTrackOfAffectedBlocks);
+        return true;
+    }
+
     bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
     {
+        if (blobId.CommitId() > MaxCommitId) {
+            return true;
+        }
+
         auto& ab = Args.AffectedBlobs[blobId];
         ab.BlobRangeHint = blockRange;
         return true;
@@ -1693,12 +1725,18 @@ void PrepareRangeCompaction(
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
+        state.IncrementBlobsProcessedDuringCompaction();
+
         const bool compactRangeContainsBlob =
             args.BlockRange.Contains(kv.second.BlobRangeHint);
+        const bool blobOnlyInOneCompactRange =
+            state.GetCompactionMap().GetRangeSize() == kv.second.BlobAlignment;
 
-        if (!compactRangeContainsBlob ||
+        if ((!compactRangeContainsBlob && !blobOnlyInOneCompactRange) ||
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
+            state.IncrementBlockMaskReadedDuringCompaction();
+
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
                 STORAGE_VERIFY_C(
                     kv.second.BlockMask.Defined(),
