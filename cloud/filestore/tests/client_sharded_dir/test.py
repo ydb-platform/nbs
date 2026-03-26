@@ -168,6 +168,9 @@ def test_nonsharded_vs_sharded_fs():
         _d("/a1/b5"),
         _d("/a1/b6"),
         _f("/a1/b6/f20.txt", "yyyyy"),
+        _f("/.something"),
+        _f("/another.something"),
+        _f("/file.txt"),
     ]
 
     __fill_fs(client, "fs0", items)

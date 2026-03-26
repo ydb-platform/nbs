@@ -1,5 +1,12 @@
 [
     {
+        "Type": 1,
+        "Links": 1,
+        "Name": ".something",
+        "Mode": 420,
+        "Id": 37
+    },
+    {
         "Type": 2,
         "Links": 1,
         "Name": "a0",
@@ -16,11 +23,29 @@
     {
         "Type": 1,
         "Links": 1,
+        "Name": "another.something",
+        "Mode": 420,
+        "Id": 38
+    },
+    {
+        "Type": 1,
+        "Links": 1,
         "Size": 62,
         "Name": "f18.txt",
         "Id": 29
+    },
+    {
+        "Type": 1,
+        "Links": 1,
+        "Name": "file.txt",
+        "Mode": 420,
+        "Id": 39
     }
 ][
+    {
+        "ShardFileSystemId": "masked_for_test_stability",
+        "Name": ".something"
+    },
     {
         "ShardFileSystemId": "masked_for_test_stability",
         "Name": "a0"
@@ -31,7 +56,15 @@
     },
     {
         "ShardFileSystemId": "masked_for_test_stability",
+        "Name": "another.something"
+    },
+    {
+        "ShardFileSystemId": "masked_for_test_stability",
         "Name": "f18.txt"
+    },
+    {
+        "ShardFileSystemId": "masked_for_test_stability",
+        "Name": "file.txt"
     }
 ][22;31m-	LINK: [0m[0;39m/does/not/matter/2
 [22;32m+	LINK: [0m[0;39m/does/not/matter/3
@@ -52,6 +85,15 @@ WriteData
 dirViewer(1):
 [
     {
+        "name": ".something",
+        "node": {
+            "shardId": "fs1_s1",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
+    },
+    {
         "name": "a0",
         "node": {
             "shardId": "fs1_s1",
@@ -70,6 +112,15 @@ dirViewer(1):
         }
     },
     {
+        "name": "another.something",
+        "node": {
+            "shardId": "fs1_s2",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
+    },
+    {
         "name": "f18.txt",
         "node": {
             "shardId": "fs1_s2",
@@ -77,10 +128,28 @@ dirViewer(1):
             "size": 62,
             "mode": 0
         }
+    },
+    {
+        "name": "file.txt",
+        "node": {
+            "shardId": "fs1_s3",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
     }
 ]
 dirViewer(1):
 [
+    {
+        "name": "2e86417e52d80f70efc68eba1a93ddd6",
+        "node": {
+            "shardId": "fs1_s1",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
+    },
     {
         "name": "5640486daa6880d667b76c958820361a",
         "node": {
@@ -100,12 +169,30 @@ dirViewer(1):
         }
     },
     {
+        "name": "dfa1161d7101b1396e12334ecbc320f2",
+        "node": {
+            "shardId": "fs1_s2",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
+    },
+    {
         "name": "d60ea3899962ccffb8e5c7893e7eddd7.txt",
         "node": {
             "shardId": "fs1_s2",
             "type": 1,
             "size": 62,
             "mode": 0
+        }
+    },
+    {
+        "name": "8c7dd922ad47494fc02c388e12c00eac.txt",
+        "node": {
+            "shardId": "fs1_s3",
+            "type": 1,
+            "size": 0,
+            "mode": 420
         }
     }
 ]
