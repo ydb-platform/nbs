@@ -79,3 +79,37 @@ dirViewer(1):
         }
     }
 ]
+dirViewer(1):
+[
+    {
+        "name": "5640486daa6880d667b76c958820361a",
+        "node": {
+            "shardId": "fs1_s1",
+            "type": 2,
+            "size": 0,
+            "mode": 511
+        }
+    },
+    {
+        "name": "8a8bb7cd343aa2ad99b7d762030857a2",
+        "node": {
+            "shardId": "fs1_s2",
+            "type": 2,
+            "size": 0,
+            "mode": 511
+        }
+    },
+    {
+        "name": "d60ea3899962ccffb8e5c7893e7eddd7.txt",
+        "node": {
+            "shardId": "fs1_s2",
+            "type": 1,
+            "size": 62,
+            "mode": 0
+        }
+    }
+]
+locks():
+{
+    "locks": []
+}

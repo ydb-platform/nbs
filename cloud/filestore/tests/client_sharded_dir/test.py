@@ -99,6 +99,15 @@ def __fetch_dir_viewer_entries(tablet_id, node_id):
     return entries
 
 
+def __fetch_locks(tablet_id):
+    mon_port = os.getenv("NFS_MON_PORT")
+    response = requests.get(
+        url=f"http://localhost:{mon_port}/tablets/app?"
+            f"TabletID={tablet_id}&action=locks&getContent=1")
+    response.raise_for_status()
+    return response.json()
+
+
 def test_nonsharded_vs_sharded_fs():
     client, client_nocheck, results_path = __init_test()
     client.create(
@@ -230,6 +239,32 @@ def test_nonsharded_vs_sharded_fs():
     result = json.dumps(entries, indent=4)
     with open(results_path, 'a') as results:
         results.write('dirViewer(1):\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # Enabling file name hashing and querying dirViewer for the root node once
+    # again, dumping the result w/o unstable fields.
+    #
+
+    client.change_storage_service_config(
+        "fs1",
+        {"HideFileNamesInTabletDirectoryViewer": True})
+    root_node_id = 1
+    entries = __fetch_dir_viewer_entries(tablet_id, root_node_id)
+    result = json.dumps(entries, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('dirViewer(1):\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # And let's do the same thing for locks viewer - there should be no locks
+    # so this is just a smoke test.
+    #
+
+    locks = __fetch_locks(tablet_id)
+    result = json.dumps(locks, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('locks():\n')
         results.write('{}\n'.format(result))
 
     #

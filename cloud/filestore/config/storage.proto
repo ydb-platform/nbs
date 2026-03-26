@@ -745,4 +745,8 @@ message TStorageConfig
 
     // Reject writes when FlushBytesItemCount >= threshold
     optional uint64 FlushBytesItemCountThresholdForBackpressure = 490;
+
+    // Set this to see file name hashes instead of the actual names in the
+    // tablet's directory viewer.
+    optional bool HideFileNamesInTabletDirectoryViewer = 491;
 }

@@ -122,7 +122,7 @@ PEERDIR(
     cloud/storage/core/libs/viewer
     cloud/storage/core/protos
 
-    contrib/ydb/library/actors/core
+    library/cpp/digest/md5
     library/cpp/protobuf/json
 
     contrib/ydb/core/base
@@ -132,6 +132,7 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
+    contrib/ydb/library/actors/core
 )
 
 END()

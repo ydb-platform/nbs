@@ -395,6 +395,8 @@ public:
 
     [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
     [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
+
+    [[nodiscard]] bool GetHideFileNamesInTabletDirectoryViewer() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

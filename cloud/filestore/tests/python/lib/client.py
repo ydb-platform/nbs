@@ -334,6 +334,13 @@ class FilestoreCliClient:
         os.unlink(request_file.name)
         return res.stdout
 
+    def change_storage_service_config(self, fs_id, config):
+        req = {"FileSystemId": fs_id, "StorageConfig": config}
+
+        resp = self.execute_action("changestorageconfig", req)
+
+        return json.loads(resp)
+
     def get_storage_service_config(self, fs_id=None):
         req = {"FileSystemId": "" if fs_id is None else fs_id}
 

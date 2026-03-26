@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/simple_template.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
+#include <library/cpp/digest/md5/md5.h>
 #include <library/cpp/json/writer/json.h>
 #include <library/cpp/resource/resource.h>
 
@@ -118,6 +119,7 @@ TString JsonError(const NProto::TError& e)
 class TDirViewerActor final: public TActorBootstrapped<TDirViewerActor>
 {
 private:
+    const bool HideFileNames;
     const TRequestInfoPtr RequestInfo;
     const TString LogTag;
     const ui64 NodeId;
@@ -135,6 +137,7 @@ private:
 
 public:
     TDirViewerActor(
+        bool hideFileNames,
         TRequestInfoPtr requestInfo,
         TString logTag,
         ui64 nodeId,
@@ -168,11 +171,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDirViewerActor::TDirViewerActor(
+        bool hideFileNames,
         TRequestInfoPtr requestInfo,
         TString logTag,
         ui64 nodeId,
         TString directoryShardId)
-    : RequestInfo(std::move(requestInfo))
+    : HideFileNames(hideFileNames)
+    , RequestInfo(std::move(requestInfo))
     , LogTag(std::move(logTag))
     , NodeId(nodeId)
     , DirectoryShardId(std::move(directoryShardId))
@@ -437,6 +442,19 @@ void TDirViewerActor::HandlePoisonPill(
 
 void TDirViewerActor::ReplyAndDie(const TActorContext& ctx)
 {
+    if (HideFileNames) {
+        for (auto& name: Names) {
+            TStringBuf sbuf(name);
+            size_t pos = sbuf.rfind('.');
+            TStringBuilder maskedName;
+            maskedName << MD5::Calc(sbuf.substr(0, pos));
+            if (pos != TString::npos) {
+                maskedName << sbuf.substr(pos);
+            }
+            name = maskedName;
+        }
+    }
+
     TStringStream out;
     DumpDirViewerJson(out, Names, Nodes, NextCookie);
     NCloud::Reply(
@@ -531,6 +549,7 @@ void TIndexTabletActor::HandleHttpInfo_DirViewer(
     }
 
     auto actor = std::make_unique<TDirViewerActor>(
+        Config->GetHideFileNamesInTabletDirectoryViewer(),
         std::move(requestInfo),
         LogTag,
         nodeId,
