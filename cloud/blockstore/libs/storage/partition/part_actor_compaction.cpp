@@ -1079,6 +1079,219 @@ ui32 GetPercentage(ui64 total, ui64 real)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class CompactionTriggerer
+{
+private:
+    const TStorageConfigPtr Config;
+    const TPartitionState& State;
+
+    TPartitionDiskCounters* Counters;
+
+    const TRangeStat& TopRangeStat;
+    const TRangeStat& TopGargageRangeStat;
+    const TRangeStat& TopGargageWithoutZeroesRangeStat;
+
+public:
+    CompactionTriggerer(
+        const TStorageConfigPtr config,
+        const TPartitionState& state,
+        TPartitionDiskCounters* counters,
+        const TRangeStat& topRangeStat,
+        const TRangeStat& topGargageRangeStat,
+        const TRangeStat& topGargageWithoutZeroesRangeStat)
+        : Config(config)
+        , State(state)
+        , Counters(counters)
+        , TopRangeStat(topRangeStat)
+        , TopGargageRangeStat(topGargageRangeStat)
+        , TopGargageWithoutZeroesRangeStat(topGargageWithoutZeroesRangeStat)
+    {}
+
+    struct TriggerInfo {
+        ui64 RangeCount;
+        ui64 RangeThreshold;
+        ui64 DiskCount;
+        ui64 DiskThreshold;
+        TEvPartitionPrivate::ECompactionMode Mode;
+        bool ThrottlingAllowed;
+        bool FullCompaction;
+    };
+
+    std::optional<TriggerInfo> ShouldTriggerCompaction(
+        TEvPartitionPrivate::ECompactionMode mode)
+    {
+        switch (mode) {
+            case TEvPartitionPrivate::RangeCompaction: {
+                return ShouldTriggerBlobCompaction();
+            }
+            case TEvPartitionPrivate::GarbageCompaction: {
+                return ShouldTriggerGarbageOrZeroedCompaction(true);
+            }
+            case TEvPartitionPrivate::ZeroedCompaction: {
+                return ShouldTriggerGarbageOrZeroedCompaction(false);
+            }
+        }
+    }
+
+private:
+    ui64 GetBlockCount() const
+    {
+        return State.GetMixedBlocksCount() + State.GetMergedBlocksCount() -
+            State.GetCleanupQueue().GetQueueBlocks();
+    }
+
+    ui64 GetDiskGarbage() const
+    {
+        return GetPercentage(State.GetUsedBlocksCount(), GetBlockCount());
+    }
+
+    std::optional<TriggerInfo> ShouldTriggerBlobCompaction()
+    {
+        const auto blobCount =
+            State.GetMixedBlobsCount() + State.GetMergedBlobsCount();
+        const bool diskBlobCountOverThreshold =
+            State.GetMaxBlobsPerDisk() &&
+            blobCount >
+                State.GetMaxBlobsPerDisk() + State.GetCleanupQueue().GetCount();
+
+        if (TopRangeStat.CompactionScore.Score <= 0 &&
+            !diskBlobCountOverThreshold)
+        {
+            return std::nullopt;
+        }
+
+        if (TopRangeStat.CompactionScore.Score <= 0) {
+            Counters->Cumulative.CompactionByBlobCountPerDisk.Increment(1);
+        } else {
+            switch (TopRangeStat.CompactionScore.Type) {
+                case TCompactionScore::EType::BlobCount: {
+                    Counters->Cumulative.CompactionByBlobCountPerRange
+                        .Increment(1);
+                    break;
+                }
+                case TCompactionScore::EType::Read: {
+                    Counters->Cumulative.CompactionByReadStats.Increment(1);
+                    break;
+                }
+            }
+        }
+
+        bool throttlingAllowed = TopRangeStat.CompactionScore.Score <
+                                 Config->GetCompactionScoreLimitForThrottling();
+
+        // Fallback to full compaction if there is too many garbage on the disk.
+        // Needed because compaction by blob count has priority over compaction
+        // by garbage.
+        bool fullCompaction =
+            GetDiskGarbage() >= Config->GetCompactionGarbageThreshold();
+
+        return TriggerInfo{
+            TopRangeStat.BlobCount,
+            State.GetMaxBlobsPerRange(),
+            blobCount,
+            State.GetMaxBlobsPerDisk(),
+            TEvPartitionPrivate::RangeCompaction,
+            throttlingAllowed,
+            fullCompaction};
+    }
+
+    std::optional<TriggerInfo> ShouldTriggerGarbageOrZeroedCompaction(
+        bool isGarbageClompaction)
+    {
+        if (!Config->GetV1GarbageCompactionEnabled()) {
+            // nothing to compact
+            return std::nullopt;
+        }
+
+        if (!isGarbageClompaction && !Config->GetZeroedCompactionEnabled()) {
+            // Zeroes compaction is disabled, nothing to do.
+            return std::nullopt;
+        }
+
+        if (!State.GetCheckpoints().IsEmpty()) {
+            // should not compact, see NBS-1042
+            return std::nullopt;
+        }
+
+        const bool withoutZeroes =
+            isGarbageClompaction && Config->GetZeroedCompactionEnabled();
+
+        const auto& rangeStat = withoutZeroes ? TopGargageWithoutZeroesRangeStat
+                                              : TopGargageRangeStat;
+
+        const auto isZeroedRange =
+            rangeStat.BlockCount && !rangeStat.UsedBlockCount;
+
+        if (rangeStat.Compacted ||
+            rangeStat.BlobCount < 2 && !isZeroedRange)
+        {
+            // nothing to compact
+            return std::nullopt;
+        }
+
+        ui64 rangeGarbage = 0;
+        ui64 diskGarbage = 0;
+
+        if (withoutZeroes) {
+            diskGarbage = GetPercentage(
+                State.GetUsedBlocksCount() + State.GetNewlyZeroedBlocks(),
+                GetBlockCount());
+            rangeGarbage = GetPercentage(
+                TopGargageWithoutZeroesRangeStat.UsedBlocksWithoutZeroes(),
+                TopGargageWithoutZeroesRangeStat.BlockCount);
+        } else {
+            diskGarbage = GetDiskGarbage();
+            rangeGarbage = GetPercentage(
+                TopGargageRangeStat.UsedBlockCount,
+                TopGargageRangeStat.BlockCount);
+        }
+
+        bool diskGarbageBelowThreshold =
+            diskGarbage < Config->GetCompactionGarbageThreshold();
+
+        if (rangeGarbage < Config->GetCompactionRangeGarbageThreshold()) {
+            // not enough garbage in this range
+            if (diskGarbageBelowThreshold) {
+                // and not enough garbage on the whole disk, no need to compact
+                return std::nullopt;
+            }
+
+            if (rangeGarbage < Config->GetCompactionGarbageThreshold()) {
+                // really not enough garbage in this range, see NBS-1045
+                return std::nullopt;
+            }
+
+            if (isGarbageClompaction) {
+                Counters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(1);
+            } else {
+                Counters->Cumulative.CompactionByZeroedBlocksPerDisk.Increment(1);
+            }
+        } else {
+            if (isGarbageClompaction) {
+                Counters->Cumulative.CompactionByGarbageBlocksPerRange.Increment(1);
+            } else {
+                Counters->Cumulative.CompactionByZeroedBlocksPerRange.Increment(1);
+            }
+        }
+
+        bool throttlingAllowed = true;
+        if (isGarbageClompaction && Config->GetZeroedCompactionEnabled()) {
+            throttlingAllowed = false;
+        }
+
+        return TriggerInfo{
+            rangeGarbage,
+            Config->GetCompactionRangeGarbageThreshold(),
+            diskGarbage,
+            Config->GetCompactionGarbageThreshold(),
+            isGarbageClompaction ? TEvPartitionPrivate::GarbageCompaction
+                                 : TEvPartitionPrivate::ZeroedCompaction,
+            throttlingAllowed,
+            true /* fullCompaction */};
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
     ui64 rangeRealCount,
@@ -1138,13 +1351,10 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    // TODO: move this logic to TPartitionState to simplify unit testing
     const auto& cm = State->GetCompactionMap();
     auto topRange = cm.GetTop();
     auto topByGarbageBlockCount = cm.GetTopByGarbageBlockCount();
-    TEvPartitionPrivate::ECompactionMode mode =
-        TEvPartitionPrivate::RangeCompaction;
-    bool throttlingAllowed = true;
+    auto topByGarbageWithoutZeroes = cm.GetTopByGarbageWithoutZeroes();
 
     auto& scoreHistory = State->GetCompactionScoreHistory();
     const auto now = ctx.Now();
@@ -1153,75 +1363,33 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
             now,
             {
                 topRange.Stat.CompactionScore.Score,
+                // TODO:_ add one more entiry for garbage without zeroes?
                 topByGarbageBlockCount.Stat.GarbageBlockCount(),
             },
         });
     }
 
-    const auto blockCount = State->GetMixedBlocksCount()
-        + State->GetMergedBlocksCount() - State->GetCleanupQueue().GetQueueBlocks();
-    const auto diskGarbage =
-        GetPercentage(State->GetUsedBlocksCount(), blockCount);
+    CompactionTriggerer triggerer(
+        Config,
+        *State,
+        PartCounters.get(),
+        topRange.Stat,
+        topByGarbageBlockCount.Stat,
+        topByGarbageWithoutZeroes.Stat);
+    std::optional<CompactionTriggerer::TriggerInfo> info;
 
-    const bool diskGarbageBelowThreshold =
-        diskGarbage < Config->GetCompactionGarbageThreshold();
-
-    const auto blobCount = State->GetMixedBlobsCount() +
-        State->GetMergedBlobsCount();
-
-    const bool diskBlobCountOverThreshold = State->GetMaxBlobsPerDisk() &&
-        blobCount > State->GetMaxBlobsPerDisk() + State->GetCleanupQueue().GetCount();
-
-    ui32 rangeGarbage = 0;
-
-    if (topRange.Stat.CompactionScore.Score <= 0  && !diskBlobCountOverThreshold) {
-        if (!Config->GetV1GarbageCompactionEnabled()) {
-            // nothing to compact
-            return;
-        }
-
-        if (!State->GetCheckpoints().IsEmpty()) {
-            // should not compact, see NBS-1042
-            return;
-        }
-
-        // ranges containing 0 used blocks could have a nonzero BlockCount value
-        // in the corresponding compaction range before r7082716
-        const auto isZeroedRange = topByGarbageBlockCount.Stat.BlockCount
-            && !topByGarbageBlockCount.Stat.UsedBlockCount;
-
-        if (topByGarbageBlockCount.Stat.Compacted
-                || topByGarbageBlockCount.Stat.BlobCount < 2
-                && !isZeroedRange)
-        {
-            // nothing to compact
-            return;
-        }
-
-        rangeGarbage = GetPercentage(
-            topByGarbageBlockCount.Stat.UsedBlockCount,
-            topByGarbageBlockCount.Stat.BlockCount
-        );
-
-        if (rangeGarbage < Config->GetCompactionRangeGarbageThreshold()) {
-            // not enough garbage in this range
-            if (diskGarbageBelowThreshold) {
-                // and not enough garbage on the whole disk, no need to compact
+    info = triggerer.ShouldTriggerCompaction(TEvPartitionPrivate::RangeCompaction);
+    if (!info) {
+        info = triggerer.ShouldTriggerCompaction(
+            TEvPartitionPrivate::GarbageCompaction);
+        if (!info) {
+            info = triggerer.ShouldTriggerCompaction(
+                TEvPartitionPrivate::ZeroedCompaction);
+            if (!info) {
+                // No need to compact.
                 return;
             }
-
-            if (rangeGarbage < Config->GetCompactionGarbageThreshold()) {
-                // really not enough garbage in this range, see NBS-1045
-                return;
-            }
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(1);
-        } else {
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerRange.Increment(1);
         }
-
-        mode = TEvPartitionPrivate::GarbageCompaction;
-    } else if (topRange.Stat.CompactionScore.Score >= Config->GetCompactionScoreLimitForThrottling()) {
-        throttlingAllowed = false;
     }
 
     State->GetCompactionState(ECompactionType::Tablet).SetStatus(
@@ -1232,54 +1400,24 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         && now - State->GetLastCompactionRangeCountPerRunTime() >
         Config->GetCompactionCountPerRunChangingPeriod())
     {
-        switch (mode) {
-            case TEvPartitionPrivate::GarbageCompaction: {
-                ChangeRangeCountPerRunIfNeeded(
-                    rangeGarbage,
-                    Config->GetCompactionRangeGarbageThreshold(),
-                    diskGarbage,
-                    Config->GetCompactionGarbageThreshold(),
-                    ctx);
-                break;
-            }
-            case TEvPartitionPrivate::RangeCompaction: {
-                ChangeRangeCountPerRunIfNeeded(
-                    topRange.Stat.BlobCount,
-                    State->GetMaxBlobsPerRange(),
-                    blobCount,
-                    State->GetMaxBlobsPerDisk(),
-                    ctx);
-                break;
-            }
-        }
-    }
-
-    if (topRange.Stat.CompactionScore.Score <= 0 && diskBlobCountOverThreshold) {
-        PartCounters->Cumulative.CompactionByBlobCountPerDisk.Increment(1);
-    } else if (mode != TEvPartitionPrivate::GarbageCompaction) {
-        switch (topRange.Stat.CompactionScore.Type) {
-            case TCompactionScore::EType::BlobCount: {
-                PartCounters->Cumulative.CompactionByBlobCountPerRange.Increment(1);
-                break;
-            }
-            case TCompactionScore::EType::Read: {
-                PartCounters->Cumulative.CompactionByReadStats.Increment(1);
-                break;
-            }
-        }
+        ChangeRangeCountPerRunIfNeeded(
+            info->RangeCount,
+            info->RangeThreshold,
+            info->DiskCount,
+            info->DiskThreshold,
+            ctx);
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()),
-        mode);
+        info->Mode);
 
-    if (mode == TEvPartitionPrivate::GarbageCompaction
-            || !diskGarbageBelowThreshold)
+    if (info->FullCompaction)
     {
         request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
 
-    if (throttlingAllowed && Config->GetMaxCompactionDelay()) {
+    if (info->ThrottlingAllowed && Config->GetMaxCompactionDelay()) {
         auto execTime = State->GetCompactionExecTimeForLastSecond(ctx.Now());
         auto delay = Config->GetMinCompactionDelay();
         if (Config->GetMaxCompactionExecTimePerSecond()) {
@@ -1386,7 +1524,23 @@ void TPartitionActor::HandleCompaction(
             }
         }
         State->OnNewCompactionRange(msg->RangeBlockIndices.size());
-    } else if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
+    } else if (
+        msg->Mode == TEvPartitionPrivate::GarbageCompaction &&
+        Config->GetZeroedCompactionEnabled())
+    {
+        if (batchCompactionEnabled &&
+            Config->GetGarbageCompactionRangeCountPerRun() > 1)
+        {
+            tops = cm.GetTopByGarbageWithoutZeroes(
+                Config->GetGarbageCompactionRangeCountPerRun());
+        } else {
+            const auto& top = cm.GetTopByGarbageWithoutZeroes();
+            tops.push_back({top.BlockIndex, top.Stat});
+        }
+    } else if (
+        msg->Mode == TEvPartitionPrivate::GarbageCompaction ||
+        msg->Mode == TEvPartitionPrivate::ZeroedCompaction)
+    {
         if (batchCompactionEnabled &&
             Config->GetGarbageCompactionRangeCountPerRun() > 1)
         {

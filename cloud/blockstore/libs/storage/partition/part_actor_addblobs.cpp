@@ -511,6 +511,37 @@ private:
                     State.GetUsedBlocks().Capacity()
                 )
             );
+
+            const auto& prevRangeStat = State.GetCompactionMap().Get(kv.first);
+            const ui32 prevNewlyZeroedBlocks = prevRangeStat.NewlyZeroedBlocks;
+            const ui32 prevUsedBlockCount = prevRangeStat.UsedBlockCount;
+
+            auto newlyZeroedBlocks = prevNewlyZeroedBlocks;
+
+            if (usedBlockCount < prevUsedBlockCount) {
+                const auto diff = prevUsedBlockCount - usedBlockCount;
+                newlyZeroedBlocks += diff;
+            } else {
+                const auto diff = usedBlockCount - prevUsedBlockCount;
+                if (diff > newlyZeroedBlocks) {
+                    newlyZeroedBlocks = 0;
+                } else {
+                    newlyZeroedBlocks -= diff;
+                }
+            }
+
+            if (Args.Mode == ADD_COMPACTION_RESULT) {
+                newlyZeroedBlocks = 0;
+            }
+
+            if (newlyZeroedBlocks > prevNewlyZeroedBlocks) {
+                State.IncrementNewlyZeroedBlocks(
+                    newlyZeroedBlocks - prevNewlyZeroedBlocks);
+            } else {
+                State.DecrementNewlyZeroedBlocks(
+                    prevNewlyZeroedBlocks - newlyZeroedBlocks);
+            }
+
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
@@ -521,6 +552,7 @@ private:
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
+                newlyZeroedBlocks,
                 Args.Mode == ADD_COMPACTION_RESULT
             );
         }
