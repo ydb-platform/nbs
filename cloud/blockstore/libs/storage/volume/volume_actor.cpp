@@ -603,6 +603,15 @@ bool TVolumeActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
         .Contains(range);
 }
 
+bool TVolumeActor::IsFreshBlocksWriterEnabled() const
+{
+    return Config->GetFreshBlocksWriterEnabled() ||
+           Config->IsFreshBlocksWriterFeatureEnabled(
+               State->GetConfig().GetCloudId(),
+               State->GetConfig().GetFolderId(),
+               State->GetConfig().GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandlePoisonPill(

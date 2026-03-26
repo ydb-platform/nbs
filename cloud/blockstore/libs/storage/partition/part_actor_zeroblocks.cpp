@@ -288,9 +288,7 @@ void TPartitionActor::HandleZeroBlocks(
         PartitionConfig.GetStorageMediaKind(),
         requestSize);
 
-    if (!Config->GetFreshBlocksWriterEnabled() &&
-        isFreshRequest)
-    {
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         // small writes will be accumulated in FreshBlocks table
         ZeroFreshBlocks(
             ctx,

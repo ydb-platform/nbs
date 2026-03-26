@@ -31,7 +31,7 @@ void TPartitionActor::WriteFreshBlocks(
     TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer)
 {
     STORAGE_VERIFY_C(
-        !Config->GetFreshBlocksWriterEnabled(),
+        !IsFreshBlocksWriterEnabled(),
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");
@@ -437,7 +437,7 @@ void TPartitionActor::ZeroFreshBlocks(
     ui64 commitId)
 {
     STORAGE_VERIFY_C(
-        !Config->GetFreshBlocksWriterEnabled(),
+        !IsFreshBlocksWriterEnabled(),
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");

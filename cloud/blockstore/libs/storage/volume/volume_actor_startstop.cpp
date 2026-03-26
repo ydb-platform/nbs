@@ -932,7 +932,7 @@ void TVolumeActor::HandleTabletStatus(
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
 
             TActorId freshBlocksWriterId;
-            if (Config->GetFreshBlocksWriterEnabled()) {
+            if (IsFreshBlocksWriterEnabled()) {
                 actorStack = WrapWithFreshBlocksWriterIfNeeded(
                     ctx,
                     std::move(actorStack),
@@ -1073,7 +1073,7 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
     TActorsStack actors,
     ui64 partTabletId)
 {
-    if (!Config->GetFreshBlocksWriterEnabled()) {
+    if (!IsFreshBlocksWriterEnabled()) {
         return actors;
     }
 

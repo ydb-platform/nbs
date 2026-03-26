@@ -396,6 +396,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsFreshBlocksWriterFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,

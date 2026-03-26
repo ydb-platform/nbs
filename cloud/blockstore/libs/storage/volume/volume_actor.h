@@ -727,6 +727,8 @@ private:
     void SendStatsToServiceStatisticsCollectorActor(
         const NActors::TActorContext& ctx);
 
+    bool IsFreshBlocksWriterEnabled() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

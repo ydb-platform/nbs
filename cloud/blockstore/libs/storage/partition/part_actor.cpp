@@ -990,6 +990,15 @@ void TPartitionActor::CreateIOCompanionClient()
     IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
 }
 
+bool TPartitionActor::IsFreshBlocksWriterEnabled() const
+{
+    return Config->GetFreshBlocksWriterEnabled() ||
+           Config->IsFreshBlocksWriterFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
