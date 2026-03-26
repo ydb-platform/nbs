@@ -5191,3 +5191,78 @@ func TestStallingDurationAccumulatesOnStalkerRun(t *testing.T) {
 func TestStallingDurationAccumulatesOnStalkerCancel(t *testing.T) {
 	testStallingDurationAccumulatesOnStalkerRun(t, TaskStatusCancelling)
 }
+
+func TestStorageYDBNonCancellableTask(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := empty.NewRegistry()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	taskState := TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      time.Now(),
+		CreatedBy:      "some_user",
+		ModifiedAt:     time.Now(),
+		GenerationID:   0,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		Dependencies:   common.NewStringSet(),
+		NonCancellable: true,
+	}
+
+	taskID, err := storage.CreateTask(ctx, taskState)
+	require.NoError(t, err)
+	taskState.ID = taskID
+
+	// Check that it is impossible to trigger task cancellation...
+
+	cancelling, err := storage.MarkForCancellation(ctx, taskID, time.Now())
+	require.False(t, cancelling)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "task is non-cancellable")
+
+	cancellingStatuses := []TaskStatus{
+		TaskStatusReadyToCancel,
+		TaskStatusWaitingToCancel,
+		TaskStatusCancelling,
+	}
+
+	for _, status := range cancellingStatuses {
+		taskState.Status = status
+
+		_, err = storage.UpdateTask(ctx, taskState)
+		require.Error(t, err)
+		require.Contains(
+			t,
+			err.Error(),
+			"unexpected status for a non-cancellable task",
+		)
+	}
+
+	// But it is possible to end the task by make it cancelled
+	taskState.Status = TaskStatusCancelled
+	_, err = storage.UpdateTask(ctx, taskState)
+	require.NoError(t, err)
+
+	taskState.IdempotencyKey = getIdempotencyKeyForTest(t)
+	taskID, err = storage.CreateTask(ctx, taskState)
+	require.NoError(t, err)
+	taskState.ID = taskID
+
+	// And it is possible to finish the non-cancellable task
+	taskState.Status = TaskStatusFinished
+	_, err = storage.UpdateTask(ctx, taskState)
+	require.NoError(t, err)
+}

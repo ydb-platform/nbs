@@ -27,6 +27,8 @@ type ExecutionContext interface {
 
 	GetTaskID() string
 
+	IsNonCancellable() bool
+
 	// Dependencies are automatically added by Scheduler.WaitTask.
 	AddTaskDependency(ctx context.Context, taskID string) error
 
@@ -100,6 +102,12 @@ func (c *executionContext) GetTaskID() string {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 	return c.taskState.ID
+}
+
+func (c *executionContext) IsNonCancellable() bool {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+	return c.taskState.NonCancellable
 }
 
 func (c *executionContext) AddTaskDependency(

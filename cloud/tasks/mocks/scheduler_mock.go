@@ -39,6 +39,18 @@ func (s *SchedulerMock) ScheduleZonalTask(
 	return args.String(0), args.Error(1)
 }
 
+func (s *SchedulerMock) ScheduleNonCancellableTask(
+	ctx context.Context,
+	taskType string,
+	description string,
+	zoneID string,
+	request proto.Message,
+) (string, error) {
+
+	args := s.Called(ctx, taskType, description, zoneID, request)
+	return args.String(0), args.Error(1)
+}
+
 func (s *SchedulerMock) ScheduleRegularTasks(
 	ctx context.Context,
 	taskType string,
