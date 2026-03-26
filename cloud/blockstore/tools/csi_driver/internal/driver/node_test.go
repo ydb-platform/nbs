@@ -218,7 +218,6 @@ func generateNbsListEndpointsResponses(nbsServerReplicaCount uint) []nbs.TListEn
 			endpoints = append(endpoints, &startEndpointRequest)
 		}
 		responses[i].Endpoints = endpoints
-		responses[i].EndpointsWereRestored = true
 	}
 
 	return responses

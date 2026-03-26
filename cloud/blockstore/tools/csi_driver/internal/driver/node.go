@@ -435,10 +435,6 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context) uint {
 			continue
 		}
 
-		if listEndpointsResp.EndpointsWereRestored == false {
-			continue
-		}
-
 		if len(listEndpointsResp.Endpoints) < endpointsCount {
 			endpointsCount = len(listEndpointsResp.Endpoints)
 			nbsClientIndex = uint(index)
