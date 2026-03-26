@@ -8,7 +8,7 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/vector.h>
-#include <util/system/rwlock.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NFileStore {
 
@@ -60,7 +60,7 @@ private:
     IFsCountersProviderPtr FsCountersProvider;
     IMainMetricsRegistryPtr TotalMetricsRegistry;
 
-    TRWMutex Lock;
+    TAdaptiveLock Lock;
     THashMap<std::pair<TString, TString>, TFileSystemStatsEntry> StatsMap;
 
 public:
@@ -80,7 +80,7 @@ public:
 
         const auto now = Timer->Now();
 
-        TReadGuard guard(Lock);
+        TGuard guard(Lock);
 
         for (const auto& [key, entry]: StatsMap) {
             entry.UpdateStats(now);
@@ -99,7 +99,7 @@ public:
         auto key = std::make_pair(fileSystemId, clientId);
         auto moduleName = TString(stats->GetName());
 
-        TWriteGuard guard(Lock);
+        TGuard guard(Lock);
 
         auto it = StatsMap.find(key);
         if (it == StatsMap.end()) {
@@ -147,7 +147,7 @@ public:
         const TString& fileSystemId,
         const TString& clientId) override
     {
-        TWriteGuard guard(Lock);
+        TGuard guard(Lock);
 
         auto key = std::make_pair(fileSystemId, clientId);
         if (StatsMap.erase(key)) {
