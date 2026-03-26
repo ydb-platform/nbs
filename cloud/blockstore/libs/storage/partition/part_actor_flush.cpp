@@ -423,6 +423,7 @@ private:
     const ui32 MaxBlobRangeSize;
     const ui32 MaxBlocksInBlob;
     const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
+    const TCompactionMap& CompactionMap;
 
     TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
 
@@ -437,7 +438,8 @@ public:
             ui32 flushBlobSizeThreshold,
             ui32 maxBlobRangeSize,
             ui32 maxBlocksInBlob,
-            ui64 diskPrefixLengthWithBlockChecksumsInBlobs)
+            ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
+            const TCompactionMap& compactionMap)
         : Blobs(blobs)
         , BlockSize(blockSize)
         , FlushBlobSizeThreshold(flushBlobSizeThreshold)
@@ -445,15 +447,22 @@ public:
         , MaxBlocksInBlob(maxBlocksInBlob)
         , DiskPrefixLengthWithBlockChecksumsInBlobs(
             diskPrefixLengthWithBlockChecksumsInBlobs)
+        , CompactionMap(compactionMap)
     {}
 
     bool Visit(const TFreshBlock& block) override
     {
         if (block.Content) {
-            // NBS-299: we do not want to mix blocks that are too far from each other
-            if (GetBlobRangeSize(Blocks, block.Meta.BlockIndex)
-                    > MaxBlobRangeSize / BlockSize)
-            {
+            // Check if we need to split the blob:
+            // 1. NBS-299: we do not want to mix blocks that are too far from each other
+            // 2. Split by compaction range boundaries
+            const bool rangeTooBig = GetBlobRangeSize(Blocks, block.Meta.BlockIndex)
+                    > MaxBlobRangeSize / BlockSize;
+            const bool crossesCompactionRange = Blocks &&
+                CompactionMap.GetRangeStart(Blocks.front().BlockIndex) !=
+                CompactionMap.GetRangeStart(block.Meta.BlockIndex);
+
+            if (rangeTooBig || crossesCompactionRange) {
                 Blobs.emplace_back(
                     std::move(BlobContent),
                     std::move(Blocks),
@@ -484,9 +493,17 @@ public:
                     std::move(Checksums));
             }
         } else {
+            // Check if we need to split zero blocks blob:
+            // 1. Range size check
+            // 2. Split by compaction range boundaries
             const auto blobRangeSize =
                 GetBlobRangeSize(ZeroBlocks, block.Meta.BlockIndex);
-            if (blobRangeSize > MaxBlobRangeSize / BlockSize) {
+            const bool rangeTooBig = blobRangeSize > MaxBlobRangeSize / BlockSize;
+            const bool crossesCompactionRange = ZeroBlocks &&
+                CompactionMap.GetRangeStart(ZeroBlocks.front().BlockIndex) !=
+                CompactionMap.GetRangeStart(block.Meta.BlockIndex);
+
+            if (rangeTooBig || crossesCompactionRange) {
                 Blobs.emplace_back(
                     TBlockBuffer(),
                     std::move(ZeroBlocks),
@@ -701,7 +718,8 @@ void TPartitionActor::HandleFlush(
             flushBlobSizeThreshold,
             Config->GetMaxBlobRangeSize(),
             State->GetMaxBlocksInBlob(),
-            Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs());
+            Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
+            State->GetCompactionMap());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
