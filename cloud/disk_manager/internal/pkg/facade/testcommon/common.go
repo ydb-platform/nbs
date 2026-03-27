@@ -760,6 +760,7 @@ func GetTaskMetadata(
 	ctx context.Context,
 	taskID string,
 ) proto.Message {
+
 	scheduler, err := newScheduler(ctx)
 	require.NoError(t, err)
 
