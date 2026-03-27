@@ -46,11 +46,12 @@ func (s *scheduler) ScheduleTask(
 ) (string, error) {
 
 	ctx = withComponentLoggingField(ctx)
-	return s.ScheduleZonalTask(
+	return s.scheduleTaskImpl(
 		ctx,
 		taskType,
 		description,
-		"", // zoneID
+		"",    // zoneID
+		false, // nonCancellable
 		request,
 	)
 }
@@ -64,57 +65,33 @@ func (s *scheduler) ScheduleZonalTask(
 ) (string, error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Info(ctx, "scheduling task %v", taskType)
-
-	ctx = tracing.SetTracingContext(ctx)
-
-	marshalledRequest, err := proto.Marshal(request)
-	if err != nil {
-		logging.Warn(
-			ctx,
-			"failed to schedule task: marshal request of task %v: %v",
-			taskType,
-			err,
-		)
-		return "", err
-	}
-
-	createdAt := time.Now()
-	metadata := tasks_storage.NewMetadata(headers.GetTracingHeaders(ctx))
-	storageFolder := getStorageFolder(ctx)
-	idempotencyKey := headers.GetIdempotencyKey(ctx)
-
-	taskID, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
-		ID:             "",
-		IdempotencyKey: idempotencyKey,
-		AccountID:      headers.GetAccountID(ctx),
-		TaskType:       taskType,
-		Description:    description,
-		StorageFolder:  storageFolder,
-		CreatedAt:      createdAt,
-		CreatedBy:      headers.GetAccountID(ctx),
-		ModifiedAt:     createdAt,
-		GenerationID:   0,
-		Status:         tasks_storage.TaskStatusReadyToRun,
-		Request:        marshalledRequest,
-		Metadata:       metadata,
-		Dependencies:   common.NewStringSet(),
-		ZoneID:         zoneID,
-	})
-	if err != nil {
-		logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
-		return "", err
-	}
-
-	logging.Info(
+	return s.scheduleTaskImpl(
 		ctx,
-		"scheduled task %v with id %v, idempotencyKey %v, description %v",
 		taskType,
-		taskID,
-		idempotencyKey,
 		description,
+		zoneID,
+		false, // nonCancellable
+		request,
 	)
-	return taskID, nil
+}
+
+func (s *scheduler) ScheduleNonCancellableTask(
+	ctx context.Context,
+	taskType string,
+	description string,
+	zoneID string,
+	request proto.Message,
+) (string, error) {
+
+	ctx = withComponentLoggingField(ctx)
+	return s.scheduleTaskImpl(
+		ctx,
+		taskType,
+		description,
+		zoneID,
+		true, // nonCancellable
+		request,
+	)
 }
 
 func (s *scheduler) ScheduleRegularTasks(
@@ -570,6 +547,70 @@ func (s *scheduler) ScheduleBlankTask(ctx context.Context) (string, error) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (s *scheduler) scheduleTaskImpl(
+	ctx context.Context,
+	taskType string,
+	description string,
+	zoneID string,
+	nonCancellable bool,
+	request proto.Message,
+) (string, error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "scheduling task %v", taskType)
+
+	ctx = tracing.SetTracingContext(ctx)
+
+	marshalledRequest, err := proto.Marshal(request)
+	if err != nil {
+		logging.Warn(
+			ctx,
+			"failed to schedule task: marshal request of task %v: %v",
+			taskType,
+			err,
+		)
+		return "", err
+	}
+
+	createdAt := time.Now()
+	metadata := tasks_storage.NewMetadata(headers.GetTracingHeaders(ctx))
+	storageFolder := getStorageFolder(ctx)
+	idempotencyKey := headers.GetIdempotencyKey(ctx)
+
+	taskID, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
+		ID:             "",
+		IdempotencyKey: idempotencyKey,
+		AccountID:      headers.GetAccountID(ctx),
+		TaskType:       taskType,
+		Description:    description,
+		StorageFolder:  storageFolder,
+		CreatedAt:      createdAt,
+		CreatedBy:      headers.GetAccountID(ctx),
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         tasks_storage.TaskStatusReadyToRun,
+		Request:        marshalledRequest,
+		Metadata:       metadata,
+		Dependencies:   common.NewStringSet(),
+		ZoneID:         zoneID,
+		NonCancellable: nonCancellable,
+	})
+	if err != nil {
+		logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
+		return "", err
+	}
+
+	logging.Info(
+		ctx,
+		"scheduled task %v with id %v, idempotencyKey %v, description %v",
+		taskType,
+		taskID,
+		idempotencyKey,
+		description,
+	)
+	return taskID, nil
+}
 
 func (s *scheduler) registerAndScheduleRegularSystemTasks(
 	ctx context.Context,

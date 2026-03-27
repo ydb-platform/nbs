@@ -52,6 +52,10 @@ func (m *mockRunnerMetrics) OnExecutionError(err error) {
 	m.Called(err)
 }
 
+func (m *mockRunnerMetrics) OnExecutionErrorIgnoreSilence(err error) {
+	m.Called(err)
+}
+
 func (m *mockRunnerMetrics) OnError(err error) {
 	m.Called(err)
 }
@@ -181,7 +185,12 @@ func mergeCallbacks(callbacks ...func(mock.Arguments)) func(mock.Arguments) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newTestExecutionContext(task Task, taskStorage storage.Storage, state storage.TaskState) *executionContext {
+func newTestExecutionContext(
+	task Task,
+	taskStorage storage.Storage,
+	state storage.TaskState,
+) *executionContext {
+
 	return newExecutionContext(
 		task,
 		taskStorage,
@@ -894,6 +903,43 @@ func TestRunnerForRunGotNonRetriableError2(t *testing.T) {
 
 	runnerMetrics := &mockRunnerMetrics{}
 	runnerMetrics.On("OnExecutionError", failure).Return().Once()
+
+	runner := runnerForRun{metrics: runnerMetrics}
+	runner.executeTask(ctx, execCtx, task)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
+}
+
+func TestRunnerForRunGotNonRetriableErrorForNonCancellableTask(t *testing.T) {
+	ctx := newContext()
+	taskStorage := mocks.NewStorageMock()
+	task := NewTaskMock()
+
+	execCtx := newTestExecutionContext(
+		task,
+		taskStorage,
+		storage.TaskState{
+			ID:             taskID,
+			Status:         storage.TaskStatusReadyToRun,
+			NonCancellable: true,
+		},
+	)
+
+	// Non retriable error beats retriable error.
+	failure := errors.NewNonRetriableError(errors.NewRetriableError(assert.AnError))
+	task.On("Run", mock.Anything, execCtx).Return(failure)
+
+	state := storage.TaskState{
+		ID:             taskID,
+		Status:         storage.TaskStatusReadyToCancel,
+		ErrorCode:      grpc_codes.Unknown,
+		ErrorMessage:   failure.Error(),
+		NonCancellable: true,
+	}
+	task.On("Save").Return(state.State, nil)
+	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
+
+	runnerMetrics := &mockRunnerMetrics{}
+	runnerMetrics.On("OnExecutionErrorIgnoreSilence", failure).Return().Once()
 
 	runner := runnerForRun{metrics: runnerMetrics}
 	runner.executeTask(ctx, execCtx, task)

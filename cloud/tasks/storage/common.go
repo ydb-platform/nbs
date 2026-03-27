@@ -171,6 +171,7 @@ func (s *TaskState) structValue() persistence.Value {
 		persistence.StructFieldValue("waiting_duration", persistence.IntervalValue(s.WaitingDuration)),
 		persistence.StructFieldValue("dependants", persistence.BytesValue(common.MarshalStrings(s.dependants.List()))),
 		persistence.StructFieldValue("panic_count", persistence.Uint64Value(s.PanicCount)),
+		persistence.StructFieldValue("non_cancellable", persistence.BoolValue(s.NonCancellable)),
 		// Exclude "events" field to avoid updating. Should update events only from sendEvent.
 	)
 }
@@ -208,7 +209,8 @@ func taskStateStructTypeString() string {
 		estimated_stalling_duration: Interval,
 		waiting_duration: Interval,
 		dependants: String,
-		panic_count: Uint64>`
+		panic_count: Uint64,
+		non_cancellable: Bool>`
 }
 
 func taskStateTableDescription() persistence.CreateTableDescription {
@@ -248,6 +250,7 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("dependants", persistence.Optional(persistence.TypeBytes)),
 		persistence.WithColumn("panic_count", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("events", persistence.Optional(persistence.TypeBytes)),
+		persistence.WithColumn("non_cancellable", persistence.Optional(persistence.TypeBool)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
 }
@@ -370,6 +373,7 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		persistence.OptionalWithDefault("dependants", &dependants),
 		persistence.OptionalWithDefault("panic_count", &state.PanicCount),
 		persistence.OptionalWithDefault("events", &events),
+		persistence.OptionalWithDefault("non_cancellable", &state.NonCancellable),
 	)
 	if err != nil {
 		return
@@ -412,7 +416,11 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 	return
 }
 
-func (s *storageYDB) scanTaskStates(ctx context.Context, res persistence.Result) ([]TaskState, error) {
+func (s *storageYDB) scanTaskStates(
+	ctx context.Context,
+	res persistence.Result,
+) ([]TaskState, error) {
+
 	var states []TaskState
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {

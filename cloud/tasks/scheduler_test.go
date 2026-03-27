@@ -77,6 +77,11 @@ func (c *executionContextMock) GetTaskID() string {
 	return args.String(0)
 }
 
+func (c *executionContextMock) IsNonCancellable() bool {
+	args := c.Called()
+	return args.Bool(0)
+}
+
 func (c *executionContextMock) AddTaskDependency(
 	ctx context.Context,
 	taskID string,
@@ -211,6 +216,58 @@ func TestSchedulerScheduleZonalTask(t *testing.T) {
 	})).Return("taskID", nil)
 
 	taskID, err := scheduler.ScheduleZonalTask(
+		ctx,
+		"task",
+		"Some task",
+		"zone",
+		request,
+	)
+	mock.AssertExpectationsForObjects(t, task, storage)
+	assert.NoError(t, err)
+	assert.Equal(t, "taskID", taskID)
+}
+
+func TestSchedulerScheduleNonCancellableTask(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	storage := mocks.NewStorageMock()
+	registry := NewRegistry()
+	scheduler, err := NewScheduler(
+		ctx,
+		registry,
+		storage,
+		defaultConfig(),
+		metrics_empty.NewRegistry(),
+	)
+	require.NoError(t, err)
+
+	task := NewTaskMock()
+	err = registry.Register("task", func() Task { return task })
+	require.NoError(t, err)
+
+	request := &wrappers.UInt64Value{
+		Value: 123,
+	}
+	marshalledRequest, err := proto.Marshal(request)
+	require.NoError(t, err)
+
+	storage.On("CreateTask", mock.Anything, mock.MatchedBy(func(state tasks_storage.TaskState) bool {
+		ok := true
+		ok = assert.Zero(t, state.ID) && ok
+		ok = assert.Equal(t, "task", state.TaskType) && ok
+		ok = assert.Equal(t, "Some task", state.Description) && ok
+		ok = assert.EqualValues(t, 0, state.GenerationID) && ok
+		ok = assert.Equal(t, tasks_storage.TaskStatusReadyToRun, state.Status) && ok
+		ok = assert.Equal(t, grpc_codes.OK, state.ErrorCode) && ok
+		ok = assert.Equal(t, "", state.ErrorMessage) && ok
+		ok = assert.Equal(t, marshalledRequest, state.Request) && ok
+		ok = assert.Equal(t, "zone", state.ZoneID) && ok
+		ok = assert.True(t, state.NonCancellable) && ok
+		return ok
+	})).Return("taskID", nil)
+
+	taskID, err := scheduler.ScheduleNonCancellableTask(
 		ctx,
 		"task",
 		"Some task",

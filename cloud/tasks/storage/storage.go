@@ -64,6 +64,11 @@ func IsEnded(status TaskStatus) bool {
 	return status == TaskStatusFinished || status == TaskStatusCancelled
 }
 
+// This means that cancellation will be invoked after transitioning to this status
+func IsCancellationRequested(status TaskStatus) bool {
+	return status >= TaskStatusReadyToCancel && status < TaskStatusCancelled
+}
+
 func IsCancellingOrCancelled(status TaskStatus) bool {
 	return status >= TaskStatusReadyToCancel
 }
@@ -150,6 +155,17 @@ type TaskState struct {
 	WaitingDuration           time.Duration
 	PanicCount                uint64
 	Events                    []int64
+	// Task cannot be cancelled via MarkForCancellation, it also ignores
+	// NonRetriableError and does not enforce a retry limit for RetriableError.
+	//
+	// A task can end in only two ways:
+	// * If it encounters a NonCancellableError, it finishes with a "cancelled"
+	//   status without invoking any cancel function.
+	// * Otherwise, it completes successfully.
+	//
+	// This behaviour is useful for cleanup tasks
+	// (e.g., DeleteDisk, DeleteFilesystem)
+	NonCancellable bool
 
 	// Internal part of the state. Fully managed by DB and can't be overwritten
 	// by client.

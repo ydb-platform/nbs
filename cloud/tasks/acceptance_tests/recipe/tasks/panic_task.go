@@ -36,6 +36,8 @@ func (t *PanicTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	<-time.After(common.RandomDuration(time.Millisecond, 5*time.Second))
+	panic("test panic")
 	return nil
 }
 

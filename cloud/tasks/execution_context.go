@@ -27,6 +27,11 @@ type ExecutionContext interface {
 
 	GetTaskID() string
 
+	// NOTE: non-cancellable tasks can only fail with a NonCancellableError, so
+	// they ignore NonRetriableError and do not enforce a retry limit for
+	// RetriableError
+	IsNonCancellable() bool
+
 	// Dependencies are automatically added by Scheduler.WaitTask.
 	AddTaskDependency(ctx context.Context, taskID string) error
 
@@ -100,6 +105,12 @@ func (c *executionContext) GetTaskID() string {
 	c.taskStateMutex.Lock()
 	defer c.taskStateMutex.Unlock()
 	return c.taskState.ID
+}
+
+func (c *executionContext) IsNonCancellable() bool {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+	return c.taskState.NonCancellable
 }
 
 func (c *executionContext) AddTaskDependency(
@@ -292,6 +303,8 @@ func (c *executionContext) incrementPanicCount(
 	})
 }
 
+// NOTE: returns an error for non-cancellable tasks. Such tasks can only fail
+// with a NonCancellableError
 func (c *executionContext) setError(ctx context.Context, e error) error {
 	state, err := c.task.Save()
 	if err != nil {
