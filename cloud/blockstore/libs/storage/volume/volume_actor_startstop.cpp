@@ -1122,6 +1122,17 @@ void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
 
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
 
+    if (volumeConfig.GetVhostDiscardEnabled()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s skiping SetVhostDiscardFlagRequest because the flag is "
+            "already enabled",
+            LogTitle.GetWithTime().c_str(),
+            State->GetDiskId().c_str());
+        return;
+    }
+
     bool enableDiscardOnRestart =
         Config->GetEnableVhostDiscardOnVolumeRestart() ||
         Config->IsEnableVhostDiscardOnVolumeRestartFeatureEnabled(
@@ -1133,27 +1144,40 @@ void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    if (volumeConfig.GetVhostDiscardEnabled()) {
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s skiping EnableVhostDiscardFlagRequest for volume %s because it "
-            "is already enabled",
-            LogTitle.GetWithTime().c_str(),
-            State->GetDiskId().c_str());
-        return;
-    }
-
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "%s sending EnableVhostDiscardFlagRequest for volume %s",
+        "%s sending SetVhostDiscardFlagRequest",
         LogTitle.GetWithTime().c_str(),
         State->GetDiskId().c_str());
 
-    auto request = std::make_unique<TEvService::TEvEnableVhostDiscardFlag>(
-        State->GetDiskId());
+    auto request = std::make_unique<TEvService::TEvSetVhostDiscardFlagRequest>(
+        State->GetDiskId(),
+        true);  // VhostDiscardEnabled = true
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+}
+
+void TVolumeActor::HandleSetVhostDiscardFlagResponse(
+    const TEvService::TEvSetVhostDiscardFlagResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s SetVhostDiscardFlag request failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+    } else {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s SetVhostDiscardFlag request completed successfully",
+            LogTitle.GetWithTime().c_str());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

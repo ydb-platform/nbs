@@ -719,6 +719,10 @@ private:
     void SendEnableVhostDiscardFlagIfNeeded(
         const NActors::TActorContext& ctx);
 
+    void HandleSetVhostDiscardFlagResponse(
+        const TEvService::TEvSetVhostDiscardFlagResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     const TString& GetDiskId() const;
 
     std::optional<TEvStatsService::TVolumePartCounters> GetPartCounters(

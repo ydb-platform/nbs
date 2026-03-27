@@ -321,8 +321,8 @@ STFUNC(TServiceActor::StateWork)
             HandleListMountedVolumes);
 
         HFunc(
-            TEvService::TEvEnableVhostDiscardFlag,
-            HandleEnableVhostDiscardFlag);
+            TEvService::TEvSetVhostDiscardFlagRequest,
+            HandleSetVhostDiscardFlagRequest);
 
         default:
             if (!HandleRequests(ev)) {

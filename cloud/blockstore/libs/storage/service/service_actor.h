@@ -216,8 +216,8 @@ private:
         const TEvServicePrivate::TEvListMountedVolumesRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleEnableVhostDiscardFlag(
-        const TEvService::TEvEnableVhostDiscardFlag::TPtr& ev,
+    void HandleSetVhostDiscardFlagRequest(
+        const TEvService::TEvSetVhostDiscardFlagRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

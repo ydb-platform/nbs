@@ -72,9 +72,9 @@ Y_UNIT_TEST_SUITE(TServiceVhostDiscardTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvEnableVhostDiscardFlag: {
+                    case TEvService::EvSetVhostDiscardFlagRequest: {
                         auto* msg =
-                            event->Get<TEvService::TEvEnableVhostDiscardFlag>();
+                            event->Get<TEvService::TEvSetVhostDiscardFlagRequest>();
                         UNIT_ASSERT_VALUES_EQUAL(msg->DiskId, "vol0");
                         ++eventsSent;
                         break;
@@ -140,9 +140,9 @@ Y_UNIT_TEST_SUITE(TServiceVhostDiscardTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvService::EvEnableVhostDiscardFlag: {
+                    case TEvService::EvSetVhostDiscardFlagRequest: {
                         auto* msg =
-                            event->Get<TEvService::TEvEnableVhostDiscardFlag>();
+                            event->Get<TEvService::TEvSetVhostDiscardFlagRequest>();
                         UNIT_ASSERT_VALUES_EQUAL(msg->DiskId, "vol0");
                         ++eventsSent;
                         break;

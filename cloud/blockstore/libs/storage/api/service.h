@@ -197,18 +197,25 @@ struct TEvService
     };
 
     //
-    // EnableVhostDiscardFlag notification
+    // SetVhostDiscardFlag request/response
     //
 
-    struct TEnableVhostDiscardFlag
+    struct TSetVhostDiscardFlagRequest
     {
         const TString DiskId;
+        const bool VhostDiscardEnabled;
 
-        TEnableVhostDiscardFlag() = default;
+        TSetVhostDiscardFlagRequest() = default;
 
-        TEnableVhostDiscardFlag(TString diskId)
+        TSetVhostDiscardFlagRequest(TString diskId, bool vhostDiscardEnabled)
             : DiskId(std::move(diskId))
+            , VhostDiscardEnabled(vhostDiscardEnabled)
         {}
+    };
+
+    struct TSetVhostDiscardFlagResponse
+    {
+        TSetVhostDiscardFlagResponse() = default;
     };
 
     //
@@ -360,13 +367,16 @@ struct TEvService
         EvDestroyVolumeLinkRequest = EvBegin + 97,
         EvDestroyVolumeLinkResponse = EvBegin + 98,
 
-        EvEnableVhostDiscardFlag = EvBegin + 99,
+        EvExtBegin = TBlockStoreEvents::SERVICE_EXT_START,
+
+        EvSetVhostDiscardFlagRequest = EvExtBegin + 1,
+        EvSetVhostDiscardFlagResponse = EvExtBegin + 2,
 
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::SERVICE_END,
-        "EvEnd expected to be < TBlockStoreEvents::SERVICE_END");
+    static_assert(EvEnd < (int)TBlockStoreEvents::SERVICE_EXT_END,
+        "EvEnd expected to be < TBlockStoreEvents::SERVICE_EXT_END");
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
@@ -391,9 +401,14 @@ struct TEvService
         EvVolumeMountStateChanged
     >;
 
-    using TEvEnableVhostDiscardFlag = TRequestEvent<
-        TEnableVhostDiscardFlag,
-        EvEnableVhostDiscardFlag
+    using TEvSetVhostDiscardFlagRequest = TRequestEvent<
+        TSetVhostDiscardFlagRequest,
+        EvSetVhostDiscardFlagRequest
+    >;
+
+    using TEvSetVhostDiscardFlagResponse = TResponseEvent<
+        TSetVhostDiscardFlagResponse,
+        EvSetVhostDiscardFlagResponse
     >;
 };
 
