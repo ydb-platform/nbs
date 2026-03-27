@@ -1619,17 +1619,18 @@ func (s *storageYDB) updateTaskTx(
 
 	lastState := states[0]
 
-	// A non-cancellable task may transition to the cancelled state, as this
-	// simply skips the actual cancellation process
-	if lastState.NonCancellable && state.Status != TaskStatusCancelled {
+	if lastState.NonCancellable && IsCancellationRequested(state.Status) {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return TaskState{}, err
+		}
+
 		// It is forbidden to start the cancellation process for a
 		// non-cancellable task
-		if IsCancellationRequested(state.Status) {
-			return TaskState{}, errors.NewNonRetriableErrorf(
-				"unexpected status for a non-cancellable task, got %v",
-				TaskStatusToString(state.Status),
-			)
-		}
+		return TaskState{}, errors.NewNonRetriableErrorf(
+			"unexpected status for a non-cancellable task, got %v",
+			TaskStatusToString(state.Status),
+		)
 	}
 
 	if lastState.GenerationID != state.GenerationID {
