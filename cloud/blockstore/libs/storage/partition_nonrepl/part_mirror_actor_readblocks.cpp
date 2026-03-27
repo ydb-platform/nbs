@@ -605,7 +605,8 @@ void TMirrorPartitionActor::ReadBlocks(
                 splitError.GetCode() == E_ARGUMENT ? NLog::PRI_ERROR
                                                    : NLog::PRI_DEBUG,
                 TBlockStoreComponents::PARTITION,
-                "Can't split read request: %s",
+                "%s Can't split read request: %s",
+                LogTitle.GetWithTime().c_str(),
                 FormatError(splitError).c_str());
 
             NCloud::Reply(
@@ -623,8 +624,8 @@ void TMirrorPartitionActor::ReadBlocks(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Will read %s from %u replicas",
-        DiskId.c_str(),
+        "%s Will read %s from %u replicas",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(blockRange).c_str(),
         replicaActorIds.size());
 
@@ -679,9 +680,9 @@ NProto::TError TMirrorPartitionActor::SplitReadBlocks(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] Split original range %s by device borders. Will try to read "
+        "%s Split original range %s by device borders. Will try to read "
         "with few requests",
-        DiskId.c_str(),
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(blockRange).c_str());
 
     const ui64 requestIdentityKey = RegisterNewReadBlocksRequest(
