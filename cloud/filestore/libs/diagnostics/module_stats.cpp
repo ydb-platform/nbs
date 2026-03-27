@@ -2,13 +2,18 @@
 
 #include "filesystem_counters.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+
+#include <cloud/storage/core/libs/common/timer.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/vector.h>
-#include <util/system/rwlock.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NFileStore {
 
 using namespace NMonitoring;
+using namespace NMetrics;
 
 namespace {
 
@@ -16,34 +21,72 @@ namespace {
 
 struct TModuleStatsEntry
 {
-    TDynamicCountersPtr Counters;
-    TVector<IModuleStatsPtr> StatsList;
+    // DynamicCounters are automatically deleted when the registry is deleted
+    IMetricsRegistryPtr LocalMetricsRegistry;
+    IMetricsRegistryPtr AggregatableMetricsRegistry;
+    IModuleStatsPtr ModuleStats;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFileSystemStatsEntry
+{
+    IMainMetricsRegistryPtr FileSystemMetricsRegistry;
+
+    // Key: ModuleName
+    // Value: IModuleStatsPtr + metric registries
+    THashMap<TString, TModuleStatsEntry> ModuleStatsMap;
+
+    explicit TFileSystemStatsEntry(NMonitoring::TDynamicCountersPtr fsCounters)
+        : FileSystemMetricsRegistry(
+              CreateMetricsRegistry({}, std::move(fsCounters)))
+    {}
+
+    void UpdateStats(TInstant now) const
+    {
+        for (const auto& [_, moduleStatsEntry]: ModuleStatsMap) {
+            moduleStatsEntry.ModuleStats->UpdateStats(now);
+        }
+        FileSystemMetricsRegistry->Update(now);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TModuleStatsRegistry final: public IModuleStatsRegistry
 {
 private:
+    ITimerPtr Timer;
     IFsCountersProviderPtr FsCountersProvider;
+    IMainMetricsRegistryPtr TotalMetricsRegistry;
 
-    TRWMutex Lock;
-    THashMap<std::pair<TString, TString>, TModuleStatsEntry> StatsMap;
+    TAdaptiveLock Lock;
+    THashMap<std::pair<TString, TString>, TFileSystemStatsEntry> StatsMap;
 
 public:
-    explicit TModuleStatsRegistry(IFsCountersProviderPtr fsCountersProvider)
-        : FsCountersProvider(std::move(fsCountersProvider))
+    TModuleStatsRegistry(
+        ITimerPtr timer,
+        IFsCountersProviderPtr fsCountersProvider,
+        NMonitoring::TDynamicCountersPtr totalCounters)
+        : Timer(std::move(timer))
+        , FsCountersProvider(std::move(fsCountersProvider))
+        , TotalMetricsRegistry(
+              CreateMetricsRegistry({}, std::move(totalCounters)))
     {}
 
     void UpdateStats(bool updateIntervalFinished) override
     {
         Y_UNUSED(updateIntervalFinished);
 
-        TReadGuard guard(Lock);
+        const auto now = Timer->Now();
+
+        TGuard guard(Lock);
 
         for (const auto& [key, entry]: StatsMap) {
-            for (const auto& stats: entry.StatsList) {
-                stats->UpdateStats();
-            }
+            entry.UpdateStats(now);
         }
+
+        TotalMetricsRegistry->Update(now);
     }
 
     void Register(
@@ -54,8 +97,9 @@ public:
         IModuleStatsPtr stats) override
     {
         auto key = std::make_pair(fileSystemId, clientId);
+        auto moduleName = TString(stats->GetName());
 
-        TWriteGuard guard(Lock);
+        TGuard guard(Lock);
 
         auto it = StatsMap.find(key);
         if (it == StatsMap.end()) {
@@ -64,24 +108,46 @@ public:
                 clientId,
                 cloudId,
                 folderId);
-            it = StatsMap.emplace(key, TModuleStatsEntry{counters, {}}).first;
+            it = StatsMap.emplace(key, counters).first;
         }
 
-        // First create a placeholder subgroup, then replace it with the actual
-        // counters (same pattern as in filesystem_counters.cpp)
-        it->second.Counters->GetSubgroup("module", TString{stats->GetName()});
-        it->second.Counters->ReplaceSubgroup(
-            "module",
-            TString{stats->GetName()},
-            stats->GetCounters());
-        it->second.StatsList.push_back(std::move(stats));
+        auto& fileSystemStatsEntry = it->second;
+
+        Y_ABORT_UNLESS(
+            !fileSystemStatsEntry.ModuleStatsMap.contains(moduleName),
+            "Module %s is already registered for (fsId: %s, clientId: %s)",
+            moduleName.c_str(),
+            fileSystemId.c_str(),
+            clientId.c_str());
+
+        auto localMetricsRegistry = CreateScopedMetricsRegistry(
+            {CreateLabel("module", moduleName)},
+            fileSystemStatsEntry.FileSystemMetricsRegistry);
+
+        auto totalMetricsRegistry = CreateScopedMetricsRegistry(
+            {CreateLabel("module", moduleName)},
+            TotalMetricsRegistry);
+
+        auto aggregatableMetricsRegistry = CreateScopedMetricsRegistry(
+            {},
+            {std::move(totalMetricsRegistry), localMetricsRegistry});
+
+        stats->RegisterCounters(
+            *localMetricsRegistry,
+            *aggregatableMetricsRegistry);
+
+        fileSystemStatsEntry.ModuleStatsMap[moduleName] = {
+            .LocalMetricsRegistry = std::move(localMetricsRegistry),
+            .AggregatableMetricsRegistry =
+                std::move(aggregatableMetricsRegistry),
+            .ModuleStats = std::move(stats)};
     }
 
     void Unregister(
         const TString& fileSystemId,
         const TString& clientId) override
     {
-        TWriteGuard guard(Lock);
+        TGuard guard(Lock);
 
         auto key = std::make_pair(fileSystemId, clientId);
         if (StatsMap.erase(key)) {
@@ -128,10 +194,14 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IModuleStatsRegistryPtr CreateModuleStatsRegistry(
-    IFsCountersProviderPtr fsCountersProvider)
+    ITimerPtr timer,
+    IFsCountersProviderPtr fsCountersProvider,
+    NMonitoring::TDynamicCountersPtr totalCounters)
 {
     return std::make_shared<TModuleStatsRegistry>(
-        std::move(fsCountersProvider));
+        std::move(timer),
+        std::move(fsCountersProvider),
+        std::move(totalCounters));
 }
 
 IModuleStatsRegistryPtr CreateModuleStatsRegistryStub()
