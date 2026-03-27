@@ -18,16 +18,19 @@ struct TMixedBlock
     ui64 CommitId;
     ui32 BlockIndex;
     ui16 BlobOffset;
+    ui32 BlobAlignment;
 
     TMixedBlock(
             TPartialBlobId blobId,
             ui64 commitId,
             ui32 blockIndex,
-            ui16 blobOffset)
-       : BlobId(blobId)
-       , CommitId(commitId)
-       , BlockIndex(blockIndex)
-       , BlobOffset(blobOffset)
+            ui16 blobOffset,
+            ui32 blobAlignment)
+        : BlobId(blobId)
+        , CommitId(commitId)
+        , BlockIndex(blockIndex)
+        , BlobOffset(blobOffset)
+        , BlobAlignment(blobAlignment)
     {}
 
     bool operator==(const TMixedBlock& other) const
@@ -39,7 +42,7 @@ struct TMixedBlock
     }
 };
 
-static_assert(sizeof(TMixedBlock) == 32);
+static_assert(sizeof(TMixedBlock) == 40);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -83,7 +86,7 @@ public:
     void InsertBlockIfHot(ui32 rangeIdx, TMixedBlock block);
     void EraseBlockIfHot(ui32 rangeIndex, TBlockKey key);
 
-    bool VisitBlocksIfHot(ui32 rangeIdx, IBlocksIndexVisitor& visitor);
+    bool VisitBlocksIfHot(ui32 rangeIdx, IMixedBlocksIndexVisitor& visitor);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

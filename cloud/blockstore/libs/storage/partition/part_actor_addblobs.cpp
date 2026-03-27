@@ -222,7 +222,8 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        State.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+        State
+            .WriteMixedBlocks(db, blob.BlobId, blob.Blocks, blob.BlobAlignment);
 
         // update counters
         State.IncrementMixedBlobsCount(1);
@@ -372,11 +373,13 @@ private:
         // move blocks from FreshBlocks to MixedBlocks
         blobOffset = 0;
         for (const auto& block: blob.Blocks) {
-            State.WriteMixedBlock(db, {
-                blob.BlobId,
-                block.CommitId,
-                block.BlockIndex,
-                blobOffset++});
+            State.WriteMixedBlock(
+                db,
+                {blob.BlobId,
+                 block.CommitId,
+                 block.BlockIndex,
+                 blobOffset++,
+                 blob.BlobAlignment});
 
             if (block.IsStoredInDb) {
                 State.DeleteFreshBlockFromDb(

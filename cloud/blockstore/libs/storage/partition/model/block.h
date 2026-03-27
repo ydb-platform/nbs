@@ -93,6 +93,18 @@ struct IBlocksIndexVisitor
         ui16 blobOffset) = 0;
 };
 
+struct IMixedBlocksIndexVisitor
+{
+    virtual ~IMixedBlocksIndexVisitor() = default;
+
+    virtual bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 blobAlignment) = 0;
+};
+
 struct IExtendedBlocksIndexVisitor
 {
     virtual ~IExtendedBlocksIndexVisitor() = default;

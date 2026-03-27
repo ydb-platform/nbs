@@ -495,7 +495,8 @@ public:
     void WriteMixedBlocks(
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
-        const TVector<ui32>& blockIndices);
+        const TVector<ui32>& blockIndices,
+        ui32 blobAlignment);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,
@@ -504,7 +505,7 @@ public:
 
     bool FindMixedBlocksForCompaction(
         TPartitionDatabase& db,
-        IBlocksIndexVisitor& visitor,
+        IMixedBlocksIndexVisitor& visitor,
         ui32 rangeIndex);
 
     void RaiseRangeTemperature(ui32 rangeIndex);

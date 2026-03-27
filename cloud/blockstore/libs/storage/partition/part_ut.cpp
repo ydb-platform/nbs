@@ -349,8 +349,8 @@ auto InitTestActorRuntime(
 void InitLogSettings(TTestActorRuntime& runtime)
 {
     for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-        runtime.SetLogPriority(i, NLog::PRI_INFO);
-        // runtime.SetLogPriority(i, NLog::PRI_DEBUG);
+        // runtime.SetLogPriority(i, NLog::PRI_INFO);
+        runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     }
     // runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_ERROR);
@@ -13246,7 +13246,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, freshBlocksResultedInErrorCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldCleanupBlobsWithoutReadingBlockMasks)
+    Y_UNIT_TEST(ShouldCleanupMergedBlobsWithoutReadingBlockMasks)
     {
         auto config = DefaultConfig();
         config.SetBlockMaskOptimizationEnabled(true);
@@ -13353,6 +13353,88 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlocksContent('4', 512) + GetBlocksContent('3', 512),
             GetBlocksContent(partition.ReadBlocks(
                 TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount))));
+
+        // Blobs from Second Compaction range compacted
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCleanupMixedBlobsWithoutReadingBlockMasks)
+    {
+        auto config = DefaultConfig();
+        config.SetBlockMaskOptimizationEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        for (size_t i = 1019; i < 1029; ++i) {
+            partition.WriteBlocks(i, 'a' + i - 1019);
+        }
+
+        partition.Flush();
+
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        for (size_t i = 1019; i < 1029; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('a' + i - 1019),
+                GetBlockContent(partition.ReadBlocks(i)));
+        }
+
+        // Blobs from Second Compaction range should stay
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        }
+
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        for (size_t i = 1019; i < 1029; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('a' + i - 1019),
+                GetBlockContent(partition.ReadBlocks(i)));
+        }
 
         // Blobs from Second Compaction range compacted
         {
