@@ -167,7 +167,7 @@ IEventBasePtr TAttachDetachPathActor::CreateAttachDetachRequest()
         request->Record.MutablePathsToAttach()->Add(Paths.begin(), Paths.end());
 
         *request->Record.MutableControlPlaneRequestNumber() =
-            std::move(ControlPlaneRequestNumber);
+            ControlPlaneRequestNumber;
 
         return request;
     }
