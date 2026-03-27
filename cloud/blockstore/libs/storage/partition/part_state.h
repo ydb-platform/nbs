@@ -1058,9 +1058,6 @@ public:
     // Stats
     //
 
-private:
-    TThreadSafePartStatsPtr Stats = std::make_shared<TThreadSafePartStats>();
-
 public:
     const NProto::TPartitionStats& GetStats() const
     {
@@ -1069,7 +1066,6 @@ public:
 
     NProto::TPartitionStats& AccessStats()
     {
-        UpdateWithThreadSafeStats();
         return *Meta.MutableStats();
     }
 
@@ -1096,14 +1092,9 @@ public:
     void DumpHtml(IOutputStream& out) const;
     NJson::TJsonValue AsJson() const;
 
-    TThreadSafePartStatsPtr AccessThreadSafeStats()
+    void UpdateWithThreadSafeStats(TThreadSafePartStats& stats)
     {
-        return Stats;
-    }
-
-    void UpdateWithThreadSafeStats()
-    {
-        auto statsToAdd = Stats->Swap({});
+        auto statsToAdd = stats.Swap({});
         UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
     }
 };

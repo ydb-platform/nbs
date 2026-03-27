@@ -665,7 +665,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                         *State,
                         *Info(),
                         *DiagnosticsConfig,
-                        *GroupDowntimes);
+                        SharedState->GroupDowntimes);
 
                     TAG(TH3) {
                         BuildMenuButton(out, "reassign-all");

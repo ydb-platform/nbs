@@ -9,6 +9,8 @@
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
@@ -949,6 +951,64 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                 GetBlocksContent(
                     fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 3))));
         }
+    }
+
+    Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingFreshByteCountHardLimit)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlocksWriterEnabled(true);
+        config.SetFreshByteCountHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+
+        auto testEnv = PrepareTestActorRuntime(config);
+        auto& runtime = *testEnv.Runtime;
+
+        ui64 addFreshBlocksCount = 0;
+
+        // TODO(issue-4875): remove trim events dropping after adding trim
+        // synchronization
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvAddFreshBlocksResponse) {
+                    ++addFreshBlocksCount;
+                }
+                return event->GetTypeRewrite() ==
+                       TEvPartitionCommonPrivate::EvTrimFreshLogRequest;
+            });
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+
+        fbwClient.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0), 1);
+        auto response = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, addFreshBlocksCount);
+
+        partition.Flush();
+
+        fbwClient.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0), 1);
+        response = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
     }
 }
 

@@ -30,7 +30,8 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui64 tabletId,
-        bool waitForAddFreshBlocksResponseBeforeResponse)
+        bool waitForAddFreshBlocksResponseBeforeResponse,
+        TPartitionSharedStatePtr sharedPartitionState)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
     , CommitId(commitId)
@@ -46,6 +47,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WaitForAddFreshBlocksResponseBeforeResponse(
           waitForAddFreshBlocksResponseBeforeResponse)
     , TabletId(tabletId)
+    , SharedPartitionState(std::move(sharedPartitionState))
 {
     if (!IsZeroRequest) {
         const bool hasAnyZeroRequest = AnyOf(
@@ -182,6 +184,10 @@ void TWriteFreshBlocksActor::WriteBlob(const NActors::TActorContext& ctx)
 void TWriteFreshBlocksActor::AddBlocks(const NActors::TActorContext& ctx)
 {
     STORAGE_VERIFY(BlobSize > 0, TWellKnownEntityTypes::TABLET, TabletId);
+
+    if (SharedPartitionState) {
+        SharedPartitionState->UnflushedFreshBlobByteCount.fetch_add(BlobSize);
+    }
 
     IEventBasePtr request =
         std::make_unique<TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>(

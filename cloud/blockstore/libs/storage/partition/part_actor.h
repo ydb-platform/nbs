@@ -159,9 +159,6 @@ private:
 
     TPartitionDiskCountersPtr PartCounters;
 
-    std::shared_ptr<TThreadSafePartCounters> IoCompanionCounters =
-        std::make_shared<TThreadSafePartCounters>();
-
     ui64 SysCPUConsumption = 0;
     ui64 UserCPUConsumption = 0;
 
@@ -178,12 +175,6 @@ private:
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
 
-    std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue =
-        std::make_shared<TResourceMetricsQueue>();
-
-    std::shared_ptr<TGroupDowntimes> GroupDowntimes =
-        std::make_shared<TGroupDowntimes>();
-
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
@@ -191,6 +182,8 @@ private:
     std::unique_ptr<TIOCompanion> IOCompanion;
 
     NActors::TActorId FreshBlocksWriter;
+
+    TPartitionSharedStatePtr SharedState;
 
     TRequestInfoPtr Poisoner;
 
