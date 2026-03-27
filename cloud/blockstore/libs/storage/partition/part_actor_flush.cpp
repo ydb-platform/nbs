@@ -845,8 +845,8 @@ void TPartitionActor::HandleFlushCompleted(
         State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
         State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
 
-        if (UnflushedFreshBlobByteCount) {
-            UnflushedFreshBlobByteCount->fetch_sub(
+        if (FreshBlocksWriter) {
+            SharedState.UnflushedFreshBlobByteCount->fetch_sub(
                 msg->FlushedFreshBlobByteCount);
         }
     }

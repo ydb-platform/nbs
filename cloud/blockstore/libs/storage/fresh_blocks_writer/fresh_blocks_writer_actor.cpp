@@ -205,12 +205,12 @@ void TFreshBlocksWriterActor::RebootOnCommitIdOverflow(
 
 void TFreshBlocksWriterActor::UpdateStats(const NProto::TPartitionStats& update)
 {
-    PartStats->Access([&](NProto::TPartitionStats& stats)
+    SharedState.PartStats->Access([&](NProto::TPartitionStats& stats)
                       { UpdatePartitionCounters(stats, update); });
 
     auto blockSize = PartitionConfig.GetBlockSize();
 
-    PartCounters->Access(
+    SharedState.PartCounters->Access(
         [&](auto& partCounters)
         {
             partCounters->Cumulative.BytesWritten.Increment(
@@ -291,6 +291,8 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
     TrimFreshLogState =
         std::make_unique<TPartitionTrimFreshLogState>(*CommitIdsState);
 
+    SharedState = std::move(msg->SharedState);
+
     IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
 
     IOCompanion = std::make_unique<TIOCompanion>(
@@ -307,16 +309,10 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         *IOCompanionClient,
         *ChannelsState,
         LogTitle,
-        msg->ResourceMetricsQueue,
-        msg->GroupDowntimes,
-        msg->PartCounters);
+        SharedState.ResourceMetricsQueue,
+        SharedState.GroupDowntimes,
+        SharedState.PartCounters);
     Become(&TThis::StateWork);
-
-    ResourceMetricsQueue = msg->ResourceMetricsQueue;
-    PartCounters = msg->PartCounters;
-    PartStats = msg->PartStats;
-
-    UnflushedFreshBlobByteCount = msg->UnflushedFreshBlobByteCount;
 
     StateLoaded = true;
     SendPendingRequests(ctx, PendingRequests);

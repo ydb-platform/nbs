@@ -72,12 +72,7 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
-    NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-    NPartition::TThreadSafePartCountersPtr PartCounters;
-
-    NPartition::TThreadSafePartStatsPtr PartStats;
-
-    TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
+    TPartitionSharedState SharedState;
 
 public:
     TFreshBlocksWriterActor(

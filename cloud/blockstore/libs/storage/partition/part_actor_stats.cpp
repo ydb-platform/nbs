@@ -140,9 +140,10 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
         true   // forceAll
     );
 
-    auto ioCounters = IoCompanionCounters->Swap(CreatePartitionDiskCounters(
-        EPublishingPolicy::Repl,
-        DiagnosticsConfig->GetHistogramCounterOptions()));
+    auto ioCounters =
+        SharedState.PartCounters->Swap(CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            DiagnosticsConfig->GetHistogramCounterOptions()));
 
     PartCounters->AggregateWith(*ioCounters);
 

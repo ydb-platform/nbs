@@ -28,6 +28,16 @@ namespace NCloud::NBlockStore::NStorage {
 
 using TUnflushedFreshBlobByteCountPtr = std::shared_ptr<std::atomic<ui64>>;
 
+struct TPartitionSharedState
+{
+    NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
+    NPartition::TThreadSafePartCountersPtr PartCounters;
+    NPartition::TThreadSafePartStatsPtr PartStats;
+    NPartition::TGroupDowntimesPtr GroupDowntimes;
+
+    TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
@@ -396,12 +406,7 @@ struct TEvPartitionCommonPrivate
 
         TVector<EChannelPermissions> ChannelPermissions;
 
-        NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-        NPartition::TThreadSafePartCountersPtr PartCounters;
-        NPartition::TThreadSafePartStatsPtr PartStats;
-        NPartition::TGroupDowntimesPtr GroupDowntimes;
-
-        TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
+        TPartitionSharedState SharedState;
 
         TCommitIdGeneratorPtr CommitIdGenerator;
     };

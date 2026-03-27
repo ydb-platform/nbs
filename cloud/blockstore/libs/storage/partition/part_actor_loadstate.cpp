@@ -264,9 +264,9 @@ void TPartitionActor::CompleteLoadState(
         *IOCompanionClient,
         *State,
         LogTitle,
-        ResourceMetricsQueue,
-        GroupDowntimes,
-        IoCompanionCounters);
+        SharedState.ResourceMetricsQueue,
+        SharedState.GroupDowntimes,
+        SharedState.PartCounters);
 
     MapBaseDiskIdToTabletId(ctx);
 

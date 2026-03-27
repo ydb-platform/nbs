@@ -31,7 +31,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    if (UnflushedFreshBlobByteCount->load() >=
+    if (SharedState.UnflushedFreshBlobByteCount->load() >=
         Config->GetFreshByteCountHardLimit())
     {
         for (auto& r: requestsInBuffer) {
@@ -128,7 +128,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         BlockDigestGenerator,
         PartitionTabletID,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
-        UnflushedFreshBlobByteCount);
+        SharedState.UnflushedFreshBlobByteCount);
 
     Actors.Insert(actor);
 }
@@ -205,7 +205,8 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         TVector<IWriteBlocksHandlerPtr>{},
         BlockDigestGenerator,
         PartitionTabletID,
-        false);   // waitForAddFreshBlocksResponseBeforeResponse
+        false,   // waitForAddFreshBlocksResponseBeforeResponse
+        SharedState.UnflushedFreshBlobByteCount);
 
     Actors.Insert(actor);
 }
