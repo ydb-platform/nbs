@@ -93,6 +93,7 @@ func initFilesystemDataplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	taskRegistry *tasks.Registry,
+	taskScheduler tasks.Scheduler,
 	nfsFactory nfs.Factory,
 	filesystemDB *persistence.YDBClient,
 ) error {
@@ -116,10 +117,20 @@ func initFilesystemDataplane(
 		traversalConfig.GetStorageFolder(),
 	)
 
-	return scrubbing.RegisterForExecution(
+	err := scrubbing.RegisterForExecution(
 		taskRegistry,
 		scrubbingConfig,
 		nfsFactory,
 		traversalStorage,
+		taskScheduler,
+	)
+	if err != nil {
+		return err
+	}
+
+	return scrubbing.ScheduleRegularScrubFilesystems(
+		ctx,
+		taskScheduler,
+		scrubbingConfig,
 	)
 }
