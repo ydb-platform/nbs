@@ -108,9 +108,9 @@ public:
 
     void KillActors(const NActors::TActorContext& ctx);
 
+    BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlob, TEvPartitionCommonPrivate)
     BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlob, TEvPartitionCommonPrivate)
     BLOCKSTORE_IMPLEMENT_REQUEST(PatchBlob, TEvPartitionCommonPrivate)
-    BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlob, TEvPartitionCommonPrivate)
 
     bool HandleRequests(STFUNC_SIG, const NActors::TActorContext& ctx);
 
