@@ -64,10 +64,9 @@ func IsEnded(status TaskStatus) bool {
 	return status == TaskStatusFinished || status == TaskStatusCancelled
 }
 
-func IsCancelling(status TaskStatus) bool {
-	return status == TaskStatusReadyToCancel ||
-		status == TaskStatusWaitingToCancel ||
-		status == TaskStatusCancelling
+// This means that cancellation will be invoked after transitioning to this status
+func IsCancellationRequested(status TaskStatus) bool {
+	return status >= TaskStatusReadyToCancel && status < TaskStatusCancelled
 }
 
 func IsCancellingOrCancelled(status TaskStatus) bool {

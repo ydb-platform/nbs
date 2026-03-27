@@ -59,7 +59,7 @@ type Scheduler interface {
 	// This behaviour is useful for cleanup tasks
 	// (e.g., DeleteDisk, DeleteFilesystem)
 	//
-	// If zoneID == nil, the task is not zonal
+	// If zoneID is empty, the task is not zonal
 	ScheduleNonCancellableTask(
 		ctx context.Context,
 		taskType string,

@@ -1624,7 +1624,7 @@ func (s *storageYDB) updateTaskTx(
 	if lastState.NonCancellable && state.Status != TaskStatusCancelled {
 		// It is forbidden to start the cancellation process for a
 		// non-cancellable task
-		if IsCancelling(state.Status) {
+		if IsCancellationRequested(state.Status) {
 			return TaskState{}, errors.NewNonRetriableErrorf(
 				"unexpected status for a non-cancellable task, got %v",
 				TaskStatusToString(state.Status),
