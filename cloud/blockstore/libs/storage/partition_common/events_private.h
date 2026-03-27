@@ -46,19 +46,9 @@ struct TPartitionSharedState
         return {shared_from_this(), &PartCounters};
     }
 
-    NPartition::TThreadSafePartStatsPtr GetPartStats()
-    {
-        return {shared_from_this(), &PartStats};
-    }
-
     NPartition::TGroupDowntimesPtr GetGroupDowntimes()
     {
         return {shared_from_this(), &GroupDowntimes};
-    }
-
-    std::shared_ptr<std::atomic<ui64>> GetUnflushedFreshBlobByteCount()
-    {
-        return {shared_from_this(), &UnflushedFreshBlobByteCount};
     }
 };
 
