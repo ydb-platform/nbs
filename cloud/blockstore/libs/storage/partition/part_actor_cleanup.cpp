@@ -314,7 +314,6 @@ void TPartitionActor::CompleteCleanup(
         State->RemoveCleanupQueueItem(item);
     }
 
-
     auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>();
 
     LWTRACK(
