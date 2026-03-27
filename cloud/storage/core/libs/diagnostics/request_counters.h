@@ -130,8 +130,10 @@ private:
 
     void RequestCompletedImpl(
         TRequestType requestType,
-        TDuration requestTime,
-        TDuration requestCompletionTime,
+        TDuration totalTime,
+        TDuration completionTime,
+        TDuration time,
+        TDuration execTime,
         TDuration postponedTime,
         TDuration backoffTime,
         TDuration shapingTime,
