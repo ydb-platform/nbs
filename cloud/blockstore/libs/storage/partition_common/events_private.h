@@ -52,6 +52,8 @@ struct TPartitionSharedState
     }
 };
 
+using TPartitionSharedStatePtr = std::shared_ptr<TPartitionSharedState>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
@@ -420,7 +422,7 @@ struct TEvPartitionCommonPrivate
 
         TVector<EChannelPermissions> ChannelPermissions;
 
-        std::shared_ptr<TPartitionSharedState> SharedState;
+        TPartitionSharedStatePtr SharedState;
 
         TCommitIdGeneratorPtr CommitIdGenerator;
     };

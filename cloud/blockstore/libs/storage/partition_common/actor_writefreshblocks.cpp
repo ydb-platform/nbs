@@ -31,7 +31,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui64 tabletId,
         bool waitForAddFreshBlocksResponseBeforeResponse,
-        std::shared_ptr<TPartitionSharedState> sharedPartitionState)
+        TPartitionSharedStatePtr sharedPartitionState)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
     , CommitId(commitId)
