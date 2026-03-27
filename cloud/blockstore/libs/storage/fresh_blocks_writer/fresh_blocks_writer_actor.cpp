@@ -236,6 +236,14 @@ void TFreshBlocksWriterActor::UpdateStats(const NProto::TPartitionStats& update)
         });
 }
 
+void TFreshBlocksWriterActor::HandlePoisonPill(
+    const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Become(&TThis::StateZombie);
+    PoisonPillHelper.HandlePoisonPill(ev, ctx);
+}
+
 void TFreshBlocksWriterActor::HandlePartitionReady(
     const TEvPartition::TEvWaitReadyResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -408,7 +416,7 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
 STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         HFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest, HandleWaitReady);
@@ -433,7 +441,7 @@ STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 STFUNC(TFreshBlocksWriterActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         HFunc(
@@ -451,6 +459,37 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
                 !HandleRequests(ev))
+            {
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
+            }
+            break;
+    }
+}
+
+STFUNC(TFreshBlocksWriterActor::StateZombie)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
+
+        IgnoreFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest);
+
+        IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
+
+        IgnoreFunc(
+            TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse);
+
+        IgnoreFunc(
+            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
+
+        IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
+
+        default:
+            if (!RejectRequests(ev) &&
+                !IOCompanion->RejectRequests(ev, this->ActorContext()))
             {
                 HandleUnexpectedEvent(
                     ev,
