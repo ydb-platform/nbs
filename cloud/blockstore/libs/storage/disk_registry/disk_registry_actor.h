@@ -133,6 +133,8 @@ private:
     THashMap<TString, NActors::TActorId>
         AgentsWithAttachDetachRequestsInProgress;
 
+    ui64 RequestNumber = 1;
+
 public:
     TDiskRegistryActor(
         const NActors::TActorId& owner,
@@ -347,6 +349,8 @@ private:
         const THashSet<TString>& paths);
 
     void ProcessPathsToAttach(const NActors::TActorContext& ctx);
+
+    ui64 NextRequestNumber();
 
 private:
     STFUNC(StateBoot);
