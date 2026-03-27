@@ -85,12 +85,7 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    SharedState.GroupDowntimes = std::make_shared<TGroupDowntimes>();
-    SharedState.ResourceMetricsQueue =
-        std::make_shared<TResourceMetricsQueue>();
-    SharedState.PartCounters =
-        std::make_shared<TThreadSafePartCounters>();
-    SharedState.PartStats = std::make_shared<TThreadSafePartStats>();
+    SharedState = std::make_shared<TPartitionSharedState>();
 }
 
 TPartitionActor::~TPartitionActor()
@@ -214,7 +209,7 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
         PartCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions());
-        SharedState.PartCounters->Swap(CreatePartitionDiskCounters(
+        SharedState->PartCounters.Swap(CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions()));
     }
@@ -235,7 +230,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         return;
     }
 
-    State->UpdateWithThreadSafeStats(*SharedState.PartStats);
+    State->UpdateWithThreadSafeStats(SharedState->PartStats);
     const auto& stats = State->GetStats();
 
 #define BLOCKSTORE_PARTITION_UPDATE_COUNTER(name, category, ...)              \
@@ -1249,7 +1244,7 @@ void TPartitionActor::HandleGetPartitionInfo(
         "%s GetPartitionInfo request",
         LogTitle.GetWithTime().c_str());
 
-    State->UpdateWithThreadSafeStats(*SharedState.PartStats);
+    State->UpdateWithThreadSafeStats(SharedState->PartStats);
     auto json = State->AsJson();
     auto response = std::make_unique<TEvVolume::TEvGetPartitionInfoResponse>();
     response->Record.SetPayload(json.GetStringRobust());
@@ -1316,7 +1311,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    auto updates = SharedState.ResourceMetricsQueue->PopAll();
+    auto updates = SharedState->ResourceMetricsQueue.PopAll();
     for (auto& update: updates) {
         std::visit([&](auto&& arg) { UpdateResourceMetrics(arg); }, update);
     }
@@ -1329,7 +1324,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
 
     // Update partition stats from FreshBlocksWriter in case that some stats are
     // stuck.
-    State->UpdateWithThreadSafeStats(*SharedState.PartStats);
+    State->UpdateWithThreadSafeStats(SharedState->PartStats);
 }
 
 void TPartitionActor::HandleGetFreshChannelsInfo(
@@ -1343,9 +1338,7 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->ChannelsCount = State->GetChannelCount();
     response->Generation = Executor()->Generation();
 
-    SharedState.UnflushedFreshBlobByteCount =
-        std::make_shared<std::atomic<ui64>>();
-    SharedState.UnflushedFreshBlobByteCount->store(
+    SharedState->UnflushedFreshBlobByteCount.store(
         State->GetUnflushedFreshBlobByteCount());
 
     response->SharedState = SharedState;

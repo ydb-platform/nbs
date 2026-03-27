@@ -26,16 +26,40 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TUnflushedFreshBlobByteCountPtr = std::shared_ptr<std::atomic<ui64>>;
-
 struct TPartitionSharedState
+    : std::enable_shared_from_this<TPartitionSharedState>
 {
-    NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-    NPartition::TThreadSafePartCountersPtr PartCounters;
-    NPartition::TThreadSafePartStatsPtr PartStats;
-    NPartition::TGroupDowntimesPtr GroupDowntimes;
+    NPartition::TResourceMetricsQueue ResourceMetricsQueue;
+    NPartition::TThreadSafePartCounters PartCounters;
+    NPartition::TThreadSafePartStats PartStats;
+    NPartition::TGroupDowntimes GroupDowntimes;
 
-    TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
+    std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
+
+    NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
+    {
+        return {shared_from_this(), &ResourceMetricsQueue};
+    }
+
+    NPartition::TThreadSafePartCountersPtr GetPartCounters()
+    {
+        return {shared_from_this(), &PartCounters};
+    }
+
+    NPartition::TThreadSafePartStatsPtr GetPartStats()
+    {
+        return {shared_from_this(), &PartStats};
+    }
+
+    NPartition::TGroupDowntimesPtr GetGroupDowntimes()
+    {
+        return {shared_from_this(), &GroupDowntimes};
+    }
+
+    std::shared_ptr<std::atomic<ui64>> GetUnflushedFreshBlobByteCount()
+    {
+        return {shared_from_this(), &UnflushedFreshBlobByteCount};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -406,7 +430,7 @@ struct TEvPartitionCommonPrivate
 
         TVector<EChannelPermissions> ChannelPermissions;
 
-        TPartitionSharedState SharedState;
+        std::shared_ptr<TPartitionSharedState> SharedState;
 
         TCommitIdGeneratorPtr CommitIdGenerator;
     };

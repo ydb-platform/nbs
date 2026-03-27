@@ -183,7 +183,7 @@ private:
 
     NActors::TActorId FreshBlocksWriter;
 
-    TPartitionSharedState SharedState;
+    std::shared_ptr<TPartitionSharedState> SharedState;
 
     TRequestInfoPtr Poisoner;
 

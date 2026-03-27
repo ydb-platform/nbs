@@ -205,12 +205,12 @@ void TFreshBlocksWriterActor::RebootOnCommitIdOverflow(
 
 void TFreshBlocksWriterActor::UpdateStats(const NProto::TPartitionStats& update)
 {
-    SharedState.PartStats->Access([&](NProto::TPartitionStats& stats)
+    SharedState->PartStats.Access([&](NProto::TPartitionStats& stats)
                       { UpdatePartitionCounters(stats, update); });
 
     auto blockSize = PartitionConfig.GetBlockSize();
 
-    SharedState.PartCounters->Access(
+    SharedState->PartCounters.Access(
         [&](auto& partCounters)
         {
             partCounters->Cumulative.BytesWritten.Increment(
@@ -309,9 +309,9 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         *IOCompanionClient,
         *ChannelsState,
         LogTitle,
-        SharedState.ResourceMetricsQueue,
-        SharedState.GroupDowntimes,
-        SharedState.PartCounters);
+        SharedState->GetResourceMetricsQueue(),
+        SharedState->GetGroupDowntimes(),
+        SharedState->GetPartCounters());
     Become(&TThis::StateWork);
 
     StateLoaded = true;

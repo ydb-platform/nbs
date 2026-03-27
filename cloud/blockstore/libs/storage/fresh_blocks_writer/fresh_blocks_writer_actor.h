@@ -72,7 +72,7 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
-    TPartitionSharedState SharedState;
+    std::shared_ptr<TPartitionSharedState> SharedState;
 
 public:
     TFreshBlocksWriterActor(

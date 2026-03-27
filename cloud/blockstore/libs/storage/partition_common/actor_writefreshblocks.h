@@ -59,7 +59,7 @@ private:
     const bool IsZeroRequest;
     const bool WaitForAddFreshBlocksResponseBeforeResponse;
     const ui64 TabletId;
-    TUnflushedFreshBlobByteCountPtr UnflushedFreshBlobByteCount;
+    std::shared_ptr<std::atomic<ui64>> UnflushedFreshBlobByteCount;
 
     TString BlobContent;
     ui64 BlobSize = 0;
@@ -83,7 +83,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui64 tabletId,
         bool waitForAddFreshBlocksResponseBeforeResponse,
-        TUnflushedFreshBlobByteCountPtr unflushedFreshBlobByteCount);
+        std::shared_ptr<std::atomic<ui64>> unflushedFreshBlobByteCount);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

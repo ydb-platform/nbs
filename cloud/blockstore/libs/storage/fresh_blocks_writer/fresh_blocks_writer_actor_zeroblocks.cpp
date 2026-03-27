@@ -96,11 +96,11 @@ void TFreshBlocksWriterActor::HandleZeroBlocksCompleted(
     ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * PartitionConfig.GetBlockSize();
 
-    SharedState.ResourceMetricsQueue->Push(
+    SharedState->ResourceMetricsQueue.Push(
         NPartition::TUpdateCPUUsageStat{ctx.Now(), msg->ExecCycles});
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    SharedState.PartCounters->Access(
+    SharedState->PartCounters.Access(
         [&](auto& partCounters)
         {
             partCounters->RequestCounters.ZeroBlocks.AddRequest(

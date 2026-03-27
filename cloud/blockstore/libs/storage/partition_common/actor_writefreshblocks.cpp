@@ -20,18 +20,18 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteFreshBlocksActor::TWriteFreshBlocksActor(
-        const NActors::TActorId& owner,
-        const NActors::TActorId& actorToAddFreshBlocks,
-        ui64 commitId,
-        ui32 channel,
-        ui32 blockCount,
-        TVector<TRequest> requests,
-        TVector<TBlockRange32> blockRanges,
-        TVector<IWriteBlocksHandlerPtr> writeHandlers,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui64 tabletId,
-        bool waitForAddFreshBlocksResponseBeforeResponse,
-        TUnflushedFreshBlobByteCountPtr unflushedFreshBlobByteCount)
+    const NActors::TActorId& owner,
+    const NActors::TActorId& actorToAddFreshBlocks,
+    ui64 commitId,
+    ui32 channel,
+    ui32 blockCount,
+    TVector<TRequest> requests,
+    TVector<TBlockRange32> blockRanges,
+    TVector<IWriteBlocksHandlerPtr> writeHandlers,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ui64 tabletId,
+    bool waitForAddFreshBlocksResponseBeforeResponse,
+    std::shared_ptr<std::atomic<ui64>> unflushedFreshBlobByteCount)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
     , CommitId(commitId)

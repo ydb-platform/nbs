@@ -141,7 +141,7 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     );
 
     auto ioCounters =
-        SharedState.PartCounters->Swap(CreatePartitionDiskCounters(
+        SharedState->PartCounters.Swap(CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions()));
 
