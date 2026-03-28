@@ -19,36 +19,54 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TModuleStatsEntry
+struct TFileSystemKey
 {
-    // DynamicCounters are automatically deleted when the registry is deleted
-    IMetricsRegistryPtr LocalMetricsRegistry;
-    IMetricsRegistryPtr AggregatableMetricsRegistry;
-    IModuleStatsPtr ModuleStats;
+    const TString FileSystemId;
+    const TString ClientId;
+    const TString CloudId;
+    const TString FolderId;
+
+    auto AsTuple() const
+    {
+        return std::tie(FileSystemId, ClientId, CloudId, FolderId);
+    }
+
+    bool operator==(const TFileSystemKey& other) const
+    {
+        return AsTuple() == other.AsTuple();
+    }
+
+    // Used as hash function in THashMap
+    explicit operator size_t() const
+    {
+        return ComputeHash(AsTuple());
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileSystemStatsEntry
+struct TFileSystemEntry
 {
-    IMainMetricsRegistryPtr FileSystemMetricsRegistry;
+    const IMainMetricsRegistryPtr FileSystemMetricsRegistry;
+    ui64 RefCount = 0;
 
-    // Key: ModuleName
-    // Value: IModuleStatsPtr + metric registries
-    THashMap<TString, TModuleStatsEntry> ModuleStatsMap;
-
-    explicit TFileSystemStatsEntry(NMonitoring::TDynamicCountersPtr fsCounters)
+    explicit TFileSystemEntry(NMonitoring::TDynamicCountersPtr fsCounters)
         : FileSystemMetricsRegistry(
               CreateMetricsRegistry({}, std::move(fsCounters)))
     {}
+};
 
-    void UpdateStats(TInstant now) const
-    {
-        for (const auto& [_, moduleStatsEntry]: ModuleStatsMap) {
-            moduleStatsEntry.ModuleStats->UpdateStats(now);
-        }
-        FileSystemMetricsRegistry->Update(now);
-    }
+////////////////////////////////////////////////////////////////////////////////
+
+struct TModuleStatsEntry
+{
+    TFileSystemKey FileSystemKey;
+
+    // DynamicCounters are automatically deleted when all registries referencing
+    // them are deleted
+    IMetricsRegistryPtr LocalMetricsRegistry;
+    IMetricsRegistryPtr AggregatableMetricsRegistry;
+    IModuleStatsPtr ModuleStats;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -61,7 +79,12 @@ private:
     IMainMetricsRegistryPtr TotalMetricsRegistry;
 
     TAdaptiveLock Lock;
-    THashMap<std::pair<TString, TString>, TFileSystemStatsEntry> StatsMap;
+
+    // Map: Fs -> local metrics registry + ref count
+    THashMap<TFileSystemKey, TFileSystemEntry> FileSystemMetricsRegistries;
+
+    // Map: SessionId -> registered module metrics per session
+    THashMap<TString, TVector<TModuleStatsEntry>> StatsPerSession;
 
 public:
     TModuleStatsRegistry(
@@ -82,47 +105,42 @@ public:
 
         TGuard guard(Lock);
 
-        for (const auto& [key, entry]: StatsMap) {
-            entry.UpdateStats(now);
+        // Update all module stats (recalculate IMetricPtr values)
+        for (const auto& [_, moduleStatsVector]: StatsPerSession) {
+            for (const auto& moduleStatsEntry: moduleStatsVector) {
+                moduleStatsEntry.ModuleStats->UpdateStats(now);
+            }
+        }
+
+        // Propagate updated values to TDynamicCounters
+        for (const auto& [_, fileSystemEntry]: FileSystemMetricsRegistries) {
+            fileSystemEntry.FileSystemMetricsRegistry->Update(now);
         }
 
         TotalMetricsRegistry->Update(now);
     }
 
-    void Register(
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& cloudId,
-        const TString& folderId,
-        IModuleStatsPtr stats) override
+    void Register(TModuleStatsRegisterArgs args) override
     {
-        auto key = std::make_pair(fileSystemId, clientId);
-        auto moduleName = TString(stats->GetName());
+        // Module can be registered multiple times for the same filesystem.
+        // This may happen when migration within the same node is occured.
+
+        auto key = TFileSystemKey{
+            .FileSystemId = args.FileSystemId,
+            .ClientId = args.ClientId,
+            .CloudId = args.CloudId,
+            .FolderId = args.FolderId};
+
+        auto moduleName = TString(args.ModuleStats->GetName());
 
         TGuard guard(Lock);
 
-        auto it = StatsMap.find(key);
-        if (it == StatsMap.end()) {
-            auto counters = FsCountersProvider->Register(
-                fileSystemId,
-                clientId,
-                cloudId,
-                folderId);
-            it = StatsMap.emplace(key, counters).first;
-        }
-
-        auto& fileSystemStatsEntry = it->second;
-
-        Y_ABORT_UNLESS(
-            !fileSystemStatsEntry.ModuleStatsMap.contains(moduleName),
-            "Module %s is already registered for (fsId: %s, clientId: %s)",
-            moduleName.c_str(),
-            fileSystemId.c_str(),
-            clientId.c_str());
+        auto fileSystemMetricsRegistry =
+            RegisterFileSystemCountersAndGetMetricsRegistry(key);
 
         auto localMetricsRegistry = CreateScopedMetricsRegistry(
             {CreateLabel("module", moduleName)},
-            fileSystemStatsEntry.FileSystemMetricsRegistry);
+            fileSystemMetricsRegistry);
 
         auto totalMetricsRegistry = CreateScopedMetricsRegistry(
             {CreateLabel("module", moduleName)},
@@ -132,26 +150,64 @@ public:
             {},
             {std::move(totalMetricsRegistry), localMetricsRegistry});
 
-        stats->RegisterCounters(
+        args.ModuleStats->RegisterCounters(
             *localMetricsRegistry,
             *aggregatableMetricsRegistry);
 
-        fileSystemStatsEntry.ModuleStatsMap[moduleName] = {
-            .LocalMetricsRegistry = std::move(localMetricsRegistry),
-            .AggregatableMetricsRegistry =
-                std::move(aggregatableMetricsRegistry),
-            .ModuleStats = std::move(stats)};
+        StatsPerSession[args.SessionId].push_back(
+            {.FileSystemKey = std::move(key),
+             .LocalMetricsRegistry = std::move(localMetricsRegistry),
+             .AggregatableMetricsRegistry =
+                 std::move(aggregatableMetricsRegistry),
+             .ModuleStats = std::move(args.ModuleStats)});
     }
 
-    void Unregister(
-        const TString& fileSystemId,
-        const TString& clientId) override
+    void Unregister(const TString& sessionId) override
     {
         TGuard guard(Lock);
 
-        auto key = std::make_pair(fileSystemId, clientId);
-        if (StatsMap.erase(key)) {
-            FsCountersProvider->Unregister(fileSystemId, clientId);
+        auto it = StatsPerSession.find(sessionId);
+        if (it == StatsPerSession.end()) {
+            return;
+        }
+
+        for (const auto& moduleStatsEntry: it->second) {
+            UnregisterFileSystemCounters(moduleStatsEntry.FileSystemKey);
+        }
+
+        StatsPerSession.erase(it);
+    }
+
+private:
+    IMainMetricsRegistryPtr RegisterFileSystemCountersAndGetMetricsRegistry(
+        const TFileSystemKey& key)
+    {
+        auto it = FileSystemMetricsRegistries.find(key);
+        if (it == FileSystemMetricsRegistries.end()) {
+            auto counters = FsCountersProvider->Register(
+                key.FileSystemId,
+                key.ClientId,
+                key.CloudId,
+                key.FolderId);
+            it = FileSystemMetricsRegistries.emplace(key, counters).first;
+        }
+        it->second.RefCount++;
+        return it->second.FileSystemMetricsRegistry;
+    }
+
+    void UnregisterFileSystemCounters(const TFileSystemKey& key)
+    {
+        auto it = FileSystemMetricsRegistries.find(key);
+        if (it == FileSystemMetricsRegistries.end()) {
+            return;
+        }
+
+        auto& fileSystemStatsEntry = it->second;
+        fileSystemStatsEntry.RefCount--;
+
+        if (fileSystemStatsEntry.RefCount == 0) {
+            FsCountersProvider->Unregister(key.FileSystemId, key.ClientId);
+            FileSystemMetricsRegistries.erase(it);
         }
     }
 };
@@ -166,26 +222,14 @@ public:
         Y_UNUSED(updateIntervalFinished);
     }
 
-    void Register(
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& cloudId,
-        const TString& folderId,
-        IModuleStatsPtr stats) override
+    void Register(TModuleStatsRegisterArgs args) override
     {
-        Y_UNUSED(fileSystemId);
-        Y_UNUSED(clientId);
-        Y_UNUSED(cloudId);
-        Y_UNUSED(folderId);
-        Y_UNUSED(stats);
+        Y_UNUSED(args);
     }
 
-    void Unregister(
-        const TString& fileSystemId,
-        const TString& clientId) override
+    void Unregister(const TString& sessionId) override
     {
-        Y_UNUSED(fileSystemId);
-        Y_UNUSED(clientId);
+        Y_UNUSED(sessionId);
     }
 };
 

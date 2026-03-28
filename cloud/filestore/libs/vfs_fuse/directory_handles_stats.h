@@ -92,12 +92,6 @@ using TDirectoryHandlesStatsPtr = std::shared_ptr<TDirectoryHandlesStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesStatsPtr CreateDirectoryHandlesStats(
-    IModuleStatsRegistryPtr registry,
-    ITimerPtr timer,
-    const TString& fileSystemId,
-    const TString& clientId,
-    const TString& cloudId,
-    const TString& folderId);
+TDirectoryHandlesStatsPtr CreateDirectoryHandlesStats(ITimerPtr timer);
 
 }   // namespace NCloud::NFileStore::NFuse

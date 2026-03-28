@@ -85,6 +85,7 @@ struct TBootstrap
     const TString ClientId = "test_client";
     const TString CloudId = "test_cloud";
     const TString FolderId = "test_folder";
+    const TString SessionId = "test_session";
 
     ITimerPtr Timer = CreateWallClockTimer();
     TDynamicCountersPtr Counters = MakeIntrusive<TDynamicCounters>();
@@ -98,17 +99,28 @@ struct TBootstrap
     std::shared_ptr<TTestModuleStats> CreateAndRegisterStats(
         const TString& moduleName,
         const TString& fsId,
-        const TString& clientId)
+        const TString& clientId,
+        const TString& sessionId)
     {
         auto stats = std::make_shared<TTestModuleStats>(moduleName, Timer);
-        Registry->Register(fsId, clientId, CloudId, FolderId, stats);
+        Registry->Register(
+            {.FileSystemId = fsId,
+             .ClientId = clientId,
+             .CloudId = CloudId,
+             .FolderId = FolderId,
+             .SessionId = sessionId,
+             .ModuleStats = stats});
         return stats;
     }
 
     std::shared_ptr<TTestModuleStats> CreateAndRegisterStats(
         const TString& moduleName)
     {
-        return CreateAndRegisterStats(moduleName, FileSystemId, ClientId);
+        return CreateAndRegisterStats(
+            moduleName,
+            FileSystemId,
+            ClientId,
+            SessionId);
     }
 
     TDynamicCountersPtr GetModuleCounters(
@@ -215,7 +227,11 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
         const TString clientId2 = "test_client_2";
 
         auto stats1 = b.CreateAndRegisterStats("TestModule");
-        auto stats2 = b.CreateAndRegisterStats("TestModule", fsId2, clientId2);
+        auto stats2 = b.CreateAndRegisterStats(
+            "TestModule",
+            fsId2,
+            clientId2,
+            "session2");
 
         stats1->Add(100);
         stats2->Add(200);
@@ -245,7 +261,7 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
         UNIT_ASSERT(fsCounters->FindSubgroup("filesystem", b.FileSystemId));
 
         // Registry->Unregister calls FsCountersRegistry->Unregister internally
-        b.Registry->Unregister(b.FileSystemId, b.ClientId);
+        b.Registry->Unregister(b.SessionId);
 
         auto fsSubgroup =
             fsCounters->FindSubgroup("filesystem", b.FileSystemId);
@@ -257,8 +273,17 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
     {
         TBootstrap b;
 
-        auto stats1 = b.CreateAndRegisterStats("TestModule", "fs1", "client1");
-        auto stats2 = b.CreateAndRegisterStats("TestModule", "fs2", "client2");
+        auto stats1 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client1",
+            "session1");
+
+        auto stats2 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs2",
+            "client2",
+            "session2");
 
         stats1->Add(100);
         stats2->Add(200);
@@ -282,7 +307,12 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
                 ->FindCounter("SumValue")
                 ->Val());
 
-        auto stats3 = b.CreateAndRegisterStats("TestModule", "fs3", "client3");
+        auto stats3 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs3",
+            "client3",
+            "session3");
+
         stats3->Add(300);
         b.Registry->UpdateStats(true);
 
@@ -298,7 +328,7 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
                 ->FindCounter("SumValue")
                 ->Val());
 
-        b.Registry->Unregister("fs1", "client1");
+        b.Registry->Unregister("session1");
         b.Registry->UpdateStats(true);
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -307,12 +337,69 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
                 ->FindCounter("SumValue")
                 ->Val());
 
-        b.Registry->Unregister("fs2", "client2");
-        b.Registry->Unregister("fs3", "client3");
+        b.Registry->Unregister("session2");
+        b.Registry->Unregister("session3");
         b.Registry->UpdateStats(true);
 
         UNIT_ASSERT(!b.GetAggregateModuleCounters("TestModule")
                          ->FindCounter("SumValue"));
+    }
+
+    Y_UNIT_TEST(ShouldAllowRegisteringSameModuleMultipleTimesForSameFilesystem)
+    {
+        TBootstrap b;
+
+        auto stats1 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client1",
+            "session1");
+
+        auto stats2 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client1",
+            "session1");
+
+        auto stats3 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client2",
+            "session2");
+
+        stats1->Add(100);
+        stats2->Add(200);
+        stats3->Add(400);
+
+        b.Registry->UpdateStats(true);
+
+        // Local metrics are aggregated too
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            b.GetModuleCounters("TestModule", "fs1", "client1")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            400,
+            b.GetModuleCounters("TestModule", "fs1", "client2")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            700,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        b.Registry->Unregister("session1");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            400,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
     }
 }
 
