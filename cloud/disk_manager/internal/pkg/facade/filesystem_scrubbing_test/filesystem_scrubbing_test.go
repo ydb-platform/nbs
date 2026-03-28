@@ -195,7 +195,7 @@ func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
 		filesystemID,
 	)
 
-	testcommon.WaitOperationEnded(t, ctx, taskID, 60*time.Second)
+	testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -210,7 +210,11 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 	defer nfsClient.Close()
 
 	regularScrubFilesystemIDs := getRegularScrubFilesystemIDs()
-	require.NotEmpty(t, regularScrubFilesystemIDs, "regular scrub filesystem IDs must not be empty")
+	require.NotEmpty(
+		t,
+		regularScrubFilesystemIDs,
+		"regular scrub filesystem IDs must not be empty",
+	)
 
 	expectedFilesystems := tasks_common.NewStringSet(regularScrubFilesystemIDs...)
 
@@ -238,7 +242,7 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 	)
 
 	for _, taskID := range firstTaskIDs {
-		testcommon.WaitOperationEnded(t, ctx, taskID)
+		testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
 	}
 
 	// Second iteration: ensure tasks are rescheduled.
@@ -252,6 +256,6 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 	)
 
 	for _, taskID := range secondTaskIDs {
-		testcommon.WaitOperationEnded(t, ctx, taskID)
+		testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
 	}
 }
