@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateFilesystemSnapshotMetadataRequest {
+    string FilesystemSnapshotId = 1;
+    string FilesystemId = 2;
+    string ZoneId = 3;
+}
+
+message CreateFilesystemSnapshotMetadataTaskState {
+    bool RootNodeScheduled = 1;
+}
+
+message CreateFilesystemSnapshotMetadataResponse {
+    uint64 NodeCount = 1;
+}
