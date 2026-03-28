@@ -820,6 +820,10 @@ def test_io_telemetry():
     with open(common.output_path("filestore-server.err")) as err:
         for line in err.readlines():
             parts = line.rstrip().split(" ", maxsplit=4)
+            if len(parts) < 4:
+                # we expect that line has the following format
+                # <time> <component> <severity> <message>
+                continue
             component = parts[1]
             message = parts[3]
             if component == ":NFS_TRACE":
