@@ -1225,7 +1225,6 @@ private:
         config.SetExtendedAttributesDisabled(
             features.GetExtendedAttributesDisabled());
 
-        config.SetGuestKeepCacheAllowed(features.GetGuestKeepCacheAllowed());
         config.SetMaxBackground(features.GetMaxBackground());
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 

@@ -429,25 +429,13 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         auto* node = args.Response.MutableNodeAttr();
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
 
-        if ((Config->GetGuestKeepCacheAllowed() ||
-             Config->GetGuestCachingType() != NProto::GCT_NONE) &&
-            !HasFlag(args.Flags, NProto::TCreateHandleRequest::E_WRITE))
-        {
-            // We set the GuestKeepCache to tell the client not to bother
-            // invalidating the caches upon opening a read-only handle
-            args.Response.SetGuestKeepCache(
-                session->HandleStatsByNode.IsAllowedToKeepCache(
-                    *node,
-                    // isFirstReadAllowed
-                    Config->GetGuestCachingType() == NProto::GCT_ANY_READ));
-        }
+        // We set the GuestKeepCache to tell the client not to bother
+        // invalidating the caches upon opening this handle
+        args.Response.SetGuestKeepCache(
+            session->HandleStatsByNode.IsAllowedToKeepCache(
+                args.TargetNodeId,
+                args.TargetNode->MinCommitId));
 
-        // We can remember the last time that the cache was invalidated by a
-        // user of a given session in order not to invalidate the cache the next
-        // time if the file was not modified
-        if (!args.Response.GetGuestKeepCache()) {
-            session->HandleStatsByNode.OnGuestCacheInvalidated(*node);
-        }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
         args.Response.SetShardNodeName(args.ShardNodeName);
@@ -530,6 +518,13 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
 
     if (!HasError(args.Error)) {
+        if (args.TargetNode) {
+            if (auto* session = FindSession(args.SessionId)) {
+                session->HandleStatsByNode.UpdateObservedCommitId(
+                    args.TargetNodeId,
+                    args.TargetNode->MinCommitId);
+            }
+        }
         CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
     }

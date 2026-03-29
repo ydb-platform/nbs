@@ -65,8 +65,7 @@ message TFileSystemConfig
     // Enable write-back cache on FUSE server
     optional bool ServerWriteBackCacheEnabled = 19;
 
-    // Allow to set keep_cache flag on file open if allowed by tablet
-    optional bool GuestKeepCacheAllowed = 20;
+    optional bool GuestKeepCacheAllowed = 20 [deprecated = true];
 
     // Create parentless files only. Meaning that files will be created
     // without any reference to parent directory.

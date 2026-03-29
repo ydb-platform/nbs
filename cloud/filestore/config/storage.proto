@@ -23,14 +23,11 @@ enum EGuestCachingType
     // No caching is allowed, every CreateHandle forces a guest page cache
     // invalidation
     GCT_NONE = 0;
-    // The second RDONLY open call will be allowed not to invalidate the guest
-    // page cache if there are no other write handles and mtime of the file
-    // has not been changed since the last cache invalidation within a given
-    // session
-    GCT_SECOND_READ = 1;
-    // Same as GCT_SECOND_READ but the first RDONLY open call is also allowed
-    // to use the cache if the conditions regarding the write handles and
-    // mtime are met
+    // Treated the same way as GCT_ANY_READ
+    GCT_SECOND_READ = 1 [deprecated = true];
+    // Any open call is allowed not to invalidate the guest page cache if the
+    // commit id of the file has not changed since the last observed commit id
+    // within a given session
     GCT_ANY_READ = 2;
 }
 
@@ -560,9 +557,7 @@ message TStorageConfig
 
     // If set to true, in some cases the client is allowed not to invalidate the
     // guest page cache associated with the inode. It is allowed only for
-    // handles to nodes that are not being edited and are already opened
-    // within a given session
-    optional bool GuestKeepCacheAllowed = 423;
+    optional bool GuestKeepCacheAllowed = 423 [deprecated = true];
 
     optional EGuestCachingType GuestCachingType = 424;
 
