@@ -355,39 +355,50 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
             "client1",
             "session1");
 
+        // Same fs, same session
+        // (should not happen in production but we should not crash)
         auto stats2 = b.CreateAndRegisterStats(
             "TestModule",
             "fs1",
             "client1",
             "session1");
 
+        // Same fs, different session
         auto stats3 = b.CreateAndRegisterStats(
             "TestModule",
             "fs1",
+            "client1",
+            "session2");
+
+        // Different fs
+        auto stats4 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs2",
             "client2",
             "session2");
 
         stats1->Add(100);
         stats2->Add(200);
         stats3->Add(400);
+        stats4->Add(800);
 
         b.Registry->UpdateStats(true);
 
         // Local metrics are aggregated too
         UNIT_ASSERT_VALUES_EQUAL(
-            300,
+            700,
             b.GetModuleCounters("TestModule", "fs1", "client1")
                 ->FindCounter("SumValue")
                 ->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            400,
-            b.GetModuleCounters("TestModule", "fs1", "client2")
+            800,
+            b.GetModuleCounters("TestModule", "fs2", "client2")
                 ->FindCounter("SumValue")
                 ->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            700,
+            1500,
             b.GetAggregateModuleCounters("TestModule")
                 ->FindCounter("SumValue")
                 ->Val());
@@ -397,9 +408,21 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             400,
+            b.GetModuleCounters("TestModule", "fs1", "client1")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1200,
             b.GetAggregateModuleCounters("TestModule")
                 ->FindCounter("SumValue")
                 ->Val());
+
+        b.Registry->Unregister("session2");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT(!b.GetAggregateModuleCounters("TestModule")
+                         ->FindCounter("SumValue"));
     }
 }
 

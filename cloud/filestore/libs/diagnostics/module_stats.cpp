@@ -23,12 +23,10 @@ struct TFileSystemKey
 {
     const TString FileSystemId;
     const TString ClientId;
-    const TString CloudId;
-    const TString FolderId;
 
     auto AsTuple() const
     {
-        return std::tie(FileSystemId, ClientId, CloudId, FolderId);
+        return std::tie(FileSystemId, ClientId);
     }
 
     bool operator==(const TFileSystemKey& other) const
@@ -123,20 +121,21 @@ public:
     void Register(TModuleStatsRegisterArgs args) override
     {
         // Module can be registered multiple times for the same filesystem.
-        // This may happen when migration within the same node is occured.
+        // This may happen when migration within the same node occurs.
 
         auto key = TFileSystemKey{
             .FileSystemId = args.FileSystemId,
-            .ClientId = args.ClientId,
-            .CloudId = args.CloudId,
-            .FolderId = args.FolderId};
+            .ClientId = args.ClientId};
 
         auto moduleName = TString(args.ModuleStats->GetName());
 
         TGuard guard(Lock);
 
         auto fileSystemMetricsRegistry =
-            RegisterFileSystemCountersAndGetMetricsRegistry(key);
+            RegisterFileSystemCountersAndGetMetricsRegistry(
+                key,
+                args.CloudId,
+                args.FolderId);
 
         auto localMetricsRegistry = CreateScopedMetricsRegistry(
             {CreateLabel("module", moduleName)},
@@ -180,15 +179,17 @@ public:
 
 private:
     IMainMetricsRegistryPtr RegisterFileSystemCountersAndGetMetricsRegistry(
-        const TFileSystemKey& key)
+        const TFileSystemKey& key,
+        const TString& cloudId,
+        const TString& folderId)
     {
         auto it = FileSystemMetricsRegistries.find(key);
         if (it == FileSystemMetricsRegistries.end()) {
             auto counters = FsCountersProvider->Register(
                 key.FileSystemId,
                 key.ClientId,
-                key.CloudId,
-                key.FolderId);
+                cloudId,
+                folderId);
             it = FileSystemMetricsRegistries.emplace(key, counters).first;
         }
         it->second.RefCount++;
