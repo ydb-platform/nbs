@@ -19,36 +19,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileSystemKey
-{
-    const TString FileSystemId;
-    const TString ClientId;
-
-    auto AsTuple() const
-    {
-        return std::tie(FileSystemId, ClientId);
-    }
-
-    bool operator==(const TFileSystemKey& other) const
-    {
-        return AsTuple() == other.AsTuple();
-    }
-
-    // Used as hash function in THashMap
-    explicit operator size_t() const
-    {
-        return ComputeHash(AsTuple());
-    }
-};
+// (TFileSystemId, TClientId)
+using TFileSystemKey = std::pair<TString, TString>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileSystemEntry
+struct TFileSystemMetricsRegistryEntry
 {
     const IMainMetricsRegistryPtr FileSystemMetricsRegistry;
     ui64 RefCount = 0;
 
-    explicit TFileSystemEntry(NMonitoring::TDynamicCountersPtr fsCounters)
+    explicit TFileSystemMetricsRegistryEntry(
+        NMonitoring::TDynamicCountersPtr fsCounters)
         : FileSystemMetricsRegistry(
               CreateMetricsRegistry({}, std::move(fsCounters)))
     {}
@@ -58,7 +40,8 @@ struct TFileSystemEntry
 
 struct TModuleStatsEntry
 {
-    TFileSystemKey FileSystemKey;
+    TString FileSystemId;
+    TString ClientId;
 
     // DynamicCounters are automatically deleted when all registries referencing
     // them are deleted
@@ -79,7 +62,8 @@ private:
     TAdaptiveLock Lock;
 
     // Map: Fs -> local metrics registry + ref count
-    THashMap<TFileSystemKey, TFileSystemEntry> FileSystemMetricsRegistries;
+    THashMap<TFileSystemKey, TFileSystemMetricsRegistryEntry>
+        FileSystemMetricsRegistries;
 
     // Map: SessionId -> registered module metrics per session
     THashMap<TString, TVector<TModuleStatsEntry>> StatsPerSession;
@@ -123,17 +107,14 @@ public:
         // Module can be registered multiple times for the same filesystem.
         // This may happen when migration within the same node occurs.
 
-        auto key = TFileSystemKey{
-            .FileSystemId = args.FileSystemId,
-            .ClientId = args.ClientId};
-
         auto moduleName = TString(args.ModuleStats->GetName());
 
         TGuard guard(Lock);
 
         auto fileSystemMetricsRegistry =
             RegisterFileSystemCountersAndGetMetricsRegistry(
-                key,
+                args.FileSystemId,
+                args.ClientId,
                 args.CloudId,
                 args.FolderId);
 
@@ -154,7 +135,8 @@ public:
             *aggregatableMetricsRegistry);
 
         StatsPerSession[args.SessionId].push_back(
-            {.FileSystemKey = std::move(key),
+            {.FileSystemId = args.FileSystemId,
+             .ClientId = args.ClientId,
              .LocalMetricsRegistry = std::move(localMetricsRegistry),
              .AggregatableMetricsRegistry =
                  std::move(aggregatableMetricsRegistry),
@@ -171,7 +153,9 @@ public:
         }
 
         for (const auto& moduleStatsEntry: it->second) {
-            UnregisterFileSystemCounters(moduleStatsEntry.FileSystemKey);
+            UnregisterFileSystemCounters(
+                moduleStatsEntry.FileSystemId,
+                moduleStatsEntry.ClientId);
         }
 
         StatsPerSession.erase(it);
@@ -179,15 +163,18 @@ public:
 
 private:
     IMainMetricsRegistryPtr RegisterFileSystemCountersAndGetMetricsRegistry(
-        const TFileSystemKey& key,
+        const TString& fileSystemId,
+        const TString& clientId,
         const TString& cloudId,
         const TString& folderId)
     {
+        TFileSystemKey key{fileSystemId, clientId};
+
         auto it = FileSystemMetricsRegistries.find(key);
         if (it == FileSystemMetricsRegistries.end()) {
             auto counters = FsCountersProvider->Register(
-                key.FileSystemId,
-                key.ClientId,
+                fileSystemId,
+                clientId,
                 cloudId,
                 folderId);
             it = FileSystemMetricsRegistries.emplace(key, counters).first;
@@ -196,8 +183,12 @@ private:
         return it->second.FileSystemMetricsRegistry;
     }
 
-    void UnregisterFileSystemCounters(const TFileSystemKey& key)
+    void UnregisterFileSystemCounters(
+        const TString& fileSystemId,
+        const TString& clientId)
     {
+        TFileSystemKey key{fileSystemId, clientId};
+
         auto it = FileSystemMetricsRegistries.find(key);
         if (it == FileSystemMetricsRegistries.end()) {
             return;
@@ -207,7 +198,7 @@ private:
         fileSystemStatsEntry.RefCount--;
 
         if (fileSystemStatsEntry.RefCount == 0) {
-            FsCountersProvider->Unregister(key.FileSystemId, key.ClientId);
+            FsCountersProvider->Unregister(fileSystemId, clientId);
             FileSystemMetricsRegistries.erase(it);
         }
     }
