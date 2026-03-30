@@ -804,6 +804,11 @@ public:
         return CleanupQueue;
     }
 
+    const TCleanupQueue& GetCleanupQueue() const
+    {
+        return CleanupQueue;
+    }
+
     ui32 GetBlobCountToCleanup(ui64 commitId, ui32 maxBlobs) const
     {
         if (commitId < BlobCountToCleanupCommitId
