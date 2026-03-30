@@ -135,7 +135,6 @@ void TPartitionActor::WriteFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            TBlockStoreComponents::PARTITION,
             nullptr);   // sharedPartitionState
 
         Actors.Insert(actor);
@@ -509,7 +508,6 @@ void TPartitionActor::ZeroFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            TBlockStoreComponents::PARTITION,
             nullptr);   // sharedPartitionState
 
         Actors.Insert(actor);

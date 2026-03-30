@@ -31,7 +31,6 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         bool waitForAddFreshBlocksResponseBeforeResponse,
         ui64 tabletId,
-        int component,
         TPartitionSharedStatePtr sharedPartitionState)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
@@ -48,7 +47,6 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WaitForAddFreshBlocksResponseBeforeResponse(
           waitForAddFreshBlocksResponseBeforeResponse)
     , TabletId(tabletId)
-    , Component(component)
     , SharedPartitionState(std::move(sharedPartitionState))
 {
     if (!IsZeroRequest) {
@@ -375,7 +373,13 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
             {{"error", FormatError(ev->Get()->GetError())},
              {"tabletId", TabletId}});
 
-        Y_ABORT_IF(Component == TBlockStoreComponents::FRESH_BLOCKS_WRITER);
+        // If WaitForAddFreshBlocksResponseBeforeResponse is false, this means
+        // that we responded to the client with success before adding the blocks
+        // to the partition cache. If the addition of the blocks failed, reads
+        // after the writes will not see the write request. In this case, we
+        // should restart the partition after the failed add of fresh blocks
+        // requests.
+        Y_ABORT_IF(!WaitForAddFreshBlocksResponseBeforeResponse);
     }
 
     ReplyAllAndDie(ctx, {});
