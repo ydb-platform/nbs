@@ -408,11 +408,8 @@ TSplitConfig TSplitConfig::Create(const NProto::TVolume& volume)
 
     if (IsBlobStorageMediaKind(volume.GetStorageMediaKind())) {
         if (volume.GetPartitionsCount() > 1) {
-            // Need to find a way to get the size of the stripe for
-            // multipartition YDB-based volume.
-            // Used default BytesPerStripe from
-            // cloud/blockstore/libs/storage/core/config.cpp
-            stripeSize = 16_MB;
+            stripeSize =
+                static_cast<size_t>(volume.GetBlocksPerStripe()) * blockSize;
         }
     } else if (IsDiskRegistryMediaKind(volume.GetStorageMediaKind())) {
         if (volume.GetDevices().size() > 0) {
