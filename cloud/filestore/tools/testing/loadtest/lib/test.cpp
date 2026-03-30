@@ -527,7 +527,7 @@ private:
 
         srand(time(0));
         TString shmFileName = "nfs_" + std::to_string(rand()) + ".shm";
-        ShmPath = "/Berkanavt/nfs-server/shm/" + shmFileName;
+        ShmPath = "/Berkanavt/nfs-server/shm/nfs-server-shm/" + shmFileName;
 
         std::ofstream ofs(ShmPath);
         ofs << "this is some text in the new file\n";
