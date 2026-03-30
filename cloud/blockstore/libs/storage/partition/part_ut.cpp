@@ -13367,6 +13367,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetBlockMaskOptimizationEnabled(true);
+        config.SetSplitFreshBlobsByCompactionRangeEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
 

@@ -63,7 +63,6 @@ private:
     const ui32 FlushedFreshBlobCount;
     const ui64 FlushedFreshBlobByteCount;
     const TDuration BlobStorageAsyncRequestTimeout;
-    const ui64 BlobsAlignment;
 
     TVector<TRequest> Requests;
     TVector<TBlockRange64> AffectedRanges;
@@ -86,7 +85,6 @@ public:
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
-        ui32 blobsAlignment,
         TVector<TRequest> requests);
 
     void Bootstrap(const TActorContext& ctx);
@@ -130,7 +128,6 @@ TFlushActor::TFlushActor(
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
         TDuration blobStorageAsyncRequestTimeout,
-        ui32 blobsAlignment,
         TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
@@ -141,7 +138,6 @@ TFlushActor::TFlushActor(
     , FlushedFreshBlobCount(flushedFreshBlobCount)
     , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
-    , BlobsAlignment(blobsAlignment)
     , Requests(std::move(requests))
 {}
 
@@ -241,7 +237,7 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(req.Blocks),
             std::move(req.Checksums),
-            BlobsAlignment);
+            req.BlobsAlignment);
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -837,9 +833,6 @@ void TPartitionActor::HandleFlush(
             State->GetUnflushedFreshBlobCount(),
             State->GetUnflushedFreshBlobByteCount(),
             GetBlobStorageAsyncRequestTimeout(),
-            isBlockMaskOptimizationEnabled
-                ? State->GetCompactionMap().GetRangeSize()
-                : 0,
             std::move(requests));
 
         Actors.Insert(actor);
