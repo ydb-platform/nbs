@@ -1212,6 +1212,22 @@ public:
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
     }
 
+    auto CreateVolumeDiskBrokenRequest(const TString& diskId)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvVolumeDiskBrokenRequest>();
+        request->Record.SetDiskId(diskId);
+        return request;
+    }
+
+    auto CreateVolumeDiskRecoveredRequest(const TString& diskId)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvVolumeDiskRecoveredRequest>();
+        request->Record.SetDiskId(diskId);
+        return request;
+    }
+
     auto CreateQueryAgentsInfoRequest(
         const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter)
     {

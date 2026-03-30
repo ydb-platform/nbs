@@ -789,6 +789,16 @@ public:
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
 
+    void OnVolumeDiskBroken(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TInstant now);
+
+    void OnVolumeDiskRecovered(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TInstant now);
+
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
     void SuspendDeviceIfNeeded(

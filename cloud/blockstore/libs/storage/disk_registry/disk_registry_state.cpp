@@ -8607,4 +8607,22 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
     return pathsToAttach;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistryState::OnVolumeDiskBroken(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    TInstant now)
+{
+    NotificationSystem.OnVolumeDiskBroken(db, diskId, now);
+}
+
+void TDiskRegistryState::OnVolumeDiskRecovered(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    TInstant now)
+{
+    NotificationSystem.OnVolumeDiskRecovered(db, diskId, now);
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
