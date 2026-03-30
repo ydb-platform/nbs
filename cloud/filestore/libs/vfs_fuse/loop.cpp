@@ -846,9 +846,7 @@ public:
                 p->Config->GetFileSystemId(),
                 p->Config->GetClientId());
 
-            p->ModuleStatsRegistry->Unregister(
-                p->Config->GetFileSystemId(),
-                p->Config->GetClientId());
+            p->ModuleStatsRegistry->Unregister(p->SessionId);
 
             s.SetValue();
         };
@@ -1090,13 +1088,15 @@ private:
                 DirectoryHandlesStorageInitialized = true;
             }
 
-            DirectoryHandlesStats = CreateDirectoryHandlesStats(
-                ModuleStatsRegistry,
-                Timer,
-                Config->GetFileSystemId(),
-                Config->GetClientId(),
-                response.GetFileStore().GetCloudId(),
-                response.GetFileStore().GetFolderId());
+            DirectoryHandlesStats = CreateDirectoryHandlesStats(Timer);
+
+            ModuleStatsRegistry->Register(
+                {.FileSystemId = Config->GetFileSystemId(),
+                 .ClientId = Config->GetClientId(),
+                 .CloudId = response.GetFileStore().GetCloudId(),
+                 .FolderId = response.GetFileStore().GetFolderId(),
+                 .SessionId = SessionId,
+                 .ModuleStats = DirectoryHandlesStats});
 
             FileSystem = CreateFileSystem(
                 Logging,
@@ -1375,9 +1375,7 @@ private:
             Config->GetFileSystemId(),
             Config->GetClientId());
 
-        ModuleStatsRegistry->Unregister(
-            Config->GetFileSystemId(),
-            Config->GetClientId());
+        ModuleStatsRegistry->Unregister(SessionId);
 
         // We need to cleanup HandleOpsQueue file and directories
         if (HandleOpsQueueInitialized) {

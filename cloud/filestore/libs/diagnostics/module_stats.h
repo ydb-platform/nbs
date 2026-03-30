@@ -16,6 +16,18 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TModuleStatsRegisterArgs
+{
+    TString FileSystemId;
+    TString ClientId;
+    TString CloudId;
+    TString FolderId;
+    TString SessionId;
+    IModuleStatsPtr ModuleStats;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IModuleStats
 {
     virtual ~IModuleStats() = default;
@@ -33,17 +45,11 @@ struct IModuleStats
 
 struct IModuleStatsRegistry: public IStatsHandler
 {
-    // Registers stats for (fsId, clientId) under stats->GetName().
-    virtual void Register(
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& cloudId,
-        const TString& folderId,
-        IModuleStatsPtr stats) = 0;
+    // Registers stats for a module under stats->GetName().
+    virtual void Register(TModuleStatsRegisterArgs args) = 0;
 
-    virtual void Unregister(
-        const TString& fileSystemId,
-        const TString& clientId) = 0;
+    // Unregister all module stats associated with the session
+    virtual void Unregister(const TString& sessionId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
