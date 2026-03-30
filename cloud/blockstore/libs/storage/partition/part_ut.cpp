@@ -2385,6 +2385,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
+        config.SetBlockMaskOptimizationEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config, blockCount);
 

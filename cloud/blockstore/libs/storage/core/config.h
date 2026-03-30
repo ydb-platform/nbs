@@ -798,6 +798,8 @@ public:
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
 
     [[nodiscard]] bool GetBlockMaskOptimizationEnabled() const;
+
+    [[nodiscard]] bool GetSplitFreshBlobsByCompactionRangeEnabled() const;
 };
 
 ui64 GetAllocationUnit(

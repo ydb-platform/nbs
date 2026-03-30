@@ -1477,4 +1477,9 @@ message TStorageServiceConfig
 
     // Enables block mask optimization.
     optional bool BlockMaskOptimizationEnabled = 489;
+
+    // Split blobs by compaction range boundaries during flush.
+    // When enabled, fresh blocks from different compaction ranges will be
+    // written to separate blobs during flush operation.
+    optional bool SplitFreshBlobsByCompactionRangeEnabled = 490;
 }
