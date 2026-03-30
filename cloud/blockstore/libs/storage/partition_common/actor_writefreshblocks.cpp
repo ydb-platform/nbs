@@ -29,8 +29,9 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui64 tabletId,
         bool waitForAddFreshBlocksResponseBeforeResponse,
+        ui64 tabletId,
+        int component,
         TPartitionSharedStatePtr sharedPartitionState)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
@@ -47,6 +48,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WaitForAddFreshBlocksResponseBeforeResponse(
           waitForAddFreshBlocksResponseBeforeResponse)
     , TabletId(tabletId)
+    , Component(component)
     , SharedPartitionState(std::move(sharedPartitionState))
 {
     if (!IsZeroRequest) {
@@ -365,11 +367,15 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
     const TActorContext& ctx)
 {
     const auto& error = ev->Get()->GetError();
-    if (HasError(error) && GetErrorKind(error) != EErrorKind::ErrorRetriable) {
+    if (HasError(error) && GetErrorKind(error) != EErrorKind::ErrorRetriable &&
+        error.GetCode() != E_CANCELLED)
+    {
         ReportAddFreshBlocksResultedInError(
             "unexpected error in AddFreshBlocksResponse",
             {{"error", FormatError(ev->Get()->GetError())},
              {"tabletId", TabletId}});
+
+        Y_ABORT_IF(Component == TBlockStoreComponents::FRESH_BLOCKS_WRITER);
     }
 
     ReplyAllAndDie(ctx, {});

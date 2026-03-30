@@ -59,6 +59,8 @@ private:
     const bool IsZeroRequest;
     const bool WaitForAddFreshBlocksResponseBeforeResponse;
     const ui64 TabletId;
+    const int Component;
+
     TPartitionSharedStatePtr SharedPartitionState;
 
     TString BlobContent;
@@ -81,8 +83,9 @@ public:
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui64 tabletId,
         bool waitForAddFreshBlocksResponseBeforeResponse,
+        ui64 tabletId,
+        int component,
         TPartitionSharedStatePtr sharedPartitionState);
 
     void Bootstrap(const NActors::TActorContext& ctx);
