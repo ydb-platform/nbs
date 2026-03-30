@@ -118,12 +118,19 @@ func Create(
 	logging.Info(ctx, "Created chunk_map table")
 
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
-		err = s3.CreateBucket(ctx, config.GetS3Bucket())
+		ok, err := s3.BucketExists(ctx, config.GetS3Bucket())
 		if err != nil {
 			return err
 		}
 
-		logging.Info(ctx, "Created s3 bucket")
+		if !ok {
+			err = s3.CreateBucket(ctx, config.GetS3Bucket())
+			if err != nil {
+				return err
+			}
+
+			logging.Info(ctx, "Created s3 bucket")
+		}
 	} else {
 		logging.Info(ctx, "Skipped s3 bucket creation")
 	}

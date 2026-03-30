@@ -158,6 +158,33 @@ func (c *S3Client) CreateBucket(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (c *S3Client) BucketExists(
+	ctx context.Context,
+	bucket string,
+) (exists bool, err error) {
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "checking if bucket %v exists in s3", bucket)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "GetBucket", bucket, "")(&err)
+	_, err = c.s3.HeadBucketWithContext(ctx, &aws_s3.HeadBucketInput{
+		Bucket: &bucket,
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.RequestFailure); ok {
+			if aerr.StatusCode() == 404 {
+				return false, nil
+			}
+		}
+
+		return false, errors.NewRetriableError(err)
+	}
+
+	return true, nil
+}
+
 func (c *S3Client) GetObject(
 	ctx context.Context,
 	bucket string,
