@@ -176,7 +176,7 @@ NNvme::INvmeManagerPtr CreateNvmeManager(
             return NNvme::CreateNvmeManager(
                 std::move(logging),
                 config.GetSecureEraseTimeout(),
-                config.GetIoctlAdminCmdTimeout());
+                config.GetNVMeAdminCmdTimeout());
     }
 
     return nullptr;
