@@ -344,8 +344,7 @@ void TServiceActor::HandleSetVhostDiscardFlagRequest(
             std::move(requestInfo),
             msg->DiskId,
             msg->VhostDiscardEnabled,
-            0));   // ConfigVersion = 0 means use version from DescribeVolume
-                   // response.
+            msg->ConfigVersion));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

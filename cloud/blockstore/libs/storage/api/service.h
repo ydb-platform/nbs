@@ -204,18 +204,25 @@ struct TEvService
     {
         const TString DiskId;
         const bool VhostDiscardEnabled;
-
-        TSetVhostDiscardFlagRequest() = default;
+        ui32 ConfigVersion = 0;
 
         TSetVhostDiscardFlagRequest(TString diskId, bool vhostDiscardEnabled)
             : DiskId(std::move(diskId))
             , VhostDiscardEnabled(vhostDiscardEnabled)
         {}
+
+        TSetVhostDiscardFlagRequest(
+            TString diskId,
+            bool vhostDiscardEnabled,
+            ui32 configVersion)
+            : DiskId(std::move(diskId))
+            , VhostDiscardEnabled(vhostDiscardEnabled)
+            , ConfigVersion(configVersion)
+        {}
     };
 
     struct TSetVhostDiscardFlagResponse
     {
-        TSetVhostDiscardFlagResponse() = default;
     };
 
     //

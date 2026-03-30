@@ -28,7 +28,7 @@ Y_UNIT_TEST_SUITE(TServiceVhostDiscardTest)
             static_cast<bool>(volume.GetVhostDiscardEnabled()));
     }
 
-    void SetVhostDiscardEnabledFlag(
+    void SetVhostDiscardEnabledViaAction(
         TServiceClient& service,
         const TString& diskId,
         bool discardEnabled)
@@ -116,7 +116,9 @@ Y_UNIT_TEST_SUITE(TServiceVhostDiscardTest)
         AssertVhostDiscardEnabled(service, "vol0", true);
         UNIT_ASSERT_VALUES_EQUAL(expectedEventsSent, eventsSent);
 
-        SetVhostDiscardEnabledFlag(service, "vol0", false);
+        SetVhostDiscardEnabledViaAction(service, "vol0", false);
+        // Event should be sent on SetVhostDiscardEnabledFlagAction.
+        ++expectedEventsSent;
         UNIT_ASSERT_VALUES_EQUAL(expectedEventsSent, eventsSent);
 
         RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
@@ -177,12 +179,13 @@ Y_UNIT_TEST_SUITE(TServiceVhostDiscardTest)
         AssertVhostDiscardEnabled(service, "vol0", false);
         UNIT_ASSERT_VALUES_EQUAL(0, eventsSent);
 
-        SetVhostDiscardEnabledFlag(service, "vol0", true);
-        UNIT_ASSERT_VALUES_EQUAL(0, eventsSent);
+        SetVhostDiscardEnabledViaAction(service, "vol0", true);
+        // Event should be sent on SetVhostDiscardEnabledFlagAction.
+        UNIT_ASSERT_VALUES_EQUAL(1, eventsSent);
 
         RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
         AssertVhostDiscardEnabled(service, "vol0", true);
-        UNIT_ASSERT_VALUES_EQUAL(0, eventsSent);
+        UNIT_ASSERT_VALUES_EQUAL(1, eventsSent);
     }
 }
 

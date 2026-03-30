@@ -1153,7 +1153,7 @@ void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvSetVhostDiscardFlagRequest>(
         State->GetDiskId(),
-        true);  // VhostDiscardEnabled = true
+        true /* VhostDiscardEnabled*/);
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 }
 

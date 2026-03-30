@@ -86,7 +86,8 @@ void TSetVhostDiscardEnabledFlagActionActor::SendRequest(
 
     auto request = std::make_unique<TEvService::TEvSetVhostDiscardFlagRequest>(
         Request.GetDiskId(),
-        Request.GetVhostDiscardEnabled());
+        Request.GetVhostDiscardEnabled(),
+        Request.GetConfigVersion());
 
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 }
