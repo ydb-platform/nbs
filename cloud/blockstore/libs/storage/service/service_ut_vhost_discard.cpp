@@ -33,7 +33,7 @@ Y_UNIT_TEST_SUITE(TServiceVhostDiscardTest)
         const TString& diskId,
         bool discardEnabled)
     {
-        NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+        NPrivateProto::TSetVhostDiscardFlagActionRequest request;
         request.SetDiskId(diskId);
         request.SetVhostDiscardEnabled(discardEnabled);
 

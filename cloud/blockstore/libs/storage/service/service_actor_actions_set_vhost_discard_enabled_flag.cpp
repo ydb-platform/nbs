@@ -21,17 +21,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetVhostDiscardEnabledFlagActionActor final
-    : public TActorBootstrapped<TSetVhostDiscardEnabledFlagActionActor>
+class TSetVhostDiscardFlagActionActor final
+    : public TActorBootstrapped<TSetVhostDiscardFlagActionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
-    NPrivateProto::TSetVhostDiscardEnabledFlagRequest Request;
+    NPrivateProto::TSetVhostDiscardFlagActionRequest Request;
 
 public:
-    TSetVhostDiscardEnabledFlagActionActor(
+    TSetVhostDiscardFlagActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -51,14 +51,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSetVhostDiscardEnabledFlagActionActor::TSetVhostDiscardEnabledFlagActionActor(
+TSetVhostDiscardFlagActionActor::TSetVhostDiscardFlagActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TSetVhostDiscardEnabledFlagActionActor::Bootstrap(const TActorContext& ctx)
+void TSetVhostDiscardFlagActionActor::Bootstrap(const TActorContext& ctx)
 {
     if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
@@ -73,7 +73,7 @@ void TSetVhostDiscardEnabledFlagActionActor::Bootstrap(const TActorContext& ctx)
     SendRequest(ctx);
 }
 
-void TSetVhostDiscardEnabledFlagActionActor::SendRequest(
+void TSetVhostDiscardFlagActionActor::SendRequest(
     const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
@@ -92,14 +92,14 @@ void TSetVhostDiscardEnabledFlagActionActor::SendRequest(
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 }
 
-void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
+void TSetVhostDiscardFlagActionActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         std::move(error));
     google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TSetVhostDiscardEnabledFlagResponse(),
+        NPrivateProto::TSetVhostDiscardFlagActionResponse(),
         response->Record.MutableOutput());
 
     LWTRACK(
@@ -115,7 +115,7 @@ void TSetVhostDiscardEnabledFlagActionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TSetVhostDiscardEnabledFlagActionActor::HandleSetVhostDiscardFlagResponse(
+void TSetVhostDiscardFlagActionActor::HandleSetVhostDiscardFlagResponse(
     const TEvService::TEvSetVhostDiscardFlagResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -126,7 +126,7 @@ void TSetVhostDiscardEnabledFlagActionActor::HandleSetVhostDiscardFlagResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWork)
+STFUNC(TSetVhostDiscardFlagActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
@@ -147,11 +147,11 @@ STFUNC(TSetVhostDiscardEnabledFlagActionActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<IActorPtr>
-TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor(
+TServiceActor::CreateSetVhostDiscardFlagActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TSetVhostDiscardEnabledFlagActionActor>(
+    return {std::make_unique<TSetVhostDiscardFlagActionActor>(
         std::move(requestInfo),
         std::move(input))};
 }

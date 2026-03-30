@@ -443,7 +443,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardEnabledFlagActionActor(
+    TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardFlagActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
