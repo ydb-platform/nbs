@@ -28,8 +28,6 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/threading/atomic/bool.h>
-
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/bitops.h>
@@ -44,6 +42,7 @@
 #include <util/thread/factory.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <pthread.h>
 
@@ -127,7 +126,7 @@ private:
     TVector<TRequestBucket> RequestBuckets;
 
     enum fuse_cancelation_code CancelCode{};
-    NAtomic::TBool ShouldStop = false;
+    std::atomic<bool> ShouldStop = false;
 
     TPromise<void> StopPromise = NewPromise<void>();
 

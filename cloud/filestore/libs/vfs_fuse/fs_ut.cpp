@@ -35,7 +35,6 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
-#include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
@@ -1594,7 +1593,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotFailOnSuspendWithRequestsInFlight)
     {
-        NAtomic::TBool sessionDestroyed = false;
+        std::atomic<bool> sessionDestroyed = false;
 
         TBootstrap bootstrap;
         bootstrap.Service->DestroySessionHandler = [&sessionDestroyed] (auto, auto) {
@@ -1635,7 +1634,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotFailOnStopWithRequestsInFlight)
     {
-        NAtomic::TBool sessionDestroyed = false;
+        std::atomic<bool> sessionDestroyed = false;
 
         TBootstrap bootstrap;
         bootstrap.Service->DestroySessionHandler = [&sessionDestroyed] (auto, auto) {

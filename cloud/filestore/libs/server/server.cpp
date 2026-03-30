@@ -44,7 +44,6 @@
 #include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <library/cpp/deprecated/atomic/atomic.h>
-#include <library/cpp/threading/atomic/bool.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/hash_set.h>
@@ -53,6 +52,8 @@
 #include <util/string/join.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
+
+#include <atomic>
 
 namespace NCloud::NFileStore::NServer {
 
@@ -174,7 +175,7 @@ class TServerRequestHandlerBase
 {
 protected:
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
-    NAtomic::TBool Started = false;
+    std::atomic<bool> Started = false;
     NCloud::NProto::TError Error;
 
 public:
