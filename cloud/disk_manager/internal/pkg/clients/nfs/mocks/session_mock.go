@@ -50,6 +50,7 @@ func (s *SessionMock) SafeCreateNode(
 	ctx context.Context,
 	node nfs.Node,
 ) (uint64, error) {
+
 	args := s.Called(ctx, node)
 	return args.Get(0).(uint64), args.Error(1)
 }
