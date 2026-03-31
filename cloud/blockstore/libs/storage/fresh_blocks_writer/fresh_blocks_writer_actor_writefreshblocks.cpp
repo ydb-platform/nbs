@@ -126,8 +126,8 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         std::move(blockRanges),
         std::move(writeHandlers),
         BlockDigestGenerator,
-        PartitionTabletID,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
+        PartitionTabletID,
         SharedState);
 
     Actors.Insert(actor);
@@ -204,8 +204,8 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         std::move(blockRanges),
         TVector<IWriteBlocksHandlerPtr>{},
         BlockDigestGenerator,
-        PartitionTabletID,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
+        PartitionTabletID,
         SharedState);
 
     Actors.Insert(actor);

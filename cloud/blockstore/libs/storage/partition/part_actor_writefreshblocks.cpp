@@ -133,8 +133,8 @@ void TPartitionActor::WriteFreshBlocks(
             std::move(blockRanges),
             std::move(writeHandlers),
             BlockDigestGenerator,
+            true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            true,       // waitForAddFreshBlocksResponseBeforeResponse
             nullptr);   // sharedPartitionState
 
         Actors.Insert(actor);
@@ -231,7 +231,7 @@ void TPartitionActor::HandleAddFreshBlocks(
             using TResponse =
                 TEvPartitionCommonPrivate::TEvAddFreshBlocksResponse;
             auto response = std::make_unique<TResponse>(
-                MakeError(E_ARGUMENT, "Failed to lock a guardedSgList"));
+                MakeError(E_CANCELLED, "Failed to lock a guardedSgList"));
 
             NCloud::Reply(ctx, *ev, std::move(response));
             Suicide(ctx);
@@ -506,8 +506,8 @@ void TPartitionActor::ZeroFreshBlocks(
             std::move(blockRanges),
             TVector<IWriteBlocksHandlerPtr>{},
             BlockDigestGenerator,
+            true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            true,       // waitForAddFreshBlocksResponseBeforeResponse
             nullptr);   // sharedPartitionState
 
         Actors.Insert(actor);

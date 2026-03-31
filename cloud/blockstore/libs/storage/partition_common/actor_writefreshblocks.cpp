@@ -29,8 +29,8 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui64 tabletId,
         bool waitForAddFreshBlocksResponseBeforeResponse,
+        ui64 tabletId,
         TPartitionSharedStatePtr sharedPartitionState)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
@@ -365,11 +365,21 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
     const TActorContext& ctx)
 {
     const auto& error = ev->Get()->GetError();
-    if (HasError(error) && GetErrorKind(error) != EErrorKind::ErrorRetriable) {
+    if (HasError(error) && GetErrorKind(error) != EErrorKind::ErrorRetriable &&
+        error.GetCode() != E_CANCELLED)
+    {
         ReportAddFreshBlocksResultedInError(
             "unexpected error in AddFreshBlocksResponse",
             {{"error", FormatError(ev->Get()->GetError())},
              {"tabletId", TabletId}});
+
+        // If WaitForAddFreshBlocksResponseBeforeResponse is false, this means
+        // that we responded to the client with success before adding the blocks
+        // to the partition cache. If the addition of the blocks failed, reads
+        // after the writes will not see the write request. In this case, we
+        // should restart the partition after the failed add of fresh blocks
+        // requests.
+        Y_ABORT_IF(!WaitForAddFreshBlocksResponseBeforeResponse);
     }
 
     ReplyAllAndDie(ctx, {});

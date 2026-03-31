@@ -769,7 +769,6 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
-
                 // Drop add fresh blocks response to be sure that we don't wait
                 // partition.
                 if (event->GetTypeRewrite() ==
@@ -790,13 +789,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             testEnv.FreshBlocksWriterActorId);
         fbwClient.WaitReady();
 
-        NMonitoring::TDynamicCountersPtr counters =
-            new NMonitoring::TDynamicCounters();
-        InitCriticalEventsCounter(counters);
-        auto reassignCounter = counters->GetCounter(
-            "AppImpossibleEvents/AddFreshBlocksResultedInError",
-            true);
-
+        auto partActor = testEnv.PartitionActorId;
         {
             auto content = GetBlockContent('0');
 
@@ -825,7 +818,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.DispatchEvents({}, 10ms);
 
         UNIT_ASSERT(writeBlocksCompletedObserved);
-        UNIT_ASSERT_VALUES_EQUAL(0, reassignCounter->Val());
+        // If part actor commits suicide, we will re register new part
+        // actor.
+        UNIT_ASSERT_VALUES_EQUAL(partActor, testEnv.PartitionActorId);
     }
 
     Y_UNIT_TEST(ShouldBatchSmallWritesInOneWriteBlobRequest)
