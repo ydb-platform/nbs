@@ -108,16 +108,6 @@ public:
         NProto::EDiskState newState,
         TInstant timestamp);
 
-    void OnVolumeDiskBroken(
-        TDiskRegistryDatabase& db,
-        const TDiskId& diskId,
-        TInstant now);
-
-    void OnVolumeDiskRecovered(
-        TDiskRegistryDatabase& db,
-        const TDiskId& diskId,
-        TInstant now);
-
     void DeleteDiskStateUpdate(TDiskRegistryDatabase& db, ui64 maxSeqNo);
 
     void AddOutdatedVolumeConfig(

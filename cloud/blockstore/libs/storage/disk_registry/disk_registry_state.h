@@ -275,6 +275,8 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
+
+        bool IsVolumeStateBroken = false;
     };
 
     struct TVolumeDeviceOverrides
@@ -789,12 +791,12 @@ public:
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
 
-    void OnVolumeDiskBroken(
+    void OnVolumeBroken(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TInstant now);
 
-    void OnVolumeDiskRecovered(
+    void OnVolumeRecovered(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TInstant now);

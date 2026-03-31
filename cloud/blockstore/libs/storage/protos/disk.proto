@@ -306,6 +306,10 @@ message TDiskConfig
     // A list of devices that were lagging behind on writes and are now in an
     // unrecoverable state.
     repeated TLaggingDevice OutdatedLaggingDevices = 18;
+
+    // Set to true when TVolumeActor reports that the disk is broken
+    // (at least one device timed out from the volume's perspective).
+    bool IsVolumeStateBroken = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1962,9 +1966,9 @@ message TEnsureDiskRegistryStateIntegrityResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Volume disk state notifications sent from TVolumeActor to DiskRegistry.
+// Volume state notifications sent from TVolumeActor to DiskRegistry.
 
-message TVolumeDiskBrokenRequest
+message TVolumeBrokenRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
@@ -1973,13 +1977,13 @@ message TVolumeDiskBrokenRequest
     string DiskId = 2;
 }
 
-message TVolumeDiskBrokenResponse
+message TVolumeBrokenResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
 
-message TVolumeDiskRecoveredRequest
+message TVolumeRecoveredRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
@@ -1988,7 +1992,7 @@ message TVolumeDiskRecoveredRequest
     string DiskId = 2;
 }
 
-message TVolumeDiskRecoveredResponse
+message TVolumeRecoveredResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

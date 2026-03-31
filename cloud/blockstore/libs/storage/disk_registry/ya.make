@@ -59,8 +59,8 @@ SRCS(
     disk_registry_actor_update_params.cpp
     disk_registry_actor_update_placement_group_settings.cpp
     disk_registry_actor_update_stats.cpp
+    disk_registry_actor_volume_broken.cpp
     disk_registry_actor_volume_config.cpp
-    disk_registry_actor_volume_disk_broken.cpp
     disk_registry_actor_waitready.cpp
     disk_registry_actor.cpp
     disk_registry_counters.cpp

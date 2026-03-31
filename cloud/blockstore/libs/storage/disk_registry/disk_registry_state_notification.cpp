@@ -320,40 +320,6 @@ void TNotificationSystem::OnDiskStateChanged(
     DiskStateUpdates.emplace_back(std::move(diskState), seqNo);
 }
 
-void TNotificationSystem::OnVolumeDiskBroken(
-    TDiskRegistryDatabase& db,
-    const TDiskId& diskId,
-    TInstant now)
-{
-    if (!SupportsNotifications.contains(diskId)) {
-        return;
-    }
-
-    const auto seqNo = DiskStateSeqNo++;
-    db.WriteLastDiskStateSeqNo(DiskStateSeqNo);
-
-    auto notif = MakeBlankNotification(seqNo, now);
-    notif.MutableDiskError()->SetDiskId(diskId);
-    AddUserNotification(db, std::move(notif));
-}
-
-void TNotificationSystem::OnVolumeDiskRecovered(
-    TDiskRegistryDatabase& db,
-    const TDiskId& diskId,
-    TInstant now)
-{
-    if (!SupportsNotifications.contains(diskId)) {
-        return;
-    }
-
-    const auto seqNo = DiskStateSeqNo++;
-    db.WriteLastDiskStateSeqNo(DiskStateSeqNo);
-
-    auto notif = MakeBlankNotification(seqNo, now);
-    notif.MutableDiskBackOnline()->SetDiskId(diskId);
-    AddUserNotification(db, std::move(notif));
-}
-
 void TNotificationSystem::DeleteDiskStateUpdate(
     TDiskRegistryDatabase& db,
     ui64 maxSeqNo)

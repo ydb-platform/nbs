@@ -606,6 +606,8 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                 disk.OutdatedLaggingDevices.emplace_back(laggingDevice, seqNo);
             }
         }
+
+        disk.IsVolumeStateBroken = config.GetIsVolumeStateBroken();
     }
 
     for (const auto& config: configs) {
@@ -5250,6 +5252,8 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
         config.AddHistory()->CopyFrom(hi);
     }
 
+    config.SetIsVolumeStateBroken(diskState.IsVolumeStateBroken);
+
     return config;
 }
 
@@ -5974,6 +5978,10 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
     const TString& diskId,
     const TDiskState& disk) const
 {
+    if (disk.IsVolumeStateBroken) {
+        return NProto::DISK_STATE_ERROR;
+    }
+
     if (disk.ReplicaCount != 0) {
         for (ui32 i = 0; i < disk.ReplicaCount + 1; ++i) {
             auto replicaId = GetReplicaDiskId(diskId, i);
@@ -8609,20 +8617,40 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryState::OnVolumeDiskBroken(
+void TDiskRegistryState::OnVolumeBroken(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TInstant now)
 {
-    NotificationSystem.OnVolumeDiskBroken(db, diskId, now);
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        ReportDiskRegistryDiskNotFound("OnVolumeBroken", {{"disk", diskId}});
+        return;
+    }
+    if (disk->IsVolumeStateBroken) {
+        return;
+    }
+    disk->IsVolumeStateBroken = true;
+    db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+    TryUpdateDiskStateImpl(db, diskId, *disk, now);
 }
 
-void TDiskRegistryState::OnVolumeDiskRecovered(
+void TDiskRegistryState::OnVolumeRecovered(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TInstant now)
 {
-    NotificationSystem.OnVolumeDiskRecovered(db, diskId, now);
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        ReportDiskRegistryDiskNotFound("OnVolumeRecovered", {{"disk", diskId}});
+        return;
+    }
+    if (!disk->IsVolumeStateBroken) {
+        return;
+    }
+    disk->IsVolumeStateBroken = false;
+    db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+    TryUpdateDiskStateImpl(db, diskId, *disk, now);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

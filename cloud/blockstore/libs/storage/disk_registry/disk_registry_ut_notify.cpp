@@ -499,7 +499,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         });
         UNIT_ASSERT_VALUES_EQUAL(2, backOnlineCount);
     }
-    Y_UNIT_TEST(ShouldNotifyAboutVolumeDiskBrokenAndRecovered)
+    Y_UNIT_TEST(ShouldNotifyAboutVolumeBrokenAndRecovered)
     {
         auto notifyService = std::make_shared<TFakeNotifyService>();
 
@@ -533,7 +533,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             "yc-nbs",
             "yc-nbs.folder");
 
-        diskRegistry.VolumeDiskBroken("nonrepl-vol");
+        diskRegistry.VolumeBroken("nonrepl-vol");
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
@@ -549,7 +549,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TDiskError,
             DiskId);
 
-        diskRegistry.VolumeDiskRecovered("nonrepl-vol");
+        diskRegistry.VolumeRecovered("nonrepl-vol");
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);

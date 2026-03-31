@@ -1212,18 +1212,18 @@ public:
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
     }
 
-    auto CreateVolumeDiskBrokenRequest(const TString& diskId)
+    auto CreateVolumeBrokenRequest(const TString& diskId)
     {
         auto request =
-            std::make_unique<TEvDiskRegistry::TEvVolumeDiskBrokenRequest>();
+            std::make_unique<TEvDiskRegistry::TEvVolumeBrokenRequest>();
         request->Record.SetDiskId(diskId);
         return request;
     }
 
-    auto CreateVolumeDiskRecoveredRequest(const TString& diskId)
+    auto CreateVolumeRecoveredRequest(const TString& diskId)
     {
         auto request =
-            std::make_unique<TEvDiskRegistry::TEvVolumeDiskRecoveredRequest>();
+            std::make_unique<TEvDiskRegistry::TEvVolumeRecoveredRequest>();
         request->Record.SetDiskId(diskId);
         return request;
     }
