@@ -1758,11 +1758,6 @@ void PrepareRangeCompaction(
         if ((!compactRangeContainsBlob && !blobOnlyInOneCompactRange) ||
             !blockMaskOptimizationEnabled)
         {
-            Cerr << "reading block mask for blob: " << kv.first
-                 << " BlobAlignment " << kv.second.BlobAlignment
-                 << " blobRange "
-                 << (blobRange ? ToString(*blobRange) : TString("null"))
-                 << Endl;
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
                 Y_ABORT_UNLESS(
                     kv.second.BlockMask.Defined(),
@@ -1775,7 +1770,8 @@ void PrepareRangeCompaction(
 
         if (args.ChecksumsEnabled) {
             if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
-                Y_ABORT_UNLESS(kv.second.BlobMeta.Defined(),
+                Y_ABORT_UNLESS(
+                    kv.second.BlobMeta.Defined(),
                     "Could not read blob meta for blob: %s",
                     ToString(MakeBlobId(tabletId, kv.first)).data());
             } else {
