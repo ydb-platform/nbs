@@ -466,9 +466,9 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             4096,   // requestBytes
             4096);  // responseBytes
 
-        auto callContext = MakeIntrusive<TCallContext>();
-        callContext->SetRequestStartedCycles(GetCycleCount());
-        endpoint->SendRequest(request.ExtractResult(), callContext);
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContext>());
 
         Disconnect(testContext);
         disconnected.WaitT(5s);
