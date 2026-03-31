@@ -1,8 +1,7 @@
-syntax = "proto2";
-
 package filesystem_dataplane;
 
 import "cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config/config.proto";
+import "cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config/config.proto";
 import "cloud/tasks/persistence/config/config.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config";
@@ -12,4 +11,5 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 message FilesystemDataplaneConfig {
     required persistence.PersistenceConfig PersistenceConfig = 1;
     optional scrubbing.FilesystemScrubbingConfig ScrubbingConfig = 2;
+    optional filesystem_snapshot.FilesystemSnapshotConfig SnapshotConfig = 3;
 }

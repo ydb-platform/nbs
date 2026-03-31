@@ -83,7 +83,7 @@ func (s *storageYDB) selectNodesToList(
 			uint64(nfs.InvalidNodeID),
 		),
 	)
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
