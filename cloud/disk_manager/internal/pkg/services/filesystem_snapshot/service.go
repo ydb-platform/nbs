@@ -50,10 +50,11 @@ func (s *service) DeleteFilesystemSnapshot(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
+	return s.taskScheduler.ScheduleNonCancellableTask(
 		ctx,
 		"filesystem_snapshot.DeleteFilesystemSnapshot",
-		"",
+		"", // description
+		"", // zoneID
 		&empty.Empty{},
 	)
 }

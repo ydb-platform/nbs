@@ -141,10 +141,11 @@ func (s *service) DeleteFilesystem(
 		)
 	}
 
-	return s.scheduler.ScheduleTask(
+	return s.scheduler.ScheduleNonCancellableTask(
 		ctx,
 		"filesystem.DeleteFilesystem",
-		"",
+		"", // description
+		"", // zoneID
 		&protos.DeleteFilesystemRequest{
 			Filesystem: &protos.FilesystemId{
 				ZoneId:       req.FilesystemId.ZoneId,

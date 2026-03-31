@@ -144,10 +144,11 @@ func (s *service) DeleteImage(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
+	return s.taskScheduler.ScheduleNonCancellableTask(
 		ctx,
 		"images.DeleteImage",
-		"",
+		"", // description
+		"", // zoneID
 		&protos.DeleteImageRequest{
 			ImageId: req.ImageId,
 		},
