@@ -2625,6 +2625,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         CheckShardsSize(fsConfig, service, newBlocksCount);
 
+        // Explicitly restore session after tablet restart
+        headers = service.InitSession(
+            fsConfig.FsId,
+            "client",
+            {},  /* checkpoint */
+            true  /* restore */);
+
         // Attempt to write one more file should fail
         const auto file = createFile("notEnoughSpace");
         service.AssertWriteDataFailed(
