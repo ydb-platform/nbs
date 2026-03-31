@@ -409,6 +409,71 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldAbortRequests)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->MaxReconnectDelay = 1s;
+        clientConfig->MaxResponseDelay = 1s;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        testContext->PostSend = [&](auto* qp, auto* wr) {
+            Y_UNUSED(qp);
+            const auto* msg =
+                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+            testContext->ReqIds.push_back(msg->ReqId);
+            testContext->CompletionHandle.Set();
+        };
+
+        TManualEvent disconnected;
+        testContext->DestroyQP = [&](auto...) {
+            disconnected.Signal();
+        };
+
+        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+
+        struct TClientHandler: IClientHandler
+        {
+            void HandleResponse(
+                TClientRequestPtr req,
+                ui32 status,
+                size_t responseBytes) override
+            {
+                Y_UNUSED(req);
+                Y_UNUSED(responseBytes);
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<ui32>(RDMA_PROTO_FAIL),
+                    status);
+            }
+        };
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::make_unique<TNullContext>(),
+            4096,   // requestBytes
+            4096);  // responseBytes
+
+        auto callContext = MakeIntrusive<TCallContext>();
+        callContext->SetRequestStartedCycles(GetCycleCount());
+        endpoint->SendRequest(request.ExtractResult(), callContext);
+
+        Disconnect(testContext);
+        disconnected.WaitT(5s);
+    }
+
     Y_UNIT_TEST(ShouldCancelRequests)
     {
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
