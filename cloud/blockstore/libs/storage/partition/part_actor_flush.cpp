@@ -431,6 +431,7 @@ private:
     const ui32 MaxBlocksInBlob;
     const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
     const bool SplitByCompactionRange;
+    const ui32 SplitByCompactionRangeMaxBlobCount;
     const TCompactionMap& CompactionMap;
 
     TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
@@ -448,6 +449,7 @@ public:
             ui32 maxBlocksInBlob,
             ui64 diskPrefixLengthWithBlockChecksumsInBlobs,
             bool splitByCompactionRange,
+            ui32 splitByCompactionRangeMaxBlobCount,
             const TCompactionMap& compactionMap)
         : Blobs(blobs)
         , BlockSize(blockSize)
@@ -457,25 +459,20 @@ public:
         , DiskPrefixLengthWithBlockChecksumsInBlobs(
             diskPrefixLengthWithBlockChecksumsInBlobs)
         , SplitByCompactionRange(splitByCompactionRange)
+        , SplitByCompactionRangeMaxBlobCount(splitByCompactionRangeMaxBlobCount)
         , CompactionMap(compactionMap)
     {}
 
     bool Visit(const TFreshBlock& block) override
     {
         if (block.Content) {
-            // Check if we need to split the blob:
-            // 1. NBS-299: we do not want to mix blocks that are too far from each other
-            // 2. Split by compaction range boundaries
+            // NBS-299: do not mix blocks that are too far from each other.
+            // Compaction range splitting is applied inside each such segment.
             const bool rangeTooBig = GetBlobRangeSize(Blocks, block.Meta.BlockIndex)
                     > MaxBlobRangeSize / BlockSize;
-            const bool crossesCompactionRange = Blocks &&
-                CompactionMap.GetRangeStart(Blocks.front().BlockIndex) !=
-                CompactionMap.GetRangeStart(block.Meta.BlockIndex);
 
-            if (rangeTooBig ||
-                (crossesCompactionRange && SplitByCompactionRange))
-            {
-                AddBlob(
+            if (rangeTooBig) {
+                FlushBlob(
                     std::move(BlobContent),
                     std::move(Blocks),
                     std::move(Checksums));
@@ -499,32 +496,24 @@ public:
             }
 
             if (Blocks.size() == MaxBlocksInBlob) {
-                AddBlob(
+                FlushBlob(
                     std::move(BlobContent),
                     std::move(Blocks),
                     std::move(Checksums));
             }
         } else {
-            // Check if we need to split zero blocks blob:
-            // 1. Range size check
-            // 2. Split by compaction range boundaries
             const auto blobRangeSize =
                 GetBlobRangeSize(ZeroBlocks, block.Meta.BlockIndex);
             const bool rangeTooBig = blobRangeSize > MaxBlobRangeSize / BlockSize;
-            const bool crossesCompactionRange = ZeroBlocks &&
-                CompactionMap.GetRangeStart(ZeroBlocks.front().BlockIndex) !=
-                CompactionMap.GetRangeStart(block.Meta.BlockIndex);
 
-            if (rangeTooBig ||
-                (crossesCompactionRange && SplitByCompactionRange))
-            {
-                AddBlob(TBlockBuffer(), std::move(ZeroBlocks), TVector<ui32>());
+            if (rangeTooBig) {
+                FlushZeroBlob(std::move(ZeroBlocks));
             }
 
             ZeroBlocks.emplace_back(block.Meta.BlockIndex, block.Meta.CommitId, block.Meta.IsStoredInDb);
 
             if (ZeroBlocks.size() == MaxBlocksInBlob) {
-                AddBlob(TBlockBuffer(), std::move(ZeroBlocks), TVector<ui32>());
+                FlushZeroBlob(std::move(ZeroBlocks));
             }
         }
 
@@ -535,7 +524,7 @@ public:
     {
         const auto dataSize = Blocks.size() * BlockSize;
         if (Blocks && (!Blobs || dataSize >= FlushBlobSizeThreshold)) {
-            AddBlob(
+            FlushBlob(
                 std::move(BlobContent),
                 std::move(Blocks),
                 std::move(Checksums));
@@ -544,7 +533,7 @@ public:
         if (ZeroBlocks &&
             (!Blobs || ZeroBlocks.size() >= FlushBlobSizeThreshold))
         {
-            AddBlob(TBlockBuffer(), std::move(ZeroBlocks), TVector<ui32>());
+            FlushZeroBlob(std::move(ZeroBlocks));
         }
     }
 
@@ -559,32 +548,31 @@ private:
         return 0;
     }
 
-    void AddBlob(
-        TBlockBuffer blobContent,
-        TVector<TBlock> blocks,
-        TVector<ui32> checksums)
+    [[nodiscard]] static ui32 CountCompactRangeRuns(
+        const TVector<TBlock>& blocks,
+        const TCompactionMap& compactionMap)
     {
-        const ui64 blobsAlignment = GetBlobsAlignment(blocks);
-        Blobs.emplace_back(
-            std::move(blobContent),
-            std::move(blocks),
-            std::move(checksums),
-            blobsAlignment);
+        if (!blocks) {
+            return 0;
+        }
+        ui32 runs = 1;
+        for (size_t i = 1; i < blocks.size(); ++i) {
+            if (compactionMap.GetRangeStart(blocks[i - 1].BlockIndex) !=
+                compactionMap.GetRangeStart(blocks[i].BlockIndex))
+            {
+                ++runs;
+            }
+        }
+        return runs;
     }
 
-    [[nodiscard]] ui64 GetBlobsAlignment(const TVector<TBlock>& blocks) const
+    [[nodiscard]] ui64 GetBlobsAlignmentForPiece(
+        const TVector<TBlock>& blocks) const
     {
         if (!blocks) {
             return 0;
         }
 
-        // If SplitByCompactionRange is enabled, always return alignment
-        if (SplitByCompactionRange) {
-            return CompactionMap.GetRangeSize();
-        }
-
-        // Otherwise, return alignment only if blob is fully contained in one
-        // compaction range
         const ui32 firstBlockIndex = blocks.front().BlockIndex;
         const ui32 lastBlockIndex = blocks.back().BlockIndex;
 
@@ -595,6 +583,100 @@ private:
         }
 
         return 0;
+    }
+
+    void AppendDataBlob(
+        TBlockBuffer blobContent,
+        TVector<TBlock> blocks,
+        TVector<ui32> checksums)
+    {
+        const ui64 blobsAlignment = GetBlobsAlignmentForPiece(blocks);
+        Blobs.emplace_back(
+            std::move(blobContent),
+            std::move(blocks),
+            std::move(checksums),
+            blobsAlignment);
+    }
+
+    void FlushZeroBlob(TVector<TBlock> blocks)
+    {
+        FlushBlob({}, std::move(blocks), {});
+    }
+
+    void FlushBlob(
+        TBlockBuffer blobContent,
+        TVector<TBlock> blocks,
+        TVector<ui32> checksums)
+    {
+        if (!blocks) {
+            return;
+        }
+
+        if (!SplitByCompactionRange) {
+            AppendDataBlob(
+                std::move(blobContent),
+                std::move(blocks),
+                std::move(checksums));
+            return;
+        }
+
+        const ui32 runs = CountCompactRangeRuns(blocks, CompactionMap);
+        const bool unlimited = SplitByCompactionRangeMaxBlobCount == 0;
+        const bool splitByRuns =
+            unlimited || runs <= SplitByCompactionRangeMaxBlobCount;
+
+        if (!splitByRuns || runs == 1) {
+            AppendDataBlob(
+                std::move(blobContent),
+                std::move(blocks),
+                std::move(checksums));
+            return;
+        }
+
+        const auto& dataRefs = blobContent.GetBlocks();
+        Y_DEBUG_ABORT_UNLESS(
+            dataRefs.size() == blocks.size() &&
+                checksums.size() == blocks.size() ||
+            !dataRefs && !checksums);
+
+        size_t start = 0;
+        while (start < blocks.size()) {
+            size_t end = start + 1;
+            while (end < blocks.size() &&
+                CompactionMap.GetRangeStart(blocks[end - 1].BlockIndex) ==
+                    CompactionMap.GetRangeStart(blocks[end].BlockIndex))
+            {
+                ++end;
+            }
+
+            TVector<TBlock> pieceBlocks(
+                blocks.begin() + start,
+                blocks.begin() + end);
+
+            TBlockBuffer pieceBuf{TProfilingAllocator::Instance()};
+            if (dataRefs) {
+                for (size_t i = start; i < end; ++i) {
+                    pieceBuf.AddBlock(dataRefs[i]);
+                }
+            }
+
+            TVector<ui32> pieceChecksums;
+            if (checksums) {
+                pieceChecksums.reserve(end - start);
+                for (size_t i = start; i < end; ++i) {
+                    if (i < checksums.size()) {
+                        pieceChecksums.push_back(checksums[i]);
+                    }
+                }
+            }
+
+            AppendDataBlob(
+                std::move(pieceBuf),
+                std::move(pieceBlocks),
+                std::move(pieceChecksums));
+
+            start = end;
+        }
     }
 };
 
@@ -765,6 +847,7 @@ void TPartitionActor::HandleFlush(
             State->GetMaxBlocksInBlob(),
             Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs(),
             Config->GetSplitFreshBlobsByCompactionRangeEnabled(),
+            Config->GetSplitFreshBlobsByCompactionRangeMaxBlobCount(),
             State->GetCompactionMap());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);

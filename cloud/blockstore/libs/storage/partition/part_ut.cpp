@@ -2440,6 +2440,72 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSkipCompactionRangeSplitInFlushWhenRunCountExceedsLimit)
+    {
+        constexpr ui32 rangeSize = 1024;
+        constexpr ui32 blockCount = rangeSize * 3;
+
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(4_MB);
+        config.SetSplitFreshBlobsByCompactionRangeEnabled(true);
+        config.SetSplitFreshBlobsByCompactionRangeMaxBlobCount(2);
+
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 i = 1022; i < 1026; ++i) {
+            partition.WriteBlocks(i, 1);
+        }
+        for (ui32 i = 1500; i < 1505; ++i) {
+            partition.WriteBlocks(i, 2);
+        }
+        for (ui32 i = 2045; i < 2050; ++i) {
+            partition.WriteBlocks(i, 3);
+        }
+
+        ui32 mixedBlobsCount = 0;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+                            mixedBlobsCount = msg->FreshBlobs.size();
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        partition.Flush();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+        }
+
+        for (ui32 i = 1022; i < 1024; ++i) {
+            partition.WriteBlocks(i, 1);
+        }
+
+        for (ui32 i = 2048; i < 2050; ++i) {
+            partition.WriteBlocks(i, 3);
+        }
+
+        partition.Flush();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlobsCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldMergeVersionsOnRead)
     {
         auto runtime = PrepareTestActorRuntime();

@@ -800,6 +800,7 @@ public:
     [[nodiscard]] bool GetBlockMaskOptimizationEnabled() const;
 
     [[nodiscard]] bool GetSplitFreshBlobsByCompactionRangeEnabled() const;
+    [[nodiscard]] ui32 GetSplitFreshBlobsByCompactionRangeMaxBlobCount() const;
 };
 
 ui64 GetAllocationUnit(
