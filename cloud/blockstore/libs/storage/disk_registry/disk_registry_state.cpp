@@ -490,6 +490,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.CheckpointReplica = config.GetCheckpointReplica();
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
+        disk.IsVolumeStateBroken = config.GetIsVolumeStateBroken();
 
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
@@ -606,8 +607,6 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                 disk.OutdatedLaggingDevices.emplace_back(laggingDevice, seqNo);
             }
         }
-
-        disk.IsVolumeStateBroken = config.GetIsVolumeStateBroken();
     }
 
     for (const auto& config: configs) {
@@ -5222,6 +5221,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.MutableCheckpointReplica()->CopyFrom(diskState.CheckpointReplica);
     config.SetStorageMediaKind(diskState.MediaKind);
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
+    config.SetIsVolumeStateBroken(diskState.IsVolumeStateBroken);
 
     for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
@@ -5251,8 +5251,6 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     for (const auto& hi: diskState.History) {
         config.AddHistory()->CopyFrom(hi);
     }
-
-    config.SetIsVolumeStateBroken(diskState.IsVolumeStateBroken);
 
     return config;
 }
@@ -8617,38 +8615,23 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryState::OnVolumeBroken(
+void TDiskRegistryState::UpdateVolumeStateBroken(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
-    TInstant now)
+    TInstant now,
+    bool broken)
 {
     auto* disk = Disks.FindPtr(diskId);
     if (!disk) {
-        ReportDiskRegistryDiskNotFound("OnVolumeBroken", {{"disk", diskId}});
+        ReportDiskRegistryDiskNotFound(
+            "UpdateVolumeStateBroken",
+            {{"disk", diskId}});
         return;
     }
-    if (disk->IsVolumeStateBroken) {
+    if (disk->IsVolumeStateBroken == broken) {
         return;
     }
-    disk->IsVolumeStateBroken = true;
-    db.UpdateDisk(BuildDiskConfig(diskId, *disk));
-    TryUpdateDiskStateImpl(db, diskId, *disk, now);
-}
-
-void TDiskRegistryState::OnVolumeRecovered(
-    TDiskRegistryDatabase& db,
-    const TDiskId& diskId,
-    TInstant now)
-{
-    auto* disk = Disks.FindPtr(diskId);
-    if (!disk) {
-        ReportDiskRegistryDiskNotFound("OnVolumeRecovered", {{"disk", diskId}});
-        return;
-    }
-    if (!disk->IsVolumeStateBroken) {
-        return;
-    }
-    disk->IsVolumeStateBroken = false;
+    disk->IsVolumeStateBroken = broken;
     db.UpdateDisk(BuildDiskConfig(diskId, *disk));
     TryUpdateDiskStateImpl(db, diskId, *disk, now);
 }

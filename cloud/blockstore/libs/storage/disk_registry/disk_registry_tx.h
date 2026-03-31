@@ -65,8 +65,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
     xxx(ReplaceBrokenDevicesAfterRestart,   __VA_ARGS__)                       \
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
-    xxx(VolumeBroken,                       __VA_ARGS__)                       \
-    xxx(VolumeRecovered,                    __VA_ARGS__)                       \
+    xxx(UpdateVolumeStateBroken,            __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1531,48 +1530,27 @@ struct TTxDiskRegistry
     };
 
     //
-    // VolumeBroken
+    // UpdateVolumeStateBroken
     //
 
-    struct TVolumeBroken
+    struct TUpdateVolumeStateBroken
     {
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
         const TInstant Now;
+        const bool Broken;
 
         NProto::TError Error;
 
-        TVolumeBroken(TRequestInfoPtr requestInfo, TString diskId, TInstant now)
-            : RequestInfo(std::move(requestInfo))
-            , DiskId(std::move(diskId))
-            , Now(now)
-        {}
-
-        void Clear()
-        {
-            Error.Clear();
-        }
-    };
-
-    //
-    // VolumeRecovered
-    //
-
-    struct TVolumeRecovered
-    {
-        const TRequestInfoPtr RequestInfo;
-        const TString DiskId;
-        const TInstant Now;
-
-        NProto::TError Error;
-
-        TVolumeRecovered(
+        TUpdateVolumeStateBroken(
             TRequestInfoPtr requestInfo,
             TString diskId,
-            TInstant now)
+            TInstant now,
+            bool broken)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , Now(now)
+            , Broken(broken)
         {}
 
         void Clear()

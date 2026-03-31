@@ -27,11 +27,12 @@ void TDiskRegistryActor::HandleVolumeBroken(
         LogTitle.GetWithTime().c_str(),
         msg->Record.GetDiskId().Quote().c_str());
 
-    ExecuteTx<TVolumeBroken>(
+    ExecuteTx<TUpdateVolumeStateBroken>(
         ctx,
         std::move(requestInfo),
         msg->Record.GetDiskId(),
-        ctx.Now());
+        ctx.Now(),
+        true);
 }
 
 void TDiskRegistryActor::HandleVolumeRecovered(
@@ -51,19 +52,20 @@ void TDiskRegistryActor::HandleVolumeRecovered(
         LogTitle.GetWithTime().c_str(),
         msg->Record.GetDiskId().Quote().c_str());
 
-    ExecuteTx<TVolumeRecovered>(
+    ExecuteTx<TUpdateVolumeStateBroken>(
         ctx,
         std::move(requestInfo),
         msg->Record.GetDiskId(),
-        ctx.Now());
+        ctx.Now(),
+        false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskRegistryActor::PrepareVolumeBroken(
+bool TDiskRegistryActor::PrepareUpdateVolumeStateBroken(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TVolumeBroken& args)
+    TTxDiskRegistry::TUpdateVolumeStateBroken& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -71,62 +73,35 @@ bool TDiskRegistryActor::PrepareVolumeBroken(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteVolumeBroken(
+void TDiskRegistryActor::ExecuteUpdateVolumeStateBroken(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TVolumeBroken& args)
+    TTxDiskRegistry::TUpdateVolumeStateBroken& args)
 {
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
-    State->OnVolumeBroken(db, args.DiskId, args.Now);
+    State->UpdateVolumeStateBroken(db, args.DiskId, args.Now, args.Broken);
 }
 
-void TDiskRegistryActor::CompleteVolumeBroken(
+void TDiskRegistryActor::CompleteUpdateVolumeStateBroken(
     const TActorContext& ctx,
-    TTxDiskRegistry::TVolumeBroken& args)
+    TTxDiskRegistry::TUpdateVolumeStateBroken& args)
 {
-    auto response = std::make_unique<TEvDiskRegistry::TEvVolumeBrokenResponse>(
-        std::move(args.Error));
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (args.Broken) {
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvVolumeBrokenResponse>(
+                std::move(args.Error));
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    } else {
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvVolumeRecoveredResponse>(
+                std::move(args.Error));
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    }
 
     NotifyUsers(ctx);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool TDiskRegistryActor::PrepareVolumeRecovered(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxDiskRegistry::TVolumeRecovered& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
-    return true;
-}
-
-void TDiskRegistryActor::ExecuteVolumeRecovered(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxDiskRegistry::TVolumeRecovered& args)
-{
-    Y_UNUSED(ctx);
-
-    TDiskRegistryDatabase db(tx.DB);
-    State->OnVolumeRecovered(db, args.DiskId, args.Now);
-}
-
-void TDiskRegistryActor::CompleteVolumeRecovered(
-    const TActorContext& ctx,
-    TTxDiskRegistry::TVolumeRecovered& args)
-{
-    auto response =
-        std::make_unique<TEvDiskRegistry::TEvVolumeRecoveredResponse>(
-            std::move(args.Error));
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    NotifyUsers(ctx);
+    PublishDiskStates(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
