@@ -71,15 +71,12 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
 
     Y_UNIT_TEST(ShouldPropagateFsyncErrors)
     {
-        TFileHandle handle(9999);
-        Y_DEFER
-        {
-            handle.Release();
-        };
+        TFileHandle invalidHandle;
+        UNIT_ASSERT(!invalidHandle.IsOpen());
 
         for (auto dataSync: {true, false}) {
             UNIT_ASSERT_EXCEPTION_SATISFIES(
-                NLowLevel::Fsync(handle, dataSync),
+                NLowLevel::Fsync(invalidHandle, dataSync),
                 TServiceError,
                 [](auto const& e) { return e.GetCode() == E_FS_BADHANDLE; });
         }
