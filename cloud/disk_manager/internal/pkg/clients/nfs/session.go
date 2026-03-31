@@ -118,12 +118,12 @@ func (s *session) CreateNode(
 	return nodeID, wrapError(err)
 }
 
-func (s *session) SafeCreateNode(
+func (s *session) CreateNodeIdempotent(
 	ctx context.Context,
 	node Node,
 ) (_ uint64, err error) {
 
-	defer s.metrics.StatRequest("SafeCreateNode")(&err)
+	defer s.metrics.StatRequest("CreateNodeIdempotent")(&err)
 
 	nodeID, err := s.nfs.CreateNode(
 		ctx,

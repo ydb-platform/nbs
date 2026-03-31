@@ -54,7 +54,7 @@ type Session interface {
 		node Node,
 	) (uint64, error)
 
-	SafeCreateNode(
+	CreateNodeIdempotent(
 		ctx context.Context,
 		node Node,
 	) (uint64, error)

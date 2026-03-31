@@ -343,7 +343,7 @@ func TestGetNodeAttr(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestSafeCreateNode(t *testing.T) {
+func TestCreateNodeIdempotent(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 	client := nfs_testing.NewClient(t, ctx)
 
@@ -374,7 +374,7 @@ func TestSafeCreateNode(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, createdID)
 
-	safeID, err := session.SafeCreateNode(ctx, node)
+	safeID, err := session.CreateNodeIdempotent(ctx, node)
 	require.NoError(t, err)
 	require.Equal(t, createdID, safeID)
 }

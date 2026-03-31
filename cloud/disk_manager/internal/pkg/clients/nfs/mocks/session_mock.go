@@ -46,7 +46,7 @@ func (s *SessionMock) CreateNode(
 	return args.Get(0).(uint64), args.Error(1)
 }
 
-func (s *SessionMock) SafeCreateNode(
+func (s *SessionMock) CreateNodeIdempotent(
 	ctx context.Context,
 	node nfs.Node,
 ) (uint64, error) {
