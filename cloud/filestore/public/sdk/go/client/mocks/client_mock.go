@@ -179,6 +179,18 @@ func (m *ClientInterfaceMock) GetNodeAttr(
 	return res, args.Error(1)
 }
 
+func (m *ClientInterfaceMock) UnlinkNode(
+	ctx context.Context,
+	session nfs_client.Session,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) error {
+
+	args := m.Called(ctx, session, parentNodeID, name, unlinkDirectory)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewClientInterfaceMock() *ClientInterfaceMock {

@@ -103,6 +103,14 @@ type ClientInterface interface {
 		parentNodeID uint64,
 		name string,
 	) (Node, error)
+
+	UnlinkNode(
+		ctx context.Context,
+		session Session,
+		parentNodeID uint64,
+		name string,
+		unlinkDirectory bool,
+	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -148,6 +148,7 @@ func (f *fixture) getFilesAfterTraversal(
 			0,     // listNodesMaxBytes
 			true,  // readOnly
 			false, // unsafe
+			false, // ignoreNotFound
 		),
 		f.storage,
 		func(ctx context.Context) error {
@@ -287,6 +288,7 @@ func TestTraversalShouldCloseSessionOnError(t *testing.T) {
 			0,     // listNodesMaxBytes
 			true,  // readOnly
 			false, // unsafe
+			false, // ignoreNotFound
 		),
 		fixture.storage,
 		func(ctx context.Context) error {

@@ -84,6 +84,7 @@ func TestMaxBytesIsUsed(t *testing.T) {
 		1,     // listNodesMaxBytes
 		true,  // readOnly
 		false, // unsafe
+		false, // ignoreNotFound
 	)
 
 	lister, err := factory.CreateLister(fixture.ctx, filesystemID, "")
@@ -128,6 +129,7 @@ func TestUnsafeIsPropagated(t *testing.T) {
 		42,   // listNodesMaxBytes
 		true, // readOnly
 		true, // unsafe
+		false, // ignoreNotFound
 	)
 
 	clientMock.On(
