@@ -66,9 +66,9 @@ func (t *createOverlayDiskTask) Run(
 		return err
 	}
 
-	overlayDisk, err := t.getOverlayDisk()
-	if err != nil {
-		return err
+	overlayDisk := &types.Disk{
+		DiskId: params.Disk.DiskId,
+		ZoneId: t.state.SelectedCellId,
 	}
 
 	selfTaskID := execCtx.GetTaskID()
@@ -154,11 +154,14 @@ func (t *createOverlayDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	params := t.request.Params
+
 	selfTaskID := execCtx.GetTaskID()
 
+	// Idempotently retrieve zone, where disk should be located.
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
-		t.request.Params.Disk.DiskId,
+		params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
 	)
@@ -167,26 +170,12 @@ func (t *createOverlayDiskTask) Cancel(
 	}
 
 	if diskMeta == nil {
-		if len(t.state.SelectedCellId) == 0 {
-			// The disk does not exist, and the base disk slot was not acquired.
-			// Nothing to do.
-			return nil
-		}
-
-		// Even though the overlay disk doesn't exist, the task may have
-		// acquired a slot for it (if the disk was deleted by another task).
-		// So we still need to release the slot.
-		_, err = t.releaseBaseDisk(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-
 		return nil
 	}
 
-	overlayDisk, err := t.getOverlayDisk()
-	if err != nil {
-		return err
+	overlayDisk := &types.Disk{
+		DiskId: diskMeta.ID,
+		ZoneId: diskMeta.ZoneID,
 	}
 
 	client, err := t.nbsFactory.GetClient(ctx, overlayDisk.ZoneId)
@@ -199,7 +188,17 @@ func (t *createOverlayDiskTask) Cancel(
 		return err
 	}
 
-	_, err = t.releaseBaseDisk(ctx, execCtx)
+	taskID, err := t.poolService.ReleaseBaseDisk(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_release"),
+		&pools_protos.ReleaseBaseDiskRequest{
+			OverlayDisk: overlayDisk,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 	if err != nil {
 		return err
 	}
@@ -219,42 +218,6 @@ func (t *createOverlayDiskTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-func (t *createOverlayDiskTask) getOverlayDisk() (*types.Disk, error) {
-	if len(t.state.SelectedCellId) == 0 {
-		return nil, errors.NewNonRetriableErrorf("Cell is not selected")
-	}
-
-	return &types.Disk{
-		DiskId: t.request.Params.Disk.DiskId,
-		ZoneId: t.state.SelectedCellId,
-	}, nil
-}
-
-func (t *createOverlayDiskTask) releaseBaseDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) (proto.Message, error) {
-
-	overlayDisk, err := t.getOverlayDisk()
-	if err != nil {
-		return nil, err
-	}
-
-	selfTaskID := execCtx.GetTaskID()
-
-	taskID, err := t.poolService.ReleaseBaseDisk(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_release"),
-		&pools_protos.ReleaseBaseDiskRequest{
-			OverlayDisk: overlayDisk,
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return t.scheduler.WaitTask(ctx, execCtx, taskID)
-}
 
 func parseAcquireBaseDiskResponse(
 	response proto.Message,

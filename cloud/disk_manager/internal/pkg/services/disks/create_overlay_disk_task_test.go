@@ -317,9 +317,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		poolService: poolService,
 		nbsFactory:  nbsFactory,
 		request:     request,
-		state: &protos.CreateOverlayDiskTaskState{
-			SelectedCellId: "zone",
-		},
+		state:       &protos.CreateOverlayDiskTaskState{},
 	}
 
 	storage.On(
@@ -351,67 +349,6 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
-	require.NoError(t, err)
-}
-
-func TestCancelCreateOverlayDiskTaskBeforeDiskIsCreated(t *testing.T) {
-	ctx := context.Background()
-	storage := storage_mocks.NewStorageMock()
-	scheduler := tasks_mocks.NewSchedulerMock()
-	poolService := pools_mocks.NewServiceMock()
-	nbsFactory := nbs_mocks.NewFactoryMock()
-	execCtx := newExecutionContextMock()
-
-	request := &protos.CreateOverlayDiskRequest{
-		SrcImageId: "image",
-		Params: &protos.CreateDiskParams{
-			BlocksCount: 123,
-			Disk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			},
-			BlockSize: 4096,
-			Kind:      types.DiskKind_DISK_KIND_SSD,
-			CloudId:   "cloud",
-			FolderId:  "folder",
-		},
-	}
-
-	task := &createOverlayDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state: &protos.CreateOverlayDiskTaskState{
-			SelectedCellId: "zone",
-		},
-	}
-
-	// No disk in the storage.
-	storage.On(
-		"DeleteDisk",
-		ctx,
-		"disk",
-		"toplevel_task_id",
-		mock.Anything,
-	).Return((*resources.DiskMeta)(nil), nil)
-
-	// The cell was already chosen and the slot might have been acquired.
-	// So we must release the slot.
-	poolService.On(
-		"ReleaseBaseDisk",
-		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_release"),
-		&pools_protos.ReleaseBaseDiskRequest{
-			OverlayDisk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
-			},
-		}).Return("release", nil)
-	scheduler.On("WaitTask", ctx, execCtx, "release").Return(nil, nil)
-
-	err := task.Cancel(ctx, execCtx)
-	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
 	require.NoError(t, err)
 }
 
@@ -447,7 +384,7 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		state:       &protos.CreateOverlayDiskTaskState{},
 	}
 
-	// No disk in the storage.
+	// Must return disk without specified ZoneID.
 	storage.On(
 		"DeleteDisk",
 		ctx,

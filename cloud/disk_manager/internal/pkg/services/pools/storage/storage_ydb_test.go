@@ -167,6 +167,13 @@ func TestStorageYDBReleaseNonExistent(t *testing.T) {
 	require.Empty(t, baseDisk)
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisk))
 
+	baseDisk, err = storage.AcquireBaseDiskSlot(ctx, "image", slot)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.True(t, errors.IsSilent(err))
+	require.Empty(t, baseDisk)
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisk))
+
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 }

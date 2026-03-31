@@ -1159,7 +1159,30 @@ func (s *storageYDB) releaseBaseDiskSlot(
 	defer res.Close()
 
 	if !res.NextResultSet(ctx) || !res.NextRow() {
-		// Should be idempotent.
+		// Create a tombstone slot entry to avoid race conditions between
+		// concurrent overlay disk deletion and overlay disk creation
+		// operations. The tombstone prevents a new slot with the same
+		// overlay disk ID from being acquired.
+		slotTombstone := slot{
+			overlayDiskID: overlayDiskID,
+			baseDiskID:    "",
+			status:        slotStatusReleased,
+			releasedAt:    time.Now(),
+		}
+
+		err = s.updateBaseDisksAndSlots(
+			ctx,
+			tx,
+			[]baseDiskTransition{},
+			[]slotTransition{slotTransition{
+				oldState: nil,
+				state:    &slotTombstone,
+			}},
+		)
+		if err != nil {
+			return BaseDisk{}, err
+		}
+
 		return BaseDisk{}, tx.Commit(ctx)
 	}
 
@@ -1989,7 +2012,7 @@ func (s *storageYDB) getPoolConfigsWithNonZeroCapacity(
 		pragma TablePathPrefix = "%v";
 
 		select *
-		from configs 
+		from configs
 		where capacity > 0
 	`, s.tablesPath,
 	))
