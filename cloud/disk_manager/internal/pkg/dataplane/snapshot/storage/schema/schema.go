@@ -118,12 +118,21 @@ func Create(
 	logging.Info(ctx, "Created chunk_map table")
 
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
-		err = s3.CreateBucket(ctx, config.GetS3Bucket())
+		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
 		if err != nil {
 			return err
 		}
+		// It is useful to create S3 buckets externally and assign permissions
+		// per-bucket. Bucket creation permissions can't be assigned per-bucket,
+		// since per-bucket permissions require the bucket to exist.
+		if !exists {
+			err = s3.CreateBucket(ctx, config.GetS3Bucket())
+			if err != nil {
+				return err
+			}
 
-		logging.Info(ctx, "Created s3 bucket")
+			logging.Info(ctx, "Created s3 bucket")
+		}
 	} else {
 		logging.Info(ctx, "Skipped s3 bucket creation")
 	}
