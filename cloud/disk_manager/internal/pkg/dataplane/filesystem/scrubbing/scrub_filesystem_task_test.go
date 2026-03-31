@@ -499,9 +499,7 @@ func TestScrubFilesystemTaskNodeDeletedDuringScrubbing(t *testing.T) {
 					node.ParentID,
 					node.Name,
 				)
-				if err == nil {
-					deleted = true
-				}
+				require.NoError(t, err)
 				return
 			}
 		}
