@@ -54,6 +54,11 @@ type Session interface {
 		node Node,
 	) (uint64, error)
 
+	CreateNodeIdempotent(
+		ctx context.Context,
+		node Node,
+	) (uint64, error)
+
 	ReadLink(
 		ctx context.Context,
 		nodeID uint64,
