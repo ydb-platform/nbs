@@ -296,16 +296,6 @@ public:
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
     }
 
-    void SetRemoveByInactivityTimeoutEnabled(bool enabled) override
-    {
-        RemoveByInactivityTimeoutEnabled = enabled;
-    }
-
-    bool GetRemoveByInactivityTimeoutEnabled() const override
-    {
-        return RemoveByInactivityTimeoutEnabled;
-    }
-
     ui64 RequestStarted(
         EBlockStoreRequest requestType,
         ui64 requestBytes) override
@@ -679,12 +669,10 @@ public:
         AlterVolumeImpl(NStorage::GetLogicalDiskId(diskId), cloudId, folderId);
     }
 
-    IVolumeInfoPtr GetVolumeInfo(
+    TVolumeInfoPtr GetVolumeInfoImpl(
         const TString& diskId,
-        const TString& clientId) const override
+        const TString& clientId) const
     {
-        TReadGuard guard(Lock);
-
         const auto volumeIt = Volumes.find(NStorage::GetLogicalDiskId(diskId));
         if (volumeIt == Volumes.end()) {
             return nullptr;
@@ -700,6 +688,27 @@ public:
             return nullptr;
         }
         return infoIt->second;
+    }
+
+    IVolumeInfoPtr GetVolumeInfo(
+        const TString& diskId,
+        const TString& clientId) const override
+    {
+        TReadGuard guard(Lock);
+
+        return GetVolumeInfoImpl(diskId, clientId);
+    }
+
+    void DisableRemoveVolumeInfoByInactivityTimeout(
+        const TString& diskId,
+        const TString& clientId) override
+    {
+        TWriteGuard guard(Lock);
+
+        auto volumeInfo = GetVolumeInfoImpl(diskId, clientId);
+        if (volumeInfo) {
+            volumeInfo->RemoveByInactivityTimeoutEnabled = false;
+        }
     }
 
     NProto::EStorageMediaKind GetStorageMediaKind(
@@ -1104,6 +1113,14 @@ struct TVolumeStatsStub final
         Y_UNUSED(clientId);
 
         return nullptr;
+    }
+
+    void DisableRemoveVolumeInfoByInactivityTimeout(
+        const TString& diskId,
+        const TString& clientId) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
     }
 
     NProto::EStorageMediaKind GetStorageMediaKind(

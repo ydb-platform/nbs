@@ -288,13 +288,10 @@ public:
                         instanceId);
 
                     // Make volumeInfo stats durable after successful mount
-                    auto volumeInfo = self->VolumeStats->GetVolumeInfo(
-                        response.GetVolume().GetDiskId(),
-                        self->ClientId);
-
-                    if (volumeInfo) {
-                        volumeInfo->SetRemoveByInactivityTimeoutEnabled(false);
-                    }
+                    self->VolumeStats
+                        ->DisableRemoveVolumeInfoByInactivityTimeout(
+                            response.GetVolume().GetDiskId(),
+                            self->ClientId);
                 }
                 return f;
             });
