@@ -315,6 +315,86 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldResetPullDelayAfterCooldown)
+    {
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            70,
+            CreateFeatureConfig("Balancer", {}, true));
+
+        TVector nonePushed{
+            CreateVolumeStats("vol0", "", "", true),
+            CreateVolumeStats("vol1", "", "", true)};
+
+        TVector vol0Pushed{
+            CreateVolumeStats("vol0", "", "", false),
+            CreateVolumeStats("vol1", "", "", true)};
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap{
+            {"vol0", 10},
+            {"vol1", 1}};
+
+        constexpr ui64 CpuUnderloaded = 40;
+        constexpr ui64 CpuOverloaded = 80;
+
+        auto overlappingPullDelay =
+            storageConfig->GetInitialPullDelay() + TDuration::Seconds(10);
+
+        TVolumeBalancerState state(storageConfig);
+        TInstant now = TInstant::Seconds(0);
+
+        // Push vol0
+        state.UpdateVolumeStats(nonePushed, perfMap, CpuOverloaded, now);
+
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPush().c_str(), "vol0");
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPull().c_str(), "");
+
+        // skip initial pull delay & pull back
+        state.UpdateVolumeStats(vol0Pushed, perfMap, CpuUnderloaded, now);
+        now += overlappingPullDelay;
+        state.UpdateVolumeStats(vol0Pushed, perfMap, CpuUnderloaded, now);
+
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPush().c_str(), "");
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPull().c_str(), "vol0");
+
+        // Push vol0
+        state.UpdateVolumeStats(nonePushed, perfMap, CpuOverloaded, now);
+
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPush().c_str(), "vol0");
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPull().c_str(), "");
+
+        // skip 2x initial pull delay & pull back
+        state.UpdateVolumeStats(vol0Pushed, perfMap, CpuUnderloaded, now);
+        now += overlappingPullDelay * 2;
+        state.UpdateVolumeStats(vol0Pushed, perfMap, CpuUnderloaded, now);
+
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPush().c_str(), "");
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPull().c_str(), "vol0");
+
+        // Idle so pull delay can be reset
+        state.UpdateVolumeStats(nonePushed, perfMap, CpuUnderloaded, now);
+        now += overlappingPullDelay;
+        state.UpdateVolumeStats(nonePushed, perfMap, CpuUnderloaded, now);
+
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPush().c_str(), "");
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPull().c_str(), "");
+
+        // skip initial pull delay & try push
+        state.UpdateVolumeStats(nonePushed, perfMap, CpuOverloaded, now);
+
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPush().c_str(), "vol0");
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPull().c_str(), "");
+
+        // skip single initial pull delay & pull back
+        // we expect success since pull delay is reset to initial
+        state.UpdateVolumeStats(vol0Pushed, perfMap, CpuUnderloaded, now);
+        now += overlappingPullDelay;
+        state.UpdateVolumeStats(vol0Pushed, perfMap, CpuUnderloaded, now);
+
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPush().c_str(), "");
+        UNIT_ASSERT_VALUES_EQUAL(state.GetVolumeToPull().c_str(), "vol0");
+    }
+
     Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolume)
     {
         TVolumeBalancerState state(
