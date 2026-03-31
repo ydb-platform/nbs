@@ -122,7 +122,9 @@ func Create(
 		if err != nil {
 			return err
 		}
-
+		// It is useful to create S3 buckets externally and assign permissions
+		// per-bucket. Bucket creation permissions can't be assigned per-bucket,
+		// since per-bucket permissions require the bucket to exist.
 		if !exists {
 			err = s3.CreateBucket(ctx, config.GetS3Bucket())
 			if err != nil {
