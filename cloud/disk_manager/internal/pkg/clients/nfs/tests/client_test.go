@@ -374,7 +374,7 @@ func TestCreateNodeIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, createdID)
 
-	safeID, err := session.CreateNodeIdempotent(ctx, node)
+	idempotentID, err := session.CreateNodeIdempotent(ctx, node)
 	require.NoError(t, err)
-	require.Equal(t, createdID, safeID)
+	require.Equal(t, createdID, idempotentID)
 }
