@@ -36,7 +36,7 @@ func (l *filestoreLister) ListNodes(
 		return nil, "", err
 	}
 
-	if nfs.IsNotFoundError(err) {
+	if nfs.IsEnoEntError(err) {
 		return []nfs.Node{}, "", nil
 	}
 

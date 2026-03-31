@@ -500,7 +500,7 @@ func TestScrubFilesystemTaskNodeDeletedDuringScrubbing(t *testing.T) {
 					node.Name,
 				)
 				require.NoError(t, err)
-				return
+				deleted = true
 			}
 		}
 	}

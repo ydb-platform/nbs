@@ -57,7 +57,7 @@ func isAbortedError(err error) bool {
 	return false
 }
 
-func IsNotFoundError(err error) bool {
+func isNotFoundError(err error) bool {
 	var clientErr *nfs_client.ClientError
 	if errors.As(err, &clientErr) {
 		// TODO: remove support for PathDoesNotExist
@@ -66,6 +66,17 @@ func IsNotFoundError(err error) bool {
 			return true
 		}
 		if clientErr.Code == nfs_client.E_NOT_FOUND {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsEnoEntError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_NOENT {
 			return true
 		}
 	}
