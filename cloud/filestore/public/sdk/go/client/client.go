@@ -479,9 +479,9 @@ func (client *Client) UnlinkNode(
 ) error {
 
 	req := &protos.TUnlinkNodeRequest{
-		FileSystemId:   session.FileSystemID,
-		NodeId:         parentNodeID,
-		Name:           []byte(name),
+		FileSystemId:    session.FileSystemID,
+		NodeId:          parentNodeID,
+		Name:            []byte(name),
 		UnlinkDirectory: unlinkDirectory,
 		Headers: &protos.THeaders{
 			SessionSeqNo: session.SessionSeqNo,

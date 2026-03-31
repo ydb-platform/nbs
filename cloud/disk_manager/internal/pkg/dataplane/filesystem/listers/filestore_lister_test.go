@@ -126,9 +126,9 @@ func TestUnsafeIsPropagated(t *testing.T) {
 
 	factory := NewFilestoreListerFactory(
 		clientMock,
-		42,   // listNodesMaxBytes
-		true, // readOnly
-		true, // unsafe
+		42,    // listNodesMaxBytes
+		true,  // readOnly
+		true,  // unsafe
 		false, // ignoreNotFound
 	)
 
