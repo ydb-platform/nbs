@@ -118,12 +118,12 @@ func Create(
 	logging.Info(ctx, "Created chunk_map table")
 
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
-		ok, err := s3.BucketExists(ctx, config.GetS3Bucket())
+		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
 		if err != nil {
 			return err
 		}
 
-		if !ok {
+		if !exists {
 			err = s3.CreateBucket(ctx, config.GetS3Bucket())
 			if err != nil {
 				return err

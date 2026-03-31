@@ -162,6 +162,7 @@ func (c *S3Client) BucketExists(
 	ctx context.Context,
 	bucket string,
 ) (exists bool, err error) {
+
 	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "checking if bucket %v exists in s3", bucket)
 
