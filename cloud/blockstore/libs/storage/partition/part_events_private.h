@@ -661,14 +661,20 @@ struct TEvPartitionPrivate
         ui32 FlushedFreshBlobCount;
         ui64 FlushedFreshBlobByteCount;
         TFlushedCommitIds FlushedCommitIdsFromChannel;
+        ui32 FlushAlignedBlobCount;
+        ui32 FlushUnalignedBlobCount;
 
         TFlushCompleted(
                 ui32 flushedFreshBlobCount,
                 ui64 flushedFreshBlobByteCount,
-                TFlushedCommitIds flushedCommitIdsFromChannel)
+                TFlushedCommitIds flushedCommitIdsFromChannel,
+                ui32 flushAlignedBlobCount = 0,
+                ui32 flushUnalignedBlobCount = 0)
             : FlushedFreshBlobCount(flushedFreshBlobCount)
             , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
             , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
+            , FlushAlignedBlobCount(flushAlignedBlobCount)
+            , FlushUnalignedBlobCount(flushUnalignedBlobCount)
         {
         }
     };

@@ -62,6 +62,8 @@ private:
     TFlushedCommitIds FlushedCommitIdsFromChannel;
     const ui32 FlushedFreshBlobCount;
     const ui64 FlushedFreshBlobByteCount;
+    const ui32 FlushAlignedBlobCount;
+    const ui32 FlushUnalignedBlobCount;
     const TDuration BlobStorageAsyncRequestTimeout;
 
     TVector<TRequest> Requests;
@@ -84,6 +86,8 @@ public:
         TFlushedCommitIds flushedCommitIdsFromChannel,
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
+        ui32 flushAlignedBlobCount,
+        ui32 flushUnalignedBlobCount,
         TDuration blobStorageAsyncRequestTimeout,
         TVector<TRequest> requests);
 
@@ -127,6 +131,8 @@ TFlushActor::TFlushActor(
         TFlushedCommitIds flushedCommitIdsFromChannel,
         ui32 flushedFreshBlobCount,
         ui64 flushedFreshBlobByteCount,
+        ui32 flushAlignedBlobCount,
+        ui32 flushUnalignedBlobCount,
         TDuration blobStorageAsyncRequestTimeout,
         TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
@@ -137,6 +143,8 @@ TFlushActor::TFlushActor(
     , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
     , FlushedFreshBlobCount(flushedFreshBlobCount)
     , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
+    , FlushAlignedBlobCount(flushAlignedBlobCount)
+    , FlushUnalignedBlobCount(flushUnalignedBlobCount)
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , Requests(std::move(requests))
 {}
@@ -264,7 +272,9 @@ void TFlushActor::NotifyCompleted(
         error,
         FlushedFreshBlobCount,
         FlushedFreshBlobByteCount,
-        std::move(FlushedCommitIdsFromChannel));
+        std::move(FlushedCommitIdsFromChannel),
+        FlushAlignedBlobCount,
+        FlushUnalignedBlobCount);
 
     ev->ExecCycles = RequestInfo->GetExecCycles();
     ev->TotalCycles = RequestInfo->GetTotalCycles();
@@ -890,6 +900,16 @@ void TPartitionActor::HandleFlush(
 
     Y_ABORT_UNLESS(requests);
 
+    ui32 flushAlignedBlobCount = 0;
+    ui32 flushUnalignedBlobCount = 0;
+    for (const auto& request: requests) {
+        if (request.BlobsAlignment > 0) {
+            ++flushAlignedBlobCount;
+        } else {
+            ++flushUnalignedBlobCount;
+        }
+    }
+
     if (Config->GetFlushToDevNull()) {
         TVector<TBlock> freshBlocks;
         for (const auto& request: requests) {
@@ -900,7 +920,11 @@ void TPartitionActor::HandleFlush(
 
         ExecuteTx(
             ctx,
-            CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
+            CreateTx<TFlushToDevNull>(
+                requestInfo,
+                std::move(freshBlocks),
+                flushAlignedBlobCount,
+                flushUnalignedBlobCount));
     } else {
         State->AccessCommitQueue().AcquireBarrier(commitId);
         State->GetGarbageQueue().AcquireBarrier(commitId);
@@ -915,6 +939,8 @@ void TPartitionActor::HandleFlush(
             std::move(flushedCommitIdsFromChannel),
             State->GetUnflushedFreshBlobCount(),
             State->GetUnflushedFreshBlobByteCount(),
+            flushAlignedBlobCount,
+            flushUnalignedBlobCount,
             GetBlobStorageAsyncRequestTimeout(),
             std::move(requests));
 
@@ -959,7 +985,9 @@ void TPartitionActor::CompleteFlushToDevNull(
     TTxPartition::TFlushToDevNull& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(args);
+
+    PartCounters->Cumulative.FlushAlignedBlobCount.Increment(args.FlushAlignedBlobCount);
+    PartCounters->Cumulative.FlushUnalignedBlobCount.Increment(args.FlushUnalignedBlobCount);
 
     State->AccessFlushState().SetStatus(EOperationStatus::Idle);
 }
@@ -1011,6 +1039,9 @@ void TPartitionActor::HandleFlushCompleted(
     PartCounters->RequestCounters.Flush.AddRequest(
         d.MicroSeconds(),
         blocks * State->GetBlockSize());
+
+    PartCounters->Cumulative.FlushAlignedBlobCount.Increment(msg->FlushAlignedBlobCount);
+    PartCounters->Cumulative.FlushUnalignedBlobCount.Increment(msg->FlushUnalignedBlobCount);
 
     const auto ts = ctx.Now() - d;
 

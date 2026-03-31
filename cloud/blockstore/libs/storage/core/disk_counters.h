@@ -340,6 +340,14 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter FlushAlignedBlobCount{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter FlushUnalignedBlobCount{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -362,6 +370,8 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::FlushAlignedBlobCount>(),
+        MakeMeta<&TCumulativeDiskCounters::FlushUnalignedBlobCount>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };

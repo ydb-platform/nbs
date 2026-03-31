@@ -1081,12 +1081,18 @@ struct TTxPartition
     {
         const TRequestInfoPtr RequestInfo;
         TVector<TBlock> FreshBlocks;
+        ui32 FlushAlignedBlobCount;
+        ui32 FlushUnalignedBlobCount;
 
         TFlushToDevNull(
                 TRequestInfoPtr requestInfo,
-                TVector<TBlock> freshBlocks)
+                TVector<TBlock> freshBlocks,
+                ui32 flushAlignedBlobCount,
+                ui32 flushUnalignedBlobCount)
             : RequestInfo(std::move(requestInfo))
             , FreshBlocks(std::move(freshBlocks))
+            , FlushAlignedBlobCount(flushAlignedBlobCount)
+            , FlushUnalignedBlobCount(flushUnalignedBlobCount)
         {
         }
 
