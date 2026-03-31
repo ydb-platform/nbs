@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"os"
 	"sync"
 	"testing"
@@ -20,9 +19,8 @@ import (
 	filesystem_snapshot_schema "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
-	tasks_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
@@ -157,48 +155,6 @@ func (f *fixture) fillFilesystem(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func withNemesis(
-	ctx context.Context,
-	runFunc func(ctx context.Context) error,
-	minDuration time.Duration,
-	maxDuration time.Duration,
-) error {
-
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	durationRange := maxDuration - minDuration
-
-	for {
-		runCtx, cancel := context.WithCancel(ctx)
-		delay := minDuration + time.Duration(rng.Int63n(int64(durationRange)))
-		logging.Info(
-			runCtx,
-			"task will be cancelled after %v",
-			delay,
-		)
-		timer := time.AfterFunc(delay, cancel)
-
-		err := runFunc(runCtx)
-
-		timer.Stop()
-		cancel()
-
-		if err == nil {
-			return nil
-		}
-		if errors.Is(err, context.Canceled) {
-			continue
-		}
-
-		if tasks_errors.Is(err, tasks_errors.NewEmptyRetriableError()) {
-			continue
-		}
-
-		return err
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 	f := newFixture(t)
 	defer f.close(t)
@@ -267,7 +223,7 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 		}
 	}
 
-	err := withNemesis(
+	err := util.WithNemesis(
 		f.ctx,
 		func(ctx context.Context) error {
 			// State is updated inside the run method, the task is not recreated
