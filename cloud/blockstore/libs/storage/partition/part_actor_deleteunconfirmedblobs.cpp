@@ -68,7 +68,7 @@ void TPartitionActor::ExecuteDeleteUnconfirmedBlobs(
     State->DeleteUnconfirmedBlobs(db, args.CommitId);
 
     State->GetGarbageQueue().ReleaseBarrier(args.CommitId);
-    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
+    State->ReleaseCommitQueueBarrier(args.CommitId);
 }
 
 void TPartitionActor::CompleteDeleteUnconfirmedBlobs(

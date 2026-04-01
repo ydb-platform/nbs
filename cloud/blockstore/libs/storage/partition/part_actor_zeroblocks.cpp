@@ -311,7 +311,7 @@ void TPartitionActor::HandleZeroBlocks(
         commitId,
         DescribeRange(writeRange).c_str());
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AcquireCommitQueueBarrier(commitId);
 
     // large writes could skip FreshBlocks table completely
     TVector<TAddMergedBlob> requests(
@@ -401,12 +401,10 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
     auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->AccessCommitQueue().ReleaseBarrier(commitId);
+    State->ReleaseCommitQueueBarrier(commitId);
 
     if (freshBlocksRequest && HasError(error)) {
-        State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
-            commitId,
-            blocksCount);
+        State->ReleaseTrimFreshLogBarrier(commitId, blocksCount);
     }
 
     Actors.Erase(sender);
@@ -501,7 +499,7 @@ void TPartitionActor::CompleteZeroBlocks(
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
+    State->ReleaseCommitQueueBarrier(args.CommitId);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;

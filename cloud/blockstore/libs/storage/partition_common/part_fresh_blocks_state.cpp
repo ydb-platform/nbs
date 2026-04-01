@@ -100,10 +100,10 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 TPartitionFreshBlocksState::TPartitionFreshBlocksState(
     const TCommitIdsState& commitIdsState,
     const TPartitionFlushState& flushState,
-    TPartitionTrimFreshLogState& trimFreshLogState)
+    TPartitionThreadSafeState& threadSafeState)
     : CommitIdsState(commitIdsState)
     , FlushState(flushState)
-    , TrimFreshLogState(trimFreshLogState)
+    , ThreadSafeState(threadSafeState)
 {}
 
 ui32 TPartitionFreshBlocksState::IncrementUnflushedFreshBlocksFromChannelCount(
@@ -230,8 +230,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 
             if (removed) {
                 DecrementUnflushedFreshBlocksFromChannelCount(1);
-                TrimFreshLogState.AccessTrimFreshLogBarriers().ReleaseBarrier(
-                    garbageCommitId);
+                ThreadSafeState.ReleaseTrimFreshLogBarrier(garbageCommitId, 1);
             }
         }
 

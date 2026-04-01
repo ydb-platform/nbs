@@ -500,7 +500,7 @@ bool TPartitionActor::WriteMixedBlocks(
         return false;
     }
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AcquireCommitQueueBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
     bool checksumsEnabled = false;

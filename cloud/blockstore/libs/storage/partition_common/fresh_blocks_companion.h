@@ -35,7 +35,7 @@ private:
     TPartitionChannelsState& ChannelsState;
     TPartitionFreshBlobState& FreshBlobState;
     TPartitionFlushState& FlushState;
-    TPartitionTrimFreshLogState& TrimFreshLogState;
+    TPartitionThreadSafeState& ThreadSafeState;
     TPartitionFreshBlocksState& FreshBlocksState;
 
     TLogTitle LogTitle;
@@ -51,7 +51,7 @@ public:
         TPartitionChannelsState& channelsState,
         TPartitionFreshBlobState& freshBlobState,
         TPartitionFlushState& flushState,
-        TPartitionTrimFreshLogState& trimFreshLogState,
+        TPartitionThreadSafeState& threadSafeState,
         TPartitionFreshBlocksState& freshBlocksState,
         TLogTitle logTitle);
 

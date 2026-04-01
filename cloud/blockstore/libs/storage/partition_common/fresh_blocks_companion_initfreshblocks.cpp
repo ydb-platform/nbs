@@ -78,8 +78,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
     }
 
     for (const auto& block: blocks) {
-        TrimFreshLogState.AccessTrimFreshLogBarriers().AcquireBarrier(
-            block.Meta.CommitId);
+        ThreadSafeState.AcquireTrimFreshLogBarrier(block.Meta.CommitId, 1);
     }
 
     FreshBlocksState.InitFreshBlocks(blocks);

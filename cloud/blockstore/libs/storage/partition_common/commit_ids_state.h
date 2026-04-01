@@ -13,37 +13,9 @@ namespace NCloud::NBlockStore::NStorage {
 class TCommitIdsState
 {
 private:
-    NPartition::TCommitQueue CommitQueue;
-    TCommitIdGeneratorPtr CommitIdGenerator;
-
     NPartition::TCheckpointStore Checkpoints;
 
 public:
-    explicit TCommitIdsState(TCommitIdGeneratorPtr generator);
-
-    TCommitIdsState(ui64 generation, ui64 lastCommitId);
-
-    [[nodiscard]] const NPartition::TCommitQueue& GetCommitQueue() const
-    {
-        return CommitQueue;
-    }
-
-    [[nodiscard]] NPartition::TCommitQueue& AccessCommitQueue()
-    {
-        return CommitQueue;
-    }
-
-
-    [[nodiscard]] ui64 GetLastCommitId() const
-    {
-        return CommitIdGenerator->GetLastCommitId();
-    }
-
-    ui64 GenerateCommitId()
-    {
-        return CommitIdGenerator->GenerateCommitId();
-    }
-
     [[nodiscard]] auto& AccessCheckpoints()
     {
         return Checkpoints;
@@ -57,11 +29,6 @@ public:
     void GetCheckpointCommitIds(TVector<ui64>& result) const
     {
         Checkpoints.GetCommitIds(result);
-    }
-
-    [[nodiscard]] auto GetCommitIdGenerator() const
-    {
-        return CommitIdGenerator;
     }
 };
 

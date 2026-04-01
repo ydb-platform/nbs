@@ -85,7 +85,7 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    SharedState = std::make_shared<TPartitionSharedState>();
+    SharedState = std::make_shared<TPartitionThreadSafeState>();
 }
 
 TPartitionActor::~TPartitionActor()
@@ -1146,6 +1146,10 @@ STFUNC(TPartitionActor::StateWork)
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvCommitsCompleted,
+            HandleCommitsCompleted);
+
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
@@ -1224,6 +1228,8 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvCommitsCompleted);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with
@@ -1356,8 +1362,6 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
         response->ChannelPermissions.emplace_back(
             State->GetChannelPermissions(i));
     }
-
-    response->CommitIdGenerator = State->GetCommitIdGenerator();
 
     FreshBlocksWriter = ev->Sender;
 

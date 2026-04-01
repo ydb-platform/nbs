@@ -77,7 +77,7 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AcquireCommitQueueBarrier(commitId);
 
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
@@ -116,7 +116,9 @@ void TPartitionActor::WriteFreshBlocks(
             writeHandlers.push_back(r.Data.Handler);
         }
 
-        State->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+        State->AcquireTrimFreshLogBarrier(
+            commitId,
+            blockCount);
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -135,7 +137,7 @@ void TPartitionActor::WriteFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            nullptr);   // sharedPartitionState
+            nullptr);   // unflushedFreshBlobByteCount
 
         Actors.Insert(actor);
     } else {
@@ -188,16 +190,6 @@ void TPartitionActor::HandleAddFreshBlocks(
             msg->WriteHandlers.empty(),
         TWellKnownEntityTypes::TABLET,
         TabletID());
-
-    if (FreshBlocksWriter) {
-        ui64 blocksCount = 0;
-        for (auto& blockRange: msg->BlockRanges) {
-            blocksCount += blockRange.Size();
-        }
-        State->AccessTrimFreshLogBarriers().AcquireBarrierN(
-            msg->CommitId,
-            blocksCount);
-    }
 
     for (size_t i = 0; i < msg->BlockRanges.size(); ++i) {
         auto& blockRange = msg->BlockRanges[i];
@@ -420,7 +412,7 @@ void TPartitionActor::CompleteWriteBlocks(
         ProfileLog->Write(std::move(record));
     }
 
-    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
+    State->ReleaseCommitQueueBarrier(args.CommitId);
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= args.Requests.size());
     WriteAndZeroRequestsInProgress -= args.Requests.size();
 
@@ -475,7 +467,7 @@ void TPartitionActor::ZeroFreshBlocks(
         commitId,
         DescribeRange(writeRange).c_str());
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AcquireCommitQueueBarrier(commitId);
     const bool freshChannelZeroRequestsEnabled =
         Config->GetFreshChannelZeroRequestsEnabled();
 
@@ -489,7 +481,9 @@ void TPartitionActor::ZeroFreshBlocks(
         requests.emplace_back(requestInfo, EFreshRequestType::ZeroBlocks);
         blockRanges.emplace_back(writeRange);
 
-        State->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+        State->AcquireTrimFreshLogBarrier(
+            commitId,
+            blockCount);
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -508,7 +502,7 @@ void TPartitionActor::ZeroFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            nullptr);   // sharedPartitionState
+            nullptr);   // unflushedFreshBlobByteCount
 
         Actors.Insert(actor);
     } else {

@@ -1447,7 +1447,7 @@ void TPartitionActor::HandleCompaction(
 
     State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AcquireCommitQueueBarrier(commitId);
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
@@ -1459,40 +1459,35 @@ void TPartitionActor::HandleCompaction(
         msg->CompactionOptions,
         std::move(ranges));
 
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-    Y_ABORT_UNLESS(minCommitId <= commitId);
+    ui64 compactionTypeIndex = static_cast<size_t>(compactionType);
+    CompactionTransactions.at(compactionTypeIndex) = std::move(tx);
 
-    if (minCommitId == commitId) {
-        // start execution
-        ExecuteTx(ctx, std::move(tx));
-    } else {
-        // delay execution until all previous commits completed
-        State->AccessCommitQueue().Enqueue(std::move(tx), commitId);
-    }
+    State->WaitForCommitQueueBarrier(ctx, commitId, compactionTypeIndex);
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-
-    while (!State->GetCommitQueue().Empty()) {
-        ui64 commitId = State->GetCommitQueue().Peek();
-        Y_ABORT_UNLESS(minCommitId <= commitId);
-
-        if (minCommitId == commitId) {
-            // start execution
-            ExecuteTx(ctx, State->AccessCommitQueue().Dequeue());
-        } else {
-            // delay execution until all previous commits completed
-            break;
-        }
-    }
+    State->ProcessCommitQueue(ctx);
 
     // TODO: too many different queues exist
     // Since create checkpoint operation waits for the last commit to complete
     // here we force checkpoints queue to try to proceed to the next
     // create checkpoint request
     ProcessCheckpointQueue(ctx);
+}
+
+void TPartitionActor::HandleCommitsCompleted(
+    const TEvPartitionCommonPrivate::TEvCommitsCompleted::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (HasError(ev->Get()->GetError())) {
+        Suicide(ctx);
+        return;
+    }
+
+    ExecuteTx(
+        ctx,
+        std::move(CompactionTransactions.at(static_cast<size_t>(ev->Cookie))));
 }
 
 void TPartitionActor::HandleCompactionCompleted(
@@ -1521,7 +1516,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     UpdateStats(msg->Stats);
 
-    State->AccessCommitQueue().ReleaseBarrier(commitId);
+    State->ReleaseCommitQueueBarrier(commitId);
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 

@@ -457,7 +457,7 @@ void TPartitionActor::HandleScanDiskBatch(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetCommitQueue().GetMinCommitId() <= msg->BlobId.CommitId()) {
+    if (State->GetCommitQueueMinCommitId() <= msg->BlobId.CommitId()) {
         replyError(
             ctx,
             *requestInfo,

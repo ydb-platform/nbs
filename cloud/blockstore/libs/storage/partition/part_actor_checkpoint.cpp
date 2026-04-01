@@ -18,7 +18,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TPartitionActor::ProcessCheckpointQueue(const TActorContext& ctx)
 {
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+    ui64 minCommitId = State->GetCommitQueueMinCommitId();
 
     auto& checkpointsInflight = State->GetCheckpointsInFlight();
 
@@ -32,7 +32,7 @@ void TPartitionActor::ProcessNextCheckpointRequest(
     const TActorContext& ctx,
     const TString& checkpointId)
 {
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+    ui64 minCommitId = State->GetCommitQueueMinCommitId();
 
     State->GetCheckpointsInFlight().PopTx(checkpointId);
 
@@ -90,7 +90,7 @@ void TPartitionActor::HandleCreateCheckpoint(
             {}),
         msg->Record.GetCheckpointType() == NProto::ECheckpointType::WITHOUT_DATA);
 
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+    ui64 minCommitId = State->GetCommitQueueMinCommitId();
 
     State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx), commitId);
 
@@ -233,7 +233,7 @@ void TPartitionActor::DeleteCheckpoint(
         reply,
         deleteOnlyData);
 
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+    ui64 minCommitId = State->GetCommitQueueMinCommitId();
 
     State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx));
 

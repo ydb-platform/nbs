@@ -49,6 +49,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // There is also FreshBlocksCount proto counter. We have to split it into
@@ -292,10 +294,11 @@ private:
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
 
+    TPartitionThreadSafeState& ThreadSafeState;
+
 public:
     TPartitionState(
         NProto::TPartitionMeta meta,
-        ui32 generation,
         ICompactionPolicyPtr compactionPolicy,
         ui32 compactionScoreHistorySize,
         ui32 cleanupScoreHistorySize,
@@ -306,13 +309,13 @@ public:
         ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
         bool reassignSystemChannelsImmediately,
-        ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
-        ui32 compactionRangeCountPerRun);
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeState& threadSafeState);
 
 private:
     bool LoadStateFinished = false;
@@ -379,6 +382,49 @@ public:
     }
 
     bool CheckBlockRange(const TBlockRange64& range) const;
+
+    //
+    // Commits
+    //
+public:
+
+    ui64 GetLastCommitId() const
+    {
+        return ThreadSafeState.GetLastCommitId();
+    }
+
+    ui64 GenerateCommitId() const
+    {
+        return ThreadSafeState.GenerateCommitId();
+    }
+
+    void AcquireCommitQueueBarrier(ui64 commitId)
+    {
+        ThreadSafeState.AcquireCommitQueueBarrier(commitId);
+    }
+
+    void ReleaseCommitQueueBarrier(ui64 commitId)
+    {
+        ThreadSafeState.ReleaseCommitQueueBarrier(commitId);
+    }
+
+    ui64 GetCommitQueueMinCommitId() const
+    {
+        return ThreadSafeState.GetCommitQueueMinCommitId();
+    }
+
+    void ProcessCommitQueue(const NActors::TActorContext& ctx)
+    {
+        ThreadSafeState.ProcessCommitQueue(ctx);
+    }
+
+    void WaitForCommitQueueBarrier(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        ui64 cookie)
+    {
+        ThreadSafeState.WaitForCommitQueueBarrier(ctx, commitId, cookie);
+    }
 
     //
     // Channels
@@ -481,6 +527,26 @@ public:
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
+
+    //
+    // TrimFreshLog
+    //
+
+public:
+    void AcquireTrimFreshLogBarrier(ui64 commitId, ui32 blockCount)
+    {
+        ThreadSafeState.AcquireTrimFreshLogBarrier(commitId, blockCount);
+    }
+
+    void ReleaseTrimFreshLogBarrier(ui64 commitId, ui32 blockCount)
+    {
+        ThreadSafeState.ReleaseTrimFreshLogBarrier(commitId, blockCount);
+    }
+
+    ui64 GetTrimFreshLogToCommitId() const
+    {
+        return ThreadSafeState.GetTrimFreshLogToCommitId();
+    }
 
     //
     // Mixed blocks

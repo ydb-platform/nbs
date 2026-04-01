@@ -57,17 +57,6 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    const auto commitId = CommitIdsState->GenerateCommitId();
-
-    if (commitId == InvalidCommitId) {
-        for (auto& r: requestsInBuffer) {
-            r.Data.RequestInfo->CancelRequest(ctx);
-        }
-        RebootOnCommitIdOverflow(ctx, "WriteFreshBlocks");
-
-        return;
-    }
-
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
         Config->IsFreshChannelWriteRequestsFeatureEnabled(
@@ -111,6 +100,17 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         writeHandlers.push_back(r.Data.Handler);
     }
 
+    const auto commitId = SharedState->StartFreshWrite(blockCount);
+
+    if (commitId == InvalidCommitId) {
+        for (auto& r: requestsInBuffer) {
+            r.Data.RequestInfo->CancelRequest(ctx);
+        }
+        RebootOnCommitIdOverflow(ctx, "WriteFreshBlocks");
+
+        return;
+    }
+
     const ui32 channel = ChannelsState->PickNextChannel(
         EChannelDataKind::Fresh,
         EChannelPermission::UserWritesAllowed);
@@ -128,7 +128,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
-        SharedState);
+        SharedState->GetUnflushedFreshBlobByteCount());
 
     Actors.Insert(actor);
 }
@@ -137,7 +137,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     TBlockRange32 writeRange,
-    ui64 commitId)
+    ui64 /*commitId*/)
 {
     if (FlushState->GetUnflushedFreshBlobByteCount() >=
         Config->GetFreshByteCountHardLimit())
@@ -163,6 +163,20 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
 
     ++WriteAndZeroRequestsInProgress;
 
+    const bool freshChannelZeroRequestsEnabled =
+        Config->GetFreshChannelZeroRequestsEnabled();
+
+    const ui32 blockCount = writeRange.Size();
+    FlushState->IncrementFreshBlocksInFlight(blockCount);
+
+    const auto commitId = SharedState->StartFreshWrite(blockCount);
+
+    if (commitId == InvalidCommitId) {
+        requestInfo->CancelRequest(ctx);
+        RebootOnCommitIdOverflow(ctx, "ZeroFreshBlocks");
+        return;
+    }
+
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -170,12 +184,6 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         LogTitle.GetWithTime().c_str(),
         commitId,
         DescribeRange(writeRange).c_str());
-
-    const bool freshChannelZeroRequestsEnabled =
-        Config->GetFreshChannelZeroRequestsEnabled();
-
-    const ui32 blockCount = writeRange.Size();
-    FlushState->IncrementFreshBlocksInFlight(blockCount);
 
     STORAGE_VERIFY_C(
         freshChannelZeroRequestsEnabled && ChannelsState->GetFreshChannelCount() > 0,
@@ -206,7 +214,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
-        SharedState);
+        SharedState->GetUnflushedFreshBlobByteCount());
 
     Actors.Insert(actor);
 }

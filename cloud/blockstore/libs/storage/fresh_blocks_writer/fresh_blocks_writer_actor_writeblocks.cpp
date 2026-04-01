@@ -351,12 +351,10 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
         ProfileLog->Write(std::move(record));
     }
 
-    LOG_TRACE(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "%s Releasing commit queue barrier, commit id @%lu",
-        LogTitle.GetWithTime().c_str(),
-        commitId);
+    SharedState->FinishFreshWrite(
+        commitId,
+        blocksCount,
+        HasError(msg->GetError()));
 
     Actors.Erase(ev->Sender);
 
@@ -365,6 +363,8 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
 
     // TODO(issue-4875): process drain requests
     // DrainActorCompanion.ProcessDrainRequests(ctx);
+
+    SharedState->ProcessCommitQueue(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

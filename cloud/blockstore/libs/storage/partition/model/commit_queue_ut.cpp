@@ -1,42 +1,142 @@
 #include "commit_queue.h"
+#include "cloud/blockstore/libs/storage/core/request_info.h"
+
+#include <contrib/ydb/core/testlib/actors/test_runtime.h>
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+using namespace NActors;
+
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTransactionStub
-    : public ITransactionBase
+enum ETestEvents
 {
-    const ui64 CommitId;
+    EvBegin = EventSpaceBegin(NKikimr::TEvents::ES_USERSPACE + 10),
 
-    TTransactionStub(ui64 commitId)
-        : CommitId(commitId)
-    {}
+    EvEnqueue,
+    EvDequeue,
+    EvValueDequeued,
+};
 
-    void Init(const NActors::TActorContext&) override
+struct TEnqueue
+{
+    ui64 Value = 0;
+    ui64 CommitId = 0;
+};
+
+struct TValueDequeued
+{
+    ui64 Value = 0;
+};
+
+using TEvEnqueue = TRequestEvent<TEnqueue, EvEnqueue>;
+
+using TEvDequeue = TRequestEvent<TEmpty, EvDequeue>;
+
+using TEvValueDequeued = TRequestEvent<TValueDequeued, EvValueDequeued>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMyTestEnv final
+{
+public:
+    TActorId Sender;
+
+private:
+    TTestActorRuntime Runtime;
+
+public:
+    TMyTestEnv()
     {
+        NKikimr::SetupTabletServices(Runtime);
+        Sender = Runtime.AllocateEdgeActor();
     }
 
-    bool Execute(
-        NKikimr::NTabletFlatExecutor::TTransactionContext&,
-        const NActors::TActorContext&) override
+    TActorId Register(IActorPtr actor)
     {
-        return false;
+        auto actorId = Runtime.Register(actor.release());
+        Runtime.EnableScheduleForActor(actorId);
+
+        return actorId;
     }
 
-    void Complete(const NActors::TActorContext&) override
+    void Send(const TActorId& recipient, IEventBasePtr event, ui64 cookie = 0)
     {
+        Runtime.Send(
+            new IEventHandle(recipient, Sender, event.release(), 0, cookie));
+    }
+
+    void DispatchEvents(TDuration timeout)
+    {
+        Runtime.DispatchEvents(TDispatchOptions(), timeout);
+    }
+
+    TAutoPtr<IEventHandle> GrabValueDequeued(TDuration timeout)
+    {
+        TAutoPtr<IEventHandle> handle;
+        Runtime.GrabEdgeEventRethrow<TEvValueDequeued>(handle, timeout);
+        return handle;
+    }
+
+    TTestActorRuntimeBase& AccessRuntime()
+    {
+        return Runtime;
     }
 };
 
-ui64 GetCommitId(const ITransactionBase& tx)
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCommitQueueActor: public TActor<TCommitQueueActor>
 {
-    return static_cast<const TTransactionStub&>(tx).CommitId;
-}
+    TCommitQueue Queue;
+
+    TCommitQueueActor()
+        : TActor(&TThis::Main)
+    {}
+
+    void Main(TAutoPtr<IEventHandle>& ev)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvEnqueue, HandleEnqueue);
+            HFunc(TEvDequeue, HandleDequeue);
+        }
+    }
+
+    void HandleEnqueue(const TEvEnqueue::TPtr& ev, const TActorContext& ctx)
+    {
+        Y_UNUSED(ctx);
+
+        auto* msg = ev->Get();
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+        auto callback = [requestInfo = std::move(requestInfo),
+                         value = msg->Value](const NActors::TActorContext& ctx)
+        {
+            NCloud::Reply(
+                ctx,
+                *requestInfo,
+                std::make_unique<TEvValueDequeued>(value));
+        };
+
+        Queue.Enqueue(std::move(callback), msg->CommitId);
+    }
+
+    void HandleDequeue(const TEvDequeue::TPtr& ev, const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        auto callback = Queue.Dequeue();
+        callback(ctx);
+    }
+};
 
 }   // namespace
 
@@ -46,28 +146,38 @@ Y_UNIT_TEST_SUITE(TCommitQueueTest)
 {
     Y_UNIT_TEST(ShouldKeepTrackOfCommits)
     {
-        TCommitQueue queue;
+        TMyTestEnv testEnv;
 
-        queue.Enqueue(std::make_unique<TTransactionStub>(1), 1);
-        queue.Enqueue(std::make_unique<TTransactionStub>(2), 2);
-        queue.Enqueue(std::make_unique<TTransactionStub>(3), 3);
+        auto actorId = testEnv.Register(std::make_unique<TCommitQueueActor>());
 
-        UNIT_ASSERT(!queue.Empty());
+        testEnv.Send(actorId, std::make_unique<TEvEnqueue>(1, 1), 1);
+        testEnv.Send(actorId, std::make_unique<TEvEnqueue>(2, 2), 2);
+        testEnv.Send(actorId, std::make_unique<TEvEnqueue>(3, 3), 3);
 
-        UNIT_ASSERT_EQUAL(queue.Peek(), 1);
-        auto tx = queue.Dequeue();
-        UNIT_ASSERT_EQUAL(GetCommitId(*tx), 1);
+        testEnv.DispatchEvents(10ms);
 
-        UNIT_ASSERT_EQUAL(queue.Peek(), 2);
-        tx = queue.Dequeue();
-        UNIT_ASSERT_EQUAL(GetCommitId(*tx), 2);
+        auto* actor = dynamic_cast<TCommitQueueActor*>(
+            testEnv.AccessRuntime().FindActor(actorId));
 
-        UNIT_ASSERT_EQUAL(queue.Peek(), 3);
-        tx = queue.Dequeue();
-        UNIT_ASSERT_EQUAL(GetCommitId(*tx), 3);
+        UNIT_ASSERT(!actor->Queue.Empty());
 
-        UNIT_ASSERT(queue.Empty());
+        auto checkQueue = [&](ui64 expectedValue)
+        {
+            UNIT_ASSERT_EQUAL(actor->Queue.Peek(), expectedValue);
+            testEnv.Send(actorId, std::make_unique<TEvDequeue>());
+            auto ev = testEnv.GrabValueDequeued(100ms);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedValue,
+                ev->Get<TEvValueDequeued>()->Value);
+        };
+
+        checkQueue(1);
+        checkQueue(2);
+        checkQueue(3);
+
+        UNIT_ASSERT(actor->Queue.Empty());
     }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

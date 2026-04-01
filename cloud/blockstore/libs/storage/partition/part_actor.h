@@ -183,9 +183,14 @@ private:
 
     NActors::TActorId FreshBlocksWriter;
 
-    TPartitionSharedStatePtr SharedState;
+    TPartitionThreadSafeStatePtr SharedState;
 
     TRequestInfoPtr Poisoner;
+
+    std::array<
+        std::unique_ptr<ITransactionBase>,
+        static_cast<size_t>(ECompactionType::Max)>
+        CompactionTransactions;
 
 public:
     TPartitionActor(
@@ -805,6 +810,10 @@ private:
 
     void HandleUpdateResourceMetrics(
         const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCommitsCompleted(
+        const TEvPartitionCommonPrivate::TEvCommitsCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

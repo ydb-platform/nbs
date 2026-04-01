@@ -10,6 +10,7 @@ enum class ECompactionType: ui32
 {
     Forced,  // compaction initiated externally
     Tablet,  // compaction initiated by tablet
+    Max,
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

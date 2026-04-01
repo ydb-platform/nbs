@@ -424,15 +424,13 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
             LogTitle.GetWithTime().c_str(),
             commitId);
 
-        State->AccessCommitQueue().ReleaseBarrier(commitId);
+        State->ReleaseCommitQueueBarrier(commitId);
         if (writeBlocksCompleted.CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
         }
 
         if (writeBlocksCompleted.IsFreshBlocksRequest && HasError(error)) {
-            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
-                commitId,
-                blocksCount);
+            State->ReleaseTrimFreshLogBarrier(commitId, blocksCount);
         }
     }
 
