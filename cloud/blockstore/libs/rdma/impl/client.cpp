@@ -942,10 +942,6 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
         }
     }
 
-    if (!CheckState(EEndpointState::Connected)) {
-        return false;
-    }
-
     THashSet<ui64> clientRequestIdToCancel;
     for (auto req: CancelRequests.DequeueAll()) {
         clientRequestIdToCancel.emplace(req.ClientRequestId);
@@ -964,7 +960,7 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     while (auto req = cancelled.Dequeue()) {
         RDMA_TRACE("cancel request " << req->ReqId);
         Counters->RequestDequeued();
-        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
+        AbortRequest(std::move(req), E_CANCELLED, "request was cancelled");
     }
 
     // cancel active requests
@@ -972,7 +968,7 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     while (auto req = cancelled.Dequeue()) {
         RDMA_TRACE("cancel request " << req->ReqId);
         Counters->RequestAborted();
-        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
+        AbortRequest(std::move(req), E_CANCELLED, "request was cancelled");
     }
 
     if (!requests) {
@@ -998,8 +994,6 @@ void TClientEndpoint::AbortRequests() noexcept
         }
     }
 
-    CancelRequests.DequeueAll();
-
     auto requests = InputRequests.DequeueAll();
     if (requests) {
         QueuedRequests.Append(std::move(requests));
@@ -1008,11 +1002,13 @@ void TClientEndpoint::AbortRequests() noexcept
     while (QueuedRequests) {
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
+        RDMA_TRACE("abort request " << req->ReqId);
         Counters->RequestDequeued();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
 
     while (auto req = ActiveRequests.Pop()) {
+        RDMA_TRACE("abort request " << req->ReqId);
         Counters->RequestAborted();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
@@ -1732,6 +1728,7 @@ private:
                 hasWork |= endpoint->HandleCompletionEvents();
             }
             else if (endpoint->CheckState(EEndpointState::Disconnecting)) {
+                hasWork |= endpoint->HandleCancelRequests();
                 hasWork |= endpoint->HandleCompletionEvents();
                 endpoint->AbortRequests();
             }
@@ -1753,6 +1750,7 @@ private:
                 DurationToCyclesSafe(Config->MaxResponseDelay));
 
             for (auto& request: requests) {
+                RDMA_TRACE(endpoint->Log, "timeout request " << request->ReqId);
                 endpoint->Counters->RequestAborted();
                 endpoint->AbortRequest(
                     std::move(request),
@@ -2117,7 +2115,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
             return;
     }
 
-    RDMA_WARN("unable to connect, try again");
+    RDMA_WARN(endpoint->Log, "reconnect");
     BeginResolveAddress(endpoint);
 }
 

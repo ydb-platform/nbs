@@ -437,15 +437,12 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             testContext->CompletionHandle.Set();
         };
 
-        TManualEvent disconnected;
-        testContext->DestroyQP = [&](auto...) {
-            disconnected.Signal();
-        };
-
         auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
 
         struct TClientHandler: IClientHandler
         {
+            TManualEvent Done;
+
             void HandleResponse(
                 TClientRequestPtr req,
                 ui32 status,
@@ -457,11 +454,14 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     static_cast<ui32>(RDMA_PROTO_FAIL),
                     status);
+
+                Done.Signal();
             }
         };
 
+        auto handler = std::make_shared<TClientHandler>();
         auto request = endpoint->AllocateRequest(
-            std::make_shared<TClientHandler>(),
+            handler,
             std::make_unique<TNullContext>(),
             4096,   // requestBytes
             4096);  // responseBytes
@@ -471,7 +471,8 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             MakeIntrusive<TCallContext>());
 
         Disconnect(testContext);
-        disconnected.WaitT(5s);
+
+        UNIT_ASSERT(handler->Done.WaitT(5s));
     }
 
     Y_UNIT_TEST(ShouldCancelRequests)
