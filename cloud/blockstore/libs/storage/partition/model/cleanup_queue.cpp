@@ -20,20 +20,38 @@ struct TCleanupQueue::TImpl
     };
 
     TSet<TCleanupQueueItem, TLess> Items;
+    THashSet<TPartialBlobId, TPartialBlobIdHash> BlobIds;
 
     bool Add(const TCleanupQueueItem& item)
     {
-        return Items.insert(item).second;
+        bool result = BlobIds.insert(item.BlobId).second;
+        if (result) {
+            Items.insert(item);
+        }
+
+        return result;
     }
 
     bool Remove(const TCleanupQueueItem& item)
     {
-        auto it = Items.find(item);
-        if (it != Items.end()) {
-            Items.erase(it);
-            return true;
+        auto itBlob = BlobIds.find(item.BlobId);
+        if (itBlob == BlobIds.end()) {
+            return false;
         }
-        return false;
+
+        auto itItem = Items.find(item);
+        if (itItem == Items.end()) {
+            return false;
+        }
+
+        BlobIds.erase(itBlob);
+        Items.erase(itItem);
+        return true;
+    }
+
+    bool HasBlob(const TPartialBlobId& blobId) const
+    {
+        return BlobIds.contains(blobId);
     }
 
     size_t GetCount(ui64 maxCommitId) const
@@ -108,6 +126,11 @@ bool TCleanupQueue::Remove(const TCleanupQueueItem& item)
         QueueBlocks -= item.BlobId.BlobSize() / BlockSize;
     }
     return result;
+}
+
+bool TCleanupQueue::HasBlob(const TPartialBlobId& blobId) const
+{
+    return Impl->HasBlob(blobId);
 }
 
 size_t TCleanupQueue::GetCount(ui64 maxCommitId) const

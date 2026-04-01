@@ -53,6 +53,8 @@ public:
 
     bool Remove(const TCleanupQueueItem& item);
 
+    [[nodiscard]] bool HasBlob(const TPartialBlobId& blobId) const;
+
     size_t GetCount(ui64 maxCommitId = InvalidCommitId) const;
 
     TVector<TCleanupQueueItem> GetItems(

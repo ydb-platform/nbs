@@ -1738,6 +1738,12 @@ void PrepareRangeCompaction(
             } else {
                 ready = false;
             }
+        } else if (state.GetCleanupQueue().HasBlob(kv.first)) {
+            // If the blob is in the cleanup queue, we should not try to add
+            // this blob to cleanup queue again.
+            TBlockMask mask;
+            mask.Set(0, state.GetMaxBlocksInBlob());
+            kv.second.BlockMask = std::move(mask);
         }
 
         if (args.ChecksumsEnabled) {
