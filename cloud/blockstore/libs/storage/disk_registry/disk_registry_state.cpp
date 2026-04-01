@@ -4349,6 +4349,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     ui32 fullPlacementGroups = 0;
     ui32 allocatedDisksInGroups = 0;
     ui64 unknownDevices = 0;
+    ui64 pathsInAttachedState = 0;
+    ui64 pathsInAttachingState = 0;
+    ui64 pathsInDetachedState = 0;
+    ui64 detachedDevicesInOnlineState = 0;
 
     for (const auto& agent: AgentList.GetAgents()) {
         const auto agentState = agent.GetState();
@@ -4369,6 +4373,24 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         }
 
         unknownDevices += agent.UnknownDevicesSize();
+
+        if (StorageConfig->GetAttachDetachPathsEnabled()) {
+            for (const auto& [path, state]: agent.GetPathAttachStates()) {
+                switch (state) {
+                    case NProto::PATH_ATTACH_STATE_ATTACHED:
+                        ++pathsInAttachedState;
+                        break;
+                    case NProto::PATH_ATTACH_STATE_ATTACHING:
+                        ++pathsInAttachingState;
+                        break;
+                    case NProto::PATH_ATTACH_STATE_DETACHED:
+                        ++pathsInDetachedState;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
 
         for (const auto& device: agent.GetDevices()) {
             const auto deviceState = device.GetState();
@@ -4394,6 +4416,21 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             switch (deviceState) {
                 case NProto::DEVICE_STATE_ONLINE: {
                     ++pool.DevicesInOnlineState;
+
+                    auto it = agent.GetPathAttachStates().find(
+                        device.GetDeviceName());
+
+                    const bool deviceShouldBeAttached =
+                        agent.GetState() == NProto::AGENT_STATE_ONLINE;
+                    const bool deviceIsAttached =
+                        it != agent.GetPathAttachStates().end() &&
+                        it->second == NProto::PATH_ATTACH_STATE_ATTACHED;
+
+                    if (StorageConfig->GetAttachDetachPathsEnabled() &&
+                        deviceShouldBeAttached && !deviceIsAttached)
+                    {
+                        ++detachedDevicesInOnlineState;
+                    }
                     break;
                 }
                 case NProto::DEVICE_STATE_WARNING: {
@@ -4611,6 +4648,12 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.AgentsInWarningState->Set(agentsInWarningState);
     SelfCounters.AgentsInUnavailableState->Set(agentsInUnavailableState);
     SelfCounters.DisksInOnlineState->Set(disksInOnlineState);
+
+    SelfCounters.PathsInAttachedState->Set(pathsInAttachedState);
+    SelfCounters.PathsInAttachingState->Set(pathsInAttachingState);
+    SelfCounters.PathsInDetachedState->Set(pathsInDetachedState);
+    SelfCounters.DetachedDevicesInOnlineState->Set(
+        detachedDevicesInOnlineState);
 
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
