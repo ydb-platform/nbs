@@ -71,6 +71,17 @@ struct TOwningFreshBlock
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IBlobsVisitor
+{
+    virtual ~IBlobsVisitor() = default;
+
+    virtual bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IBlocksIndexVisitor
 {
     virtual ~IBlocksIndexVisitor() = default;

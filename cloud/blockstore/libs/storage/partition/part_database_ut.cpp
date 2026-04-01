@@ -1,6 +1,7 @@
 #include "part_database.h"
 
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -24,8 +25,17 @@ TString CommitId2Str(ui64 commitId)
 
 struct TTestBlockVisitor final
     : public IBlocksIndexVisitor
+    , public IBlobsVisitor
 {
     TStringBuilder Result;
+    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
+
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    {
+        BlobToRange[blobId] = blockRange;
+
+        return true;
+    }
 
     bool Visit(
         ui32 blockIndex,
@@ -990,6 +1000,90 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 compactionMap1[i].Stat.BlobCount,
                 compactionMap2[i].Stat.BlobCount);
         }
+    }
+
+    Y_UNIT_TEST(ShouldFindRangesForMergedBlobs)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        TVector<TPartialBlobId> blobIds;
+
+        TVector<TBlockRange32> ranges = {
+            TBlockRange32::WithLength(0, 3),
+            TBlockRange32::MakeClosedInterval(4, 6),
+            TBlockRange32::MakeClosedInterval(2, 4),
+            TBlockRange32::WithLength(0, 7)};
+
+        for (size_t i = 0; i < ranges.size(); ++i) {
+            executor.WriteTx(
+                [&](TPartitionDatabase db)
+                {
+                    blobIds.push_back(executor.MakeBlobId());
+                    db.WriteMergedBlocks(
+                        blobIds.back(),
+                        ranges[i],
+                        TBlockMask());
+                });
+        }
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                {
+                    TTestBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor,
+                        &visitor,
+                        TBlockRange32::WithLength(0, 2),
+                        true,   // precharge
+                        MaxBlocksCount));
+
+                    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+                        expectedContent{
+                            {blobIds[0], ranges[0]},
+                            {blobIds[3], ranges[3]},
+                        };
+
+                    ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
+                }
+
+                {
+                    TTestBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor,
+                        &visitor,
+                        TBlockRange32::WithLength(0, 2),
+                        true,   // precharge
+                        MaxBlocksCount,
+                        blobIds[2].CommitId()));
+
+                    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+                        expectedContent{
+                            {blobIds[0], ranges[0]},
+                        };
+
+                    ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
+                }
+
+                {
+                    TTestBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor,
+                        &visitor,
+                        TBlockRange32::MakeClosedInterval(5, 6),
+                        true,   // precharge
+                        MaxBlocksCount));
+
+                    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+                        expectedContent{
+                            {blobIds[1], ranges[1]},
+                            {blobIds[3], ranges[3]},
+                        };
+
+                    ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
+                }
+            });
     }
 }
 

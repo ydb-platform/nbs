@@ -2378,6 +2378,67 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSplitFlushBlobsByCompactionRangeBoundaries)
+    {
+        constexpr ui32 rangeSize = 1024;
+        constexpr ui32 blockCount = rangeSize * 3;
+
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(4_MB);
+        config.SetSplitFreshBlobsByCompactionRangeEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 i = 1022; i < 1026; ++i) {
+            partition.WriteBlocks(i, 1);
+        }
+        for (ui32 i = 1500; i < 1505; ++i) {
+            partition.WriteBlocks(i, 2);
+        }
+        for (ui32 i = 2045; i < 2050; ++i) {
+            partition.WriteBlocks(i, 3);
+        }
+
+        ui32 mixedBlobsCount = 0;
+        TVector<TVector<ui32>> blobIndexes;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+                            mixedBlobsCount = msg->FreshBlobs.size();
+
+                            for (const auto& blob: msg->FreshBlobs) {
+                                blobIndexes.emplace_back();
+                                for (const auto& block: blob.Blocks) {
+                                    blobIndexes.back().push_back(block.BlockIndex);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        partition.Flush();
+
+        // Expect 3 blobs: [1022-1023], [1024-1025] + [1500-1504] + [2045-2047],
+        // [2048-2049]
+        UNIT_ASSERT_VALUES_EQUAL(3, mixedBlobsCount);
+
+        for (const auto& blobBlocks: blobIndexes) {
+            ui32 rangeIndex = blobBlocks.front() / rangeSize;
+            for (auto blockIdx: blobBlocks) {
+                UNIT_ASSERT_VALUES_EQUAL(rangeIndex, blockIdx / rangeSize);
+            }
+        }
+    }
 
     Y_UNIT_TEST(ShouldMergeVersionsOnRead)
     {
@@ -13183,6 +13244,123 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
         UNIT_ASSERT_VALUES_EQUAL(1, freshBlocksResultedInErrorCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCleanupBlobsWithoutReadingBlockMasks)
+    {
+        auto config = DefaultConfig();
+        config.SetBlockMaskOptimizationEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        }
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount),
+            '1');
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount),
+            '2');
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount),
+            '3');
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(512, MaxBlocksCount),
+            '4');
+
+        //  Expected Merged blobs:
+        //
+        //    4 4
+        //      3 3
+        //  2 2
+        //  1 1
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+        }
+
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        //  Expected Merged blobs:
+        //
+        //  2 4
+        //    4 4
+        //      3 3
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('2', 512) + GetBlocksContent('4', 512),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(0, MaxBlocksCount))));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('4', 512) + GetBlocksContent('3', 512),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount))));
+
+        // Blobs from Second Compaction range should stay
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
+        }
+
+        partition.Compaction();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+        }
+
+        partition.Cleanup();
+
+        //  Expected Merged blobs:
+        //
+        //      4 3
+        //  2 4
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('2', 512) + GetBlocksContent('4', 512),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(0, MaxBlocksCount))));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent('4', 512) + GetBlocksContent('3', 512),
+            GetBlocksContent(partition.ReadBlocks(
+                TBlockRange32::WithLength(MaxBlocksCount, MaxBlocksCount))));
+
+        // Blobs from Second Compaction range compacted
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+        }
     }
 }
 

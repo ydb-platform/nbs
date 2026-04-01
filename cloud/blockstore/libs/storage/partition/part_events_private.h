@@ -118,6 +118,7 @@ struct TWriteFreshBlocksRequest
 
 struct TAffectedBlob
 {
+    std::optional<TBlockRange32> BlobRange;
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
     TVector<ui32> AffectedBlockIndices;

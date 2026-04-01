@@ -512,7 +512,8 @@ private:
 
     void CreateIOCompanionClient();
 
-    bool IsFreshBlocksWriterEnabled() const;
+    [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
+    [[nodiscard]] bool IsBlockMaskOptimizationEnabled() const;
 
 private:
     STFUNC(StateBoot);
