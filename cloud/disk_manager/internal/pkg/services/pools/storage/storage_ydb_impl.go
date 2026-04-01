@@ -1183,6 +1183,12 @@ func (s *storageYDB) releaseBaseDiskSlot(
 			return BaseDisk{}, err
 		}
 
+		logging.Info(
+			ctx,
+			"created slot tombstone %+v",
+			slotTombstone,
+		)
+
 		return BaseDisk{}, tx.Commit(ctx)
 	}
 
