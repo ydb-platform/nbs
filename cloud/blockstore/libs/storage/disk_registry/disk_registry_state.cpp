@@ -8615,7 +8615,7 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryState::UpdateVolumeStateBroken(
+NProto::TError TDiskRegistryState::UpdateVolumeStateBroken(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TInstant now,
@@ -8623,17 +8623,17 @@ void TDiskRegistryState::UpdateVolumeStateBroken(
 {
     auto* disk = Disks.FindPtr(diskId);
     if (!disk) {
-        ReportDiskRegistryDiskNotFound(
-            "UpdateVolumeStateBroken",
-            {{"disk", diskId}});
-        return;
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "disk " << diskId.Quote() << " not found");
     }
     if (disk->IsVolumeStateBroken == broken) {
-        return;
+        return MakeError(S_ALREADY);
     }
     disk->IsVolumeStateBroken = broken;
     db.UpdateDisk(BuildDiskConfig(diskId, *disk));
     TryUpdateDiskStateImpl(db, diskId, *disk, now);
+    return {};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -32,7 +32,7 @@ void TDiskRegistryActor::HandleVolumeBroken(
         std::move(requestInfo),
         msg->Record.GetDiskId(),
         ctx.Now(),
-        true);
+        /*broken=*/true);
 }
 
 void TDiskRegistryActor::HandleVolumeRecovered(
@@ -57,7 +57,7 @@ void TDiskRegistryActor::HandleVolumeRecovered(
         std::move(requestInfo),
         msg->Record.GetDiskId(),
         ctx.Now(),
-        false);
+        /*broken=*/false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,7 +81,8 @@ void TDiskRegistryActor::ExecuteUpdateVolumeStateBroken(
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
-    State->UpdateVolumeStateBroken(db, args.DiskId, args.Now, args.Broken);
+    args.Error =
+        State->UpdateVolumeStateBroken(db, args.DiskId, args.Now, args.Broken);
 }
 
 void TDiskRegistryActor::CompleteUpdateVolumeStateBroken(

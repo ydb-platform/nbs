@@ -791,7 +791,7 @@ public:
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
 
-    void UpdateVolumeStateBroken(
+    [[nodiscard]] NProto::TError UpdateVolumeStateBroken(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TInstant now,
