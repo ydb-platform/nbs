@@ -1,33 +1,13 @@
 #pragma once
 
+#include "persistent_storage_stats.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/function_ref.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPersistentStorageStats
-{
-    ui64 RawCapacityByteCount = 0;
-    ui64 RawUsedByteCount = 0;
-    ui64 EntryCount = 0;
-    bool IsCorrupted = false;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct IPersistentStorageStats
-{
-    virtual ~IPersistentStorageStats() = default;
-
-    virtual void UpdatePersistentStorageStats(
-        const TPersistentStorageStats& stats) = 0;
-};
-
-using IPersistentStorageStatsPtr = std::shared_ptr<IPersistentStorageStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

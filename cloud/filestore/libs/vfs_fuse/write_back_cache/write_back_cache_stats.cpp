@@ -6,7 +6,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDummyWriteBackCacheStats: public IWriteBackCacheStats
+class TDummyWriteBackCacheStats
+    : public IWriteBackCacheStats
+    , public IWriteBackCacheInternalStats
+    , public IWriteBackCacheStateStats
+    , public INodeStateHolderStats
+    , public IWriteDataRequestManagerStats
+    , public IPersistentStorageStats
 {
 public:
     void ResetNonDerivativeCounters() override
@@ -60,6 +66,33 @@ public:
         const TPersistentStorageStats& stats) override
     {
         Y_UNUSED(stats);
+    }
+
+    IWriteBackCacheInternalStatsPtr
+    GetWriteBackCacheInternalStats() const override
+    {
+        return std::make_shared<TDummyWriteBackCacheStats>();
+    }
+
+    IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() const override
+    {
+        return std::make_shared<TDummyWriteBackCacheStats>();
+    }
+
+    INodeStateHolderStatsPtr GetNodeStateHolderStats() const override
+    {
+        return std::make_shared<TDummyWriteBackCacheStats>();
+    }
+
+    IWriteDataRequestManagerStatsPtr
+    GetWriteDataRequestManagerStats() const override
+    {
+        return std::make_shared<TDummyWriteBackCacheStats>();
+    }
+
+    IPersistentStorageStatsPtr GetPersistentStorageStats() const override
+    {
+        return std::make_shared<TDummyWriteBackCacheStats>();
     }
 };
 

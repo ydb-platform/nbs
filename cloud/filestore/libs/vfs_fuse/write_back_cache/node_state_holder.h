@@ -1,7 +1,7 @@
 #pragma once
 
 #include "node_state.h"
-#include "write_back_cache_stats.h"
+#include "node_state_holder_stats.h"
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
@@ -23,7 +23,7 @@ private:
         ui64 DeletionSequenceId = 0;
     };
 
-    const IWriteBackCacheStatsPtr Stats;
+    const INodeStateHolderStatsPtr Stats;
 
     // Monotonic sequence counter used to assign unique ids for:
     //  - deletion events (DeletionSequenceId)
@@ -43,7 +43,7 @@ private:
     TSet<ui64> Pins;
 
 public:
-    explicit TNodeStateHolder(IWriteBackCacheStatsPtr stats);
+    explicit TNodeStateHolder(INodeStateHolderStatsPtr stats);
 
     // Retrieve an existing node state or create a new empty one if it
     // does not exist. The returned reference is stored inside the holder

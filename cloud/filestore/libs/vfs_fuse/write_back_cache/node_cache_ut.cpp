@@ -118,7 +118,7 @@ struct TBootstrap
               std::make_shared<TSequenceIdGenerator>(),
               Storage,
               Timer,
-              Stats)
+              Stats->GetWriteDataRequestManagerStats())
     {}
 
     void PushUnflushed(ui64 offset, TString data)

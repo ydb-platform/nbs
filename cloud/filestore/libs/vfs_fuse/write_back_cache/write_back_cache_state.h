@@ -45,7 +45,8 @@ class TWriteBackCacheState
 private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
-    const IWriteBackCacheStatsPtr Stats;
+    const IWriteBackCacheStateStatsPtr Stats;
+    const IWriteDataRequestManagerStatsPtr RequestManagerStats;
     const TString LogTag;
 
     TNodeStateHolder Nodes;
