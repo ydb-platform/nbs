@@ -455,8 +455,8 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
             break;
 
         case ENodeFlushStatus::FlushRequested:
-            QueuedOperations.ScheduleFlushNode(nodeId);
             Stats->FlushStarted();
+            QueuedOperations.ScheduleFlushNode(nodeId);
             break;
 
         case ENodeFlushStatus::ReadyToFlush:

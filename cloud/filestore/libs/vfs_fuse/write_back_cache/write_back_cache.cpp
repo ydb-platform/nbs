@@ -130,11 +130,11 @@ public:
             LogTag << " WriteBackCache has been initialized "
                    << "{\"FilePath\": " << args.FilePath.Quote()
                    << ", \"RawCapacityByteCount\": "
-            << persistentStorageStats.RawCapacityByteCount
+                   << persistentStorageStats.RawCapacityByteCount
                    << ", \"RawUsedByteCount\": "
-            << persistentStorageStats.RawUsedByteCount
-                   << ", \"EntryCount\": "
-            << persistentStorageStats.EntryCount << "}");
+                   << persistentStorageStats.RawUsedByteCount
+                   << ", \"EntryCount\": " << persistentStorageStats.EntryCount
+                   << "}");
 
         if (persistentStorageStats.IsCorrupted) {
             ReportWriteBackCacheCorruptionError(
