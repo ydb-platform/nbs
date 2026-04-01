@@ -27,7 +27,8 @@ namespace {
 template <typename TRequest>
 TVector<std::shared_ptr<TRequest>> CreateSubRequests(
     std::shared_ptr<TRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 /*blockSize*/)
 {
     TVector<std::shared_ptr<TRequest>> result;
     result.reserve(subRanges.size());
@@ -45,7 +46,8 @@ TVector<std::shared_ptr<TRequest>> CreateSubRequests(
 template <>
 TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 /*blockSize*/)
 {
     TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> result;
 
@@ -80,7 +82,8 @@ TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
 template <>
 TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TWriteBlocksRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 blockSize)
 {
     TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> result;
     result.reserve(subRanges.size());
@@ -101,7 +104,6 @@ TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
         }
         if (request->ChecksumsSize() > 0) {
             subRequest->MutableChecksums()->Clear();
-            const ui32 blockSize = subRequest->GetBlocks().GetBuffers(0).size();
             *subRequest->MutableChecksums()->Add() =
                 CalculateChecksum(subRequest->GetBlocks(), blockSize);
         }
@@ -114,7 +116,8 @@ TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
 template <>
 TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 /*blockSize*/)
 {
     TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> result;
 
@@ -164,8 +167,10 @@ private:
 public:
     explicit TCompositeRequest(
         std::shared_ptr<TRequest> request,
-        const TVector<TBlockRange64>& subRanges)
-        : SubRequests(CreateSubRequests(std::move(request), subRanges))
+        const TVector<TBlockRange64>& subRanges,
+        ui32 blockSize)
+        : SubRequests(
+              CreateSubRequests(std::move(request), subRanges, blockSize))
     {
         SubResponses.resize(SubRequests.size());
     }
@@ -493,7 +498,8 @@ TFuture<TResponse> TSplitRequestService::ExecuteRequestWithSplit(
     auto compositeRequest =
         std::make_shared<TCompositeRequest<TRequest, TResponse>>(
             std::move(request),
-            config->Split(range));
+            config->Split(range),
+            config->BlockSize);
 
     return compositeRequest->RunSubRequests(
         std::move(callContext),
