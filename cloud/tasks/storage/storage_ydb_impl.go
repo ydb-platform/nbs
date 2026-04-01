@@ -2177,35 +2177,10 @@ func (s *storageYDB) isTaskEnded(
 	taskID string,
 ) (bool, error) {
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select status
-		from tasks
-		where id = $id
-	`, s.tablesPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(taskID)),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return false, errors.NewNonRetriableError(
-			errors.NewNotFoundErrorWithTaskID(taskID),
-		)
-	}
-
-	var status TaskStatus
-	err = res.ScanNamed(
-		persistence.OptionalWithDefault("status", &status),
-	)
+	taskState, err := s.getTask(ctx, session, taskID)
 	if err != nil {
 		return false, err
 	}
 
-	return IsEnded(status), nil
+	return IsEnded(taskState.Status), nil
 }
