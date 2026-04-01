@@ -213,6 +213,11 @@ message TClientConfig
     //     even if EnableListBasedRetryRules is set.
     // Applied for disks with IsReliableMediaKind == false.
     repeated uint32 NonRetriableErrorsForUnreliableMedia = 47;
+
+    // Enable non-blocking remount in TSession:
+    //   dataplane requests aren't blocked during remount
+    //   if current mount state is OK
+    optional bool EnableNonBlockingRemount = 48;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
