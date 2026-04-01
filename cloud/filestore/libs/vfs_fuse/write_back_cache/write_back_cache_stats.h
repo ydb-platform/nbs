@@ -40,11 +40,6 @@ struct IWriteBackCacheInternalStats
     virtual void FlushCompleted() = 0;
     virtual void FlushFailed() = 0;
 
-    virtual void IncrementNodeCount() = 0;
-    virtual void DecrementNodeCount() = 0;
-
-    virtual void WriteDataRequestDropped() = 0;
-
     virtual void AddReadDataStats(EReadDataRequestCacheStatus status) = 0;
 };
 

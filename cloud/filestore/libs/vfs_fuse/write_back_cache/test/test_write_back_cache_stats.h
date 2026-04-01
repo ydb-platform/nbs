@@ -92,28 +92,33 @@ struct TTestWriteBackCacheStats
     IWriteBackCacheInternalStatsPtr
     GetWriteBackCacheInternalStats() const override
     {
-        return const_cast<TTestWriteBackCacheStats*>(this)->shared_from_this();
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
     }
 
     IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() const override
     {
-        return const_cast<TTestWriteBackCacheStats*>(this)->shared_from_this();
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
     }
 
     INodeStateHolderStatsPtr GetNodeStateHolderStats() const override
     {
-        return const_cast<TTestWriteBackCacheStats*>(this)->shared_from_this();
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
     }
 
     IWriteDataRequestManagerStatsPtr
     GetWriteDataRequestManagerStats() const override
     {
-        return const_cast<TTestWriteBackCacheStats*>(this)->shared_from_this();
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
     }
 
     IPersistentStorageStatsPtr GetPersistentStorageStats() const override
     {
-        return const_cast<TTestWriteBackCacheStats*>(this)->shared_from_this();
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
     }
 };
 
