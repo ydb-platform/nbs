@@ -365,7 +365,7 @@ void TPartitionDatabase::DeleteMergedBlocks(
 
 bool TPartitionDatabase::FindMergedBlocks(
     IBlocksIndexVisitor& visitor,
-    IBlobsVisitor* blobsVisitor,
+    IBlobsVisitor& blobsVisitor,
     const TBlockRange32& readRange,
     bool precharge,
     ui32 maxBlocksInBlob,
@@ -412,9 +412,7 @@ bool TPartitionDatabase::FindMergedBlocks(
                     commitId,
                     it.GetValue<TTable::BlobId>());
 
-                if (blobsVisitor) {
-                    blobsVisitor->Visit(range, blobId);
-                }
+                blobsVisitor.Visit(range, blobId);
 
                 const auto holeMask = BlockMaskFromString(
                     it.GetValueOrDefault<TTable::HoleMask>());
@@ -466,9 +464,23 @@ bool TPartitionDatabase::FindMergedBlocks(
     ui32 maxBlocksInBlob,
     ui64 maxCommitId)
 {
+    struct TNoOpBlobsVisitor final: public IBlobsVisitor
+    {
+        bool Visit(
+            TBlockRange32 blockRange,
+            const TPartialBlobId& blobId) override
+        {
+            Y_UNUSED(blockRange);
+            Y_UNUSED(blobId);
+            return true;
+        }
+    };
+
+    TNoOpBlobsVisitor noOpBlobsVisitor;
+
     return FindMergedBlocks(
         visitor,
-        nullptr,
+        noOpBlobsVisitor,
         readRange,
         precharge,
         maxBlocksInBlob,

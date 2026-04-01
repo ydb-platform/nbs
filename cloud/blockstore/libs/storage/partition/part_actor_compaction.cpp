@@ -1726,9 +1726,8 @@ void PrepareRangeCompaction(
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
-        auto& blobRange = kv.second.BlobRange;
-        bool compactRangeContainsBlob =
-            blobRange && args.BlockRange.Contains(*blobRange);
+        const bool compactRangeContainsBlob =
+            args.BlockRange.Contains(kv.second.BlobRange);
 
         if (!compactRangeContainsBlob || !blockMaskOptimizationEnabled) {
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
@@ -1743,7 +1742,8 @@ void PrepareRangeCompaction(
 
         if (args.ChecksumsEnabled) {
             if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
-                Y_ABORT_UNLESS(kv.second.BlobMeta.Defined(),
+                Y_ABORT_UNLESS(
+                    kv.second.BlobMeta.Defined(),
                     "Could not read blob meta for blob: %s",
                     ToString(MakeBlobId(tabletId, kv.first)).data());
             } else {

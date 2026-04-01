@@ -101,7 +101,7 @@ public:
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,
-        IBlobsVisitor* blobsVisitor,
+        IBlobsVisitor& blobsVisitor,
         const TBlockRange32& readRange,
         bool precharge,
         ui32 maxBlocksInBlob,
