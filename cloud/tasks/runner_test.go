@@ -1307,7 +1307,7 @@ func TestTaskPingerOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
-	callback := &mockCallback{}
+	onError := &mockCallback{}
 
 	execCtx := newTestExecutionContext(
 		task,
@@ -1324,8 +1324,8 @@ func TestTaskPingerOnce(t *testing.T) {
 		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
 	).Run(toCallback(cancel)).Return(state, nil)
 
-	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
-	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, onError.Run)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, onError)
 }
 
 func TestTaskPingerImmediateFailure(t *testing.T) {
@@ -1334,7 +1334,7 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
-	callback := &mockCallback{}
+	onError := &mockCallback{}
 
 	execCtx := newTestExecutionContext(
 		task,
@@ -1349,8 +1349,12 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 		ID:         taskID,
 		ModifiedAt: time.Now(),
 	}
-	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError)
-	callback.On("Run")
+	taskStorage.On(
+		"UpdateTask",
+		mock.Anything,
+		mock.MatchedBy(matchesState(t, state)),
+	).Return(state, assert.AnError)
+	onError.On("Run")
 
 	go func() {
 		// Cancel runner loop on first iteration.
@@ -1359,8 +1363,8 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 		cancel()
 	}()
 
-	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
-	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, onError.Run)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, onError)
 }
 
 func TestTaskPingerTwice(t *testing.T) {
@@ -1369,7 +1373,7 @@ func TestTaskPingerTwice(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
-	callback := &mockCallback{}
+	onError := &mockCallback{}
 
 	execCtx := newTestExecutionContext(
 		task,
@@ -1389,17 +1393,17 @@ func TestTaskPingerTwice(t *testing.T) {
 		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
 	).Run(toCallback(cancel)).Return(state, nil).Once()
 
-	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
-	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, onError.Run)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, onError)
 }
 
 func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
 	pingTimeout := 100 * time.Second
-	ctx, cancel := context.WithCancel(newContext())
+	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
-	callback := &mockCallback{}
+	onError := &mockCallback{}
 
 	execCtx := newTestExecutionContext(
 		task,
@@ -1419,17 +1423,48 @@ func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
 	).Return(state, assert.AnError).Once()
 
-	callback.On("Run")
+	onError.On("Run")
+
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, onError.Run)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, onError)
+}
+
+func TestTaskPingerShouldNotCallErrorCallbackWhenContextIsCancelled(
+	t *testing.T,
+) {
+
+	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
+	ctx, cancel := context.WithCancel(newContext())
+	taskStorage := mocks.NewStorageMock()
+	task := NewTaskMock()
+	onError := &mockCallback{}
+
+	execCtx := newTestExecutionContext(
+		task,
+		taskStorage,
+		storage.TaskState{
+			ID: taskID,
+		},
+	)
 
 	go func() {
-		// Cancel runner loop on second iteration.
-		// TODO: This is bad.
-		<-time.After(pingPeriod + pingPeriod/2)
+		// Cancel pinger after several iterations
+		<-time.After(2 * pingPeriod)
 		cancel()
 	}()
 
-	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
-	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
+	state := storage.TaskState{
+		ID: taskID,
+	}
+	taskStorage.On(
+		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
+	).Return(state, nil)
+
+	// Callback should not be called
+
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, onError.Run)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, onError)
 }
 
 func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
@@ -1438,7 +1473,7 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
-	callback := &mockCallback{}
+	onError := &mockCallback{}
 
 	execCtx := newTestExecutionContext(
 		task,
@@ -1455,8 +1490,8 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 		"UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state)),
 	).Run(toCallback(cancel)).Return(state, context.Canceled).Once()
 
-	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
-	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, onError.Run)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, onError)
 }
 
 func TestTaskPingerAccumulatesInflightDuration(t *testing.T) {
@@ -1469,7 +1504,7 @@ func TestTaskPingerAccumulatesInflightDuration(t *testing.T) {
 	defer cancel()
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
-	callback := &mockCallback{}
+	onError := &mockCallback{}
 
 	execCtx := newTestExecutionContext(
 		task,
@@ -1501,11 +1536,11 @@ func TestTaskPingerAccumulatesInflightDuration(t *testing.T) {
 		).Run(callback).Return(state, nil).Once()
 	}
 
-	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, onError.Run)
 	// There is no need to additionally ensure order,
 	// since code provided in On().Run() argument is executed in the order On() functions were called.
 	// https://github.com/stretchr/testify/blob/a53be35c3b0cfcd5189cffcfd75df60ea581104c/mock/mock.go#L531
-	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, onError)
 }
 
 func TestTryExecutingTask(t *testing.T) {
