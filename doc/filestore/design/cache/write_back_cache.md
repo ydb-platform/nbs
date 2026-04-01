@@ -1,8 +1,8 @@
 # WriteBackCache
 
-Write-back cache is used to speed up execution of write requests at client side
-by reporting them as completed for a client but continuing processing them in
-background.
+Write-back cache is used to speed up execution of write requests on the client
+side by reporting them as completed for a client but continuing processing them
+in background.
 
 ## Basic principles
 
@@ -108,13 +108,14 @@ TFuture<TError> ReleaseHandle(ui64 nodeId, ui64 handle);
 ```
 
 Ensures that handle `handle` is safe to be destroyed. It does not destroy
-handle inself — it should be done by the caller code after either successful
+handle itself — it should be done by the caller code after either successful
 or unsuccessful result of ReleaseHandle.
 
 Returns a future that is completed when all `WriteData` requests associated with
 the node `nodeId` and `handle` are flushed. This also applies
-to requests in the pending queue. Unlike `FlushNodeData`, unsuccessful flush
-does immediately imply `ReleaseHandle` failure.
+to requests in the pending queue. Unlike `FlushNodeData`, an unsuccessful flush
+does not immediately cause `ReleaseHandle` to fail; instead, `ReleaseHandle`
+waits (its future remains pending) and is resolved according to the rules below.
 
 When ALL handles associated with the node `nodeId` are subject to release and
 flush has failed:
@@ -159,7 +160,7 @@ These requests are implemented as follows:
 
 1. Acquire barrier.
 
-2. Execute request is barrier acquisition was successful or return as error.
+2. Execute request if barrier acquisition was successful or return as error.
 
 3. Release barrier.
 
@@ -171,7 +172,7 @@ ui64 AcquireNodeStateRef();
 void ReleaseNodeStateRef(ui64 refId);
 ```
 
-Pins and unpins cached data for all nodes preventing the flushed data to be
+Pins and unpins cached data for all nodes preventing flushed data from being
 evicted from the persistent storage. Used in `ReadDir` and `Lookup` in order
 to prevent returning wrong node size due to race condition.
 
@@ -192,7 +193,7 @@ to adjust node size in `GetAttr`, `ReadDir` and `Lookup` requests.
 
 ## State
 
-Each `WriteData`, `Flush` and `FlushAll` request is assigned an unique strictly
+Each `WriteData`, `Flush` and `FlushAll` request is assigned a unique strictly
 increased value — `SequenceId`.
 
 `WriteData` request can be in one of the following states:
@@ -213,9 +214,12 @@ than any `Evicted` request.
 Cached data is calculated by applying `Unflushed` and `Flushed` requests on top
 of each other in the increasing order of `SequenceId`.
 
-`Flush` (`FlushAll`) request is completed when there are no `Pending` or
-`Unflushed` requests with higher `SequenceId` associated with the node (among
-all nodes).
+`Flush` request with `SequenceId` S is completed when all `WriteData` requests
+associated with the corresponding node with `SequenceId` ≤ S have left the
+`Pending`/`Unflushed` states (i.e. the minimal `SequenceId` among
+`Pending`/`Unflushed` requests, if any, is greater than S).
+
+`FlushAll` is similar to `Flush` but is applied to request for all nodes.
 
 `Flushed` request becomes `Evicted` when there are no `Pin` associated with the
 corresponding node or global `Pin` that have less or equal `SequenceId`.
@@ -224,12 +228,11 @@ corresponding node or global `Pin` that have less or equal `SequenceId`.
 requests associated with the node/handle pair.
 
 `Barriers` prevent `WriteData` requests from flushing: no `WriteData` request in
-`Pending` or `Unflushed` state may become `Flushed` or `Evicted` is there is a
+`Pending` or `Unflushed` state may become `Flushed` or `Evicted` if there is a
 barrier with lower `SequenceId`.
 
-A `Barrier` becomes acquired when all `WriteData` requests with lower
-`SequienceId` are evicted.
-
+A `Barrier` becomes acquired when all `WriteData` requests with `SequenceId`
+less than or equal to the barrier's `SequenceId` are flushed and evicted.
 
 ![state](../../drawio/WriteBackCacheState.svg)
 
@@ -292,7 +295,7 @@ requests will be lost and the order will be maintained.
 
 ### WriteDataRequestManager
 
-An abstration over `PersistentStorage` that:
+An abstraction over `PersistentStorage` that:
 
 - Manipulates the requests, not byte sequences;
 - Performs request serialization and deserialization;
@@ -320,19 +323,19 @@ implementation).
 ### WriteBackCacheState
 
 - Holds the entire write-back cache state;
-- Checks if nodes are to be flusher and notifies about it.
+- Checks if nodes are to be flushed and notifies about it.
 
 
 ### Flusher
 
-- Executes mutiple `WriteData` requests in parallel;
+- Executes multiple `WriteData` requests in parallel;
 - Reports the flush progression to `WriteBackCacheState`
 
 
 ### WriteDataRequestBuilder
 
 - Optimizes `WriteData` requests by merging them;
-- Limits the amount of request to be executed in a single flush iteration.
+- Limits the number of request to be executed in a single flush iteration.
 
 
 ### PeriodicFlushScheduler
@@ -367,23 +370,11 @@ Note: `O_DIRECT` flag is a non-POSIX feature so we should follow Linux behavior.
 
 ### Implementation in WriteBackCache
 
-Read and write operations with `O_DIRECT` flag set should never enter
-WriteBackCache. The caller code (`TFileSystem`) should ensure that the cache
-is empty and then execute the operation directly.
-
-#### WriteData
-
-Call `FlushNodeData` then call `WriteData` (directly to the Session) if flush was successful.
-
-Note: it is guaranteed by an RW lock that no cached WriteData request can be
-received while there are direct writes in progress.
-
-https://github.com/torvalds/linux/blob/c537e12daeecaecdcd322c56a5f70659d2de7bde/fs/fuse/file.c#L1494
-
-#### ReadData
-
-Call `FlushNodeData` then call `ReadData` (directly to the Session) if flush was
-successful.
+WriteBackCache has metohd `ReadDataDirect` and `WriteDataDirect` for reads and
+writes that should not interact with WriteBackCache. They ensure that the cache
+is emptied and send the requests directly to the underlying storage. New
+non-direct WriteData requests may enter the cache but they will not be flushed
+until direct operations are completed.
 
 Note: the kernel does not guarantee mutual exclusion or coherence between
 overlapping direct reads and writes. A client making writes while a read
