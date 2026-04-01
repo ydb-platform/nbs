@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
-
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>
 #include <util/system/types.h>
@@ -71,6 +69,8 @@ public:
 template <size_t BucketCount = DefaultMaxCalculatorBucketSize>
 class TRelaxedMaxCounter
 {
+    static_assert(BucketCount > 0, "BucketCount must be positive");
+
 private:
     // Access to Bucket array is single-threaded and should be synchronized
     std::array<i64, BucketCount> Buckets{};
