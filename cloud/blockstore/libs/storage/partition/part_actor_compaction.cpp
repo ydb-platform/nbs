@@ -1075,7 +1075,7 @@ public:
     bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
-        ab.BlobRange = blockRange;
+        ab.BlobRangeHint = blockRange;
         return true;
     }
 };
@@ -1727,7 +1727,7 @@ void PrepareRangeCompaction(
 
     for (auto& kv: args.AffectedBlobs) {
         const bool compactRangeContainsBlob =
-            args.BlockRange.Contains(kv.second.BlobRange);
+            args.BlockRange.Contains(kv.second.BlobRangeHint);
 
         if (!compactRangeContainsBlob || !blockMaskOptimizationEnabled) {
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
