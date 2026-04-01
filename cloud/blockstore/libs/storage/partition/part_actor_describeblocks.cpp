@@ -27,6 +27,7 @@ namespace {
 class TDescribeBlocksVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeBlocks& Args;
@@ -51,6 +52,18 @@ public:
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
+        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 blobAlignment) override
+    {
+        Y_UNUSED(blobAlignment);
         Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
         return true;
     }

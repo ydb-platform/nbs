@@ -51,14 +51,17 @@ struct TAddMixedBlob
     const TPartialBlobId BlobId;
     const TVector<ui32> Blocks;
     const TVector<ui32> Checksums;
+    const ui32 BlobAlignment = 0;
 
     TAddMixedBlob(
             const TPartialBlobId& blobId,
             TVector<ui32> blocks,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            ui32 blobAlignment)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
+        , BlobAlignment(blobAlignment)
     {}
 };
 
@@ -90,14 +93,17 @@ struct TAddFreshBlob
     const TPartialBlobId BlobId;
     const TVector<TBlock> Blocks;
     const TVector<ui32> Checksums;
+    const ui32 BlobAlignment = 0;
 
     TAddFreshBlob(
             const TPartialBlobId& blobId,
             TVector<TBlock> blocks,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            ui32 blobAlignment)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
+        , BlobAlignment(blobAlignment)
     {}
 };
 
@@ -118,6 +124,8 @@ struct TWriteFreshBlocksRequest
 
 struct TAffectedBlob
 {
+    ui32 BlobAlignment = 0;
+    std::optional<TBlockRange32> BlobRange;
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
     TVector<ui32> AffectedBlockIndices;

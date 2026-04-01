@@ -21,6 +21,7 @@ namespace {
 class TMetadataRebuildBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TMetadataRebuildUsedBlocks& Args;
@@ -46,6 +47,22 @@ public:
     {
         Y_UNUSED(commitId);
         Y_UNUSED(blobOffset);
+
+        OnBlock(blockIndex, commitId, !IsDeletionMarker(blobId));
+
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 blobAlignment) override
+    {
+        Y_UNUSED(commitId);
+        Y_UNUSED(blobOffset);
+        Y_UNUSED(blobAlignment);
 
         OnBlock(blockIndex, commitId, !IsDeletionMarker(blobId));
 

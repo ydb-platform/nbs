@@ -1,6 +1,7 @@
 #include "part_database.h"
 
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -24,8 +25,18 @@ TString CommitId2Str(ui64 commitId)
 
 struct TTestBlockVisitor final
     : public IBlocksIndexVisitor
+    , public IBlobsVisitor
+    , public IMixedBlocksIndexVisitor
 {
     TStringBuilder Result;
+    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
+
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    {
+        BlobToRange[blobId] = blockRange;
+
+        return true;
+    }
 
     bool Visit(
         ui32 blockIndex,
@@ -40,6 +51,24 @@ struct TTestBlockVisitor final
             Result << " ";
         }
         Result << "#" << blockIndex << ":" << CommitId2Str(commitId);
+        return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 blobAlignment) override
+    {
+        Y_UNUSED(blobId);
+        Y_UNUSED(blobOffset);
+
+        if (Result) {
+            Result << " ";
+        }
+        Result << "#" << blockIndex << ":" << CommitId2Str(commitId) << ":"
+               << blobAlignment;
         return true;
     }
 };
@@ -169,29 +198,26 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.InitSchema();
         });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMixedBlocks(
-                executor.MakeBlobId(),
-                {0, 1, 2});
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { db.WriteMixedBlocks(executor.MakeBlobId(), {0, 1, 2}, 12); });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMixedBlocks(
-                executor.MakeBlobId(),
-                {4, 5, 6});
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { db.WriteMixedBlocks(executor.MakeBlobId(), {4, 5, 6}, 13); });
 
-        ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMixedBlocks(
-                executor.MakeBlobId(),
-                {2, 3, 4});
-        });
+        ui64 maxCommitId = executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { db.WriteMixedBlocks(executor.MakeBlobId(), {2, 3, 4}, 14); });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMixedBlocks(
-                executor.MakeBlobId(),
-                {0, 1, 2, 3, 4, 5, 6});
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                db.WriteMixedBlocks(
+                    executor.MakeBlobId(),
+                    {0, 1, 2, 3, 4, 5, 6},
+                    15);
+            });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
             {
@@ -202,7 +228,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     true,   // precharge
                     maxCommitId
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#0:2 #1:2");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#0:2:12 #1:2:12");
             }
             {
                 TTestBlockVisitor visitor;
@@ -212,7 +238,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     true,   // precharge
                     maxCommitId
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#5:3 #6:3");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#5:3:13 #6:3:13");
             }
             {
                 TTestBlockVisitor visitor;
@@ -222,7 +248,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     true,   // precharge
                     maxCommitId
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#2:4 #2:2 #3:4");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    visitor.Result,
+                    "#2:4:14 #2:2:12 #3:4:14");
             }
             {
                 TTestBlockVisitor visitor;
@@ -232,7 +260,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     true,   // precharge
                     maxCommitId
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#3:4 #4:4 #4:3");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    visitor.Result,
+                    "#3:4:14 #4:4:14 #4:3:13");
             }
             {
                 TTestBlockVisitor visitor;
@@ -242,7 +272,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     true,   // precharge
                     maxCommitId
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #2:4 #2:2 #3:4 #4:4 #4:3 #5:3");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    visitor.Result,
+                    "#1:2:12 #2:4:14 #2:2:12 #3:4:14 #4:4:14 #4:3:13 #5:3:13");
             }
             {
                 TTestBlockVisitor visitor;
@@ -251,7 +283,10 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     TBlockRange32::MakeClosedInterval(1, 5),
                     true    // precharge
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:5 #1:2 #2:5 #2:4 #2:2 #3:5 #3:4 #4:5 #4:4 #4:3 #5:5 #5:3");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    visitor.Result,
+                    "#1:5:15 #1:2:12 #2:5:15 #2:4:14 #2:2:12 #3:5:15 #3:4:14 #4:5:15 "
+                    "#4:4:14 #4:3:13 #5:5:15 #5:3:13");
             }
         });
     }
@@ -266,57 +301,57 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {0, 1, 2});
+                {0, 1, 2}, 12);
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {4, 5, 6});
+                {4, 5, 6}, 13);
         });
 
         ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {2, 3, 4});
+                {2, 3, 4}, 14);
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
             db.WriteMixedBlocks(
                 executor.MakeBlobId(),
-                {0, 1, 2, 3, 4, 5, 6});
+                {0, 1, 2, 3, 4, 5, 6}, 15);
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(visitor, TVector<ui32>{0, 1}, maxCommitId));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#0:2 #1:2");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#0:2:12 #1:2:12");
             }
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(visitor, TVector<ui32>{5, 6}, maxCommitId));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#5:3 #6:3");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#5:3:13 #6:3:13");
             }
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(visitor, TVector<ui32>{2, 3}, maxCommitId));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#2:4 #2:2 #3:4");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#2:4:14 #2:2:12 #3:4:14");
             }
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(visitor, TVector<ui32>{3, 4}, maxCommitId));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#3:4 #4:4 #4:3");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#3:4:14 #4:4:14 #4:3:13");
             }
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(visitor, TVector<ui32>{1, 3, 5}, maxCommitId));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #3:4 #5:3");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2:12 #3:4:14 #5:3:13");
             }
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMixedBlocks(visitor, TVector<ui32>{1, 3, 5}));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:5 #1:2 #3:5 #3:4 #5:5 #5:3");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:5:15 #1:2:12 #3:5:15 #3:4:14 #5:5:15 #5:3:13");
             }
         });
     }
@@ -990,6 +1025,90 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 compactionMap1[i].Stat.BlobCount,
                 compactionMap2[i].Stat.BlobCount);
         }
+    }
+
+    Y_UNIT_TEST(ShouldFindRangesForMergedBlobs)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        TVector<TPartialBlobId> blobIds;
+
+        TVector<TBlockRange32> ranges = {
+            TBlockRange32::WithLength(0, 3),
+            TBlockRange32::MakeClosedInterval(4, 6),
+            TBlockRange32::MakeClosedInterval(2, 4),
+            TBlockRange32::WithLength(0, 7)};
+
+        for (size_t i = 0; i < ranges.size(); ++i) {
+            executor.WriteTx(
+                [&](TPartitionDatabase db)
+                {
+                    blobIds.push_back(executor.MakeBlobId());
+                    db.WriteMergedBlocks(
+                        blobIds.back(),
+                        ranges[i],
+                        TBlockMask());
+                });
+        }
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                {
+                    TTestBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor,
+                        &visitor,
+                        TBlockRange32::WithLength(0, 2),
+                        true,   // precharge
+                        MaxBlocksCount));
+
+                    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+                        expectedContent{
+                            {blobIds[0], ranges[0]},
+                            {blobIds[3], ranges[3]},
+                        };
+
+                    ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
+                }
+
+                {
+                    TTestBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor,
+                        &visitor,
+                        TBlockRange32::WithLength(0, 2),
+                        true,   // precharge
+                        MaxBlocksCount,
+                        blobIds[2].CommitId()));
+
+                    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+                        expectedContent{
+                            {blobIds[0], ranges[0]},
+                        };
+
+                    ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
+                }
+
+                {
+                    TTestBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor,
+                        &visitor,
+                        TBlockRange32::MakeClosedInterval(5, 6),
+                        true,   // precharge
+                        MaxBlocksCount));
+
+                    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+                        expectedContent{
+                            {blobIds[1], ranges[1]},
+                            {blobIds[3], ranges[3]},
+                        };
+
+                    ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
+                }
+            });
     }
 }
 

@@ -71,6 +71,17 @@ struct TOwningFreshBlock
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IBlobsVisitor
+{
+    virtual ~IBlobsVisitor() = default;
+
+    virtual bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IBlocksIndexVisitor
 {
     virtual ~IBlocksIndexVisitor() = default;
@@ -80,6 +91,18 @@ struct IBlocksIndexVisitor
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset) = 0;
+};
+
+struct IMixedBlocksIndexVisitor
+{
+    virtual ~IMixedBlocksIndexVisitor() = default;
+
+    virtual bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 blobAlignment) = 0;
 };
 
 struct IExtendedBlocksIndexVisitor

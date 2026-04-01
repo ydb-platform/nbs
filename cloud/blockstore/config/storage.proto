@@ -1474,4 +1474,20 @@ message TStorageServiceConfig
     // Maximum number of inflight attach/detach path requests.
     // VolumeBalancerMaxInProgress == 0 means no limit
     optional uint64 VolumeBalancerMaxInProgress = 488;
+
+    // Enables block mask optimization.
+    optional bool BlockMaskOptimizationEnabled = 489;
+
+    // Split blobs by compaction range boundaries during flush.
+    // When enabled, fresh blocks from different compaction ranges will be
+    // written to separate blobs during flush operation.
+    optional bool SplitFreshBlobsByCompactionRangeEnabled = 490;
+
+    // When SplitFreshBlobsByCompactionRangeEnabled is true, applies per flush
+    // segment bounded only by MaxBlobRangeSize / MaxBlocksInBlob (not by
+    // compaction range). If splitting that segment by compaction range
+    // boundaries would yield more than this many blobs, the segment is written
+    // as a single blob; otherwise it is split at range boundaries. Zero means
+    // no limit (always split by compaction range within each segment).
+    optional uint32 SplitFreshBlobsByCompactionRangeMaxBlobCount = 491;
 }

@@ -401,6 +401,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsBlockMaskOptimizationFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -791,6 +796,11 @@ public:
     GetPoolKindToMediaKindMapping() const;
 
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
+
+    [[nodiscard]] bool GetBlockMaskOptimizationEnabled() const;
+
+    [[nodiscard]] bool GetSplitFreshBlobsByCompactionRangeEnabled() const;
+    [[nodiscard]] ui32 GetSplitFreshBlobsByCompactionRangeMaxBlobCount() const;
 };
 
 ui64 GetAllocationUnit(

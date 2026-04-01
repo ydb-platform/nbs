@@ -1001,6 +1001,15 @@ bool TPartitionActor::IsFreshBlocksWriterEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsBlockMaskOptimizationEnabled() const
+{
+    return Config->GetBlockMaskOptimizationEnabled() ||
+           Config->IsBlockMaskOptimizationFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
