@@ -1128,8 +1128,7 @@ void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
             TBlockStoreComponents::VOLUME,
             "%s skiping SetVhostDiscardFlagRequest because the flag is "
             "already enabled",
-            LogTitle.GetWithTime().c_str(),
-            State->GetDiskId().c_str());
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
@@ -1148,8 +1147,7 @@ void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
         ctx,
         TBlockStoreComponents::VOLUME,
         "%s sending SetVhostDiscardFlagRequest",
-        LogTitle.GetWithTime().c_str(),
-        State->GetDiskId().c_str());
+        LogTitle.GetWithTime().c_str());
 
     auto request = std::make_unique<TEvService::TEvSetVhostDiscardFlagRequest>(
         State->GetDiskId(),
