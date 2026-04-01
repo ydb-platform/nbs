@@ -38,7 +38,6 @@ func (t *PanicTask) Cancel(
 
 	<-time.After(common.RandomDuration(time.Millisecond, 5*time.Second))
 	panic("test panic")
-	return nil
 }
 
 func (t *PanicTask) GetMetadata(
