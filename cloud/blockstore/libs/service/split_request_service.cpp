@@ -4,6 +4,7 @@
 #include "service_method.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/common/split_request_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -97,6 +98,12 @@ TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
             const size_t srcIndx = subRange.Start + i - request->GetStartIndex();
             buffers.Add(
                 std::move(*srcBuffers.MutableBuffers()->Mutable(srcIndx)));
+        }
+        if (request->ChecksumsSize() > 0) {
+            subRequest->MutableChecksums()->Clear();
+            const ui32 blockSize = subRequest->GetBlocks().GetBuffers(0).size();
+            *subRequest->MutableChecksums()->Add() =
+                CalculateChecksum(subRequest->GetBlocks(), blockSize);
         }
         result.push_back(std::move(subRequest));
     }
