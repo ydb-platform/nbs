@@ -128,12 +128,12 @@ public:
 
         STORAGE_INFO(
             LogTag << " WriteBackCache has been initialized "
-            << "{\"FilePath\": " << args.FilePath.Quote()
-            << ", \"RawCapacityByteCount\": "
+                   << "{\"FilePath\": " << args.FilePath.Quote()
+                   << ", \"RawCapacityByteCount\": "
             << persistentStorageStats.RawCapacityByteCount
-            << ", \"RawUsedByteCount\": "
+                   << ", \"RawUsedByteCount\": "
             << persistentStorageStats.RawUsedByteCount
-            << ", \"EntryCount\": "
+                   << ", \"EntryCount\": "
             << persistentStorageStats.EntryCount << "}");
 
         if (persistentStorageStats.IsCorrupted) {
@@ -377,8 +377,6 @@ private:
             std::move(writeDataBatch.Requests),
             writeDataBatch.AffectedRequestCount);
 
-        Stats->FlushStarted();
-
         ExecuteFlush(flushState);
     }
 
@@ -424,22 +422,17 @@ private:
         auto error = flushState->CollectFlushResult();
 
         if (HasError(error)) {
-            Stats->FlushFailed();
-
             auto retryStatus =
                 State.FlushFailed(flushState->GetNodeId(), error);
 
             if (retryStatus == EFlushRetryStatus::ShouldRetry) {
                 ScheduleRetryFlush(std::move(flushState));
-                return;
             }
         } else {
             State.FlushSucceeded(
                 flushState->GetNodeId(),
                 flushState->GetAffectedUnflushedRequestCount());
         }
-
-        Stats->FlushCompleted();
     }
 
     void ScheduleRetryFlush(std::shared_ptr<TNodeFlushState> flushState)
