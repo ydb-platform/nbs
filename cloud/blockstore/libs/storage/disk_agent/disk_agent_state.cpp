@@ -520,6 +520,17 @@ ui32 TDiskAgentState::GetDevicesCount() const
     return Devices.size();
 }
 
+ui32 TDiskAgentState::GetForcedToZeroFillMethodDevicesCount() const
+{
+    ui32 forcedZeroFillMethodDevices = 0;
+    for (const auto& device: Devices) {
+        if (device.second.Config.GetForcedZeroFillMethod()) {
+            forcedZeroFillMethodDevices += 1;
+        }
+    }
+    return forcedZeroFillMethodDevices;
+}
+
 TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 {
     return InitializeSpdk(AgentConfig, Spdk, Allocator)
@@ -1008,7 +1019,13 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         }
     }
 
-    return device->EraseDevice(AgentConfig->GetDeviceEraseMethod())
+    auto deviceEraseMethod = AgentConfig->GetDeviceEraseMethod();
+    auto* deviceState = Devices.FindPtr(uuid);
+    if (deviceState && deviceState->Config.GetForcedZeroFillMethod()) {
+        deviceEraseMethod = NProto::DEVICE_ERASE_METHOD_ZERO_FILL;
+    }
+
+    return device->EraseDevice(deviceEraseMethod)
         .Subscribe(std::move(onDeviceSecureEraseFinish));
 }
 

@@ -28,6 +28,7 @@
 #include <util/system/mutex.h>
 
 #include <cstring>
+#include <regex>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -137,6 +138,7 @@ private:
     TMutex Lock;
 
     THashMap<TString, TString> PathToSerial;
+    THashMap<TString, TString> PathToModel;
 
 public:
     TInitializer(
@@ -183,6 +185,11 @@ private:
 
     TString GetSerialNumber(const TString& path);
     void SetupSerialNumbers(TVector<NProto::TFileDeviceArgs>& fileDevices);
+
+    TString GetDeviceModel(const TString& path);
+    void SetupDeviceModels(TVector<NProto::TFileDeviceArgs>& fileDevices);
+    void MarkDeviceToZeroFillMethod(
+        TVector<NProto::TFileDeviceArgs>& fileDevices);
 
     auto ProcessConfigCache(const THashSet<TString>& allowedPaths = {})
         -> TResultOrError<TVector<NProto::TFileDeviceArgs>>;
@@ -365,6 +372,50 @@ void TInitializer::SetupSerialNumbers(
     }
 }
 
+TString TInitializer::GetDeviceModel(const TString& path)
+{
+    auto it = PathToModel.find(path);
+    if (it == PathToModel.end()) {
+        auto [model, error] = NvmeManager->GetDeviceModel(path);
+        it = PathToModel.emplace(path, model).first;
+        if (HasError(error)) {
+            with_lock (Lock) {
+                Errors.push_back(
+                    TStringBuilder()
+                    << "Can't get model for " << path.Quote() << ": "
+                    << FormatError(error));
+            }
+        }
+    }
+
+    return it->second;
+}
+
+void TInitializer::SetupDeviceModels(
+    TVector<NProto::TFileDeviceArgs>& fileDevices)
+{
+    for (auto& file: fileDevices) {
+        file.SetDeviceModel(GetDeviceModel(file.GetPath()));
+    }
+}
+
+void TInitializer::MarkDeviceToZeroFillMethod(
+    TVector<NProto::TFileDeviceArgs>& fileDevices)
+{
+    for (auto& file: fileDevices) {
+        for (auto& regExp: AgentConfig->GetModelsRegExpForcedZeroFill()) {
+            const std::regex re{
+                regExp.c_str(),
+                std::regex_constants::ECMAScript};
+            std::smatch match;
+            if (std::regex_match(file.GetDeviceModel().c_str(), match, re)) {
+                file.SetForcedZeroFillMethod(true);
+                break;
+            }
+        }
+    }
+}
+
 void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
 {
     if (!ValidateStorageDiscoveryConfig()) {
@@ -399,6 +450,8 @@ void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
 
     SortBy(files, GetDeviceId);
     SetupSerialNumbers(files);
+    SetupDeviceModels(files);
+    MarkDeviceToZeroFillMethod(files);
 
     if (!ValidateGeneratedConfigs(files)) {
         ReportDiskAgentConfigMismatchEvent("Bad generated config");
@@ -715,6 +768,8 @@ NProto::TDeviceConfig TInitializer::CreateConfig(
     config.SetPoolName(device.GetPoolName());
     config.SetSerialNumber(device.GetSerialNumber());
     config.SetPhysicalOffset(device.GetOffset());
+    config.SetDeviceModel(device.GetDeviceModel());
+    config.SetForcedZeroFillMethod(device.GetForcedZeroFillMethod());
 
     return config;
 }

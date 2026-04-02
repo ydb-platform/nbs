@@ -85,6 +85,9 @@ void TDiskAgentActor::RegisterCounters(const TActorContext& ctx)
         OldRequestCounters.Delayed = outOfOrderCounters->GetCounter("Delayed");
         OldRequestCounters.Rejected = outOfOrderCounters->GetCounter("Rejected");
 
+        ForcedToZeroFillMethodDevices =
+            totalCounters->GetCounter("ForcedToZeroFillMethodDevices");
+
         UpdateCounters(ctx);
         ScheduleCountersUpdate(ctx);
     }
@@ -98,8 +101,9 @@ void TDiskAgentActor::ScheduleCountersUpdate(const TActorContext& ctx)
 void TDiskAgentActor::UpdateCounters(const TActorContext& ctx)
 {
     auto counters = AppData(ctx)->Counters;
-    if (counters) {
-        // TODO
+    if (counters && State) {
+        ForcedToZeroFillMethodDevices->Set(
+            State->GetForcedToZeroFillMethodDevicesCount());
     }
 }
 

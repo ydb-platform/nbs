@@ -6,11 +6,13 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
@@ -96,11 +98,17 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
 struct TTestNvmeManager: NNvme::INvmeManager
 {
     THashMap<TString, TString> PathToSerial;
+    THashMap<TString, TString> PathToModel;
+    NNvme::TNvmeDeallocateHistoryPtr DeallocateHistory;
 
-    explicit TTestNvmeManager(
-            const TVector<std::pair<TString, TString>>& pathToSerial)
+    TTestNvmeManager(
+            const TVector<std::pair<TString, TString>>& pathToSerial,
+            const TVector<std::pair<TString, TString>>& pathToModel)
         : PathToSerial{pathToSerial.cbegin(), pathToSerial.cend()}
-    {}
+        , PathToModel{pathToModel.cbegin(), pathToModel.cend()}
+    {
+        DeallocateHistory = std::make_shared<NNvme::TNvmeDeallocateHistory>();
+    }
 
     void Start() final
     {}
@@ -124,8 +132,11 @@ struct TTestNvmeManager: NNvme::INvmeManager
         ui64 sizeBytes) override
     {
         Y_UNUSED(path);
-        Y_UNUSED(offsetBytes);
-        Y_UNUSED(sizeBytes);
+
+        if (DeallocateHistory) {
+            DeallocateHistory->emplace_back(offsetBytes, sizeBytes);
+        }
+
 
         return MakeFuture<NProto::TError>();
     }
@@ -141,6 +152,23 @@ struct TTestNvmeManager: NNvme::INvmeManager
 
         auto it = PathToSerial.find(device);
         if (it == PathToSerial.end()) {
+            return MakeError(MAKE_SYSTEM_ERROR(42), path);
+        }
+
+        return it->second;
+    }
+
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        TString device;
+        try {
+            device = NFs::ReadLink(path);
+        } catch (...) {
+            return MakeError(E_FAIL, CurrentExceptionMessage());
+        }
+
+        auto it = PathToModel.find(path);
+        if (it == PathToModel.end()) {
             return MakeError(MAKE_SYSTEM_ERROR(42), path);
         }
 
@@ -5500,6 +5528,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             {Devices[3], "Z"},   // nvme3n1
         };
 
+        TVector<std::pair<TString, TString>> pathToModel{
+            {Devices[0], "A"},   // nvme0n1
+            {Devices[1], "B"},   // nvme1n1
+            {Devices[2], "C"},   // nvme2n1
+            {Devices[3], "D"},   // nvme3n1
+        };
+
         // build the config cache
         {
             NProto::TDiskAgentConfig config;
@@ -5548,10 +5583,13 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             });
 
         auto env = TTestEnvBuilder(*Runtime)
-            .With(CreateDiskAgentConfig())
-            .With(std::make_shared<TTestNvmeManager>(pathToSerial))
-            .With(diskregistryState)
-            .Build();
+                       .With(CreateDiskAgentConfig())
+                       .With(
+                           std::make_shared<TTestNvmeManager>(
+                               pathToSerial,
+                               pathToModel))
+                       .With(diskregistryState)
+                       .Build();
 
         Runtime->UpdateCurrentTime(Now());
 
@@ -6922,10 +6960,18 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             {Devices[3], "Z"},   // nvme3n1
         };
 
+        TVector<std::pair<TString, TString>> pathToModel{
+            {Devices[0], "A"},   // nvme0n1
+            {Devices[1], "B"},   // nvme1n1
+            {Devices[2], "C"},   // nvme2n1
+            {Devices[3], "D"},   // nvme3n1
+        };
+
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
 
-        auto nvmeManager = std::make_shared<TTestNvmeManager>(pathToSerial);
+        auto nvmeManager =
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel);
 
         auto env = TTestEnvBuilder(*Runtime)
                        .With(CreateDiskAgentConfig())
@@ -7175,6 +7221,100 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 1,
                 FindProcessesWithOpenFile(device).size());
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldCountForcedToZeroFillDevices, TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {PartLabelsPath / "NVMENBS01", "vendora-defective"},
+            {PartLabelsPath / "NVMENBS02", "B"},
+            {PartLabelsPath / "NVMENBS03", "vendorb-defective"},
+            {PartLabelsPath / "NVMENBS04", "D"},
+        };
+
+        auto diskAgentConfig = CreateDiskAgentConfig();
+        diskAgentConfig.MutableModelsRegExpForcedZeroFill()->Add(
+            "^(?=.*defective).*");
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(diskAgentConfig)
+                       .With(
+                           std::make_shared<TTestNvmeManager>(
+                               pathToSerial,
+                               pathToModel))
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.RegisterAgent();
+
+        auto counters = Runtime->GetAppData(0).Counters;
+
+        auto rootGroup = counters->GetSubgroup("counters", "blockstore");
+        auto totalCounters = rootGroup->GetSubgroup("component", "disk_agent");
+
+        auto ForcedToZeroFillMethodDevices =
+            totalCounters->GetCounter("ForcedToZeroFillMethodDevices");
+
+        Runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(ForcedToZeroFillMethodDevices);
+        UNIT_ASSERT_VALUES_EQUAL(ForcedToZeroFillMethodDevices->Val(), 2);
+    }
+
+    Y_UNIT_TEST_F(ShouldUseZeroFillMethodForMarkedDevices, TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {PartLabelsPath / "NVMENBS01", "vendora-defective"},
+            {PartLabelsPath / "NVMENBS02", "B"},
+            {PartLabelsPath / "NVMENBS03", "vendorb-defective"},
+            {PartLabelsPath / "NVMENBS04", "D"},
+        };
+
+        auto diskAgentConfig = CreateDiskAgentConfig();
+        diskAgentConfig.MutableModelsRegExpForcedZeroFill()->Add(
+            "^(?=.*defective).*");
+        diskAgentConfig.SetDeviceEraseMethod(
+            NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+
+        auto nvmeManager =
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(diskAgentConfig)
+                       .With(nvmeManager)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.RegisterAgent();
+
+        Runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        Runtime->DispatchEvents({}, 10ms);
+
+        for (const auto& id: IDs) {
+            diskAgent.SendSecureEraseDeviceRequest(id);
+            diskAgent.RecvSecureEraseDeviceResponse();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(nvmeManager->DeallocateHistory->size(), 2);
     }
 }
 }   // namespace NCloud::NBlockStore::NStorage

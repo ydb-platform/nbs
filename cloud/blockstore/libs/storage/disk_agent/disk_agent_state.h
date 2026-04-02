@@ -141,6 +141,7 @@ public:
         std::span<const TString> paths);
 
     ui32 GetDevicesCount() const;
+    ui32 GetForcedToZeroFillMethodDevicesCount() const;
 
     TDeviceClient::TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TDeviceClient::TSessionInfo> GetReaderSessions(

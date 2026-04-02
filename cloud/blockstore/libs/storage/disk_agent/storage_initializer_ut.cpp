@@ -30,10 +30,13 @@ struct TTestNvmeManager
     : NNvme::INvmeManager
 {
     THashMap<TString, TString> PathToSerial;
+    THashMap<TString, TString> PathToModel;
 
-    explicit TTestNvmeManager(
-            const TVector<std::pair<TString, TString>> pathToSerial)
+    TTestNvmeManager(
+            const TVector<std::pair<TString, TString>> pathToSerial,
+            const TVector<std::pair<TString, TString>> pathToModel)
         : PathToSerial{pathToSerial.cbegin(), pathToSerial.cend()}
+        , PathToModel{pathToModel.cbegin(), pathToModel.cend()}
     {}
 
     void Start() final
@@ -68,6 +71,16 @@ struct TTestNvmeManager
     {
         auto it = PathToSerial.find(TFsPath{path}.Basename());
         if (it == PathToSerial.end()) {
+            return MakeError(MAKE_SYSTEM_ERROR(42));
+        }
+
+        return it->second;
+    }
+
+    TResultOrError<TString> GetDeviceModel(const TString& path) override
+    {
+        auto it = PathToModel.find(TFsPath{path}.Basename());
+        if (it == PathToModel.end()) {
             return MakeError(MAKE_SYSTEM_ERROR(42));
         }
 
@@ -189,6 +202,13 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS04", "Z"},
         };
 
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+        };
+
         UNIT_ASSERT(!NFs::Exists(DefaultConfig.GetCachedConfigPath()));
 
         auto future = InitializeStorage(
@@ -196,7 +216,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial));
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
 
         const auto& r = future.GetValueSync();
 
@@ -233,12 +253,19 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS04", "Z"},
         };
 
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+        };
+
         auto future1 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial));
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
 
         const auto& r1 = future1.GetValueSync();
 
@@ -252,6 +279,14 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS05", "A"},
         };
 
+        const TVector<std::pair<TString, TString>> newPathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "new-B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+            {"NVMENBS05", "A"},
+        };
+
         PrepareFile("NVMENBS05");
 
         auto future2 = InitializeStorage(
@@ -259,7 +294,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(newPathToSerial));
+            std::make_shared<TTestNvmeManager>(newPathToSerial, newPathToModel));
 
         const auto& r2 = future2.GetValueSync();
 
@@ -290,7 +325,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(newPathToSerial));
+            std::make_shared<TTestNvmeManager>(newPathToSerial, newPathToModel));
 
         const auto& r3 = future3.GetValueSync();
 
@@ -328,6 +363,13 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS04", "Z"},
         };
 
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+        };
+
         UNIT_ASSERT(!NFs::Exists(DefaultConfig.GetCachedConfigPath()));
 
         auto future1 = InitializeStorage(
@@ -335,7 +377,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial));
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
 
         const auto& r1 = future1.GetValueSync();
 
@@ -346,6 +388,13 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS02", "A"},
             {"NVMENBS03", "Z"},
             {"NVMENBS04", "Y"},
+        };
+
+        const TVector<std::pair<TString, TString>> newPathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "BB"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
         };
 
         auto newConfig = DefaultConfig;
@@ -360,7 +409,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(newPathToSerial));
+            std::make_shared<TTestNvmeManager>(newPathToSerial, newPathToModel));
 
         const auto& r2 = future2.GetValueSync();
 
@@ -406,12 +455,19 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS04", "Z"},
         };
 
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+        };
+
         auto future1 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial));
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
 
         const auto& r1 = future1.GetValueSync();
 
@@ -420,6 +476,13 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS02", "A"},
             {"NVMENBS03", "Z"},
             {"NVMENBS04", "Y"},
+        };
+
+        const TVector<std::pair<TString, TString>> newPathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "BB"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
         };
 
         auto newConfig = DefaultConfig;
@@ -432,7 +495,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(newPathToSerial));
+            std::make_shared<TTestNvmeManager>(newPathToSerial, newPathToModel));
 
         const auto& r2 = future2.GetValueSync();
 
@@ -478,6 +541,13 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS04", "Z"},
         };
 
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+        };
+
         auto staticConfig = DefaultConfig;
         staticConfig.ClearStorageDiscoveryConfig();
 
@@ -498,7 +568,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(staticConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial));
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
 
         const auto& r = future.GetValueSync();
 
@@ -526,6 +596,13 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS04", "Z"},
         };
 
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+        };
+
         UNIT_ASSERT(!NFs::Exists(DefaultConfig.GetCachedConfigPath()));
 
         auto future = InitializePaths(
@@ -533,7 +610,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial),
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel),
             {DevicesPath / "NVMENBS01", DevicesPath / "NVMENBS03"});
 
         const auto& r = future.GetValueSync();
@@ -567,12 +644,19 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             {"NVMENBS04", "Z"},
         };
 
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "A"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "C"},
+            {"NVMENBS04", "D"},
+        };
+
         auto future1 = InitializeStorage(
             Logging->CreateLog("Test"),
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial));
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
 
         future1.GetValueSync();
 
@@ -588,7 +672,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial),
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel),
             {DevicesPath / "NVMENBS01"});
 
         const auto& r2 = future2.GetValueSync();
@@ -608,12 +692,54 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
             StorageConfig,
             std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
             StorageProvider,
-            std::make_shared<TTestNvmeManager>(pathToSerial),
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel),
             {DevicesPath / "NVMENBS02"});
 
         const auto& r3 = future3.GetValueSync();
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, r3.ConfigMismatchErrors.size());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldMarkDevicesWithSpecificModelToZeroFillEraseMethod,
+        TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        const TVector<std::pair<TString, TString>> pathToModel{
+            {"NVMENBS01", "vendora-defective"},
+            {"NVMENBS02", "B"},
+            {"NVMENBS03", "vendorb-defective"},
+            {"NVMENBS04", "D"},
+        };
+
+        auto newConfig = DefaultConfig;
+        newConfig.MutableModelsRegExpForcedZeroFill()->Add(
+            "^(?=.*defective).*");
+
+        auto future = InitializeStorage(
+            Logging->CreateLog("Test"),
+            StorageConfig,
+            std::make_shared<TDiskAgentConfig>(newConfig, "rack", 1000),
+            StorageProvider,
+            std::make_shared<TTestNvmeManager>(pathToSerial, pathToModel));
+
+        const auto& r = future.GetValueSync();
+
+        ui32 count = 0;
+        for (const auto& config: r.Configs) {
+            if (config.GetDeviceModel().EndsWith("defective")) {
+                UNIT_ASSERT(config.GetForcedZeroFillMethod());
+                count += 1;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(count, 16);
     }
 }
 

@@ -40,6 +40,8 @@ struct INvmeManager
     virtual TResultOrError<TString> GetSerialNumber(const TString& path) = 0;
 
     virtual NProto::TError ResetToSingleNamespace(const TString& ctrlPath) = 0;
+
+    virtual TResultOrError<TString> GetDeviceModel(const TString& path) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

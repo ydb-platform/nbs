@@ -106,6 +106,8 @@ private:
 
     ITaskQueuePtr BackgroundThreadPool;
 
+    NMonitoring::TDynamicCounters::TCounterPtr ForcedToZeroFillMethodDevices;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,

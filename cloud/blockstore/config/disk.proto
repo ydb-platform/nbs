@@ -76,6 +76,13 @@ message TFileDeviceArgs
     optional uint64 Offset = 6;
     // File size override.
     optional uint64 FileSize = 7;
+
+    // Device model.
+    optional string DeviceModel = 8;
+
+    // If true SecureErase will ignore DeviceEraseMethod specified in
+    // TDiskAgentConfig and use DEVICE_ERASE_METHOD_ZERO_FILL instead.
+    optional bool ForcedZeroFillMethod = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -372,6 +379,10 @@ message TDiskAgentConfig
     // The ratio of the validated blocks after deallocation.
     // 1000 means every thousandth or 0.1%.
     optional uint32 ValidatedBlocksRatio = 47;
+
+    // If the device model falls under one of these regular expressions, then
+    // SecureErase will use DEVICE_ERASE_METHOD_ZERO_FILL.
+    repeated string ModelsRegExpForcedZeroFill = 48;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
