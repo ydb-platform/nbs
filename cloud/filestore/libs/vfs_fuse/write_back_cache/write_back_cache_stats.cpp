@@ -79,6 +79,15 @@ public:
         return shared_from_this();
     }
 
+    TWriteBackCacheStateMetrics
+    CreateWriteBackCacheStateMetrics() const override
+    {
+        return {};
+    }
+
+    void UpdateWriteBackCacheStateStats() override
+    {}
+
     INodeStateHolderStatsPtr GetNodeStateHolderStats() override
     {
         return shared_from_this();

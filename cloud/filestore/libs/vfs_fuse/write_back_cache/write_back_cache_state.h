@@ -6,7 +6,7 @@
 #include "persistent_storage.h"
 #include "queued_operations.h"
 #include "sequence_id_generator.h"
-#include "write_back_cache_stats.h"
+#include "write_back_cache_state_stats.h"
 #include "write_data_request.h"
 #include "write_data_request_manager.h"
 
@@ -70,7 +70,9 @@ public:
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats,
+        IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
+        INodeStateHolderStatsPtr nodeStateHolderStats,
+        IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
         TString logTag);
 
     // Read state from the persistent storage
@@ -138,6 +140,9 @@ public:
 
     // The barrier should be valid and previously acquired via AcquireBarrier
     void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
+
+    // UpdateStats under lock
+    void UpdateStats(TInstant now) const;
 
 private:
     // Combines acquiring mutex and executing queued operations on mutex release

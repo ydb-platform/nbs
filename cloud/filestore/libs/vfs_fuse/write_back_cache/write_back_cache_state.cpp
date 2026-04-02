@@ -15,14 +15,16 @@ using namespace NThreading;
 TWriteBackCacheState::TWriteBackCacheState(
     IQueuedOperationsProcessor& processor,
     ITimerPtr timer,
-    IWriteBackCacheStatsPtr stats,
+    IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
+    INodeStateHolderStatsPtr nodeStateHolderStats,
+    IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
-    , Stats(stats->GetWriteBackCacheStateStats())
-    , RequestManagerStats(stats->GetWriteDataRequestManagerStats())
+    , Stats(std::move(writeBackCacheStateStats))
+    , RequestManagerStats(std::move(writeDataRequestManagerStats))
     , LogTag(std::move(logTag))
-    , Nodes(std::move(stats->GetNodeStateHolderStats()))
+    , Nodes(std::move(nodeStateHolderStats))
     , QueuedOperations(processor)
 {}
 
