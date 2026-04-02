@@ -84,7 +84,13 @@ public:
               args.FileSystemId.c_str(),
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
-        , State(*this, Timer, args.Stats, LogTag)
+        , State(
+              *this,
+              Timer,
+              args.Stats->GetWriteBackCacheStateStats(),
+              args.Stats->GetNodeStateHolderStats(),
+              args.Stats->GetWriteDataRequestManagerStats(),
+              LogTag)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
@@ -353,6 +359,11 @@ public:
         return State.GetMaxWrittenOffset(nodeId);
     }
 
+    void UpdateStats()
+    {
+        State.UpdateStats();
+    }
+
 private:
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
@@ -604,6 +615,11 @@ void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
 ui64 TWriteBackCache::GetMaxWrittenOffset(ui64 nodeId) const
 {
     return Impl->GetMaxWrittenOffset(nodeId);
+}
+
+void TWriteBackCache::UpdateStats()
+{
+    return Impl->UpdateStats();
 }
 
 }   // namespace NCloud::NFileStore::NFuse
