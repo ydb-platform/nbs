@@ -1202,6 +1202,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvStatsService::TEvGetServiceStatisticsRequest,
             HandleGetServiceStatistics);
 
+        HFunc(
+            TEvService::TEvSetVhostDiscardFlagResponse,
+            HandleSetVhostDiscardFlagResponse);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:

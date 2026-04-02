@@ -39,6 +39,7 @@ namespace NCloud::NBlockStore {
     xxx(PARTITION_COMMON)                                                      \
     xxx(STATS_SERVICE)                                                         \
     xxx(FRESH_BLOCKS_WRITER)                                                   \
+    xxx(SERVICE_EXT)                                                           \
 // BLOCKSTORE_ACTORS
 
 #define BLOCKSTORE_COMPONENTS(xxx)                                             \
