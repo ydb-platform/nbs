@@ -32,6 +32,8 @@
 
 namespace NCloud::NFileStore::NLowLevel {
 
+Y_POD_THREAD(bool) UnixCredentialsGuard::IsThreadOwnsUmask = false;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -685,8 +687,24 @@ bool Flock(const TFileHandle& handle, int operation)
 UnixCredentialsGuard::UnixCredentialsGuard(
     uid_t uid,
     gid_t gid,
+    std::optional<mode_t> umaskMode,
     bool trustUserCredentials)
 {
+    if (umaskMode.has_value()) {
+        if (!IsThreadOwnsUmask) {
+            // umask is shared across threads unless we unshare fs state first.
+            Y_ABORT_UNLESS(
+                unshare(CLONE_FS) != -1,
+                "unshare(CLONE_FS) failed: %d, %s",
+                errno,
+                LastSystemErrorText());
+            IsThreadOwnsUmask = true;
+        }
+
+        OriginalUmask = ::umask(*umaskMode);
+        IsUmaskRestoreNeeded = true;
+    }
+
     OriginalUid = geteuid();
     if (OriginalUid != 0) {
         // need to be root to set euid/egid
@@ -695,25 +713,23 @@ UnixCredentialsGuard::UnixCredentialsGuard(
 
     OriginalGid = getegid();
 
-    if (uid == OriginalUid && gid == OriginalGid) {
-        return;
-    }
+    if (uid != OriginalUid || gid != OriginalGid) {
+        // use syscall directly to change uid/gid per thread instead of glibc
+        // version of setresgid/setresuid since they will change uid/gid for all
+        // threads
+        int ret = syscall(SYS_setresgid, -1, gid, -1);
+        if (ret == -1) {
+            return;
+        }
 
-    // use syscall directly to change uid/gid per thread instead of glibc
-    // version of setresgid/setresuid since they will change uid/gid for all
-    // threads
-    int ret = syscall(SYS_setresgid, -1, gid, -1);
-    if (ret == -1) {
-        return;
-    }
+        ret = syscall(SYS_setresuid, -1, uid, -1);
+        if (ret == -1) {
+            syscall(SYS_setresgid, -1, OriginalGid, -1);
+            return;
+        }
 
-    ret = syscall(SYS_setresuid, -1, uid, -1);
-    if (ret == -1) {
-        syscall(SYS_setresgid, -1, OriginalGid, -1);
-        return;
+        IsIdRestoreNeeded = true;
     }
-
-    IsRestoreNeeded = true;
 
     if (trustUserCredentials) {
         // Bypass file read, write, and execute permission checks.
@@ -725,12 +741,14 @@ UnixCredentialsGuard::UnixCredentialsGuard(
 
 UnixCredentialsGuard::~UnixCredentialsGuard()
 {
-    if (!IsRestoreNeeded) {
-        return;
+    if (IsIdRestoreNeeded) {
+        syscall(SYS_setresuid, -1, OriginalUid, -1);
+        syscall(SYS_setresgid, -1, OriginalGid, -1);
     }
 
-    syscall(SYS_setresuid, -1, OriginalUid, -1);
-    syscall(SYS_setresgid, -1, OriginalGid, -1);
+    if (IsUmaskRestoreNeeded) {
+        ::umask(OriginalUmask);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

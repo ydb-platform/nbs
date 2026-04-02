@@ -52,6 +52,9 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     NLowLevel::UnixCredentialsGuard credGuard(
         request.GetUid(),
         request.GetGid(),
+        session->GuestPosixAclEnabled
+            ? std::optional<mode_t>(request.GetUmask())
+            : std::nullopt,
         Config->GetGuestOnlyPermissionsCheckEnabled());
     TIndexNodePtr target;
     if (request.HasDirectory()) {

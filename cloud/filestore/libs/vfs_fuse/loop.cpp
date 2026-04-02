@@ -1235,6 +1235,7 @@ private:
 
         config.SetGuestHandleKillPrivV2Enabled(
             features.GetGuestHandleKillPrivV2Enabled());
+        config.SetGuestPosixAclEnabled(features.GetGuestPosixAclEnabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1275,6 +1276,11 @@ private:
 
         if (FileSystemConfig->GetGuestHandleKillPrivV2Enabled()) {
             conn->want |= FUSE_CAP_HANDLE_KILLPRIV_V2;
+        }
+
+        if (FileSystemConfig->GetGuestPosixAclEnabled()) {
+            conn->want |= FUSE_CAP_POSIX_ACL;
+            conn->want |= FUSE_CAP_DONT_MASK;
         }
 
         FileSystem->Init();

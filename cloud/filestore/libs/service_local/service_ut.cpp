@@ -2394,6 +2394,57 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
                 defaultTimeout);
         }
     }
+
+    Y_UNIT_TEST(ShouldApplyRequestUmaskWhenGuestPosixAclEnabledViaFeaturesConfig)
+    {
+        TTestBootstrap bootstrap;
+        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("GuestPosixAclEnabled");
+        f->SetValue("true");
+        *f->MutableWhitelist()->AddEntityIds() = "fs";
+        bootstrap.SetFeaturesConfig(fc);
+
+        auto session = bootstrap.CreateSession("fs", "client", "");
+        UNIT_ASSERT(session.GetFileStore().GetFeatures().GetGuestPosixAclEnabled());
+        bootstrap.SwitchToSession({
+            .FileSystemId = "fs",
+            .ClientId = "client",
+            .SessionId = session.GetSession().GetSessionId()});
+
+        auto createNode = bootstrap.CreateCreateNodeRequest(
+            TCreateNodeArgs::File(RootNodeId, "node-created", 0666));
+        createNode->SetUmask(0022);
+        auto createNodeResponse =
+            bootstrap.Store->CreateNode(bootstrap.Ctx, std::move(createNode))
+                .GetValueSync();
+        UNIT_ASSERT_C(
+            SUCCEEDED(createNodeResponse.GetError().GetCode()),
+            createNodeResponse.GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            bootstrap.GetNodeAttr(RootNodeId, "node-created").GetNode().GetMode(),
+            0644);
+
+        auto createHandle = bootstrap.CreateCreateHandleRequest(
+            RootNodeId,
+            "handle-created",
+            TCreateHandleArgs::CREATE);
+        createHandle->SetMode(0666);
+        createHandle->SetUmask(0022);
+        auto createHandleResponse =
+            bootstrap.Store->CreateHandle(bootstrap.Ctx, std::move(createHandle))
+                .GetValueSync();
+        UNIT_ASSERT_C(
+            SUCCEEDED(createHandleResponse.GetError().GetCode()),
+            createHandleResponse.GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            bootstrap.GetNodeAttr(RootNodeId, "handle-created").GetNode().GetMode(),
+            0644);
+    }
 };
 
 }   // namespace NCloud::NFileStore

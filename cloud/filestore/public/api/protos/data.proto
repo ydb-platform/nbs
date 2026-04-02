@@ -64,6 +64,9 @@ message TCreateHandleRequest
 
     // If set, the node will be created or looked up in the shard FS.
     bytes ShardFileSystemId = 12;
+
+    // Umask of the calling process
+    uint32 Umask = 13;
 }
 
 message TCreateHandleResponse

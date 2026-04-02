@@ -7,6 +7,9 @@
 #include <util/generic/vector.h>
 #include <util/system/file.h>
 #include <util/system/fstat.h>
+#include <util/system/tls.h>
+
+#include <optional>
 
 namespace NCloud::NFileStore {
 namespace NLowLevel {
@@ -17,10 +20,17 @@ class UnixCredentialsGuard {
 private:
     uid_t OriginalUid = -1;
     gid_t OriginalGid = -1;
-    bool IsRestoreNeeded = false;
+    mode_t OriginalUmask = 0;
+    bool IsUmaskRestoreNeeded = false;
+    bool IsIdRestoreNeeded = false;
+    Y_POD_STATIC_THREAD(bool) IsThreadOwnsUmask;
 
 public:
-    UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
+    UnixCredentialsGuard(
+        uid_t uid,
+        gid_t gid,
+        std::optional<mode_t> umaskMode,
+        bool trustUserCredentials);
     ~UnixCredentialsGuard();
 };
 

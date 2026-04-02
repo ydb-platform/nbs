@@ -69,6 +69,8 @@ public:
 
     bool GetGuestHandleKillPrivV2Enabled() const;
 
+    bool GetGuestPosixAclEnabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

@@ -163,6 +163,12 @@ public:
         const TString& folderId,
         const TString& fsId) const;
 
+    bool GetGuestPosixAclEnabled() const;
+    bool GetGuestPosixAclEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
     bool GetSnapshotsDirEnabled() const;
     bool GetSnapshotsDirEnabled(
         const TString& cloudId,
