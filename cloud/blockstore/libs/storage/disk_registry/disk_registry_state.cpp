@@ -5977,7 +5977,7 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
     const TDiskState& disk) const
 {
     if (disk.IsVolumeStateBroken) {
-        return NProto::DISK_STATE_ERROR;
+        return NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE;
     }
 
     if (disk.ReplicaCount != 0) {
