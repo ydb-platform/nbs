@@ -3276,6 +3276,62 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT_VALUES_EQUAL(stateMismatchLocalDbError->Val(), 1);
     }
+
+    Y_UNIT_TEST(
+        ShouldIgnoreNonpersistentFieldsWhenCheckingDiskRegistryStateIntegrity)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        auto runtime = TTestRuntimeBuilder().WithAgents({agent1}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, {agent1});
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvBackupDiskRegistryStateResponse)
+                {
+                    auto& record =
+                        event
+                            ->Get<TEvDiskRegistry::
+                                      TEvBackupDiskRegistryStateResponse>()
+                            ->Record;
+                    auto& agent =
+                        record.MutableMemoryBackup()->MutableAgents()->at(0);
+                    auto* unknownDevice = agent.AddUnknownDevices();
+                    unknownDevice->SetDeviceName("dev-3");
+                    unknownDevice->SetDeviceUUID("uuid-3");
+                    record.MutableMemoryBackup()->AddOldDirtyDevices("dev-4");
+
+                    auto* dirtyDevice =
+                        record.MutableMemoryBackup()->AddDirtyDevices();
+                    dirtyDevice->SetId("uuid-1");
+                    dirtyDevice->SetDiskId("dev-1");
+
+                    dirtyDevice =
+                        record.MutableLocalDBBackup()->AddDirtyDevices();
+                    dirtyDevice->SetId("uuid-1");
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+        UNIT_ASSERT(!result->Record.HasError());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
