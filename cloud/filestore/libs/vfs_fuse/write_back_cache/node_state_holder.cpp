@@ -98,4 +98,9 @@ void TNodeStateHolder::Unpin(ui64 pinId)
     }
 }
 
+void TNodeStateHolder::UpdateStats()
+{
+    Stats->UpdateNodeStateHolderStats();
+}
+
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

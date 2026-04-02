@@ -5,6 +5,7 @@ SRCS(
     node_cache.cpp
     node_flush_state.cpp
     node_state_holder.cpp
+    node_state_holder_stats.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
     queued_operations.cpp
