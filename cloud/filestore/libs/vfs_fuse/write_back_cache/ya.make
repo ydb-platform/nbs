@@ -21,6 +21,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/service
 
     cloud/storage/core/libs/common
