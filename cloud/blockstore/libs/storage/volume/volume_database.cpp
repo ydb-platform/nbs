@@ -865,8 +865,6 @@ bool TVolumeDatabase::ReadBrokenDevices(TVector<TBrokenDeviceInfo>& devices)
 {
     using TTable = TVolumeSchema::BrokenDevices;
 
-    devices.clear();
-
     auto it = Table<TTable>().Range().Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
