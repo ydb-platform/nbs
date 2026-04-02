@@ -6,7 +6,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDummyWriteBackCacheStats: public IWriteBackCacheStats
+class TDummyWriteBackCacheStats
+    : public std::enable_shared_from_this<TDummyWriteBackCacheStats>
+    , public IWriteBackCacheStats
+    , public IWriteBackCacheInternalStats
+    , public IWriteBackCacheStateStats
+    , public INodeStateHolderStats
+    , public IWriteDataRequestManagerStats
+    , public IPersistentStorageStats
 {
 public:
     void ResetNonDerivativeCounters() override
@@ -60,6 +67,38 @@ public:
         const TPersistentStorageStats& stats) override
     {
         Y_UNUSED(stats);
+    }
+
+    IWriteBackCacheInternalStatsPtr
+    GetWriteBackCacheInternalStats() const override
+    {
+        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() const override
+    {
+        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    INodeStateHolderStatsPtr GetNodeStateHolderStats() const override
+    {
+        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    IWriteDataRequestManagerStatsPtr
+    GetWriteDataRequestManagerStats() const override
+    {
+        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    IPersistentStorageStatsPtr GetPersistentStorageStats() const override
+    {
+        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
+            shared_from_this());
     }
 };
 

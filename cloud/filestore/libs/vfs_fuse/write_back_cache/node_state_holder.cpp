@@ -4,7 +4,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeStateHolder::TNodeStateHolder(IWriteBackCacheStatsPtr stats)
+TNodeStateHolder::TNodeStateHolder(INodeStateHolderStatsPtr stats)
     : Stats(std::move(stats))
 {}
 

@@ -3,7 +3,6 @@
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <util/generic/vector.h>
-
 #include <util/system/spinlock.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -28,7 +27,14 @@ struct TTestReadDataRequestStats
     ui64 CacheFullHitCount = 0;
 };
 
-struct TTestWriteBackCacheStats: public IWriteBackCacheStats
+struct TTestWriteBackCacheStats
+    : public std::enable_shared_from_this<TTestWriteBackCacheStats>
+    , public IWriteBackCacheStats
+    , public IWriteBackCacheInternalStats
+    , public IWriteBackCacheStateStats
+    , public INodeStateHolderStats
+    , public IWriteDataRequestManagerStats
+    , public IPersistentStorageStats
 {
     TAdaptiveLock Lock;
 
@@ -82,6 +88,38 @@ struct TTestWriteBackCacheStats: public IWriteBackCacheStats
 
     void UpdatePersistentStorageStats(
         const TPersistentStorageStats& stats) override;
+
+    IWriteBackCacheInternalStatsPtr
+    GetWriteBackCacheInternalStats() const override
+    {
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() const override
+    {
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    INodeStateHolderStatsPtr GetNodeStateHolderStats() const override
+    {
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    IWriteDataRequestManagerStatsPtr
+    GetWriteDataRequestManagerStats() const override
+    {
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
+    }
+
+    IPersistentStorageStatsPtr GetPersistentStorageStats() const override
+    {
+        return std::const_pointer_cast<TTestWriteBackCacheStats>(
+            shared_from_this());
+    }
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

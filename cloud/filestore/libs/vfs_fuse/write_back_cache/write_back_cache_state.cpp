@@ -19,9 +19,10 @@ TWriteBackCacheState::TWriteBackCacheState(
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
-    , Stats(std::move(stats))
+    , Stats(stats->GetWriteBackCacheStateStats())
+    , RequestManagerStats(stats->GetWriteDataRequestManagerStats())
     , LogTag(std::move(logTag))
-    , Nodes(Stats)
+    , Nodes(std::move(stats->GetNodeStateHolderStats()))
     , QueuedOperations(processor)
 {}
 
@@ -31,7 +32,7 @@ bool TWriteBackCacheState::Init(IPersistentStoragePtr persistentStorage)
         SequenceIdGenerator,
         std::move(persistentStorage),
         Timer,
-        Stats);
+        RequestManagerStats);
 
     return RequestManager.Init(
         [this](std::unique_ptr<TCachedWriteDataRequest> request)

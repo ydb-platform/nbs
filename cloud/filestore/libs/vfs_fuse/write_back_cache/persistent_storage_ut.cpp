@@ -30,7 +30,7 @@ struct TBootstrap
     NProto::TError Initialize()
     {
         auto res = CreateFileRingBufferPersistentStorage(
-            Stats,
+            Stats->GetPersistentStorageStats(),
             {.FilePath = TempFile.GetName(),
              .DataCapacity = DefaultCapacity,
              .MetadataCapacity = 0,
