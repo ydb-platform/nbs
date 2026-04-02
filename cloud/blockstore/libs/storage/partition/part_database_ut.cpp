@@ -1034,7 +1034,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     TTestBlockVisitor visitor;
                     UNIT_ASSERT(db.FindMergedBlocks(
                         visitor,
-                        &visitor,
+                        visitor,
                         TBlockRange32::WithLength(0, 2),
                         true,   // precharge
                         MaxBlocksCount));
@@ -1052,7 +1052,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     TTestBlockVisitor visitor;
                     UNIT_ASSERT(db.FindMergedBlocks(
                         visitor,
-                        &visitor,
+                        visitor,
                         TBlockRange32::WithLength(0, 2),
                         true,   // precharge
                         MaxBlocksCount,
@@ -1070,7 +1070,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     TTestBlockVisitor visitor;
                     UNIT_ASSERT(db.FindMergedBlocks(
                         visitor,
-                        &visitor,
+                        visitor,
                         TBlockRange32::MakeClosedInterval(5, 6),
                         true,   // precharge
                         MaxBlocksCount));
