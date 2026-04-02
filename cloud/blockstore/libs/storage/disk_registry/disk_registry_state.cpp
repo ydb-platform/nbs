@@ -5976,10 +5976,6 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
     const TString& diskId,
     const TDiskState& disk) const
 {
-    if (disk.IsVolumeStateBroken) {
-        return NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE;
-    }
-
     if (disk.ReplicaCount != 0) {
         for (ui32 i = 0; i < disk.ReplicaCount + 1; ++i) {
             auto replicaId = GetReplicaDiskId(diskId, i);
@@ -5990,7 +5986,9 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
         return NProto::DISK_STATE_ONLINE;
     }
 
-    NProto::EDiskState state = NProto::DISK_STATE_ONLINE;
+    NProto::EDiskState state = disk.IsVolumeStateBroken
+                                   ? NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE
+                                   : NProto::DISK_STATE_ONLINE;
 
     for (const auto& uuid: disk.Devices) {
         const auto* device = DeviceList.FindDevice(uuid);
