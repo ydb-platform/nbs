@@ -28,7 +28,7 @@ public:
         IOutputStream& out = request.Output();
 
         out << "HTTP/1.1 200 Ok\r\n"
-            << "Content-Type: text/html\r\n"
+            << "Content-Type: text/html; charset=utf-8\r\n"
             << "Connection: Close\r\n";
         TString origin = TString(request.GetHeader("Origin"));
         if (origin.empty()) {
