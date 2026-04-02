@@ -621,7 +621,10 @@ void TVolumeDatabase::WriteThrottlerState(const TThrottlerStateInfo& stateInfo)
 
     Table<TTable>()
         .Key(THROTTLER_STATE_KEY)
-        .Update(NIceDb::TUpdate<TTable::Budget>(stateInfo.Budget));
+        .Update(
+            NIceDb::TUpdate<TTable::Budget>(stateInfo.BoostBudget),
+            NIceDb::TUpdate<TTable::SpentShapingBudgetShare>(
+                stateInfo.SpentShapingBudgetShare));
 }
 
 bool TVolumeDatabase::ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo)
@@ -638,8 +641,9 @@ bool TVolumeDatabase::ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo)
 
     if (it.IsValid()) {
         stateInfo = {
-            it.GetValue<TTable::Budget>()
-        };
+            .BoostBudget = it.GetValue<TTable::Budget>(),
+            .SpentShapingBudgetShare =
+                it.GetValue<TTable::SpentShapingBudgetShare>()};
     }
 
     return true;
