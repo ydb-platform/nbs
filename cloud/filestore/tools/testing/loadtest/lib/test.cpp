@@ -527,11 +527,14 @@ private:
 
         srand(time(0));
         TString shmFileName = "nfs_" + std::to_string(rand()) + ".shm";
-        ShmPath = "/Berkanavt/nfs-server/shm/nfs-server-shm/" + shmFileName;
+        TString shmDir =
+            "/Berkanavt/nfs-server/shm/nfs-server-shm/nfs-load-test/";
+        ShmPath = shmDir + shmFileName;
 
         std::ofstream ofs(ShmPath);
         ofs << "this is some text in the new file\n";
         ofs.close();
+        std::filesystem::create_directory(shmDir);
         std::filesystem::resize_file(
             std::string(ShmPath),
             Config.GetIODepth() * 1024 * 1024);   // resize to 10 MB
