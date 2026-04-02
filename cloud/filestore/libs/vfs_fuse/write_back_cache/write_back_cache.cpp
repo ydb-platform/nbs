@@ -84,7 +84,13 @@ public:
               args.FileSystemId.c_str(),
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
-        , State(*this, Timer, args.Stats, LogTag)
+        , State(
+              *this,
+              Timer,
+              args.Stats->GetWriteBackCacheStateStats(),
+              args.Stats->GetNodeStateHolderStats(),
+              args.Stats->GetWriteDataRequestManagerStats(),
+              LogTag)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(

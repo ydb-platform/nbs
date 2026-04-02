@@ -3,6 +3,7 @@
 #include "queued_operations.h"
 #include "write_data_request.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
@@ -59,11 +60,15 @@ struct TBootstrap
     std::shared_ptr<TTestStorage> Storage;
     TProcessor Processor;
     std::unique_ptr<TWriteBackCacheState> State;
+    IWriteBackCacheStateStatsPtr WriteBackCacheStateStats;
+    TWriteBackCacheStateMetrics Metrics;
 
     TBootstrap()
         : Timer(CreateWallClockTimer())
         , Stats(std::make_shared<TTestWriteBackCacheStats>())
         , Storage(std::make_shared<TTestStorage>(Stats))
+        , WriteBackCacheStateStats(CreateWriteBackCacheStateStats())
+        , Metrics(WriteBackCacheStateStats->CreateWriteBackCacheStateMetrics())
     {
         Recreate();
     }
@@ -88,7 +93,9 @@ struct TBootstrap
         State = std::make_unique<TWriteBackCacheState>(
             Processor,
             Timer,
-            Stats,
+            WriteBackCacheStateStats,
+            Stats->GetNodeStateHolderStats(),
+            Stats->GetWriteDataRequestManagerStats(),
             "[test]");
 
         return State->Init(Storage);
@@ -385,7 +392,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->FlushSucceeded(1, 3);
         b.State->FlushSucceeded(2, 1);
         UNIT_ASSERT(!b.State->HasUnflushedRequests());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->WriteDataRequestDroppedCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
     }
 
     Y_UNIT_TEST(HandleReleaseFailures)
@@ -449,7 +458,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(error, c3.GetValue());
 
         UNIT_ASSERT(!b.State->HasUnflushedRequests());
-        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->WriteDataRequestDroppedCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
     }
 
     Y_UNIT_TEST(ShouldSupportBarriers)
@@ -627,7 +638,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
                 b.VisitUnflushedCachedRequests(1));
         }
     }
-
 
     Y_UNIT_TEST(ShouldReportNodeSize)
     {
