@@ -515,13 +515,25 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
     MainInFlightRequest->CallContext->LWOrbit.Join(msg->Orbit);
 
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "%s ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
+        LogTag.c_str(),
+        msg->ResponseSz,
+        (ui64)(msg->Status),
+        ev->Cookie);
+
     if (msg->Status != NKikimrProto::OK) {
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "%s TEvBlobStorage::TEvGet failed: response %s",
+            "%s TEvBlobStorage::TEvGet failed: response: %s, group: %lu",
             LogTag.c_str(),
-            msg->Print(false).c_str());
+            msg->Print(false).c_str(),
+            ev->Cookie < DescribeResponse.BlobPiecesSize()
+                ? DescribeResponse.GetBlobPieces(ev->Cookie).GetBSGroupId()
+                : 0);
 
         const NProto::TError error(
             MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
@@ -532,15 +544,6 @@ void TReadDataActor::HandleReadBlobResponse(
         ReadData(ctx, errorReason);
         return;
     }
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "%s ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
-        LogTag.c_str(),
-        msg->ResponseSz,
-        (ui64)(msg->Status),
-        ev->Cookie);
 
     TABLET_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
     const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
