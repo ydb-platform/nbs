@@ -94,6 +94,14 @@ struct TTestWriteBackCacheStats
         return shared_from_this();
     }
 
+    TWriteBackCacheInternalMetrics CreateInternalMetrics() const override
+    {
+        return {};
+    }
+
+    void UpdateInternalStats() override
+    {}
+
     IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() override
     {
         return shared_from_this();
