@@ -32,12 +32,12 @@ public:
     TResultOrError<char*> Alloc(size_t size) override;
     bool Commit() override;
     void Free(const void* ptr) override;
-    TPersistentStorageStats GetStats() const override;
+    void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);
 
 private:
-    void UpdateStats();
+    void SetStats();
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
