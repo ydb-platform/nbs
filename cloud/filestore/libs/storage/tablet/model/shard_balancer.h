@@ -17,6 +17,7 @@ struct TShardStats
 {
     ui64 TotalBlocksCount = 0;
     ui64 UsedBlocksCount = 0;
+    ui64 UsedNodesCount = 0;
     ui64 CurrentLoad = 0;
     ui64 Suffer = 0;
 };

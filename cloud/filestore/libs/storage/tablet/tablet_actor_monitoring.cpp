@@ -1084,6 +1084,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         TABLEH() { out << "ShardNo"; }
                         TABLEH() { out << "FileSystemId"; }
                         TABLEH() { out << "UsedBytesCount"; }
+                        TABLEH() { out << "UsedNodesCount"; }
                         TABLEH() { out << "FreeBytesCount"; }
                         TABLEH() { out << "CurrentLoad"; }
                         TABLEH() { out << "Suffer"; }
@@ -1105,6 +1106,9 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         }
                         TABLED() {
                             out << ss.UsedBlocksCount * GetBlockSize();
+                        }
+                        TABLED() {
+                            out << ss.UsedNodesCount;
                         }
                         TABLED() {
                             out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
