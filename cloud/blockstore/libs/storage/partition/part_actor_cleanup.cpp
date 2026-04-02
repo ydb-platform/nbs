@@ -282,6 +282,8 @@ void TPartitionActor::ExecuteCleanup(
             LogTitle.GetWithTime().c_str(),
             ToString(MakeBlobId(TabletID(), item.BlobId)).Quote().c_str());
 
+        State->RemoveCleanupQueueItem(item);
+
         db.DeleteBlobMeta(item.BlobId);
         db.DeleteCleanupQueue(item.BlobId, item.CommitId);
 
@@ -309,10 +311,6 @@ void TPartitionActor::CompleteCleanup(
         "%s Complete Cleanup transaction @%lu",
         LogTitle.GetWithTime().c_str(),
         args.CommitId);
-
-    for (const auto& item: args.CleanupQueue) {
-        State->RemoveCleanupQueueItem(item);
-    }
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>();
 
