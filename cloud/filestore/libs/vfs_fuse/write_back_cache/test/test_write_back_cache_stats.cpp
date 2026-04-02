@@ -81,37 +81,55 @@ TTestWriteDataRequestStats& TTestWriteBackCacheStats::GetWriteStats(
     }
 }
 
-void TTestWriteBackCacheStats::WriteDataRequestEnteredStatus(
-    EWriteDataRequestStatus status)
+void TTestWriteBackCacheStats::AddedPendingRequest()
 {
     auto guard = Guard(Lock);
 
-    auto& stats = GetWriteStats(status);
-    stats.InProgressCount++;
+    PendingStats.InProgressCount++;
 }
 
-void TTestWriteBackCacheStats::WriteDataRequestExitedStatus(
-    EWriteDataRequestStatus status,
-    TDuration duration)
+void TTestWriteBackCacheStats::RemovedPendingRequest(TDuration duration)
 {
     auto guard = Guard(Lock);
 
-    auto& stats = GetWriteStats(status);
-    stats.Count++;
-    stats.InProgressCount--;
-    if (stats.Data.size() < MaxItems) {
-        stats.Data.push_back(duration);
+    PendingStats.Count++;
+    PendingStats.InProgressCount--;
+    if (PendingStats.Data.size() < MaxItems) {
+        PendingStats.Data.push_back(duration);
     }
 }
 
-void TTestWriteBackCacheStats::WriteDataRequestUpdateMinTime(
-    EWriteDataRequestStatus status,
-    TInstant minTime)
+void TTestWriteBackCacheStats::AddedUnflushedRequest()
 {
     auto guard = Guard(Lock);
 
-    auto& stats = GetWriteStats(status);
-    stats.MinTime = minTime;
+    UnflushedStats.InProgressCount++;
+}
+
+void TTestWriteBackCacheStats::RemovedUnflushedRequest(TDuration duration)
+{
+    auto guard = Guard(Lock);
+
+    UnflushedStats.Count++;
+    UnflushedStats.InProgressCount--;
+    if (UnflushedStats.Data.size() < MaxItems) {
+        UnflushedStats.Data.push_back(duration);
+    }
+}
+
+void TTestWriteBackCacheStats::AddedFlushedRequest()
+{
+    auto guard = Guard(Lock);
+
+    FlushedStats.InProgressCount++;
+}
+
+void TTestWriteBackCacheStats::RemovedFlushedRequest()
+{
+    auto guard = Guard(Lock);
+
+    FlushedStats.Count++;
+    FlushedStats.InProgressCount--;
 }
 
 void TTestWriteBackCacheStats::AddReadDataStats(
