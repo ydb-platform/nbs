@@ -142,7 +142,7 @@ public:
     void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
 
     // UpdateStats under lock
-    void UpdateStats(TInstant now) const;
+    void UpdateStats() const;
 
 private:
     // Combines acquiring mutex and executing queued operations on mutex release

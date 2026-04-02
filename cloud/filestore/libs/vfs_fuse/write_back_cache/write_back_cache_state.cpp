@@ -375,6 +375,17 @@ void TWriteBackCacheState::ReleaseBarrier(ui64 nodeId, ui64 barrierId)
     }
 }
 
+void TWriteBackCacheState::UpdateStats() const
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    Stats->UpdateWriteBackCacheStateStats();
+
+    // TODO(#1751): Uncomment the following line when UpdateStats is implemented
+    // for RequestManager
+    // RequestManager.UpdateStats();
+}
+
 // Private methods
 
 TGuard<TQueuedOperations>
