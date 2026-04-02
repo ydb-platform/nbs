@@ -429,12 +429,14 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             client->Stop();
         };
 
+        TManualEvent sent;
         testContext->PostSend = [&](auto* qp, auto* wr) {
             Y_UNUSED(qp);
             const auto* msg =
                 reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
             testContext->ReqIds.push_back(msg->ReqId);
             testContext->CompletionHandle.Set();
+            sent.Signal();
         };
 
         auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
@@ -469,9 +471,9 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         endpoint->SendRequest(
             request.ExtractResult(),
             MakeIntrusive<TCallContext>());
+        UNIT_ASSERT(sent.WaitT(5s));
 
         Disconnect(testContext);
-
         UNIT_ASSERT(handler->Done.WaitT(5s));
     }
 

@@ -11,7 +11,6 @@
 #include "verbs.h"
 #include "work_queue.h"
 
-#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
@@ -855,14 +854,10 @@ bool TClientEndpoint::HandleInputRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Clear();
+    }
 
-        if (!CheckState(EEndpointState::Connected)) {
-            RDMA_ERROR(
-                __func__ << " has been called in " << State
-                         << " state, expected Connected");
-            ReportRdmaError("invalid state");
-            return false;
-        }
+    if (!CheckState(EEndpointState::Connected)) {
+        return false;
     }
 
     auto requests = InputRequests.DequeueAll();
@@ -932,14 +927,12 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
         CancelRequestEvent.Clear();
+    }
 
-        if (!CheckState(EEndpointState::Connected)) {
-            RDMA_ERROR(
-                __func__ << " has been called in " << State
-                         << " state, expected Connected");
-            ReportRdmaError("invalid state");
-            return false;
-        }
+    if (!CheckState(EEndpointState::Connected) &&
+        !CheckState(EEndpointState::Disconnecting))
+    {
+        return false;
     }
 
     THashSet<ui64> clientRequestIdToCancel;
@@ -984,14 +977,10 @@ void TClientEndpoint::AbortRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
         AbortRequestsEvent.Clear();
+    }
 
-        if (!CheckState(EEndpointState::Disconnecting)) {
-            RDMA_ERROR(
-                __func__ << " has been called in " << State
-                         << " state, expected Disconnecting");
-            ReportRdmaError("invalid state");
-            return;
-        }
+    if (!CheckState(EEndpointState::Disconnecting)) {
+        return;
     }
 
     auto requests = InputRequests.DequeueAll();
@@ -1030,20 +1019,16 @@ void TClientEndpoint::AbortRequest(
 
 bool TClientEndpoint::HandleCompletionEvents() noexcept
 {
+    if (!CheckState(EEndpointState::Connected) &&
+        !CheckState(EEndpointState::Disconnecting))
+    {
+        return false;
+    }
+
     try {
         ibv_cq* cq = CompletionQueue.get();
 
         if (WaitMode == EWaitMode::Poll) {
-            if (!CheckState(EEndpointState::Connected) &&
-                !CheckState(EEndpointState::Disconnecting))
-            {
-                RDMA_ERROR(
-                    __func__ << " has been called in " << State
-                             << " state, expected Connected/Disconnecting");
-                ReportRdmaError("invalid state");
-                return false;
-            }
-
             Verbs->GetCompletionEvent(cq);
             Verbs->AckCompletionEvents(cq, 1);
             Verbs->RequestCompletionEvent(cq, 0);
@@ -1357,7 +1342,10 @@ bool TClientEndpoint::Flushed() const
 {
     return SendQueue.Size() == Config.QueueSize
         && RecvQueue.Size() == Config.QueueSize
-        && ActiveRequests.Empty();
+        && ActiveRequests.Empty()
+        && !InputRequests
+        && !QueuedRequests
+        && !CancelRequests;
 }
 
 bool TClientEndpoint::FlushHanging() const
@@ -1722,16 +1710,10 @@ private:
         auto hasWork = false;
 
         for (const auto& endpoint: *endpoints) {
-            if (endpoint->CheckState(EEndpointState::Connected)) {
-                hasWork |= endpoint->HandleCancelRequests();
-                hasWork |= endpoint->HandleInputRequests();
-                hasWork |= endpoint->HandleCompletionEvents();
-            }
-            else if (endpoint->CheckState(EEndpointState::Disconnecting)) {
-                hasWork |= endpoint->HandleCancelRequests();
-                hasWork |= endpoint->HandleCompletionEvents();
-                endpoint->AbortRequests();
-            }
+            hasWork |= endpoint->HandleCancelRequests();
+            hasWork |= endpoint->HandleInputRequests();
+            hasWork |= endpoint->HandleCompletionEvents();
+            endpoint->AbortRequests();
         }
 
         return hasWork;
