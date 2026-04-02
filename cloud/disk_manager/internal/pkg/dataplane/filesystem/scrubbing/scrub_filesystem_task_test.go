@@ -321,3 +321,147 @@ func TestScrubFilesystemTaskCancel(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, entries)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func rmTree(
+	ctx context.Context,
+	session nfs.Session,
+	parentNodeID uint64,
+	name string,
+) error {
+
+	node, err := session.GetNodeAttr(ctx, parentNodeID, name)
+	if err != nil {
+		return err
+	}
+
+	for cookie := ""; ; {
+		var nodes []nfs.Node
+		nodes, cookie, err = session.ListNodes(
+			ctx,
+			node.NodeID,
+			cookie,
+			4096,
+			false, // unsafe
+		)
+		if err != nil {
+			return err
+		}
+
+		for _, child := range nodes {
+			err = session.UnlinkNode(
+				ctx,
+				node.NodeID,
+				child.Name,
+				false, // unlinkDirectory
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		if cookie == "" {
+			break
+		}
+	}
+
+	return session.UnlinkNode(ctx, parentNodeID, name, true /* unlinkDirectory */)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestScrubFilesystemTaskNodeDeletedDuringScrubbing(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	targetDirName := "dir_to_delete"
+	root := nfs_testing.Root(
+		nfs_testing.Dir("a",
+			nfs_testing.File("a1"),
+			nfs_testing.File("a2"),
+		),
+		nfs_testing.Dir(targetDirName,
+			nfs_testing.File("f1"),
+			nfs_testing.File("f2"),
+			nfs_testing.File("f3"),
+			nfs_testing.File("f4"),
+			nfs_testing.File("f5"),
+			nfs_testing.File("f6"),
+			nfs_testing.File("f7"),
+			nfs_testing.File("f8"),
+			nfs_testing.File("f9"),
+			nfs_testing.File("f10"),
+		),
+		nfs_testing.Dir("b",
+			nfs_testing.File("b1"),
+			nfs_testing.File("b2"),
+		),
+	)
+	fsModel := f.fillFilesystem(t, filesystemID, root, false /* parallel */)
+	defer fsModel.Close()
+
+	// Create a separate writable session for deleting nodes during scrubbing.
+	deleteSession, err := f.client.CreateSession(
+		f.ctx,
+		filesystemID,
+		"",
+		false, // readonly
+	)
+	require.NoError(t, err)
+	defer deleteSession.Close(f.ctx)
+
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("GetTaskID").Return("scrub-delete-task")
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
+	listNodesMaxBytes := uint32(1)
+	task := &scrubFilesystemTask{
+		config: &scrubbing_config.FilesystemScrubbingConfig{
+			ListNodesMaxBytes: &listNodesMaxBytes,
+		},
+		factory: f.factory,
+		storage: f.storage,
+		request: &scrubbing_protos.ScrubFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: filesystemID,
+			},
+			FilesystemCheckpointId: "",
+		},
+		state: &scrubbing_protos.ScrubFilesystemTaskState{},
+	}
+
+	var deleted bool
+	var mu sync.Mutex
+
+	task.callback = func(nodes []nfs.Node) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		if deleted {
+			return
+		}
+
+		for _, node := range nodes {
+			if node.Name == targetDirName {
+				err := rmTree(
+					f.ctx,
+					deleteSession,
+					node.ParentID,
+					node.Name,
+				)
+				require.NoError(t, err)
+				deleted = true
+			}
+		}
+	}
+
+	err = task.Run(f.ctx, execCtx)
+	require.NoError(t, err)
+	require.True(t, deleted)
+}

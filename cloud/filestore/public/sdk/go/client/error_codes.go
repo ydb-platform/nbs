@@ -126,6 +126,7 @@ var (
 	E_GRPC_DATA_LOSS           = makeGrpcError(15)
 	E_GRPC_UNAUTHENTICATED     = makeGrpcError(16)
 
+	E_FS_NOENT           = makeFileStoreError(2)
 	E_FS_EXIST           = makeFileStoreError(5)
 	E_FS_INVALID_SESSION = makeFileStoreError(100)
 	E_FS_OUT_OF_SPACE    = makeFileStoreError(101)
@@ -185,6 +186,7 @@ var resultMap = map[uint32]string{
 	E_GRPC_DATA_LOSS:           "E_GRPC_DATA_LOSS",
 	E_GRPC_UNAUTHENTICATED:     "E_GRPC_UNAUTHENTICATED",
 
+	E_FS_NOENT:           "E_FS_NOENT",
 	E_FS_EXIST:           "E_FS_EXIST",
 	E_FS_INVALID_SESSION: "E_FS_INVALID_SESSION",
 	E_FS_OUT_OF_SPACE:    "E_FS_OUT_OF_SPACE",

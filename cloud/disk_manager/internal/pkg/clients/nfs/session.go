@@ -169,3 +169,17 @@ func (s *session) GetNodeAttr(
 	node, err := s.nfs.GetNodeAttr(ctx, s.session, parentNodeID, name)
 	return Node(node), wrapError(err)
 }
+
+func (s *session) UnlinkNode(
+	ctx context.Context,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) (err error) {
+
+	defer s.metrics.StatRequest("UnlinkNode")(&err)
+
+	return wrapError(
+		s.nfs.UnlinkNode(ctx, s.session, parentNodeID, name, unlinkDirectory),
+	)
+}

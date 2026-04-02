@@ -70,6 +70,7 @@ func (t *scrubFilesystemTask) Run(
 		t.config.GetListNodesMaxBytes(),
 		true, // readOnly
 		true, // unsafe
+		true, // ignoreNotFound
 	)
 
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()

@@ -70,6 +70,13 @@ type Session interface {
 		name string,
 	) (Node, error)
 
+	UnlinkNode(
+		ctx context.Context,
+		parentNodeID uint64,
+		name string,
+		unlinkDirectory bool,
+	) error
+
 	Close(ctx context.Context) error
 }
 

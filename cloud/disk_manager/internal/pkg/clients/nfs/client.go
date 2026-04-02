@@ -73,6 +73,17 @@ func isNotFoundError(err error) bool {
 	return false
 }
 
+func IsEnoEntError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_NOENT {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isAlreadyExistsError(err error) bool {
 	var clientErr *nfs_client.ClientError
 	if errors.As(err, &clientErr) {
