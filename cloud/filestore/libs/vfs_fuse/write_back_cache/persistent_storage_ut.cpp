@@ -234,6 +234,53 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         UNIT_ASSERT(HasError(b.Recreate()));
         UNIT_ASSERT(stats.Corrupted->Get());
     }
+
+    Y_UNIT_TEST(ShouldReportAndUpdateStats)
+    {
+        TBootstrap b;
+        auto& stats = b.Metrics.Storage;
+
+        UNIT_ASSERT(!HasError(b.Initialize()));
+        UNIT_ASSERT(b.Storage->Empty());
+
+        const auto* ptr1 = b.Alloc("1234");
+        UNIT_ASSERT(ptr1);
+
+        const auto* ptr2 = b.Alloc("567890");
+        UNIT_ASSERT(ptr2);
+
+        auto maxByteCount = stats.RawUsedByteMaxCount->Get();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryMaxCount->Get());
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(maxByteCount, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultCapacity,
+            stats.RawCapacityByteCount->Get());
+
+        b.Free(ptr1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryMaxCount->Get());
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_GT(maxByteCount, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxByteCount,
+            stats.RawUsedByteMaxCount->Get());
+
+        for (int i = 0; i <= 15; ++i) {
+            b.Storage->UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryMaxCount->Get());
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_GT(maxByteCount, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            stats.RawUsedByteCount->Get(),
+            stats.RawUsedByteMaxCount->Get());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
