@@ -23,6 +23,8 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TVector<TDeviceStat> CreateDeviceStats(
     const TNonreplicatedPartitionConfig& partConfig,
     IDeviceStatObserver* observer)
