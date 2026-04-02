@@ -36,9 +36,9 @@ public:
 
         return {
             .Nodes =
-                {.Count = NMetrics::CreateMetric(
+                {.Count = CreateMetric(
                      [self] { return self->NodeCounter.GetCurrent(); }),
-                 .MaxCount = NMetrics::CreateMetric(
+                 .MaxCount = CreateMetric(
                      [self] { return self->NodeCounter.GetMax(); })},
         };
     }
