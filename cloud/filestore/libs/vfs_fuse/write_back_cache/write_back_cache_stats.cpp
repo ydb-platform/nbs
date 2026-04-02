@@ -63,10 +63,16 @@ public:
         Y_UNUSED(status);
     }
 
-    void UpdatePersistentStorageStats(
-        const TPersistentStorageStats& stats) override
+    virtual void Set(
+        ui64 rawCapacityBytesCount,
+        ui64 rawUsedBytesCount,
+        ui64 entryCount,
+        bool isCorrupted) override
     {
-        Y_UNUSED(stats);
+        Y_UNUSED(rawCapacityBytesCount);
+        Y_UNUSED(rawUsedBytesCount);
+        Y_UNUSED(entryCount);
+        Y_UNUSED(isCorrupted);
     }
 
     IWriteBackCacheInternalStatsPtr GetWriteBackCacheInternalStats() override
@@ -93,6 +99,14 @@ public:
     {
         return shared_from_this();
     }
+
+    TPersistentStorageMetrics CreatePersistentStorageMetrics() const override
+    {
+        return {};
+    }
+
+    void UpdatePersistentStorageStats() override
+    {}
 };
 
 }   // namespace

@@ -1,19 +1,24 @@
 #pragma once
 
-#include <util/system/types.h>
-
-#include <memory>
+#include <cloud/filestore/libs/diagnostics/metrics/public.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPersistentStorageStats
+struct TPersistentStorageMetrics
 {
-    ui64 RawCapacityByteCount = 0;
-    ui64 RawUsedByteCount = 0;
-    ui64 EntryCount = 0;
-    bool IsCorrupted = false;
+    struct TMetrics
+    {
+        NMetrics::IMetricPtr RawCapacityByteCount;
+        NMetrics::IMetricPtr RawUsedByteCount;
+        NMetrics::IMetricPtr RawUsedByteMaxCount;
+        NMetrics::IMetricPtr EntryCount;
+        NMetrics::IMetricPtr EntryMaxCount;
+        NMetrics::IMetricPtr Corrupted;
+    };
+
+    TMetrics Storage;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -22,10 +27,20 @@ struct IPersistentStorageStats
 {
     virtual ~IPersistentStorageStats() = default;
 
-    virtual void UpdatePersistentStorageStats(
-        const TPersistentStorageStats& stats) = 0;
+    virtual void Set(
+        ui64 rawCapacityBytesCount,
+        ui64 rawUsedBytesCount,
+        ui64 entryCount,
+        bool isCorrupted) = 0;
+
+    virtual TPersistentStorageMetrics
+    CreatePersistentStorageMetrics() const = 0;
+
+    virtual void UpdatePersistentStorageStats() = 0;
 };
 
 using IPersistentStorageStatsPtr = std::shared_ptr<IPersistentStorageStats>;
+
+IPersistentStorageStatsPtr CreatePersistentStorageStats();
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

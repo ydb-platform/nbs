@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_ring_buffer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
@@ -20,16 +21,22 @@ private:
     TFileRingBuffer Storage;
     THashSet<const void*> DeletedEntries;
     const TPersistentStorageConfig Config;
+    const TLog Log;
+    const TString LogTag;
 
 public:
     TFileRingBufferStorage(
         IPersistentStorageStatsPtr stats,
-        TPersistentStorageConfig config)
+        TPersistentStorageConfig config,
+        TLog log,
+        TString logTag)
         : Stats(std::move(stats))
         , Storage(config.FilePath, config.DataCapacity, config.MetadataCapacity)
         , Config(std::move(config))
+        , Log(std::move(log))
+        , LogTag(std::move(logTag))
     {
-        UpdateStats();
+        SetStats();
     }
 
     NProto::TError Init()
@@ -40,15 +47,23 @@ public:
 
         if (!Storage.ValidateMetadata()) {
             Storage.SetCorrupted();
-            UpdateStats();
+            SetStats();
             return MakeError(E_FAIL, "Metadata is corrupted");
         }
 
         if (Config.EnableChecksumValidation && !Storage.Validate().empty()) {
             Storage.SetCorrupted();
-            UpdateStats();
+            SetStats();
             return MakeError(E_FAIL, "Data entries are corrupted");
         }
+
+        STORAGE_INFO(
+            LogTag << " WriteBackCache has been initialized "
+                   << "{\"FilePath\": " << Config.FilePath.Quote()
+                   << ", \"RawCapacityByteCount\": " << Storage.GetRawCapacity()
+                   << ", \"RawUsedByteCount\": "
+                   << Storage.GetRawUsedBytesCount()
+                   << ", \"EntryCount\": " << Storage.Size() << "}");
 
         return {};
     }
@@ -69,7 +84,7 @@ public:
                 }
             });
 
-        UpdateStats();
+        SetStats();
     }
 
     ui64 GetMaxSupportedAllocationByteCount() const override
@@ -85,7 +100,7 @@ public:
     bool Commit() override
     {
         auto res = Storage.Commit();
-        UpdateStats();
+        SetStats();
         return res;
     }
 
@@ -109,22 +124,22 @@ public:
                 "Orphaned deleted entries detected");
         }
 
-        UpdateStats();
+        SetStats();
     }
 
-    TPersistentStorageStats GetStats() const override
+    void UpdateStats() const override
     {
-        return {
-            .RawCapacityByteCount = Storage.GetRawCapacity(),
-            .RawUsedByteCount = Storage.GetRawUsedBytesCount(),
-            .EntryCount = Storage.Size() - DeletedEntries.size(),
-            .IsCorrupted = Storage.IsCorrupted()};
+        Stats->UpdatePersistentStorageStats();
     }
 
 private:
-    void UpdateStats()
+    void SetStats()
     {
-        Stats->UpdatePersistentStorageStats(GetStats());
+        Stats->Set(
+            /* rawCapacityBytesCount = */ Storage.GetRawCapacity(),
+            /* rawUsedBytesCount = */ Storage.GetRawUsedBytesCount(),
+            /* entryCount = */ Storage.Size() - DeletedEntries.size(),
+            /* isCorrupted = */ Storage.IsCorrupted());
     }
 };
 
@@ -134,11 +149,15 @@ private:
 
 TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
     IPersistentStorageStatsPtr stats,
-    TPersistentStorageConfig config)
+    TPersistentStorageConfig config,
+    TLog log,
+    TString logTag)
 {
     auto storage = std::make_shared<TFileRingBufferStorage>(
         std::move(stats),
-        std::move(config));
+        std::move(config),
+        std::move(log),
+        std::move(logTag));
 
     auto error = storage->Init();
     if (HasError(error)) {

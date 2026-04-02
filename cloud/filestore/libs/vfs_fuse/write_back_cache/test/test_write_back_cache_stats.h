@@ -27,6 +27,14 @@ struct TTestReadDataRequestStats
     ui64 CacheFullHitCount = 0;
 };
 
+struct TPersistentStorageStats
+{
+    ui64 RawCapacityByteCount = 0;
+    ui64 RawUsedByteCount = 0;
+    ui64 EntryCount = 0;
+    bool IsCorrupted = false;
+};
+
 struct TTestWriteBackCacheStats
     : public std::enable_shared_from_this<TTestWriteBackCacheStats>
     , public IWriteBackCacheStats
@@ -86,8 +94,11 @@ struct TTestWriteBackCacheStats
 
     void AddReadDataStats(EReadDataRequestCacheStatus status) override;
 
-    void UpdatePersistentStorageStats(
-        const TPersistentStorageStats& stats) override;
+    void Set(
+        ui64 rawCapacityBytesCount,
+        ui64 rawUsedBytesCount,
+        ui64 entryCount,
+        bool isCorrupted) override;
 
     IWriteBackCacheInternalStatsPtr GetWriteBackCacheInternalStats() override
     {
@@ -113,6 +124,14 @@ struct TTestWriteBackCacheStats
     {
         return shared_from_this();
     }
+
+    TPersistentStorageMetrics CreatePersistentStorageMetrics() const override
+    {
+        return {};
+    }
+
+    void UpdatePersistentStorageStats() override
+    {}
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

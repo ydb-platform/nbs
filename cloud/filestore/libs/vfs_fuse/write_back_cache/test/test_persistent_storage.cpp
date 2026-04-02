@@ -38,7 +38,7 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
 
     Data[res] = std::move(item);
 
-    UpdateStats();
+    SetStats();
 
     return res;
 }
@@ -55,27 +55,25 @@ void TTestStorage::Free(const void* ptr)
 
     Data.erase(it);
 
-    UpdateStats();
+    SetStats();
 }
+
+void TTestStorage::UpdateStats() const
+{}
 
 void TTestStorage::SetCapacity(size_t capacity)
 {
     Capacity = capacity;
-    UpdateStats();
+    SetStats();
 }
 
-TPersistentStorageStats TTestStorage::GetStats() const
+void TTestStorage::SetStats()
 {
-    return {
-        .RawCapacityByteCount = Capacity,
-        .RawUsedByteCount = Data.size(),
-        .EntryCount = Data.size(),
-        .IsCorrupted = false};
-}
-
-void TTestStorage::UpdateStats()
-{
-    Stats->UpdatePersistentStorageStats(GetStats());
+    Stats->Set(
+        /* rawCapacityBytesCount = */ Capacity,
+        /* rawUsedBytesCount = */ Data.size(),
+        /* entryCount = */ Data.size(),
+        /* isCorrupted = */ false);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

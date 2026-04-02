@@ -89,8 +89,9 @@ public:
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
                 args.Stats->GetPersistentStorageStats(),
-                {.FilePath = args.FilePath,
-                 .DataCapacity = args.CapacityBytes});
+                {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes},
+                Log,
+                LogTag);
 
         if (HasError(createPersistentStorageResult)) {
             ReportWriteBackCacheCorruptionError(
@@ -119,26 +120,8 @@ public:
                 TStringBuilder()
                 << LogTag
                 << " WriteBackCache failed to deserialize requests from the "
-                   "persistent storage, FilePath: "
+                   "persistent storage due to corruption, FilePath: "
                 << args.FilePath.Quote());
-            return;
-        }
-
-        const auto persistentStorageStats = PersistentStorage->GetStats();
-
-        STORAGE_INFO(
-            LogTag << " WriteBackCache has been initialized "
-            << "{\"FilePath\": " << args.FilePath.Quote()
-            << ", \"RawCapacityByteCount\": "
-            << persistentStorageStats.RawCapacityByteCount
-            << ", \"RawUsedByteCount\": "
-            << persistentStorageStats.RawUsedByteCount
-            << ", \"EntryCount\": "
-            << persistentStorageStats.EntryCount << "}");
-
-        if (persistentStorageStats.IsCorrupted) {
-            ReportWriteBackCacheCorruptionError(
-                LogTag + " WriteBackCache persistent queue is corrupted");
         }
     }
 
