@@ -1,8 +1,21 @@
 #pragma once
 
-#include <memory>
+#include <cloud/filestore/libs/diagnostics/metrics/public.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TNodeStateHolderMetrics
+{
+    struct TNodeMetrics
+    {
+        NMetrics::IMetricPtr Count;
+        NMetrics::IMetricPtr MaxCount;
+    };
+
+    TNodeMetrics Nodes;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -12,8 +25,13 @@ struct INodeStateHolderStats
 
     virtual void IncrementNodeCount() = 0;
     virtual void DecrementNodeCount() = 0;
+
+    virtual TNodeStateHolderMetrics CreateNodeStateHolderMetrics() const = 0;
+    virtual void UpdateNodeStateHolderStats() = 0;
 };
 
 using INodeStateHolderStatsPtr = std::shared_ptr<INodeStateHolderStats>;
+
+INodeStateHolderStatsPtr CreateNodeStateHolderStats();
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
