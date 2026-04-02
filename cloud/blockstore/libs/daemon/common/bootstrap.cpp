@@ -289,7 +289,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("TraceProcessor initialized");
     }
 
-    auto clientInactivityTimeout = Configs->GetInactiveClientsTimeout();
+    auto inactiveClientsTimeout = Configs->GetInactiveClientsTimeout();
 
     auto rootGroup = Monitoring->GetCounters()
         ->GetSubgroup("counters", "blockstore");
@@ -322,7 +322,7 @@ void TBootstrapBase::Init()
         VolumeStats = CreateVolumeStats(
             Monitoring,
             Configs->DiagnosticsConfig,
-            clientInactivityTimeout,
+            inactiveClientsTimeout,
             EVolumeStatsType::EServerStats,
             Timer);
     }
@@ -679,7 +679,7 @@ void TBootstrapBase::Init()
             Monitoring,
             std::move(Service),
             CreateCrcDigestCalculator(),
-            clientInactivityTimeout);
+            inactiveClientsTimeout);
 
         STORAGE_INFO("ValidationService initialized");
     }

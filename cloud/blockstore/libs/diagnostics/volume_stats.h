@@ -7,9 +7,11 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/ptr.h>
 #include <util/generic/string.h>
 
 #include <span>
@@ -83,6 +85,14 @@ struct IVolumeInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IVolumeInfoPin: public TThrRefBase
+{
+};
+
+using IVolumeInfoPinPtr = TIntrusivePtr<IVolumeInfoPin>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IVolumeStats
 {
     virtual ~IVolumeStats() = default;
@@ -105,7 +115,23 @@ struct IVolumeStats
         const TString& diskId,
         const TString& clientId) const = 0;
 
-    virtual void DisableRemoveVolumeInfoByInactivityTimeout(
+    /**
+     * Disable remove VolumeInfo by InactiveClientsTimeout since
+     * LastRemountTime during pin object's lifetime
+     *
+     * VolumeInfo can be pinned multiple times.
+     * Remove by timeout is resumed when all pins are removed - i.e. all
+     * IVolumeInfoPin are destroyed (e.g. TVolumeInfoPinPtr::release()).
+     * For multithreaded owner objects it is recommended to store pin object
+     * via THotSwap<IVolumeInfoPin>.
+     *
+     * @return
+     *  != nullptr - pin object
+     *  == nullptr - no VolumeInfo with specified [diskId, clientId] found
+     *               or VolumeInfo cannot be pinned due to max simultaneous
+     *               pins reached
+     */
+    [[nodiscard]] virtual IVolumeInfoPinPtr PinVolumeInfo(
         const TString& diskId,
         const TString& clientId) = 0;
 

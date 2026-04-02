@@ -10,6 +10,7 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -24,6 +25,7 @@
 #include <util/system/rwlock.h>
 
 #include <algorithm>
+#include <limits>
 #include <unordered_map>
 
 namespace NCloud::NBlockStore {
@@ -253,8 +255,13 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
-    bool RemoveByInactivityTimeoutEnabled = true;
     TInstant LastRemountTime;
+
+    // Number of pins put upon the object.
+    // Pinned object with PinCount > 0 is not to be removed
+    // by ClientInactivityTimeout.
+    // Note: field access must be under TVolumeStats::Lock
+    size_t PinCount = 0;
 
     static TRequestCounters::EOptions GetRequestCountersOptions(
         const TVolumeInfoBase& volumeBase)
@@ -285,6 +292,11 @@ public:
               histogramCounterOptions,
               executionTimeSizeClasses))
     {}
+
+    bool IsPinned() const noexcept
+    {
+        return PinCount > 0;
+    }
 
     const NProto::TVolume& GetInfo() const override
     {
@@ -445,8 +457,12 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TVolumeStats;
+using TVolumeStatsPtr = std::shared_ptr<TVolumeStats>;
+
 class TVolumeStats final
     : public IVolumeStats
+    , public std::enable_shared_from_this<TVolumeStats>
 {
     using TVolumeBasePtr = std::shared_ptr<TVolumeInfoBase>;
     using TVolumeInfoPtr = std::shared_ptr<TVolumeInfo>;
@@ -463,6 +479,39 @@ class TVolumeStats final
     };
 
     using TVolumeHolderMap = std::unordered_map<TString, TVolumeInfoHolder>;
+
+    class TVolumeInfoPin: public IVolumeInfoPin
+    {
+    public:
+        TVolumeInfoPin(
+            std::shared_ptr<TVolumeStats> volumeStats,
+            TString diskId,
+            TString clientId)
+            : VolumeStats(std::move(volumeStats))
+            , DiskId(std::move(diskId))
+            , ClientId(std::move(clientId))
+        {
+            Pinned = VolumeStats->IncVolumeInfoPinCounter(DiskId, ClientId);
+        }
+
+        ~TVolumeInfoPin() override
+        {
+            if (Pinned) {
+                VolumeStats->DecVolumeInfoPinCounter(DiskId, ClientId);
+            }
+        }
+
+        bool IsPinned() const noexcept
+        {
+            return Pinned;
+        }
+
+    private:
+        TVolumeStatsPtr VolumeStats;
+        const TString DiskId;
+        const TString ClientId;
+        bool Pinned = false;
+    };
 
 private:
     const IMonitoringServicePtr Monitoring;
@@ -514,7 +563,7 @@ public:
     bool MountVolumeImpl(
         NProto::TVolume volume,
         const TRealInstanceId& realInstanceId,
-        bool removeByInactivityTimeout)
+        size_t pinCount)
     {
         bool inserted = false;
 
@@ -539,8 +588,7 @@ public:
             inserted = true;
         }
 
-        instanceIt->second->RemoveByInactivityTimeoutEnabled =
-            removeByInactivityTimeout;
+        instanceIt->second->PinCount = pinCount;
         instanceIt->second->LastRemountTime = Timer->Now();
 
         if (!inserted) {
@@ -565,61 +613,22 @@ public:
             clientId,
             instanceId);
 
-        return MountVolumeImpl(
-            volume,
-            itr->second,
-            true /* removeByInactivityTimeout */);
-    }
-
-    void UnmountVolumeImpl(const TString& diskId, const TString& clientId)
-    {
-        const auto& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
-
-        auto volumeIt = Volumes.find(logicalDiskId);
-        if (volumeIt == Volumes.end()) {
-            return;
-        }
-
-        auto realInstanceIt = ClientToRealInstance.find(clientId);
-        if (realInstanceIt == ClientToRealInstance.end()) {
-            return;
-        }
-
-        TVolumeMap& infos = volumeIt->second.VolumeInfos;
-
-        auto infoIt = infos.find(realInstanceIt->second);
-        if (infoIt == infos.end()) {
-            return;
-        }
-
-        auto volumeInfo = infoIt->second;
-
-        UnregisterInstance(volumeInfo->VolumeBase, volumeInfo->RealInstanceId);
-
-        std::erase_if(
-            ClientToRealInstance,
-            [&volumeInfo](const auto& client)
-            {
-                return TRealInstanceKeyEqual()(
-                    client.second,
-                    volumeInfo->RealInstanceId);
-            });
-
-        infos.erase(infoIt);
-
-        if (infos.empty()) {
-            UnregisterVolume(volumeInfo->VolumeBase);
-            Volumes.erase(volumeIt);
-        }
+        return MountVolumeImpl(volume, itr->second, 0 /* pinCount */);
     }
 
     void UnmountVolume(
         const TString& diskId,
         const TString& clientId) override
     {
-        TWriteGuard guard(Lock);
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
 
-        UnmountVolumeImpl(diskId, clientId);
+        // No actions.
+
+        // VolumeInfos are removed only by timeout with TrimVolumes()
+        // as there is no restriction of existing several endpoints for single
+        // VolumeInfo (diskId-clientId combination), each of which may be either
+        // durable (with guaranteed UnmountVolume) or not (grpc-like)
     }
 
     void AlterVolumeImpl(
@@ -653,10 +662,7 @@ public:
 
         for (const auto& item: holder.VolumeInfos) {
             const TVolumeInfo& info = *item.second;
-            MountVolumeImpl(
-                volumeConfig,
-                info.RealInstanceId,
-                info.RemoveByInactivityTimeoutEnabled);
+            MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount);
         }
     }
 
@@ -699,16 +705,74 @@ public:
         return GetVolumeInfoImpl(diskId, clientId);
     }
 
-    void DisableRemoveVolumeInfoByInactivityTimeout(
-        const TString& diskId,
-        const TString& clientId) override
+    /**
+     * Increment corresponding VolumeInfo::PinCounter
+     *
+     * MT-Safe
+     *
+     * @return
+     *  true  - increment succeed
+     *  false - no VolumeInfo with specified [diskId, clientId] found
+     *          or VolumeInfo cannot be pinned due to max simultaneous
+     *          pins reached
+     */
+    bool IncVolumeInfoPinCounter(const TString& diskId, const TString& clientId)
     {
         TWriteGuard guard(Lock);
 
         auto volumeInfo = GetVolumeInfoImpl(diskId, clientId);
-        if (volumeInfo) {
-            volumeInfo->RemoveByInactivityTimeoutEnabled = false;
+        if (!volumeInfo) {
+            return false;
         }
+
+        if (volumeInfo->PinCount >=
+            std::numeric_limits<decltype(volumeInfo->PinCount)>::max())
+        {
+            // Max simultaneous pins reached
+            return false;
+        }
+
+        volumeInfo->PinCount++;
+
+        return true;
+    }
+
+    /**
+     * Decrement corresponding VolumeInfo::PinCounter
+     *
+     * MT-Safe
+     *
+     * @return
+     *  true  - decrement succeed
+     *  false - no VolumeInfo with specified [diskId, clientId] found
+     */
+    bool DecVolumeInfoPinCounter(const TString& diskId, const TString& clientId)
+    {
+        TWriteGuard guard(Lock);
+
+        auto volumeInfo = GetVolumeInfoImpl(diskId, clientId);
+        if (!volumeInfo) {
+            return false;
+        }
+
+        STORAGE_VERIFY(
+            volumeInfo->PinCount > 0,
+            TWellKnownEntityTypes::DISK,
+            diskId);
+
+        volumeInfo->PinCount--;
+
+        return true;
+    }
+
+    [[nodiscard]] IVolumeInfoPinPtr PinVolumeInfo(
+        const TString& diskId,
+        const TString& clientId) override
+    {
+        auto pin =
+            MakeIntrusive<TVolumeInfoPin>(shared_from_this(), diskId, clientId);
+
+        return pin->IsPinned() ? pin : nullptr;
     }
 
     NProto::EStorageMediaKind GetStorageMediaKind(
@@ -736,8 +800,7 @@ public:
     {
         std::erase_if(infos, [this, now] (const auto& item){
             const TVolumeInfo& info = *item.second;
-            if (info.RemoveByInactivityTimeoutEnabled &&
-                InactiveClientsTimeout &&
+            if (!info.IsPinned() && InactiveClientsTimeout &&
                 now - info.LastRemountTime > InactiveClientsTimeout)
             {
                 UnregisterInstance(
@@ -758,20 +821,28 @@ public:
         return infos.empty();
     }
 
+    void TrimVolumesImpl()
+    {
+        const auto now = Timer->Now();
+
+        std::erase_if(
+            Volumes,
+            [this, now](auto& item)
+            {
+                TVolumeInfoHolder& holder = item.second;
+                if (TrimInstance(now, holder.VolumeInfos)) {
+                    UnregisterVolume(holder.VolumeBase);
+                    return true;
+                }
+                return false;
+            });
+    }
+
     void TrimVolumes() override
     {
         TWriteGuard guard(Lock);
 
-        const auto now = Timer->Now();
-
-        std::erase_if(Volumes, [this, now] (auto& item) {
-            TVolumeInfoHolder& holder = item.second;
-            if (TrimInstance(now, holder.VolumeInfos)) {
-                UnregisterVolume(holder.VolumeBase);
-                return true;
-            }
-            return false;
-        });
+        TrimVolumesImpl();
     }
 
     void UpdateStats(bool updateIntervalFinished) override
@@ -1115,12 +1186,14 @@ struct TVolumeStatsStub final
         return nullptr;
     }
 
-    void DisableRemoveVolumeInfoByInactivityTimeout(
+    IVolumeInfoPinPtr PinVolumeInfo(
         const TString& diskId,
         const TString& clientId) override
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
+
+        return nullptr;
     }
 
     NProto::EStorageMediaKind GetStorageMediaKind(

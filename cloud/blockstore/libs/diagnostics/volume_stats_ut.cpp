@@ -1245,7 +1245,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRemoveVolumeInfoByTimeoutIfEnabled)
+    Y_UNIT_TEST(ShouldRemoveVolumeInfoByTimeoutIfNotPinned)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
@@ -1335,7 +1335,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotRemoveVolumeInfoByTimeoutIfDisabled)
+    Y_UNIT_TEST(ShouldNotRemoveVolumeInfoByTimeoutIfPinned)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
@@ -1367,9 +1367,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->FindSubgroup("folder", DefaultFolderId));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
         }
-        volumeStats->DisableRemoveVolumeInfoByInactivityTimeout(
-            "disk-1",
-            "client-1");
+
+        auto pin1_1 = volumeStats->PinVolumeInfo("disk-1", "client-1");
 
         Timer->AdvanceTime(inactivityTimeout * 0.5);
 
@@ -1395,13 +1394,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->FindSubgroup("folder", DefaultFolderId));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
         }
-        volumeStats->DisableRemoveVolumeInfoByInactivityTimeout(
-            "disk-2",
-            "client-2");
+
+        auto pin2_1 = volumeStats->PinVolumeInfo("disk-2", "client-2");
 
         Timer->AdvanceTime(inactivityTimeout * 0.6);
+        // Must not remove pinned VolumeInfos
         volumeStats->TrimVolumes();
-
         {
             UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
                             ->GetSubgroup("volume", "disk-1")
@@ -1419,8 +1417,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
 
         Timer->AdvanceTime(inactivityTimeout * 0.6);
+        // Must not remove pinned VolumeInfos
         volumeStats->TrimVolumes();
-
         {
             UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
                             ->GetSubgroup("volume", "disk-1")
@@ -1437,9 +1435,74 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
         }
 
+        // Must not remove pinned VolumeInfos
         volumeStats->UnmountVolume("disk-1", "client-1");
         volumeStats->UnmountVolume("disk-2", "client-2");
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
 
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must not remove multiple pinned VolumeInfos
+        auto pin1_2 = volumeStats->PinVolumeInfo("disk-1", "client-1");
+        auto pin1_3 = volumeStats->PinVolumeInfo("disk-1", "client-1");
+        auto pin2_2 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+        auto pin2_3 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must not remove partially unpinned VolumeInfos regardless of
+        // pin/unpin order
+        pin1_1.Reset();
+        pin1_2.Reset();
+        pin2_3.Reset();
+        pin2_2.Reset();
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Fully unpinned VolumeInfos must be removed by timeout
+        pin1_3.Reset();
+        pin2_1.Reset();
+        volumeStats->TrimVolumes();
         {
             UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
                              ->GetSubgroup("volume", "disk-1")
