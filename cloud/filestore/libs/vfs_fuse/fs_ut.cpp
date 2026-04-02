@@ -35,7 +35,6 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
-#include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
@@ -150,7 +149,10 @@ struct TBootstrap
             Timer,
             CreateUserCounterSupplierStub(),
             FsCountersProvider)}
-        , ModuleStatsRegistry{CreateModuleStatsRegistry(FsCountersProvider)}
+        , ModuleStatsRegistry{CreateModuleStatsRegistry(
+            Timer,
+            FsCountersProvider,
+            Counters->GetSubgroup("component", TString{MetricsComponent}))}
     {
         signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
 
@@ -1591,7 +1593,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotFailOnSuspendWithRequestsInFlight)
     {
-        NAtomic::TBool sessionDestroyed = false;
+        std::atomic<bool> sessionDestroyed = false;
 
         TBootstrap bootstrap;
         bootstrap.Service->DestroySessionHandler = [&sessionDestroyed] (auto, auto) {
@@ -1632,7 +1634,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotFailOnStopWithRequestsInFlight)
     {
-        NAtomic::TBool sessionDestroyed = false;
+        std::atomic<bool> sessionDestroyed = false;
 
         TBootstrap bootstrap;
         bootstrap.Service->DestroySessionHandler = [&sessionDestroyed] (auto, auto) {
@@ -4558,15 +4560,57 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotReportEnormousMaxTimeWhenCancellingRequest)
     {
-        TBootstrap bootstrap(CreateWallClockTimer());
+        NProto::TFileStoreFeatures features;
+
+        // StopAsync and GetAttrRequest are executed concurrently:
+        // - if StopAsync is completed before GetAttrRequest, it will not be
+        //   processed at all;
+        // - if GetAttrRequest is completed before StopAsync, it will not be
+        //   canceled and will return with success.
+        //
+        // We use WriteBackCache in order to prevent race and enforce strict
+        // ordering between StopAsync and GetAttrRequest execution.
+        //
+        // WriteBackCache::FlushAll is executed after CompletionQueue is stopped
+        // (new requests will be canceled) and before FUSE loop is unmounted.
+        //
+        // We catch the moment when FlushAll is called by listening to
+        // WriteData requests.
+
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        auto writeDataCalledPromise = NewPromise();
+        auto responsePromise = NewPromise<NProto::TWriteDataResponse>();
+
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+        {
+            writeDataCalledPromise.SetValue();
+            return responsePromise.GetFuture();
+        };
 
         bootstrap.Start();
 
-        const ui64 nodeId = 123;
+        {
+            // Cached write
+            auto rq = std::make_shared<TWriteRequest>(NodeId, HandleId, 0, "a");
+            auto write = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        }
 
         auto stopFuture = bootstrap.StopAsync();
 
-        auto future = bootstrap.Fuse->SendRequest<TGetAttrRequest>(nodeId);
+        // StopAsync triggers FlushAll
+        writeDataCalledPromise.GetFuture().GetValue(WaitTimeout);
+
+        auto future = bootstrap.Fuse->SendRequest<TGetAttrRequest>(NodeId + 1);
         future.Wait(WaitTimeout);
 
         // Request is cancelled
@@ -4590,6 +4634,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             maxTime,
             1000000000000,
             "got maxTime " << maxTime);
+
+        // Complete FlushAll so StopAsync can finish
+        responsePromise.SetValue(NProto::TWriteDataResponse());
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }

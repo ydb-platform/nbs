@@ -326,6 +326,22 @@ func (client *durableClient) GetNodeAttr(
 	return resp.(*protos.TGetNodeAttrResponse), err
 }
 
+func (client *durableClient) UnlinkNode(
+	ctx context.Context,
+	req *protos.TUnlinkNodeRequest,
+) (*protos.TUnlinkNodeResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnlinkNode(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TUnlinkNodeResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type durableEndpointClient struct {

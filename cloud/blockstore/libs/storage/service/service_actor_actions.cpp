@@ -92,7 +92,7 @@ void TServiceActor::HandleExecuteAction(
         {"backuppathdescriptions",            &TServiceActor::CreateBackupPathDescriptionsActor            },
         {"backuptabletbootinfos",             &TServiceActor::CreateBackupTabletBootInfosActor             },
         {"getclustercapacity",                &TServiceActor::CreateGetClusterCapacityActor                },
-        {"setvhostdiscardenabledflag",        &TServiceActor::CreateSetVhostDiscardEnabledFlagActionActor  },
+        {"setvhostdiscardenabledflag",        &TServiceActor::CreateSetVhostDiscardFlagActionActor         },
         {"getlinkstatus",                     &TServiceActor::CreateGetLinkStatusActionActor               },
         // Local NVMe disks
         {"listnvmedevices",                   &TServiceActor::CreateListNVMeDevicesActor                   },

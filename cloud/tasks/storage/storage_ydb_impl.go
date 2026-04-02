@@ -1425,6 +1425,17 @@ func (s *storageYDB) markForCancellation(
 	}
 	state := states[0]
 
+	if state.NonCancellable {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		return false, errors.NewNonRetriableErrorf(
+			"task is non-cancellable, if it is a cleanup task - consider using ForceFinish instead",
+		)
+	}
+
 	if IsCancellingOrCancelled(state.Status) {
 		err = tx.Commit(ctx)
 		if err != nil {
@@ -1607,6 +1618,20 @@ func (s *storageYDB) updateTaskTx(
 	}
 
 	lastState := states[0]
+
+	if lastState.NonCancellable && IsCancellationRequested(state.Status) {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return TaskState{}, err
+		}
+
+		// It is forbidden to start the cancellation process for a
+		// non-cancellable task
+		return TaskState{}, errors.NewNonRetriableErrorf(
+			"unexpected status for a non-cancellable task, got %v",
+			TaskStatusToString(state.Status),
+		)
+	}
 
 	if lastState.GenerationID != state.GenerationID {
 		// NOTE: no need to commit here, because WrongGenerationError is

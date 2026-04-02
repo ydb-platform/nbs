@@ -1904,7 +1904,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         auto setVhostDiscardEnabledFlagAndCheckResult = [&](bool discardEnabled)
         {
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetVhostDiscardEnabled(discardEnabled);
 
@@ -1936,7 +1936,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // Correct ConfigVersion.
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);
             request.SetVhostDiscardEnabled(false);
@@ -1953,7 +1953,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // Incorrect ConfigVersion.
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(3);
             request.SetVhostDiscardEnabled(true);
@@ -1972,7 +1972,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // DiskId should be supplied.
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetVhostDiscardEnabled(true);
 
             TString buf;

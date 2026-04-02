@@ -12,6 +12,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/vfs_fuse/vhost
     cloud/filestore/libs/vhost
 )

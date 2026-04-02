@@ -113,14 +113,18 @@ void TVolumeActor::CompleteLoadState(
     }
 
     if (args.Meta.Defined()) {
+        const auto throttlerInfo = args.ThrottlerStateInfo.GetOrElse(
+            TVolumeDatabase::TThrottlerStateInfo{
+                .BoostBudget =
+                    CalculateBoostTime(
+                        args.Meta->GetConfig().GetPerformanceProfile())
+                        .MilliSeconds(),
+                .SpentShapingBudgetShare = 0.0});
         TThrottlerConfig throttlerConfig(
             Config->GetMaxThrottlerDelay(),
             Config->GetMaxWriteCostMultiplier(),
             Config->GetDefaultPostponedRequestWeight(),
-            args.ThrottlerStateInfo.Defined()
-                ? TDuration::MilliSeconds(args.ThrottlerStateInfo->Budget)
-                : CalculateBoostTime(
-                    args.Meta->GetConfig().GetPerformanceProfile()),
+            TDuration::MilliSeconds(throttlerInfo.BoostBudget),
             Config->GetDiskSpaceScoreThrottlingEnabled());
 
         bool startPartitionsNeeded = args.StartPartitionsNeeded.GetOrElse(false);
@@ -209,6 +213,7 @@ void TVolumeActor::CompleteLoadState(
     }
 
     if (State) {
+        SendEnableVhostDiscardFlagIfNeeded(ctx);
         ProcessNextPendingClientRequest(ctx);
     }
 }

@@ -117,4 +117,33 @@ bool TIOCompanion::HandleRequests(STFUNC_SIG, const NActors::TActorContext& ctx)
     return true;
 }
 
+bool TIOCompanion::RejectRequests(STFUNC_SIG, const NActors::TActorContext& ctx)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvWriteBlobRequest,
+            RejectWriteBlob,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvReadBlobRequest,
+            RejectReadBlob,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvPatchBlobRequest,
+            RejectPatchBlob,
+            ctx);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvPatchBlobCompleted);
+
+        default:
+            return false;
+    }
+
+    return true;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

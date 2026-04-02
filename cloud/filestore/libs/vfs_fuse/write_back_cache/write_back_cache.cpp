@@ -51,7 +51,7 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
-    const IWriteBackCacheStatsPtr Stats;
+    const IWriteBackCacheInternalStatsPtr Stats;
     const IWriteDataRequestBuilderPtr RequestBuilder;
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const TFlushConfig FlushConfig;
@@ -67,7 +67,7 @@ public:
         : Session(std::move(args.Session))
         , Scheduler(std::move(args.Scheduler))
         , Timer(std::move(args.Timer))
-        , Stats(std::move(args.Stats))
+        , Stats(args.Stats->GetWriteBackCacheInternalStats())
         , RequestBuilder(CreateWriteDataRequestBuilder(
               {.FileSystemId = args.FileSystemId,
                .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
@@ -84,11 +84,11 @@ public:
               args.FileSystemId.c_str(),
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
-        , State(*this, Timer, Stats, LogTag)
+        , State(*this, Timer, args.Stats, LogTag)
     {
         auto createPersistentStorageResult =
             CreateFileRingBufferPersistentStorage(
-                Stats,
+                args.Stats->GetPersistentStorageStats(),
                 {.FilePath = args.FilePath,
                  .DataCapacity = args.CapacityBytes});
 
@@ -112,7 +112,7 @@ public:
             PersistentStorage->GetMaxSupportedAllocationByteCount() >=
             1024 * 1024 + 1016);
 
-        Stats->ResetNonDerivativeCounters();
+        args.Stats->ResetNonDerivativeCounters();
 
         if (!State.Init(PersistentStorage)) {
             ReportWriteBackCacheCorruptionError(
@@ -377,8 +377,6 @@ private:
             std::move(writeDataBatch.Requests),
             writeDataBatch.AffectedRequestCount);
 
-        Stats->FlushStarted();
-
         ExecuteFlush(flushState);
     }
 
@@ -424,22 +422,17 @@ private:
         auto error = flushState->CollectFlushResult();
 
         if (HasError(error)) {
-            Stats->FlushFailed();
-
             auto retryStatus =
                 State.FlushFailed(flushState->GetNodeId(), error);
 
             if (retryStatus == EFlushRetryStatus::ShouldRetry) {
                 ScheduleRetryFlush(std::move(flushState));
-                return;
             }
         } else {
             State.FlushSucceeded(
                 flushState->GetNodeId(),
                 flushState->GetAffectedUnflushedRequestCount());
         }
-
-        Stats->FlushCompleted();
     }
 
     void ScheduleRetryFlush(std::shared_ptr<TNodeFlushState> flushState)

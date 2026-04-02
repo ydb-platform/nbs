@@ -2,8 +2,8 @@
 
 #include "persistent_storage.h"
 #include "sequence_id_generator.h"
-#include "write_back_cache_stats.h"
 #include "write_data_request.h"
+#include "write_data_request_manager_stats.h"
 
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -23,7 +23,7 @@ private:
     ISequenceIdGeneratorPtr SequenceIdGenerator;
     IPersistentStoragePtr PersistentStorage;
     ITimerPtr Timer;
-    IWriteBackCacheStatsPtr Stats;
+    IWriteDataRequestManagerStatsPtr Stats;
 
     TIntrusiveList<TPendingWriteDataRequest> PendingRequests;
     TIntrusiveList<TCachedWriteDataRequest> UnflushedRequests;
@@ -45,7 +45,7 @@ public:
         ISequenceIdGeneratorPtr sequenceIdGenerator,
         IPersistentStoragePtr persistentStorage,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats);
+        IWriteDataRequestManagerStatsPtr stats);
 
     // Reads state from the persistent storage
     bool Init(const TCachedRequestVisitor& visitor);

@@ -11,6 +11,7 @@ core/libs/keyring/ut/bin/cloud-storage-core-libs-keyring-ut-bin
 core/libs/keyring/ut/cloud-storage-core-libs-keyring-ut
 core/libs/tablet/model/ut/cloud-storage-core-libs-tablet-model-ut
 core/libs/tablet/ut/cloud-storage-core-libs-tablet-ut
+core/libs/throttling/bench/smootherstep-bench
 core/libs/throttling/ut/cloud-storage-core-libs-throttling-ut
 core/libs/version/ut/cloud-storage-core-libs-version-ut
 core/tests/recipes/qemu/qemu-recipe

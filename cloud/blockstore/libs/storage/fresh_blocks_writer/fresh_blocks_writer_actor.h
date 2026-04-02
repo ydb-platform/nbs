@@ -72,10 +72,7 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
-    NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-    NPartition::TThreadSafePartCountersPtr PartCounters;
-
-    NPartition::TThreadSafePartStatsPtr PartStats;
+    TPartitionSharedStatePtr SharedState;
 
 public:
     TFreshBlocksWriterActor(
@@ -141,16 +138,27 @@ private:
         const NActors::TActorContext& ctx,
         TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer);
 
+    void ZeroFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 writeRange,
+        ui64 commitId);
+
     void RebootOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TStringBuf& requestName);
 
     void UpdateStats(const NProto::TPartitionStats& update);
 
+    void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
+
+    void ClearWriteQueue(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWaitPartition);
     STFUNC(StateFreshBlobsLoading);
     STFUNC(StateWork);
+    STFUNC(StateZombie);
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
@@ -177,6 +185,10 @@ private:
 
     void HandleZeroBlocksCompleted(
         const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessWriteQueue(
+        const NPartition::TEvPartitionPrivate::TEvProcessWriteQueue::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

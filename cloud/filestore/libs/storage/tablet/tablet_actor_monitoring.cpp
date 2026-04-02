@@ -989,6 +989,7 @@ void TIndexTabletActor::HandleHttpInfo(
     static const THttpHandlers getActions {{
         {"dumpRange",       &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange },
         {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
+        {"locks",           &TIndexTabletActor::HandleHttpInfo_Locks },
     }};
 
     const auto* msg = ev->Get();
@@ -1067,6 +1068,11 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         TAG(TH3) {
             out << "<a href='?TabletID=" << TabletID()
                 << "&action=dirViewer'>Directory Viewer</a>";
+        }
+
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=locks'>Locks</a>";
         }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
@@ -1172,6 +1178,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
             DUMP_BACKPRESSURE_FIELD(Flush);
             DUMP_BACKPRESSURE_FIELD(FlushBytes);
+            DUMP_BACKPRESSURE_FIELD(FlushBytesItemCount);
             DUMP_BACKPRESSURE_FIELD(CompactionScore);
             DUMP_BACKPRESSURE_FIELD(CleanupScore);
 

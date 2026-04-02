@@ -34,6 +34,7 @@ namespace {
     xxx(DeviceIOTimeout,            TDuration,          1min                  )\
     xxx(DeviceIOTimeoutsDisabled,   bool,               false                 )\
     xxx(ShutdownTimeout,            TDuration,          5s                    )\
+    xxx(NVMeAdminCmdTimeout,        TDuration,          1min                  )\
     xxx(Backend,                                                               \
         NProto::EDiskAgentBackendType,                                         \
         NProto::DISK_AGENT_BACKEND_SPDK                                       )\

@@ -209,24 +209,21 @@ private:
     const IStoragePtr Storage;
     const IBlockStorePtr Service;
     const IServerStatsPtr ServerStats;
-    const IVolumeStatsPtr VolumeStats;
     const TString ClientId;
     const TDuration RequestTimeout;
     const ui32 BlockSize;
 
 public:
     TStorageDataClient(
-        IStoragePtr storage,
-        IBlockStorePtr service,
-        IServerStatsPtr serverStats,
-        IVolumeStatsPtr volumeStats,
-        TString clientId,
-        TDuration requestTimeout,
-        ui32 blockSize)
+            IStoragePtr storage,
+            IBlockStorePtr service,
+            IServerStatsPtr serverStats,
+            TString clientId,
+            TDuration requestTimeout,
+            ui32 blockSize)
         : Storage(std::move(storage))
         , Service(std::move(service))
         , ServerStats(std::move(serverStats))
-        , VolumeStats(std::move(volumeStats))
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
         , BlockSize(blockSize)
@@ -286,15 +283,6 @@ public:
                         response.GetVolume(),
                         self->ClientId,
                         instanceId);
-
-                    // Make volumeInfo stats durable after successful mount
-                    auto volumeInfo = self->VolumeStats->GetVolumeInfo(
-                        response.GetVolume().GetDiskId(),
-                        self->ClientId);
-
-                    if (volumeInfo) {
-                        volumeInfo->SetRemoveByInactivityTimeoutEnabled(false);
-                    }
                 }
                 return f;
             });
@@ -835,14 +823,15 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
         storage = Executor->ResultOrError(future).GetResult();
     }
 
-    return {std::make_shared<TStorageDataClient>(
-        std::move(storage),
-        std::move(service),
-        ServerStats,
-        VolumeStats,
-        clientId,
-        clientConfig->GetRequestTimeout(),
-        volume.GetBlockSize())};
+    return {
+        std::make_shared<TStorageDataClient>(
+            std::move(storage),
+            std::move(service),
+            ServerStats,
+            clientId,
+            clientConfig->GetRequestTimeout(),
+            volume.GetBlockSize())
+    };
 }
 
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(

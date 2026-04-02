@@ -30,7 +30,7 @@ class SshToGuest(object):
             "-i", self.key,
             "-l", self.user,
             "-p", str(self.port),
-            "-o LogLevel=error",
+            "-o", "LogLevel=VERBOSE",
             "127.0.0.1",
             command
         ]

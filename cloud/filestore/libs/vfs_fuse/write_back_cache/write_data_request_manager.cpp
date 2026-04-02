@@ -105,7 +105,7 @@ TWriteDataRequestManager::TWriteDataRequestManager(
     ISequenceIdGeneratorPtr sequenceIdGenerator,
     IPersistentStoragePtr persistentStorage,
     ITimerPtr timer,
-    IWriteBackCacheStatsPtr stats)
+    IWriteDataRequestManagerStatsPtr stats)
     : SequenceIdGenerator(std::move(sequenceIdGenerator))
     , PersistentStorage(std::move(persistentStorage))
     , Timer(std::move(timer))

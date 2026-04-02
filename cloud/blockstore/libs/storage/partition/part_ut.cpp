@@ -13128,6 +13128,62 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetStatus(),
             response->GetErrorReason());
     }
+
+    Y_UNIT_TEST(
+        ShouldReportAddFreshBlocksResultedInErrorOnlyForNonRetriableErrors)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        NProto::TError error;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksResponse)
+                {
+                    auto* handle = new IEventHandle(
+                        event->Recipient,
+                        event->Sender,
+                        std::make_unique<TEvPartitionCommonPrivate::
+                                             TEvAddFreshBlocksResponse>(error)
+                            .release(),
+                        0,
+                        event->Cookie);
+
+                    runtime->Send(handle, 0);
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto freshBlocksResultedInErrorCounter = counters->GetCounter(
+            "AppCriticalEvents/AddFreshBlocksResultedInError",
+            true);
+
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        UNIT_ASSERT_VALUES_EQUAL(0, freshBlocksResultedInErrorCounter->Val());
+
+        error = MakeError(E_REJECTED);
+
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        UNIT_ASSERT_VALUES_EQUAL(0, freshBlocksResultedInErrorCounter->Val());
+
+        error = MakeError(E_INVALID_STATE);
+
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, freshBlocksResultedInErrorCounter->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

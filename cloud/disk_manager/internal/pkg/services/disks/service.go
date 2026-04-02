@@ -441,10 +441,11 @@ func (s *service) DeleteDisk(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
+	return s.taskScheduler.ScheduleNonCancellableTask(
 		ctx,
 		"disks.DeleteDisk",
-		"",
+		"", // description
+		"", // zoneID
 		&protos.DeleteDiskRequest{
 			Disk: &types.Disk{
 				ZoneId: req.DiskId.ZoneId,

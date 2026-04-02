@@ -1082,7 +1082,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
 
         executor.WriteTx([&] (TVolumeDatabase db) {
             TVolumeDatabase::TThrottlerStateInfo info;
-            info.Budget = 31415;
+            info.BoostBudget = 31415;
+            info.SpentShapingBudgetShare = 0.1;
             db.WriteThrottlerState(info);
         });
 
@@ -1090,7 +1091,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT(db.ReadThrottlerState(stateInfo));
 
             UNIT_ASSERT(stateInfo.Defined());
-            UNIT_ASSERT_VALUES_EQUAL(31415, stateInfo->Budget);
+            UNIT_ASSERT_VALUES_EQUAL(31415, stateInfo->BoostBudget);
+            UNIT_ASSERT_DOUBLES_EQUAL(0.1, stateInfo->SpentShapingBudgetShare, 1e-9);
         });
     }
 

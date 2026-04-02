@@ -404,6 +404,7 @@ void TServerStats::RequestCompleted(
     const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
     const auto predictedTime = callContext.GetPossiblePostponeDuration();
     const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
+    const auto shapingTime = callContext.Time(EProcessingStage::Shaping);
     const auto errorFlags = error.GetFlags();
     auto errorKind = GetDiagnosticsErrorKind(error);
 
@@ -433,7 +434,7 @@ void TServerStats::RequestCompleted(
         started,
         postponedTime,
         backoffTime,
-        TDuration::Zero(),  // shapingTime
+        shapingTime,
         req.RequestBytes,
         errorKind,
         errorFlags,
@@ -454,7 +455,7 @@ void TServerStats::RequestCompleted(
             started,
             postponedTime,
             backoffTime,
-            TDuration::Zero(),  // shapingTime
+            shapingTime,
             req.RequestBytes,
             errorKind,
             errorFlags,
@@ -507,7 +508,7 @@ void TServerStats::RequestCompleted(
         }
     }
 
-    auto execTime = requestTime - postponedTime - backoffTime;
+    auto execTime = requestTime - postponedTime - backoffTime - shapingTime;
 
     LWTRACK(
         RequestCompleted,
@@ -561,6 +562,7 @@ void TServerStats::RequestCompleted(
         << ", postponed: " << FormatDuration(postponedTime)
         << ", predicted: " << FormatDuration(predictedTime)
         << ", backoff: " << FormatDuration(backoffTime)
+        << ", shaping: " << FormatDuration(shapingTime)
         << ", size: " << FormatByteSize(req.RequestBytes)
         << ", unaligned: " << req.Unaligned
         << maxTimeSuppressedMessage

@@ -54,6 +54,7 @@ SRCS(
     tablet_actor_loadstate_nodes.cpp
     tablet_actor_monitoring.cpp
     tablet_actor_monitoring_directory_viewer.cpp
+    tablet_actor_monitoring_locks.cpp
     tablet_actor_oplog.cpp
     tablet_actor_readblob.cpp
     tablet_actor_readdata.cpp
@@ -121,7 +122,7 @@ PEERDIR(
     cloud/storage/core/libs/viewer
     cloud/storage/core/protos
 
-    contrib/ydb/library/actors/core
+    library/cpp/digest/md5
     library/cpp/protobuf/json
 
     contrib/ydb/core/base
@@ -131,6 +132,7 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
+    contrib/ydb/library/actors/core
 )
 
 END()

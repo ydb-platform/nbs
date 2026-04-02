@@ -68,22 +68,6 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
         checkListDirResult(res, 10);
 
     }
-
-    Y_UNIT_TEST(ShouldPropagateFsyncErrors)
-    {
-        TFileHandle handle(9999);
-        Y_DEFER
-        {
-            handle.Release();
-        };
-
-        for (auto dataSync: {true, false}) {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                NLowLevel::Fsync(handle, dataSync),
-                TServiceError,
-                [](auto const& e) { return e.GetCode() == E_FS_BADHANDLE; });
-        }
-    }
 };
 
 }   // namespace NCloud::NFileStore

@@ -25,7 +25,8 @@ void TMirrorPartitionActor::UpdateCounters(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "Partition %s for disk %s counters not found",
+            "%s Partition %s for disk %s counters not found",
+            LogTitle.GetWithTime().c_str(),
             ToString(sender).c_str(),
             State.GetReplicaInfos()[0].Config->GetName().Quote().c_str());
 
@@ -186,9 +187,9 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "[%s] Failed to send mirror actor statistics due to empty "
+            "%s Failed to send mirror actor statistics due to empty "
             "StatisticRequestInfo.",
-            DiskId.Quote().c_str());
+            LogTitle.GetWithTime().c_str());
         return;
     }
 
@@ -198,7 +199,7 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION_NONREPL,
-            "[%s] Failed to send mirror actor statistics due to error: %s",
+            "%s Failed to send mirror actor statistics due to error: %s",
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->Error).c_str());
     }

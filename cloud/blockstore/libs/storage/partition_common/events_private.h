@@ -26,6 +26,36 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPartitionSharedState
+    : std::enable_shared_from_this<TPartitionSharedState>
+{
+    NPartition::TResourceMetricsQueue ResourceMetricsQueue;
+    NPartition::TThreadSafePartCounters PartCounters;
+    NPartition::TThreadSafePartStats PartStats;
+    NPartition::TGroupDowntimes GroupDowntimes;
+
+    std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
+
+    NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
+    {
+        return {shared_from_this(), &ResourceMetricsQueue};
+    }
+
+    NPartition::TThreadSafePartCountersPtr GetPartCounters()
+    {
+        return {shared_from_this(), &PartCounters};
+    }
+
+    NPartition::TGroupDowntimesPtr GetGroupDowntimes()
+    {
+        return {shared_from_this(), &GroupDowntimes};
+    }
+};
+
+using TPartitionSharedStatePtr = std::shared_ptr<TPartitionSharedState>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(xxx, ...)                 \
     xxx(ReadBlob,                  __VA_ARGS__)                                \
     xxx(TrimFreshLog,              __VA_ARGS__)                                \
@@ -392,10 +422,7 @@ struct TEvPartitionCommonPrivate
 
         TVector<EChannelPermissions> ChannelPermissions;
 
-        NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-        NPartition::TThreadSafePartCountersPtr PartCounters;
-        NPartition::TThreadSafePartStatsPtr PartStats;
-        NPartition::TGroupDowntimesPtr GroupDowntimes;
+        TPartitionSharedStatePtr SharedState;
 
         TCommitIdGeneratorPtr CommitIdGenerator;
     };

@@ -215,6 +215,11 @@ public:
 
         return requests;
     }
+
+    bool Empty() const
+    {
+        return Requests.empty();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,6 +251,13 @@ const char* GetEndpointStateName(EEndpointState state)
         return names[(size_t)state];
     }
     return "Undefined";
+}
+
+inline IOutputStream& operator<<(
+    IOutputStream& out,
+    const std::atomic<EEndpointState>& state)
+{
+    return out << GetEndpointStateName(state);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -917,7 +929,9 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
         CancelRequestEvent.Clear();
     }
 
-    if (!CheckState(EEndpointState::Connected)) {
+    if (!CheckState(EEndpointState::Connected) &&
+        !CheckState(EEndpointState::Disconnecting))
+    {
         return false;
     }
 
@@ -939,7 +953,7 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     while (auto req = cancelled.Dequeue()) {
         RDMA_TRACE("cancel request " << req->ReqId);
         Counters->RequestDequeued();
-        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
+        AbortRequest(std::move(req), E_CANCELLED, "request was cancelled");
     }
 
     // cancel active requests
@@ -947,7 +961,7 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     while (auto req = cancelled.Dequeue()) {
         RDMA_TRACE("cancel request " << req->ReqId);
         Counters->RequestAborted();
-        AbortRequest(std::move(req), E_CANCELLED, "request is cancelled");
+        AbortRequest(std::move(req), E_CANCELLED, "request was cancelled");
     }
 
     if (!requests) {
@@ -977,11 +991,13 @@ void TClientEndpoint::AbortRequests() noexcept
     while (QueuedRequests) {
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
+        RDMA_TRACE("abort request " << req->ReqId);
         Counters->RequestDequeued();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
 
     while (auto req = ActiveRequests.Pop()) {
+        RDMA_TRACE("abort request " << req->ReqId);
         Counters->RequestAborted();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
@@ -1325,7 +1341,11 @@ void TClientEndpoint::Disconnect() noexcept
 bool TClientEndpoint::Flushed() const
 {
     return SendQueue.Size() == Config.QueueSize
-        && RecvQueue.Size() == Config.QueueSize;
+        && RecvQueue.Size() == Config.QueueSize
+        && ActiveRequests.Empty()
+        && !InputRequests
+        && !QueuedRequests
+        && !CancelRequests;
 }
 
 bool TClientEndpoint::FlushHanging() const
@@ -1712,6 +1732,7 @@ private:
                 DurationToCyclesSafe(Config->MaxResponseDelay));
 
             for (auto& request: requests) {
+                RDMA_TRACE(endpoint->Log, "timeout request " << request->ReqId);
                 endpoint->Counters->RequestAborted();
                 endpoint->AbortRequest(
                     std::move(request),
@@ -2034,13 +2055,11 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
         // otherwise keep trying
     }
 
-    auto state = endpoint->State.load();
-
     RDMA_DEBUG(
         endpoint->Log,
-        "reconnect timer hit in " << GetEndpointStateName(state) << " state");
+        "reconnect timer hit in " << endpoint->State << " state");
 
-    switch (state) {
+    switch (endpoint->State) {
         // wait for completion poller to flush WRs
         case EEndpointState::Disconnecting:
             endpoint->Reconnect.Schedule();
@@ -2078,7 +2097,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
             return;
     }
 
-    RDMA_WARN("unable to connect, try again");
+    RDMA_WARN(endpoint->Log, "reconnect");
     BeginResolveAddress(endpoint);
 }
 

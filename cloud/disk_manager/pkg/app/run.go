@@ -328,6 +328,7 @@ func run(
 				ctx,
 				config,
 				taskRegistry,
+				taskScheduler,
 				nfsFactory,
 				filesystemDB,
 			)

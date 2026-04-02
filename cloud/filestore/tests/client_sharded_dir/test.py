@@ -1,5 +1,6 @@
 import json
 import os
+import requests
 import time
 
 import yatest.common as common
@@ -85,6 +86,28 @@ def __fill_fs(client, fs_id, items):
             client.ln(fs_id, item.path, "--symlink", item.data)
 
 
+def __fetch_dir_viewer_entries(tablet_id, node_id):
+    mon_port = os.getenv("NFS_MON_PORT")
+    response = requests.get(
+        url=f"http://localhost:{mon_port}/tablets/app?"
+            f"TabletID={tablet_id}&action=dirViewer&nodeId={node_id}")
+    response.raise_for_status()
+    entries = response.json()["entries"]
+    for entry in entries:
+        del entry["node"]["shardNodeName"]
+        del entry["node"]["id"]
+    return entries
+
+
+def __fetch_locks(tablet_id):
+    mon_port = os.getenv("NFS_MON_PORT")
+    response = requests.get(
+        url=f"http://localhost:{mon_port}/tablets/app?"
+            f"TabletID={tablet_id}&action=locks&getContent=1")
+    response.raise_for_status()
+    return response.json()
+
+
 def test_nonsharded_vs_sharded_fs():
     client, client_nocheck, results_path = __init_test()
     client.create(
@@ -145,6 +168,9 @@ def test_nonsharded_vs_sharded_fs():
         _d("/a1/b5"),
         _d("/a1/b6"),
         _f("/a1/b6/f20.txt", "yyyyy"),
+        _f("/.something"),
+        _f("/another.something"),
+        _f("/file.txt"),
     ]
 
     __fill_fs(client, "fs0", items)
@@ -183,9 +209,6 @@ def test_nonsharded_vs_sharded_fs():
     out += __exec_ls(client, "fs1", "/", "--disable-multitablet-forwarding")
     out += client.diff("fs0", "fs1")
 
-    client.destroy("fs0")
-    client.destroy("fs1")
-
     with open(results_path, "wb") as results_file:
         results_file.write(out)
 
@@ -207,6 +230,52 @@ def test_nonsharded_vs_sharded_fs():
                              "fs1",
                              "filestore-server profile log",
                              results_path)
+
+    #
+    # Querying dirViewer for the root node, dumping the result w/o unstable
+    # fields.
+    #
+
+    tablet_id = json.loads(client.describe("fs1"))["FileStore"]["MainTabletId"]
+    root_node_id = 1
+    entries = __fetch_dir_viewer_entries(tablet_id, root_node_id)
+    result = json.dumps(entries, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('dirViewer(1):\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # Enabling file name hashing and querying dirViewer for the root node once
+    # again, dumping the result w/o unstable fields.
+    #
+
+    client.change_storage_service_config(
+        "fs1",
+        {"HideFileNamesInTabletDirectoryViewer": True})
+    root_node_id = 1
+    entries = __fetch_dir_viewer_entries(tablet_id, root_node_id)
+    result = json.dumps(entries, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('dirViewer(1):\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # And let's do the same thing for locks viewer - there should be no locks
+    # so this is just a smoke test.
+    #
+
+    locks = __fetch_locks(tablet_id)
+    result = json.dumps(locks, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('locks():\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # Destroying the filesystems - important to do it after querying dirViewer.
+    #
+
+    client.destroy("fs0")
+    client.destroy("fs1")
 
     ret = common.canonical_file(results_path, local=True)
     return ret

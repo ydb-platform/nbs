@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -174,7 +175,7 @@ func (r *runnerForRun) executeTask(
 		taskType,
 		taskID,
 	)
-	r.metrics.OnExecutionError(err)
+	r.onExecutionError(execCtx, err)
 
 	if errors.IsPanicError(err) {
 		if execCtx.taskState.PanicCount >= r.maxPanicCount {
@@ -300,6 +301,15 @@ func (r *runnerForRun) executeTask(
 	}
 }
 
+func (r *runnerForRun) onExecutionError(execCtx *executionContext, err error) {
+	if execCtx.IsNonCancellable() {
+		// The error should be visible to the on-call engineer
+		r.metrics.OnExecutionErrorIgnoreSilence(err)
+	} else {
+		r.metrics.OnExecutionError(err)
+	}
+}
+
 func (r *runnerForRun) run(
 	ctx context.Context,
 	execCtx *executionContext,
@@ -404,13 +414,7 @@ func (r *runnerForCancel) executeTask(
 		taskID,
 	)
 
-	err := task.Cancel(
-		logging.WithTaskID(
-			logging.WithComponent(ctx, logging.ComponentTask),
-			execCtx.GetTaskID(),
-		),
-		execCtx,
-	)
+	err := r.cancel(ctx, execCtx, task)
 
 	if ctx.Err() != nil {
 		logging.Info(
@@ -456,6 +460,33 @@ func (r *runnerForCancel) executeTask(
 		)
 		r.metrics.OnError(err)
 	}
+}
+
+func (r *runnerForCancel) cancel(
+	ctx context.Context,
+	execCtx *executionContext,
+	task Task,
+) (err error) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.NewPanicError(r)
+		}
+	}()
+
+	common.Assertf(
+		!execCtx.IsNonCancellable(),
+		"Cancel function cannot be invoked for a non-cancellable task with id %v",
+		execCtx.GetTaskID(),
+	)
+
+	return task.Cancel(
+		logging.WithTaskID(
+			logging.WithComponent(ctx, logging.ComponentTask),
+			execCtx.GetTaskID(),
+		),
+		execCtx,
+	)
 }
 
 func (r *runnerForCancel) lockAndExecuteTask(

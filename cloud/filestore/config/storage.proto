@@ -742,4 +742,11 @@ message TStorageConfig
 
     // Limits unconfirmed (and confirmed but not added to the index) data count.
     optional uint32 UnconfirmedDataCountHardLimit = 489;
+
+    // Reject writes when FlushBytesItemCount >= threshold
+    optional uint64 FlushBytesItemCountThresholdForBackpressure = 490;
+
+    // Set this to see file name hashes instead of the actual names in the
+    // tablet's directory viewer.
+    optional bool HideFileNamesInTabletDirectoryViewer = 491;
 }

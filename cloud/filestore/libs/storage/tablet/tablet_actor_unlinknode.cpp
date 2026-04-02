@@ -586,6 +586,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     // reject the request. In this case the nodeRef will be unlocked afterwards.
     if (HasError(args.Error) ||
         (args.ChildRef && !args.ChildRef.GetOrElse({}).IsExternal()) ||
+        Config->GetParentlessFilesOnly() ||
         !GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
         UnlockNodeRef({args.ParentNodeId, args.Name});

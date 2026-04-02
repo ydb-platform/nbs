@@ -820,10 +820,20 @@ def test_io_telemetry():
     with open(common.output_path("filestore-server.err")) as err:
         for line in err.readlines():
             parts = line.rstrip().split(" ", maxsplit=4)
+            if len(parts) < 4:
+                # we expect that line has the following format
+                # <time> <component> <severity> <message>
+                continue
             component = parts[1]
             message = parts[3]
             if component == ":NFS_TRACE":
-                track = json.loads(message)
+                track = ""
+                try:
+                    track = json.loads(message)
+                except json.JSONDecodeError:
+                    logging.warning(
+                        "failed to deserialize message to JSON: %s" % message)
+                    continue
                 for probe in track:
                     if len(probe) < 3:
                         continue
@@ -858,6 +868,27 @@ def test_io_telemetry():
 
         probe_list = sorted([(k, v > 0) for k, v in probes.items()])
         results_file.write("%s\n" % probe_list)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_symlink_non_utf8_path():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    non_utf8_target = os.fsdecode(b"\xff\xfe\x80\x81")
+    client.ln("fs0", "/non_utf8_link", "--symlink", non_utf8_target)
+
+    stat = json.loads(client.stat("fs0", "/non_utf8_link"))
+    del stat["ATime"]
+    del stat["MTime"]
+    del stat["CTime"]
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        json.dump(stat, results_file, indent=4)
 
     ret = common.canonical_file(results_path, local=True)
     return ret

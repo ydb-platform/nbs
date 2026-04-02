@@ -280,7 +280,10 @@ void TBootstrapVhost::InitComponents()
 
     NVhost::InitLog(Logging);
 
-    ModuleStatsRegistry = CreateModuleStatsRegistry(FsCountersProvider);
+    ModuleStatsRegistry = CreateModuleStatsRegistry(
+        Timer,
+        FsCountersProvider,
+        FilestoreCounters->GetSubgroup("component", VhostMetricsComponent));
 
     ModuleStatsUpdater = CreateStatsUpdater(
         Timer,

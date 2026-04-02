@@ -96,6 +96,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
     xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
+    xxx(FlushBytesItemCountThresholdForBackpressure,   ui64,    500'000       )\
     xxx(BackpressureThresholdPercentageForBackgroundOpsPriority,  ui32,   90  )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
@@ -332,6 +333,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
+                                                                               \
+    xxx(HideFileNamesInTabletDirectoryViewer,   bool,   false                 )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

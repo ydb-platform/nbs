@@ -111,7 +111,8 @@ void TEnsureStateIntegrityActor::HandleBackupDiskRegistryStateResponse(
     diff.set_field_comparator(&comparator);
 
     const auto* descriptor = NProto::TDiskRegistryStateBackup::descriptor();
-    diff.IgnoreField(descriptor->FindFieldByName("UnknownDevices"));
+    diff.IgnoreField(
+        NProto::TAgentConfig::descriptor()->FindFieldByName("UnknownDevices"));
     diff.IgnoreField(descriptor->FindFieldByName("OldDirtyDevices"));
     diff.IgnoreField(
         NProto::TDiskRegistryStateBackup::TDirtyDevice::descriptor()
@@ -136,7 +137,7 @@ void TEnsureStateIntegrityActor::HandleBackupDiskRegistryStateResponse(
     // After adding a new field to the DiskRegistryState class, include a
     // comparison method if needed and update the value to reflect the current
     // size of the class.
-    static_assert(sizeof(TDiskRegistryState) == 2176);
+    static_assert(sizeof(TDiskRegistryState) == 2208);
 
     const bool equal = diff.Compare(
         msg->Record.GetMemoryBackup(),

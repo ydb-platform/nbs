@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/hashicorp/go-retryablehttp"
 	prometheus_client "github.com/prometheus/client_model/go"
@@ -720,6 +721,11 @@ func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
 
 func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
 	taskRegistry := tasks.NewRegistry()
+	err := filesystem_scrubbing.Register(taskRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	taskStorage, err := NewTaskStorage(ctx)
 	if err != nil {
 		return nil, err
@@ -748,6 +754,20 @@ func WaitOperationEnded(
 
 	err = scheduler.WaitTaskEndedWithTimeout(ctx, operationID, timeout)
 	require.NoError(t, err)
+}
+
+func GetTaskMetadata(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) proto.Message {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	metadata, err := scheduler.GetTaskMetadata(ctx, taskID)
+	require.NoError(t, err)
+	return metadata
 }
 
 func ScheduleFilesystemScrubbing(

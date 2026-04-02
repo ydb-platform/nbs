@@ -2,17 +2,15 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/tablet/model/simple_template.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
-#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
-
+#include <library/cpp/digest/md5/md5.h>
 #include <library/cpp/json/writer/json.h>
-#include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/resource/resource.h>
 
 #include <util/stream/str.h>
 #include <util/string/builder.h>
-#include <util/system/hostname.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -20,44 +18,6 @@ using namespace NActors;
 using namespace NActors::NMon;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-void OutputTemplate(
-    const TString& templateName,
-    const THashMap<TString, TString>& vars,
-    IOutputStream& out)
-{
-    TString content = NResource::Find(
-        TStringBuilder() << "html/" << templateName << ".html");
-    TStringBuf contentRef(content);
-    const TStringBuf b = "{{ ";
-    const TStringBuf e = " }}";
-    ui64 prevIdx = 0;
-    while (true) {
-        const ui64 idx = contentRef.find(b, prevIdx);
-        if (idx == TString::npos) {
-            out << contentRef.substr(prevIdx);
-            break;
-        }
-
-        out << contentRef.substr(prevIdx, idx - prevIdx);
-        const ui64 nextIdx = contentRef.find(e, idx + b.size());
-        if (nextIdx == TString::npos) {
-            out << contentRef.substr(idx);
-            break;
-        }
-
-        auto varName = contentRef.substr(
-            idx + b.size(),
-            nextIdx - idx - b.size());
-        if (const auto* varValue = vars.FindPtr(varName)) {
-            out << *varValue;
-        }
-
-        prevIdx = nextIdx + e.size();
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -130,7 +90,7 @@ void DumpDirViewerJson(
 
 void DumpDirViewerPage(IOutputStream& out, ui64 tabletId, ui32 nodeId)
 {
-    OutputTemplate("dir-viewer-main", {
+    OutputTemplate(NResource::Find("html/dir-viewer-main.html"), {
         {"STYLE", NResource::Find("css/dir-viewer.css")},
         {"JS", NResource::Find("js/dir-viewer.js")},
         {"TABLET_ID", ToString(tabletId)},
@@ -159,6 +119,7 @@ TString JsonError(const NProto::TError& e)
 class TDirViewerActor final: public TActorBootstrapped<TDirViewerActor>
 {
 private:
+    const bool HideFileNames;
     const TRequestInfoPtr RequestInfo;
     const TString LogTag;
     const ui64 NodeId;
@@ -176,6 +137,7 @@ private:
 
 public:
     TDirViewerActor(
+        bool hideFileNames,
         TRequestInfoPtr requestInfo,
         TString logTag,
         ui64 nodeId,
@@ -209,11 +171,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDirViewerActor::TDirViewerActor(
+        bool hideFileNames,
         TRequestInfoPtr requestInfo,
         TString logTag,
         ui64 nodeId,
         TString directoryShardId)
-    : RequestInfo(std::move(requestInfo))
+    : HideFileNames(hideFileNames)
+    , RequestInfo(std::move(requestInfo))
     , LogTag(std::move(logTag))
     , NodeId(nodeId)
     , DirectoryShardId(std::move(directoryShardId))
@@ -478,6 +442,23 @@ void TDirViewerActor::HandlePoisonPill(
 
 void TDirViewerActor::ReplyAndDie(const TActorContext& ctx)
 {
+    if (HideFileNames) {
+        for (auto& name: Names) {
+            TStringBuf sbuf(name);
+            size_t pos = sbuf.rfind('.');
+            const ui32 maxExtensionLength = 4;
+            if (pos == 0 || pos + 1 + maxExtensionLength < sbuf.size()) {
+                pos = TString::npos;
+            }
+            TStringBuilder maskedName;
+            maskedName << MD5::Calc(sbuf.substr(0, pos));
+            if (pos != TString::npos) {
+                maskedName << sbuf.substr(pos);
+            }
+            name = maskedName;
+        }
+    }
+
     TStringStream out;
     DumpDirViewerJson(out, Names, Nodes, NextCookie);
     NCloud::Reply(
@@ -572,6 +553,7 @@ void TIndexTabletActor::HandleHttpInfo_DirViewer(
     }
 
     auto actor = std::make_unique<TDirViewerActor>(
+        Config->GetHideFileNamesInTabletDirectoryViewer(),
         std::move(requestInfo),
         LogTag,
         nodeId,

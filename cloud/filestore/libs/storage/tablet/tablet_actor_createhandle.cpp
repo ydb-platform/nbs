@@ -233,14 +233,17 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 return true;
             }
 
-            // validate there are enough free inodes
-            if (!HasNodesLeft()) {
+            const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
+
+            // Validate there are enough free inodes. The restriction is not
+            // enforced if the request comes from the main FS to the shard.
+            if (!HasNodesLeft() && !behaveAsShard) {
                 args.Error = ErrorNoSpaceLeft();
                 return true;
             }
 
             auto shardId = args.RequestShardId;
-            if (!BehaveAsShard(args.Request.GetHeaders())
+            if (!behaveAsShard
                     && !GetFileSystem().GetShardFileSystemIds().empty()
                     && Config->GetShardIdSelectionInLeaderEnabled())
             {

@@ -295,6 +295,12 @@ bool TIndexTabletState::IsWriteAllowed(
         return false;
     }
 
+    if (values.FlushBytesItemCount >= thresholds.FlushBytesItemCount) {
+        *message = TStringBuilder()
+                   << "freshBytesItemCount: " << values.FlushBytesItemCount;
+        return false;
+    }
+
     if (values.CompactionScore >= thresholds.CompactionScore) {
         *message = TStringBuilder()
                    << "compactionScore: " << values.CompactionScore;

@@ -2071,6 +2071,40 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         UNIT_ASSERT_VALUES_EQUAL(nodeId, responses[0].GetNode().GetId());
         UNIT_ASSERT_VALUES_EQUAL(4_KB, responses[0].GetNode().GetSize());
     }
+
+    TABLET_TEST_4K_ONLY(ShouldUnlockNodeIdUponUnlinkForParentlessFileSystems)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        storageConfig.SetParentlessFilesOnly(true);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        const ui64 nodeId = 111;
+        tablet.UnsafeCreateNode(nodeId, 4_KB);
+
+        tablet.UnlinkNode(nodeId, "" /* name */, false /* unlinkDirectory */);
+        auto response = tablet.SendAndRecvUnlinkNode(
+            nodeId,
+            "" /* name */,
+            false /* unlinkDirectory */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

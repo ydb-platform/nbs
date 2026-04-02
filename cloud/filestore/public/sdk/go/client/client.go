@@ -470,6 +470,29 @@ func (client *Client) GetNodeAttr(
 	}, nil
 }
 
+func (client *Client) UnlinkNode(
+	ctx context.Context,
+	session Session,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) error {
+
+	req := &protos.TUnlinkNodeRequest{
+		FileSystemId:    session.FileSystemID,
+		NodeId:          parentNodeID,
+		Name:            []byte(name),
+		UnlinkDirectory: unlinkDirectory,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+
+	_, err := client.Impl.UnlinkNode(ctx, req)
+	return err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type StartEndpointOpts struct {

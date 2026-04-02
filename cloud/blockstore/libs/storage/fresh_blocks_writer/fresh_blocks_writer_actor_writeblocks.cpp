@@ -286,20 +286,19 @@ void TFreshBlocksWriterActor::WriteBlocks(
         }
     };
 
-    // TODO(issue-4875): support batching for fresh blocks writer.
-    // if (Config->GetWriteRequestBatchingEnabled()) {
-        // // we will try to batch small writes and, if batching fails,
-        // // we will accumulate these writes in FreshBlocks table
-        // EnqueueProcessWriteQueueIfNeeded(ctx);
+    if (Config->GetWriteRequestBatchingEnabled()) {
+        EnqueueProcessWriteQueueIfNeeded(ctx);
 
-        // LOG_TRACE(
-        //     ctx,
-        //     TBlockStoreComponents::PARTITION,
-        //     "%s Enqueueing fresh blocks (range: %s)",
-        //     LogTitle.GetWithTime().c_str(),
-        //     DescribeRange(writeRange).c_str());
-        // State->AccessWriteBuffer().Put(std::move(requestInBuffer));
-    // }
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Enqueueing fresh blocks (range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            DescribeRange(writeRange).c_str());
+        FlushState->AccessWriteBuffer().Put(std::move(requestInBuffer));
+        return;
+    }
+
     WriteFreshBlocks(ctx, std::move(requestInBuffer));
 }
 
@@ -322,14 +321,14 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
     ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * PartitionConfig.GetBlockSize();
 
-    ResourceMetricsQueue->Push(
+    SharedState->ResourceMetricsQueue.Push(
         NPartition::TUpdateCPUUsageStat{ctx.Now(), msg->ExecCycles});
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     const auto requestCount =
         msg->Stats.GetUserWriteCounters().GetRequestsCount();
 
-    PartCounters->Access(
+    SharedState->PartCounters.Access(
         [&](auto& partCounters)
         {
             partCounters->RequestCounters.WriteBlocks.AddRequest(

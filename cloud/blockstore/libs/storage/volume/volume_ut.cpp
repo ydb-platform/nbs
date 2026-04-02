@@ -3505,12 +3505,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             ui32 throttlerStateWriteIntervalMilliseconds,
             ui32 boostTimeMilliseconds,
             ui32 boostPercentage,
-            NCloud::NProto::EStorageMediaKind mediaKind)
+            NCloud::NProto::EStorageMediaKind mediaKind,
+            NProto::TShapingThrottlerConfig shapingThrottlerConfig)
         {
             NProto::TStorageServiceConfig config;
             config.SetThrottlingEnabled(true);
+            config.SetThrottlingEnabledSSD(true);
             config.SetThrottlerStateWriteInterval(throttlerStateWriteIntervalMilliseconds);
             config.SetMaxThrottlerDelay(TDuration::Seconds(25).MilliSeconds());
+            *config.MutableShapingThrottlerConfig() = std::move(shapingThrottlerConfig);
             Runtime = PrepareTestActorRuntime(config);
 
             Volume = std::make_unique<TVolumeClient>(*Runtime);
@@ -4073,7 +4076,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             30'000,   // throttlerStateWriteIntervalMilliseconds
             10'000,   // boostTimeMilliseconds
             200,      // boostPercentage
-            mediaKind);
+            mediaKind,
+            NProto::TShapingThrottlerConfig());
         auto& runtime = env.Runtime;
         auto& volume = *env.Volume;
 
@@ -4118,7 +4122,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             30'000,   // throttlerStateWriteIntervalMilliseconds
             10'000,   // boostTimeMilliseconds
             200,      // boostPercentage
-            mediaKind);
+            mediaKind,
+            NProto::TShapingThrottlerConfig());
         auto& runtime = env.Runtime;
         auto& volume = *env.Volume;
 
@@ -4157,13 +4162,83 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoTestShouldSaveThrottlerState(NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
     }
 
+    void DoTestShouldSaveThrottlerStateWhenShapingThrottlerEnabled(const NProto::EStorageMediaKind mediaKind)
+    {
+        NProto::TShapingThrottlerConfig shapingThrottlerConfig;
+        NProto::TShapingThrottlerQuota shapingThrottlerQuota;
+        NProto::TPerformanceProfile performanceProfile;
+        performanceProfile.SetIops(1000);
+        performanceProfile.SetBandwidth(100_MB);
+        shapingThrottlerQuota.MutableWrite()->CopyFrom(performanceProfile);
+        shapingThrottlerQuota.MutableRead()->CopyFrom(performanceProfile);
+        shapingThrottlerQuota.SetExpectedIoParallelism(1);
+        shapingThrottlerQuota.SetMaxBudget(100000);
+        shapingThrottlerQuota.SetBudgetRefillTime(100000);
+        shapingThrottlerQuota.SetBudgetSpendRate(1.0);
+
+        shapingThrottlerConfig.MutableSsdQuota()->CopyFrom(shapingThrottlerQuota);
+        shapingThrottlerConfig.MutableHddQuota()->CopyFrom(shapingThrottlerQuota);
+        shapingThrottlerConfig.MutableNonreplQuota()->CopyFrom(shapingThrottlerQuota);
+        shapingThrottlerConfig.MutableMirror2Quota()->CopyFrom(shapingThrottlerQuota);
+        shapingThrottlerConfig.MutableMirror3Quota()->CopyFrom(shapingThrottlerQuota);
+
+        TThrottledVolumeTestEnv env(
+            30'000,   // throttlerStateWriteIntervalMilliseconds
+            10'000,   // boostTimeMilliseconds
+            200,      // boostPercentage
+            mediaKind,
+            std::move(shapingThrottlerConfig));
+        auto& runtime = env.Runtime;
+        auto& volume = *env.Volume;
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0
+        );
+        volume.AddClient(clientInfo);
+        UNIT_ASSERT_VALUES_EQUAL(10'000, volume.StatVolume()->Record.GetStats().GetBoostBudget());
+
+        const auto fiveBlocks = TBlockRange64::WithLength(0, 5);
+
+        volume.SendReadBlocksRequest(fiveBlocks, clientInfo.GetClientId());
+        TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 9'000
+
+        runtime->AdvanceCurrentTime(TDuration::MilliSeconds(30'000));
+
+        const auto thirtyThreeBlocks = TBlockRange64::WithLength(0, 33);
+
+        volume.SendReadBlocksRequest(thirtyThreeBlocks, clientInfo.GetClientId());
+        TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);   // boost = 7'250
+
+        volume.RebootTablet();
+        volume.WaitReady();
+        UNIT_ASSERT_VALUES_EQUAL(7'250, volume.StatVolume()->Record.GetStats().GetBoostBudget());
+    }
+
+    Y_UNIT_TEST(ShouldSaveThrottlerStateWhenShapingThrottlerEnabledOnHDD)
+    {
+        DoTestShouldSaveThrottlerStateWhenShapingThrottlerEnabled(NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldSaveThrottlerStateWhenShapingThrottlerEnabledOnSSD)
+    {
+        DoTestShouldSaveThrottlerStateWhenShapingThrottlerEnabled(NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldSaveThrottlerStateWhenShapingThrottlerEnabledOnSSDNonreplicated)
+    {
+        DoTestShouldSaveThrottlerStateWhenShapingThrottlerEnabled(NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
     Y_UNIT_TEST(ShouldNotSaveThrottlerStateBeforeTimeout)
     {
         TThrottledVolumeTestEnv env(
             30'000,   // throttlerStateWriteIntervalMilliseconds
             10'000,   // boostTimeMilliseconds
             200,      // boostPercentage
-            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD,
+            NProto::TShapingThrottlerConfig());
         auto& runtime = env.Runtime;
         auto& volume = *env.Volume;
 
@@ -9078,7 +9153,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             new NMonitoring::TDynamicCounters();
         InitCriticalEventsCounter(counters);
         auto overlappingRequestsCounter = counters->GetCounter(
-            "AppImpossibleEvents/OverlappingRequestsDetected",
+            "AppCriticalEvents/OverlappingRequestsDetected",
             true);
 
         // Send first request

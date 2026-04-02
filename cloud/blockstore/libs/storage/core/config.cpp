@@ -175,6 +175,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssd", NCloud::NProto::STORAGE_MEDIA_SSD},                        \
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
+    xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -669,6 +670,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
                                                                                \
     xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
+    xxx(EnableVhostDiscardOnVolumeRestart,    bool,        false              )\
+                                                                               \
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
@@ -718,6 +721,8 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
     xxx(EnableVhostDiscardForNewVolumes)                                       \
+    xxx(EnableVhostDiscardOnVolumeRestart)                                     \
+    xxx(FreshBlocksWriter)                                                     \
 
 // BLOCKSTORE_BINARY_FEATURES
 

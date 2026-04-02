@@ -139,6 +139,11 @@ public:
         return PostponeDelay.GetValue() / 1e6;
     }
 
+    TUsedQuota TakeUsedQuota() override
+    {
+        return {};
+    }
+
     void SetPostponeDelay(TDuration delay)
     {
         PostponeDelay = delay;
@@ -541,7 +546,7 @@ struct TTestEnvironment final
         };
 
         Metrics->UpdateUsedQuotaHandler =
-            [&usedQuotaCount = this->UsedQuotaCount] (ui64)
+            [&usedQuotaCount = this->UsedQuotaCount] (TUsedQuota)
         {
             AtomicIncrement(usedQuotaCount);
         };

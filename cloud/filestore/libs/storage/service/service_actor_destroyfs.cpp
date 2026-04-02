@@ -115,10 +115,7 @@ void TDestroyFileStoreActor::HandleDescribeFileStoreResponse(
 {
     const auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
-        if (msg->GetStatus() ==
-            MAKE_SCHEMESHARD_ERROR(
-                NKikimrScheme::EStatus::StatusPathDoesNotExist))
-        {
+        if (msg->GetStatus() == E_NOT_FOUND) {
             ReplyAndDie(
                 ctx,
                 MakeError(S_FALSE, FileSystemId.Quote() + " does not exist"));
@@ -172,10 +169,7 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
 {
     const auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
-        if (msg->GetStatus() ==
-            MAKE_SCHEMESHARD_ERROR(
-                NKikimrScheme::EStatus::StatusPathDoesNotExist))
-        {
+        if (msg->GetStatus() == E_NOT_FOUND) {
             ReplyAndDie(
                 ctx,
                 MakeError(S_FALSE, FileSystemId.Quote() + " does not exist"));

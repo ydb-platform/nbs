@@ -600,6 +600,14 @@ bool TIndexTabletState::IsNodeRefLocked(const TNodeRefKey& key) const
     return Impl->LockedNodeRefs.contains(key);
 }
 
+void TIndexTabletState::VisitNodeRefLocks(
+    const TNodeRefLockVisitor& visitor) const
+{
+    for (const auto& x: Impl->LockedNodeRefs) {
+        visitor(x);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IIndexTabletDatabase& TIndexTabletState::AccessInMemoryIndexState()

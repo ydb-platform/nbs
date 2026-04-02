@@ -36,7 +36,8 @@ func (t *PanicTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return nil
+	<-time.After(common.RandomDuration(time.Millisecond, 5*time.Second))
+	panic("test panic")
 }
 
 func (t *PanicTask) GetMetadata(

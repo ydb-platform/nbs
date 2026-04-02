@@ -51,12 +51,16 @@ class TThrottlerPolicy final
     : public IThrottlerPolicy
 {
 private:
+    const double BurstRate;
     TBoostedTimeBucket Bucket;
     NProto::TClientPerformanceProfile Profile;
 
+    THashMap<NProto::EStorageMediaKind, TDuration> UsedQuota;
+
 public:
     explicit TThrottlerPolicy(const NProto::TClientPerformanceProfile& pp)
-        : Bucket(SecondsToDuration(pp.GetBurstTime() / 1'000.))
+        : BurstRate(pp.GetBurstTime() / 1'000.)
+        , Bucket(SecondsToDuration(BurstRate))
         , Profile(pp)
     {
     }
@@ -140,18 +144,28 @@ public:
             return TDuration::Zero();
         }
 
-        return Bucket.Register(
-            now,
-            CostPerIO(
-                CalculateThrottlerC1(maxIops, maxBandwidth),
-                CalculateThrottlerC2(maxIops, maxBandwidth),
-                byteCount)
-        );
+        TDuration update = CostPerIO(
+            CalculateThrottlerC1(maxIops, maxBandwidth),
+            CalculateThrottlerC2(maxIops, maxBandwidth),
+            byteCount);
+
+        TDuration delay = Bucket.Register(now, update);
+        if (delay.GetValue() == 0) {
+            UsedQuota[mediaKind] += update;
+        }
+        return delay;
     }
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const override
     {
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
+    }
+
+    TUsedQuota TakeUsedQuota() override
+    {
+        TUsedQuota result(UsedQuota, BurstRate);
+        UsedQuota.clear();
+        return result;
     }
 };
 

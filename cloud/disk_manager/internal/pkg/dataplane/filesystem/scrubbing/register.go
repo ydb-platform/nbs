@@ -2,6 +2,7 @@ package scrubbing
 
 import (
 	"context"
+	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
@@ -14,10 +15,20 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func Register(taskRegistry *tasks.Registry) error {
-	return taskRegistry.Register(
+	err := taskRegistry.Register(
 		"dataplane.ScrubFilesystem",
 		func() tasks.Task {
 			return &scrubFilesystemTask{}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return taskRegistry.Register(
+		"dataplane.RegularScrubFilesystems",
+		func() tasks.Task {
+			return &regularScrubFilesystemsTask{}
 		},
 	)
 }
@@ -27,9 +38,10 @@ func RegisterForExecution(
 	config *config.FilesystemScrubbingConfig,
 	factory nfs.Factory,
 	storage storage.Storage,
+	scheduler tasks.Scheduler,
 ) error {
 
-	return taskRegistry.RegisterForExecution(
+	err := taskRegistry.RegisterForExecution(
 		"dataplane.ScrubFilesystem",
 		func() tasks.Task {
 			return &scrubFilesystemTask{
@@ -37,6 +49,19 @@ func RegisterForExecution(
 				factory:  factory,
 				storage:  storage,
 				callback: func(nodes []nfs.Node) {},
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return taskRegistry.RegisterForExecution(
+		"dataplane.RegularScrubFilesystems",
+		func() tasks.Task {
+			return &regularScrubFilesystemsTask{
+				config:    config,
+				scheduler: scheduler,
 			}
 		},
 	)
@@ -60,4 +85,33 @@ func ScheduleScrubFilesystem(
 			},
 		},
 	)
+}
+
+func ScheduleRegularScrubFilesystems(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	config *config.FilesystemScrubbingConfig,
+) error {
+
+	if len(config.GetFilesystemsWithRegularScrubbingEnabled()) == 0 {
+		return nil
+	}
+
+	scheduleInterval, err := time.ParseDuration(
+		config.GetRegularFilesystemScrubbingSchedulingInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	scheduler.ScheduleRegularTasks(
+		ctx,
+		"dataplane.RegularScrubFilesystems",
+		tasks.TaskSchedule{
+			ScheduleInterval: scheduleInterval,
+			MaxTasksInflight: 1,
+		},
+	)
+
+	return nil
 }

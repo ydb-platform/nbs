@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"os"
 	"sync"
 	"testing"
@@ -20,9 +19,8 @@ import (
 	filesystem_snapshot_schema "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
-	tasks_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
@@ -157,48 +155,6 @@ func (f *fixture) fillFilesystem(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func withNemesis(
-	ctx context.Context,
-	runFunc func(ctx context.Context) error,
-	minDuration time.Duration,
-	maxDuration time.Duration,
-) error {
-
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	durationRange := maxDuration - minDuration
-
-	for {
-		runCtx, cancel := context.WithCancel(ctx)
-		delay := minDuration + time.Duration(rng.Int63n(int64(durationRange)))
-		logging.Info(
-			runCtx,
-			"task will be cancelled after %v",
-			delay,
-		)
-		timer := time.AfterFunc(delay, cancel)
-
-		err := runFunc(runCtx)
-
-		timer.Stop()
-		cancel()
-
-		if err == nil {
-			return nil
-		}
-		if errors.Is(err, context.Canceled) {
-			continue
-		}
-
-		if tasks_errors.Is(err, tasks_errors.NewEmptyRetriableError()) {
-			continue
-		}
-
-		return err
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 	f := newFixture(t)
 	defer f.close(t)
@@ -267,7 +223,7 @@ func TestScrubFilesystemTaskWithNemesis(t *testing.T) {
 		}
 	}
 
-	err := withNemesis(
+	err := util.WithNemesis(
 		f.ctx,
 		func(ctx context.Context) error {
 			// State is updated inside the run method, the task is not recreated
@@ -364,4 +320,148 @@ func TestScrubFilesystemTaskCancel(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, entries)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func rmTree(
+	ctx context.Context,
+	session nfs.Session,
+	parentNodeID uint64,
+	name string,
+) error {
+
+	node, err := session.GetNodeAttr(ctx, parentNodeID, name)
+	if err != nil {
+		return err
+	}
+
+	for cookie := ""; ; {
+		var nodes []nfs.Node
+		nodes, cookie, err = session.ListNodes(
+			ctx,
+			node.NodeID,
+			cookie,
+			4096,
+			false, // unsafe
+		)
+		if err != nil {
+			return err
+		}
+
+		for _, child := range nodes {
+			err = session.UnlinkNode(
+				ctx,
+				node.NodeID,
+				child.Name,
+				false, // unlinkDirectory
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		if cookie == "" {
+			break
+		}
+	}
+
+	return session.UnlinkNode(ctx, parentNodeID, name, true /* unlinkDirectory */)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestScrubFilesystemTaskNodeDeletedDuringScrubbing(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	targetDirName := "dir_to_delete"
+	root := nfs_testing.Root(
+		nfs_testing.Dir("a",
+			nfs_testing.File("a1"),
+			nfs_testing.File("a2"),
+		),
+		nfs_testing.Dir(targetDirName,
+			nfs_testing.File("f1"),
+			nfs_testing.File("f2"),
+			nfs_testing.File("f3"),
+			nfs_testing.File("f4"),
+			nfs_testing.File("f5"),
+			nfs_testing.File("f6"),
+			nfs_testing.File("f7"),
+			nfs_testing.File("f8"),
+			nfs_testing.File("f9"),
+			nfs_testing.File("f10"),
+		),
+		nfs_testing.Dir("b",
+			nfs_testing.File("b1"),
+			nfs_testing.File("b2"),
+		),
+	)
+	fsModel := f.fillFilesystem(t, filesystemID, root, false /* parallel */)
+	defer fsModel.Close()
+
+	// Create a separate writable session for deleting nodes during scrubbing.
+	deleteSession, err := f.client.CreateSession(
+		f.ctx,
+		filesystemID,
+		"",
+		false, // readonly
+	)
+	require.NoError(t, err)
+	defer deleteSession.Close(f.ctx)
+
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("GetTaskID").Return("scrub-delete-task")
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
+	listNodesMaxBytes := uint32(1)
+	task := &scrubFilesystemTask{
+		config: &scrubbing_config.FilesystemScrubbingConfig{
+			ListNodesMaxBytes: &listNodesMaxBytes,
+		},
+		factory: f.factory,
+		storage: f.storage,
+		request: &scrubbing_protos.ScrubFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: filesystemID,
+			},
+			FilesystemCheckpointId: "",
+		},
+		state: &scrubbing_protos.ScrubFilesystemTaskState{},
+	}
+
+	var deleted bool
+	var mu sync.Mutex
+
+	task.callback = func(nodes []nfs.Node) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		if deleted {
+			return
+		}
+
+		for _, node := range nodes {
+			if node.Name == targetDirName {
+				err := rmTree(
+					f.ctx,
+					deleteSession,
+					node.ParentID,
+					node.Name,
+				)
+				require.NoError(t, err)
+				deleted = true
+			}
+		}
+	}
+
+	err = task.Run(f.ctx, execCtx)
+	require.NoError(t, err)
+	require.True(t, deleted)
 }

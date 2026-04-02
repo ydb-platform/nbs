@@ -28,8 +28,6 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/threading/atomic/bool.h>
-
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/bitops.h>
@@ -44,6 +42,7 @@
 #include <util/thread/factory.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <pthread.h>
 
@@ -127,7 +126,7 @@ private:
     TVector<TRequestBucket> RequestBuckets;
 
     enum fuse_cancelation_code CancelCode{};
-    NAtomic::TBool ShouldStop = false;
+    std::atomic<bool> ShouldStop = false;
 
     TPromise<void> StopPromise = NewPromise<void>();
 
@@ -847,9 +846,7 @@ public:
                 p->Config->GetFileSystemId(),
                 p->Config->GetClientId());
 
-            p->ModuleStatsRegistry->Unregister(
-                p->Config->GetFileSystemId(),
-                p->Config->GetClientId());
+            p->ModuleStatsRegistry->Unregister(p->SessionId);
 
             s.SetValue();
         };
@@ -1091,13 +1088,15 @@ private:
                 DirectoryHandlesStorageInitialized = true;
             }
 
-            DirectoryHandlesStats = CreateDirectoryHandlesStats(
-                ModuleStatsRegistry,
-                Timer,
-                Config->GetFileSystemId(),
-                Config->GetClientId(),
-                response.GetFileStore().GetCloudId(),
-                response.GetFileStore().GetFolderId());
+            DirectoryHandlesStats = CreateDirectoryHandlesStats(Timer);
+
+            ModuleStatsRegistry->Register(
+                {.FileSystemId = Config->GetFileSystemId(),
+                 .ClientId = Config->GetClientId(),
+                 .CloudId = response.GetFileStore().GetCloudId(),
+                 .FolderId = response.GetFileStore().GetFolderId(),
+                 .SessionId = SessionId,
+                 .ModuleStats = DirectoryHandlesStats});
 
             FileSystem = CreateFileSystem(
                 Logging,
@@ -1376,9 +1375,7 @@ private:
             Config->GetFileSystemId(),
             Config->GetClientId());
 
-        ModuleStatsRegistry->Unregister(
-            Config->GetFileSystemId(),
-            Config->GetClientId());
+        ModuleStatsRegistry->Unregister(SessionId);
 
         // We need to cleanup HandleOpsQueue file and directories
         if (HandleOpsQueueInitialized) {

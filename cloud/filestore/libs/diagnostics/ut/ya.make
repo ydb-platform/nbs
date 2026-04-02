@@ -11,6 +11,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/diagnostics/metrics
     library/cpp/eventlog/dumper
 )
 

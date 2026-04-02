@@ -53,6 +53,14 @@ public:
 
         return PostponeTimeout.GetValue() / 1e6;
     }
+
+    TUsedQuota TakeUsedQuota() override
+    {
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaMap;
+        quotaMap[NProto::STORAGE_MEDIA_SSD] = PostponeTimeout;
+        TUsedQuota quota(quotaMap, 1.0);
+        return {quotaMap, 1.0};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -255,7 +263,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 ->FindCounter(maxUsedQuota),
             "MaxUsedQuota should be initialized");
 
-        metrics->UpdateUsedQuota(0);
+        metrics->UpdateUsedQuota(TUsedQuota({}, 1.0));
         metrics->UpdateMaxUsedQuota();
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -267,7 +275,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 ->GetSubgroup("component", "server")
                 ->FindCounter(maxUsedQuota)->Val(), 0);
 
-        metrics->UpdateUsedQuota(12);
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaPerMediaKind = {
+            {NProto::STORAGE_MEDIA_SSD, TDuration::Seconds(0.12)}
+        };
+        TUsedQuota quota(quotaPerMediaKind, 1);
+        metrics->UpdateUsedQuota(quota);
         metrics->UpdateMaxUsedQuota();
 
         {
@@ -441,7 +453,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-        metrics->UpdateUsedQuota(12);
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaPerMediaKind = {
+            {NProto::STORAGE_MEDIA_SSD, TDuration::Seconds(0.12)}
+        };
+        TUsedQuota quota(quotaPerMediaKind, 1);
+        metrics->UpdateUsedQuota(quota);
         metrics->UpdateMaxUsedQuota();
         metrics->Trim(timer->Now());
 
@@ -652,7 +668,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-        metrics->UpdateUsedQuota(12);
+        THashMap<NProto::EStorageMediaKind, TDuration> quotaPerMediaKind = {
+            {NProto::STORAGE_MEDIA_SSD, TDuration::Seconds(0.12)}
+        };
+        TUsedQuota quota(quotaPerMediaKind, 1);
+        metrics->UpdateUsedQuota(quota);
         metrics->UpdateMaxUsedQuota();
         metrics->Trim(timer->Now());
 
@@ -698,7 +718,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
         timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-        metrics->UpdateUsedQuota(0);
+        metrics->UpdateUsedQuota(TUsedQuota());
         metrics->UpdateMaxUsedQuota();
         metrics->Trim(timer->Now());
 
@@ -731,9 +751,9 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 maxUsedQuotaVolumeCounter,
                 "MaxUsedQuota counters should be initialized");
 
-            UNIT_ASSERT_VALUES_EQUAL(0, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(0, usedQuotaVolumeCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(12, usedQuotaVolumeCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(12, maxUsedQuotaVolumeCounter->Val());
         }
 
@@ -856,8 +876,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
             timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-            metrics->UpdateUsedQuota(static_cast<ui64>(
-                policy->CalculateCurrentSpentBudgetShare(timer->Now()) * 100.));
+            metrics->UpdateUsedQuota(policy->TakeUsedQuota());
             metrics->UpdateMaxUsedQuota();
         };
 
@@ -910,8 +929,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
             timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL / 2);
 
-            metrics->UpdateUsedQuota(static_cast<ui64>(
-                policy->CalculateCurrentSpentBudgetShare(timer->Now()) * 100.));
+            metrics->UpdateUsedQuota(policy->TakeUsedQuota());
             metrics->UpdateMaxUsedQuota();
 
             // Delete performs on next read
@@ -995,9 +1013,9 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[1].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter1->Val());
@@ -1047,11 +1065,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[2].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(120, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(120, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
-            UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(70, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter2->Val());
@@ -1105,13 +1123,13 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[3].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(20, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(140, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(20, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(140, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
-            UNIT_ASSERT_VALUES_EQUAL(20, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter1->Val());
-            UNIT_ASSERT_VALUES_EQUAL(20, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(20, usedQuotaVolumeCounter3->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter3->Val());
@@ -1171,15 +1189,15 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             auto maxUsedQuotaVolumeCounter4 = getCounterFunction(
                 diskIds[4].first, diskIds[4].second, maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(150, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(150, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
-            UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(100, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter1->Val());
-            UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(60, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter2->Val());
-            UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaVolumeCounter3->Val());
+            UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaVolumeCounter3->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter3->Val());
             UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaVolumeCounter4->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter4->Val());
@@ -1244,17 +1262,17 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[5].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(151, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(151, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter0->Val());
-            UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(101, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter1->Val());
-            UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(61, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter2->Val());
-            UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaVolumeCounter3->Val());
+            UNIT_ASSERT_VALUES_EQUAL(31, usedQuotaVolumeCounter3->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter3->Val());
-            UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaVolumeCounter4->Val());
+            UNIT_ASSERT_VALUES_EQUAL(11, usedQuotaVolumeCounter4->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter4->Val());
             UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaVolumeCounter5->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaVolumeCounter5->Val());
@@ -1311,17 +1329,17 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[5].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(100, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(251, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(100, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(251, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter0->Val());
-            UNIT_ASSERT_VALUES_EQUAL(100, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(201, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter1->Val());
-            UNIT_ASSERT_VALUES_EQUAL(100, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(161, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter2->Val());
-            UNIT_ASSERT_VALUES_EQUAL(100, usedQuotaVolumeCounter3->Val());
+            UNIT_ASSERT_VALUES_EQUAL(131, usedQuotaVolumeCounter3->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter3->Val());
-            UNIT_ASSERT_VALUES_EQUAL(100, usedQuotaVolumeCounter5->Val());
+            UNIT_ASSERT_VALUES_EQUAL(101, usedQuotaVolumeCounter5->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter5->Val());
         }
 
@@ -1368,15 +1386,15 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[5].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(341, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaVolumeCounter0->Val());
+            UNIT_ASSERT_VALUES_EQUAL(341, usedQuotaVolumeCounter0->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter0->Val());
-            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(291, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter1->Val());
-            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(251, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter2->Val());
-            UNIT_ASSERT_VALUES_EQUAL(90, usedQuotaVolumeCounter5->Val());
+            UNIT_ASSERT_VALUES_EQUAL(191, usedQuotaVolumeCounter5->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter5->Val());
         }
 
@@ -1415,13 +1433,13 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[5].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(80, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(421, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(80, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(371, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter1->Val());
-            UNIT_ASSERT_VALUES_EQUAL(80, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(331, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter2->Val());
-            UNIT_ASSERT_VALUES_EQUAL(80, usedQuotaVolumeCounter5->Val());
+            UNIT_ASSERT_VALUES_EQUAL(271, usedQuotaVolumeCounter5->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter5->Val());
         }
 
@@ -1451,11 +1469,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[2].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(70, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(491, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(70, usedQuotaVolumeCounter1->Val());
+            UNIT_ASSERT_VALUES_EQUAL(441, usedQuotaVolumeCounter1->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter1->Val());
-            UNIT_ASSERT_VALUES_EQUAL(70, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(401, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter2->Val());
         }
 
@@ -1478,9 +1496,9 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[2].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(60, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(551, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(60, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(461, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter2->Val());
         }
 
@@ -1503,9 +1521,9 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[2].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(601, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(511, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter2->Val());
         }
 
@@ -1528,9 +1546,9 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[2].second,
                 maxUsedQuota);
 
-            UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaCounter->Val());
+            UNIT_ASSERT_VALUES_EQUAL(641, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaCounter->Val());
-            UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaVolumeCounter2->Val());
+            UNIT_ASSERT_VALUES_EQUAL(551, usedQuotaVolumeCounter2->Val());
             UNIT_ASSERT_VALUES_EQUAL(100, maxUsedQuotaVolumeCounter2->Val());
         }
 

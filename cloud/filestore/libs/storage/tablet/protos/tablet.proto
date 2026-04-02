@@ -106,7 +106,7 @@ message TNode
     uint64 Size = 8;
     uint32 Links = 9;
 
-    string SymLink = 10;
+    bytes SymLink = 10;
 
     uint64 DevId = 11;
 

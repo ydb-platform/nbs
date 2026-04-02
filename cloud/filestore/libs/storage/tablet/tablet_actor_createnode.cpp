@@ -653,7 +653,9 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             args.Request.GetName().c_str());
     }
 
-    if (!BehaveAsShard(args.Request.GetHeaders())) {
+    const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
+
+    if (!behaveAsShard) {
         FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
     }
 
@@ -661,8 +663,9 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     args.CommitId = GetCurrentCommitId();
 
-    // validate there are enough free inodes
-    if (!HasNodesLeft()) {
+    // Validate there are enough free inodes. The restriction is not enforced if
+    // the request comes from the main FS to the shard.
+    if (!HasNodesLeft() && !behaveAsShard) {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }

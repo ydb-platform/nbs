@@ -54,6 +54,11 @@ type Session interface {
 		node Node,
 	) (uint64, error)
 
+	CreateNodeIdempotent(
+		ctx context.Context,
+		node Node,
+	) (uint64, error)
+
 	ReadLink(
 		ctx context.Context,
 		nodeID uint64,
@@ -64,6 +69,13 @@ type Session interface {
 		parentNodeID uint64,
 		name string,
 	) (Node, error)
+
+	UnlinkNode(
+		ctx context.Context,
+		parentNodeID uint64,
+		name string,
+		unlinkDirectory bool,
+	) error
 
 	Close(ctx context.Context) error
 }

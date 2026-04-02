@@ -151,8 +151,8 @@ void TFreshBlocksWriterActor::UpdateChannelPermissions(
 void TFreshBlocksWriterActor::Poison(const NActors::TActorContext& ctx)
 {
     KillActors(ctx);
-
     CancelPendingRequests(ctx, PendingRequests);
+    ClearWriteQueue(ctx);
 
     Die(ctx);
 }
@@ -205,12 +205,12 @@ void TFreshBlocksWriterActor::RebootOnCommitIdOverflow(
 
 void TFreshBlocksWriterActor::UpdateStats(const NProto::TPartitionStats& update)
 {
-    PartStats->Access([&](NProto::TPartitionStats& stats)
+    SharedState->PartStats.Access([&](NProto::TPartitionStats& stats)
                       { UpdatePartitionCounters(stats, update); });
 
     auto blockSize = PartitionConfig.GetBlockSize();
 
-    PartCounters->Access(
+    SharedState->PartCounters.Access(
         [&](auto& partCounters)
         {
             partCounters->Cumulative.BytesWritten.Increment(
@@ -234,6 +234,14 @@ void TFreshBlocksWriterActor::UpdateStats(const NProto::TPartitionStats& update)
             partCounters->Cumulative.BatchCount.Increment(
                 update.GetUserWriteCounters().GetBatchCount());
         });
+}
+
+void TFreshBlocksWriterActor::HandlePoisonPill(
+    const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Become(&TThis::StateZombie);
+    PoisonPillHelper.HandlePoisonPill(ev, ctx);
 }
 
 void TFreshBlocksWriterActor::HandlePartitionReady(
@@ -291,6 +299,8 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
     TrimFreshLogState =
         std::make_unique<TPartitionTrimFreshLogState>(*CommitIdsState);
 
+    SharedState = std::move(msg->SharedState);
+
     IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
 
     IOCompanion = std::make_unique<TIOCompanion>(
@@ -307,14 +317,10 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         *IOCompanionClient,
         *ChannelsState,
         LogTitle,
-        msg->ResourceMetricsQueue,
-        msg->GroupDowntimes,
-        msg->PartCounters);
+        SharedState->GetResourceMetricsQueue(),
+        SharedState->GetGroupDowntimes(),
+        SharedState->GetPartCounters());
     Become(&TThis::StateWork);
-
-    ResourceMetricsQueue = msg->ResourceMetricsQueue;
-    PartCounters = msg->PartCounters;
-    PartStats = msg->PartStats;
 
     StateLoaded = true;
     SendPendingRequests(ctx, PendingRequests);
@@ -408,7 +414,7 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
 STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         HFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest, HandleWaitReady);
@@ -433,16 +439,55 @@ STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 STFUNC(TFreshBlocksWriterActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted,
             HandleWriteBlocksCompleted);
 
+        HFunc(
+            TEvPartitionPrivate::TEvProcessWriteQueue,
+            HandleProcessWriteQueue);
+
+        HFunc(
+            TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
+            HandleZeroBlocksCompleted);
+
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
                 !HandleRequests(ev))
+            {
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
+            }
+            break;
+    }
+}
+
+STFUNC(TFreshBlocksWriterActor::StateZombie)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
+
+        IgnoreFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest);
+
+        IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
+
+        IgnoreFunc(
+            TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse);
+
+        IgnoreFunc(
+            TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
+
+        IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);
+
+        default:
+            if (!RejectRequests(ev) &&
+                !IOCompanion->RejectRequests(ev, this->ActorContext()))
             {
                 HandleUnexpectedEvent(
                     ev,
