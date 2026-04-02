@@ -249,6 +249,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
 
     // We will recalculate the flush status later
     nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+    Stats->FlushCompleted();
 
     for (size_t i = 0; i < requestCount; i++) {
         Y_ABORT_UNLESS(nodeState.Cache.HasUnflushedRequests());
@@ -277,6 +278,8 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.FlushStatus == ENodeFlushStatus::FlushRequested,
         "Flush wasn't requested for node %lu",
         nodeId);
+
+    Stats->FlushFailed();
 
     // Fail Flush and FlushAll requests
     for (auto& it: nodeState.FlushRequests) {
@@ -310,6 +313,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         // All handles with active WriteData requests are to be released
         // Drop node data on flush failure
         nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+        Stats->FlushCompleted();
         DropCachedData(nodeId, nodeState, error);
         return EFlushRetryStatus::ShouldNotRetry;
     }
@@ -418,6 +422,7 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
     for (auto nodeId: NodesReadyToFlush) {
         auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
         nodeState.FlushStatus = ENodeFlushStatus::FlushRequested;
+        Stats->FlushStarted();
         QueuedOperations.ScheduleFlushNode(nodeId);
     }
 
@@ -451,6 +456,7 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
             break;
 
         case ENodeFlushStatus::FlushRequested:
+            Stats->FlushStarted();
             QueuedOperations.ScheduleFlushNode(nodeId);
             break;
 
