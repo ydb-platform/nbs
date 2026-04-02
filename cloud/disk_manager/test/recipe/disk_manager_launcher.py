@@ -209,7 +209,7 @@ PoolsConfig: <
     DeleteBaseDisksLimit: 100
     DeletedBaseDiskExpirationTimeout: "1s"
     ClearDeletedBaseDisksTaskScheduleInterval: "1s"
-    ReleasedSlotExpirationTimeout: "1s"
+    ReleasedSlotExpirationTimeout: "{released_slot_expiration_timeout}"
     ClearReleasedSlotsTaskScheduleInterval: "1s"
     ConvertToImageSizedBaseDiskThreshold: 10
     ConvertToDefaultSizedBaseDiskThreshold: 30
@@ -577,9 +577,10 @@ class DiskManagerLauncher:
         filesystem_dataplane_enabled=False,
         list_nodes_max_bytes=0,
         scrubbing_config_content="",
-        # 30s is long enough in tests with concurrent disk creation and deletion to prevent
-        # repeatedly creating a disk with the same ID.
+        # 30s is long enough in tests with concurrent resource creation and deletion to prevent
+        # creating an already deleted resourse.
         deleted_disk_expiration_timeout="30s",
+        released_slot_expiration_timeout="30s",
     ):
         self.__idx = idx
 
@@ -690,6 +691,7 @@ class DiskManagerLauncher:
                     retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
                     cell_selection_policy=cell_selection_policy,
                     deleted_disk_expiration_timeout=deleted_disk_expiration_timeout,
+                    released_slot_expiration_timeout=released_slot_expiration_timeout,
                 )
                 f.write(self.__server_config)
 
