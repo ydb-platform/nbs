@@ -1075,8 +1075,6 @@ ui32 GetPercentage(ui64 total, ui64 real)
     return Min(p, MAX_P);
 }
 
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCompactionTriggerer
@@ -1086,9 +1084,7 @@ private:
     TPartitionState& State;
 
     TRangeStat TopRangeStat;
-    TRangeStat TopGargageRangeStat;
-
-    bool Initialized = false;
+    TRangeStat TopGarbageRangeStat;
 
 public:
     enum ECompactionTriggerKind
@@ -1113,16 +1109,13 @@ public:
     };
 
 public:
-    TCompactionTriggerer(const TStorageConfigPtr config, TPartitionState& state)
+    TCompactionTriggerer(const TStorageConfigPtr config, TPartitionState& state, TInstant now)
         : Config(config)
         , State(state)
-    {}
-
-    void Init(TInstant now)
     {
         const auto& cm = State.GetCompactionMap();
         TopRangeStat = cm.GetTop().Stat;
-        TopGargageRangeStat = cm.GetTopByGarbageBlockCount().Stat;
+        TopGarbageRangeStat = cm.GetTopByGarbageBlockCount().Stat;
 
         auto& scoreHistory = State.GetCompactionScoreHistory();
         if (scoreHistory.LastTs() + Config->GetMaxCompactionDelay() <= now) {
@@ -1130,18 +1123,14 @@ public:
                 now,
                 {
                     TopRangeStat.CompactionScore.Score,
-                    TopGargageRangeStat.GarbageBlockCount(),
+                    TopGarbageRangeStat.GarbageBlockCount(),
                 },
             });
         }
-
-        Initialized = true;
     }
 
-    std::optional<TTriggerInfo> TriggerCompactionIfNeeded() const
+    [[nodiscard]] std::optional<TTriggerInfo> TriggerCompactionIfNeeded() const
     {
-        Y_DEBUG_ABORT_UNLESS(Initialized);
-
         std::optional<TTriggerInfo> info;
 
         info = TriggerBlobCountCompactionIfNeeded();
@@ -1153,18 +1142,18 @@ public:
     }
 
 private:
-    ui64 GetBlockCount() const
+    [[nodiscard]] ui64 GetBlockCount() const
     {
         return State.GetMixedBlocksCount() + State.GetMergedBlocksCount() -
                State.GetCleanupQueue().GetQueueBlocks();
     }
 
-    ui64 GetDiskGarbage() const
+    [[nodiscard]] ui64 GetDiskGarbage() const
     {
         return GetPercentage(State.GetUsedBlocksCount(), GetBlockCount());
     }
 
-    std::optional<TTriggerInfo> TriggerBlobCountCompactionIfNeeded() const
+    [[nodiscard]] std::optional<TTriggerInfo> TriggerBlobCountCompactionIfNeeded() const
     {
         const auto blobCount =
             State.GetMixedBlobsCount() + State.GetMergedBlobsCount();
@@ -1216,7 +1205,7 @@ private:
             fullCompaction};
     }
 
-    std::optional<TTriggerInfo> TriggerGarbageCompactionIfNeeded() const
+    [[nodiscard]] std::optional<TTriggerInfo> TriggerGarbageCompactionIfNeeded() const
     {
         if (!Config->GetV1GarbageCompactionEnabled()) {
             return std::nullopt;
@@ -1233,11 +1222,11 @@ private:
             // Nothing to compact if there are no blobs in the range.
             // Nothing to compact if there is only one blob in the range and it
             // is not zeroed.
-            const auto isZeroedRange = TopGargageRangeStat.BlockCount &&
-                                       !TopGargageRangeStat.UsedBlockCount;
+            const auto isZeroedRange = TopGarbageRangeStat.BlockCount &&
+                                       !TopGarbageRangeStat.UsedBlockCount;
 
-            if (TopGargageRangeStat.Compacted ||
-                TopGargageRangeStat.BlobCount < 2 && !isZeroedRange)
+            if (TopGarbageRangeStat.Compacted ||
+                TopGarbageRangeStat.BlobCount < 2 && !isZeroedRange)
             {
                 return std::nullopt;
             }
@@ -1247,8 +1236,8 @@ private:
 
         ui64 diskGarbage = GetDiskGarbage();
         ui64 rangeGarbage = GetPercentage(
-            TopGargageRangeStat.UsedBlockCount,
-            TopGargageRangeStat.BlockCount);
+            TopGarbageRangeStat.UsedBlockCount,
+            TopGarbageRangeStat.BlockCount);
 
         const bool diskGarbageBelowThreshold =
             diskGarbage < Config->GetCompactionGarbageThreshold();
@@ -1281,6 +1270,10 @@ private:
             true /* fullCompaction */};
     }
 };
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
     ui64 rangeRealCount,
@@ -1342,9 +1335,8 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    TCompactionTriggerer triggerer(Config, *State);
-    const auto now = ctx.Now();
-    triggerer.Init(now);
+    auto now = ctx.Now();
+    TCompactionTriggerer triggerer(Config, *State, now);
 
     auto info = triggerer.TriggerCompactionIfNeeded();
     if (!info) {
