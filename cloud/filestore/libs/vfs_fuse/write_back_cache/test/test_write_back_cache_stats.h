@@ -82,15 +82,12 @@ struct TTestWriteBackCacheStats
 
     TTestWriteDataRequestStats& GetWriteStats(EWriteDataRequestStatus status);
 
-    void WriteDataRequestEnteredStatus(EWriteDataRequestStatus status) override;
-
-    void WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus status,
-        TDuration duration) override;
-
-    void WriteDataRequestUpdateMinTime(
-        EWriteDataRequestStatus status,
-        TInstant minTime) override;
+    void AddedPendingRequest() override;
+    void RemovedPendingRequest(TDuration duration) override;
+    void AddedUnflushedRequest() override;
+    void RemovedUnflushedRequest(TDuration duration) override;
+    void AddedFlushedRequest() override;
+    void RemovedFlushedRequest() override;
 
     void AddReadDataStats(EReadDataRequestCacheStatus status) override;
 
@@ -135,6 +132,20 @@ struct TTestWriteBackCacheStats
     IWriteDataRequestManagerStatsPtr GetWriteDataRequestManagerStats() override
     {
         return shared_from_this();
+    }
+
+    TWriteDataRequestManagerMetrics
+    CreateWriteDataRequestManagerMetrics() const override
+    {
+        return {};
+    }
+
+    virtual void UpdateWriteDataRequestManagerStats(
+        TDuration maxPendingRequestDuration,
+        TDuration maxUnflushedRequestDuration) override
+    {
+        Y_UNUSED(maxPendingRequestDuration);
+        Y_UNUSED(maxUnflushedRequestDuration);
     }
 
     IPersistentStorageStatsPtr GetPersistentStorageStats() override

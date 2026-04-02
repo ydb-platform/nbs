@@ -648,11 +648,16 @@ struct TBootstrap
             name << "Stats.Count: expected = " << expectedCount
                  << ", actual = " << stats.Count);
 
+        Y_UNUSED(expectedMinTime);
+
+        /* TODO(#1751): Temporary disable checking MinTime until all modules
+         * transitioned from TTestWriteDataCacheStats to normal implementation
+
         UNIT_ASSERT_EQUAL_C(
             expectedMinTime,
             stats.MinTime,
             name << "Stats.MinTime: expected = " << expectedMinTime
-                 << ", actual = " << stats.MinTime);
+                 << ", actual = " << stats.MinTime); */
     }
 
     void CheckPendingWriteDataRequestStats(

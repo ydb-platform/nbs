@@ -1,8 +1,8 @@
 #pragma once
 
-#include <util/datetime/base.h>
+#include <cloud/filestore/libs/diagnostics/metrics/public.h>
 
-#include <memory>
+#include <util/datetime/base.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -34,23 +34,55 @@ enum class EWriteDataRequestStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteDataRequestManagerMetrics
+{
+    struct TQueueMetrics
+    {
+        NMetrics::IMetricPtr Count;
+        NMetrics::IMetricPtr MaxCount;
+        NMetrics::IMetricPtr ProcessedCount;
+    };
+
+    struct TExtendedQueueMetrics
+    {
+        NMetrics::IMetricPtr Count;
+        NMetrics::IMetricPtr MaxCount;
+        NMetrics::IMetricPtr ProcessedCount;
+        NMetrics::IMetricPtr ProcessedTime;
+        NMetrics::IMetricPtr MaxTime;
+    };
+
+    TExtendedQueueMetrics PendingQueue;
+    TExtendedQueueMetrics UnflushedQueue;
+    TQueueMetrics FlushedQueue;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IWriteDataRequestManagerStats
 {
     virtual ~IWriteDataRequestManagerStats() = default;
 
-    virtual void WriteDataRequestEnteredStatus(
-        EWriteDataRequestStatus status) = 0;
+    virtual void AddedPendingRequest() = 0;
+    virtual void RemovedPendingRequest(TDuration duration) = 0;
 
-    virtual void WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus status,
-        TDuration duration) = 0;
+    virtual void AddedUnflushedRequest() = 0;
+    virtual void RemovedUnflushedRequest(TDuration duration) = 0;
 
-    virtual void WriteDataRequestUpdateMinTime(
-        EWriteDataRequestStatus status,
-        TInstant minTime) = 0;
+    virtual void AddedFlushedRequest() = 0;
+    virtual void RemovedFlushedRequest() = 0;
+
+    virtual TWriteDataRequestManagerMetrics
+    CreateWriteDataRequestManagerMetrics() const = 0;
+
+    virtual void UpdateWriteDataRequestManagerStats(
+        TDuration maxPendingRequestDuration,
+        TDuration maxUnflushedRequestDuration) = 0;
 };
 
 using IWriteDataRequestManagerStatsPtr =
     std::shared_ptr<IWriteDataRequestManagerStats>;
+
+IWriteDataRequestManagerStatsPtr CreateWriteDataRequestManagerStats();
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
