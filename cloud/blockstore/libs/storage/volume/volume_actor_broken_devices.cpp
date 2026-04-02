@@ -25,6 +25,8 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     // TODO: save the broken device to the database
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TVolumeActor::HandleDeviceRecoveredNotification(
     const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr& ev,
     const TActorContext& ctx)
@@ -40,7 +42,5 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
 
     // TODO: remove the device from the list of broken ones in the database
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage
