@@ -1109,7 +1109,10 @@ public:
     };
 
 public:
-    TCompactionTriggerer(const TStorageConfigPtr config, TPartitionState& state, TInstant now)
+    TCompactionTriggerer(
+        const TStorageConfigPtr config,
+        TPartitionState& state,
+        TInstant now)
         : Config(config)
         , State(state)
     {
@@ -1153,7 +1156,8 @@ private:
         return GetPercentage(State.GetUsedBlocksCount(), GetBlockCount());
     }
 
-    [[nodiscard]] std::optional<TTriggerInfo> TriggerBlobCountCompactionIfNeeded() const
+    [[nodiscard]] std::optional<TTriggerInfo>
+    TriggerBlobCountCompactionIfNeeded() const
     {
         const auto blobCount =
             State.GetMixedBlobsCount() + State.GetMergedBlobsCount();
@@ -1205,7 +1209,8 @@ private:
             fullCompaction};
     }
 
-    [[nodiscard]] std::optional<TTriggerInfo> TriggerGarbageCompactionIfNeeded() const
+    [[nodiscard]] std::optional<TTriggerInfo>
+    TriggerGarbageCompactionIfNeeded() const
     {
         if (!Config->GetV1GarbageCompactionEnabled()) {
             return std::nullopt;
@@ -1354,21 +1359,25 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         case TCompactionTriggerer::ECompactionTriggerKind::ByReadStats:
             PartCounters->Cumulative.CompactionByReadStats.Increment(1);
             break;
-        case TCompactionTriggerer::ECompactionTriggerKind::ByGarbageBlocksPerDisk:
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(1);
+        case TCompactionTriggerer::ECompactionTriggerKind::
+            ByGarbageBlocksPerDisk:
+            PartCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(
+                1);
             break;
-        case TCompactionTriggerer::ECompactionTriggerKind::ByGarbageBlocksPerRange:
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerRange.Increment(1);
+        case TCompactionTriggerer::ECompactionTriggerKind::
+            ByGarbageBlocksPerRange:
+            PartCounters->Cumulative.CompactionByGarbageBlocksPerRange
+                .Increment(1);
             break;
     }
 
-    State->GetCompactionState(ECompactionType::Tablet).SetStatus(
-        EOperationStatus::Enqueued);
+    State->GetCompactionState(ECompactionType::Tablet)
+        .SetStatus(EOperationStatus::Enqueued);
 
-    if (Config->GetCompactionCountPerRunIncreasingThreshold()
-        && Config->GetCompactionCountPerRunDecreasingThreshold()
-        && now - State->GetLastCompactionRangeCountPerRunTime() >
-        Config->GetCompactionCountPerRunChangingPeriod())
+    if (Config->GetCompactionCountPerRunIncreasingThreshold() &&
+        Config->GetCompactionCountPerRunDecreasingThreshold() &&
+        now - State->GetLastCompactionRangeCountPerRunTime() >
+            Config->GetCompactionCountPerRunChangingPeriod())
     {
         ChangeRangeCountPerRunIfNeeded(
             info->RangeCount,
@@ -1382,8 +1391,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(CreateRequestId()),
         info->Mode);
 
-    if (info->FullCompaction)
-    {
+    if (info->FullCompaction) {
         request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
 
@@ -1391,9 +1399,11 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         auto execTime = State->GetCompactionExecTimeForLastSecond(ctx.Now());
         auto delay = Config->GetMinCompactionDelay();
         if (Config->GetMaxCompactionExecTimePerSecond()) {
-            auto throttlingFactor = double(execTime.GetValue())
-                / Config->GetMaxCompactionExecTimePerSecond().GetValue();
-            const auto throttleDelay = (TDuration::Seconds(1) - execTime) * throttlingFactor;
+            auto throttlingFactor =
+                double(execTime.GetValue()) /
+                Config->GetMaxCompactionExecTimePerSecond().GetValue();
+            const auto throttleDelay =
+                (TDuration::Seconds(1) - execTime) * throttlingFactor;
 
             delay = Max(delay, throttleDelay);
         }
@@ -1407,10 +1417,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (State->GetCompactionDelay()) {
         ctx.Schedule(State->GetCompactionDelay(), request.release());
     } else {
-        NCloud::Send(
-            ctx,
-            SelfId(),
-            std::move(request));
+        NCloud::Send(ctx, SelfId(), std::move(request));
     }
 }
 
