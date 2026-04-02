@@ -525,8 +525,7 @@ private:
         headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
 
-        srand(time(0));
-        TString shmFileName = "nfs_" + std::to_string(rand()) + ".shm";
+        TString shmFileName = "nfs_" + std::to_string(getpid()) + ".shm";
         TString shmDir =
             "/Berkanavt/nfs-server/shm/nfs-server-shm/nfs-load-test/";
         ShmPath = shmDir + shmFileName;
@@ -534,13 +533,13 @@ private:
         std::ofstream ofs(ShmPath);
         ofs << "this is some text in the new file\n";
         ofs.close();
-        std::filesystem::create_directory(shmDir);
+        std::filesystem::create_directory(std::string(shmDir));
         std::filesystem::resize_file(
             std::string(ShmPath),
             Config.GetIODepth() * 1024 * 1024);   // resize to 10 MB
 
         auto request = std::make_shared<NProto::TMmapRequest>();
-        request->SetFilePath(shmFileName);
+        request->SetFilePath("nfs-load-test/" + shmFileName);
         request->SetSize(Config.GetIODepth() * 1024 * 1024);
 
         TCallContextPtr ctx = MakeIntrusive<TCallContext>();
