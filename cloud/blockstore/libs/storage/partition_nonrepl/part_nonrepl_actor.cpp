@@ -38,6 +38,8 @@ TVector<TDeviceStat> CreateDeviceStats(
 
 }   // namespace
 
+////////////////////////////////////////////////////////////////////////////////
+
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
