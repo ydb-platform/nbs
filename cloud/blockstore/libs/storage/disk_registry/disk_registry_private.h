@@ -212,6 +212,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(SwitchAgentDisksToReadOnly,                 __VA_ARGS__)               \
     xxx(PurgeHostCms,                               __VA_ARGS__)               \
     xxx(UpdatePathAttachState,                      __VA_ARGS__)               \
+    xxx(RestoreAgentsToOnline,                      __VA_ARGS__)               \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -810,6 +811,19 @@ struct TEvDiskRegistryPrivate
     };
 
     //
+    // RestoreAgentsToOnline
+    //
+
+    struct TRestoreAgentsToOnlineRequest
+    {
+    };
+
+    struct TRestoreAgentsToOnlineResponse
+    {
+        TVector<TString> AffectedAgents;
+    };
+
+    //
     // Events declaration
     //
 
@@ -828,6 +842,8 @@ struct TEvDiskRegistryPrivate
         EvDiskRegistryAgentListExpiredParamsCleanup,
 
         EvAttachDetachPathsOperationCompleted,
+
+        EvRestoreAgentsToOnline,
 
         EvEnd
     };

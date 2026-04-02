@@ -1134,7 +1134,7 @@ auto TDiskRegistryState::RegisterAgent(
                 agent,
                 NProto::AGENT_STATE_WARNING,
                 timestamp,
-                "back from unavailable");
+                TString(BackFromUnavailableStateMessage));
 
             ApplyAgentStateChange(db, agent, timestamp, affectedDisks);
 

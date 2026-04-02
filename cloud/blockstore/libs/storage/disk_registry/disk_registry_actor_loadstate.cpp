@@ -215,6 +215,8 @@ void TDiskRegistryActor::CompleteLoadState(
 
     ProcessPathsToAttach(ctx);
 
+    ScheduleRestoreAgentsToOnline(ctx);
+
     if (auto orphanDevices = State->FindOrphanDevices()) {
         LOG_INFO(
             ctx,

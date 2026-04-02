@@ -316,6 +316,21 @@ void TDiskRegistryActor::ScheduleEnsureDiskRegistryStateIntegrity(
             new TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest()));
 }
 
+void TDiskRegistryActor::ScheduleRestoreAgentsToOnline(
+    const NActors::TActorContext& ctx)
+{
+    if (!Config->GetAgentBackFromUnavailableCheckInterval()) {
+        return;
+    }
+
+    ctx.Schedule(
+        Config->GetAgentBackFromUnavailableCheckInterval(),
+        std::make_unique<IEventHandle>(
+            SelfId(),
+            SelfId(),
+            new TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineRequest()));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandlePoisonPill(
@@ -753,8 +768,14 @@ STFUNC(TDiskRegistryActor::StateWork)
 
         HFunc(
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
-            HandleEnsureDiskRegistryStateIntegrityResponse
-        )
+            HandleEnsureDiskRegistryStateIntegrityResponse);
+
+        HFunc(TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineRequest,
+            HandleRestoreAgentsToOnline);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineResponse,
+            HandleRestoreAgentsToOnlineResponse);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -811,8 +832,15 @@ STFUNC(TDiskRegistryActor::StateRestore)
 
         HFunc(
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
-            HandleEnsureDiskRegistryStateIntegrityResponse
-        )
+            HandleEnsureDiskRegistryStateIntegrityResponse);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineRequest,
+            HandleRestoreAgentsToOnlineReadOnly);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineResponse,
+            HandleRestoreAgentsToOnlineResponse);
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -891,8 +919,15 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
 
         HFunc(
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
-            HandleEnsureDiskRegistryStateIntegrityResponse
-        )
+            HandleEnsureDiskRegistryStateIntegrityResponse);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineRequest,
+            HandleRestoreAgentsToOnlineReadOnly);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvRestoreAgentsToOnlineResponse,
+            HandleRestoreAgentsToOnlineResponse);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

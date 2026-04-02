@@ -3276,6 +3276,99 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         UNIT_ASSERT_VALUES_EQUAL(stateMismatchLocalDbError->Val(), 1);
     }
+
+    Y_UNIT_TEST(ShouldRestoreAgentsToOnline)
+    {
+        TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                    Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-10", "uuid-10.1", "rack-10", 10_GB),
+                    Device("dev-20", "uuid-10.2", "rack-10", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-3",
+                {
+                    Device("dev-11", "uuid-11.1", "rack-11", 10_GB),
+                    Device("dev-21", "uuid-11.2", "rack-11", 10_GB),
+                })};
+
+        NProto::TStorageServiceConfig config;
+
+        config.SetAgentBackFromUnavailableToOnlineDelay(
+            TDuration::Minutes(12).MilliSeconds());
+        config.SetAgentBackFromUnavailableCheckInterval(
+            TDuration::Minutes(1).MilliSeconds());
+        config.SetNonReplicatedDiskRecyclingPeriod(Max<ui32>());
+        config.SetAllocationUnitNonReplicatedSSD(10);
+
+        auto runtime =
+            TTestRuntimeBuilder().With(config).WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        auto countSpecificAgentStatus = [&](NProto::EAgentState expectedState,
+                                            const TString& expectedMessage)
+        {
+            size_t count = 0;
+
+            NProto::TQueryAgentsInfoRequest::TAgentFilter filter;
+            filter.AddStates(expectedState);
+            auto response = diskRegistry.QueryAgentsInfo(filter);
+            for (auto& agentInfo: response->Record.GetAgents()) {
+                if (agentInfo.GetStateMessage() == expectedMessage) {
+                    count += 1;
+                }
+            }
+            return count;
+        };
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        for (size_t i = 0; i < agents.size(); i++) {
+            auto& agent = agents[i];
+            diskRegistry.ChangeAgentState(
+                agent.agentid(),
+                NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+
+            agent.SetNodeId(i + 1);
+            diskRegistry.RegisterAgent(agent);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            countSpecificAgentStatus(
+                NProto::EAgentState::AGENT_STATE_WARNING,
+                "back from unavailable"));
+
+        runtime->AdvanceCurrentTime(6min);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            countSpecificAgentStatus(
+                NProto::EAgentState::AGENT_STATE_WARNING,
+                "back from unavailable"));
+
+        runtime->AdvanceCurrentTime(7min);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            countSpecificAgentStatus(
+                NProto::EAgentState::AGENT_STATE_ONLINE,
+                "automatically restored"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
