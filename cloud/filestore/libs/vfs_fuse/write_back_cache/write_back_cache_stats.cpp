@@ -1,8 +1,58 @@
 #include "write_back_cache_stats.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
+using namespace NMetrics;
+
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteBackCacheInternalStats
+    : public std::enable_shared_from_this<TWriteBackCacheInternalStats>
+    , public IWriteBackCacheInternalStats
+{
+private:
+    std::atomic<i64> ReadDataCacheFullHit = 0;
+    std::atomic<i64> ReadDataCachePartialHit = 0;
+    std::atomic<i64> ReadDataCacheMiss = 0;
+
+public:
+    void AddReadDataStats(EReadDataRequestCacheStatus status) override
+    {
+        switch (status) {
+            case EReadDataRequestCacheStatus::Miss:
+                ReadDataCacheMiss.fetch_add(1, std::memory_order_release);
+                break;
+            case EReadDataRequestCacheStatus::PartialHit:
+                ReadDataCachePartialHit.fetch_add(1, std::memory_order_release);
+                break;
+            case EReadDataRequestCacheStatus::FullHit:
+                ReadDataCacheFullHit.fetch_add(1, std::memory_order_release);
+                break;
+        }
+    }
+
+    TWriteBackCacheInternalMetrics CreateInternalMetrics() const override
+    {
+        auto self = shared_from_this();
+
+        return {
+            .ReadData = {
+                .CacheFullHitCount = CreateMetric(
+                    [self] { return self->ReadDataCacheFullHit.load(); }),
+                .CachePartialHitCount = CreateMetric(
+                    [self] { return self->ReadDataCachePartialHit.load(); }),
+                .CacheMissCount = CreateMetric(
+                    [self] { return self->ReadDataCacheMiss.load(); }),
+            }};
+    }
+
+    void UpdateInternalStats() override
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,6 +130,14 @@ public:
     {
         return shared_from_this();
     }
+
+    TWriteBackCacheInternalMetrics CreateInternalMetrics() const override
+    {
+        return {};
+    }
+
+    void UpdateInternalStats() override
+    {}
 
     IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() override
     {

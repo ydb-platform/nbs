@@ -30,17 +30,30 @@ enum class EReadDataRequestCacheStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCacheInternalMetrics
+{
+    struct TReadDataMetrics
+    {
+        NMetrics::IMetricPtr CacheFullHitCount;
+        NMetrics::IMetricPtr CachePartialHitCount;
+        NMetrics::IMetricPtr CacheMissCount;
+    };
+
+    TReadDataMetrics ReadData;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IWriteBackCacheInternalStats
 {
     virtual ~IWriteBackCacheInternalStats() = default;
 
     virtual void ResetNonDerivativeCounters() = 0;
 
-    virtual void FlushStarted() = 0;
-    virtual void FlushCompleted() = 0;
-    virtual void FlushFailed() = 0;
-
     virtual void AddReadDataStats(EReadDataRequestCacheStatus status) = 0;
+
+    virtual TWriteBackCacheInternalMetrics CreateInternalMetrics() const = 0;
+    virtual void UpdateInternalStats() = 0;
 };
 
 using IWriteBackCacheInternalStatsPtr =
