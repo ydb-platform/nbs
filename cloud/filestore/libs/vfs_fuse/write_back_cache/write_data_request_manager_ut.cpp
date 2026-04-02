@@ -2,10 +2,12 @@
 
 #include "sequence_id_generator.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -19,20 +21,24 @@ namespace {
 
 struct TBootstrap
 {
-    ITimerPtr Timer;
-    std::shared_ptr<TTestWriteBackCacheStats> Stats;
+    std::shared_ptr<TTestTimer> Timer;
+    std::shared_ptr<TTestWriteBackCacheStats> TestStats;
     std::shared_ptr<TTestStorage> Storage;
     std::shared_ptr<TSequenceIdGenerator> SequenceIdGenerator;
+    IWriteDataRequestManagerStatsPtr Stats;
+    TWriteDataRequestManagerMetrics Metrics;
     TWriteDataRequestManager RequestManager;
 
     TMap<ui64, std::unique_ptr<TPendingWriteDataRequest>> PendingRequests;
     TMap<ui64, std::unique_ptr<TCachedWriteDataRequest>> CachedRequests;
 
     TBootstrap()
-        : Timer(CreateWallClockTimer())
-        , Stats(std::make_shared<TTestWriteBackCacheStats>())
-        , Storage(std::make_shared<TTestStorage>(Stats))
+        : Timer(std::make_shared<TTestTimer>())
+        , TestStats(std::make_shared<TTestWriteBackCacheStats>())
+        , Storage(std::make_shared<TTestStorage>(TestStats))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
+        , Stats(CreateWriteDataRequestManagerStats())
+        , Metrics(Stats->CreateWriteDataRequestManagerMetrics())
         , RequestManager(SequenceIdGenerator, Storage, Timer, Stats)
     {}
 
@@ -100,7 +106,7 @@ struct TBootstrap
 
     ui64 GetAllocationCount() const
     {
-        return Stats->StorageStats.EntryCount;
+        return TestStats->StorageStats.EntryCount;
     }
 
     TString Dump() const
@@ -123,6 +129,80 @@ struct TBootstrap
         out << "]";
 
         return out;
+    }
+
+    void CheckPendingQueueMetrics(
+        i64 expectedActiveCount,
+        i64 expectedActiveMaxCount,
+        i64 expectedMaxTime,
+        i64 expectedCompletedCount,
+        i64 expectedCompletedTime) const
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedActiveCount,
+            Metrics.PendingQueue.Count->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedActiveMaxCount,
+            Metrics.PendingQueue.MaxCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedMaxTime,
+            Metrics.PendingQueue.MaxTime->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedCompletedCount,
+            Metrics.PendingQueue.ProcessedCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedCompletedTime,
+            Metrics.PendingQueue.ProcessedTime->Get());
+    }
+
+    void CheckUnflushedQueueMetrics(
+        i64 expectedActiveCount,
+        i64 expectedActiveMaxCount,
+        i64 expectedMaxTime,
+        i64 expectedCompletedCount,
+        i64 expectedCompletedTime) const
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedActiveCount,
+            Metrics.UnflushedQueue.Count->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedActiveMaxCount,
+            Metrics.UnflushedQueue.MaxCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedMaxTime,
+            Metrics.UnflushedQueue.MaxTime->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedCompletedCount,
+            Metrics.UnflushedQueue.ProcessedCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedCompletedTime,
+            Metrics.UnflushedQueue.ProcessedTime->Get());
+    }
+
+    void CheckFlushedQueueMetrics(
+        i64 expectedActiveCount,
+        i64 expectedActiveMaxCount,
+        i64 expectedCompletedCount) const
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedActiveCount,
+            Metrics.FlushedQueue.Count->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedActiveMaxCount,
+            Metrics.FlushedQueue.MaxCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedCompletedCount,
+            Metrics.FlushedQueue.ProcessedCount->Get());
     }
 };
 
@@ -271,6 +351,74 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(
             3,
             b.RequestManager.GetMinPendingOrUnflushedSequenceId());
+    }
+
+    Y_UNIT_TEST(ShouldReportMetrics)
+    {
+        TBootstrap b;
+
+        b.Storage->SetCapacity(2);
+
+        b.Add(1, 101, 0, "abc");    // SequenceId = 1
+
+        b.CheckPendingQueueMetrics(0, 0, 0, 0, 0);
+        b.CheckUnflushedQueueMetrics(1, 1, 0, 0, 0);
+        b.CheckFlushedQueueMetrics(0, 0, 0);
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.Add(2, 201, 0, "def");    // SequenceId = 2
+        b.Add(2, 202, 1, "xyz");    // SequenceId = 3
+        b.Add(2, 203, 2, "ijk");    // SequenceId = 4
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
+        b.RequestManager.UpdateStats();
+
+        b.CheckPendingQueueMetrics(2, 2, 2000, 0, 0);
+        b.CheckUnflushedQueueMetrics(2, 2, 3000, 0, 0);
+        b.CheckFlushedQueueMetrics(0, 0, 0);
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+        b.SetFlushed(1);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(5));
+        b.Evict(1);
+        b.TryProcessPendingRequests();
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(3));
+        b.RequestManager.UpdateStats();
+
+        b.CheckPendingQueueMetrics(1, 2, 11000, 1, 8000);
+        b.CheckUnflushedQueueMetrics(2, 2, 11000, 1, 4000);
+        b.CheckFlushedQueueMetrics(0, 1, 1);
+
+        b.SetFlushed(2);
+        b.SetFlushed(3);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
+        b.RequestManager.UpdateStats();
+
+        b.CheckPendingQueueMetrics(1, 2, 13000, 1, 8000);
+        b.CheckUnflushedQueueMetrics(0, 2, 11000, 3, 18000);
+        b.CheckFlushedQueueMetrics(2, 2, 1);
+
+        b.Evict(2);
+        b.Evict(3);
+        b.TryProcessPendingRequests();
+        b.SetFlushed(4);
+        b.Evict(4);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+        b.RequestManager.UpdateStats();
+
+        b.CheckPendingQueueMetrics(0, 2, 13000, 2, 21000);
+        b.CheckUnflushedQueueMetrics(0, 2, 11000, 4, 18000);
+        b.CheckFlushedQueueMetrics(0, 2, 4);
+
+        // Max value is calculated over a sliding window with 15 buckets
+        for (int i = 0; i <= 15; i++) {
+            b.RequestManager.UpdateStats();
+        }
+
+        b.CheckPendingQueueMetrics(0, 0, 0, 2, 21000);
+        b.CheckUnflushedQueueMetrics(0, 0, 0, 4, 18000);
+        b.CheckFlushedQueueMetrics(0, 0, 4);
     }
 }
 

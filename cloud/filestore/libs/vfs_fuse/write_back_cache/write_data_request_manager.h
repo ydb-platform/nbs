@@ -98,6 +98,8 @@ public:
     // Removes previously flushed request from the persistent storage
     void Evict(std::unique_ptr<TCachedWriteDataRequest> request);
 
+    void UpdateStats() const;
+
 private:
     // Access methods that triggers stats update
     void PendingRequestsPushBack(TPendingWriteDataRequest* request);
