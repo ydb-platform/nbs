@@ -28,6 +28,17 @@
 #include <limits>
 #include <unordered_map>
 
+// clang-format off
+#undef  CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG_ON
+//#define CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG_ON
+#ifdef  CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG_ON
+#   define  CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG(fmtStr, ...) \
+            Cerr << Sprintf(fmtStr, __VA_ARGS__) << Endl
+#else
+#   define  CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG(...)
+#endif
+// clang-format on
+
 namespace NCloud::NBlockStore {
 
 using namespace NMonitoring;
@@ -259,7 +270,7 @@ private:
 
     // Number of pins put upon the object.
     // Pinned object with PinCount > 0 is not to be removed
-    // by ClientInactivityTimeout.
+    // by InactiveClientsTimeout.
     // Note: field access must be under TVolumeStats::Lock
     size_t PinCount = 0;
 
@@ -291,7 +302,22 @@ public:
               GetRequestCountersOptions(*VolumeBase),
               histogramCounterOptions,
               executionTimeSizeClasses))
-    {}
+    {
+        CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG(
+            "VolumeInfo[d: %s,c: %s] create",
+            NStorage::GetLogicalDiskId((VolumeBase->Volume.GetDiskId()))
+                .c_str(),
+            RealInstanceId.GetClientId().c_str());
+    }
+
+    ~TVolumeInfo()
+    {
+        CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG(
+            "VolumeInfo[d: %s,c: %s] delete",
+            NStorage::GetLogicalDiskId((VolumeBase->Volume.GetDiskId()))
+                .c_str(),
+            RealInstanceId.GetClientId().c_str());
+    }
 
     bool IsPinned() const noexcept
     {
@@ -563,7 +589,7 @@ public:
     bool MountVolumeImpl(
         NProto::TVolume volume,
         const TRealInstanceId& realInstanceId,
-        size_t pinCount)
+        size_t pinCountForNewInstance)
     {
         bool inserted = false;
 
@@ -586,9 +612,17 @@ public:
                     volumeIt->second.VolumeBase,
                     realInstanceId)).first;
             inserted = true;
+            instanceIt->second->PinCount = pinCountForNewInstance;
+
+            CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG(
+                "VolumeInfo[d: %s,c: %s].PinCount forced = %zu",
+                NStorage::GetLogicalDiskId(
+                    (instanceIt->second->GetInfo().GetDiskId()))
+                    .c_str(),
+                instanceIt->second->RealInstanceId.GetClientId().c_str(),
+                instanceIt->second->PinCount);
         }
 
-        instanceIt->second->PinCount = pinCount;
         instanceIt->second->LastRemountTime = Timer->Now();
 
         if (!inserted) {
@@ -613,7 +647,10 @@ public:
             clientId,
             instanceId);
 
-        return MountVolumeImpl(volume, itr->second, 0 /* pinCount */);
+        return MountVolumeImpl(
+            volume,
+            itr->second,
+            0 /* pinCountForNewInstance */);
     }
 
     void UnmountVolume(
@@ -734,6 +771,12 @@ public:
 
         volumeInfo->PinCount++;
 
+        CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG(
+            "VolumeInfo[d: %s,c: %s].PinCount++ = %zu",
+            diskId.c_str(),
+            clientId.c_str(),
+            volumeInfo->PinCount);
+
         return true;
     }
 
@@ -762,6 +805,12 @@ public:
 
         volumeInfo->PinCount--;
 
+        CLOUD_BLOCKSTORE_VOLUME_INFO_DEBUG(
+            "VolumeInfo[d: %s,c: %s].PinCount-- = %zu",
+            diskId.c_str(),
+            clientId.c_str(),
+            volumeInfo->PinCount);
+
         return true;
     }
 
@@ -769,8 +818,15 @@ public:
         const TString& diskId,
         const TString& clientId) override
     {
-        auto pin =
-            MakeIntrusive<TVolumeInfoPin>(shared_from_this(), diskId, clientId);
+        if (!DiagnosticsConfig->GetEnableDurableVolumeInfo()) {
+            // Stub object
+            return MakeIntrusive<IVolumeInfoPin>();
+        }
+
+        auto pin = MakeIntrusive<TVolumeInfoPin>(
+            shared_from_this(),
+            NStorage::GetLogicalDiskId(diskId),
+            clientId);
 
         return pin->IsPinned() ? pin : nullptr;
     }

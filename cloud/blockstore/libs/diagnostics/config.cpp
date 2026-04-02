@@ -12,6 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// clang-format off
 #define BLOCKSTORE_DIAGNOSTICS_CONFIG(xxx)                                                               \
     xxx(HostNameScheme,                  NProto::EHostNameScheme, NProto::EHostNameScheme::HOSTNAME_RAW )\
     xxx(BastionNameSuffix,               TString,         ""                                            )\
@@ -64,7 +65,10 @@ namespace {
                                                                                                          \
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
     xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
+    xxx(EnableDurableVolumeInfo,        bool,                    false                                  )\
+
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
+// clang-format on
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \

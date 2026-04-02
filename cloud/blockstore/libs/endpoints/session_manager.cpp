@@ -350,7 +350,7 @@ public:
                 const auto& response = f.GetValue();
 
                 // Note: top-level endpoint and session deletion performed
-                //       despite HasError(response)
+                // despite HasError(response)
                 if (!HasError(response)) {
                     // Happy-path unmount and VolumeInfo unpin
                     self->UnpinVolumeInfo();
