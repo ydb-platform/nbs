@@ -21,8 +21,6 @@ using EReason = TEvNonreplPartitionPrivate::TCancelRequest::EReason;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
 TVector<TDeviceStat> CreateDeviceStats(
@@ -39,8 +37,6 @@ TVector<TDeviceStat> CreateDeviceStats(
 }
 
 }   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TStorageConfigPtr config,
