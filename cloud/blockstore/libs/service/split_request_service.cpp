@@ -28,8 +28,9 @@ template <typename TRequest>
 TVector<std::shared_ptr<TRequest>> CreateSubRequests(
     std::shared_ptr<TRequest> request,
     const TVector<TBlockRange64>& subRanges,
-    ui32 /*blockSize*/)
+    ui32 blockSize)
 {
+    Y_UNUSED(blockSize);
     TVector<std::shared_ptr<TRequest>> result;
     result.reserve(subRanges.size());
 
@@ -47,8 +48,9 @@ template <>
 TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request,
     const TVector<TBlockRange64>& subRanges,
-    ui32 /*blockSize*/)
+    ui32 blockSize)
 {
+    Y_UNUSED(blockSize);
     TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> result;
 
     auto guard = request->Sglist.Acquire();
@@ -117,8 +119,9 @@ template <>
 TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request,
     const TVector<TBlockRange64>& subRanges,
-    ui32 /*blockSize*/)
+    ui32 blockSize)
 {
+    Y_UNUSED(blockSize);
     TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> result;
 
     auto guard = request->Sglist.Acquire();
