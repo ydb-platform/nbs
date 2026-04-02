@@ -30,6 +30,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TBlockMask GetFullBlockMask()
+{
+    TBlockMask mask;
+    mask.Set(0, MaxBlocksCount);
+    return mask;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRangeCompactionInfo
 {
     const TBlockRange32 BlockRange;
@@ -695,9 +704,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blockMask->Set(blobOffset);
                 }
             } else {
-                TBlockMask mask;
-                mask.Set(0, MaxBlocksInBlob);
-                blob.BlockMask = std::move(mask);
+                blob.BlockMask = GetFullBlockMask();
             }
 
             auto& blockMask = blob.BlockMask.GetRef();
@@ -1621,7 +1628,7 @@ void PrepareRangeCompaction(
     visitor.KeepTrackOfAffectedBlocks = false;
     ready &= db.FindMergedBlocks(
         visitor,
-        &visitor,
+        visitor,
         args.BlockRange,
         true,   // precharge
         state.GetMaxBlocksInBlob(),
@@ -1741,9 +1748,7 @@ void PrepareRangeCompaction(
         } else if (state.GetCleanupQueue().HasBlob(kv.first)) {
             // If the blob is in the cleanup queue, we should not try to add
             // this blob to cleanup queue again.
-            TBlockMask mask;
-            mask.Set(0, state.GetMaxBlocksInBlob());
-            kv.second.BlockMask = std::move(mask);
+            kv.second.BlockMask = GetFullBlockMask();
         }
 
         if (args.ChecksumsEnabled) {
