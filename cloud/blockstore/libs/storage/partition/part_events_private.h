@@ -292,7 +292,8 @@ struct TEvPartitionPrivate
     enum ECompactionMode
     {
         RangeCompaction,
-        GarbageCompaction
+        GarbageCompaction,
+        ZeroedCompaction
     };
 
     struct TCompactionRequest
