@@ -380,10 +380,7 @@ void TWriteBackCacheState::UpdateStats() const
     auto guard = LockStateAndPostponeQueuedOperations();
 
     Stats->UpdateWriteBackCacheStateStats();
-
-    // TODO(#1751): Uncomment the following line when UpdateStats is implemented
-    // for RequestManager
-    // RequestManager.UpdateStats();
+    RequestManager.UpdateStats();
 }
 
 // Private methods

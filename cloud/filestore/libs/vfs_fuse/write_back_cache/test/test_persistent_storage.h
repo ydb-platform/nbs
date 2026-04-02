@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/persistent_storage.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
@@ -39,5 +40,8 @@ public:
 private:
     void SetStats();
 };
+
+std::shared_ptr<TTestStorage> CreateTestStorage(
+    const IWriteBackCacheStatsPtr& stats);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

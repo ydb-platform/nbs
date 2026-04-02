@@ -1030,8 +1030,7 @@ private:
                         {.Session = Session,
                          .Scheduler = Scheduler,
                          .Timer = Timer,
-                         .Stats =
-                             NWriteBackCache::CreateDummyWriteBackCacheStats(),
+                         .Stats = NWriteBackCache::CreateWriteBackCacheStats(),
                          .Log = Log,
                          .FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
@@ -1052,6 +1051,13 @@ private:
                                  ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
+
+                    ModuleStatsRegistry->Register(
+                        Config->GetFileSystemId(),
+                        Config->GetClientId(),
+                        response.GetFileStore().GetCloudId(),
+                        response.GetFileStore().GetFolderId(),
+                        WriteBackCache.CreateModuleStats());
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(

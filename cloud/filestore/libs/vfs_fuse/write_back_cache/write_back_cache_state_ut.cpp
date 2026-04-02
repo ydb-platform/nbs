@@ -1,11 +1,11 @@
 #include "write_back_cache_state.h"
 
 #include "queued_operations.h"
+#include "write_back_cache_stats.h"
 #include "write_data_request.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -56,19 +56,17 @@ struct TProcessor: IQueuedOperationsProcessor
 struct TBootstrap
 {
     ITimerPtr Timer;
-    std::shared_ptr<TTestWriteBackCacheStats> Stats;
+    IWriteBackCacheStatsPtr Stats;
     std::shared_ptr<TTestStorage> Storage;
     TProcessor Processor;
     std::unique_ptr<TWriteBackCacheState> State;
-    IWriteBackCacheStateStatsPtr WriteBackCacheStateStats;
     TWriteBackCacheStateMetrics Metrics;
 
     TBootstrap()
         : Timer(CreateWallClockTimer())
-        , Stats(std::make_shared<TTestWriteBackCacheStats>())
-        , Storage(std::make_shared<TTestStorage>(Stats))
-        , WriteBackCacheStateStats(CreateWriteBackCacheStateStats())
-        , Metrics(WriteBackCacheStateStats->CreateWriteBackCacheStateMetrics())
+        , Stats(CreateWriteBackCacheStats())
+        , Storage(CreateTestStorage(Stats))
+        , Metrics(Stats->CreateMetrics())
     {
         Recreate();
     }
@@ -93,7 +91,7 @@ struct TBootstrap
         State = std::make_unique<TWriteBackCacheState>(
             Processor,
             Timer,
-            WriteBackCacheStateStats,
+            Stats->GetWriteBackCacheStateStats(),
             Stats->GetNodeStateHolderStats(),
             Stats->GetWriteDataRequestManagerStats(),
             "[test]");

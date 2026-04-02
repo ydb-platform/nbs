@@ -10,12 +10,15 @@
 #include "write_data_request_builder.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/request.h>
 
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NThreading;
+using namespace NMetrics;
 using namespace NWriteBackCache;
 
 namespace {
@@ -26,6 +29,45 @@ struct TFlushConfig
 {
     TDuration AutomaticFlushPeriod;
     TDuration FlushRetryPeriod;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TModuleStats: public IModuleStats
+{
+private:
+    TWriteBackCacheMetrics Metrics;
+    std::function<void(TInstant)> UpdateStatsFunc;
+
+public:
+    TModuleStats(
+        const IWriteBackCacheStatsPtr& stats,
+        std::function<void(TInstant)> updateStatsFunc)
+        : Metrics(stats->CreateMetrics())
+        , UpdateStatsFunc(std::move(updateStatsFunc))
+    {}
+
+    const TWriteBackCacheMetrics& GetMetrics() const
+    {
+        return Metrics;
+    }
+
+    TStringBuf GetName() const override
+    {
+        return "WriteBackCache";
+    }
+
+    void RegisterCounters(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) override
+    {
+        Metrics.Register(localMetricsRegistry, aggregatableMetricsRegistry);
+    }
+
+    void UpdateStats(TInstant now) override
+    {
+        UpdateStatsFunc(now);
+    }
 };
 
 }   // namespace
@@ -51,7 +93,8 @@ private:
     const IFileStorePtr Session;
     const ISchedulerPtr Scheduler;
     const ITimerPtr Timer;
-    const IWriteBackCacheInternalStatsPtr Stats;
+    const IWriteBackCacheStatsPtr Stats;
+    const IWriteBackCacheInternalStatsPtr InternalStats;
     const IWriteDataRequestBuilderPtr RequestBuilder;
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const TFlushConfig FlushConfig;
@@ -67,7 +110,8 @@ public:
         : Session(std::move(args.Session))
         , Scheduler(std::move(args.Scheduler))
         , Timer(std::move(args.Timer))
-        , Stats(args.Stats->GetWriteBackCacheInternalStats())
+        , Stats(args.Stats)
+        , InternalStats(Stats->GetWriteBackCacheInternalStats())
         , RequestBuilder(CreateWriteDataRequestBuilder(
               {.FileSystemId = args.FileSystemId,
                .MaxWriteRequestSize = args.FlushMaxWriteRequestSize,
@@ -87,9 +131,9 @@ public:
         , State(
               *this,
               Timer,
-              args.Stats->GetWriteBackCacheStateStats(),
-              args.Stats->GetNodeStateHolderStats(),
-              args.Stats->GetWriteDataRequestManagerStats(),
+              Stats->GetWriteBackCacheStateStats(),
+              Stats->GetNodeStateHolderStats(),
+              Stats->GetWriteDataRequestManagerStats(),
               LogTag)
     {
         auto createPersistentStorageResult =
@@ -118,8 +162,6 @@ public:
         Y_ABORT_UNLESS(
             PersistentStorage->GetMaxSupportedAllocationByteCount() >=
             1024 * 1024 + 1016);
-
-        args.Stats->ResetNonDerivativeCounters();
 
         if (!State.Init(PersistentStorage)) {
             ReportWriteBackCacheCorruptionError(
@@ -175,7 +217,7 @@ public:
         TReadResponseBuilder responseBuilder(*request);
         if (auto response = responseBuilder.TryFullyServeFromCache(State)) {
             State.UnpinCachedData(request->GetNodeId(), pinId);
-            Stats->AddReadDataStats(EReadDataRequestCacheStatus::FullHit);
+            InternalStats->IncrementReadDataCacheFullHit();
             return MakeFuture(std::move(*response));
         }
 
@@ -193,11 +235,9 @@ public:
                             self->State);
 
                     if (cachedDataApplied) {
-                        self->Stats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::PartialHit);
+                        self->InternalStats->IncrementReadDataCachePartialHit();
                     } else {
-                        self->Stats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::Miss);
+                        self->InternalStats->IncrementReadDataCacheMiss();
                     }
                 }
                 self->State.UnpinCachedData(responseBuilder.GetNodeId(), pinId);
@@ -340,6 +380,20 @@ public:
     ui64 GetMaxWrittenOffset(ui64 nodeId) const
     {
         return State.GetMaxWrittenOffset(nodeId);
+    }
+
+    IModuleStatsPtr CreateModuleStats() const
+    {
+        return std::make_shared<TModuleStats>(
+            Stats,
+            [ptr = weak_from_this()](TInstant now)
+            {
+                Y_UNUSED(now);
+
+                if (auto self = ptr.lock()) {
+                    self->State.UpdateStats();
+                }
+            });
     }
 
 private:
@@ -593,6 +647,11 @@ void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
 ui64 TWriteBackCache::GetMaxWrittenOffset(ui64 nodeId) const
 {
     return Impl->GetMaxWrittenOffset(nodeId);
+}
+
+IModuleStatsPtr TWriteBackCache::CreateModuleStats() const
+{
+    return Impl->CreateModuleStats();
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -1,9 +1,10 @@
 #include "write_data_request_manager.h"
 
 #include "sequence_id_generator.h"
+#include "write_back_cache_stats.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -20,20 +21,26 @@ namespace {
 struct TBootstrap
 {
     ITimerPtr Timer;
-    std::shared_ptr<TTestWriteBackCacheStats> Stats;
+    IWriteBackCacheStatsPtr Stats;
     std::shared_ptr<TTestStorage> Storage;
     std::shared_ptr<TSequenceIdGenerator> SequenceIdGenerator;
     TWriteDataRequestManager RequestManager;
+    TWriteBackCacheMetrics Metrics;
 
     TMap<ui64, std::unique_ptr<TPendingWriteDataRequest>> PendingRequests;
     TMap<ui64, std::unique_ptr<TCachedWriteDataRequest>> CachedRequests;
 
     TBootstrap()
         : Timer(CreateWallClockTimer())
-        , Stats(std::make_shared<TTestWriteBackCacheStats>())
-        , Storage(std::make_shared<TTestStorage>(Stats))
+        , Stats(CreateWriteBackCacheStats())
+        , Storage(CreateTestStorage(Stats))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
-        , RequestManager(SequenceIdGenerator, Storage, Timer, Stats)
+        , RequestManager(
+              SequenceIdGenerator,
+              Storage,
+              Timer,
+              Stats->GetWriteDataRequestManagerStats())
+        , Metrics(Stats->CreateMetrics())
     {}
 
     auto Add(ui64 nodeId, ui64 handle, ui64 offset, TString data)
@@ -100,7 +107,7 @@ struct TBootstrap
 
     ui64 GetAllocationCount() const
     {
-        return Stats->StorageStats.EntryCount;
+        return Metrics.Storage.EntryCount->Get();
     }
 
     TString Dump() const

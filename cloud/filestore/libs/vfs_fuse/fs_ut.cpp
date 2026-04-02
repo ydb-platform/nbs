@@ -4640,6 +4640,70 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
+
+    Y_UNIT_TEST(WriteBackCacheShouldReportMetrics)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        bootstrap.Service->ReadDataHandler = [&](auto, const auto&)
+        {
+            NProto::TReadDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadRequest>(NodeId, HandleId, 0, 11);
+        UNIT_ASSERT_NO_EXCEPTION(read.GetValue(WaitTimeout));
+
+
+        auto fsCounters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "WriteBackCache");
+
+        auto totalCounters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("module", "WriteBackCache");
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            fsCounters->GetCounter("ReadData_CacheMiss")->GetAtomic());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            totalCounters->GetCounter("ReadData_CacheMiss")->GetAtomic());
+
+        bootstrap.Stop();
+
+        UNIT_ASSERT(!bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
+                         ->FindSubgroup("host", "cluster")
+                         ->FindSubgroup("filesystem", FileSystemId)
+                         ->FindSubgroup("client", ""));
+
+        UNIT_ASSERT(!bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("module", "WriteBackCache"));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

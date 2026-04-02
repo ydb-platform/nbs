@@ -13,9 +13,9 @@ SRCS(
     read_response_builder_ut.cpp
     relaxed_counters_ut.cpp
     test/test_persistent_storage.cpp
-    test/test_write_back_cache_stats.cpp
     utils_ut.cpp
     write_back_cache_state_ut.cpp
+    write_back_cache_stats_ut.cpp
     write_back_cache_ut.cpp
     write_data_request_builder_ut.cpp
     write_data_request_manager_ut.cpp
