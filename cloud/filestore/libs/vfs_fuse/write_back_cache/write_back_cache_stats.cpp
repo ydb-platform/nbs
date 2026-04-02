@@ -69,36 +69,29 @@ public:
         Y_UNUSED(stats);
     }
 
-    IWriteBackCacheInternalStatsPtr
-    GetWriteBackCacheInternalStats() const override
+    IWriteBackCacheInternalStatsPtr GetWriteBackCacheInternalStats() override
     {
-        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
-            shared_from_this());
+        return shared_from_this();
     }
 
-    IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() const override
+    IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() override
     {
-        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
-            shared_from_this());
+        return shared_from_this();
     }
 
-    INodeStateHolderStatsPtr GetNodeStateHolderStats() const override
+    INodeStateHolderStatsPtr GetNodeStateHolderStats() override
     {
-        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
-            shared_from_this());
+        return shared_from_this();
     }
 
-    IWriteDataRequestManagerStatsPtr
-    GetWriteDataRequestManagerStats() const override
+    IWriteDataRequestManagerStatsPtr GetWriteDataRequestManagerStats() override
     {
-        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
-            shared_from_this());
+        return shared_from_this();
     }
 
-    IPersistentStorageStatsPtr GetPersistentStorageStats() const override
+    IPersistentStorageStatsPtr GetPersistentStorageStats() override
     {
-        return std::const_pointer_cast<TDummyWriteBackCacheStats>(
-            shared_from_this());
+        return shared_from_this();
     }
 };
 

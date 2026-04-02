@@ -53,17 +53,16 @@ struct IWriteBackCacheStats
     virtual ~IWriteBackCacheStats() = default;
 
     virtual IWriteBackCacheInternalStatsPtr
-    GetWriteBackCacheInternalStats() const = 0;
+    GetWriteBackCacheInternalStats() = 0;
 
-    virtual IWriteBackCacheStateStatsPtr
-    GetWriteBackCacheStateStats() const = 0;
+    virtual IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() = 0;
 
-    virtual INodeStateHolderStatsPtr GetNodeStateHolderStats() const = 0;
+    virtual INodeStateHolderStatsPtr GetNodeStateHolderStats() = 0;
 
     virtual IWriteDataRequestManagerStatsPtr
-    GetWriteDataRequestManagerStats() const = 0;
+    GetWriteDataRequestManagerStats() = 0;
 
-    virtual IPersistentStorageStatsPtr GetPersistentStorageStats() const = 0;
+    virtual IPersistentStorageStatsPtr GetPersistentStorageStats() = 0;
 
     virtual void ResetNonDerivativeCounters() = 0;
 };
