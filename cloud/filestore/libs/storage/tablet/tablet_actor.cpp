@@ -1149,6 +1149,8 @@ STFUNC(TIndexTabletActor::StateInit)
 
 STFUNC(TIndexTabletActor::StateWork)
 {
+    TCPUUsageTimerGuard t(CPUUsageTimer);
+
     // user related requests & events completion
     if (HandleRequests(ev) || HandleCompletions(ev)) {
         return;

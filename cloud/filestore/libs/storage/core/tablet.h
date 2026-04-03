@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "cpu_timer.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
@@ -246,6 +248,7 @@ protected:
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
             Args& args)                                                        \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             return target.PrepareTx_##name(ctx, tx, args);                     \
         }                                                                      \
                                                                                \
@@ -256,6 +259,7 @@ protected:
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
             Args& args)                                                        \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             target.ExecuteTx_##name(ctx, tx, args);                            \
         }                                                                      \
                                                                                \
@@ -265,6 +269,7 @@ protected:
             const NActors::TActorContext& ctx,                                 \
             Args& args)                                                        \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             target.CompleteAndUpdateState(ctx, args);                          \
             if constexpr (std::is_base_of_v<TErrorAware, Args>) {              \
                 if (args.CommitIdOverflow) {                                   \
@@ -322,6 +327,7 @@ protected:
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
             ns::T##name& args)                                                 \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             if (target.ValidateTx_##name(ctx, args)) {                         \
                 dbType db(tx.DB, args.NodeUpdates);                            \
                 return target.PrepareTx_##name(ctx, db, args);                 \
@@ -345,6 +351,7 @@ protected:
             const NActors::TActorContext& ctx,                                 \
             ns::T##name& args)                                                 \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             target.CompleteAndUpdateState(ctx, args);                          \
         }                                                                      \
     };                                                                         \

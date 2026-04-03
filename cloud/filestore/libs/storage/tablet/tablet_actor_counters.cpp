@@ -840,4 +840,11 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
     WorkerActors.erase(ev->Sender);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TCPUUsageTimer& TIndexTabletActor::AccessCPUUsageTimer()
+{
+    return CPUUsageTimer;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

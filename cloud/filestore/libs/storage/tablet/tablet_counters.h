@@ -15,6 +15,8 @@
 
 #include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
 
+#include <util/system/hp_timer.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
