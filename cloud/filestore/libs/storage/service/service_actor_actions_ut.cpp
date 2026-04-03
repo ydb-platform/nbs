@@ -813,9 +813,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     fsInfo.Size / blockSize,
                     shardStats.GetUsedBlocksCount());
-                UNIT_ASSERT_VALUES_UNEQUAL(
-                    0,
-                    shardStats.GetCurrentLoad());
+                UNIT_ASSERT_VALUES_EQUAL(1, shardStats.GetUsedNodesCount());
+                UNIT_ASSERT_VALUES_UNEQUAL(0, shardStats.GetCurrentLoad());
             }
         };
 

@@ -54,6 +54,7 @@ TShardBalancerBase::TShardBalancerBase(
             TShardStats{
                 .TotalBlocksCount = maxFileBlocks,
                 .UsedBlocksCount = 0,
+                .UsedNodesCount = 0,
                 .CurrentLoad = 0,
                 .Suffer = 0,
             });

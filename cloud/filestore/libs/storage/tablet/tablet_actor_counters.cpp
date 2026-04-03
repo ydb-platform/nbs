@@ -179,12 +179,14 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Got storage stats for filesystem %s, used: %lu, aggregate used: "
-        "%lu",
+        "%s Got storage stats for filesystem %s, used blocks: %lu, nodes: %lu"
+        ", aggregate used blocks: %lu, nodes: %lu",
         LogTag.c_str(),
         fileSystemId.c_str(),
         src.GetUsedBlocksCount(),
-        dst.GetUsedBlocksCount());
+        src.GetUsedNodesCount(),
+        dst.GetUsedBlocksCount(),
+        dst.GetUsedNodesCount());
 
     if (shardIndex < ShardIds.size()) {
         auto& ss = ShardStats[shardIndex];
@@ -192,6 +194,7 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         ss.Suffer = src.GetSuffer();
         ss.TotalBlocksCount = src.GetTotalBlocksCount();
         ss.UsedBlocksCount = src.GetUsedBlocksCount();
+        ss.UsedNodesCount = src.GetUsedNodesCount();
     }
 
     if (++Responses == requestsCount) {
@@ -226,6 +229,7 @@ void TAggregateStatsActor::ReplyAndDie(
             ss->SetShardId(ShardIds[i]);
             ss->SetTotalBlocksCount(ShardStats[i].TotalBlocksCount);
             ss->SetUsedBlocksCount(ShardStats[i].UsedBlocksCount);
+            ss->SetUsedNodesCount(ShardStats[i].UsedNodesCount);
             ss->SetCurrentLoad(ShardStats[i].CurrentLoad);
             ss->SetSuffer(ShardStats[i].Suffer);
         }
@@ -726,6 +730,7 @@ void TIndexTabletActor::HandleGetStorageStats(
             ss->SetShardId(shardIds[i]);
             ss->SetTotalBlocksCount(CachedShardStats[i].TotalBlocksCount);
             ss->SetUsedBlocksCount(CachedShardStats[i].UsedBlocksCount);
+            ss->SetUsedNodesCount(CachedShardStats[i].UsedNodesCount);
             ss->SetCurrentLoad(CachedShardStats[i].CurrentLoad);
             ss->SetSuffer(CachedShardStats[i].Suffer);
         }

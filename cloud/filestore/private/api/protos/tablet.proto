@@ -104,6 +104,7 @@ message TShardStats
     uint64 TotalBlocksCount = 3;
     uint64 CurrentLoad = 4;
     uint32 Suffer = 5;
+    uint64 UsedNodesCount = 6;
 }
 
 message TStorageStats
