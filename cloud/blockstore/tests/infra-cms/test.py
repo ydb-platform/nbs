@@ -142,7 +142,7 @@ class FileDescriptorsCount:
             assert fd_count != 0, f"File descriptors count for {path} is 0"
             self.fds_count[path] = fd_count
 
-    def check_paths_was_closed_by_nbs(self, paths: list[str]):
+    def assert_file_descriptors_were_closed(self, paths: list[str]):
         for path in paths:
             assert path in self.fds_count
             fd_count = file_descriptors_count(path)
@@ -150,10 +150,10 @@ class FileDescriptorsCount:
                 fd_count + 1 == self.fds_count[path]
             ), f"File descriptor for {path} is expected to be closed by NBS"
 
-    def check_all_paths_was_closed_by_nbs(self):
-        self.check_paths_was_closed_by_nbs(self.paths)
+    def assert_all_file_descriptors_were_closed(self):
+        self.assert_file_descriptors_were_closed(self.paths)
 
-    def check_paths_was_opened_by_nbs(self, paths: list[str]):
+    def assert_file_descriptors_are_opened(self, paths: list[str]):
         for path in paths:
             assert path in self.fds_count
             fd_count = file_descriptors_count(path)
@@ -161,8 +161,8 @@ class FileDescriptorsCount:
                 fd_count == self.fds_count[path]
             ), f"File descriptor for {path} is expected to be opened by NBS"
 
-    def check_all_paths_was_opened_by_nbs(self):
-        self.check_paths_was_opened_by_nbs(self.paths)
+    def assert_all_file_descriptors_are_opened(self):
+        self.assert_file_descriptors_are_opened(self.paths)
 
 
 class _TestCmsRemoveAgentNoUserDisks:
@@ -186,7 +186,7 @@ class _TestCmsRemoveAgentNoUserDisks:
         response = cms.remove_agent("localhost")
 
         if attach_detach_paths:
-            fds_count.check_all_paths_was_closed_by_nbs()
+            fds_count.assert_all_file_descriptors_were_closed()
 
         assert response.ActionResults[0].Timeout == 0
 
@@ -228,7 +228,7 @@ class _TestCmsRemoveAgentNoUserDisks:
             cms.wait_for_no_paths_to_attach_detach()
             wait_for_secure_erase(nbs.mon_port)
 
-        fds_count.check_all_paths_was_opened_by_nbs()
+        fds_count.assert_all_file_descriptors_are_opened()
 
         nbs.create_volume("vol0")
         nbs.read_blocks("vol0", start_index=0, block_count=32)
@@ -272,7 +272,7 @@ class _TestCmsRemoveAgent:
         response = cms.remove_agent("localhost")
 
         if attach_detach_paths:
-            fds_count.check_all_paths_was_closed_by_nbs()
+            fds_count.assert_all_file_descriptors_were_closed()
 
         assert response.ActionResults[0].Timeout == 0
 
@@ -307,7 +307,7 @@ class _TestCmsRemoveAgent:
             cms.wait_for_no_paths_to_attach_detach()
             wait_for_secure_erase(nbs.mon_port)
 
-        fds_count.check_all_paths_was_opened_by_nbs()
+        fds_count.assert_all_file_descriptors_are_opened()
 
         nbs.create_volume("vol1")
         nbs.read_blocks("vol1", start_index=0, block_count=32)
@@ -348,7 +348,7 @@ class _TestCmsPurgeAgentNoUserDisks:
         assert response.ActionResults[0].Timeout == 0
 
         if attach_detach_paths:
-            fds_count.check_all_paths_was_closed_by_nbs()
+            fds_count.assert_all_file_descriptors_were_closed()
 
         response = cms.purge_agent("localhost")
         nbs.wait_for_stats(UnknownDevices=4)
@@ -379,7 +379,7 @@ class _TestCmsPurgeAgentNoUserDisks:
         cms.wait_for_no_paths_to_attach_detach()
         wait_for_secure_erase(nbs.mon_port, pool="local-ssd", kind="local")
 
-        fds_count.check_all_paths_was_opened_by_nbs()
+        fds_count.assert_all_file_descriptors_are_opened()
 
         nbs.create_volume("local1", blocks_count=DEFAULT_BLOCK_COUNT_PER_DEVICE,
                           kind="ssd_local")
@@ -394,7 +394,16 @@ class _TestCmsPurgeAgent:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms, devices, always_allocate_local_ssd, attach_detach_paths):
+    def run(
+        self,
+        storage,
+        nbs,
+        disk_agent,
+        cms,
+        devices,
+        always_allocate_local_ssd,
+        attach_detach_paths,
+    ):
         nbs.create_volume("vol0")
         assert nbs.get_stats("AgentsInWarningState") == 0
 
@@ -440,7 +449,16 @@ class _TestCmsRemoveDevice:
     def __init__(self, name):
         self.name = name
 
-    def run(self, storage, nbs, disk_agent, cms: CMS, devices, always_allocate_local_ssd, attach_detach_paths):
+    def run(
+        self,
+        storage,
+        nbs,
+        disk_agent,
+        cms: CMS,
+        devices,
+        always_allocate_local_ssd,
+        attach_detach_paths,
+    ):
         nbs.create_volume("vol0")
 
         device = devices[0]
@@ -464,7 +482,7 @@ class _TestCmsRemoveDevice:
         response = cms.remove_device("localhost", device.path)
 
         if attach_detach_paths:
-            fds_count.check_paths_was_closed_by_nbs([device.path])
+            fds_count.assert_file_descriptors_were_closed([device.path])
 
         assert response.ActionResults[0].Timeout == 0
 
@@ -474,7 +492,7 @@ class _TestCmsRemoveDevice:
             response = cms.add_device("localhost", device.path)
             assert response.ActionResults[0].Timeout == 0
             cms.wait_for_no_paths_to_attach_detach()
-            fds_count.check_paths_was_opened_by_nbs([device.path])
+            fds_count.assert_file_descriptors_are_opened([device.path])
 
         nbs.destroy_volume("vol0", sync=True)
 
@@ -506,7 +524,7 @@ class _TestCmsRemoveDeviceNoUserDisks:
         response = cms.remove_device("localhost", device.path)
 
         if attach_detach_paths:
-            fds_count.check_paths_was_closed_by_nbs([device.path])
+            fds_count.assert_file_descriptors_were_closed([device.path])
 
         assert response.ActionResults[0].Timeout == 0
 
@@ -527,7 +545,7 @@ class _TestCmsRemoveDeviceNoUserDisks:
 
         if attach_detach_paths:
             cms.wait_for_no_paths_to_attach_detach()
-            fds_count.check_paths_was_opened_by_nbs([device.path])
+            fds_count.assert_file_descriptors_are_opened([device.path])
 
         nbs.create_volume("vol1")
         nbs.read_blocks("vol1", start_index=0, block_count=32)
