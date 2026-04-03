@@ -66,6 +66,7 @@ public:
     GetNonRetriableErrorsForReliableMedia() const;
     TVector<EWellKnownResultCodes>
     GetNonRetriableErrorsForUnreliableMedia() const;
+    bool GetEnableNonBlockingRemount() const;
     ui32 GetMemoryQuotaBytes() const;
     ui32 GetSecurePort() const;
     bool GetSkipCertVerification() const;

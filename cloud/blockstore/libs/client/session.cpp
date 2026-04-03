@@ -127,6 +127,9 @@ private:
     TLog Log;
     TSessionInfo SessionInfo;
 
+    bool InPlannedRemount = false;
+    TPromise<NProto::TMountVolumeResponse> LastSuccessfulMountResponse;
+
 public:
     TSession(
         ITimerPtr timer,
@@ -587,6 +590,9 @@ void TSession::ProcessMountResponse(
     TPromise<NProto::TMountVolumeResponse> promise;
 
     with_lock (SessionInfo.MountLock) {
+        InPlannedRemount = false;
+        LastSuccessfulMountResponse = {};
+
         if (!HasError(response) && SessionInfo.BlockSize != 0) {
             const auto& info = response.GetVolume();
             if (SessionInfo.BlockSize != info.GetBlockSize()) {
@@ -710,6 +716,13 @@ TFuture<NProto::TMountVolumeResponse> TSession::EnsureVolumeMounted()
     TFuture<NProto::TMountVolumeResponse> response;
 
     with_lock (SessionInfo.MountLock) {
+        if (Config->GetEnableNonBlockingRemount() &&
+            SessionInfo.MountState == EMountState::MountInProgress &&
+            InPlannedRemount)
+        {
+            return LastSuccessfulMountResponse;
+        }
+
         if (SessionInfo.MountState == EMountState::Uninitialized) {
             return MakeFuture<NProto::TMountVolumeResponse>(
                 TErrorResponse(E_INVALID_STATE, "Volume is not mounted"));
@@ -786,6 +799,12 @@ void TSession::RemountVolume(ui64 epoch)
             SessionInfo.MountState != EMountState::UnmountInProgress &&
             SessionInfo.MountState != EMountState::MountInProgress)
         {
+            if (Config->GetEnableNonBlockingRemount() &&
+                SessionInfo.MountState == EMountState::MountCompleted)
+            {
+                InPlannedRemount = true;
+                LastSuccessfulMountResponse = SessionInfo.MountResponse;
+            }
             SessionInfo.MountState = EMountState::MountInProgress;
             SessionInfo.MountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
