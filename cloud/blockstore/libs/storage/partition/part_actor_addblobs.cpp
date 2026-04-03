@@ -504,57 +504,41 @@ private:
         for (const auto& kv: CompactionCounters) {
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
-                Min(
-                    static_cast<ui64>(
-                        kv.first + State.GetCompactionMap().GetRangeSize()
-                    ),
-                    State.GetUsedBlocks().Capacity()
-                )
-            );
+                Min(static_cast<ui64>(
+                        kv.first + State.GetCompactionMap().GetRangeSize()),
+                    State.GetUsedBlocks().Capacity()));
 
             const auto& prevRangeStat = State.GetCompactionMap().Get(kv.first);
             const ui32 prevNewlyZeroedBlocks = prevRangeStat.NewlyZeroedBlocks;
-            const ui32 prevUsedBlockCount = prevRangeStat.UsedBlockCount;
+            ui32 newlyZeroedBlocks = 0;
 
-            auto newlyZeroedBlocks = prevNewlyZeroedBlocks;
-
-            if (usedBlockCount < prevUsedBlockCount) {
-                const auto diff = prevUsedBlockCount - usedBlockCount;
-                newlyZeroedBlocks += diff;
-            } else {
-                const auto diff = usedBlockCount - prevUsedBlockCount;
-                if (diff > newlyZeroedBlocks) {
-                    newlyZeroedBlocks = 0;
-                } else {
-                    newlyZeroedBlocks -= diff;
-                }
+            if (Args.Mode != ADD_COMPACTION_RESULT) {
+                const i64 usedBlockCountdiff =
+                    static_cast<i64>(usedBlockCount) -
+                    prevRangeStat.UsedBlockCount;
+                newlyZeroedBlocks = std::max(
+                    prevNewlyZeroedBlocks - usedBlockCountdiff,
+                    static_cast<i64>(0));
             }
 
-            if (Args.Mode == ADD_COMPACTION_RESULT) {
-                newlyZeroedBlocks = 0;
-            }
-
-            if (newlyZeroedBlocks > prevNewlyZeroedBlocks) {
-                State.IncrementNewlyZeroedBlocks(
-                    newlyZeroedBlocks - prevNewlyZeroedBlocks);
-            } else {
-                State.DecrementNewlyZeroedBlocks(
-                    prevNewlyZeroedBlocks - newlyZeroedBlocks);
-            }
+            const i64 newlyZeroedBlocksDiff =
+                static_cast<i64>(newlyZeroedBlocks) - prevNewlyZeroedBlocks;
+            State.SetNewlyZeroedBlocks(std::max(
+                State.GetNewlyZeroedBlocks() + newlyZeroedBlocksDiff,
+                static_cast<i64>(0)));
 
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction
-            );
+                kv.second.Stat.BlockCount +
+                    kv.second.BlocksSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
                 newlyZeroedBlocks,
-                Args.Mode == ADD_COMPACTION_RESULT
-            );
+                Args.Mode == ADD_COMPACTION_RESULT);
         }
     }
 

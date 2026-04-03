@@ -260,6 +260,7 @@ struct TCompactionScores
 {
     float Score = 0;
     ui32 GarbageScore = 0;
+    ui32 IgnoringZeroedScore = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -644,9 +645,9 @@ public:
         return CompactionMap.GetTopByGarbageBlockCount().Stat.GarbageBlockCount();
     }
 
-    ui32 GetCompactionGarbageWithoutZeroesScore() const
+    ui32 GetCompactionIgnoringZeroedScore() const
     {
-        return CompactionMap.GetTopByGarbageWithoutZeroes().Stat.GarbageWithoutZeroes();
+        return CompactionMap.GetTopByGarbageIgnoringZeroed().Stat.GarbageIgnoringZeroed();
     }
 
     float GetCompactionScore() const
@@ -698,14 +699,9 @@ public:
         return LastCompactionRangeCountPerRunTs;
     }
 
-    void IncrementNewlyZeroedBlocks(ui32 delta)
+    void SetNewlyZeroedBlocks(ui32 value)
     {
-        NewlyZeroedBlocks += delta;
-    }
-
-    void DecrementNewlyZeroedBlocks(ui32 delta)
-    {
-        NewlyZeroedBlocks -= delta;
+        NewlyZeroedBlocks = value;
     }
 
     ui32 GetNewlyZeroedBlocks() const

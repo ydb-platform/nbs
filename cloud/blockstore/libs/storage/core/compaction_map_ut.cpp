@@ -182,6 +182,71 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldTrackTopByGarbageIgnoringZeroed)
+    {
+        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
+        const auto blobCount = 3;
+        for (size_t i = 1; i <= 100; ++i) {
+            // BlockCount = i * 10, UsedBlockCount = i * 5, NewlyZeroedBlocks = i
+            // GarbageIgnoringZeroed = BlockCount - UsedBlockCount - NewlyZeroedBlocks
+            //                      = i * 10 - i * 5 - i = i * 4
+            map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, i, false);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(100),
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+
+        // GarbageIgnoringZeroed = 1010 - 550 - 0 = 460
+        map.Update(GetGroupIndex(50), blobCount, 1010, 550, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(50),
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+        UNIT_ASSERT(
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex !=
+            map.GetTopByGarbageBlockCount().BlockIndex);
+
+        // GarbageIgnoringZeroed = 600 - 1 - 10 = 589
+        map.Update(GetGroupIndex(0), blobCount, 600, 1, 10, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(0),
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(0), 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(50),
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(50), 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(100),
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(100), 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(99),
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+
+        // GarbageIgnoringZeroed = 1030 - 300 - 300 = 430
+        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 300, 300, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(10) + RangeSize,
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 300, 300, true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(99),
+            map.GetTopByGarbageIgnoringZeroed().BlockIndex
+        );
+    }
+
     Y_UNIT_TEST(ShouldBeEmptyAfterClear)
     {
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));

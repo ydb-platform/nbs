@@ -74,7 +74,7 @@ struct TRangeStat
         return BlockCount - UsedBlockCount;
     }
 
-    ui16 GarbageWithoutZeroes() const
+    ui16 GarbageIgnoringZeroed() const
     {
         const auto garbageBlockCount = GarbageBlockCount();
         if (garbageBlockCount < NewlyZeroedBlocks) {
@@ -83,7 +83,7 @@ struct TRangeStat
         return garbageBlockCount - NewlyZeroedBlocks;
     }
 
-    ui16 UsedBlocksWithoutZeroes() const
+    ui16 UsedBlocksIgnoringZeroed() const
     {
         return UsedBlockCount + NewlyZeroedBlocks;
     }

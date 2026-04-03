@@ -1555,5 +1555,10 @@ message TStorageServiceConfig
     // Max skipped blobs during range compaction for HDD disks.
     optional uint32 MaxSkippedBlobsDuringCompactionHDD = 493;
 
-    optional uint64 ZeroedCompactionEnabled = 494;
+    // Is compaction mode by zeroed blocks enabled for v1 partition.
+    optional bool IgnoringZeroedCompactionEnabled = 494;
+
+    // Max Compaction per second. Should be less MaxCompactionExecTimePerSecond.
+    // Used for GarbageCompaction in case when IgnoringZeroedCompactionEnabled is on.
+    optional uint32 MaxCompactionExecTimePerSecondHard = 495;  // in ms
 }

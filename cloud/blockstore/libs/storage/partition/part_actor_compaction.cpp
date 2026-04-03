@@ -1143,6 +1143,7 @@ private:
 
     TRangeStat TopRangeStat;
     TRangeStat TopGarbageRangeStat;
+    TRangeStat TopByGarbageIgnoringZeroed;
 
 public:
     enum class ECompactionTriggerKind
@@ -1151,7 +1152,9 @@ public:
         ByBlobCountPerRange,
         ByReadStats,
         ByGarbageBlocksPerDisk,
-        ByGarbageBlocksPerRange
+        ByGarbageBlocksPerRange,
+        ByIgnoringZeroedPerDisk,
+        ByIgnoringZeroedPerRange
     };
 
     struct TTriggerInfo
@@ -1196,6 +1199,7 @@ public:
         const auto& cm = State.GetCompactionMap();
         TopRangeStat = cm.GetTop().Stat;
         TopGarbageRangeStat = cm.GetTopByGarbageBlockCount().Stat;
+        TopByGarbageIgnoringZeroed = cm.GetTopByGarbageIgnoringZeroed().Stat;
 
         auto& scoreHistory = State.GetCompactionScoreHistory();
         if (scoreHistory.LastTs() + Config->GetMaxCompactionDelay() <= now) {
@@ -1204,6 +1208,7 @@ public:
                 {
                     TopRangeStat.CompactionScore.Score,
                     TopGarbageRangeStat.GarbageBlockCount(),
+                    TopByGarbageIgnoringZeroed.GarbageIgnoringZeroed(),
                 },
             });
         }
@@ -1289,7 +1294,27 @@ private:
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerGarbageCompactionIfNeeded() const
     {
+        return TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(true);
+    }
+
+    [[nodiscard]] std::optional<TTriggerInfo>
+    TriggerIgnoringZeroedCompactionIfNeeded() const
+    {
+        return TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(false);
+    }
+
+    [[nodiscard]] std::optional<TTriggerInfo>
+    TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(
+        bool isGarbageClompaction) const
+    {
         if (!Config->GetV1GarbageCompactionEnabled()) {
+            return std::nullopt;
+        }
+
+        if (!isGarbageClompaction &&
+            !Config->GetIgnoringZeroedCompactionEnabled())
+        {
+            // Zeroes compaction is disabled, nothing to do.
             return std::nullopt;
         }
 
@@ -1304,11 +1329,15 @@ private:
             // Nothing to compact if there are no blobs in the range.
             // Nothing to compact if there is only one blob in the range and it
             // is not zeroed.
-            const auto isZeroedRange = TopGarbageRangeStat.BlockCount &&
-                                       !TopGarbageRangeStat.UsedBlockCount;
+            const auto& rangeStat = isGarbageClompaction
+                                        ? TopGarbageRangeStat
+                                        : TopByGarbageIgnoringZeroed;
 
-            if (TopGarbageRangeStat.Compacted ||
-                TopGarbageRangeStat.BlobCount < 2 && !isZeroedRange)
+            const auto isZeroedRange =
+                rangeStat.BlockCount && !rangeStat.UsedBlockCount;
+
+            if (rangeStat.Compacted ||
+                rangeStat.BlobCount < 2 && !isZeroedRange)
             {
                 return std::nullopt;
             }
@@ -1345,7 +1374,9 @@ private:
             Config->GetCompactionRangeGarbageThreshold(),
             diskGarbage,
             Config->GetCompactionGarbageThreshold(),
-            TEvPartitionPrivate::GarbageCompaction,
+            isGarbageClompaction
+                ? TEvPartitionPrivate::GarbageCompaction
+                : TEvPartitionPrivate::IgnoringZeroedCompaction,
             triggerKind,
             true /* throttlingAllowed */,
             true /* fullCompaction */);
@@ -1480,13 +1511,18 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
 
+    auto maxCompactionExecTimePerSecond =
+        (Config->GetIgnoringZeroedCompactionEnabled() &&
+         info->Mode == TEvPartitionPrivate::GarbageCompaction)
+            ? Config->GetMaxCompactionExecTimePerSecondHard()
+            : Config->GetMaxCompactionExecTimePerSecond();
+
     if (info->ThrottlingAllowed && Config->GetMaxCompactionDelay()) {
         auto execTime = State->GetCompactionExecTimeForLastSecond(ctx.Now());
         auto delay = Config->GetMinCompactionDelay();
-        if (Config->GetMaxCompactionExecTimePerSecond()) {
-            auto throttlingFactor =
-                double(execTime.GetValue()) /
-                Config->GetMaxCompactionExecTimePerSecond().GetValue();
+        if (maxCompactionExecTimePerSecond) {
+            auto throttlingFactor = double(execTime.GetValue()) /
+                                    maxCompactionExecTimePerSecond.GetValue();
             const auto throttleDelay =
                 (TDuration::Seconds(1) - execTime) * throttlingFactor;
 
@@ -1586,23 +1622,7 @@ void TPartitionActor::HandleCompaction(
             }
         }
         State->OnNewCompactionRange(msg->RangeBlockIndices.size());
-    } else if (
-        msg->Mode == TEvPartitionPrivate::GarbageCompaction &&
-        Config->GetZeroedCompactionEnabled())
-    {
-        if (batchCompactionEnabled &&
-            Config->GetGarbageCompactionRangeCountPerRun() > 1)
-        {
-            tops = cm.GetTopByGarbageWithoutZeroes(
-                Config->GetGarbageCompactionRangeCountPerRun());
-        } else {
-            const auto& top = cm.GetTopByGarbageWithoutZeroes();
-            tops.push_back({top.BlockIndex, top.Stat});
-        }
-    } else if (
-        msg->Mode == TEvPartitionPrivate::GarbageCompaction ||
-        msg->Mode == TEvPartitionPrivate::ZeroedCompaction)
-    {
+    } else if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
         if (batchCompactionEnabled &&
             Config->GetGarbageCompactionRangeCountPerRun() > 1)
         {
@@ -1610,6 +1630,16 @@ void TPartitionActor::HandleCompaction(
                 Config->GetGarbageCompactionRangeCountPerRun());
         } else {
             const auto& top = cm.GetTopByGarbageBlockCount();
+            tops.push_back({top.BlockIndex, top.Stat});
+        }
+    } else if (msg->Mode == TEvPartitionPrivate::IgnoringZeroedCompaction) {
+        if (batchCompactionEnabled &&
+            Config->GetGarbageCompactionRangeCountPerRun() > 1)
+        {
+            tops = cm.GetTopByGarbageIgnoringZeroed(
+                Config->GetGarbageCompactionRangeCountPerRun());
+        } else {
+            const auto& top = cm.GetTopByGarbageIgnoringZeroed();
             tops.push_back({top.BlockIndex, top.Stat});
         }
     } else {

@@ -18,47 +18,49 @@ namespace NCloud::NBlockStore::NYdbStats {
 // YDB_SIMPLE_STRING_COUNTERS
 
 #define YDB_SIMPLE_UINT64_COUNTERS(xxx, ...)                                   \
-    xxx(VolumeTabletId,              __VA_ARGS__)                              \
-    xxx(Timestamp,                   __VA_ARGS__)                              \
-    xxx(BlocksCount,                 __VA_ARGS__)                              \
-    xxx(BlockSize,                   __VA_ARGS__)                              \
-    xxx(StorageMediaKind,            __VA_ARGS__)                              \
-    xxx(MixedBytesCount,             __VA_ARGS__)                              \
-    xxx(MergedBytesCount,            __VA_ARGS__)                              \
-    xxx(FreshBytesCount,             __VA_ARGS__)                              \
-    xxx(UsedBytesCount,              __VA_ARGS__)                              \
-    xxx(LogicalUsedBytesCount,       __VA_ARGS__)                              \
-    xxx(CompactionScore,             __VA_ARGS__)                              \
-    xxx(BytesCount,                  __VA_ARGS__)                              \
-    xxx(IORequestsInFlight,          __VA_ARGS__)                              \
-    xxx(IORequestsQueued,            __VA_ARGS__)                              \
-    xxx(UsedBlocksMapMemSize,        __VA_ARGS__)                              \
-    xxx(MixedIndexCacheMemSize,      __VA_ARGS__)                              \
-    xxx(MaxReadBandwidth,            __VA_ARGS__)                              \
-    xxx(MaxWriteBandwidth,           __VA_ARGS__)                              \
-    xxx(MaxReadIops,                 __VA_ARGS__)                              \
-    xxx(MaxWriteIops,                __VA_ARGS__)                              \
-    xxx(BurstPercentage,             __VA_ARGS__)                              \
-    xxx(BoostPercentage,             __VA_ARGS__)                              \
-    xxx(MaxPostponedWeight,          __VA_ARGS__)                              \
-    xxx(BoostTime,                   __VA_ARGS__)                              \
-    xxx(BoostRefillTime,             __VA_ARGS__)                              \
-    xxx(ThrottlingEnabled,           __VA_ARGS__)                              \
-    xxx(RealMaxWriteBandwidth,       __VA_ARGS__)                              \
-    xxx(PostponedQueueWeight,        __VA_ARGS__)                              \
-    xxx(BPFreshIndexScore,           __VA_ARGS__)                              \
-    xxx(BPCompactionScore,           __VA_ARGS__)                              \
-    xxx(BPDiskSpaceScore,            __VA_ARGS__)                              \
-    xxx(BPCleanupScore,              __VA_ARGS__)                              \
-    xxx(CheckpointBytes,             __VA_ARGS__)                              \
-    xxx(AlmostFullChannelCount,      __VA_ARGS__)                              \
-    xxx(FreshBlocksInFlight,         __VA_ARGS__)                              \
-    xxx(FreshBlocksQueued,           __VA_ARGS__)                              \
-    xxx(CompactionGarbageScore,      __VA_ARGS__)                              \
-    xxx(CleanupQueueBytes,           __VA_ARGS__)                              \
-    xxx(GarbageQueueBytes,           __VA_ARGS__)                              \
-    xxx(PartitionCount,              __VA_ARGS__)                              \
-    xxx(CompactionRangeCountPerRun,  __VA_ARGS__)                              \
+    xxx(VolumeTabletId,                __VA_ARGS__)                            \
+    xxx(Timestamp,                     __VA_ARGS__)                            \
+    xxx(BlocksCount,                   __VA_ARGS__)                            \
+    xxx(BlockSize,                     __VA_ARGS__)                            \
+    xxx(StorageMediaKind,              __VA_ARGS__)                            \
+    xxx(MixedBytesCount,               __VA_ARGS__)                            \
+    xxx(MergedBytesCount,              __VA_ARGS__)                            \
+    xxx(FreshBytesCount,               __VA_ARGS__)                            \
+    xxx(UsedBytesCount,                __VA_ARGS__)                            \
+    xxx(LogicalUsedBytesCount,         __VA_ARGS__)                            \
+    xxx(CompactionScore,               __VA_ARGS__)                            \
+    xxx(BytesCount,                    __VA_ARGS__)                            \
+    xxx(IORequestsInFlight,            __VA_ARGS__)                            \
+    xxx(IORequestsQueued,              __VA_ARGS__)                            \
+    xxx(UsedBlocksMapMemSize,          __VA_ARGS__)                            \
+    xxx(MixedIndexCacheMemSize,        __VA_ARGS__)                            \
+    xxx(MaxReadBandwidth,              __VA_ARGS__)                            \
+    xxx(MaxWriteBandwidth,             __VA_ARGS__)                            \
+    xxx(MaxReadIops,                   __VA_ARGS__)                            \
+    xxx(MaxWriteIops,                  __VA_ARGS__)                            \
+    xxx(BurstPercentage,               __VA_ARGS__)                            \
+    xxx(BoostPercentage,               __VA_ARGS__)                            \
+    xxx(MaxPostponedWeight,            __VA_ARGS__)                            \
+    xxx(BoostTime,                     __VA_ARGS__)                            \
+    xxx(BoostRefillTime,               __VA_ARGS__)                            \
+    xxx(ThrottlingEnabled,             __VA_ARGS__)                            \
+    xxx(RealMaxWriteBandwidth,         __VA_ARGS__)                            \
+    xxx(PostponedQueueWeight,          __VA_ARGS__)                            \
+    xxx(BPFreshIndexScore,             __VA_ARGS__)                            \
+    xxx(BPCompactionScore,             __VA_ARGS__)                            \
+    xxx(BPDiskSpaceScore,              __VA_ARGS__)                            \
+    xxx(BPCleanupScore,                __VA_ARGS__)                            \
+    xxx(CheckpointBytes,               __VA_ARGS__)                            \
+    xxx(AlmostFullChannelCount,        __VA_ARGS__)                            \
+    xxx(FreshBlocksInFlight,           __VA_ARGS__)                            \
+    xxx(FreshBlocksQueued,             __VA_ARGS__)                            \
+    xxx(CompactionGarbageScore,        __VA_ARGS__)                            \
+    xxx(CompactionIgnoringZeroedScore, __VA_ARGS__)                            \
+    xxx(CleanupQueueBytes,             __VA_ARGS__)                            \
+    xxx(GarbageQueueBytes,             __VA_ARGS__)                            \
+    xxx(PartitionCount,                __VA_ARGS__)                            \
+    xxx(CompactionRangeCountPerRun,    __VA_ARGS__)                            \
+    xxx(NewlyZeroedBlocks,             __VA_ARGS__)                            \
 // YDB_SIMPLE_UINT64_COUNTERS
 
 #define YDB_CUMULATIVE_COUNTERS(xxx, ...)                                      \
@@ -78,6 +80,8 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(CompactionByBlobCountPerDisk_Throughput,      __VA_ARGS__)             \
     xxx(CompactionByGarbageBlocksPerRange_Throughput, __VA_ARGS__)             \
     xxx(CompactionByGarbageBlocksPerDisk_Throughput,  __VA_ARGS__)             \
+    xxx(CompactionByIgnoringZeroedPerRange_Throughput,  __VA_ARGS__)             \
+    xxx(CompactionByIgnoringZeroedPerDisk_Throughput,   __VA_ARGS__)             \
 // YDB_CUMULATIVE_COUNTERS
 
 #define YDB_DEFINE_CUMULATIVE_COUNTER(name, ...)                               \

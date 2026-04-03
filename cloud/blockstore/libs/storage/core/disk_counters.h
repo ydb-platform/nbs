@@ -201,7 +201,7 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionGarbageWithoutZeroesScore{
+    TCounter CompactionIgnoringZeroedScore{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
@@ -269,7 +269,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::GarbageQueueBytes>(),
         MakeMeta<&TSimpleDiskCounters::CompactionScore>(),
         MakeMeta<&TSimpleDiskCounters::CompactionGarbageScore>(),
-        MakeMeta<&TSimpleDiskCounters::CompactionGarbageWithoutZeroesScore>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionIgnoringZeroedScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
@@ -350,11 +350,11 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionByZeroedBlocksPerRange{
+    TCounter CompactionByIgnoringZeroedPerRange{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter CompactionByZeroedBlocksPerDisk{
+    TCounter CompactionByIgnoringZeroedPerDisk{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -404,8 +404,8 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByZeroedBlocksPerRange>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByZeroedBlocksPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTxTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionWriteBlobsTime>(),

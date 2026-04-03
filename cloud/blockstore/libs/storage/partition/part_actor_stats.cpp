@@ -82,8 +82,8 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.CompactionGarbageScore.Set(
         State->GetCompactionGarbageScore());
 
-    PartCounters->Simple.CompactionGarbageWithoutZeroesScore.Set(
-        State->GetCompactionGarbageWithoutZeroesScore());
+    PartCounters->Simple.CompactionIgnoringZeroedScore.Set(
+        State->GetCompactionIgnoringZeroedScore());
 
     PartCounters->Simple.CompactionRangeCountPerRun.Set(
         State->GetCompactionRangeCountPerRun());

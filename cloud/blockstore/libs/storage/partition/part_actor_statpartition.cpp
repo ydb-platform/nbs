@@ -79,6 +79,8 @@ void TPartitionActor::HandleStatPartition(
 
     response->Record.MutableStats()->SetCompactionGarbageScore(
         State->GetCompactionGarbageScore());
+    response->Record.MutableStats()->SetCompactionIgnoringZeroedScore(
+        State->GetCompactionIgnoringZeroedScore());
 
     response->Record.MutableStats()->SetNonEmptyRangeCount(
         State->GetCompactionMap().GetNonEmptyRangeCount());

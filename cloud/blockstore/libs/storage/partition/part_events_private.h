@@ -296,7 +296,7 @@ struct TEvPartitionPrivate
     {
         RangeCompaction,
         GarbageCompaction,
-        ZeroedCompaction
+        IgnoringZeroedCompaction
     };
 
     struct TCompactionRequest

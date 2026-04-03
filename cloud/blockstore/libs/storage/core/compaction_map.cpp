@@ -44,12 +44,12 @@ struct TCompactionMap::TImpl
         }
     };
 
-    struct TCompareByGarbageWithoutZeroes
+    struct TCompareByGarbageIgnoringZeroed
     {
         template <typename T1, typename T2>
         static bool Compare(const T1& l, const T2& r)
         {
-            return GetGarbageWithoutZeroes(l) > GetGarbageWithoutZeroes(r);
+            return GetGarbageIgnoringZeroed(l) > GetGarbageIgnoringZeroed(r);
         }
     };
 
@@ -68,10 +68,10 @@ struct TCompactionMap::TImpl
         >
     {};
 
-    struct TGroupByGarbageWithoutZeroesNode
+    struct TGroupByGarbageIgnoringZeroedNode
         : public TRbTreeItem<
-          TGroupByGarbageWithoutZeroesNode,
-          TCompareByGarbageWithoutZeroes
+          TGroupByGarbageIgnoringZeroedNode,
+          TCompareByGarbageIgnoringZeroed
         >
     {};
 
@@ -80,12 +80,12 @@ struct TCompactionMap::TImpl
         , public TGroupByBlockIndexNode
         , public TGroupByScoreNode
         , public TGroupByGarbageBlockCountNode
-        , public TGroupByGarbageWithoutZeroesNode
+        , public TGroupByGarbageIgnoringZeroedNode
     {
         ui32 BlockIndex = 0;
         float Score = 0;
         ui16 GarbageBlockCount = 0;
-        ui16 GarbageWithoutZeroes = 0;
+        ui16 GarbageIgnoringZeroed = 0;
         ui32 Range = 0;
 
         std::array<TRangeStat, GroupSize> Stats {};
@@ -96,8 +96,8 @@ struct TCompactionMap::TImpl
     using TGroupByScoreTree = TRbTree<TGroupByScoreNode, TCompareByScore>;
     using TGroupByGarbageBlockCountTree =
         TRbTree<TGroupByGarbageBlockCountNode, TCompareByGarbageBlockCount>;
-    using TGroupByGarbageWithoutZeroesTree =
-        TRbTree<TGroupByGarbageWithoutZeroesNode, TCompareByGarbageWithoutZeroes>;
+    using TGroupByGarbageIgnoringZeroedTree =
+        TRbTree<TGroupByGarbageIgnoringZeroedNode, TCompareByGarbageIgnoringZeroed>;
 
     const ui32 RangeSize;
     const ICompactionPolicyPtr Policy;
@@ -106,7 +106,7 @@ struct TCompactionMap::TImpl
     TGroupByBlockIndexTree GroupByBlockIndex;
     TGroupByScoreTree GroupByScore;
     TGroupByGarbageBlockCountTree GroupByGarbageBlockCount;
-    TGroupByGarbageWithoutZeroesTree GroupByGarbageWithoutZeroes;
+    TGroupByGarbageIgnoringZeroedTree GroupByGarbageIgnoringZeroed;
     ui32 NonEmptyRangeCount = 0;
 
     TImpl(ui32 rangeSize, ICompactionPolicyPtr policy)
@@ -164,10 +164,11 @@ struct TCompactionMap::TImpl
         return nullptr;
     }
 
-    const TGroupNode* GetTopGroupByGarbageWithoutZeroes() const
+    const TGroupNode* GetTopGroupByGarbageIgnoringZeroed() const
     {
-        if (!GroupByGarbageWithoutZeroes.Empty()) {
-            return static_cast<const TGroupNode*>(&*GroupByGarbageWithoutZeroes.Begin());
+        if (!GroupByGarbageIgnoringZeroed.Empty()) {
+            return static_cast<const TGroupNode*>(
+                &*GroupByGarbageIgnoringZeroed.Begin());
         }
         return nullptr;
     }
@@ -206,15 +207,15 @@ struct TCompactionMap::TImpl
         }
     }
 
-    void RecalculateGroupGarbageWithoutZeroes(TGroupNode* group)
+    void RecalculateGroupGarbageIgnoringZeroed(TGroupNode* group)
     {
-        group->GarbageWithoutZeroes = 0;
+        group->GarbageIgnoringZeroed = 0;
         for (ui32 i = 0; i < group->Stats.size(); ++i) {
             const auto& stat = group->Stats[i];
             if (!stat.Compacted) {
-                group->GarbageWithoutZeroes =
-                    Max(group->GarbageWithoutZeroes,
-                        stat.GarbageWithoutZeroes());
+                group->GarbageIgnoringZeroed =
+                    Max(group->GarbageIgnoringZeroed,
+                        stat.GarbageIgnoringZeroed());
             }
         }
     }
@@ -290,9 +291,8 @@ struct TCompactionMap::TImpl
                 RecalculateGroupScore(group);
             }
 
-            const auto newGarbageBlockCount = compacted
-                ? 0
-                : group->Stats[index].GarbageBlockCount();
+            const auto newGarbageBlockCount =
+                compacted ? 0 : group->Stats[index].GarbageBlockCount();
 
             if (prev.GarbageBlockCount() < newGarbageBlockCount) {
                 if (GetGarbageBlockCount(*group) < newGarbageBlockCount) {
@@ -302,16 +302,18 @@ struct TCompactionMap::TImpl
                 RecalculateGroupGarbageBlockCount(group);
             }
 
-            const auto newGarbageWithoutZeroes = compacted
-                ? 0
-                : group->Stats[index].GarbageWithoutZeroes();
+            const auto newGarbageIgnoringZeroed =
+                compacted ? 0 : group->Stats[index].GarbageIgnoringZeroed();
 
-            if (prev.GarbageWithoutZeroes() < newGarbageWithoutZeroes) {
-                if (GetGarbageWithoutZeroes(*group) < newGarbageWithoutZeroes) {
-                    group->GarbageWithoutZeroes = newGarbageWithoutZeroes;
+            if (prev.GarbageIgnoringZeroed() < newGarbageIgnoringZeroed) {
+                if (GetGarbageIgnoringZeroed(*group) < newGarbageIgnoringZeroed)
+                {
+                    group->GarbageIgnoringZeroed = newGarbageIgnoringZeroed;
                 }
-            } else if (prev.GarbageWithoutZeroes() == group->GarbageWithoutZeroes) {
-                RecalculateGroupGarbageWithoutZeroes(group);
+            } else if (
+                prev.GarbageIgnoringZeroed() == group->GarbageIgnoringZeroed)
+            {
+                RecalculateGroupGarbageIgnoringZeroed(group);
             }
         }
 
@@ -387,15 +389,15 @@ struct TCompactionMap::TImpl
         return static_cast<const TGroupNode&>(node).GarbageBlockCount;
     }
 
-    static ui16 GetGarbageWithoutZeroes(ui16 garbageWithoutZeroes)
+    static ui16 GetGarbageIgnoringZeroed(ui16 garbageIgnoringZeroed)
     {
-        return garbageWithoutZeroes;
+        return garbageIgnoringZeroed;
     }
 
     template <typename T>
-    static ui16 GetGarbageWithoutZeroes(const T& node)
+    static ui16 GetGarbageIgnoringZeroed(const T& node)
     {
-        return static_cast<const TGroupNode&>(node).GarbageWithoutZeroes;
+        return static_cast<const TGroupNode&>(node).GarbageIgnoringZeroed;
     }
 
     ui32 GetNonEmptyRangeCount() const
@@ -449,7 +451,7 @@ void TCompactionMap::Update(
     {
         Impl->GroupByScore.Insert(*group);
         Impl->GroupByGarbageBlockCount.Insert(*group);
-        Impl->GroupByGarbageWithoutZeroes.Insert(*group);
+        Impl->GroupByGarbageIgnoringZeroed.Insert(*group);
     }
 }
 
@@ -471,7 +473,7 @@ void TCompactionMap::Update(
 
     Impl->GroupByScore.Insert(group);
     Impl->GroupByGarbageBlockCount.Insert(group);
-    Impl->GroupByGarbageWithoutZeroes.Insert(group);
+    Impl->GroupByGarbageIgnoringZeroed.Insert(group);
 }
 
 void TCompactionMap::RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCount)
@@ -498,7 +500,7 @@ void TCompactionMap::Clear()
     Impl->GroupByBlockIndex.Clear();
     Impl->GroupByScore.Clear();
     Impl->GroupByGarbageBlockCount.Clear();
-    Impl->GroupByGarbageWithoutZeroes.Clear();
+    Impl->GroupByGarbageIgnoringZeroed.Clear();
     Impl->Groups.Clear();
 }
 
@@ -553,24 +555,22 @@ TCompactionCounter TCompactionMap::GetTopByGarbageBlockCount() const
     return {0, {}};
 }
 
-TCompactionCounter TCompactionMap::GetTopByGarbageWithoutZeroes() const
+TCompactionCounter TCompactionMap::GetTopByGarbageIgnoringZeroed() const
 {
-    if (auto* group = Impl->GetTopGroupByGarbageWithoutZeroes()) {
+    if (auto* group = Impl->GetTopGroupByGarbageIgnoringZeroed()) {
         ui32 range = 0;
         TRangeStat stat;
         for (ui32 i = 0; i < GroupSize; ++i) {
-            if (!group->Stats[i].Compacted
-                    && group->Stats[i].GarbageWithoutZeroes() > stat.GarbageWithoutZeroes())
+            if (!group->Stats[i].Compacted &&
+                group->Stats[i].GarbageIgnoringZeroed() >
+                    stat.GarbageIgnoringZeroed())
             {
                 stat = group->Stats[i];
                 range = i;
             }
         }
 
-        return {
-            group->BlockIndex + range * Impl->RangeSize,
-            stat
-        };
+        return {group->BlockIndex + range * Impl->RangeSize, stat};
     }
 
     return {0, {}};
@@ -625,10 +625,11 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageBlockCount(
     return result;
 }
 
-TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageWithoutZeroes(
+TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageIgnoringZeroed(
     size_t count) const
 {
-    TVector<TCompactionCounter> result(Reserve(Impl->Groups.Size() * GroupSize));
+    TVector<TCompactionCounter> result(
+        Reserve(Impl->Groups.Size() * GroupSize));
 
     for (const auto& group: Impl->Groups) {
         for (ui32 i = 0; i < group.Stats.size(); ++i) {
@@ -640,13 +641,17 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageWithoutZeroes(
         }
     }
 
-    Sort(result, [] (const auto& l, const auto& r) {
-        if (l.Stat.Compacted != r.Stat.Compacted) {
-            return r.Stat.Compacted;
-        }
+    Sort(
+        result,
+        [](const auto& l, const auto& r)
+        {
+            if (l.Stat.Compacted != r.Stat.Compacted) {
+                return r.Stat.Compacted;
+            }
 
-        return l.Stat.GarbageWithoutZeroes() > r.Stat.GarbageWithoutZeroes();
-    });
+            return l.Stat.GarbageIgnoringZeroed() >
+                   r.Stat.GarbageIgnoringZeroed();
+        });
 
     result.crop(count);
     return result;
