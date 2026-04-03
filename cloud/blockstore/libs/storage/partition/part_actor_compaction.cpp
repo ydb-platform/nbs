@@ -1614,7 +1614,7 @@ void PrepareRangeCompaction(
     const bool fullCompaction,
     const TActorContext& ctx,
     const ui64 tabletId,
-    const bool blockMaskOptimizationEnabled,
+    const bool readBlockMaskOnCompactionOptimizationEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -1736,7 +1736,9 @@ void PrepareRangeCompaction(
         const bool compactRangeContainsBlob =
             args.BlockRange.Contains(kv.second.BlobRangeHint);
 
-        if (!compactRangeContainsBlob || !blockMaskOptimizationEnabled) {
+        if (!compactRangeContainsBlob ||
+            !readBlockMaskOnCompactionOptimizationEnabled)
+        {
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
                 Y_ABORT_UNLESS(
                     kv.second.BlockMask.Defined(),
@@ -2047,7 +2049,7 @@ bool TPartitionActor::PrepareCompaction(
             fullCompaction,
             ctx,
             TabletID(),
-            IsBlockMaskOptimizationEnabled(),
+            IsReadBlockMaskOnCompactionOptimizationEnabled(),
             ready,
             db,
             *State,
