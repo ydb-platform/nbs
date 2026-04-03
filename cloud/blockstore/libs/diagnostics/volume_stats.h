@@ -121,9 +121,9 @@ struct IVolumeStats
      *
      * VolumeInfo can be pinned multiple times.
      * Remove by timeout is resumed when all pins are removed - i.e. all
-     * IVolumeInfoPin are destroyed (e.g. TVolumeInfoPinPtr::release()).
-     * For multithreaded owner objects it is recommended to store pin object
-     * via THotSwap<IVolumeInfoPin>.
+     * IVolumeInfoPin are destroyed (e.g. TVolumeInfoPinPtr::Reset()).
+     * Consider using THotSwap<IVolumeInfoPin> to store pin object within
+     * multithreaded owner.
      *
      * @return
      *  != nullptr - pin object

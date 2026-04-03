@@ -1585,7 +1585,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volumeStats->TrimVolumes();
 
         Timer->AdvanceTime(inactivityTimeout * 0.6);
-        // Timeout not expired - must remove VolumeInfo despite pinned
+        // Timeout expired - must remove VolumeInfo despite pinned
         volumeStats->TrimVolumes();
         {
             UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
