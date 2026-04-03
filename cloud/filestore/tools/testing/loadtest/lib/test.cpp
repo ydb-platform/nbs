@@ -525,7 +525,8 @@ private:
         headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
 
-        TString shmFileName = "nfs_" + std::to_string(getpid()) + ".shm";
+        TString shmFileName =
+            "nfs_" + std::to_string(rand()) + std::to_string(getpid()) + ".shm";
         TString shmDir =
             "/Berkanavt/nfs-server/shm/nfs-server-shm/nfs-load-test/";
         ShmPath = shmDir + shmFileName;
