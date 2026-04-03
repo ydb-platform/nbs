@@ -2141,6 +2141,88 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSendBrokenDeviceNotificationOnTimeout)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            {.MaxTimedOutDeviceStateDuration = TDuration::Seconds(3)});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        env.KillDiskAgent();
+
+        std::optional<TString> brokenDeviceUUID;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvBrokenDeviceNotification)
+                {
+                    auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                               TEvBrokenDeviceNotification>();
+                    brokenDeviceUUID = msg->DeviceUUID;
+                    return true;
+                }
+                return false;
+            });
+
+        for (int i = 0; i < 4; ++i) {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            client.RecvReadBlocksResponse();
+        }
+
+        UNIT_ASSERT(brokenDeviceUUID.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("vasya", *brokenDeviceUUID);
+    }
+
+    Y_UNIT_TEST(ShouldSendDeviceRecoveredNotificationAfterRecovery)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.MaxTimedOutDeviceStateDuration = TDuration::Seconds(3)});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        env.DiskAgentState->ResponseDelay = TDuration::Max();
+
+        std::optional<TString> recoveredDeviceUUID;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvDeviceRecoveredNotification)
+                {
+                    auto* msg =
+                        event->Get<TEvNonreplPartitionPrivate::
+                                       TEvDeviceRecoveredNotification>();
+                    recoveredDeviceUUID = msg->DeviceUUID;
+                    return true;
+                }
+                return false;
+            });
+
+        for (int i = 0; i < 4; ++i) {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            client.RecvReadBlocksResponse();
+        }
+
+        UNIT_ASSERT(!recoveredDeviceUUID.has_value());
+
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(10);
+        client.ReadBlocks(TBlockRange64::WithLength(0, 1024));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(recoveredDeviceUUID.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("vasya", *recoveredDeviceUUID);
+    }
+
     Y_UNIT_TEST(ShouldIgnoreTimeoutsAfterLastSuccessfulRequest)
     {
         TTestBasicRuntime runtime;

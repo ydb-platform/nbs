@@ -1261,6 +1261,15 @@ private:
         const TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleBrokenDeviceNotification(
+        const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeviceRecoveredNotification(
+        const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
