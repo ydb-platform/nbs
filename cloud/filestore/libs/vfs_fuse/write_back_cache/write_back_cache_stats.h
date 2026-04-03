@@ -9,9 +9,6 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 
 #include <util/datetime/base.h>
-#include <util/system/types.h>
-
-#include <memory>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -41,6 +38,10 @@ struct TWriteBackCacheInternalMetrics
     };
 
     TReadDataMetrics ReadData;
+
+    void Register(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,6 +83,10 @@ struct TWriteBackCacheMetrics
               std::move(writeDataRequestManagerMetrics))
         , TPersistentStorageMetrics(std::move(persistentStorageMetrics))
     {}
+
+    void Register(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,6 +112,12 @@ struct IWriteBackCacheStats
 
 using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;
 
+////////////////////////////////////////////////////////////////////////////////
+
 IWriteBackCacheStatsPtr CreateWriteBackCacheStats();
+
+IModuleStatsPtr CreateWriteBackCacheModuleStats(
+    IWriteBackCacheStatsPtr stats,
+    std::function<void(TInstant now)> updateStatsFunc);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

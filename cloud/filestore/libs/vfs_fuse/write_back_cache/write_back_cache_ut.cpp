@@ -4,6 +4,7 @@
 #include "write_back_cache_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
@@ -185,6 +186,7 @@ struct TBootstrap
     TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
     TWriteBackCache Cache;
+    IModuleStatsPtr ModuleStats;
 
     ui32 MaxWriteRequestSize = 0;
     ui32 MaxWriteRequestsCount = 0;
@@ -403,6 +405,8 @@ struct TBootstrap
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled});
+
+        ModuleStats = Cache.CreateModuleStats();
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -2141,7 +2145,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Max values are calculated over sliding window consiting of 15 buckets
         for (int i = 0; i <= 15; i++) {
-            b.Cache.UpdateStats();
+            b.ModuleStats->UpdateStats(b.Timer->Now());
         }
 
         // Ensure that UpdateStats was called for every component

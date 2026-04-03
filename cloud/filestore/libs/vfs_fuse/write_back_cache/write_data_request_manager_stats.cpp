@@ -2,7 +2,9 @@
 
 #include "relaxed_counters.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -134,6 +136,93 @@ public:
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TWriteDataRequestManagerMetrics::Register(
+    NMetrics::IMetricsRegistry& localMetricsRegistry,
+    NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const
+{
+    localMetricsRegistry.Register(
+        {CreateSensor("PendingQueue_Count")},
+        PendingQueue.Count,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("PendingQueue_MaxCount")},
+        PendingQueue.MaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("PendingQueue_ProcessedCount")},
+        PendingQueue.ProcessedCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("PendingQueue_ProcessedTime")},
+        PendingQueue.ProcessedTime,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("PendingQueue_MaxTime")},
+        PendingQueue.MaxTime,
+        EAggregationType::AT_MAX,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("UnflushedQueue_Count")},
+        UnflushedQueue.Count,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("UnflushedQueue_MaxCount")},
+        UnflushedQueue.MaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("UnflushedQueue_ProcessedCount")},
+        UnflushedQueue.ProcessedCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("UnflushedQueue_ProcessedTime")},
+        UnflushedQueue.ProcessedTime,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    aggregatableMetricsRegistry.Register(
+        {CreateSensor("UnflushedQueue_MaxTime")},
+        UnflushedQueue.MaxTime,
+        EAggregationType::AT_MAX,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("FlushedQueue_Count")},
+        FlushedQueue.Count,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("FlushedQueue_MaxCount")},
+        FlushedQueue.MaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("FlushedQueue_ProcessedCount")},
+        FlushedQueue.ProcessedCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 IWriteDataRequestManagerStatsPtr CreateWriteDataRequestManagerStats()
 {

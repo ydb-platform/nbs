@@ -1051,6 +1051,13 @@ private:
                                  ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
+
+                    ModuleStatsRegistry->Register(
+                        Config->GetFileSystemId(),
+                        Config->GetClientId(),
+                        response.GetFileStore().GetCloudId(),
+                        response.GetFileStore().GetFolderId(),
+                        WriteBackCache.CreateModuleStats());
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(

@@ -19,6 +19,10 @@ struct TPersistentStorageMetrics
     };
 
     TMetrics Storage;
+
+    void Register(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
