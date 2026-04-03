@@ -2177,10 +2177,10 @@ func (s *storageYDB) isTaskEnded(
 	taskID string,
 ) (bool, error) {
 
-	taskState, err := s.getTask(ctx, session, taskID)
+	state, err := s.getTask(ctx, session, taskID)
 	if err != nil {
 		return false, err
 	}
 
-	return IsEnded(taskState.Status), nil
+	return IsEnded(state.Status), nil
 }

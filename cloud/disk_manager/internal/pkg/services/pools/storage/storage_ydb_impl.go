@@ -1170,13 +1170,13 @@ func (s *storageYDB) releaseBaseDiskSlot(
 			releasedAt:    time.Now(),
 		}
 
-		err = s.updateSlots(
+		err = s.updateSlot(
 			ctx,
 			tx,
-			[]slotTransition{slotTransition{
+			slotTransition{
 				oldState: nil,
 				state:    &slotTombstone,
-			}},
+			},
 		)
 		if err != nil {
 			return BaseDisk{}, err
@@ -1184,8 +1184,9 @@ func (s *storageYDB) releaseBaseDiskSlot(
 
 		logging.Info(
 			ctx,
-			"created slot tombstone %+v",
+			"Created tombstone %+v while releasing base disk slot in zone %v",
 			slotTombstone,
+			overlayDisk.ZoneId,
 		)
 
 		return BaseDisk{}, tx.Commit(ctx)
