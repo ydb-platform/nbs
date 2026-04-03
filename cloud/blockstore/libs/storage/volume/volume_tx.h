@@ -93,6 +93,7 @@ struct TTxVolume
         TMaybe<NProto::TStorageServiceConfig> StorageConfig;
         TFollowerDisks FollowerDisks;
         TLeaderDisks LeaderDisks;
+        TVector<TVolumeDatabase::TBrokenDeviceInfo> BrokenDevices;
 
         explicit TLoadState(TInstant oldestLogEntry)
             : OldestLogEntry(oldestLogEntry)
@@ -116,6 +117,7 @@ struct TTxVolume
             StorageConfig.Clear();
             FollowerDisks.clear();
             LeaderDisks.clear();
+            BrokenDevices.clear();
         }
     };
 
