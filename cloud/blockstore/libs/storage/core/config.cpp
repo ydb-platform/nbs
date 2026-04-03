@@ -686,7 +686,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
     xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
-    xxx(BlockMaskOptimizationEnabled,         bool,        false              )\
+    xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
+        bool,                                                                  \
+        false                                                                 )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -724,7 +726,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(EnableVhostDiscardForNewVolumes)                                       \
     xxx(EnableVhostDiscardOnVolumeRestart)                                     \
     xxx(FreshBlocksWriter)                                                     \
-    xxx(BlockMaskOptimization)                                                 \
+    xxx(ReadBlockMaskOnCompactionOptimization)                                 \
 
 // BLOCKSTORE_BINARY_FEATURES
 

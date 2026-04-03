@@ -1529,6 +1529,7 @@ message TStorageServiceConfig
     // Shaping throttler configuration.
     optional TShapingThrottlerConfig ShapingThrottlerConfig = 490;
 
-    // Enables block mask optimization.
-    optional bool BlockMaskOptimizationEnabled = 491;
+    // Don't read block masks on compaction if blob entirely contains
+    // in one compaction range.
+    optional bool ReadBlockMaskOnCompactionOptimizationEnabled = 491;
 }

@@ -406,7 +406,7 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
-    [[nodiscard]] bool IsBlockMaskOptimizationFeatureEnabled(
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -806,7 +806,7 @@ public:
 
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
 
-    [[nodiscard]] bool GetBlockMaskOptimizationEnabled() const;
+    [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
 };
 
 ui64 GetAllocationUnit(

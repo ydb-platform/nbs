@@ -513,7 +513,7 @@ private:
     void CreateIOCompanionClient();
 
     [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
-    [[nodiscard]] bool IsBlockMaskOptimizationEnabled() const;
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
 
 private:
     STFUNC(StateBoot);

@@ -1001,9 +1001,9 @@ bool TPartitionActor::IsFreshBlocksWriterEnabled() const
                PartitionConfig.GetDiskId());
 }
 
-bool TPartitionActor::IsBlockMaskOptimizationEnabled() const
+bool TPartitionActor::IsReadBlockMaskOnCompactionOptimizationEnabled() const
 {
-    return Config->GetBlockMaskOptimizationEnabled() ||
+    return Config->GetReadBlockMaskOnCompactionOptimizationEnabled() ||
            Config->IsBlockMaskOptimizationFeatureEnabled(
                PartitionConfig.GetCloudId(),
                PartitionConfig.GetFolderId(),

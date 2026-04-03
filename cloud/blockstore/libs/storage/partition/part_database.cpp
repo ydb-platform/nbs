@@ -412,7 +412,9 @@ bool TPartitionDatabase::FindMergedBlocks(
                     commitId,
                     it.GetValue<TTable::BlobId>());
 
-                blobsVisitor.Visit(range, blobId);
+                if (!blobsVisitor.Visit(range, blobId)) {
+                    return true;   // interrupted
+                }
 
                 const auto holeMask = BlockMaskFromString(
                     it.GetValueOrDefault<TTable::HoleMask>());
