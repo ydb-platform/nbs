@@ -91,7 +91,7 @@ public:
     NProto::ECompactionType GetSSDCompactionType() const;
     NProto::ECompactionType GetHDDCompactionType() const;
     bool GetV1GarbageCompactionEnabled() const;
-    bool GetZeroedCompactionEnabled() const;
+    bool GetIgnoringZeroedCompactionEnabled() const;
     ui32 GetCompactionGarbageThreshold() const;
     ui32 GetCompactionGarbageBlobLimit() const;
     ui32 GetCompactionGarbageBlockLimit() const;
@@ -100,6 +100,7 @@ public:
     TDuration GetMaxCompactionDelay() const;
     TDuration GetMinCompactionDelay() const;
     TDuration GetMaxCompactionExecTimePerSecond() const;
+    TDuration GetMaxCompactionExecTimePerSecondHard() const;
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
     ui64 GetTargetCompactionBytesPerOp() const;

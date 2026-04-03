@@ -200,11 +200,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionRangeGarbageThreshold,    ui32,      200                    )\
     xxx(MaxAffectedBlocksPerCompaction,     ui32,      8192                   )\
     xxx(V1GarbageCompactionEnabled,         bool,      false                  )\
-    xxx(ZeroedCompactionEnabled,            bool,      false                  )\
+    xxx(IgnoringZeroedCompactionEnabled,    bool,      false                  )\
     xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
+    xxx(MaxCompactionExecTimePerSecondHard, TDuration, TDuration::Zero()      )\
     xxx(CompactionScoreHistorySize,             ui32,   10                    )\
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\

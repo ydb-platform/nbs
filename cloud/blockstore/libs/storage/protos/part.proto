@@ -118,7 +118,7 @@ message TPartitionStats
     TIOCounters RealSysReadCounters = 15;
     TIOCounters RealSysWriteCounters = 16;
 
-    // Compaction reading and blobs count triggers counters
+    // Triggers counters for compaction by read stats, blobs count and garbage.
     uint64 CompactionByReadStats = 17;
     uint64 CompactionByBlobCountPerRange = 18;
     uint64 CompactionByBlobCountPerDisk = 19;
@@ -128,7 +128,9 @@ message TPartitionStats
     uint32 UnconfirmedBlobCount = 22;
     uint32 ConfirmedBlobCount = 23;
 
-    uint64 CompactionGarbageThrottlingCount = 24;
+    // Triggers counters for compaction by garbage ignoring zeroed blocks.
+    uint64 CompactionByIgnoringZeroedPerRange = 24;
+    uint64 CompactionByIgnoringZeroedPerDisk = 25;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

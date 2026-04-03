@@ -1479,5 +1479,10 @@ message TStorageServiceConfig
     // Applies to network-ssd and network-hdd disks.
     optional bool EnableVhostDiscardOnVolumeRestart = 489;
 
-    optional uint64 ZeroedCompactionEnabled = 490;
+    // Is compaction mode by zeroed blocks enabled for v1 partition.
+    optional bool IgnoringZeroedCompactionEnabled = 490;
+
+    // Max Compaction per second. Should be less MaxCompactionExecTimePerSecond.
+    // Used for GarbageCompaction in case when IgnoringZeroedCompactionEnabled is on.
+    optional uint32 MaxCompactionExecTimePerSecondHard = 491;  // in ms
 }

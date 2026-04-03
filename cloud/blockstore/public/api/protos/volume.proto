@@ -413,6 +413,10 @@ message TVolumeStats
 
     // Current trim fresh log as commit id
     uint64 TrimFreshLogToCommitId = 29;
+
+    // Number of garbage blocks in the most dirty range regardless zeroed
+    // blocks.
+    uint32 CompactionIgnoringZeroedScore = 30;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
