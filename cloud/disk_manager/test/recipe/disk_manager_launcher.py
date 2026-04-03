@@ -187,7 +187,7 @@ CellsConfig: <
     ScheduleCollectClusterCapacityTask: false
 >
 DisksConfig: <
-    DeletedDiskExpirationTimeout: "1s"
+    DeletedDiskExpirationTimeout: "{deleted_disk_expiration_timeout}"
     ClearDeletedDisksTaskScheduleInterval: "2s"
     EndedMigrationExpirationTimeout: "30s"
     EnableOverlayDiskRegistryBasedDisks: true
@@ -209,7 +209,7 @@ PoolsConfig: <
     DeleteBaseDisksLimit: 100
     DeletedBaseDiskExpirationTimeout: "1s"
     ClearDeletedBaseDisksTaskScheduleInterval: "1s"
-    ReleasedSlotExpirationTimeout: "1s"
+    ReleasedSlotExpirationTimeout: "{released_slot_expiration_timeout}"
     ClearReleasedSlotsTaskScheduleInterval: "1s"
     ConvertToImageSizedBaseDiskThreshold: 10
     ConvertToDefaultSizedBaseDiskThreshold: 30
@@ -577,6 +577,10 @@ class DiskManagerLauncher:
         filesystem_dataplane_enabled=False,
         list_nodes_max_bytes=0,
         scrubbing_config_content="",
+        # 100s is long enough in tests with concurrent resource creation and deletion to prevent
+        # creating an already deleted resourse (see #5539).
+        deleted_disk_expiration_timeout="100s",
+        released_slot_expiration_timeout="100s",
     ):
         self.__idx = idx
 
@@ -686,6 +690,8 @@ class DiskManagerLauncher:
                     use_s3_percentage="0" if s3_port is None else "100",
                     retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
                     cell_selection_policy=cell_selection_policy,
+                    deleted_disk_expiration_timeout=deleted_disk_expiration_timeout,
+                    released_slot_expiration_timeout=released_slot_expiration_timeout,
                 )
                 f.write(self.__server_config)
 

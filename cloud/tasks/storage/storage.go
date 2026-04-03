@@ -350,4 +350,8 @@ type Storage interface {
 	// Fetch the node.
 	// This method is used in testing, but can be safely used if needed.
 	GetNode(ctx context.Context, host string) (Node, error)
+
+	// Check if the task has status Finished or Cancelled.
+	// This method is used in testing, but can be safely used if needed.
+	IsTaskEnded(ctx context.Context, taskID string) (bool, error)
 }
