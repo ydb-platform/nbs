@@ -577,10 +577,10 @@ class DiskManagerLauncher:
         filesystem_dataplane_enabled=False,
         list_nodes_max_bytes=0,
         scrubbing_config_content="",
-        # 30s is long enough in tests with concurrent resource creation and deletion to prevent
-        # creating an already deleted resourse.
-        deleted_disk_expiration_timeout="30s",
-        released_slot_expiration_timeout="30s",
+        # 100s is long enough in tests with concurrent resource creation and deletion to prevent
+        # creating an already deleted resourse (see #5539).
+        deleted_disk_expiration_timeout="100s",
+        released_slot_expiration_timeout="100s",
     ):
         self.__idx = idx
 

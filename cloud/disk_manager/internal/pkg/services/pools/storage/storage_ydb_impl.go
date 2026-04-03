@@ -1170,10 +1170,9 @@ func (s *storageYDB) releaseBaseDiskSlot(
 			releasedAt:    time.Now(),
 		}
 
-		err = s.updateBaseDisksAndSlots(
+		err = s.updateSlots(
 			ctx,
 			tx,
-			[]baseDiskTransition{},
 			[]slotTransition{slotTransition{
 				oldState: nil,
 				state:    &slotTombstone,

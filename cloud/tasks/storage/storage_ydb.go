@@ -513,15 +513,15 @@ func (s *storageYDB) IsTaskEnded(
 	taskID string,
 ) (bool, error) {
 
-	var isEnded bool
+	var ended bool
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			isEnded, err = s.isTaskEnded(ctx, session, taskID)
+			ended, err = s.isTaskEnded(ctx, session, taskID)
 			return err
 		},
 	)
-	return isEnded, err
+	return ended, err
 }

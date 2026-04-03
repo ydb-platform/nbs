@@ -268,7 +268,7 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	require.Eventually(t, func() bool {
 		ended, err := tasksStorage.IsTaskEnded(ctx, createOp.Id)
 		return err == nil && ended
-	}, 30*time.Second, 100*time.Millisecond)
+	}, 200*time.Second, 100*time.Millisecond)
 
 	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)

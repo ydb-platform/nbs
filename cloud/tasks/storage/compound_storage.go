@@ -454,7 +454,7 @@ func (s *compoundStorage) GetNode(
 func (s *compoundStorage) IsTaskEnded(
 	ctx context.Context,
 	taskID string,
-) (isTerminal bool, err error) {
+) (bool, error) {
 
 	return false, errors.NewNonRetriableErrorf("not implemented")
 }
