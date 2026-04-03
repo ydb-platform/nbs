@@ -106,8 +106,8 @@ TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
         }
         if (request->ChecksumsSize() > 0) {
             subRequest->MutableChecksums()->Clear();
-            *subRequest->MutableChecksums()->Add() =
-                CalculateChecksum(subRequest->GetBlocks(), blockSize);
+            subRequest->MutableChecksums()->Add(
+                CalculateChecksum(subRequest->GetBlocks(), blockSize));
         }
         result.push_back(std::move(subRequest));
     }
