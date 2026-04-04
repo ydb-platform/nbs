@@ -78,10 +78,10 @@ protected:
      * `MinFreeSpaceReserve`.
      *
      * @param fileSize The size of the file to fit.
-     * @return The number of shards that can fit the file size, or
-     * `std::nullopt` if no shard can fit the file size.
+     * @return The number of shards that can fit the file size, zero if no shard
+     * can fit the file size.
      */
-    [[nodiscard]] std::optional<size_t> FindUpperBoundAmongAllShardsToFitFile(
+    [[nodiscard]] size_t FindUpperBoundAmongAllShardsToFitFile(
         ui64 fileSize) const;
 
 public:
@@ -100,10 +100,6 @@ private:
 
 public:
     using TShardBalancerBase::TShardBalancerBase;
-    void Update(
-        const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve = {},
-        std::optional<ui64> minFreeSpaceReserve = {}) final;
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
 

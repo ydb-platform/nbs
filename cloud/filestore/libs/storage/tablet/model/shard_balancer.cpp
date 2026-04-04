@@ -80,7 +80,7 @@ void TShardBalancerBase::Update(
     Sort(Metas.begin(), Metas.end(), TShardMetaComp());
 }
 
-std::optional<size_t> TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
+size_t TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
     ui64 fileSize) const
 {
     const auto* e = UpperBound(
@@ -96,26 +96,10 @@ std::optional<size_t> TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
             TShardMetaComp());
     }
 
-    if (e == Metas.begin()) {
-        return std::nullopt;
-    }
-
     return std::distance(Metas.begin(), e);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-void TShardBalancerRoundRobin::Update(
-    const TVector<TShardStats>& stats,
-    std::optional<ui64> desiredFreeSpaceReserve,
-    std::optional<ui64> minFreeSpaceReserve)
-{
-    TShardBalancerBase::Update(
-        stats,
-        desiredFreeSpaceReserve,
-        minFreeSpaceReserve);
-    ShardSelector = 0;
-}
 
 NProto::TError TShardBalancerRoundRobin::SelectShard(
     ui64 fileSize,
@@ -126,11 +110,7 @@ NProto::TError TShardBalancerRoundRobin::SelectShard(
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
 
-    if (ShardSelector >= endIdx.value()) {
-        ShardSelector = 0;
-    }
-
-    *shardId = Ids[Metas[ShardSelector++].ShardIdx];
+    *shardId = Ids[Metas[(ShardSelector++) % endIdx].ShardIdx];
     return {};
 }
 
@@ -145,7 +125,7 @@ NProto::TError TShardBalancerRandom::SelectShard(
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
 
-    const auto idx = RandomNumber<ui32>(endIdx.value());
+    const auto idx = RandomNumber<ui32>(endIdx);
     *shardId = Ids[Metas[idx].ShardIdx];
     return {};
 }
@@ -202,7 +182,7 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
     // Now we need to select a random number from Metas[0...endIdx)
     // proportionally to the free space of the shards.
 
-    const auto totalFreeSpace = WeightPrefixSums[endIdx.value()];
+    const auto totalFreeSpace = WeightPrefixSums[endIdx];
     if (totalFreeSpace == 0) {
         return MakeError(E_FS_NOSPC, "all shards are full");
     }
@@ -239,21 +219,21 @@ IShardBalancerPtr CreateShardBalancer(
                 maxFileBlocks,
                 desiredFreeSpaceReserve,
                 minFreeSpaceReserve,
-                shardIds);
+                std::move(shardIds));
         case NProto::SBP_RANDOM:
             return std::make_shared<TShardBalancerRandom>(
                 blockSize,
                 maxFileBlocks,
                 desiredFreeSpaceReserve,
                 minFreeSpaceReserve,
-                shardIds);
+                std::move(shardIds));
         case NProto::SBP_WEIGHTED_RANDOM:
             return std::make_shared<TShardBalancerWeightedRandom>(
                 blockSize,
                 maxFileBlocks,
                 desiredFreeSpaceReserve,
                 minFreeSpaceReserve,
-                shardIds);
+                std::move(shardIds));
         default:
             Y_ABORT(
                 "unsupported shard balancer policy: %d",
