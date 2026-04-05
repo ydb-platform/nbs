@@ -991,13 +991,13 @@ void TClientEndpoint::AbortRequests() noexcept
     while (QueuedRequests) {
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
-        RDMA_TRACE("abort request " << req->ReqId);
+        RDMA_DEBUG("abort request " << req->ReqId);
         Counters->RequestDequeued();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
 
     while (auto req = ActiveRequests.Pop()) {
-        RDMA_TRACE("abort request " << req->ReqId);
+        RDMA_DEBUG("abort request " << req->ReqId);
         Counters->RequestAborted();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
@@ -1055,6 +1055,8 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
 
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
         if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+            RDMA_TRACE(
+                "SEND " << id << " " << NVerbs::GetStatusString(wc->status));
             Counters->SendRequestCompleted();
             SendQueue.Push(&SendWrs[id.Index]);
             return -1;
@@ -1081,6 +1083,8 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
 
     if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
         if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+            RDMA_TRACE(
+                "RECV " << id << " " << NVerbs::GetStatusString(wc->status));
             Counters->RecvResponseCompleted();
             RecvQueue.Push(&RecvWrs[id.Index]);
             return -1;
@@ -1115,8 +1119,6 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
 {
     auto id = TWorkRequestId(wc->wr_id);
 
-    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id << " completed");
-
     if (ValidateCompletion(wc)) {
         Disconnect();
         return;
@@ -1124,10 +1126,12 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
 
     switch (wc->opcode) {
         case IBV_WC_SEND:
+            RDMA_TRACE("SEND " << id << " completed");
             SendRequestCompleted(&SendWrs[id.Index]);
             break;
 
         case IBV_WC_RECV:
+            RDMA_TRACE("RECV " << id << " completed");
             RecvResponseCompleted(&RecvWrs[id.Index]);
             break;
 
@@ -1152,7 +1156,8 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
-        RDMA_TRACE("SEND " << id << " posted request " << req->ReqId);
+        RDMA_TRACE("SEND " << id << " posted");
+        RDMA_TRACE("send request " << req->ReqId);
 
     } catch (const TServiceError& e) {
         RDMA_ERROR("SEND " << id << " " << e.what());
@@ -1177,26 +1182,18 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 
 void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
 {
-    auto wrId = TWorkRequestId(send->wr.wr_id);
     auto reqId = SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
 
     Counters->SendRequestCompleted();
     SendQueue.Push(send);
 
-    auto* req = ActiveRequests.Get(reqId);
-    if (!req) {
-        RDMA_WARN(
-            "SEND " << wrId << " request " << reqId
-                    << " not found, last active request id "
-                    << ActiveRequests.GetCurrentId());
-        Counters->Error();
-        return;
+    if (auto* req = ActiveRequests.Get(reqId)) {
+        LWTRACK(
+            SendRequestCompleted,
+            req->CallContext->LWOrbit,
+            req->CallContext->RequestId);
     }
-
-    LWTRACK(
-        SendRequestCompleted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
+    // request has already been completed
 }
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
@@ -1247,13 +1244,14 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
         RDMA_WARN(
-            "RECV " << wrId << " request " << reqId
-                    << " not found, last active request id "
-                    << ActiveRequests.GetCurrentId());
+            "request " << reqId << " not found, last active request id "
+                       << ActiveRequests.GetCurrentId());
         Counters->Error();
         return;
     }
     Counters->RequestCompleted();
+
+    RDMA_TRACE("complete request " << reqId);
 
     LWTRACK(
         RecvResponseCompleted,
@@ -1732,7 +1730,7 @@ private:
                 DurationToCyclesSafe(Config->MaxResponseDelay));
 
             for (auto& request: requests) {
-                RDMA_TRACE(endpoint->Log, "timeout request " << request->ReqId);
+                RDMA_DEBUG(endpoint->Log, "timeout request " << request->ReqId);
                 endpoint->Counters->RequestAborted();
                 endpoint->AbortRequest(
                     std::move(request),
