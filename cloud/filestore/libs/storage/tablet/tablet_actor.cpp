@@ -1038,10 +1038,16 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
 bool TIndexTabletActor::RejectRequestsByBrokenTablet(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvService)
+        FILESTORE_SERVICE_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvService)
 
-        FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTablet)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
