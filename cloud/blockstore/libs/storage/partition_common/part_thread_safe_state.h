@@ -77,6 +77,8 @@ public:
 private:
     TAdaptiveLock StateLock;
 
+    const NActors::TActorId PartitionActorId;
+
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
 
@@ -86,9 +88,14 @@ private:
     NPartition::TCheckpointsInFlight CheckpointsInFlight;
 
 public:
-    TPartitionThreadSafeState() = default;
+    explicit TPartitionThreadSafeState(NActors::TActorId partitionActorId)
+        : PartitionActorId(partitionActorId)
+    {}
 
-    TPartitionThreadSafeState(ui32 generation, ui32 lastCommitId);
+    TPartitionThreadSafeState(
+        NActors::TActorId partitionActorId,
+        ui32 generation,
+        ui32 lastCommitId);
 
     void Init(ui32 generation, ui32 lastCommitId);
 
@@ -134,6 +141,13 @@ public:
 
     ui64 GetTrimFreshLogToCommitId() const;
 
+    ui64 StartFreshWrite(ui64 blockCount);
+    void FinishFreshWrite(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        ui64 blockCount,
+        bool isError);
+
     auto GetCommitQueue()
     {
         return TConstObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
@@ -162,9 +176,22 @@ public:
             CheckpointsInFlight);
     }
 
+    void WaitCommitForCompaction(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<ITransactionBase> tx,
+        ui64 commitId);
+
+    void ProcessCommitQueue(const NActors::TActorContext& ctx);
+
 private:
     ui64 GenerateCommitIdImpl();
     ui64 GetLastCommitIdImpl() const;
+
+    void ExecuteTxs(
+        const NActors::TActorContext& ctx,
+        TVector<std::unique_ptr<ITransactionBase>> txs);
+
+    TVector<std::unique_ptr<ITransactionBase>> ProcessCommitQueueImpl();
 };
 
 using TPartitionThreadSafeStatePtr = std::shared_ptr<TPartitionThreadSafeState>;

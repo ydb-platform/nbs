@@ -15,8 +15,10 @@ using namespace NPartition;
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionThreadSafeState::TPartitionThreadSafeState(
+    NActors::TActorId partitionActorId,
     ui32 generation,
     ui32 lastCommitId)
+    : PartitionActorId(partitionActorId)
 {
     Init(generation, lastCommitId);
 }
@@ -72,6 +74,73 @@ ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
         TrimFreshLogBarriers.GetMinCommitId() - 1);
 }
 
+ui64 TPartitionThreadSafeState::StartFreshWrite(ui64 blockCount)
+{
+    Y_UNUSED(blockCount);
+
+    TGuard guard(StateLock);
+
+    auto commitId = GenerateCommitIdImpl();
+
+    CommitQueue.AcquireBarrier(commitId);
+    return commitId;
+}
+
+void TPartitionThreadSafeState::FinishFreshWrite(
+    const NActors::TActorContext& ctx,
+    ui64 commitId,
+    ui64 blockCount,
+    bool isError)
+{
+    Y_UNUSED(blockCount);
+    Y_UNUSED(isError);
+
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+
+    {
+        TGuard guard(StateLock);
+
+        CommitQueue.ReleaseBarrier(commitId);
+        txs = ProcessCommitQueueImpl();
+    }
+
+    ExecuteTxs(ctx, std::move(txs));
+}
+
+void TPartitionThreadSafeState::WaitCommitForCompaction(
+    const NActors::TActorContext& ctx,
+    std::unique_ptr<ITransactionBase> tx,
+    ui64 commitId)
+{
+    {
+        TGuard guard(StateLock);
+        ui64 minCommitId = CommitQueue.GetMinCommitId();
+        Y_ABORT_UNLESS(minCommitId <= commitId);
+
+        if (minCommitId != commitId) {
+            // delay execution until all previous commits completed
+            CommitQueue.Enqueue(std::move(tx), commitId);
+            return;
+        }
+    }
+
+    ExecuteTxs(ctx, {std::move(tx)});
+}
+
+void TPartitionThreadSafeState::ProcessCommitQueue(
+    const NActors::TActorContext& ctx)
+{
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+
+    {
+        TGuard guard(StateLock);
+
+        txs = ProcessCommitQueueImpl();
+    }
+
+    ExecuteTxs(ctx, std::move(txs));
+}
+
 ui64 TPartitionThreadSafeState::GenerateCommitIdImpl()
 {
     if (LastCommitId == Max<ui32>()) {
@@ -85,6 +154,46 @@ ui64 TPartitionThreadSafeState::GenerateCommitIdImpl()
 ui64 TPartitionThreadSafeState::GetLastCommitIdImpl() const
 {
     return MakeCommitId(Generation, LastCommitId);
+}
+
+void TPartitionThreadSafeState::ExecuteTxs(
+    const NActors::TActorContext& ctx,
+    TVector<std::unique_ptr<ITransactionBase>> txs)
+{
+    auto executeTxRequest =
+        std::make_unique<TEvPartitionCommonPrivate::TEvExecuteTransactions>();
+    executeTxRequest->Transactions = std::move(txs);
+    NCloud::Send(ctx, PartitionActorId, std::move(executeTxRequest));
+}
+
+TVector<std::unique_ptr<ITransactionBase>>
+TPartitionThreadSafeState::ProcessCommitQueueImpl()
+{
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+
+    ui64 minCommitId = CommitQueue.GetMinCommitId();
+
+    while (!CommitQueue.Empty()) {
+        ui64 commitId = CommitQueue.Peek();
+        Y_ABORT_UNLESS(minCommitId <= commitId);
+
+        if (minCommitId == commitId) {
+            // start execution
+            txs.push_back(CommitQueue.Dequeue());
+        } else {
+            // delay execution until all previous commits completed
+            break;
+        }
+    }
+
+    // Since create checkpoint operation waits for the last commit to
+    // complete here we force checkpoints queue to try to proceed to the
+    // next create checkpoint request
+    while (auto tx = CheckpointsInFlight.GetTx(minCommitId)) {
+        txs.push_back(std::move(tx));
+    }
+
+    return txs;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

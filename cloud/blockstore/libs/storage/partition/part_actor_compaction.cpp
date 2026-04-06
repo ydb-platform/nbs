@@ -1494,35 +1494,7 @@ void TPartitionActor::HandleCompaction(
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
-    TVector<std::unique_ptr<ITransactionBase>> txs;
-
-    {
-        auto commitQueue = State->AccessCommitQueue();
-        ui64 minCommitId = commitQueue->GetMinCommitId();
-
-        while (!commitQueue->Empty()) {
-            ui64 commitId = commitQueue->Peek();
-            Y_ABORT_UNLESS(minCommitId <= commitId);
-
-            if (minCommitId == commitId) {
-                // start execution
-                txs.push_back(commitQueue->Dequeue());
-            } else {
-                // delay execution until all previous commits completed
-                break;
-            }
-        }
-    }
-
-    for (auto& tx: txs) {
-        ExecuteTx(ctx, std::move(tx));
-    }
-
-    // TODO: too many different queues exist
-    // Since create checkpoint operation waits for the last commit to complete
-    // here we force checkpoints queue to try to proceed to the next
-    // create checkpoint request
-    ProcessCheckpointQueue(ctx);
+    State->ProcessCommitQueue(ctx);
 }
 
 void TPartitionActor::HandleCompactionCompleted(

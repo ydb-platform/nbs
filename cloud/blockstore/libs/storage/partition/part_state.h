@@ -408,6 +408,11 @@ public:
         return ThreadSafeState->AccessCommitQueue();
     }
 
+    void ProcessCommitQueue(const NActors::TActorContext& ctx)
+    {
+        ThreadSafeState.ProcessCommitQueue(ctx);
+    }
+
     //
     // Channels
     //

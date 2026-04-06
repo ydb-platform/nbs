@@ -423,6 +423,15 @@ struct TEvPartitionCommonPrivate
     {
     };
 
+    //
+    // ExecuteTransactions
+    //
+
+    struct TExecuteTransactions
+    {
+        TVector<std::unique_ptr<ITransactionBase>> Transactions;
+    };
+
     // Events declaration
     //
 
@@ -444,7 +453,7 @@ struct TEvPartitionCommonPrivate
         EvWriteBlobCompleted,
         EvWriteFreshBlocksCompleted,
         EvZeroFreshBlocksCompleted,
-
+        EvExecuteTransactions,
         EvEnd
     };
 
@@ -475,6 +484,9 @@ struct TEvPartitionCommonPrivate
 
     using TEvZeroFreshBlocksCompleted =
         TResponseEvent<TOperationCompleted, EvZeroFreshBlocksCompleted>;
+
+    using TEvExecuteTransactions =
+        TRequestEvent<TExecuteTransactions, EvExecuteTransactions>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
