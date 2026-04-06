@@ -4458,6 +4458,22 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        auto maskToString = [] (const ui8 maskValue) {
+            TStringBuilder sb;
+            bool foundNonZero = false;
+            for (ui32 i = 8; i > 0; --i) {
+                const int bit = !!(maskValue & (1ULL << (i - 1)));
+                if (bit) {
+                    foundNonZero = true;
+                }
+                if (foundNonZero) {
+                    sb << bit;
+                }
+            }
+
+            return sb;
+        };
+
         auto checkChangedBlockMask = [&] (
             const TString& firstCheckpoint,
             const TString& secondCheckpoint,
@@ -4471,15 +4487,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(128, response->Record.GetMask().size());
-            UNIT_ASSERT_VALUES_EQUAL(maskValue, response->Record.GetMask()[0]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                maskToString(maskValue),
+                maskToString(response->Record.GetMask()[0]));
         };
 
-        partition.WriteBlocks(0,1);
-        partition.WriteBlocks(1,1);
+        partition.WriteBlocks(0, 1);
+        partition.WriteBlocks(1, 1);
         partition.CreateCheckpoint("cp1");
 
-        partition.WriteBlocks(1,2);
-        partition.WriteBlocks(2,2);
+        partition.WriteBlocks(1, 2);
+        partition.WriteBlocks(2, 2);
 
         partition.DeleteCheckpointData("cp1");
         partition.CreateCheckpoint("cp2");
