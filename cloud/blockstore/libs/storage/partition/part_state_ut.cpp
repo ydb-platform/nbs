@@ -1,6 +1,7 @@
 #include "part_state.h"
 
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/partition/part_schema.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
@@ -94,9 +95,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
     Y_UNIT_TEST(CalculateCurrentBackpressure)
     {
+        TPartitionThreadSafeState threadSafeState(0, 0);
         TPartitionState state(
             DefaultConfig(1, 1000),
-            0,  // generation
             BuildDefaultCompactionPolicy(5),
             0,  // compactionScoreHistorySize
             0,  // cleanupScoreHistorySize
@@ -107,13 +108,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // reassignFreshChannelsPercentageThreshold
             100,    // reassignMixedChannelsPercentageThreshold
             false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
             5,      // channelCount
             0,      // mixedIndexCacheSize
             10000,  // allocationUnit
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            1,      // compactionRangeCountPerRun
+            threadSafeState
         );
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
@@ -163,9 +164,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
     Y_UNIT_TEST(CompactionBackpressureShouldBeZeroIfNotRequiredByPolicy)
     {
+        TPartitionThreadSafeState threadSafeState(0, 0);
         TPartitionState state(
             DefaultConfig(1, 1000),
-            0,  // generation
             std::make_shared<TNoBackpressurePolicy>(),
             0,  // compactionScoreHistorySize
             0,  // cleanupScoreHistorySize
@@ -176,13 +177,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // reassignFreshChannelsPercentageThreshold
             100,    // reassignMixedChannelsPercentageThreshold
             false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
             5,      // channelCount
             0,      // mixedIndexCacheSize
             10000,  // allocationUnit
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            1,      // compactionRangeCountPerRun
+            threadSafeState
         );
 
         state.GetCompactionMap().Update(0, 30, 30, 30, false);
@@ -198,9 +199,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         config.MutableConfig()->SetBaseDiskId("baseDiskID");
         config.MutableConfig()->SetBaseDiskCheckpointId("baseDiskCheckpointId");
 
+        TPartitionThreadSafeState threadSafeState(0, 0);
         TPartitionState state(
             config,
-            0,  // generation
             BuildDefaultCompactionPolicy(5),
             0,  // compactionScoreHistorySize
             0,  // cleanupScoreHistorySize
@@ -211,13 +212,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // reassignFreshChannelsPercentageThreshold
             100,    // reassignMixedChannelsPercentageThreshold
             false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
             5,      // channelCount
             0,      // mixedIndexCacheSize
             10000,  // allocationUnit
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            1,      // compactionRangeCountPerRun
+            threadSafeState
         );
 
         state.GetLogicalUsedBlocks().Set(0, 9);
@@ -283,9 +284,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
 
+        TPartitionThreadSafeState threadSafeState(0, 0);
         TPartitionState state(
             config,
-            0,  // generation
             BuildDefaultCompactionPolicy(5),
             0,  // compactionScoreHistorySize
             0,  // cleanupScoreHistorySize
@@ -296,13 +297,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // reassignFreshChannelsPercentageThreshold
             100,    // reassignMixedChannelsPercentageThreshold
             false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
             1,      // channelCount
             0,      // mixedIndexCacheSize
             10000,  // allocationUnit
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            1,      // compactionRangeCountPerRun
+            threadSafeState
         );
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
@@ -326,9 +327,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
 
+        TPartitionThreadSafeState threadSafeState(0, 0);
         TPartitionState state(
             config,
-            0,  // generation
             BuildDefaultCompactionPolicy(5),
             0,  // compactionScoreHistorySize
             0,  // cleanupScoreHistorySize
@@ -339,13 +340,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // reassignFreshChannelsPercentageThreshold
             100,    // reassignMixedChannelsPercentageThreshold
             false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
             5,      // channelCount
             1,      // mixedIndexCacheSize
             10000,  // allocationUnit
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            1,      // compactionRangeCountPerRun
+            threadSafeState
         );
 
         TTestExecutor executor;
@@ -459,9 +460,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         auto config = DefaultConfig(1, diskSize / DefaultBlockSize);
 
+        TPartitionThreadSafeState threadSafeState(0, 0);
         TPartitionState state(
             config,
-            0,  // generation
             BuildDefaultCompactionPolicy(5),
             0,  // compactionScoreHistorySize
             0,  // cleanupScoreHistorySize
@@ -472,13 +473,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // reassignFreshChannelsPercentageThreshold
             100,    // reassignMixedChannelsPercentageThreshold
             false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
             5,      // channelCount
             1,      // mixedIndexCacheSize
             allocationUnit,  // allocationUnit
             maxBlobsPerUnit, // maxBlobsPerUnit
             10,  // maxBlobsPerRange,
-            1    // compactionRangeCountPerRun
+            1,   // compactionRangeCountPerRun
+            threadSafeState
         );
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
     }
@@ -492,9 +493,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
     Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
     {
+        TPartitionThreadSafeState threadSafeState(0, 0);
         TPartitionState state(
             DefaultConfig(1, 1000),
-            0,  // generation
             BuildDefaultCompactionPolicy(5),
             0,  // compactionScoreHistorySize
             0,  // cleanupScoreHistorySize
@@ -505,13 +506,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             100,    // reassignFreshChannelsPercentageThreshold
             100,    // reassignMixedChannelsPercentageThreshold
             false,  // reassignSystemChannelsImmediately
-            0,      // lastCommitId
             5,      // channelCount
             0,      // mixedIndexCacheSize
             10000,  // allocationUnit
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
-            1       // compactionRangeCountPerRun
+            1,      // compactionRangeCountPerRun
+            threadSafeState
         );
 
         TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111};

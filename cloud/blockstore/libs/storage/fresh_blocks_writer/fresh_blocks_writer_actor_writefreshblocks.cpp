@@ -57,7 +57,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    const auto commitId = CommitIdsState->GenerateCommitId();
+    const auto commitId = SharedState->GenerateCommitId();
 
     if (commitId == InvalidCommitId) {
         for (auto& r: requestsInBuffer) {
@@ -128,7 +128,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
-        SharedState);
+        SharedState->GetUnflushedFreshBlobByteCount());
 
     Actors.Insert(actor);
 }
@@ -206,7 +206,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
-        SharedState);
+        SharedState->GetUnflushedFreshBlobByteCount());
 
     Actors.Insert(actor);
 }

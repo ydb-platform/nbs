@@ -49,6 +49,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // There is also FreshBlocksCount proto counter. We have to split it into
@@ -292,10 +294,11 @@ private:
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
 
+    TPartitionThreadSafeState& ThreadSafeState;
+
 public:
     TPartitionState(
         NProto::TPartitionMeta meta,
-        ui32 generation,
         ICompactionPolicyPtr compactionPolicy,
         ui32 compactionScoreHistorySize,
         ui32 cleanupScoreHistorySize,
@@ -306,13 +309,13 @@ public:
         ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
         bool reassignSystemChannelsImmediately,
-        ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
-        ui32 compactionRangeCountPerRun);
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeState& threadSafeState);
 
 private:
     bool LoadStateFinished = false;
@@ -379,6 +382,31 @@ public:
     }
 
     bool CheckBlockRange(const TBlockRange64& range) const;
+
+    //
+    // Commits
+    //
+public:
+
+    ui64 GetLastCommitId() const
+    {
+        return ThreadSafeState.GetLastCommitId();
+    }
+
+    ui64 GenerateCommitId() const
+    {
+        return ThreadSafeState.GenerateCommitId();
+    }
+
+    auto GetCommitQueue()
+    {
+        return ThreadSafeState.GetCommitQueue();
+    }
+
+    auto AccessCommitQueue()
+    {
+        return ThreadSafeState.AccessCommitQueue();
+    }
 
     //
     // Channels
@@ -481,6 +509,27 @@ public:
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
+
+    //
+    // TrimFreshLog
+    //
+
+public:
+
+    auto GetTrimFreshLogBarriers()
+    {
+        return ThreadSafeState.GetTrimFreshLogBarriers();
+    }
+
+    auto AccessTrimFreshLogBarriers()
+    {
+        return ThreadSafeState.AccessTrimFreshLogBarriers();
+    }
+
+    ui64 GetTrimFreshLogToCommitId() const
+    {
+        return ThreadSafeState.GetTrimFreshLogToCommitId();
+    }
 
     //
     // Mixed blocks
@@ -858,6 +907,16 @@ public:
     TDuration GetCleanupDelay() const
     {
         return CleanupDelay;
+    }
+
+    auto GetCheckpointsInFlight()
+    {
+        return ThreadSafeState.GetCheckpointsInFlight();
+    }
+
+    auto AccessCheckpointsInFlight()
+    {
+        return ThreadSafeState.AccessCheckpointsInFlight();
     }
 
     ui64 GetCleanupCommitId() const;

@@ -754,7 +754,7 @@ void TPartitionActor::HandleFlush(
             ctx,
             CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
     } else {
-        State->AccessCommitQueue().AcquireBarrier(commitId);
+        State->AccessCommitQueue()->AcquireBarrier(commitId);
         State->GetGarbageQueue().AcquireBarrier(commitId);
 
         auto actor = NCloud::Register<TFlushActor>(
@@ -834,12 +834,14 @@ void TPartitionActor::HandleFlushCompleted(
 
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
-    State->AccessCommitQueue().ReleaseBarrier(commitId);
+    State->AccessCommitQueue()->ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     if (!HasError(msg->Error)) {
         for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(i.CommitId, i.BlockCount);
+            State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
+                i.CommitId,
+                i.BlockCount);
         }
 
         State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);

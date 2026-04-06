@@ -183,7 +183,7 @@ private:
 
     NActors::TActorId FreshBlocksWriter;
 
-    TPartitionSharedStatePtr SharedState;
+    TPartitionThreadSafeStatePtr SharedState;
 
     TRequestInfoPtr Poisoner;
 
