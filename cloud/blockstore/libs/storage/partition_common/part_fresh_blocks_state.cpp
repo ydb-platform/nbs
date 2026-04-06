@@ -200,6 +200,7 @@ void TPartitionFreshBlocksState::RemoveInflightCheckpointCommitId(ui64 commitId)
     if (it == InflightCheckpointCommitIdsToRefCount.end()) {
         return;
     }
+    Y_DEBUG_ABORT_UNLESS(it->second > 0);
     if (--it->second == 0) {
         InflightCheckpointCommitIdsToRefCount.erase(it);
     }
