@@ -13187,9 +13187,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, freshBlocksResultedInErrorCounter->Val());
     }
 
-    Y_UNIT_TEST(CheckpointDataLoss)
+    Y_UNIT_TEST(ShouldNotLoseAnyBlocksWhileWaitingForCheckpointCreation)
     {
-        NProto::TStorageServiceConfig config;
+        auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);

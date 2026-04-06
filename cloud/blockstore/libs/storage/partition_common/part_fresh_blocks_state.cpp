@@ -273,11 +273,11 @@ void TPartitionFreshBlocksState::FindGarbageCommitIds(
         maxCheckpointCommitId = it->first;
     }
 
-    auto notAGarbagedBlocks = std::ranges::partition(
+    auto notGarbagedBlocks = std::ranges::partition(
         commitIds,
         [&](ui64 commitId) { return commitId > maxCheckpointCommitId; });
 
-    commitIds.erase(notAGarbagedBlocks.begin(), notAGarbagedBlocks.end());
+    commitIds.erase(notGarbagedBlocks.begin(), notGarbagedBlocks.end());
 
     NCloud::NStorage::FindGarbageVersions(checkpoints, commitIds, garbage);
 }
