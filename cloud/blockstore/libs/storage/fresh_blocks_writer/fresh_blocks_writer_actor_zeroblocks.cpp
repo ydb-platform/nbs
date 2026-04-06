@@ -57,13 +57,6 @@ void TFreshBlocksWriterActor::HandleZeroBlocks(
         return;
     }
 
-    ui64 commitId = SharedState->GenerateCommitId();
-    if (commitId == InvalidCommitId) {
-        requestInfo->CancelRequest(ctx);
-        RebootOnCommitIdOverflow(ctx, "ZeroBlocks");
-        return;
-    }
-
     const auto requestSize = writeRange.Size() * PartitionConfig.GetBlockSize();
     const bool isFreshRequest = IsFreshRequest(
         *Config,
@@ -75,7 +68,7 @@ void TFreshBlocksWriterActor::HandleZeroBlocks(
         return;
     }
 
-    ZeroFreshBlocks(ctx, requestInfo, ConvertRangeSafe(writeRange), commitId);
+    ZeroFreshBlocks(ctx, requestInfo, ConvertRangeSafe(writeRange));
 }
 
 void TFreshBlocksWriterActor::HandleZeroBlocksCompleted(
@@ -112,6 +105,11 @@ void TFreshBlocksWriterActor::HandleZeroBlocksCompleted(
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;
+
+    SharedState->FinishFreshWrite(
+        commitId,
+        blocksCount,
+        HasError(msg->GetError()));
 }
 
 }  // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

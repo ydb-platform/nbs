@@ -142,8 +142,7 @@ private:
     void ZeroFreshBlocks(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TBlockRange32 writeRange,
-        ui64 commitId);
+        TBlockRange32 writeRange);
 
     void RebootOnCommitIdOverflow(
         const NActors::TActorContext& ctx,

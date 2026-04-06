@@ -363,6 +363,11 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
     WriteAndZeroRequestsInProgress -= requestCount;
 
+    SharedState->FinishFreshWrite(
+        commitId,
+        blocksCount,
+        HasError(msg->GetError()));
+
     // TODO(issue-4875): process drain requests
     // DrainActorCompanion.ProcessDrainRequests(ctx);
 }

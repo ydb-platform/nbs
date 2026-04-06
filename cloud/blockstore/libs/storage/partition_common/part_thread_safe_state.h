@@ -115,6 +115,9 @@ public:
     ui64 GenerateCommitId();
     ui64 GetLastCommitId() const;
 
+    ui64 StartFreshWrite(ui64 blockCount);
+    void FinishFreshWrite(ui64 commitId, ui64 blockCount, bool isError);
+
     auto GetTrimFreshLogBarriers()
     {
         return TConstObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
