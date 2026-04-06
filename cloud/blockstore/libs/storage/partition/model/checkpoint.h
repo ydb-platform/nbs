@@ -122,6 +122,7 @@ public:
     TString Dequeue(ui64 commitId);
 
     bool Empty() const;
+    void GetCommitIds(TVector<ui64>& commitIds) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,6 +144,8 @@ public:
     TTxPtr GetTx(ui64 commitId);
 
     void PopTx(const TString& checkpointId);
+
+    void GetCommitIds(TVector<ui64>& commitIds) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

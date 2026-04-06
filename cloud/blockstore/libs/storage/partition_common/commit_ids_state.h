@@ -17,6 +17,7 @@ private:
     TCommitIdGeneratorPtr CommitIdGenerator;
 
     NPartition::TCheckpointStore Checkpoints;
+    NPartition::TCheckpointsInFlight CheckpointsInFlight;
 
 public:
     explicit TCommitIdsState(TCommitIdGeneratorPtr generator);
@@ -52,6 +53,16 @@ public:
     [[nodiscard]] const auto& GetCheckpoints() const
     {
         return Checkpoints;
+    }
+
+    [[nodiscard]] auto& AccessCheckpointsInFlight()
+    {
+        return CheckpointsInFlight;
+    }
+
+    [[nodiscard]] const auto& GetCheckpointsInFlight() const
+    {
+        return CheckpointsInFlight;
     }
 
     void GetCheckpointCommitIds(TVector<ui64>& result) const

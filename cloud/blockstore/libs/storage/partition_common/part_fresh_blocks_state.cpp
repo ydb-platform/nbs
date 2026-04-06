@@ -196,6 +196,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 {
     TVector<ui64> checkpoints;
     CommitIdsState.GetCheckpointCommitIds(checkpoints);
+    CommitIdsState.GetCheckpointsInFlight().GetCommitIds(checkpoints);
     SortUnique(checkpoints);
 
     TVector<ui64> existingCommitIds;

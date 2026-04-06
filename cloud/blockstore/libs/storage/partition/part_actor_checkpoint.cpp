@@ -20,7 +20,7 @@ void TPartitionActor::ProcessCheckpointQueue(const TActorContext& ctx)
 {
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    auto& checkpointsInflight = State->GetCheckpointsInFlight();
+    auto& checkpointsInflight = State->AccessCheckpointsInFlight();
 
     std::unique_ptr<ITransactionBase> tx;
     while (tx = checkpointsInflight.GetTx(minCommitId)) {
@@ -34,9 +34,9 @@ void TPartitionActor::ProcessNextCheckpointRequest(
 {
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    State->GetCheckpointsInFlight().PopTx(checkpointId);
+    State->AccessCheckpointsInFlight().PopTx(checkpointId);
 
-    auto tx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    auto tx = State->AccessCheckpointsInFlight().GetTx(checkpointId, minCommitId);
     if (tx) {
         ExecuteTx(ctx, std::move(tx));
     }
@@ -92,9 +92,11 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx), commitId);
+    State->AccessCheckpointsInFlight().AddTx(checkpointId, std::move(tx), commitId);
 
-    auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    auto nextTx = State->AccessCheckpointsInFlight().GetTx(
+        checkpointId,
+        minCommitId);
     if (nextTx) {
         ExecuteTx(ctx, std::move(nextTx));
     }
@@ -235,9 +237,11 @@ void TPartitionActor::DeleteCheckpoint(
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx));
+    State->AccessCheckpointsInFlight().AddTx(checkpointId, std::move(tx));
 
-    auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    auto nextTx = State->AccessCheckpointsInFlight().GetTx(
+        checkpointId,
+        minCommitId);
     if (nextTx) {
         ExecuteTx(ctx, std::move(nextTx));
     }
