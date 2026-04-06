@@ -56,6 +56,8 @@ using namespace NCloud::NStorage;
 
 using namespace NLWTrace;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -13183,6 +13185,66 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
         UNIT_ASSERT_VALUES_EQUAL(1, freshBlocksResultedInErrorCounter->Val());
+    }
+
+    Y_UNIT_TEST(CheckpointDataLoss)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool grabPutEvent = false;
+        std::unique_ptr<IEventHandle> putEvent;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut && grabPutEvent) {
+                    putEvent.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.WriteBlocks(0, '1');
+        grabPutEvent = true;
+
+        partition.SendWriteBlocksRequest(1, '2');
+
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(putEvent);
+        grabPutEvent = false;
+
+        partition.SendCreateCheckpointRequest("c1");
+
+        runtime->DispatchEvents({}, 10ms);
+
+        partition.WriteBlocks(0, '3');
+
+        runtime->SendAsync(putEvent.release());
+
+        partition.RecvWriteBlocksResponse();
+        partition.RecvCreateCheckpointResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('1') + GetBlockContent('2'),
+            GetBlocksContent(
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 2), "c1")));
+
+        partition.DeleteCheckpoint("c1");
+
+        partition.Flush();
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
+        }
     }
 }
 

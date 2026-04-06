@@ -189,6 +189,22 @@ void TPartitionFreshBlocksState::DeleteFreshBlock(
     DecrementUnflushedFreshBlocksFromChannelCount(1);
 }
 
+void TPartitionFreshBlocksState::AddInflightCheckpointCommitId(ui64 commitId)
+{
+    ++InflightCheckpointCommitIdsToRefCount[commitId];
+}
+
+void TPartitionFreshBlocksState::RemoveInflightCheckpointCommitId(ui64 commitId)
+{
+    auto it = InflightCheckpointCommitIdsToRefCount.find(commitId);
+    if (it == InflightCheckpointCommitIdsToRefCount.end()) {
+        return;
+    }
+    if (--it->second == 0) {
+        InflightCheckpointCommitIdsToRefCount.erase(it);
+    }
+}
+
 void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     const TBlockRange32& writeRange,
     ui64 commitId,
@@ -207,10 +223,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 
         Blocks.GetCommitIds(blockIndex, existingCommitIds);
 
-        NCloud::NStorage::FindGarbageVersions(
-            checkpoints,
-            existingCommitIds,
-            garbage);
+        this->FindGarbageCommitIds(checkpoints, existingCommitIds, garbage);
         for (auto garbageCommitId: garbage) {
             // This block is being flushed; we'll remove it on AddBlobs
             // and we'll release barrier on FlushCompleted
@@ -246,6 +259,26 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     }
 
     IncrementUnflushedFreshBlocksFromChannelCount(writeRange.Size());
+}
+
+void TPartitionFreshBlocksState::FindGarbageCommitIds(
+    const TVector<ui64>& checkpoints,
+    TVector<ui64>& commitIds,
+    TVector<ui64>& garbage) const
+{
+    auto maxCheckpointCommitId = Max<ui64>();
+    auto it = InflightCheckpointCommitIdsToRefCount.rbegin();
+    if (it != InflightCheckpointCommitIdsToRefCount.rend()) {
+        maxCheckpointCommitId = it->first;
+    }
+
+    auto notAGarbagedBlocks = std::ranges::partition(
+        commitIds,
+        [&](ui64 commitId) { return commitId > maxCheckpointCommitId; });
+
+    commitIds.erase(notAGarbagedBlocks.begin(), notAGarbagedBlocks.end());
+
+    NCloud::NStorage::FindGarbageVersions(checkpoints, commitIds, garbage);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -199,6 +199,8 @@ private:
     TPartitionTrimFreshLogState& TrimFreshLogState;
     ui32 UnflushedFreshBlocksFromChannelCount = 0;
 
+    TMap<ui64, ui64> InflightCheckpointCommitIdsToRefCount;
+
 protected:
     NPartition::TBlockIndex Blocks;
 
@@ -233,11 +235,19 @@ public:
         return UnflushedFreshBlocksFromChannelCount;
     }
 
+    void AddInflightCheckpointCommitId(ui64 commitId);
+    void RemoveInflightCheckpointCommitId(ui64 commitId);
+
 private:
     void WriteFreshBlocksImpl(
         const TBlockRange32& writeRange,
         ui64 commitId,
         auto getBlockContent);
+
+    void FindGarbageCommitIds(
+        const TVector<ui64>& checkpoints,
+        TVector<ui64>& commitIds,
+        TVector<ui64>& garbage) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

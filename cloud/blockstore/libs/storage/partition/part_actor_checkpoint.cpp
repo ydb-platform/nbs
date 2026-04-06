@@ -80,6 +80,10 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     ui64 commitId = State->GetLastCommitId();
 
+    State->GetCleanupQueue().AcquireBarrier(commitId);
+    State->GetGarbageQueue().AcquireBarrier(commitId);
+    State->AddInflightCheckpointCommitId(commitId);
+
     auto tx = CreateTx<TCreateCheckpoint>(
         std::move(requestInfo),
         TCheckpoint(
@@ -166,6 +170,10 @@ void TPartitionActor::CompleteCreateCheckpoint(
     RemoveTransaction(*args.RequestInfo);
 
     ProcessNextCheckpointRequest(ctx, args.Checkpoint.CheckpointId);
+
+    State->GetCleanupQueue().ReleaseBarrier(args.Checkpoint.CommitId);
+    State->GetGarbageQueue().ReleaseBarrier(args.Checkpoint.CommitId);
+    State->RemoveInflightCheckpointCommitId(args.Checkpoint.CommitId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
