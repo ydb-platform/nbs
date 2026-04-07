@@ -147,9 +147,9 @@ public:
 
     auto GetCheckpointsInFlight()
     {
-        return TConstObjectGuard<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
-            StateLock,
-            CheckpointsInFlight);
+        return TConstObjectGuard<
+            NPartition::TCheckpointsInFlight,
+            TAdaptiveLock>(StateLock, CheckpointsInFlight);
     }
 
     auto AccessCheckpointsInFlight()
