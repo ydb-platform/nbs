@@ -484,7 +484,7 @@ class TVolumeStats final
     {
     public:
         TVolumeInfoPin(
-            std::shared_ptr<TVolumeStats> volumeStats,
+            TVolumeStatsPtr volumeStats,
             TString diskId,
             TString clientId)
             : VolumeStats(std::move(volumeStats))
@@ -745,17 +745,15 @@ public:
      *
      * MT-Safe
      *
-     * @return
-     *  true  - decrement succeed
-     *  false - no VolumeInfo with specified [diskId, clientId] found
+     * Unknown VolumeInfo with specified [diskId, clientId] is ignored.
      */
-    bool DecVolumeInfoPinCounter(const TString& diskId, const TString& clientId)
+    void DecVolumeInfoPinCounter(const TString& diskId, const TString& clientId)
     {
         TWriteGuard guard(Lock);
 
         auto volumeInfo = GetVolumeInfoImpl(diskId, clientId);
         if (!volumeInfo) {
-            return false;
+            return;
         }
 
         STORAGE_VERIFY(
@@ -764,8 +762,6 @@ public:
             diskId);
 
         volumeInfo->PinCount--;
-
-        return true;
     }
 
     [[nodiscard]] IVolumeInfoPinPtr PinVolumeInfo(
@@ -808,26 +804,33 @@ public:
 
     bool TrimInstance(TInstant now, TVolumeMap& infos)
     {
-        std::erase_if(infos, [this, now] (const auto& item){
-            const TVolumeInfo& info = *item.second;
-            if (!info.IsPinned() && InactiveClientsTimeout &&
-                now - info.LastRemountTime > InactiveClientsTimeout)
+        std::erase_if(
+            infos,
+            [this, now](const auto& item)
             {
-                UnregisterInstance(
-                    info.VolumeBase,
-                    info.RealInstanceId);
-                std::erase_if(
-                    ClientToRealInstance,
-                    [&info](const auto& client)
-                    {
-                        return TRealInstanceKeyEqual()(
-                            client.second,
-                            info.RealInstanceId);
-                    });
-                return true;
-            }
-            return false;
-        });
+                const TVolumeInfo& info = *item.second;
+
+                // clang-format off
+                const bool removeInstance =
+                       !info.IsPinned()
+                    && InactiveClientsTimeout
+                    && now - info.LastRemountTime > InactiveClientsTimeout;
+                // clang-format on
+
+                if (removeInstance) {
+                    UnregisterInstance(info.VolumeBase, info.RealInstanceId);
+                    std::erase_if(
+                        ClientToRealInstance,
+                        [&info](const auto& client)
+                        {
+                            return TRealInstanceKeyEqual()(
+                                client.second,
+                                info.RealInstanceId);
+                        });
+                    return true;
+                }
+                return false;
+            });
         return infos.empty();
     }
 
