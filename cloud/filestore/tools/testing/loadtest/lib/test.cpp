@@ -17,6 +17,7 @@
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
@@ -33,10 +34,12 @@
 #include <util/system/event.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
+#include <util/system/file.h>
 
 #include <filesystem>
 #include <fstream>
 #include <variant>
+#include <sys/mman.h>
 
 namespace NCloud::NFileStore::NLoadTest {
 
@@ -291,6 +294,8 @@ private:
     bool ShutdownFlag = false;
 
     TString ShmPath;
+    ui64 FileSize = 0;
+    void* Addr = MAP_FAILED;
 
 public:
     TLoadTest(
@@ -312,6 +317,13 @@ public:
         , ClientId(Config.GetClientId() ? Config.GetClientId() : "test-client")
     {
         Log = Logging->CreateLog("RUNNER");
+    }
+
+    ~TLoadTest() override
+    {
+        if (Addr != MAP_FAILED) {
+            munmap(Addr, FileSize);
+        }
     }
 
     TFuture<NProto::TTestStats> Run() override
@@ -534,10 +546,24 @@ private:
         std::ofstream ofs(ShmPath);
         ofs << "this is some text in the new file\n";
         ofs.close();
+
+        FileSize = Config.GetIODepth() * 1024 * 1024;
         std::filesystem::create_directory(std::string(shmDir));
         std::filesystem::resize_file(
             std::string(ShmPath),
-            Config.GetIODepth() * 1024 * 1024);   // resize to 10 MB
+            FileSize);
+        TFileHandle file(ShmPath, OpenExisting | RdWr);
+
+        Addr = mmap(
+            nullptr,
+            FileSize,
+            PROT_READ | PROT_WRITE,
+            MAP_SHARED,
+            file,
+            0 /* offset */);
+        if (Addr == MAP_FAILED) {
+            std::runtime_error("Failed to mmap file");
+        }
 
         auto request = std::make_shared<NProto::TMmapRequest>();
         request->SetFilePath("nfs-load-test/" + shmFileName);
