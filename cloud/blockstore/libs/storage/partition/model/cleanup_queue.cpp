@@ -26,7 +26,8 @@ struct TCleanupQueue::TImpl
     {
         bool result = BlobIds.insert(item.BlobId).second;
         if (result) {
-            Items.insert(item);
+            auto inserted = Items.insert(item).second;
+            Y_DEBUG_ABORT_UNLESS(inserted);
         }
 
         return result;
@@ -36,6 +37,7 @@ struct TCleanupQueue::TImpl
     {
         auto itBlob = BlobIds.find(item.BlobId);
         if (itBlob == BlobIds.end()) {
+            Y_DEBUG_ABORT_UNLESS(!Items.contains(item));
             return false;
         }
 

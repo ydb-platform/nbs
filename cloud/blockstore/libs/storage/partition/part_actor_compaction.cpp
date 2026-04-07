@@ -1740,10 +1740,12 @@ void PrepareRangeCompaction(
             !readBlockMaskOnCompactionOptimizationEnabled)
         {
             if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
-                Y_ABORT_UNLESS(
+                STORAGE_VERIFY_C(
                     kv.second.BlockMask.Defined(),
-                    "Could not read block mask for blob: %s",
-                    ToString(MakeBlobId(tabletId, kv.first)).data());
+                    TWellKnownEntityTypes::TABLET,
+                    tabletId,
+                    TStringBuilder() << "Could not read block mask for blob: "
+                                     << MakeBlobId(tabletId, kv.first));
             } else {
                 ready = false;
             }
@@ -1755,10 +1757,12 @@ void PrepareRangeCompaction(
 
         if (args.ChecksumsEnabled) {
             if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
-                Y_ABORT_UNLESS(
+                STORAGE_VERIFY_C(
                     kv.second.BlobMeta.Defined(),
-                    "Could not read blob meta for blob: %s",
-                    ToString(MakeBlobId(tabletId, kv.first)).data());
+                    TWellKnownEntityTypes::TABLET,
+                    tabletId,
+                    TStringBuilder() << "Could not read blob meta for blob: "
+                                     << MakeBlobId(tabletId, kv.first));
             } else {
                 ready = false;
             }

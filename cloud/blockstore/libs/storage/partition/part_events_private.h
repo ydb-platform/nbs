@@ -118,7 +118,7 @@ struct TWriteFreshBlocksRequest
 
 struct TAffectedBlob
 {
-    // All blocks in the blob contained in BlockRangeHint. Actual blob range can
+    // All blocks in the blob contained in BlobRangeHint. Actual blob range can
     // be smaller.
     TBlockRange32 BlobRangeHint = TBlockRange32::Max();
     TVector<ui16> Offsets;

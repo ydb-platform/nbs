@@ -584,7 +584,6 @@ private:
                     TWellKnownEntityTypes::TABLET,
                     TabletId,
                     "Cleanup queue: blob already in cleanup queue");
-                Y_DEBUG_ABORT_UNLESS(inserted);
                 if (inserted) {
                     db.WriteCleanupQueue(kv.first, DeletionCommitId);
                 }
