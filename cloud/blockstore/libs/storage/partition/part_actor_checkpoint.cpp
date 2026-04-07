@@ -20,7 +20,7 @@ void TPartitionActor::ProcessCheckpointQueue(const TActorContext& ctx)
 {
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    auto& checkpointsInflight = State->GetCheckpointsInFlight();
+    auto& checkpointsInflight = State->AccessCheckpointsInFlight();
 
     std::unique_ptr<ITransactionBase> tx;
     while (tx = checkpointsInflight.GetTx(minCommitId)) {
@@ -28,18 +28,23 @@ void TPartitionActor::ProcessCheckpointQueue(const TActorContext& ctx)
     }
 }
 
-void TPartitionActor::ProcessNextCheckpointRequest(
+bool TPartitionActor::ProcessNextCheckpointRequest(
     const TActorContext& ctx,
     const TString& checkpointId)
 {
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    State->GetCheckpointsInFlight().PopTx(checkpointId);
+    State->AccessCheckpointsInFlight().PopTx(checkpointId);
 
-    auto tx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    auto tx = State->AccessCheckpointsInFlight().GetTx(
+        checkpointId,
+        minCommitId);
     if (tx) {
         ExecuteTx(ctx, std::move(tx));
+        return true;
     }
+
+    return false;
 }
 
 void TPartitionActor::HandleCreateCheckpoint(
@@ -88,13 +93,33 @@ void TPartitionActor::HandleCreateCheckpoint(
             idempotenceId,
             ctx.Now(),
             {}),
-        msg->Record.GetCheckpointType() == NProto::ECheckpointType::WITHOUT_DATA);
+        msg->Record.GetCheckpointType()
+            == NProto::ECheckpointType::WITHOUT_DATA);
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx), commitId);
+    //
+    // In-flight checkpoint CommitIds are used to determine whether block
+    // CommitIds are garbage or not alongside the CommitIds of the created
+    // checkpoints. The only caveat is that in-flight checkpoints don't track
+    // the WithoutData flag so there's a tiny chance that upon GetChangedBlocks
+    // some of the bits would have a false-positive value (1). This should not
+    // cause any problems in real scenarios because:
+    // 1. we expect hi checkpoint id to refer to a checkpoint with data
+    // 2. we expect the user of GetChangedBlocks to use those bits to determine
+    //  whether a specific block should be read or can be skipped and assumed to
+    //  be equal to some older value - in this case the only consequence can be
+    //  reading some blocks when we don't have to.
+    //
 
-    auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    State->AccessCheckpointsInFlight().AddTx(
+        checkpointId,
+        std::move(tx),
+        commitId);
+
+    auto nextTx = State->AccessCheckpointsInFlight().GetTx(
+        checkpointId,
+        minCommitId);
     if (nextTx) {
         ExecuteTx(ctx, std::move(nextTx));
     }
@@ -165,7 +190,9 @@ void TPartitionActor::CompleteCreateCheckpoint(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     RemoveTransaction(*args.RequestInfo);
 
-    ProcessNextCheckpointRequest(ctx, args.Checkpoint.CheckpointId);
+    if (!ProcessNextCheckpointRequest(ctx, args.Checkpoint.CheckpointId)) {
+        ProcessCheckpointQueue(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -235,9 +262,11 @@ void TPartitionActor::DeleteCheckpoint(
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx));
+    State->AccessCheckpointsInFlight().AddTx(checkpointId, std::move(tx));
 
-    auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    auto nextTx = State->AccessCheckpointsInFlight().GetTx(
+        checkpointId,
+        minCommitId);
     if (nextTx) {
         ExecuteTx(ctx, std::move(nextTx));
     }

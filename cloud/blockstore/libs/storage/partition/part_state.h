@@ -399,7 +399,6 @@ public:
     //
 
 private:
-
     void WriteFreshBlocksImpl(
         TPartitionDatabase& db,
         const TBlockRange32& writeRange,
@@ -408,6 +407,7 @@ private:
     {
         TVector<ui64> checkpoints;
         GetCheckpoints().GetCommitIds(checkpoints);
+        GetCheckpointsInFlight().GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -782,7 +782,6 @@ public:
 
 private:
     TOperationState CleanupState;
-    TCheckpointsInFlight CheckpointsInFlight;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
 
@@ -859,11 +858,6 @@ public:
     TDuration GetCleanupDelay() const
     {
         return CleanupDelay;
-    }
-
-    TCheckpointsInFlight& GetCheckpointsInFlight()
-    {
-        return CheckpointsInFlight;
     }
 
     ui64 GetCleanupCommitId() const;
