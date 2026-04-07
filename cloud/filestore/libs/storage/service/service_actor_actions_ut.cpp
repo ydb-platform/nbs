@@ -1,6 +1,7 @@
 #include "service.h"
 #include "service_ut_helpers.h"
 
+#include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -700,6 +701,251 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 r->Record.GetOutput(),
                 &response).ok());
             UNIT_ASSERT(!response.HasEntry());
+        }
+
+        service.DestroySession(headers);
+    }
+
+    Y_UNIT_TEST(ShouldFreezeTablet)
+    {
+        //
+        // Testing a manual repair scenario:
+        // 1. create node
+        // 2. freeze tablet
+        // 3. check that user ops get rejected
+        // 4. recreate the node and the node-ref via unsafe ops
+        // 5. unfreeze tablet
+        // 6. check that user ops work properly again and that unsafe ops'
+        //  results are visible
+        //
+
+        NProto::TStorageConfig config;
+        // being explicit
+        config.SetMultiTabletForwardingEnabled(false);
+        TTestEnv env{{}, config};
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        ui64 tabletId = -1;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvSSProxy::EvDescribeFileStoreResponse)
+                {
+                    using TDesc = TEvSSProxy::TEvDescribeFileStoreResponse;
+                    const auto* msg = event->Get<TDesc>();
+                    const auto& desc =
+                        msg->PathDescription.GetFileStoreDescription();
+                    tabletId = desc.GetIndexTabletId();
+                }
+
+                return false;
+            });
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const ui64 nodeId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1")
+        )->Record.GetNode().GetId();
+
+        {
+            NProtoPrivate::TUnsafeChangeTabletStateRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetFrozen(true);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeChangeTabletState", buf);
+        }
+
+        //
+        // Public API operations are not allowed.
+        //
+
+        {
+            auto response = service.SendAndRecvListNodes(
+                headers,
+                fsId,
+                RootNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto response = service.SendAndRecvUnlinkNode(
+                headers,
+                RootNodeId,
+                "file1",
+                false /* unlinkDirectory */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto response = service.SendAndRecvCreateNode(
+                headers,
+                TCreateNodeArgs::File(RootNodeId, "file2"));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Unsafe operations are allowed.
+        //
+
+        {
+            NProtoPrivate::TUnsafeDeleteNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(RootNodeId);
+            request.SetName("file1");
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeDeleteNodeRef", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeDeleteNodeRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetId(nodeId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeDeleteNode", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeCreateNodeRequest request;
+            request.SetFileSystemId(fsId);
+            auto* node = request.MutableNode();
+            node->SetId(nodeId);
+            node->SetSize(333);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeCreateNode", buf);
+        }
+
+        {
+            NProtoPrivate::TUnsafeCreateNodeRefRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetParentId(RootNodeId);
+            request.SetName("file2");
+            request.SetChildId(nodeId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeCreateNodeRef", buf);
+        }
+
+        //
+        // The Frozen flag should survive tablet reboots.
+        //
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            {} /* config */,
+            false /* updateConfig */);
+        tablet.RebootTablet();
+
+        // remaking session since CreateSessionActor doesn't do it by itself
+        // because EvWakeup never arrives because Scheduling doesn't work by
+        // default and RegistrationObservers get reset after RebootTablet
+        headers = service.InitSession(fsId, "client");
+
+        {
+            auto response = service.SendAndRecvListNodes(
+                headers,
+                fsId,
+                RootNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            NProtoPrivate::TUnsafeChangeTabletStateRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetFrozen(false);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("UnsafeChangeTabletState", buf);
+        }
+
+        //
+        // Public API operations are allowed after unfreezing.
+        //
+
+        {
+            auto response = service.SendAndRecvListNodes(
+                headers,
+                fsId,
+                RootNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            const auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file2", r.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(nodeId, r.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL(333, r.GetNodes(0).GetSize());
+        }
+
+        {
+            auto response = service.SendAndRecvUnlinkNode(
+                headers,
+                RootNodeId,
+                "file2",
+                false /* unlinkDirectory */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        ui64 newNodeId = 0;
+        {
+            auto response = service.SendAndRecvCreateNode(
+                headers,
+                TCreateNodeArgs::File(RootNodeId, "file2"));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            newNodeId = response->Record.GetNode().GetId();
+        }
+
+        {
+            auto response = service.SendAndRecvListNodes(
+                headers,
+                fsId,
+                RootNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            const auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file2", r.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(newNodeId, r.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.GetNodes(0).GetSize());
         }
 
         service.DestroySession(headers);

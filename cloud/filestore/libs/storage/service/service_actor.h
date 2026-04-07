@@ -331,6 +331,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateUnsafeChangeTabletStateActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateGetStorageStatsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

@@ -987,7 +987,36 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTabletPrivate)
+
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+bool TIndexTabletActor::HandleRequestsByFrozenTablet(STFUNC_SIG)
+{
+    switch (ev->GetTypeRewrite()) {
+        //
+        // Unsafe ops may be required to repair a broken filesystem.
+        //
+
+        FILESTORE_UNSAFE_TABLET_REQUESTS(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTablet)
+
+        //
+        // Without WaitReady and CreateSession we won't even be able to connect
+        // to the filesystem properly so they're also required.
+        //
+
+        FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
+        FILESTORE_HANDLE_REQUEST(CreateSession, TEvIndexTablet)
+
 
         default:
             return false;
@@ -999,7 +1028,9 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_HANDLE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_HANDLE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1011,7 +1042,9 @@ bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 bool TIndexTabletActor::IgnoreCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IGNORE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_IGNORE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1026,7 +1059,9 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1157,8 +1192,19 @@ STFUNC(TIndexTabletActor::StateWork)
 {
     TCPUUsageTimerGuard t(CPUUsageTimer);
 
-    // user related requests & events completion
-    if (HandleRequests(ev) || HandleCompletions(ev)) {
+    if (GetFileSystem().GetFrozen()) {
+        if (HandleRequestsByFrozenTablet(ev)) {
+            return;
+        }
+
+        if (RejectRequests(ev)) {
+            return;
+        }
+    } else if (HandleRequests(ev)) {
+        return;
+    }
+
+    if (HandleCompletions(ev)) {
         return;
     }
 

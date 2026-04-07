@@ -164,6 +164,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeDeleteNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeUpdateNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeCreateHandle,                 __VA_ARGS__)                       \
+    xxx(UnsafeChangeTabletState,            __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
@@ -3120,6 +3121,25 @@ struct TTxIndexTablet
         TUnsafeCreateHandle(
             TRequestInfoPtr requestInfo,
             NProtoPrivate::TUnsafeCreateHandleRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {}
+    };
+
+    struct TUnsafeChangeTabletState: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeChangeTabletStateRequest Request;
+        NProtoPrivate::TUnsafeChangeTabletStateResponse Response;
+
+        NProto::TError Error;
+
+        TUnsafeChangeTabletState(
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TUnsafeChangeTabletStateRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}

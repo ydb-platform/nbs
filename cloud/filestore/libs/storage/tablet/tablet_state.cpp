@@ -208,6 +208,12 @@ void TIndexTabletState::UpdateConfig(
         TVector<TString>(shardIds.begin(), shardIds.end()));
 }
 
+void TIndexTabletState::SetFrozen(TIndexTabletDatabase& db, bool frozen)
+{
+    FileSystem.SetFrozen(frozen);
+    db.WriteFileSystem(FileSystem);
+}
+
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&
