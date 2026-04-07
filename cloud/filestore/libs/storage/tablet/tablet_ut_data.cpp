@@ -8034,6 +8034,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     TABLET_TEST(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
     {
         const ui64 wbt = 64 * tabletConfig.BlockSize;
+        const ui64 overloadThreshold = 1;
+        const i64 overloadThresholdMicros = 1'000'000 * overloadThreshold / 100;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(wbt);
@@ -8067,13 +8069,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.SendRequest(tablet.CreateUpdateCounters());
 
+        ui64 overloadedCount = 0;
+
         //
         // Making sure that IndexTabletActor uses some CPU via multiple large
         // writes.
         //
 
         for (ui32 i = 0; i < 100; ++i) {
-            tablet.WriteData(handle, 0, wbt - tabletConfig.BlockSize, 'a');
+            const auto r =
+                tablet.WriteData(handle, 0, wbt - tabletConfig.BlockSize, 'a');
+            overloadedCount +=
+                r->Record.GetHeaders().GetBackendInfo().GetIsOverloaded();
         }
 
         //
@@ -8099,7 +8106,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         }
 
-        UNIT_ASSERT_GT(cpuUsageMicros, 0);
+        UNIT_ASSERT_GT(cpuUsageMicros, overloadThresholdMicros);
 
         {
             //
@@ -8156,8 +8163,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             TTestRegistryVisitor visitor;
             registry->Visit(TInstant::Zero(), visitor);
+            const ui32 expected = overloadedCount + 4;
             visitor.ValidateExpectedCounters({
-                {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+                {
+                    {{"sensor", "OverloadedCount"}, {"filesystem", "test"}},
+                    expected
+                },
             });
         }
 
