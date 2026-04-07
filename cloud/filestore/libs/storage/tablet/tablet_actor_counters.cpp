@@ -561,20 +561,19 @@ void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
         ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType()];
     }
 
-    const i64 prevUsageMicros =
-        Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
     const i64 curUsageMicros = ::NHPTimer::GetSeconds(ticks) * 1'000'000;
     const TInstant ts = ctx.Now();
     if (Metrics.PrevCPUUsageMicrosTs) {
         const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
         if (timeDiff) {
-            const double usageDiff = curUsageMicros - prevUsageMicros;
+            const double usageDiff =
+                curUsageMicros - Metrics.PrevCPUUsageMicros;
             Metrics.CPUUsageRate = 100 * (usageDiff / timeDiff.MicroSeconds());
         }
     }
 
     Metrics.PrevCPUUsageMicrosTs = ts;
-    Store(Metrics.CPUUsageMicros, curUsageMicros);
+    Metrics.PrevCPUUsageMicros = curUsageMicros;
 }
 
 void TIndexTabletActor::HandleUpdateCounters(

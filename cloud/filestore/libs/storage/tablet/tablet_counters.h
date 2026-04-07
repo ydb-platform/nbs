@@ -282,6 +282,7 @@ struct TTabletMetrics
     std::atomic<i64> OverloadedCount{0};
 
     TInstant PrevCPUUsageMicrosTs;
+    i64 PrevCPUUsageMicros{0};
     std::atomic<i64> CPUUsageMicros{0};
     i64 CPUUsageRate = 0;
 
