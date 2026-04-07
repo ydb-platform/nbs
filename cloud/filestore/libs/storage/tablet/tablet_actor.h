@@ -372,12 +372,12 @@ private:
         // we will do so and return immediately.
         if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
             Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
-                1,
+                TTx::TArgs::ShouldAccountInCounters,
                 std::memory_order_relaxed);
             return;
         }
         Metrics.InMemoryIndexStateROCacheMissCount.fetch_add(
-            1,
+            TTx::TArgs::ShouldAccountInCounters,
             std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(ctx, tx);
     }
@@ -388,7 +388,7 @@ private:
         TArgs&&... args)
     {
         Metrics.InMemoryIndexStateRWCount.fetch_add(
-            1,
+            TTx::TArgs::ShouldAccountInCounters,
             std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(
             ctx,

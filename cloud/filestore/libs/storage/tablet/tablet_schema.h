@@ -16,6 +16,18 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace NTabletSchemaPrivate {
+
+template <typename... Tables>
+constexpr ui32 MaxTableId(NKikimr::NIceDb::Schema::SchemaTables<Tables...>*)
+{
+    return std::max({static_cast<ui32>(Tables::TableId)...});
+}
+
+}   // namespace NTabletSchemaPrivate
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TIndexTabletSchema
     : public NKikimr::NIceDb::Schema
 {
@@ -632,6 +644,9 @@ struct TIndexTabletSchema
         ExecutorLogBatching<true>,
         ExecutorLogFlushPeriod<0>
     >;
+
+    static constexpr ui32 MaxTableId =
+        NTabletSchemaPrivate::MaxTableId(static_cast<TTables*>(nullptr));
 };
 
 }   // namespace NCloud::NFileStore::NStorage

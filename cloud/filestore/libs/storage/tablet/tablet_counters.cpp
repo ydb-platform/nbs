@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 
 #include <util/generic/singleton.h>
+#include <util/system/type_name.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -379,7 +380,49 @@ void TTabletMetrics::Register(
 
     REGISTER_LOCAL(ResponseLogEntryCount, EMetricType::MT_ABSOLUTE);
 
+    [&]<typename... Tables>(
+        NKikimr::NIceDb::Schema::SchemaTables<Tables...>*)
+    {
+        ([&] {
+            const TString fullName = TypeName<Tables>();
+            const TString tableName =
+                fullName.substr(fullName.rfind(':') + 1);
+            auto& stats = LocalDbTableStats[Tables::TableId];
+            AggregatableFsRegistry->Register(
+                {CreateSensor("EstimatedRowSize"), CreateLabel("table", tableName)},
+                stats.EstimatedRowSize,
+                EAggregationType::AT_SUM,
+                EMetricType::MT_ABSOLUTE);
+            AggregatableFsRegistry->Register(
+                {CreateSensor("MemSize"), CreateLabel("table", tableName)},
+                stats.MemSize,
+                EAggregationType::AT_SUM,
+                EMetricType::MT_ABSOLUTE);
+            AggregatableFsRegistry->Register(
+                {CreateSensor("MemRowCount"), CreateLabel("table", tableName)},
+                stats.MemRowCount,
+                EAggregationType::AT_SUM,
+                EMetricType::MT_ABSOLUTE);
+            AggregatableFsRegistry->Register(
+                {CreateSensor("MemOpsCount"), CreateLabel("table", tableName)},
+                stats.MemOpsCount,
+                EAggregationType::AT_SUM,
+                EMetricType::MT_ABSOLUTE);
+            AggregatableFsRegistry->Register(
+                {CreateSensor("IndexSize"), CreateLabel("table", tableName)},
+                stats.IndexSize,
+                EAggregationType::AT_SUM,
+                EMetricType::MT_ABSOLUTE);
+            AggregatableFsRegistry->Register(
+                {CreateSensor("SearchHeight"), CreateLabel("table", tableName)},
+                stats.SearchHeight,
+                EAggregationType::AT_SUM,
+                EMetricType::MT_ABSOLUTE);
+        }(), ...);
+    }(static_cast<TIndexTabletSchema::TTables*>(nullptr));
+
 #undef REGISTER_LOCAL
+#undef REGISTER_AGGREGATABLE_SUM_EXT
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER
 

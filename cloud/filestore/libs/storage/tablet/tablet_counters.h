@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "tablet_schema.h"
 #include "tablet_tx.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
@@ -286,6 +287,21 @@ struct TTabletMetrics
     i64 CPUUsageRate = 0;
 
     std::atomic<i64> ResponseLogEntryCount{0};
+
+    // Per-table LocalDB stats, indexed by table ID (1..N).
+    // Index 0 is unused. Table IDs are defined in TIndexTabletSchema.
+    struct TLocalDbTableStats
+    {
+        std::atomic<i64> EstimatedRowSize{0};
+        std::atomic<i64> MemSize{0};
+        std::atomic<i64> MemRowCount{0};
+        std::atomic<i64> MemOpsCount{0};
+        std::atomic<i64> IndexSize{0};
+        std::atomic<i64> SearchHeight{0};
+    };
+    static constexpr ui32 LocalDbTableCount =
+        TIndexTabletSchema::MaxTableId + 1;
+    TLocalDbTableStats LocalDbTableStats[LocalDbTableCount]{};
 
     const NMetrics::IMetricsRegistryPtr StorageRegistry;
     const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
