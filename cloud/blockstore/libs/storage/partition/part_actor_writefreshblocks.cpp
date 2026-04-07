@@ -137,7 +137,7 @@ void TPartitionActor::WriteFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            nullptr);   // unflushedFreshBlobByteCount
+            nullptr);   // sharedState
 
         Actors.Insert(actor);
     } else {
@@ -513,7 +513,7 @@ void TPartitionActor::ZeroFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            nullptr);   // unflushedFreshBlobByteCount
+            nullptr);   // sharedState
 
         Actors.Insert(actor);
     } else {

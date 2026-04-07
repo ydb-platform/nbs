@@ -128,7 +128,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
-        SharedState->GetUnflushedFreshBlobByteCount());
+        SharedState);
 
     Actors.Insert(actor);
 }
@@ -206,7 +206,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
-        SharedState->GetUnflushedFreshBlobByteCount());
+        SharedState);
 
     Actors.Insert(actor);
 }
