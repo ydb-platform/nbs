@@ -298,6 +298,7 @@ def start(argv):
     )
     nfs.start()
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
+    set_env("DISK_MANAGER_RECIPE_NFS_SECURE_PORT", str(nfs.secure_port))
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs.nfs_server.stderr_file_name)
     if args.with_filestore_cells:
@@ -336,8 +337,8 @@ def start(argv):
         nfs2 = nfs
         nfs3 = nfs
 
-    set_env("DISK_MANAGER_RECIPE_NFS2_PORT", str(nfs2.port))
-    set_env("DISK_MANAGER_RECIPE_NFS3_PORT", str(nfs3.port))
+    set_env("DISK_MANAGER_RECIPE_NFS2_SECURE_PORT", str(nfs2.secure_port))
+    set_env("DISK_MANAGER_RECIPE_NFS3_SECURE_PORT", str(nfs3.secure_port))
 
     if args.nfs_only:
         return
@@ -376,9 +377,9 @@ def start(argv):
             is_dataplane=False,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
-            nfs_port=nfs.port,
-            nfs2_port=nfs2.port,
-            nfs3_port=nfs3.port,
+            nfs_port=nfs.secure_port,
+            nfs2_port=nfs2.secure_port,
+            nfs3_port=nfs3.secure_port,
             access_service_port=os.getenv('DISK_MANAGER_RECIPE_ACCESS_SERVICE_PORT'),
             cert_file=cert_file,
             cert_key_file=cert_key_file,
@@ -420,9 +421,9 @@ def start(argv):
             is_dataplane=True,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
-            nfs_port=nfs.port,
-            nfs2_port=nfs2.port,
-            nfs3_port=nfs3.port,
+            nfs_port=nfs.secure_port,
+            nfs2_port=nfs2.secure_port,
+            nfs3_port=nfs3.secure_port,
             s3_port=s3.port,
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
