@@ -34,7 +34,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration Timeout = TDuration::Seconds(15);
 constexpr ui32 CpuLackPercentsMultiplier = 100;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -191,7 +190,9 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
 
     CpuWaitCounter = serverCounters->GetCounter("CpuWait", false);
 
-    ctx.Schedule(Timeout, new TEvents::TEvWakeup);
+    ctx.Schedule(
+        StorageConfig->GetVolumeBalancerWakeupInterval(),
+        new TEvents::TEvWakeup);
 }
 
 bool TVolumeBalancerActor::IsBalancerEnabled() const
@@ -354,7 +355,9 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
                     << " volumes already in progress");
         }
 
-        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+        ctx.Schedule(
+            StorageConfig->GetVolumeBalancerWakeupInterval(),
+            new TEvents::TEvWakeup());
     }
 }
 

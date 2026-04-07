@@ -800,6 +800,8 @@ public:
     GetPoolKindToMediaKindMapping() const;
 
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
+
+    [[nodiscard]] TDuration GetVolumeBalancerWakeupInterval() const;
 };
 
 ui64 GetAllocationUnit(

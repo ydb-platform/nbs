@@ -686,6 +686,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
     xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
+    xxx(VolumeBalancerWakeupInterval,         TDuration,   Seconds(15)        )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

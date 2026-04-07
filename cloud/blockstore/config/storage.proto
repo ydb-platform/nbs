@@ -1528,4 +1528,7 @@ message TStorageServiceConfig
 
     // Shaping throttler configuration.
     optional TShapingThrottlerConfig ShapingThrottlerConfig = 490;
+
+    // Balancer's interval between performance checks (in milliseconds).
+    optional uint32 VolumeBalancerWakeupInterval = 491;
 }
