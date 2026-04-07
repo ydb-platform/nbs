@@ -57,6 +57,31 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TVolumeBrokenNotificationSerializer
+{
+    TDeque<bool> PendingNotifications;
+
+    void Send(
+        const NActors::TActorContext& ctx,
+        const TString& diskId,
+        const TString& logPrefix,
+        bool broken);
+
+public:
+    void Notify(
+        const NActors::TActorContext& ctx,
+        const TString& diskId,
+        const TString& logPrefix,
+        bool broken);
+
+    void OnResponse(
+        const NActors::TActorContext& ctx,
+        const TString& diskId,
+        const TString& logPrefix);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TVolumeActor final
     : public NActors::TActor<TVolumeActor>
     , public TTabletBase<TVolumeActor>
@@ -334,6 +359,9 @@ private:
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
+
+    THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
+    TVolumeBrokenNotificationSerializer VolumeBrokenNotificationSerializer;
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
@@ -1282,6 +1310,14 @@ private:
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleUpdateVolumeHealthResponse(
+        const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void NotifyDiskRegistryVolumeHealth(
+        const NActors::TActorContext& ctx,
+        bool broken);
 
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,

@@ -1551,4 +1551,9 @@ message TStorageServiceConfig
     // It is preferable to enable splitting via EnableRequestSplitter in the
     // Server config.
     optional ERequestSplitterPolicy RequestSplitterPolicy = 492;
+
+    // If true, TVolumeActor notifies DiskRegistry about volume health changes
+    // (VOLUME_HEALTH_UNHEALTHY when all devices are broken, VOLUME_HEALTH_HEALTHY
+    // when recovered) for non-replicated disks.
+    optional bool VolumeHealthNotificationEnabled = 493;
 }

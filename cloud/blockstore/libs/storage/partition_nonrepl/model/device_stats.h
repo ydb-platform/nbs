@@ -58,7 +58,7 @@ public:
     [[nodiscard]] EDeviceStatus GetDeviceStatus() const;
 
     void MarkOk(TInstant requestStartTs, TDuration executionTime);
-    void MarkBroken(TInstant now);
+    void MarkBroken(TInstant now, bool notifyObserver);
     void MarkUnavailable();
     void MarkBackOnline();
 
