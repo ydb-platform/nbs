@@ -22,8 +22,8 @@ void THiveProxyActor::HandleUnlockTablet(
     auto* states = HiveStates.FindPtr(hive);
     auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
     if (!state) {
-        // Unlock with a paired lock
-        auto error = MakeError(E_ARGUMENT, "Unlock without a matching Lock");
+        // Unlock without a paired lock
+        auto error = MakeError(S_ALREADY, "Unlock without a matching Lock");
         auto response =
             std::make_unique<TEvHiveProxy::TEvUnlockTabletResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));

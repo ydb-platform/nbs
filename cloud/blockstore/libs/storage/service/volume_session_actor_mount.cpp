@@ -179,6 +179,9 @@ private:
     bool IsTabletAcquired = false;
     bool VolumeSessionRestartRequired = false;
     bool IsVolumeRestarting = false;
+    bool GentleReleaseInProgress = false;
+    bool GentlePullInProgress = false;
+    bool UseGentlePreemption = false;
 
 public:
     TMountRequestActor(
@@ -206,6 +209,9 @@ private:
 
     void LockVolume(const TActorContext& ctx);
     void UnlockVolume(const TActorContext& ctx);
+
+    void GentlyReleaseVolume(const TActorContext& ctx);
+    void GentlyPullVolume(const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -253,6 +259,14 @@ private:
     void HandleTabletLockLost(
         const TEvHiveProxy::TEvTabletLockLost::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleGentlyReleaseVolumeResponse(
+        const TEvServicePrivate::TEvGentlyReleaseVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -280,6 +294,8 @@ TMountRequestActor::TMountRequestActor(
     //} else if (Params.BindingType == TVolumeInfo::LOCAL) {
     //    MountMode = NProto::VOLUME_MOUNT_LOCAL;
     }
+    UseGentlePreemption = Config->GetGentleBalancerPreemptionEnabled() &&
+                          Params.PreemptionSource == NProto::SOURCE_BALANCER;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -615,6 +631,50 @@ void TMountRequestActor::UnlockVolume(const TActorContext& ctx)
         VolumeTabletId);
 }
 
+void TMountRequestActor::GentlyReleaseVolume(const TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Gently releasing volume",
+        LogTitle.GetWithTime().c_str());
+    GentleReleaseInProgress = true;
+
+    NCloud::Send<TEvServicePrivate::TEvGentlyReleaseVolumeRequest>(
+        ctx,
+        Params.SessionActorId);
+
+    // Now we consider preemption failed
+    // if we didn't get GentlyReleaseVolumeResponse
+    // in GentlePreemptionTimeout,
+    // which means locally mounted volume hasn't been
+    // demoted by new hive-booted tablet
+    ctx.Schedule(
+        Config->GetGentleBalancerPreemptionTimeout(),
+        new TEvents::TEvWakeup());
+}
+
+void TMountRequestActor::GentlyPullVolume(const TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s Gently pulling volume",
+        LogTitle.GetWithTime().c_str());
+
+    RequestVolumeStart(ctx);
+
+    // Now we consider preemption failed
+    // if we didn't get successful StartVolumeResponse
+    // in GentlePreemptionTimeout,
+    // which means volume hasn't been started locally
+    ctx.Schedule(
+        Config->GetGentleBalancerPreemptionTimeout(),
+        new TEvents::TEvWakeup());
+
+    GentlePullInProgress = true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMountRequestActor::NotifyAndDie(const TActorContext& ctx)
@@ -669,7 +729,11 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         }
 
         if (!VolumeStarted && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
-            RequestVolumeStart(ctx);
+            if (UseGentlePreemption) {
+                GentlyPullVolume(ctx);
+            } else {
+                RequestVolumeStart(ctx);
+            }
             return;
         }
 
@@ -694,7 +758,11 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         const bool mayStopVolume = Params.IsLocalMounter || VolumeStarted;
 
         if (mayStopVolume && MountMode == NProto::VOLUME_MOUNT_REMOTE) {
-            RequestVolumeStop(ctx);
+            if (UseGentlePreemption) {
+                GentlyReleaseVolume(ctx);
+            } else {
+                RequestVolumeStop(ctx);
+            }
             return;
         }
     } else if (VolumeStarted || error.GetCode() == E_BS_MOUNT_CONFLICT) {
@@ -795,6 +863,15 @@ void TMountRequestActor::HandleStartVolumeResponse(
         }
     } else {
         if (mountMode == NProto::VOLUME_MOUNT_LOCAL) {
+            if (GentlePullInProgress) {
+                ctx.Schedule(
+                    Config->GetGentleBalancerPreemptionRetryDelay(),
+                    std::make_unique<IEventHandle>(
+                        Params.SessionActorId,
+                        ctx.SelfID,
+                        new TEvServicePrivate::TEvStartVolumeRequest{VolumeTabletId}));
+                return;
+            }
             VolumeSessionRestartRequired = true;
             NotifyAndDie(ctx);
             return;
@@ -826,6 +903,48 @@ void TMountRequestActor::HandleStopVolumeResponse(
     NotifyAndDie(ctx);
 }
 
+void TMountRequestActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    if (GentleReleaseInProgress) {
+        GentleReleaseInProgress = false;
+        // Hive didn't boot new tablet in time, consider fail
+        Error = MakeError(
+            E_TIMEOUT,
+            "Gentle Release timeout waiting for volume release to hive");
+        NotifyAndDie(ctx);
+        return;
+    }
+    if (GentlePullInProgress) {
+        // Tablet didn't start locally in time, consider fail
+        Error = MakeError(
+            E_TIMEOUT,
+            "Gentle Pull timeout waiting for volume start");
+        NotifyAndDie(ctx);
+        return;
+    }
+}
+
+void TMountRequestActor::HandleGentlyReleaseVolumeResponse(
+    const TEvServicePrivate::TEvGentlyReleaseVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!GentleReleaseInProgress) {
+        return;
+    }
+    auto msg = ev->Get();
+    auto error = msg->GetError();
+    if (SUCCEEDED(error.GetCode())) {
+        GentleReleaseInProgress = false;
+        WaitForVolume(ctx, Config->GetLocalStartAddClientTimeout());
+        return;
+    }
+    Error = error;
+    NotifyAndDie(ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TMountRequestActor::StateWork)
@@ -842,6 +961,12 @@ STFUNC(TMountRequestActor::StateWork)
 
         HFunc(TEvHiveProxy::TEvUnlockTabletResponse, HandleUnlockTabletResponse);
         HFunc(TEvHiveProxy::TEvLockTabletResponse, HandleLockTabletResponse);
+
+        HFunc(
+            TEvServicePrivate::TEvGentlyReleaseVolumeResponse,
+            HandleGentlyReleaseVolumeResponse);
+
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         IgnoreFunc(TEvHiveProxy::TEvTabletLockLost);
 

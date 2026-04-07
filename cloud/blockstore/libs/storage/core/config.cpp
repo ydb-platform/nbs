@@ -692,6 +692,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
         bool,                                                                  \
         false                                                                 )\
+    xxx(GentleBalancerPreemptionEnabled,      bool,        false              )\
+    xxx(GentleBalancerPreemptionTimeout,      TDuration,   Hours(24)          )\
+    xxx(GentleBalancerPreemptionRetryDelay,   TDuration,   Seconds(60)        )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
