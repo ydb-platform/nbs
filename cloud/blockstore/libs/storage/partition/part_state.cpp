@@ -63,7 +63,7 @@ TPartitionState::TPartitionState(
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeState& threadSafeState)
+        TPartitionThreadSafeStatePtr threadSafeState)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -80,7 +80,7 @@ TPartitionState::TPartitionState(
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
-    , ThreadSafeState(threadSafeState)
+    , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))

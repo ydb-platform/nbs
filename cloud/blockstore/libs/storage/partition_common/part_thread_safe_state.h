@@ -13,13 +13,15 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename T, typename TLock>
-struct TGuarg
+struct TObjectGuard
 {
     TGuard<TLock> Guard;
     T& Value;
 
-    TGuarg(TLock& lock, T& value)
+    TObjectGuard(TLock& lock, T& value)
         : Guard(lock)
         , Value(value)
     {}
@@ -36,12 +38,12 @@ struct TGuarg
 };
 
 template <typename T, typename TLock>
-struct TConstGuarg
+struct TConstObjectGuard
 {
     TGuard<TLock> Guard;
     const T& Value;
 
-    TConstGuarg(TLock& lock, const T& value)
+    TConstObjectGuard(TLock& lock, const T& value)
         : Guard(lock)
         , Value(value)
     {}
@@ -56,6 +58,8 @@ struct TConstGuarg
         return &Value;
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TPartitionThreadSafeState
     : public std::enable_shared_from_this<TPartitionThreadSafeState>
@@ -113,14 +117,14 @@ public:
 
     auto GetTrimFreshLogBarriers()
     {
-        return TConstGuarg<NPartition::TBarriers, TAdaptiveLock>(
+        return TConstObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
             StateLock,
             TrimFreshLogBarriers);
     }
 
     auto AccessTrimFreshLogBarriers()
     {
-        return TGuarg<NPartition::TBarriers, TAdaptiveLock>(
+        return TObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
             StateLock,
             TrimFreshLogBarriers);
     }
@@ -129,28 +133,28 @@ public:
 
     auto GetCommitQueue()
     {
-        return TConstGuarg<NPartition::TCommitQueue, TAdaptiveLock>(
+        return TConstObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
             StateLock,
             CommitQueue);
     }
 
     auto AccessCommitQueue()
     {
-        return TGuarg<NPartition::TCommitQueue, TAdaptiveLock>(
+        return TObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
             StateLock,
             CommitQueue);
     }
 
     auto GetCheckpointsInFlight()
     {
-        return TConstGuarg<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
+        return TConstObjectGuard<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
             StateLock,
             CheckpointsInFlight);
     }
 
     auto AccessCheckpointsInFlight()
     {
-        return TGuarg<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
+        return TObjectGuard<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
             StateLock,
             CheckpointsInFlight);
     }

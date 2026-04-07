@@ -233,7 +233,7 @@ void TPartitionActor::CompleteLoadState(
         maxBlobsPerUnit,
         maxBlobsPerRange,
         Config->GetCompactionRangeCountPerRun(),
-        *SharedState);
+        SharedState);
 
     CreateFreshBlocksCompanionClient();
 
@@ -245,7 +245,7 @@ void TPartitionActor::CompleteLoadState(
         *State,   // channelsState
         *State,   // freshBlobState
         *State,   // flushState
-        *SharedState,   // threadSafeState
+        SharedState,   // threadSafeState
         *State,   // freshBlocksState
         LogTitle);
 

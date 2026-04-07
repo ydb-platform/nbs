@@ -171,7 +171,7 @@ class TPartitionFreshBlocksState
 private:
     const TCommitIdsState& CommitIdsState;
     const TPartitionFlushState& FlushState;
-    TPartitionThreadSafeState& ThreadSafeState;
+    TPartitionThreadSafeStatePtr ThreadSafeState;
 
     ui32 UnflushedFreshBlocksFromChannelCount = 0;
 
@@ -182,7 +182,7 @@ public:
     TPartitionFreshBlocksState(
         const TCommitIdsState& commitIdsState,
         const TPartitionFlushState& flushState,
-        TPartitionThreadSafeState& threadSafeState);
+        TPartitionThreadSafeStatePtr threadSafeState);
 
     void InitFreshBlocks(
         const TVector<NPartition::TOwningFreshBlock>& freshBlocks);

@@ -294,7 +294,7 @@ private:
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
 
-    TPartitionThreadSafeState& ThreadSafeState;
+    TPartitionThreadSafeStatePtr ThreadSafeState;
 
 public:
     TPartitionState(
@@ -315,7 +315,7 @@ public:
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeState& threadSafeState);
+        TPartitionThreadSafeStatePtr threadSafeState);
 
 private:
     bool LoadStateFinished = false;
@@ -390,22 +390,22 @@ public:
 
     ui64 GetLastCommitId() const
     {
-        return ThreadSafeState.GetLastCommitId();
+        return ThreadSafeState->GetLastCommitId();
     }
 
     ui64 GenerateCommitId() const
     {
-        return ThreadSafeState.GenerateCommitId();
+        return ThreadSafeState->GenerateCommitId();
     }
 
     auto GetCommitQueue()
     {
-        return ThreadSafeState.GetCommitQueue();
+        return ThreadSafeState->GetCommitQueue();
     }
 
     auto AccessCommitQueue()
     {
-        return ThreadSafeState.AccessCommitQueue();
+        return ThreadSafeState->AccessCommitQueue();
     }
 
     //
@@ -435,7 +435,7 @@ private:
     {
         TVector<ui64> checkpoints;
         GetCheckpoints().GetCommitIds(checkpoints);
-        ThreadSafeState.GetCheckpointsInFlight()->GetCommitIds(checkpoints);
+        ThreadSafeState->GetCheckpointsInFlight()->GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -518,17 +518,17 @@ public:
 
     auto GetTrimFreshLogBarriers()
     {
-        return ThreadSafeState.GetTrimFreshLogBarriers();
+        return ThreadSafeState->GetTrimFreshLogBarriers();
     }
 
     auto AccessTrimFreshLogBarriers()
     {
-        return ThreadSafeState.AccessTrimFreshLogBarriers();
+        return ThreadSafeState->AccessTrimFreshLogBarriers();
     }
 
     ui64 GetTrimFreshLogToCommitId() const
     {
-        return ThreadSafeState.GetTrimFreshLogToCommitId();
+        return ThreadSafeState->GetTrimFreshLogToCommitId();
     }
 
     //
@@ -911,12 +911,12 @@ public:
 
     auto GetCheckpointsInFlight()
     {
-        return ThreadSafeState.GetCheckpointsInFlight();
+        return ThreadSafeState->GetCheckpointsInFlight();
     }
 
     auto AccessCheckpointsInFlight()
     {
-        return ThreadSafeState.AccessCheckpointsInFlight();
+        return ThreadSafeState->AccessCheckpointsInFlight();
     }
 
     ui64 GetCleanupCommitId() const;
