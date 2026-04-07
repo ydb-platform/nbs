@@ -94,8 +94,8 @@ struct TBootstrap
             Processor,
             Timer,
             WriteBackCacheStateStats,
-            Stats->GetNodeStateHolderStats(),
             Stats->GetWriteDataRequestManagerStats(),
+            Stats->GetNodeStateHolderStats(),
             "[test]");
 
         return State->Init(Storage);

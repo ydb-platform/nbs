@@ -38,8 +38,8 @@ public:
               *this,
               std::make_shared<TTestTimer>(),
               Stats->GetWriteBackCacheStateStats(),
-              Stats->GetNodeStateHolderStats(),
               Stats->GetWriteDataRequestManagerStats(),
+              Stats->GetNodeStateHolderStats(),
               "[tag]")
     {
         State.Init(std::make_shared<TTestStorage>(Stats));

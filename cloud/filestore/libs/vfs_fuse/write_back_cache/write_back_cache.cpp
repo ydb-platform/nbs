@@ -88,8 +88,8 @@ public:
               *this,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),
-              args.Stats->GetNodeStateHolderStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
+              args.Stats->GetNodeStateHolderStats(),
               LogTag)
     {
         auto createPersistentStorageResult =

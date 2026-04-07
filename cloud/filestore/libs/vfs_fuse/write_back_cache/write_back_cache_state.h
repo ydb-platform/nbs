@@ -71,8 +71,8 @@ public:
         IQueuedOperationsProcessor& processor,
         ITimerPtr timer,
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
-        INodeStateHolderStatsPtr nodeStateHolderStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
+        INodeStateHolderStatsPtr nodeStateHolderStats,
         TString logTag);
 
     // Read state from the persistent storage

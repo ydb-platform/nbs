@@ -16,8 +16,8 @@ TWriteBackCacheState::TWriteBackCacheState(
     IQueuedOperationsProcessor& processor,
     ITimerPtr timer,
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
-    INodeStateHolderStatsPtr nodeStateHolderStats,
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
+    INodeStateHolderStatsPtr nodeStateHolderStats,
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
