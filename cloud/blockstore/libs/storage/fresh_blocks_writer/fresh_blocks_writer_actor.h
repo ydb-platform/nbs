@@ -74,6 +74,7 @@ private:
     std::unique_ptr<TIOCompanion> IOCompanion;
 
     TPartitionThreadSafeStatePtr SharedState;
+
 public:
     TFreshBlocksWriterActor(
         TStorageConfigPtr config,

@@ -435,7 +435,7 @@ private:
     {
         TVector<ui64> checkpoints;
         GetCheckpoints().GetCommitIds(checkpoints);
-        GetCheckpointsInFlight().GetCommitIds(checkpoints);
+        ThreadSafeState.GetCheckpointsInFlight()->GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
