@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
+#include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -101,6 +103,11 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                     TABLEH() { out << "Volume"; }
                     TABLEH() { out << "Preemption allowed"; }
                     TABLEH() { out << "Suffer Count"; }
+                    if constexpr (Y_IS_DEBUG_BUILD) {
+                        TABLEH() {
+                            out << "Debug action";
+                        }
+                    }
                 }
             }
             for (const auto& v: Volumes) {
@@ -114,6 +121,11 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                         }
                         TABLED() {
                             out << v.second.SufferCount;
+                        }
+                        if constexpr (Y_IS_DEBUG_BUILD) {
+                            TABLED() {
+                                BuildAdvisoryPushButton(out, v.first);
+                            }
                         }
                     }
                 }
@@ -133,6 +145,11 @@ void TVolumeBalancerState::RenderPreemptedVolumes(
                     TABLEH() { out << "Volume"; }
                     TABLEH() { out << "Next pull delay timeout"; }
                     TABLEH() { out << "Estimated time to pull back"; }
+                    if constexpr (Y_IS_DEBUG_BUILD) {
+                        TABLEH() {
+                            out << "Debug action";
+                        }
+                    }
                 }
             }
             for (const auto& v: Volumes) {
@@ -144,6 +161,11 @@ void TVolumeBalancerState::RenderPreemptedVolumes(
                         TABLED() { out << v.first; }
                         TABLED() { out << v.second.PullInterval; }
                         TABLED() { out << v.second.NextPullAttempt; }
+                        if constexpr (Y_IS_DEBUG_BUILD) {
+                            TABLED() {
+                                BuildAdvisoryPullButton(out, v.first);
+                            }
+                        }
                     }
                 }
             }
@@ -194,6 +216,50 @@ void TVolumeBalancerState::RenderState(TStringStream& out) const
     }
 }
 
+void TVolumeBalancerState::BuildAdvisoryPushButton(
+    IOutputStream& out,
+    const TString& diskId)
+{
+    out << "<form method='POST' name='advPush" << diskId << "'>\n";
+    out << "<input class='btn btn-primary' type='button' value='advisoryPush'"
+        << " data-toggle='modal' data-target='#advisory-push" << diskId
+        << "'/>";
+    out << "<input type='hidden' name='action' value='advisoryPush'/>";
+    out << "<input type='hidden' name='type' value='advisoryPush'/>";
+    out << "<input type='hidden' name='Volume' value='" << diskId << "'/>";
+    out << "</form>\n";
+
+    NMonitoringUtils::BuildConfirmActionDialog(
+        out,
+        TStringBuilder() << "advisory-push" << diskId,
+        "advisory-push",
+        TStringBuilder()
+            << "Are you sure you want to request advisoryPush for volume?",
+        TStringBuilder() << "advisoryPush(\"" << diskId << "\");");
+}
+
+void TVolumeBalancerState::BuildAdvisoryPullButton(
+    IOutputStream& out,
+    const TString& diskId)
+{
+    out << "<form method='POST' name='advPull" << diskId << "'>\n";
+    out << "<input class='btn btn-primary' type='button' value='advisoryPull'"
+        << " data-toggle='modal' data-target='#advisory-pull" << diskId
+        << "'/>";
+    out << "<input type='hidden' name='action' value='advisoryPull'/>";
+    out << "<input type='hidden' name='type' value='advisoryPull'/>";
+    out << "<input type='hidden' name='Volume' value='" << diskId << "'/>";
+    out << "</form>\n";
+
+    NMonitoringUtils::BuildConfirmActionDialog(
+        out,
+        TStringBuilder() << "advisory-pull" << diskId,
+        "advisory-pull",
+        TStringBuilder()
+            << "Are you sure you want to request advisoryPull for volume?",
+        TStringBuilder() << "advisoryPull(\"" << diskId << "\");");
+}
+
 void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 {
     HTML(out) {
@@ -208,6 +274,17 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 
         TAG(TH3) { out << "Preempted Volumes"; }
         RenderPreemptedVolumes(out, now);
+
+        out << R"___(
+            <script type='text/javascript'>
+            function advisoryPush(diskId) {
+                document.forms['advPush'+diskId].submit();
+            }
+            function advisoryPull(diskId) {
+                document.forms['advPull'+diskId].submit();
+            }
+            </script>
+        )___";
     }
 }
 
