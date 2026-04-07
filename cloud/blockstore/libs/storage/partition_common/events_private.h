@@ -12,7 +12,6 @@
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/commit_id_generator.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -394,8 +393,6 @@ struct TEvPartitionCommonPrivate
         TVector<EChannelPermissions> ChannelPermissions;
 
         TPartitionThreadSafeStatePtr SharedState;
-
-        TCommitIdGeneratorPtr CommitIdGenerator;
     };
 
 

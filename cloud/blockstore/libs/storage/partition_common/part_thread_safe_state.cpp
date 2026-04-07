@@ -39,7 +39,6 @@ ui64 TPartitionThreadSafeState::GetLastCommitId() const
     return GetLastCommitIdImpl();
 }
 
-
 ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
 {
     TGuard guard(StateLock);
@@ -53,6 +52,10 @@ ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
 
 ui64 TPartitionThreadSafeState::GenerateCommitIdImpl()
 {
+    if (LastCommitId == Max<ui32>()) {
+        return InvalidCommitId;
+    }
+
     ++LastCommitId;
     return MakeCommitId(Generation, LastCommitId);
 }

@@ -2,9 +2,6 @@
 
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/commit_id_generator.h>
-
-#include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
