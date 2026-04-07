@@ -196,6 +196,7 @@ func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
 	)
 
 	testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
+	testcommon.GetTaskError(t, ctx, taskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -243,6 +244,7 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 
 	for _, taskID := range firstTaskIDs {
 		testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
+		testcommon.GetTaskError(t, ctx, taskID)
 	}
 
 	// Second iteration: ensure tasks are rescheduled.
@@ -257,5 +259,6 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 
 	for _, taskID := range secondTaskIDs {
 		testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
+		testcommon.GetTaskError(t, ctx, taskID)
 	}
 }

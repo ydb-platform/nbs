@@ -756,6 +756,19 @@ func WaitOperationEnded(
 	require.NoError(t, err)
 }
 
+func GetTaskError(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	err = scheduler.GetTaskError(ctx, taskID)
+	require.NoError(t, err)
+}
+
 func GetTaskMetadata(
 	t *testing.T,
 	ctx context.Context,

@@ -112,6 +112,10 @@ type Scheduler interface {
 	GetOperation(ctx context.Context, taskID string) (*operation.Operation, error)
 
 	// Used in tests.
+	// Returns task error if task has finished with error, nil otherwise.
+	GetTaskError(ctx context.Context, taskID string) error
+
+	// Used in tests.
 	// Synchronously waits for task response.
 	WaitTaskSync(
 		ctx context.Context,
