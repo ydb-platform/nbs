@@ -3119,8 +3119,8 @@ struct TTxIndexTablet
         NProto::TError Error;
 
         TUnsafeCreateHandle(
-            TRequestInfoPtr requestInfo,
-            NProtoPrivate::TUnsafeCreateHandleRequest request)
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeCreateHandleRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -3135,11 +3135,9 @@ struct TTxIndexTablet
         const NProtoPrivate::TUnsafeChangeTabletStateRequest Request;
         NProtoPrivate::TUnsafeChangeTabletStateResponse Response;
 
-        NProto::TError Error;
-
         TUnsafeChangeTabletState(
-            TRequestInfoPtr requestInfo,
-            NProtoPrivate::TUnsafeChangeTabletStateRequest request)
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeChangeTabletStateRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}

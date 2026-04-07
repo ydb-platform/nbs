@@ -787,9 +787,9 @@ void TIndexTabletActor::HandleUnsafeCreateHandle(
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_UnsafeCreateHandle(
-        const TActorContext& ctx,
-        TTransactionContext& tx,
-        TTxIndexTablet::TUnsafeCreateHandle& args)
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeCreateHandle& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -885,9 +885,9 @@ void TIndexTabletActor::HandleUnsafeChangeTabletState(
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_UnsafeChangeTabletState(
-        const TActorContext& ctx,
-        TTransactionContext& tx,
-        TTxIndexTablet::TUnsafeChangeTabletState& args)
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeChangeTabletState& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -914,8 +914,7 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>(
-            args.Error);
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
 
     LOG_INFO(
         ctx,
