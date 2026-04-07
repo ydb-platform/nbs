@@ -94,8 +94,6 @@ void TPartitionActor::HandleCreateCheckpoint(
         msg->Record.GetCheckpointType()
             == NProto::ECheckpointType::WITHOUT_DATA);
 
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
     //
     // In-flight checkpoint CommitIds are used to determine whether block
     // CommitIds are garbage or not alongside the CommitIds of the created
@@ -110,17 +108,7 @@ void TPartitionActor::HandleCreateCheckpoint(
     //  reading some blocks when we don't have to.
     //
 
-    State->AccessCheckpointsInFlight()->AddTx(
-        checkpointId,
-        std::move(tx),
-        commitId);
-
-    auto nextTx = State->AccessCheckpointsInFlight()->GetTx(
-        checkpointId,
-        minCommitId);
-    if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx));
-    }
+    State->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, commitId);
 }
 
 bool TPartitionActor::PrepareCreateCheckpoint(
@@ -258,16 +246,7 @@ void TPartitionActor::DeleteCheckpoint(
         reply,
         deleteOnlyData);
 
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
-    State->AccessCheckpointsInFlight()->AddTx(checkpointId, std::move(tx));
-
-    auto nextTx = State->AccessCheckpointsInFlight()->GetTx(
-        checkpointId,
-        minCommitId);
-    if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx));
-    }
+    State->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, 0);
 }
 
 bool TPartitionActor::PrepareDeleteCheckpoint(

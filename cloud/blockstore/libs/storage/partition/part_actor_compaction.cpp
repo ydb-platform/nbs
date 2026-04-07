@@ -1480,16 +1480,7 @@ void TPartitionActor::HandleCompaction(
         msg->CompactionOptions,
         std::move(ranges));
 
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-    Y_ABORT_UNLESS(minCommitId <= commitId);
-
-    if (minCommitId == commitId) {
-        // start execution
-        ExecuteTx(ctx, std::move(tx));
-    } else {
-        // delay execution until all previous commits completed
-        State->AccessCommitQueue()->Enqueue(std::move(tx), commitId);
-    }
+    State->WaitCommitForCompaction(ctx, std::move(tx), commitId);
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)

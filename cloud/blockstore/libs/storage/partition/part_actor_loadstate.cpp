@@ -213,7 +213,7 @@ void TPartitionActor::CompleteLoadState(
         Config->GetSSDMaxBlobsPerRange() :
         Config->GetHDDMaxBlobsPerRange();
 
-    SharedState->Init(Executor()->Generation(), 0);
+    SharedState->Init(SelfId(), Executor()->Generation(), 0);
 
     State = std::make_unique<TPartitionState>(
         *args.Meta,

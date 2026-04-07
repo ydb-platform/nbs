@@ -200,8 +200,7 @@ void TCheckpointsInFlight::AddTx(
     const TString& checkpointId,
     TTxPtr transaction)
 {
-    auto& queue = PendingTransactions[checkpointId];
-    queue.emplace_back(std::move(transaction), 0);
+    AddTx(checkpointId, std::move(transaction), 0);
 }
 
 void TCheckpointsInFlight::AddTx(
@@ -212,7 +211,7 @@ void TCheckpointsInFlight::AddTx(
     auto& queue = PendingTransactions[checkpointId];
     queue.emplace_back(std::move(transaction), commitId);
 
-    if (queue.size() == 1) {
+    if (queue.size() == 1 && commitId != 0) {
         CommitIdQueue.Enqueue(checkpointId, commitId);
     }
 }

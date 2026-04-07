@@ -77,7 +77,7 @@ public:
 private:
     TAdaptiveLock StateLock;
 
-    const NActors::TActorId PartitionActorId;
+    NActors::TActorId PartitionActorId;
 
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
@@ -87,17 +87,20 @@ private:
 
     NPartition::TCheckpointsInFlight CheckpointsInFlight;
 
+    std::atomic<ui64> FreshBlocksInFlight = 0;
+
 public:
-    explicit TPartitionThreadSafeState(NActors::TActorId partitionActorId)
-        : PartitionActorId(partitionActorId)
-    {}
+    TPartitionThreadSafeState() = default;
 
     TPartitionThreadSafeState(
         NActors::TActorId partitionActorId,
         ui32 generation,
         ui32 lastCommitId);
 
-    void Init(ui32 generation, ui32 lastCommitId);
+    void Init(
+        NActors::TActorId partitionActorId,
+        ui32 generation,
+        ui32 lastCommitId);
 
     NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
     {
@@ -123,7 +126,11 @@ public:
     ui64 GetLastCommitId() const;
 
     ui64 StartFreshWrite(ui64 blockCount);
-    void FinishFreshWrite(ui64 commitId, ui64 blockCount, bool isError);
+    void FinishFreshWrite(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        ui64 blockCount,
+        bool isError);
 
     auto GetTrimFreshLogBarriers()
     {
@@ -140,13 +147,6 @@ public:
     }
 
     ui64 GetTrimFreshLogToCommitId() const;
-
-    ui64 StartFreshWrite(ui64 blockCount);
-    void FinishFreshWrite(
-        const NActors::TActorContext& ctx,
-        ui64 commitId,
-        ui64 blockCount,
-        bool isError);
 
     auto GetCommitQueue()
     {
@@ -181,7 +181,18 @@ public:
         std::unique_ptr<ITransactionBase> tx,
         ui64 commitId);
 
+    void WaitCommitForCheckpoint(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<ITransactionBase> tx,
+        const TString& checkpointId,
+        ui64 commitId);
+
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
+
+    void IncrementFreshBlocksInFlight(size_t value);
+    void DecrementFreshBlocksInFlight(size_t value);
+
+    size_t GetFreshBlocksInFlight() const;
 
 private:
     ui64 GenerateCommitIdImpl();

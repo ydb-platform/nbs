@@ -41,8 +41,9 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
                 r.Data.ReplyLocal,
                 MakeError(
                     E_REJECTED,
-                    TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                                     << FlushState->GetUnflushedFreshBlobByteCount(),
+                    TStringBuilder()
+                        << "FreshByteCountHardLimit exceeded: "
+                        << SharedState->UnflushedFreshBlobByteCount.load(),
                     flags));
 
             LWTRACK(
@@ -94,7 +95,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
 
         blockCount += r.Weight;
 
-        FlushState->IncrementFreshBlocksInFlight(r.Data.Range.Size());
+        SharedState->IncrementFreshBlocksInFlight(r.Data.Range.Size());
 
         blockRanges.push_back(r.Data.Range);
         writeHandlers.push_back(r.Data.Handler);
@@ -138,7 +139,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     TRequestInfoPtr requestInfo,
     TBlockRange32 writeRange)
 {
-    if (FlushState->GetUnflushedFreshBlobByteCount() >=
+    if (SharedState->UnflushedFreshBlobByteCount.load() >=
         Config->GetFreshByteCountHardLimit())
     {
         ui32 flags = 0;
@@ -146,8 +147,9 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         auto response =
             std::make_unique<TEvService::TEvZeroBlocksResponse>(MakeError(
                 E_REJECTED,
-                TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                                 << FlushState->GetUnflushedFreshBlobByteCount(),
+                TStringBuilder()
+                    << "FreshByteCountHardLimit exceeded: "
+                    << SharedState->UnflushedFreshBlobByteCount.load(),
                 flags));
 
         LWTRACK(
@@ -163,7 +165,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     ++WriteAndZeroRequestsInProgress;
 
     const ui32 blockCount = writeRange.Size();
-    FlushState->IncrementFreshBlocksInFlight(blockCount);
+    SharedState->IncrementFreshBlocksInFlight(blockCount);
 
     const auto commitId = SharedState->StartFreshWrite(blockCount);
 

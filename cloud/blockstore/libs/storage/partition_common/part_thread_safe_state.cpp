@@ -20,11 +20,15 @@ TPartitionThreadSafeState::TPartitionThreadSafeState(
     ui32 lastCommitId)
     : PartitionActorId(partitionActorId)
 {
-    Init(generation, lastCommitId);
+    Init(partitionActorId, generation, lastCommitId);
 }
 
-void TPartitionThreadSafeState::Init(ui32 generation, ui32 lastCommitId)
+void TPartitionThreadSafeState::Init(
+    NActors::TActorId partitionActorId,
+    ui32 generation,
+    ui32 lastCommitId)
 {
+    PartitionActorId = partitionActorId;
     Generation = generation;
     LastCommitId = lastCommitId;
 }
@@ -48,19 +52,29 @@ ui64 TPartitionThreadSafeState::StartFreshWrite(ui64 blockCount)
     auto commitId = GenerateCommitIdImpl();
 
     TrimFreshLogBarriers.AcquireBarrierN(commitId, blockCount);
+    CommitQueue.AcquireBarrier(commitId);
     return commitId;
 }
 
 void TPartitionThreadSafeState::FinishFreshWrite(
+    const NActors::TActorContext& ctx,
     ui64 commitId,
     ui64 blockCount,
     bool isError)
 {
-    TGuard guard(StateLock);
+    TVector<std::unique_ptr<ITransactionBase>> txs;
 
-    if (isError) {
-        TrimFreshLogBarriers.ReleaseBarrierN(commitId, blockCount);
+    {
+        TGuard guard(StateLock);
+
+        CommitQueue.ReleaseBarrier(commitId);
+        if (isError) {
+            TrimFreshLogBarriers.ReleaseBarrierN(commitId, blockCount);
+        }
+        txs = ProcessCommitQueueImpl();
     }
+
+    ExecuteTxs(ctx, std::move(txs));
 }
 
 ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
@@ -72,39 +86,6 @@ ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
         // if there are fresh writes in-flight, trim only up to
         // the smallest in-flight commit id minus one
         TrimFreshLogBarriers.GetMinCommitId() - 1);
-}
-
-ui64 TPartitionThreadSafeState::StartFreshWrite(ui64 blockCount)
-{
-    Y_UNUSED(blockCount);
-
-    TGuard guard(StateLock);
-
-    auto commitId = GenerateCommitIdImpl();
-
-    CommitQueue.AcquireBarrier(commitId);
-    return commitId;
-}
-
-void TPartitionThreadSafeState::FinishFreshWrite(
-    const NActors::TActorContext& ctx,
-    ui64 commitId,
-    ui64 blockCount,
-    bool isError)
-{
-    Y_UNUSED(blockCount);
-    Y_UNUSED(isError);
-
-    TVector<std::unique_ptr<ITransactionBase>> txs;
-
-    {
-        TGuard guard(StateLock);
-
-        CommitQueue.ReleaseBarrier(commitId);
-        txs = ProcessCommitQueueImpl();
-    }
-
-    ExecuteTxs(ctx, std::move(txs));
 }
 
 void TPartitionThreadSafeState::WaitCommitForCompaction(
@@ -124,7 +105,32 @@ void TPartitionThreadSafeState::WaitCommitForCompaction(
         }
     }
 
-    ExecuteTxs(ctx, {std::move(tx)});
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+    txs.push_back(std::move(tx));
+
+    ExecuteTxs(ctx, std::move(txs));
+}
+
+void TPartitionThreadSafeState::WaitCommitForCheckpoint(
+    const NActors::TActorContext& ctx,
+    std::unique_ptr<ITransactionBase> tx,
+    const TString& checkpointId,
+    ui64 commitId)
+{
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+    {
+        TGuard guard(StateLock);
+        ui64 minCommitId = CommitQueue.GetMinCommitId();
+
+        CheckpointsInFlight.AddTx(checkpointId, std::move(tx), commitId);
+
+        auto nextTx = CheckpointsInFlight.GetTx(checkpointId, minCommitId);
+        if (nextTx) {
+            txs.push_back(std::move(nextTx));
+        }
+    }
+
+    ExecuteTxs(ctx, std::move(txs));
 }
 
 void TPartitionThreadSafeState::ProcessCommitQueue(
@@ -139,6 +145,21 @@ void TPartitionThreadSafeState::ProcessCommitQueue(
     }
 
     ExecuteTxs(ctx, std::move(txs));
+}
+
+void TPartitionThreadSafeState::IncrementFreshBlocksInFlight(size_t value)
+{
+    FreshBlocksInFlight.fetch_add(value);
+}
+
+void TPartitionThreadSafeState::DecrementFreshBlocksInFlight(size_t value)
+{
+    FreshBlocksInFlight.fetch_sub(value);
+}
+
+size_t TPartitionThreadSafeState::GetFreshBlocksInFlight() const
+{
+    return FreshBlocksInFlight.load();
 }
 
 ui64 TPartitionThreadSafeState::GenerateCommitIdImpl()
@@ -160,6 +181,12 @@ void TPartitionThreadSafeState::ExecuteTxs(
     const NActors::TActorContext& ctx,
     TVector<std::unique_ptr<ITransactionBase>> txs)
 {
+    if (txs.empty()) {
+        return;
+    }
+
+    Y_ABORT_UNLESS(PartitionActorId);
+
     auto executeTxRequest =
         std::make_unique<TEvPartitionCommonPrivate::TEvExecuteTransactions>();
     executeTxRequest->Transactions = std::move(txs);

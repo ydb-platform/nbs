@@ -413,6 +413,27 @@ public:
         ThreadSafeState.ProcessCommitQueue(ctx);
     }
 
+    void WaitCommitForCompaction(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<ITransactionBase> tx,
+        ui64 commitId)
+    {
+        ThreadSafeState.WaitCommitForCompaction(ctx, std::move(tx), commitId);
+    }
+
+    void WaitCommitForCheckpoint(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<ITransactionBase> tx,
+        const TString& checkpointId,
+        ui64 commitId)
+    {
+        ThreadSafeState.WaitCommitForCheckpoint(
+            ctx,
+            std::move(tx),
+            checkpointId,
+            commitId);
+    }
+
     //
     // Channels
     //
@@ -514,6 +535,21 @@ public:
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
+
+    void IncrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState.IncrementFreshBlocksInFlight(value);
+    }
+
+    void DecrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState.DecrementFreshBlocksInFlight(value);
+    }
+
+    ui64 GetFreshBlocksInFlight() const
+    {
+        return ThreadSafeState.GetFreshBlocksInFlight();
+    }
 
     //
     // TrimFreshLog
