@@ -716,6 +716,31 @@ void TVolumeActor::CompleteUpdateDevices(
                 std::move(outdatedDevices)));
     };
 
+    if (!DeviceUUIDToBrokenAt.empty()) {
+        THashSet<TString> currentUUIDs;
+        for (const auto& dev: State->GetMeta().GetDevices()) {
+            currentUUIDs.insert(dev.GetDeviceUUID());
+        }
+        for (auto it = DeviceUUIDToBrokenAt.begin();
+             it != DeviceUUIDToBrokenAt.end();)
+        {
+            if (!currentUUIDs.contains(it->first)) {
+                ExecuteTx<TUpdateBrokenDevice>(
+                    ctx,
+                    it->first,
+                    TInstant::Zero(),
+                    /*add=*/false);
+                it = DeviceUUIDToBrokenAt.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        if (DeviceUUIDToBrokenAt.empty()) {
+            NotifyDiskRegistryVolumeHealth(ctx, /*broken=*/false);
+        }
+    }
+
     StopPartitions(ctx, onPartitionDestroy);
     SendVolumeConfigUpdated(ctx);
     StartPartitionsForUse(ctx);
