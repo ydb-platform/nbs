@@ -4,6 +4,8 @@
 #include <cloud/storage/core/libs/common/file_ring_buffer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/json/writer/json.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
@@ -57,13 +59,20 @@ public:
             return MakeError(E_FAIL, "Data entries are corrupted");
         }
 
+        NJsonWriter::TBuf json;
+        json.BeginObject()
+            .WriteKey("FilePath")
+            .WriteString(Config.FilePath)
+            .WriteKey("RawCapacityByteCount")
+            .WriteULongLong(Storage.GetRawCapacity())
+            .WriteKey("RawUsedByteCount")
+            .WriteULongLong(Storage.GetRawUsedBytesCount())
+            .WriteKey("EntryCount")
+            .WriteULongLong(Storage.Size())
+            .EndObject();
+
         STORAGE_INFO(
-            LogTag << " WriteBackCache has been initialized "
-                   << "{\"FilePath\": " << Config.FilePath.Quote()
-                   << ", \"RawCapacityByteCount\": " << Storage.GetRawCapacity()
-                   << ", \"RawUsedByteCount\": "
-                   << Storage.GetRawUsedBytesCount()
-                   << ", \"EntryCount\": " << Storage.Size() << "}");
+            LogTag << " WriteBackCache has been initialized " << json.Str());
 
         return {};
     }
