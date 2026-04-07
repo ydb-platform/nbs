@@ -132,12 +132,11 @@ public:
     {
         DirPath = TFsPath(Options.TestDir)
             / (TStringBuilder() << "producer_" << ThreadId);
+        MakeDirIfNotExist(DirPath.c_str());
     }
 
     void* ThreadProc() override
     {
-        MakeDirIfNotExist(DirPath.c_str());
-
         while (!ShouldStop.load()) {
             // Create files
             if (Files.size() < Options.FilesPerProducer) {
@@ -326,12 +325,11 @@ public:
     {
         DirPath = TFsPath(Options.TestDir)
             / (TStringBuilder() << "stealer_" << ThreadId);
+        MakeDirIfNotExist(DirPath.c_str());
     }
 
     void* ThreadProc() override
     {
-        MakeDirIfNotExist(DirPath.c_str());
-
         while (!ShouldStop.load()) {
             StealRandomFile();
             Sleep(TDuration::MilliSeconds(10));
@@ -493,7 +491,6 @@ public:
             auto p = MakeHolder<TProducerThread>(
                 Log, options, i, Stats, ShouldStop);
             producerPtrs.push_back(p.Get());
-            p->Start();
             ProducerThreads.push_back(std::move(p));
         }
 
@@ -501,8 +498,16 @@ public:
         for (ui32 i = 0; i < options.StealerThreads; ++i) {
             auto s = MakeHolder<TStealerThread>(
                 Log, options, i, Stats, ShouldStop, producerPtrs);
-            s->Start();
             StealerThreads.push_back(std::move(s));
+        }
+
+        // Run all threads
+        for (auto& p: ProducerThreads) {
+            p->Start();
+        }
+
+        for (auto& s: StealerThreads) {
+            s->Start();
         }
 
         // Wait for test duration
