@@ -290,35 +290,54 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
-      
+
       - name: pytest
         id: pytest
         shell: bash
         run: |
           set -x
-          export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
-          cd .github/ || true
-          pytest --tb=short --disable-warnings --maxfail=1 --junitxml=${GITHUB_WORKSPACE}/pytest-test-results.xml --html=${GITHUB_WORKSPACE}/pytest-report.html --self-contained-html
-      - name: Upload pytest test results
+          export PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github"
+          pytest --tb=short --disable-warnings --maxfail=1 \
+            --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
+            --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
+            --self-contained-html \
+            .github/scripts/*_test.py \
+            .github/scripts/tests
+
+      - name: Upload pytest test results artifact
         if: ${{ always() }}
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-results
-          path: pytest-test-results.xml
-      - name: Upload pytest test results
+          name: ga-scripts-pytest-results
+          path: ga-scripts-pytest-results.xml
+
+      - name: Upload pytest html report artifact
         if: ${{ always() }}
         id: upload-html
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-report-html
-          path: pytest-report.html 
+          name: ga-scripts-pytest-report-html
+          path: ga-scripts-pytest-report.html
+
       - name: upload test results to s3
         if: ${{ always() }}
         run: |
           set -x
-          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-report.html "$S3_BUCKET_PATH/test_reports/pytest-report.html"
-          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress pytest-test-results.xml "$S3_BUCKET_PATH/test_reports/pytest-test-results.xml"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
+          sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
+
+      - name: add test report links to summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "### GA Scripts pytest reports"
+            echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
+            echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
+            echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
+            echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: comment on issue (${{ steps.pytest.outcome }})
         if: ${{ github.event_name == 'pull_request' && always() }}
@@ -329,19 +348,22 @@ jobs:
           HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
         with:
           script: |
-            const s3_path = process.env.S3_URL_PREFIX;
             const outcome = process.env.STEP_OUTCOME;
-            const artifact_url = process.env.ARTIFACT_URL;
-            const html_artifact_url = process.env.HTML_ARTIFACT_URL;
             const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
-            const comment = 'status: ' + status_emoji + ' [pytest result (artifact)](' + artifact_url + ') [pytest report (artifact)](' + html_artifact_url + ') [pytest report (s3)](' + s3_path + '/test_reports/pytest-report.html) [pytest results (s3)](' + s3_path + '/test_reports/pytest-test-results.xml)';
+            const s3_path = process.env.S3_URL_PREFIX;
+            const comment =
+              'status: ' + status_emoji +
+              ' [GA scripts pytest result (artifact)](' + process.env.ARTIFACT_URL + ')' +
+              ' [GA scripts pytest report (artifact)](' + process.env.HTML_ARTIFACT_URL + ')' +
+              ' [GA scripts pytest report (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-report.html)' +
+              ' [GA scripts pytest results (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-results.xml)';
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: comment
             })
-
 
   workflows:
     needs: [set-env, check-running-allowed]
@@ -419,13 +441,6 @@ jobs:
               repo: context.repo.repo,
               body: 'status: ' + status_emoji + ' [workflow lint result (s3)](' + process.env.S3_URL_PREFIX + '/workflow_lint/workflow-lint.txt)'
             })
-  nbs-github-actions:
-    needs: [set-env, check-running-allowed]
-    if: needs.check-running-allowed.outputs.result == 'true'
-    name: Launch scripts on test-data
-    uses: ./.github/workflows/github_actions_scripts.yaml
-    secrets: inherit
-
   create-build-and-test-target-var:
     needs:
       - check-running-allowed
