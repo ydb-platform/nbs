@@ -4,6 +4,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/logger/log.h>
+
 #include <util/generic/function_ref.h>
 #include <util/generic/string.h>
 
@@ -57,7 +59,7 @@ struct IPersistentStorage
     // Frees a previously allocated buffer.
     virtual void Free(const void* ptr) = 0;
 
-    virtual TPersistentStorageStats GetStats() const = 0;
+    virtual void UpdateStats() const = 0;
 };
 
 using IPersistentStoragePtr = std::shared_ptr<IPersistentStorage>;
@@ -76,6 +78,8 @@ struct TPersistentStorageConfig
 
 TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
     IPersistentStorageStatsPtr stats,
-    TPersistentStorageConfig config);
+    TPersistentStorageConfig config,
+    TLog log,
+    TString logTag);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

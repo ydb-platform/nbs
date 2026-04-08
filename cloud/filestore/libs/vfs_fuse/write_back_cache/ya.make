@@ -7,6 +7,7 @@ SRCS(
     node_state_holder.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
+    persistent_storage_stats.cpp
     queued_operations.cpp
     read_response_builder.cpp
     relaxed_counters.cpp
@@ -21,6 +22,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/service
 
     cloud/storage/core/libs/common

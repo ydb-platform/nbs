@@ -132,10 +132,16 @@ void TTestWriteBackCacheStats::AddReadDataStats(
     }
 }
 
-void TTestWriteBackCacheStats::UpdatePersistentStorageStats(
-    const TPersistentStorageStats& stats)
+void TTestWriteBackCacheStats::SetPersistentStorageCounters(
+    ui64 rawCapacityBytesCount,
+    ui64 rawUsedBytesCount,
+    ui64 entryCount,
+    bool isCorrupted)
 {
-    StorageStats = stats;
+    StorageStats.RawCapacityByteCount = rawCapacityBytesCount;
+    StorageStats.RawUsedByteCount = rawUsedBytesCount;
+    StorageStats.EntryCount = entryCount;
+    StorageStats.IsCorrupted = isCorrupted;
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
