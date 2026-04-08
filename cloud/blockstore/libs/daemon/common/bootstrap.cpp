@@ -476,8 +476,10 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             checksumFlags,
-            Configs->ServerConfig->GetVhostDiscardEnabled(),
-            Configs->ServerConfig->GetVhostWriteZeroesEnabled(),
+            Configs->ServerConfig->GetVhostDiscardEnabled() ||
+                Configs->ServerConfig->GetVhostDiscardOnlyEnabled(),
+            Configs->ServerConfig->GetVhostDiscardEnabled() ||
+                Configs->ServerConfig->GetVhostWriteZeroesEnabled(),
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             Configs->ServerConfig->GetVhostOptimalIoSize());
 
