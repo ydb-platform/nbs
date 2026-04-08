@@ -449,8 +449,8 @@ TFuture<NProto::TUnmountVolumeResponse> TSession::UnmountVolume(
             }
         });
 
-    // response will be set in ProcessUnmountResponse() only after future,
-    // returned by Client->UnmountVolume(), will be set
+    // The response is set in ProcessUnmountResponse() only after the future,
+    // returned by Client->UnmountVolume(), is set
     return response;
 }
 

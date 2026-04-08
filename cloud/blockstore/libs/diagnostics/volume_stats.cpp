@@ -257,10 +257,10 @@ private:
 
     TInstant LastRemountTime;
 
-    // Number of pins put upon the object.
-    // Pinned object with PinCount > 0 is not to be removed
-    // by InactiveClientsTimeout.
-    // Note: field access must be under TVolumeStats::Lock
+    // Number of pins on the object.
+    // An object with PinCount > 0 must not be removed by
+    // InactiveClientsTimeout. Note: access to this field must be protected by
+    // TVolumeStats::Lock
     size_t PinCount = 0;
 
     static TRequestCounters::EOptions GetRequestCountersOptions(
@@ -628,10 +628,13 @@ public:
 
         // No actions.
 
-        // VolumeInfos are removed only by timeout with TrimVolumes()
-        // as there is no restriction of existing several endpoints for single
-        // VolumeInfo (diskId-clientId combination), each of which may be either
-        // durable (with guaranteed UnmountVolume) or not (grpc-like)
+        // VolumeInfos are removed only by timeout via TrimVolumes(), since
+        // multiple endpoints can exist for a single VolumeInfo (diskId -
+        // clientId pair). Each endpoint may be either durable (with guaranteed
+        // UnmountVolume) or non-durable (gRPC-like).
+        // E.g. multiple diskId-clientId pairs may appear due to live local
+        // migration within the same host, where both read-only and read-write
+        // mounts are allowed simultaneously
     }
 
     void AlterVolumeImpl(
@@ -714,10 +717,8 @@ public:
      * MT-Safe
      *
      * @return
-     *  true  - increment succeed
-     *  false - no VolumeInfo with specified [diskId, clientId] found
-     *          or VolumeInfo cannot be pinned due to max simultaneous
-     *          pins reached
+     *  true  - increment succeeded
+     *  false - no VolumeInfo found for the specified [diskId, clientId]
      */
     bool IncVolumeInfoPinCounter(const TString& diskId, const TString& clientId)
     {
@@ -728,12 +729,11 @@ public:
             return false;
         }
 
-        if (volumeInfo->PinCount >=
-            std::numeric_limits<decltype(volumeInfo->PinCount)>::max())
-        {
-            // Max simultaneous pins reached
-            return false;
-        }
+        STORAGE_VERIFY( // PinCount corruption
+            volumeInfo->PinCount <
+                std::numeric_limits<decltype(volumeInfo->PinCount)>::max(),
+            TWellKnownEntityTypes::DISK,
+            diskId);
 
         volumeInfo->PinCount++;
 
@@ -745,16 +745,15 @@ public:
      *
      * MT-Safe
      *
-     * Unknown VolumeInfo with specified [diskId, clientId] is ignored.
+     * VolumeInfo with specified [diskId, clientId] must exist and be pinned.
      */
     void DecVolumeInfoPinCounter(const TString& diskId, const TString& clientId)
     {
         TWriteGuard guard(Lock);
 
         auto volumeInfo = GetVolumeInfoImpl(diskId, clientId);
-        if (!volumeInfo) {
-            return;
-        }
+
+        STORAGE_VERIFY(volumeInfo, TWellKnownEntityTypes::DISK, diskId);
 
         STORAGE_VERIFY(
             volumeInfo->PinCount > 0,

@@ -127,9 +127,7 @@ struct IVolumeStats
      *
      * @return
      *  != nullptr - pin object
-     *  == nullptr - no VolumeInfo with specified [diskId, clientId] found
-     *               or VolumeInfo cannot be pinned due to max simultaneous
-     *               pins reached
+     *  == nullptr - no VolumeInfo found for the specified [diskId, clientId]
      */
     [[nodiscard]] virtual IVolumeInfoPinPtr PinVolumeInfo(
         const TString& diskId,
