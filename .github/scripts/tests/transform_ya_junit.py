@@ -5,7 +5,6 @@ import logging
 import os
 import re
 import shutil
-import sys
 import urllib.parse
 from xml.etree import ElementTree as ET
 
@@ -15,7 +14,7 @@ from .mute_utils import mute_target, pattern_to_re
 LOGGER = logging.getLogger(__name__)
 
 
-def log_print(*args, **kwargs):
+def log_print(*args):
     message = " ".join(str(arg) for arg in args)
     LOGGER.info(message)
 

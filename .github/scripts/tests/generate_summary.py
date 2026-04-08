@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import sys
-from contextlib import nullcontext
+from contextlib import contextmanager
 from enum import Enum
 from operator import attrgetter
 from pathlib import Path
@@ -16,6 +16,16 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
+
+
+@contextmanager
+def _summary_output_stream(summary_fn: str):
+    if summary_fn:
+        with open(summary_fn, "at") as fp:
+            yield fp
+        return
+
+    yield sys.stdout
 
 
 class TestStatus(Enum):
@@ -345,10 +355,7 @@ def render_testlist_html(rows, fn: str, summary_url: str) -> None:
 def write_summary(summary: TestSummary, summary_out_env_path: str = "") -> None:
     summary_fn = summary_out_env_path or os.environ.get("GITHUB_STEP_SUMMARY")
 
-    fp_ctx = (
-        open(summary_fn, "at") if summary_fn else nullcontext(sys.stdout)
-    )  # noqa: SIM115
-    with fp_ctx as fp:
+    with _summary_output_stream(summary_fn) as fp:
         if summary.is_empty:
             fp.write(
                 ":red_circle: Test run completed, no test results found. Please check build logs."

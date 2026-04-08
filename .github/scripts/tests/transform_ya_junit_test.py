@@ -90,7 +90,7 @@ def test_transform_adds_links_and_copies_logs(tmp_path):
     )
     assert (
         _get_property_value(case, "url:logs_directory")
-        == "https://data/suite-name/logs"
+        == "https://data/suite-name/logs"  # noqa: W503
     )
     assert (logs_out / "suite-name" / "stdout.log").exists()
 
@@ -162,13 +162,15 @@ def test_transform_skips_malformed_chunk_name_without_crash(tmp_path):
         ),
     ],
 )
-def test_ya_mute_check_loads_real_style_rules(tmp_path, suite_name, test_name, expected):
+def test_ya_mute_check_loads_real_style_rules(
+    tmp_path, suite_name, test_name, expected
+):
     mute_file = tmp_path / "muted_ya.txt"
     mute_file.write_text(
         "\n".join(
             [
                 "cloud/filestore/tests/fio_index/mount-kikimr-test *",
-                "cloud/storage/core/libs/kikimr/ut TConfigInitializerTest.ShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores",
+                "cloud/storage/core/libs/kikimr/ut TConfigInitializerTest.ShouldAdjustActorSystemThreadsAccordingToAvailableCpuCores",  # noqa: E501
             ]
         )
     )

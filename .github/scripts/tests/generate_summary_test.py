@@ -1,6 +1,5 @@
-import xml.etree.ElementTree as ET
-
 from scripts.tests import generate_summary as gs
+
 
 def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase):
     case = mk_testcase(
