@@ -1,8 +1,9 @@
 #include "node_state_holder.h"
 
-#include "write_back_cache_stats.h"
+#include "node_state_holder_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+
 #include <cloud/storage/core/libs/common/timer_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -24,7 +25,7 @@ struct TBootstrap
         : Timer(std::make_shared<TTestTimer>())
         , Stats(CreateNodeStateHolderStats())
         , NodeStateHolder(Stats)
-        , Metrics(Stats->CreateNodeStateHolderMetrics())
+        , Metrics(Stats->CreateMetrics())
     {}
 };
 

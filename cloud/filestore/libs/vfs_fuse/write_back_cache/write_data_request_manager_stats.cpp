@@ -52,8 +52,7 @@ public:
         FlushedRequestCounter.Completed();
     }
 
-    TWriteDataRequestManagerMetrics
-    CreateWriteDataRequestManagerMetrics() const override
+    TWriteDataRequestManagerMetrics CreateMetrics() const override
     {
         auto self = shared_from_this();
 
@@ -124,7 +123,7 @@ public:
         };
     }
 
-    void UpdateWriteDataRequestManagerStats(
+    void UpdateStats(
         TDuration maxPendingRequestDuration,
         TDuration maxUnflushedRequestDuration) override
     {

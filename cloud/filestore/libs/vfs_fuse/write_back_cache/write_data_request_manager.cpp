@@ -271,12 +271,11 @@ void TWriteDataRequestManager::UpdateStats() const
         UnflushedRequests.Empty() ? TDuration::Zero()
                                   : now - UnflushedRequests.Front()->Time;
 
-    Stats->UpdateWriteDataRequestManagerStats(
+    Stats->UpdateStats(
         maxPendingRequestDuration,
         maxUnflushedRequestDuration);
 
-    // TODO(#1751): Uncomment when PersistentStorage supports this call
-    // PersistentStorage->UpdateStats();
+    PersistentStorage->UpdateStats();
 }
 
 // Access methods that triggers stats update

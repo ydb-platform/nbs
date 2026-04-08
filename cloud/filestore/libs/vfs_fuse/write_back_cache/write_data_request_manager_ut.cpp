@@ -1,10 +1,10 @@
 #include "write_data_request_manager.h"
 
 #include "sequence_id_generator.h"
+#include "write_back_cache_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
@@ -22,11 +22,10 @@ namespace {
 struct TBootstrap
 {
     std::shared_ptr<TTestTimer> Timer;
-    std::shared_ptr<TTestWriteBackCacheStats> TestStats;
+    IWriteBackCacheStatsPtr Stats;
+    TWriteBackCacheMetrics Metrics;
     std::shared_ptr<TTestStorage> Storage;
     std::shared_ptr<TSequenceIdGenerator> SequenceIdGenerator;
-    IWriteDataRequestManagerStatsPtr Stats;
-    TWriteDataRequestManagerMetrics Metrics;
     TWriteDataRequestManager RequestManager;
 
     TMap<ui64, std::unique_ptr<TPendingWriteDataRequest>> PendingRequests;
@@ -34,12 +33,15 @@ struct TBootstrap
 
     TBootstrap()
         : Timer(std::make_shared<TTestTimer>())
-        , TestStats(std::make_shared<TTestWriteBackCacheStats>())
-        , Storage(std::make_shared<TTestStorage>(TestStats))
+        , Stats(CreateWriteBackCacheStats())
+        , Metrics(Stats->CreateMetrics())
+        , Storage(CreateTestStorage(Stats))
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
-        , Stats(CreateWriteDataRequestManagerStats())
-        , Metrics(Stats->CreateWriteDataRequestManagerMetrics())
-        , RequestManager(SequenceIdGenerator, Storage, Timer, Stats)
+        , RequestManager(
+              SequenceIdGenerator,
+              Storage,
+              Timer,
+              Stats->GetWriteDataRequestManagerStats())
     {}
 
     auto Add(ui64 nodeId, ui64 handle, ui64 offset, TString data)
@@ -106,7 +108,7 @@ struct TBootstrap
 
     ui64 GetAllocationCount() const
     {
-        return TestStats->StorageStats.EntryCount;
+        return Metrics.Storage.EntryCount->Get();
     }
 
     TString Dump() const

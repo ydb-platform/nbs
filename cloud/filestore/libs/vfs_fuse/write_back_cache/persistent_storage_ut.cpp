@@ -32,7 +32,7 @@ struct TBootstrap
 
     TBootstrap()
         : Stats(CreatePersistentStorageStats())
-        , Metrics(Stats->CreatePersistentStorageMetrics())
+        , Metrics(Stats->CreateMetrics())
     {
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();

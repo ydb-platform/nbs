@@ -33,10 +33,8 @@ struct IPersistentStorageStats
         ui64 entryCount,
         bool isCorrupted) = 0;
 
-    virtual TPersistentStorageMetrics
-    CreatePersistentStorageMetrics() const = 0;
-
-    virtual void UpdatePersistentStorageStats() = 0;
+    virtual TPersistentStorageMetrics CreateMetrics() const = 0;
+    virtual void UpdateStats() = 0;
 };
 
 using IPersistentStorageStatsPtr = std::shared_ptr<IPersistentStorageStats>;

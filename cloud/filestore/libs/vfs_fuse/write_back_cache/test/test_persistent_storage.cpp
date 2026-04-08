@@ -76,4 +76,12 @@ void TTestStorage::SetStats()
         /* isCorrupted = */ false);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+std::shared_ptr<TTestStorage> CreateTestStorage(
+    const IWriteBackCacheStatsPtr& stats)
+{
+    return std::make_shared<TTestStorage>(stats->GetPersistentStorageStats());
+}
+
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -35,7 +35,7 @@ public:
         CorruptedCounter.Set(isCorrupted ? 1 : 0);
     }
 
-    TPersistentStorageMetrics CreatePersistentStorageMetrics() const override
+    TPersistentStorageMetrics CreateMetrics() const override
     {
         auto self = shared_from_this();
 
@@ -56,7 +56,7 @@ public:
             }};
     }
 
-    void UpdatePersistentStorageStats() override
+    void UpdateStats() override
     {
         RawUsedBytesCounter.Update();
         EntryCounter.Update();

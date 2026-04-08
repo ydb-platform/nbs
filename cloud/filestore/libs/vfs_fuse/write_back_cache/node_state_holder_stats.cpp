@@ -30,7 +30,7 @@ public:
         NodeCounter.Dec();
     }
 
-    TNodeStateHolderMetrics CreateNodeStateHolderMetrics() const override
+    TNodeStateHolderMetrics CreateMetrics() const override
     {
         auto self = shared_from_this();
 
@@ -43,7 +43,7 @@ public:
         };
     }
 
-    void UpdateNodeStateHolderStats() override
+    void UpdateStats() override
     {
         NodeCounter.Update();
     }

@@ -1030,8 +1030,7 @@ private:
                         {.Session = Session,
                          .Scheduler = Scheduler,
                          .Timer = Timer,
-                         .Stats =
-                             NWriteBackCache::CreateDummyWriteBackCacheStats(),
+                         .Stats = NWriteBackCache::CreateWriteBackCacheStats(),
                          .Log = Log,
                          .FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),

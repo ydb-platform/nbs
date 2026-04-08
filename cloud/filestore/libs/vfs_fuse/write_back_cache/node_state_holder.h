@@ -71,7 +71,7 @@ public:
     [[nodiscard]] ui64 Pin();
     void Unpin(ui64 pinId);
 
-    void UpdateStats();
+    void UpdateStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

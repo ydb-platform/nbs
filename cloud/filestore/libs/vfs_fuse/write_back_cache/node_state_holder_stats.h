@@ -26,8 +26,8 @@ struct INodeStateHolderStats
     virtual void IncrementNodeCount() = 0;
     virtual void DecrementNodeCount() = 0;
 
-    virtual TNodeStateHolderMetrics CreateNodeStateHolderMetrics() const = 0;
-    virtual void UpdateNodeStateHolderStats() = 0;
+    virtual TNodeStateHolderMetrics CreateMetrics() const = 0;
+    virtual void UpdateStats() = 0;
 };
 
 using INodeStateHolderStatsPtr = std::shared_ptr<INodeStateHolderStats>;

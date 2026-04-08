@@ -119,8 +119,6 @@ public:
             PersistentStorage->GetMaxSupportedAllocationByteCount() >=
             1024 * 1024 + 1016);
 
-        args.Stats->ResetNonDerivativeCounters();
-
         if (!State.Init(PersistentStorage)) {
             ReportWriteBackCacheCorruptionError(
                 TStringBuilder()

@@ -51,11 +51,38 @@ struct IWriteBackCacheInternalStats
 
     virtual void AddReadDataStats(EReadDataRequestCacheStatus status) = 0;
 
-    virtual TWriteBackCacheInternalMetrics CreateInternalMetrics() const = 0;
+    virtual TWriteBackCacheInternalMetrics CreateMetrics() const = 0;
 };
 
 using IWriteBackCacheInternalStatsPtr =
     std::shared_ptr<IWriteBackCacheInternalStats>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteBackCacheMetrics
+    : public TWriteBackCacheInternalMetrics
+    , public TWriteBackCacheStateMetrics
+    , public TNodeStateHolderMetrics
+    , public TWriteDataRequestManagerMetrics
+    , public TPersistentStorageMetrics
+{
+    TWriteBackCacheMetrics() = default;
+
+    TWriteBackCacheMetrics(
+        TWriteBackCacheInternalMetrics writeBackCacheInternalMetrics,
+        TWriteBackCacheStateMetrics writeBackCacheStateMetrics,
+        TNodeStateHolderMetrics nodeStateHolderMetrics,
+        TWriteDataRequestManagerMetrics writeDataRequestManagerMetrics,
+        TPersistentStorageMetrics persistentStorageMetrics)
+        : TWriteBackCacheInternalMetrics(
+              std::move(writeBackCacheInternalMetrics))
+        , TWriteBackCacheStateMetrics(std::move(writeBackCacheStateMetrics))
+        , TNodeStateHolderMetrics(std::move(nodeStateHolderMetrics))
+        , TWriteDataRequestManagerMetrics(
+              std::move(writeDataRequestManagerMetrics))
+        , TPersistentStorageMetrics(std::move(persistentStorageMetrics))
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -75,11 +102,11 @@ struct IWriteBackCacheStats
 
     virtual IPersistentStorageStatsPtr GetPersistentStorageStats() = 0;
 
-    virtual void ResetNonDerivativeCounters() = 0;
+    virtual TWriteBackCacheMetrics CreateMetrics() const = 0;
 };
 
 using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;
 
-IWriteBackCacheStatsPtr CreateDummyWriteBackCacheStats();
+IWriteBackCacheStatsPtr CreateWriteBackCacheStats();
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
