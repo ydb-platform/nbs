@@ -1,8 +1,57 @@
 #include "write_back_cache_stats.h"
 
+#include "relaxed_counters.h"
+
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
+using namespace NMetrics;
+
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteBackCacheInternalStats
+    : public std::enable_shared_from_this<TWriteBackCacheInternalStats>
+    , public IWriteBackCacheInternalStats
+{
+private:
+    TRelaxedCounter ReadDataCacheFullHit;
+    TRelaxedCounter ReadDataCachePartialHit;
+    TRelaxedCounter ReadDataCacheMiss;
+
+public:
+    void AddReadDataStats(EReadDataRequestCacheStatus status) override
+    {
+        switch (status) {
+            case EReadDataRequestCacheStatus::Miss:
+                ReadDataCacheMiss.Inc();
+                break;
+            case EReadDataRequestCacheStatus::PartialHit:
+                ReadDataCachePartialHit.Inc();
+                break;
+            case EReadDataRequestCacheStatus::FullHit:
+                ReadDataCacheFullHit.Inc();
+                break;
+        }
+    }
+
+    TWriteBackCacheInternalMetrics CreateInternalMetrics() const override
+    {
+        auto self = shared_from_this();
+
+        return {
+            .ReadData = {
+                .CacheFullHitCount = CreateMetric(
+                    [self] { return self->ReadDataCacheFullHit.Get(); }),
+                .CachePartialHitCount = CreateMetric(
+                    [self] { return self->ReadDataCachePartialHit.Get(); }),
+                .CacheMissCount = CreateMetric(
+                    [self] { return self->ReadDataCacheMiss.Get(); }),
+            }};
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -79,6 +128,11 @@ public:
     IWriteBackCacheInternalStatsPtr GetWriteBackCacheInternalStats() override
     {
         return shared_from_this();
+    }
+
+    TWriteBackCacheInternalMetrics CreateInternalMetrics() const override
+    {
+        return {};
     }
 
     IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() override

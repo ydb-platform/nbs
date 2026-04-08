@@ -5,6 +5,7 @@
 #include "write_back_cache_state_stats.h"
 #include "write_data_request_manager_stats.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 
 #include <util/datetime/base.h>
@@ -30,17 +31,27 @@ enum class EReadDataRequestCacheStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBackCacheInternalMetrics
+{
+    struct TReadDataMetrics
+    {
+        NMetrics::IMetricPtr CacheFullHitCount;
+        NMetrics::IMetricPtr CachePartialHitCount;
+        NMetrics::IMetricPtr CacheMissCount;
+    };
+
+    TReadDataMetrics ReadData;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IWriteBackCacheInternalStats
 {
     virtual ~IWriteBackCacheInternalStats() = default;
 
-    virtual void ResetNonDerivativeCounters() = 0;
-
-    virtual void FlushStarted() = 0;
-    virtual void FlushCompleted() = 0;
-    virtual void FlushFailed() = 0;
-
     virtual void AddReadDataStats(EReadDataRequestCacheStatus status) = 0;
+
+    virtual TWriteBackCacheInternalMetrics CreateInternalMetrics() const = 0;
 };
 
 using IWriteBackCacheInternalStatsPtr =
