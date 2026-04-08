@@ -756,7 +756,7 @@ func WaitOperationEnded(
 	require.NoError(t, err)
 }
 
-func GetTaskError(
+func RequireTaskHasNoError(
 	t *testing.T,
 	ctx context.Context,
 	taskID string,
