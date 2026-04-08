@@ -61,9 +61,15 @@ jobs:
   check-running-allowed:
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
-      result: ${{ steps.check-ownership-membership.outputs.result }}
+      result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
     steps:
+      - name: Allow local act run
+        if: ${{ env.ACT == 'true' }}
+        id: allow-local
+        run: echo "result=true" >> "$GITHUB_OUTPUT"
+
       - name: Check if running tests is allowed
+        if: ${{ env.ACT != 'true' }}
         id: check-ownership-membership
         uses: actions/github-script@v7
         with:
@@ -139,7 +145,8 @@ jobs:
             core.info(`'ok-to-test' label added by an org member => authorized`);
             return true
       - name: comment-if-waiting-on-ok
-        if: steps.check-ownership-membership.outputs.result == 'false' &&
+        if: env.ACT != 'true' &&
+            steps.check-ownership-membership.outputs.result == 'false' &&
             github.event.action == 'opened'
         uses: actions/github-script@v7
         with:
@@ -151,6 +158,7 @@ jobs:
               body: 'Hi! Thank you for contributing!\nThe tests on this PR will run after a maintainer adds an `ok-to-test` label to this PR manually. Thank you for your patience!'
             });
       - name: cleanup-labels
+        if: ${{ env.ACT != 'true' }}
         uses: actions/github-script@v7
         with:
           script: |
@@ -254,6 +262,7 @@ jobs:
           if_false: "github-check"
 
       - name: Prepare s3
+        if: ${{ env.ACT != 'true' }}
         id: s3
         uses: ./.github/actions/s3cmd
         with:
@@ -277,6 +286,7 @@ jobs:
           pip install -r .github/scripts/requirements_dev.txt
 
       - name: flake8
+        if: ${{ env.ACT != 'true' }}
         uses: reviewdog/action-flake8@v3.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -284,12 +294,25 @@ jobs:
           reporter: ${{ steps.reporter.outputs.value }}
           flake8_args: "--max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400"
 
+      - name: flake8 (act)
+        if: ${{ env.ACT == 'true' }}
+        run: |
+          pip install flake8
+          flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400 .github/
+
       - name: black
+        if: ${{ env.ACT != 'true' }}
         uses: reviewdog/action-black@v3.10.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
+        
+      - name: black (act)
+        if: ${{ env.ACT == 'true' }}
+        run: |
+          pip install black
+          black --check .github/
 
       - name: pytest
         id: pytest
@@ -305,7 +328,7 @@ jobs:
             .github/scripts/tests
 
       - name: Upload pytest test results artifact
-        if: ${{ always() }}
+        if: ${{ env.ACT != 'true' &&always() }}
         id: upload
         uses: actions/upload-artifact@v4
         with:
@@ -313,7 +336,7 @@ jobs:
           path: ga-scripts-pytest-results.xml
 
       - name: Upload pytest html report artifact
-        if: ${{ always() }}
+        if: ${{ env.ACT != 'true' &&always() }}
         id: upload-html
         uses: actions/upload-artifact@v4
         with:
@@ -321,7 +344,7 @@ jobs:
           path: ga-scripts-pytest-report.html
 
       - name: upload test results to s3
-        if: ${{ always() }}
+        if: ${{ env.ACT != 'true' && always() }}
         run: |
           set -x
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
@@ -333,14 +356,18 @@ jobs:
         run: |
           {
             echo "### GA Scripts pytest reports"
-            echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
-            echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
-            echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
-            echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
+            if [ "${ACT}" = "true" ]; then
+              echo "- Local act run: reports were written to ga-scripts-pytest-report.html and ga-scripts-pytest-results.xml"
+            else
+              echo "- [pytest report (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-report.html)"
+              echo "- [pytest results xml (s3)]($S3_URL_PREFIX/test_reports/ga-scripts-pytest-results.xml)"
+              echo "- [pytest report (artifact)](${{ steps.upload-html.outputs.artifact-url }})"
+              echo "- [pytest results (artifact)](${{ steps.upload.outputs.artifact-url }})"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: comment on issue (${{ steps.pytest.outcome }})
-        if: ${{ github.event_name == 'pull_request' && always() }}
+        if: ${{ env.ACT != 'true' && github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v7.0.1
         env:
           STEP_OUTCOME: ${{ steps.pytest.outcome }}
