@@ -69,5 +69,5 @@ class NfsLauncher:
         return self.__nfs_configurator.secure_port
 
     @property
-    def port(self):
+    def insecure_port(self):
         return self.__nfs_configurator.port

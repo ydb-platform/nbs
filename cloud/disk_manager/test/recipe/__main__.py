@@ -297,7 +297,7 @@ def start(argv):
         allow_filestore_force_destroy=args.allow_filestore_force_destroy,
     )
     nfs.start()
-    set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
+    set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.insecure_port))
     set_env("DISK_MANAGER_RECIPE_NFS_SECURE_PORT", str(nfs.secure_port))
 
     append_recipe_err_files(ERR_LOG_FILE_NAMES_FILE, nfs.nfs_server.stderr_file_name)
