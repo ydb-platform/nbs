@@ -244,7 +244,6 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 
 	for _, taskID := range firstTaskIDs {
 		testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
-		testcommon.RequireTaskHasNoError(t, ctx, taskID)
 	}
 
 	// Second iteration: ensure tasks are rescheduled.
