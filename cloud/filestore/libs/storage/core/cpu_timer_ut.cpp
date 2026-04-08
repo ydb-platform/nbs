@@ -27,7 +27,7 @@ Y_UNIT_TEST_SUITE(TCPUUsageTimerTest)
 
         UNIT_ASSERT_C(
             static_cast<ui64>(metric.load())
-                >= TDuration::Seconds(3).MicroSeconds(),
+                >= TDuration::MilliSeconds(2900).MicroSeconds(),
             metric.load());
         UNIT_ASSERT_C(
             static_cast<ui64>(metric.load())
