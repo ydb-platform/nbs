@@ -13456,6 +13456,109 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
     }
+
+    Y_UNIT_TEST(ShouldNotLoseAnyBlocksWithMultipleCheckpointsCreationAndDelete)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool interseptEvent = false;
+        bool skipFirstIntercept = false;
+
+        std::unique_ptr<IEventHandle> putEvent;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+
+                    if (msg->Id.Channel() == 0 && interseptEvent &&
+                        !skipFirstIntercept)
+                    {
+                        putEvent.reset(event.Release());
+                        interseptEvent = false;
+                        return TTestActorRuntime::EEventAction::DROP;
+                    } else if (msg->Id.Channel() == 0 && interseptEvent) {
+                        skipFirstIntercept = false;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.WriteBlocks(0, '1');
+        partition.Flush();
+
+        partition.SendCreateCheckpointRequest("c1");
+        partition.SendDeleteCheckpointRequest("c1");
+        partition.SendCreateCheckpointRequest("c1");
+        partition.SendDeleteCheckpointRequest("c1");
+        partition.SendCreateCheckpointRequest("c1");
+        partition.SendCompactionRequest();
+
+        interseptEvent = true;
+
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT(putEvent);
+
+        skipFirstIntercept = true;
+        interseptEvent = true;
+
+        // create checkpoint  and compaction transactions executed not completed
+        runtime->SendAsync(putEvent.release());
+
+        runtime->DispatchEvents({}, 10ms);
+
+        // delete checkpoint  and addblobs transactions executed not completed
+        UNIT_ASSERT(putEvent);
+        runtime->SendAsync(putEvent.release());
+
+        skipFirstIntercept = true;
+        interseptEvent = true;
+
+        runtime->DispatchEvents({}, 10ms);
+
+        // create checkpoint transaction executed not completed, compaction
+        // operation completed, old blob in cleanup queue
+
+        UNIT_ASSERT(putEvent);
+        runtime->SendAsync(putEvent.release());
+
+        skipFirstIntercept = true;
+        interseptEvent = true;
+
+        partition.RecvCompactionResponse();
+
+        runtime->DispatchEvents({}, 10ms);
+
+        // Delete checkpoint transaction executed not completed, now there is no
+        // checkpoints, but old blob in cleanup queue. Next checkpoint
+        // transaction should start execution after delete checkpoint
+        // transaction completed.
+
+        partition.SendCleanupRequest();
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(putEvent);
+        runtime->SendAsync(putEvent.release());
+
+        runtime->DispatchEvents({}, 10ms);
+
+        for (size_t i = 0; i < 3; i++) {
+            partition.RecvCreateCheckpointResponse();
+        }
+
+        partition.ReadBlocks(TBlockRange32::WithLength(0, 1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('1'),
+            GetBlockContent(
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 1), "c1")));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

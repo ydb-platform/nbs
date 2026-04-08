@@ -123,6 +123,8 @@ public:
 
     bool Empty() const;
     void GetCommitIds(TVector<ui64>& commitIds) const;
+
+    [[nodiscard]] ui64 GetMinCommitId() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,6 +156,8 @@ public:
     [[nodiscard]] bool HasCheckpoint(const TString& checkpointId) const;
 
     void GetCommitIds(TVector<ui64>& commitIds) const;
+
+    [[nodiscard]] ui64 GetMinCommitId() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
