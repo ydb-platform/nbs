@@ -489,6 +489,9 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         TString socketPath = "testSocket";
         TString diskId = "testDiskId";
 
+        // Switch from testDiskId to testDiskId-copy.
+        std::atomic<bool> switchToSecondary = true;
+
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
@@ -504,17 +507,31 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         // PrincipalDiskId when mounting testDiskId, which will lead to switch
         // session.
         service->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+
+            if (switchToSecondary) {
                 if (request->GetDiskId() == diskId) {
-                    // Response with filled PrincipalDiskId will switch session.
+                    // when mounting testDiskId, set PrincipalDiskId to
+                    // testDiskId-copy, which will lead to switch session to
+                    // testDiskId-copy.
                     response.MutableVolume()->SetPrincipalDiskId(
                         NStorage::GetNextDiskId(diskId));
                 }
-                response.SetInactiveClientsTimeout(100);
-                return MakeFuture(response);
-            };
+            } else {
+                if (request->GetDiskId() == NStorage::GetNextDiskId(diskId)) {
+                    // when mounting testDiskId-copy, set PrincipalDiskId back
+                    // to testDiskId, which will lead to switch session back to
+                    // testDiskId.
+                    response.MutableVolume()->SetPrincipalDiskId(diskId);
+                }
+            }
+
+            response.SetInactiveClientsTimeout(100);
+            return MakeFuture(response);
+        };
         service->UnmountVolumeHandler =
             [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
                 Y_UNUSED(request);
@@ -602,22 +619,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         }
 
         // Switch from testDiskId-copy to testDiskId.
-
-        // Setting up the handler for the mount request, which will add the
-        // PrincipalDiskId when mounting testDiskId-copy, which will lead to
-        // switch session back to testDiskId.
-        service->MountVolumeHandler =
-            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
-        {
-            NProto::TMountVolumeResponse response;
-            response.MutableVolume()->SetDiskId(request->GetDiskId());
-            if (request->GetDiskId() == NStorage::GetNextDiskId(diskId)) {
-                // Response with filled PrincipalDiskId will switch session.
-                response.MutableVolume()->SetPrincipalDiskId(diskId);
-            }
-            response.SetInactiveClientsTimeout(100);
-            return MakeFuture(response);
-        };
+        switchToSecondary = false;
 
         // Setting up the handler to respond E_REJECTED if the request handled
         // by testDiskId and S_OK if the request handled by disk testDiskId-copy
