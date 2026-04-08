@@ -37,26 +37,27 @@ public:
     void WriteDataRequestDropped() override
     {}
 
-    void WriteDataRequestEnteredStatus(EWriteDataRequestStatus status) override
-    {
-        Y_UNUSED(status);
-    }
+    void AddedPendingRequest() override
+    {}
 
-    void WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus status,
-        TDuration duration) override
+    void RemovedPendingRequest(TDuration duration) override
     {
-        Y_UNUSED(status);
         Y_UNUSED(duration);
     }
 
-    void WriteDataRequestUpdateMinTime(
-        EWriteDataRequestStatus status,
-        TInstant minTime) override
+    void AddedUnflushedRequest() override
+    {}
+
+    void RemovedUnflushedRequest(TDuration duration) override
     {
-        Y_UNUSED(status);
-        Y_UNUSED(minTime);
+        Y_UNUSED(duration);
     }
+
+    void AddedFlushedRequest() override
+    {}
+
+    void RemovedFlushedRequest() override
+    {}
 
     void AddReadDataStats(EReadDataRequestCacheStatus status) override
     {
@@ -110,6 +111,20 @@ public:
     IWriteDataRequestManagerStatsPtr GetWriteDataRequestManagerStats() override
     {
         return shared_from_this();
+    }
+
+    TWriteDataRequestManagerMetrics
+    CreateWriteDataRequestManagerMetrics() const override
+    {
+        return {};
+    }
+
+    void UpdateWriteDataRequestManagerStats(
+        TDuration maxPendingRequestDuration,
+        TDuration maxUnflushedRequestDuration) override
+    {
+        Y_UNUSED(maxPendingRequestDuration);
+        Y_UNUSED(maxUnflushedRequestDuration);
     }
 
     IPersistentStorageStatsPtr GetPersistentStorageStats() override
