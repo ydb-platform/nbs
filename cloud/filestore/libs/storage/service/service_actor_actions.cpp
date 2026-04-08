@@ -109,6 +109,14 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateUnsafeGetNodeRefActionActor
         },
         {
+            "unsafecreatehandle",
+            &TStorageServiceActor::CreateUnsafeCreateHandleActor
+        },
+        {
+            "unsafechangetabletstate",
+            &TStorageServiceActor::CreateUnsafeChangeTabletStateActor
+        },
+        {
             "getstoragestats",
             &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
@@ -135,10 +143,6 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "marknoderefsexhaustive",
             &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor
-        },
-        {
-            "unsafecreatehandle",
-            &TStorageServiceActor::CreateUnsafeCreateHandleActor
         },
         {
             "writeresponselogentry",

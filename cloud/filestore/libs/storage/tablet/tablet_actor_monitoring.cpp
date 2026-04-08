@@ -1057,6 +1057,10 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     HTML(out) {
         DumpDefaultHeader(out, TabletID(), SelfId().NodeId());
 
+        if (GetFileSystem().GetFrozen()) {
+            TAG(TH3) { out << "This tablet is frozen"; }
+        }
+
         TAG(TH3) { out << "Info"; }
         DIV() { out << "Filesystem Id: " << GetFileSystemId(); }
         DIV() { out << "Block size: " << GetBlockSize(); }

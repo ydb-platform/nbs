@@ -728,6 +728,7 @@ private:
     TCPUUsageTimer& AccessCPUUsageTimer();
 
     bool HandleRequests(STFUNC_SIG);
+    bool HandleRequestsByFrozenTablet(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
     bool RejectRequestsByBrokenTablet(STFUNC_SIG);
 

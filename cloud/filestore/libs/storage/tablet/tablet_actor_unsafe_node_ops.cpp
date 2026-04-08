@@ -787,9 +787,9 @@ void TIndexTabletActor::HandleUnsafeCreateHandle(
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_UnsafeCreateHandle(
-        const TActorContext& ctx,
-        TTransactionContext& tx,
-        TTxIndexTablet::TUnsafeCreateHandle& args)
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeCreateHandle& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -847,6 +847,79 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateHandle(
         ctx,
         TFileStoreComponents::TABLET,
         "%s UnsafeCreateHandle: %s, result: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        response->Record.ShortUtf8DebugString().Quote().c_str());
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeChangeTabletState(
+    const TEvIndexTablet::TEvUnsafeChangeTabletStateRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddInFlightRequest<TEvIndexTablet::TUnsafeChangeTabletStateMethod>(
+        *requestInfo);
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeChangeTabletState: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeChangeTabletState>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_UnsafeChangeTabletState(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeChangeTabletState& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeChangeTabletState& args)
+{
+    Y_UNUSED(ctx);
+
+    TIndexTabletDatabase db(tx.DB);
+    SetFrozen(db, args.Request.GetFrozen());
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeChangeTabletState& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeChangeTabletState: %s, result: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
         response->Record.ShortUtf8DebugString().Quote().c_str());
