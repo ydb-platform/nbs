@@ -1001,6 +1001,15 @@ bool TPartitionActor::IsFreshBlocksWriterEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsReadBlockMaskOnCompactionOptimizationEnabled() const
+{
+    return Config->GetReadBlockMaskOnCompactionOptimizationEnabled() ||
+           Config->IsReadBlockMaskOnCompactionOptimizationFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
