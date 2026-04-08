@@ -115,6 +115,14 @@ struct TTestWriteBackCacheStats
         return shared_from_this();
     }
 
+    TNodeStateHolderMetrics CreateNodeStateHolderMetrics() const override
+    {
+        return {};
+    }
+
+    void UpdateNodeStateHolderStats() override
+    {}
+
     IWriteDataRequestManagerStatsPtr GetWriteDataRequestManagerStats() override
     {
         return shared_from_this();
