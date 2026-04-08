@@ -297,7 +297,7 @@ jobs:
       - name: flake8 (act)
         if: ${{ env.ACT == 'true' }}
         run: |
-          pip install flake8
+          pip install flake8==7.3.0
           flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400 .github/
 
       - name: black
@@ -311,7 +311,7 @@ jobs:
       - name: black (act)
         if: ${{ env.ACT == 'true' }}
         run: |
-          pip install black
+          pip install black==26.3.1
           black --check .github/
 
       - name: pytest
