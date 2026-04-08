@@ -35,7 +35,7 @@ func NewContext() context.Context {
 func GetEndpoint() string {
 	return fmt.Sprintf(
 		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+		os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 	)
 }
 

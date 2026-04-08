@@ -65,5 +65,9 @@ class NfsLauncher:
         kill_processes(SERVICE_NAME)
 
     @property
-    def port(self):
+    def secure_port(self):
         return self.__nfs_configurator.secure_port
+
+    @property
+    def insecure_port(self):
+        return self.__nfs_configurator.port
