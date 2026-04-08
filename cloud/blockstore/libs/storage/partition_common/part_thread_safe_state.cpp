@@ -71,7 +71,7 @@ void TPartitionThreadSafeState::FinishFreshWrite(
         if (isError) {
             TrimFreshLogBarriers.ReleaseBarrierN(commitId, blockCount);
         }
-        txs = ProcessCommitQueueImpl();
+        ProcessCommitQueueImpl(txs);
     }
 
     ExecuteTxs(ctx, std::move(txs));
@@ -141,10 +141,41 @@ void TPartitionThreadSafeState::ProcessCommitQueue(
     {
         TGuard guard(StateLock);
 
-        txs = ProcessCommitQueueImpl();
+        ProcessCommitQueueImpl(txs);
     }
 
     ExecuteTxs(ctx, std::move(txs));
+}
+
+void TPartitionThreadSafeState::ProcessCheckpointQueue(const NActors::TActorContext& ctx)
+{
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+
+    {
+        TGuard guard(StateLock);
+
+        ProcessCheckpointQueueImpl(txs);
+    }
+
+    ExecuteTxs(ctx, std::move(txs));
+}
+
+bool TPartitionThreadSafeState::ProcessNextCheckpointRequest(
+    const NActors::TActorContext& ctx,
+    const TString& checkpointId)
+{
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+
+    bool res = false;
+    {
+        TGuard guard(StateLock);
+
+        res = ProcessNextCheckpointRequestImpl(checkpointId, txs);
+    }
+
+    ExecuteTxs(ctx, std::move(txs));
+
+    return res;
 }
 
 void TPartitionThreadSafeState::IncrementFreshBlocksInFlight(size_t value)
@@ -193,11 +224,9 @@ void TPartitionThreadSafeState::ExecuteTxs(
     NCloud::Send(ctx, PartitionActorId, std::move(executeTxRequest));
 }
 
-TVector<std::unique_ptr<ITransactionBase>>
-TPartitionThreadSafeState::ProcessCommitQueueImpl()
+void TPartitionThreadSafeState::ProcessCommitQueueImpl(
+    TVector<std::unique_ptr<ITransactionBase>>& txs)
 {
-    TVector<std::unique_ptr<ITransactionBase>> txs;
-
     ui64 minCommitId = CommitQueue.GetMinCommitId();
 
     while (!CommitQueue.Empty()) {
@@ -216,11 +245,34 @@ TPartitionThreadSafeState::ProcessCommitQueueImpl()
     // Since create checkpoint operation waits for the last commit to
     // complete here we force checkpoints queue to try to proceed to the
     // next create checkpoint request
+    ProcessCheckpointQueueImpl(txs);
+}
+
+void TPartitionThreadSafeState::ProcessCheckpointQueueImpl(
+    TVector<std::unique_ptr<ITransactionBase>>& txs)
+{
+    ui64 minCommitId = CommitQueue.GetMinCommitId();
+
     while (auto tx = CheckpointsInFlight.GetTx(minCommitId)) {
         txs.push_back(std::move(tx));
     }
+}
 
-    return txs;
+bool TPartitionThreadSafeState::ProcessNextCheckpointRequestImpl(
+    const TString& checkpointId,
+    TVector<std::unique_ptr<ITransactionBase>>& txs)
+{
+    ui64 minCommitId = CommitQueue.GetMinCommitId();
+
+    CheckpointsInFlight.PopTx(checkpointId);
+
+    auto tx = CheckpointsInFlight.GetTx(checkpointId, minCommitId);
+    if (tx) {
+        txs.push_back(std::move(tx));
+        return true;
+    }
+
+    return false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

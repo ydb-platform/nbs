@@ -189,6 +189,12 @@ public:
 
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
 
+    void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
+
+    bool ProcessNextCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        const TString& checkpointId);
+
     void IncrementFreshBlocksInFlight(size_t value);
     void DecrementFreshBlocksInFlight(size_t value);
 
@@ -202,7 +208,15 @@ private:
         const NActors::TActorContext& ctx,
         TVector<std::unique_ptr<ITransactionBase>> txs);
 
-    TVector<std::unique_ptr<ITransactionBase>> ProcessCommitQueueImpl();
+    void ProcessCommitQueueImpl(
+        TVector<std::unique_ptr<ITransactionBase>>& txs);
+
+    void ProcessCheckpointQueueImpl(
+        TVector<std::unique_ptr<ITransactionBase>>& txs);
+
+    bool ProcessNextCheckpointRequestImpl(
+        const TString& checkpointId,
+        TVector<std::unique_ptr<ITransactionBase>>& txs);
 };
 
 using TPartitionThreadSafeStatePtr = std::shared_ptr<TPartitionThreadSafeState>;

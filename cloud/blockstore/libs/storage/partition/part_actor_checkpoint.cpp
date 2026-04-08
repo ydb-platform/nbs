@@ -18,31 +18,14 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TPartitionActor::ProcessCheckpointQueue(const TActorContext& ctx)
 {
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
-    std::unique_ptr<ITransactionBase> tx;
-    while (tx = State->AccessCheckpointsInFlight()->GetTx(minCommitId)) {
-        ExecuteTx(ctx, std::move(tx));
-    }
+    SharedState->ProcessCheckpointQueue(ctx);
 }
 
 bool TPartitionActor::ProcessNextCheckpointRequest(
     const TActorContext& ctx,
     const TString& checkpointId)
 {
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
-    State->AccessCheckpointsInFlight()->PopTx(checkpointId);
-
-    auto tx = State->AccessCheckpointsInFlight()->GetTx(
-        checkpointId,
-        minCommitId);
-    if (tx) {
-        ExecuteTx(ctx, std::move(tx));
-        return true;
-    }
-
-    return false;
+    return SharedState->ProcessNextCheckpointRequest(ctx, checkpointId);
 }
 
 void TPartitionActor::HandleCreateCheckpoint(

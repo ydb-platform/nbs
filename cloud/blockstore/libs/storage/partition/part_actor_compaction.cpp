@@ -1485,7 +1485,7 @@ void TPartitionActor::HandleCompaction(
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
-    State->ProcessCommitQueue(ctx);
+    SharedState->ProcessCommitQueue(ctx);
 }
 
 void TPartitionActor::HandleCompactionCompleted(

@@ -408,17 +408,12 @@ public:
         return ThreadSafeState->AccessCommitQueue();
     }
 
-    void ProcessCommitQueue(const NActors::TActorContext& ctx)
-    {
-        ThreadSafeState.ProcessCommitQueue(ctx);
-    }
-
     void WaitCommitForCompaction(
         const NActors::TActorContext& ctx,
         std::unique_ptr<ITransactionBase> tx,
         ui64 commitId)
     {
-        ThreadSafeState.WaitCommitForCompaction(ctx, std::move(tx), commitId);
+        ThreadSafeState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
     }
 
     void WaitCommitForCheckpoint(
@@ -427,7 +422,7 @@ public:
         const TString& checkpointId,
         ui64 commitId)
     {
-        ThreadSafeState.WaitCommitForCheckpoint(
+        ThreadSafeState->WaitCommitForCheckpoint(
             ctx,
             std::move(tx),
             checkpointId,
@@ -538,17 +533,17 @@ public:
 
     void IncrementFreshBlocksInFlight(size_t value)
     {
-        ThreadSafeState.IncrementFreshBlocksInFlight(value);
+        ThreadSafeState->IncrementFreshBlocksInFlight(value);
     }
 
     void DecrementFreshBlocksInFlight(size_t value)
     {
-        ThreadSafeState.DecrementFreshBlocksInFlight(value);
+        ThreadSafeState->DecrementFreshBlocksInFlight(value);
     }
 
     ui64 GetFreshBlocksInFlight() const
     {
-        return ThreadSafeState.GetFreshBlocksInFlight();
+        return ThreadSafeState->GetFreshBlocksInFlight();
     }
 
     //
