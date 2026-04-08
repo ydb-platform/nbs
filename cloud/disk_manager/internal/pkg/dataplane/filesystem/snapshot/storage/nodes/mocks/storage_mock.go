@@ -50,11 +50,10 @@ func (s *StorageMock) UpdateRestorationNodeIDMapping(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstSnapshotID string,
-	srcNodeIds []uint64,
-	dstNodeIds []uint64,
+	nodeIDMapping map[uint64]uint64,
 ) error {
 
-	args := s.Called(ctx, srcSnapshotID, dstSnapshotID, srcNodeIds, dstNodeIds)
+	args := s.Called(ctx, srcSnapshotID, dstSnapshotID, nodeIDMapping)
 	return args.Error(0)
 }
 
