@@ -124,12 +124,11 @@ bool ShouldDropDiscardRequestsForVolume(
     bool dropDiscardRequests,
     const NProto::TVolume& volume)
 {
+    // It is not safe to use ZeroBlocks as the implementation of discard
+    // for disk registry based disks.
     return dropDiscardRequests ||
            volume.GetTags().contains(DropDiscardRequestsTagName) ||
-           IsDiskRegistryMediaKind(
-               volume.GetStorageMediaKind());   // There is no implementation of
-                                                // ZeroBlocks for disk registry
-                                                // based disks yet.
+           IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
 }
 
 IEndpointListenerPtr CreateVhostEndpointListener(
