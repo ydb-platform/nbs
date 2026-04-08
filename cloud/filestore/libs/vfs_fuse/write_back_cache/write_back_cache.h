@@ -167,6 +167,8 @@ public:
 
     // Used to adjust node size according to cached data
     ui64 GetMaxWrittenOffset(ui64 nodeId) const;
+
+    void UpdateStats();
 };
 
 }   // namespace NCloud::NFileStore::NFuse
