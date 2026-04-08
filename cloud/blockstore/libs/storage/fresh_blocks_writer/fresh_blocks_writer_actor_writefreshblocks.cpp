@@ -57,7 +57,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    const auto commitId = CommitIdsState->GenerateCommitId();
+    const auto commitId = SharedState->GenerateCommitId();
 
     if (commitId == InvalidCommitId) {
         for (auto& r: requestsInBuffer) {

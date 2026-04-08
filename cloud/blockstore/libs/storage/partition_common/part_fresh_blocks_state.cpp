@@ -98,12 +98,12 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionFreshBlocksState::TPartitionFreshBlocksState(
-    const TCommitIdsState& commitIdsState,
-    const TPartitionFlushState& flushState,
-    TPartitionTrimFreshLogState& trimFreshLogState)
+        const TCommitIdsState& commitIdsState,
+        const TPartitionFlushState& flushState,
+        TPartitionThreadSafeStatePtr threadSafeState)
     : CommitIdsState(commitIdsState)
     , FlushState(flushState)
-    , TrimFreshLogState(trimFreshLogState)
+    , ThreadSafeState(std::move(threadSafeState))
 {}
 
 ui32 TPartitionFreshBlocksState::IncrementUnflushedFreshBlocksFromChannelCount(
@@ -196,7 +196,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 {
     TVector<ui64> checkpoints;
     CommitIdsState.GetCheckpointCommitIds(checkpoints);
-    CommitIdsState.GetCheckpointsInFlight().GetCommitIds(checkpoints);
+    ThreadSafeState->GetCheckpointsInFlight()->GetCommitIds(checkpoints);
     SortUnique(checkpoints);
 
     TVector<ui64> existingCommitIds;
@@ -231,7 +231,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
 
             if (removed) {
                 DecrementUnflushedFreshBlocksFromChannelCount(1);
-                TrimFreshLogState.AccessTrimFreshLogBarriers().ReleaseBarrier(
+                ThreadSafeState->AccessTrimFreshLogBarriers()->ReleaseBarrier(
                     garbageCommitId);
             }
         }

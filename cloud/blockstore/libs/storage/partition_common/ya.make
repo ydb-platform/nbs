@@ -20,15 +20,18 @@ SRCS(
     long_running_operation_companion.cpp
     part_channels_state.cpp
     part_fresh_blocks_state.cpp
+    part_thread_safe_state.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/partition/model
     cloud/blockstore/libs/storage/partition_common/model
     cloud/storage/core/libs/common
     cloud/storage/core/libs/kikimr
+    cloud/storage/core/libs/tablet
     contrib/ydb/library/actors/core
     contrib/ydb/core/base
 )

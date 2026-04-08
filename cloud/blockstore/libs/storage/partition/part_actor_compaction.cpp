@@ -1447,7 +1447,7 @@ void TPartitionActor::HandleCompaction(
 
     State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
@@ -1459,7 +1459,7 @@ void TPartitionActor::HandleCompaction(
         msg->CompactionOptions,
         std::move(ranges));
 
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
     Y_ABORT_UNLESS(minCommitId <= commitId);
 
     if (minCommitId == commitId) {
@@ -1467,25 +1467,34 @@ void TPartitionActor::HandleCompaction(
         ExecuteTx(ctx, std::move(tx));
     } else {
         // delay execution until all previous commits completed
-        State->AccessCommitQueue().Enqueue(std::move(tx), commitId);
+        State->AccessCommitQueue()->Enqueue(std::move(tx), commitId);
     }
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
+    TVector<std::unique_ptr<ITransactionBase>> txs;
 
-    while (!State->GetCommitQueue().Empty()) {
-        ui64 commitId = State->GetCommitQueue().Peek();
-        Y_ABORT_UNLESS(minCommitId <= commitId);
+    {
+        auto commitQueue = State->AccessCommitQueue();
+        ui64 minCommitId = commitQueue->GetMinCommitId();
 
-        if (minCommitId == commitId) {
-            // start execution
-            ExecuteTx(ctx, State->AccessCommitQueue().Dequeue());
-        } else {
-            // delay execution until all previous commits completed
-            break;
+        while (!commitQueue->Empty()) {
+            ui64 commitId = commitQueue->Peek();
+            Y_ABORT_UNLESS(minCommitId <= commitId);
+
+            if (minCommitId == commitId) {
+                // start execution
+                txs.push_back(commitQueue->Dequeue());
+            } else {
+                // delay execution until all previous commits completed
+                break;
+            }
         }
+    }
+
+    for (auto& tx: txs) {
+        ExecuteTx(ctx, std::move(tx));
     }
 
     // TODO: too many different queues exist
@@ -1521,7 +1530,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     UpdateStats(msg->Stats);
 
-    State->AccessCommitQueue().ReleaseBarrier(commitId);
+    State->AccessCommitQueue()->ReleaseBarrier(commitId);
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 

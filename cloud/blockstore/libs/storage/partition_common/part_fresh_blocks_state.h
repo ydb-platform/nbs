@@ -1,5 +1,7 @@
 #pragma once
 
+#include "part_thread_safe_state.h"
+
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/partition/model/barrier.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
@@ -120,8 +122,6 @@ public:
 class TPartitionTrimFreshLogState
 {
 private:
-    const TCommitIdsState& CommitIdsState;
-    NPartition::TBarriers TrimFreshLogBarriers;
     NPartition::TOperationState TrimFreshLogState;
     ui64 LastTrimFreshLogToCommitId = 0;
     TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
@@ -130,31 +130,6 @@ private:
         TDuration::Seconds(5)};
 
 public:
-    explicit TPartitionTrimFreshLogState(const TCommitIdsState& commitIdsState)
-        : CommitIdsState(commitIdsState)
-    {}
-
-    [[nodiscard]] NPartition::TBarriers& AccessTrimFreshLogBarriers()
-    {
-        return TrimFreshLogBarriers;
-    }
-
-    [[nodiscard]] const NPartition::TBarriers& GetTrimFreshLogBarriers() const
-    {
-        return TrimFreshLogBarriers;
-    }
-
-    [[nodiscard]] ui64 GetTrimFreshLogToCommitId() const
-    {
-        return Min(
-            // if there are no fresh blocks, we should trim up to current
-            // commitId
-            CommitIdsState.GetLastCommitId(),
-            // if there are some fresh blocks, we should trim till the lowest
-            // fresh commitId minus 1
-            TrimFreshLogBarriers.GetMinCommitId() - 1);
-    }
-
     [[nodiscard]] NPartition::TOperationState& AccessTrimFreshLogState()
     {
         return TrimFreshLogState;
@@ -196,7 +171,8 @@ class TPartitionFreshBlocksState
 private:
     const TCommitIdsState& CommitIdsState;
     const TPartitionFlushState& FlushState;
-    TPartitionTrimFreshLogState& TrimFreshLogState;
+    TPartitionThreadSafeStatePtr ThreadSafeState;
+
     ui32 UnflushedFreshBlocksFromChannelCount = 0;
 
 protected:
@@ -206,7 +182,7 @@ public:
     TPartitionFreshBlocksState(
         const TCommitIdsState& commitIdsState,
         const TPartitionFlushState& flushState,
-        TPartitionTrimFreshLogState& trimFreshLogState);
+        TPartitionThreadSafeStatePtr threadSafeState);
 
     void InitFreshBlocks(
         const TVector<NPartition::TOwningFreshBlock>& freshBlocks);

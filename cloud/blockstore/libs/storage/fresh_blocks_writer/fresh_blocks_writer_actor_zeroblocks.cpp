@@ -57,7 +57,7 @@ void TFreshBlocksWriterActor::HandleZeroBlocks(
         return;
     }
 
-    ui64 commitId = CommitIdsState->GenerateCommitId();
+    ui64 commitId = SharedState->GenerateCommitId();
     if (commitId == InvalidCommitId) {
         requestInfo->CancelRequest(ctx);
         RebootOnCommitIdOverflow(ctx, "ZeroBlocks");
