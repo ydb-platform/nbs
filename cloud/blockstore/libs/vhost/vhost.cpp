@@ -139,6 +139,7 @@ public:
             ui64 blocksCount,
             ui32 queuesCount,
             bool discardEnabled,
+            bool writeZeroesEnabled,
             ui32 optimalIoSize,
             void* cookie,
             const TVhostCallbacks& callbacks)
@@ -157,7 +158,10 @@ public:
         VhdBdevInfo.unmap_cb = callbacks.UnmapMemory;
         VhdBdevInfo.optimal_io_size = optimalIoSize;
         if (discardEnabled) {
-            VhdBdevInfo.features |= VHD_BDEV_F_DISCARD | VHD_BDEV_F_WRITE_ZEROES;
+            VhdBdevInfo.features |= VHD_BDEV_F_DISCARD;
+        }
+        if (writeZeroesEnabled) {
+            VhdBdevInfo.features |= VHD_BDEV_F_WRITE_ZEROES;
         }
     }
 
@@ -256,6 +260,7 @@ public:
         ui64 blocksCount,
         ui32 queuesCount,
         bool discardEnabled,
+        bool writeZeroesEnabled,
         ui32 optimalIoSize,
         void* cookie,
         const TVhostCallbacks& callbacks) override
@@ -268,6 +273,7 @@ public:
             blocksCount,
             queuesCount,
             discardEnabled,
+            writeZeroesEnabled,
             optimalIoSize,
             cookie,
             callbacks);
