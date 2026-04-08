@@ -19,7 +19,6 @@ IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
     bool vhostDiscardEnabled,
-    bool vhostDiscardOnlyEnabled,
     bool vhostWriteZeroesEnabled,
     ui32 maxZeroBlocksSubRequestSize,
     ui32 optimalIoSize);
