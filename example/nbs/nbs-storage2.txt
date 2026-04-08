@@ -15,6 +15,7 @@ NonReplicatedMigrationStartAllowed: true
 
 # Volume
 OverlappingRequestsPolicy: ORP_ENABLE_WITH_CRIT_EVENT
+RequestSplitterPolicy: RSP_ENABLE_WITH_CRIT_EVENT
 
 # DiskRegistry-based
 AcquireNonReplicatedDevices: true

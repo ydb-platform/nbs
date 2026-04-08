@@ -801,6 +801,9 @@ public:
     [[nodiscard]] NProto::EOverlappingRequestsPolicy
     GetOverlappingRequestsPolicy() const;
 
+    [[nodiscard]] NProto::ERequestSplitterPolicy
+    GetRequestSplitterPolicy() const;
+
     [[nodiscard]] TPoolKindToMediaKindMapping
     GetPoolKindToMediaKindMapping() const;
 
