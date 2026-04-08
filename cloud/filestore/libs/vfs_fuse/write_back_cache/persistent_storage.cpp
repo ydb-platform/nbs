@@ -138,7 +138,7 @@ public:
 
     void UpdateStats() const override
     {
-        Stats->UpdatePersistentStorageStats();
+        Stats->UpdateStats();
     }
 
 private:

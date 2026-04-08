@@ -31,10 +31,8 @@ struct IWriteBackCacheStateStats
     virtual void FlushFailed() = 0;
     virtual void WriteDataRequestDropped() = 0;
 
-    virtual TWriteBackCacheStateMetrics
-    CreateWriteBackCacheStateMetrics() const = 0;
-
-    virtual void UpdateWriteBackCacheStateStats() = 0;
+    virtual TWriteBackCacheStateMetrics CreateMetrics() const = 0;
+    virtual void UpdateStats() = 0;
 };
 
 using IWriteBackCacheStateStatsPtr = std::shared_ptr<IWriteBackCacheStateStats>;

@@ -37,7 +37,7 @@ public:
         }
     }
 
-    TWriteBackCacheInternalMetrics CreateInternalMetrics() const override
+    TWriteBackCacheInternalMetrics CreateMetrics() const override
     {
         auto self = shared_from_this();
 
@@ -55,153 +55,68 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDummyWriteBackCacheStats
-    : public std::enable_shared_from_this<TDummyWriteBackCacheStats>
-    , public IWriteBackCacheStats
-    , public IWriteBackCacheInternalStats
-    , public IWriteBackCacheStateStats
-    , public INodeStateHolderStats
-    , public IWriteDataRequestManagerStats
-    , public IPersistentStorageStats
+class TWriteBackCacheStats: public IWriteBackCacheStats
 {
+private:
+    const IWriteBackCacheInternalStatsPtr WriteBackCacheInternalStats =
+        std::make_shared<TWriteBackCacheInternalStats>();
+
+    const IWriteBackCacheStateStatsPtr WriteBackCacheStateStats =
+        CreateWriteBackCacheStateStats();
+
+    const INodeStateHolderStatsPtr NodeStateHolderStats =
+        CreateNodeStateHolderStats();
+
+    const IWriteDataRequestManagerStatsPtr WriteDataRequestManagerStats =
+        CreateWriteDataRequestManagerStats();
+
+    const IPersistentStorageStatsPtr PersistentStorageStats =
+        CreatePersistentStorageStats();
+
 public:
-    void ResetNonDerivativeCounters() override
-    {}
-
-    void FlushStarted() override
-    {}
-
-    void FlushCompleted() override
-    {}
-
-    void FlushFailed() override
-    {}
-
-    void IncrementNodeCount() override
-    {}
-
-    void DecrementNodeCount() override
-    {}
-
-    void WriteDataRequestDropped() override
-    {}
-
-    void AddedPendingRequest() override
-    {}
-
-    void RemovedPendingRequest(TDuration duration) override
-    {
-        Y_UNUSED(duration);
-    }
-
-    void AddedUnflushedRequest() override
-    {}
-
-    void RemovedUnflushedRequest(TDuration duration) override
-    {
-        Y_UNUSED(duration);
-    }
-
-    void AddedFlushedRequest() override
-    {}
-
-    void RemovedFlushedRequest() override
-    {}
-
-    void AddReadDataStats(EReadDataRequestCacheStatus status) override
-    {
-        Y_UNUSED(status);
-    }
-
-    void SetPersistentStorageCounters(
-        ui64 rawCapacityBytesCount,
-        ui64 rawUsedBytesCount,
-        ui64 entryCount,
-        bool isCorrupted) override
-    {
-        Y_UNUSED(rawCapacityBytesCount);
-        Y_UNUSED(rawUsedBytesCount);
-        Y_UNUSED(entryCount);
-        Y_UNUSED(isCorrupted);
-    }
-
     IWriteBackCacheInternalStatsPtr GetWriteBackCacheInternalStats() override
     {
-        return shared_from_this();
-    }
-
-    TWriteBackCacheInternalMetrics CreateInternalMetrics() const override
-    {
-        return {};
+        return WriteBackCacheInternalStats;
     }
 
     IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() override
     {
-        return shared_from_this();
+        return WriteBackCacheStateStats;
     }
-
-    TWriteBackCacheStateMetrics
-    CreateWriteBackCacheStateMetrics() const override
-    {
-        return {};
-    }
-
-    void UpdateWriteBackCacheStateStats() override
-    {}
 
     INodeStateHolderStatsPtr GetNodeStateHolderStats() override
     {
-        return shared_from_this();
+        return NodeStateHolderStats;
     }
-
-    TNodeStateHolderMetrics CreateNodeStateHolderMetrics() const override
-    {
-        return {};
-    }
-
-    void UpdateNodeStateHolderStats() override
-    {}
 
     IWriteDataRequestManagerStatsPtr GetWriteDataRequestManagerStats() override
     {
-        return shared_from_this();
-    }
-
-    TWriteDataRequestManagerMetrics
-    CreateWriteDataRequestManagerMetrics() const override
-    {
-        return {};
-    }
-
-    void UpdateWriteDataRequestManagerStats(
-        TDuration maxPendingRequestDuration,
-        TDuration maxUnflushedRequestDuration) override
-    {
-        Y_UNUSED(maxPendingRequestDuration);
-        Y_UNUSED(maxUnflushedRequestDuration);
+        return WriteDataRequestManagerStats;
     }
 
     IPersistentStorageStatsPtr GetPersistentStorageStats() override
     {
-        return shared_from_this();
+        return PersistentStorageStats;
     }
 
-    TPersistentStorageMetrics CreatePersistentStorageMetrics() const override
+    TWriteBackCacheMetrics CreateMetrics() const override
     {
-        return {};
+        return {
+            WriteBackCacheInternalStats->CreateMetrics(),
+            WriteBackCacheStateStats->CreateMetrics(),
+            NodeStateHolderStats->CreateMetrics(),
+            WriteDataRequestManagerStats->CreateMetrics(),
+            PersistentStorageStats->CreateMetrics()};
     }
-
-    void UpdatePersistentStorageStats() override
-    {}
 };
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IWriteBackCacheStatsPtr CreateDummyWriteBackCacheStats()
+IWriteBackCacheStatsPtr CreateWriteBackCacheStats()
 {
-    return std::make_shared<TDummyWriteBackCacheStats>();
+    return std::make_shared<TWriteBackCacheStats>();
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -42,8 +42,7 @@ public:
         WriteDataRequestDroppedCounter.Inc();
     }
 
-    TWriteBackCacheStateMetrics
-    CreateWriteBackCacheStateMetrics() const override
+    TWriteBackCacheStateMetrics CreateMetrics() const override
     {
         auto self = shared_from_this();
 
@@ -64,7 +63,7 @@ public:
                 [self] { return self->WriteDataRequestDroppedCounter.Get(); })};
     }
 
-    void UpdateWriteBackCacheStateStats() override
+    void UpdateStats() override
     {
         FlushEventCounter.Update();
     }
