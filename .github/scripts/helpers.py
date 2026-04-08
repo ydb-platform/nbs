@@ -8,7 +8,6 @@ from dataclasses import dataclass
 import datetime
 from typing import List, Tuple
 
-
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
     SENSITIVE_DATA_VALUES["github_token"] = os.environ.get("GITHUB_TOKEN")
