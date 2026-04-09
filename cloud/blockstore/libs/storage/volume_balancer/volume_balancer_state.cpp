@@ -231,13 +231,13 @@ void TVolumeBalancerState::UpdateVolumeToPush()
         }
 
         if (moveMostHeavy) {
-            if (value < v->second.PerfStatus.SufferCount) {
-                value = v->second.PerfStatus.SufferCount;
+            if (value < v->second.PerfStatus.ReadWriteIops) {
+                value = v->second.PerfStatus.ReadWriteIops;
                 VolumeToPush = v->first;
             }
         } else {
-            if (value > v->second.PerfStatus.SufferCount) {
-                value = v->second.PerfStatus.SufferCount;
+            if (value > v->second.PerfStatus.ReadWriteIops) {
+                value = v->second.PerfStatus.ReadWriteIops;
                 VolumeToPush = v->first;
             }
         }
