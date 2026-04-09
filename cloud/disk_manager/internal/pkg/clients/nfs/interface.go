@@ -126,6 +126,14 @@ type Client interface {
 		checkpointID string,
 		readonly bool,
 	) (Session, error)
+
+	CreateSessionWithClientID(
+		ctx context.Context,
+		fileSystemID string,
+		clientID string,
+		checkpointID string,
+		readonly bool,
+	) (Session, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
