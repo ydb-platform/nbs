@@ -534,7 +534,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             "yc-nbs",
             "yc-nbs.folder");
 
-        diskRegistry.VolumeBroken("nonrepl-vol");
+        diskRegistry.UpdateVolumeHealth(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_UNHEALTHY);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);
@@ -550,7 +552,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TDiskError,
             DiskId);
 
-        diskRegistry.VolumeRecovered("nonrepl-vol");
+        diskRegistry.UpdateVolumeHealth(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_HEALTHY);
 
         runtime->AdvanceCurrentTime(5s);
         runtime->DispatchEvents({}, 10ms);

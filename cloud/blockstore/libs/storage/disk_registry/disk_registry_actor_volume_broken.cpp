@@ -10,62 +10,47 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::HandleVolumeBroken(
-    const TEvDiskRegistry::TEvVolumeBrokenRequest::TPtr& ev,
+void TDiskRegistryActor::HandleUpdateVolumeHealth(
+    const TEvDiskRegistry::TEvUpdateVolumeHealthRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(VolumeBroken);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(UpdateVolumeHealth);
 
     auto* msg = ev->Get();
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "%s Volume reported disk broken: DiskId=%s",
-        LogTitle.GetWithTime().c_str(),
-        msg->Record.GetDiskId().Quote().c_str());
+    if (msg->Record.GetVolumeHealth() != NProto::VOLUME_HEALTH_HEALTHY) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Volume reported disk broken: DiskId=%s, Health=%s",
+            LogTitle.GetWithTime().c_str(),
+            msg->Record.GetDiskId().Quote().c_str(),
+            NProto::EVolumeHealth_Name(msg->Record.GetVolumeHealth()).c_str());
+    } else {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Volume reported disk recovered: DiskId=%s",
+            LogTitle.GetWithTime().c_str(),
+            msg->Record.GetDiskId().Quote().c_str());
+    }
 
-    ExecuteTx<TUpdateVolumeStateBroken>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record.GetDiskId(),
-        ctx.Now(),
-        /*broken=*/true);
-}
-
-void TDiskRegistryActor::HandleVolumeRecovered(
-    const TEvDiskRegistry::TEvVolumeRecoveredRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(VolumeRecovered);
-
-    auto* msg = ev->Get();
-    auto requestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "%s Volume reported disk recovered: DiskId=%s",
-        LogTitle.GetWithTime().c_str(),
-        msg->Record.GetDiskId().Quote().c_str());
-
-    ExecuteTx<TUpdateVolumeStateBroken>(
+    ExecuteTx<TUpdateVolumeHealth>(
         ctx,
         std::move(requestInfo),
         msg->Record.GetDiskId(),
         ctx.Now(),
-        /*broken=*/false);
+        msg->Record.GetVolumeHealth());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskRegistryActor::PrepareUpdateVolumeStateBroken(
+bool TDiskRegistryActor::PrepareUpdateVolumeHealth(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TUpdateVolumeStateBroken& args)
+    TTxDiskRegistry::TUpdateVolumeHealth& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -73,33 +58,29 @@ bool TDiskRegistryActor::PrepareUpdateVolumeStateBroken(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteUpdateVolumeStateBroken(
+void TDiskRegistryActor::ExecuteUpdateVolumeHealth(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TUpdateVolumeStateBroken& args)
+    TTxDiskRegistry::TUpdateVolumeHealth& args)
 {
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
-    args.Error =
-        State->UpdateVolumeStateBroken(db, args.DiskId, args.Now, args.Broken);
+    args.Error = State->UpdateVolumeHealth(
+        db,
+        args.DiskId,
+        args.Now,
+        args.VolumeHealth);
 }
 
-void TDiskRegistryActor::CompleteUpdateVolumeStateBroken(
+void TDiskRegistryActor::CompleteUpdateVolumeHealth(
     const TActorContext& ctx,
-    TTxDiskRegistry::TUpdateVolumeStateBroken& args)
+    TTxDiskRegistry::TUpdateVolumeHealth& args)
 {
-    if (args.Broken) {
-        auto response =
-            std::make_unique<TEvDiskRegistry::TEvVolumeBrokenResponse>(
-                std::move(args.Error));
-        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-    } else {
-        auto response =
-            std::make_unique<TEvDiskRegistry::TEvVolumeRecoveredResponse>(
-                std::move(args.Error));
-        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-    }
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthResponse>(
+            std::move(args.Error));
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

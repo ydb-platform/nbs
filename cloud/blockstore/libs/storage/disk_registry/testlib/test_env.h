@@ -1212,19 +1212,14 @@ public:
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
     }
 
-    auto CreateVolumeBrokenRequest(const TString& diskId)
+    auto CreateUpdateVolumeHealthRequest(
+        const TString& diskId,
+        NProto::EVolumeHealth volumeHealth)
     {
         auto request =
-            std::make_unique<TEvDiskRegistry::TEvVolumeBrokenRequest>();
+            std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
         request->Record.SetDiskId(diskId);
-        return request;
-    }
-
-    auto CreateVolumeRecoveredRequest(const TString& diskId)
-    {
-        auto request =
-            std::make_unique<TEvDiskRegistry::TEvVolumeRecoveredRequest>();
-        request->Record.SetDiskId(diskId);
+        request->Record.SetVolumeHealth(volumeHealth);
         return request;
     }
 

@@ -33,6 +33,14 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EVolumeHealth
+{
+    VOLUME_HEALTH_HEALTHY = 0;
+    VOLUME_HEALTH_UNHEALTHY = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // passive - send attach/detach path request only on registration
 // active - send attach/detach path request on registration and trying to send this requests to DA until success
 
@@ -307,9 +315,8 @@ message TDiskConfig
     // unrecoverable state.
     repeated TLaggingDevice OutdatedLaggingDevices = 18;
 
-    // Set to true when TVolumeActor reports that the disk is broken
-    // (at least one device timed out from the volume's perspective).
-    bool IsVolumeStateBroken = 19;
+    // Volume's health
+    EVolumeHealth VolumeHealth = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1968,31 +1975,19 @@ message TEnsureDiskRegistryStateIntegrityResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Volume state notifications sent from TVolumeActor to DiskRegistry.
 
-message TVolumeBrokenRequest
+message TUpdateVolumeHealthRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
 
     // Logical disk identifier.
     string DiskId = 2;
+
+    // Volume health.
+    EVolumeHealth VolumeHealth = 3;
 }
 
-message TVolumeBrokenResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
-
-message TVolumeRecoveredRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // Logical disk identifier.
-    string DiskId = 2;
-}
-
-message TVolumeRecoveredResponse
+message TUpdateVolumeHealthResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
