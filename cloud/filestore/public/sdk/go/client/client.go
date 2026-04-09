@@ -281,6 +281,7 @@ func (client *Client) DescribeFileStoreModel(
 func (client *Client) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
+	clientID string,
 	checkpointId string,
 	readonly bool,
 ) (Session, error) {
@@ -289,7 +290,10 @@ func (client *Client) CreateSession(
 		FileSystemId:         fileSystemID,
 		ReadOnly:             readonly,
 		CheckpointId:         checkpointId,
-		RestoreClientSession: false,
+		RestoreClientSession: true,
+		Headers: &protos.THeaders{
+			ClientId: []byte(clientID),
+		},
 	}
 	resp, err := client.Impl.CreateSession(ctx, req)
 	if err != nil {
