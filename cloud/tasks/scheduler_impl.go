@@ -484,6 +484,28 @@ func (s *scheduler) GetOperation(
 ////////////////////////////////////////////////////////////////////////////////
 
 // Used in tests.
+func (s *scheduler) GetTaskError(
+	ctx context.Context,
+	taskID string,
+) error {
+
+	taskState, err := s.storage.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	if taskState.ErrorCode != grpc_codes.OK {
+		return errors.NewDetailedErrorFull(
+			grpc_status.Error(taskState.ErrorCode, taskState.ErrorMessage),
+			taskState.ErrorDetails,
+			taskState.ErrorSilent,
+		)
+	}
+
+	return nil
+}
+
+// Used in tests.
 func (s *scheduler) WaitTaskSync(
 	ctx context.Context,
 	taskID string,

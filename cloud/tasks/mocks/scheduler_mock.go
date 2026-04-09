@@ -139,6 +139,15 @@ func (s *SchedulerMock) GetOperation(
 	return res, args.Error(1)
 }
 
+func (s *SchedulerMock) GetTaskError(
+	ctx context.Context,
+	taskID string,
+) error {
+
+	args := s.Called(ctx, taskID)
+	return args.Error(0)
+}
+
 func (s *SchedulerMock) WaitTaskSync(
 	ctx context.Context,
 	taskID string,
