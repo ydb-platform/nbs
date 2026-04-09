@@ -2,7 +2,9 @@
 
 #include "relaxed_counters.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -50,6 +52,27 @@ public:
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNodeStateHolderMetrics::Register(
+    NMetrics::IMetricsRegistry& localMetricsRegistry,
+    NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const
+{
+    Y_UNUSED(aggregatableMetricsRegistry);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Nodes_Count")},
+        Nodes.Count,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Nodes_MaxCount")},
+        Nodes.MaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

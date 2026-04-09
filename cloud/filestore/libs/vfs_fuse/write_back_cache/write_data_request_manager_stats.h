@@ -29,6 +29,10 @@ struct TWriteDataRequestManagerMetrics
     TExtendedQueueMetrics PendingQueue;
     TExtendedQueueMetrics UnflushedQueue;
     TQueueMetrics FlushedQueue;
+
+    void Register(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -2,7 +2,9 @@
 
 #include "relaxed_counters.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -64,6 +66,49 @@ public:
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPersistentStorageMetrics::Register(
+    NMetrics::IMetricsRegistry& localMetricsRegistry,
+    NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const
+{
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_RawCapacityByteCount")},
+        Storage.RawCapacityByteCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_RawUsedByteCount")},
+        Storage.RawUsedByteCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_RawUsedByteMaxCount")},
+        Storage.RawUsedByteMaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_EntryCount")},
+        Storage.EntryCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Storage_EntryMaxCount")},
+        Storage.EntryMaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    aggregatableMetricsRegistry.Register(
+        {CreateSensor("Storage_Corrupted")},
+        Storage.Corrupted,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

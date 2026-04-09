@@ -15,6 +15,7 @@ SRCS(
     test/test_persistent_storage.cpp
     utils_ut.cpp
     write_back_cache_state_ut.cpp
+    write_back_cache_stats_ut.cpp
     write_back_cache_ut.cpp
     write_data_request_builder_ut.cpp
     write_data_request_manager_ut.cpp

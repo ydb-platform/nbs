@@ -18,6 +18,10 @@ struct TWriteBackCacheStateMetrics
 
     TFlushMetrics Flush;
     NMetrics::IMetricPtr WriteDataRequestDroppedCount;
+
+    void Register(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
