@@ -551,18 +551,21 @@ func (s *storageYDB) updateRestorationNodeIDMapping(
 	ctx context.Context,
 	session *persistence.Session,
 	srcSnapshotID string,
-	dstSnapshotID string,
-	srcNodeIds []uint64,
-	dstNodeIds []uint64,
+	dstFilesystemID string,
+	nodeIDMapping map[uint64]uint64,
 ) error {
 
-	values := make([]persistence.Value, 0, len(srcNodeIds))
-	for i := range srcNodeIds {
+	if len(nodeIDMapping) == 0 {
+		return nil
+	}
+
+	values := make([]persistence.Value, 0, len(nodeIDMapping))
+	for srcNodeID, dstNodeID := range nodeIDMapping {
 		values = append(values, restoreMappingStructValue(
 			srcSnapshotID,
-			dstSnapshotID,
-			srcNodeIds[i],
-			dstNodeIds[i],
+			dstFilesystemID,
+			srcNodeID,
+			dstNodeID,
 		))
 	}
 
@@ -597,7 +600,7 @@ func (s *storageYDB) getDestinationNodeIDs(
 		nodeIDValues = append(nodeIDValues, persistence.Uint64Value(id))
 	}
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $src_snapshot_id as Utf8;
@@ -717,18 +720,9 @@ func (s *storageYDB) DeleteSnapshotData(
 func (s *storageYDB) UpdateRestorationNodeIDMapping(
 	ctx context.Context,
 	srcSnapshotID string,
-	dstSnapshotID string,
-	srcNodeIds []uint64,
-	dstNodeIds []uint64,
+	dstFilesystemID string,
+	nodeIDMapping map[uint64]uint64,
 ) error {
-
-	if len(srcNodeIds) != len(dstNodeIds) {
-		return errors.NewNonRetriableErrorf(
-			"srcNodeIds and dstNodeIds must have the same length, got %v and %v",
-			len(srcNodeIds),
-			len(dstNodeIds),
-		)
-	}
 
 	return s.db.Execute(
 		ctx,
@@ -737,9 +731,8 @@ func (s *storageYDB) UpdateRestorationNodeIDMapping(
 				ctx,
 				session,
 				srcSnapshotID,
-				dstSnapshotID,
-				srcNodeIds,
-				dstNodeIds,
+				dstFilesystemID,
+				nodeIDMapping,
 			)
 		},
 	)
@@ -779,7 +772,7 @@ func (s *storageYDB) listHardLinks(
 	offset int,
 ) ([]nfs.Node, error) {
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;

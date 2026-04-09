@@ -216,13 +216,15 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 
 	srcNodeIds := []uint64{100, 101}
-	dstNodeIds := []uint64{1000, 1001}
+	nodeIDMapping := map[uint64]uint64{
+		100: 1000,
+		101: 1001,
+	}
 	err = f.storage.UpdateRestorationNodeIDMapping(
 		f.ctx,
 		snapshotID,
 		dstFilesystemID,
-		srcNodeIds,
-		dstNodeIds,
+		nodeIDMapping,
 	)
 	require.NoError(t, err)
 
@@ -302,13 +304,17 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 
 	srcNodeIds := []uint64{100, 200, 300}
 	dstNodeIds := []uint64{1000, 2000, 3000}
+	nodeIDMapping := map[uint64]uint64{
+		100: 1000,
+		200: 2000,
+		300: 3000,
+	}
 
 	err = f.storage.UpdateRestorationNodeIDMapping(
 		f.ctx,
 		srcSnapshotID,
 		dstFilesystemID,
-		srcNodeIds,
-		dstNodeIds,
+		nodeIDMapping,
 	)
 	require.NoError(t, err)
 
