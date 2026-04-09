@@ -139,6 +139,10 @@ struct TNodeState
                        : ENodeFlushStatus::NothingToFlush;
         }
 
+        if (HandleToReleaseCount > 0) {
+            return ENodeFlushStatus::FlushRequested;
+        }
+
         if (!FlushRequests.empty() ||
             minUnflushedSequenceId <= flushAllSequenceId)
         {
