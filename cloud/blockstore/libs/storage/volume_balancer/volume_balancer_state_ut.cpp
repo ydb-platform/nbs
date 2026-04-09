@@ -136,8 +136,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateVolumeStats("vol1", "", "", true)};
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-        perfMap["vol0"] = 10;
-        perfMap["vol1"] = 1;
+        perfMap["vol0"] = {10, 100};
+        perfMap["vol1"] = {1, 100};
 
         state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 
@@ -161,8 +161,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateVolumeStats("vol1", "", "", true)};
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-        perfMap["vol0"] = 10;
-        perfMap["vol1"] = 1;
+        perfMap["vol0"] = {10, 100};
+        perfMap["vol1"] = {1, 100};
 
         state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 
@@ -186,8 +186,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateVolumeStats("vol1", "", "", true)};
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-        perfMap["vol0"] = 10;
-        perfMap["vol1"] = 1;
+        perfMap["vol0"] = {10, 100};
+        perfMap["vol1"] = {1, 100};
 
         state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
 
@@ -211,8 +211,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateVolumeStats("vol1", "", "", true) };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+            perfMap["vol0"] = {10, 100};
+            perfMap["vol1"] = {1, 100};
 
             state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 
@@ -226,8 +226,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateVolumeStats("vol1", "", "", false) };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+            perfMap["vol0"] = {10, 100};
+            perfMap["vol1"] = {1, 100};
 
             state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
 
@@ -258,8 +258,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateVolumeStats("vol1", "cloudid2", "folderid2", true) };
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-        perfMap["vol0"] = 10;
-        perfMap["vol1"] = 1;
+        perfMap["vol0"] = {10, 100};
+        perfMap["vol1"] = {1, 100};
 
         now += storageConfig->GetInitialPullDelay();
         state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
@@ -284,8 +284,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateVolumeStats("vol1", "", "", true) };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+            perfMap["vol0"] = {10, 100};
+            perfMap["vol1"] = {1, 100};
 
             state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 
@@ -299,8 +299,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateVolumeStats("vol1", "", "", true) };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+            perfMap["vol0"] = {10, 100};
+            perfMap["vol1"] = {1, 100};
 
             state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
 
@@ -332,8 +332,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateVolumeStats("vol1", "", "", true) };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+            perfMap["vol0"] = {10, 100};
+            perfMap["vol1"] = {1, 100};
 
             state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 
@@ -347,8 +347,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateVolumeStats("vol1", "", "", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT) };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
-            perfMap["vol1"] = 1;
+            perfMap["vol0"] = {10, 100};
+            perfMap["vol1"] = {1, 100};
 
             state.UpdateVolumeStats(vols, std::move(perfMap), 30, now);
 
@@ -382,7 +382,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             };
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-            perfMap["vol0"] = 10;
+            perfMap["vol0"] = {10, 100};
 
             state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 

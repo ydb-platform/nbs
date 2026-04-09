@@ -135,6 +135,7 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
             execTime = requestTime - waitTime;
         }
         AtomicAdd(CurrentScore, CyclesToDurationSafe(execTime).MicroSeconds());
+        AtomicIncrement(CurrentRequestCount);
     }
 }
 
@@ -155,17 +156,22 @@ bool TVolumePerformanceCalculator::UpdateStats()
     auto expectedScore = AtomicGet(ExpectedScore);
     auto actualScore = AtomicGet(CurrentScore);
     bool suffered = DidSuffer(expectedScore, actualScore);
+    auto count = AtomicGet(CurrentRequestCount);
 
     AtomicAdd(SufferCount, suffered - Samples[UpdateCounter].Suffered);
-    Samples[UpdateCounter] = {suffered, expectedScore, actualScore};
+    Samples[UpdateCounter] = {suffered, expectedScore, actualScore, count};
     UpdateCounter = (UpdateCounter + 1) % SampleCount;
 
     ui64 windowExpectedScore = 0;
     ui64 windowActualScore = 0;
+    ui64 windowCount = 0;
     for (const auto& sample: Samples) {
         windowExpectedScore += sample.ExpectedScore;
         windowActualScore += sample.ActualScore;
+        windowCount += sample.RequestCount;
     }
+
+    AtomicSet(RequestCount, windowCount);
 
     AtomicSet(
         SmoothSufferCount,
@@ -190,6 +196,7 @@ bool TVolumePerformanceCalculator::UpdateStats()
 
     AtomicSub(CurrentScore, actualScore);
     AtomicSub(ExpectedScore, expectedScore);
+    AtomicSub(CurrentRequestCount, count);
 
     return suffered;
 }

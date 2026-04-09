@@ -811,7 +811,9 @@ public:
             const TVolumeInfoBase& volumeBase = *holder.VolumeBase;
             ans.emplace_back(
                 volumeBase.Volume.GetDiskId(),
-                volumeBase.PerfCalc.GetSufferCount());
+                TVolumePerfStatus{
+                    volumeBase.PerfCalc.GetSufferCount(),
+                    volumeBase.PerfCalc.GetIops()});
         }
         return ans;
     }

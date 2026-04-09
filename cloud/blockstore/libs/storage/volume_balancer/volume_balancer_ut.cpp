@@ -524,7 +524,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -552,7 +552,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -583,7 +583,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -602,7 +602,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", false, NProto::EPreemptionSource::SOURCE_BALANCER},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             0.1,
             EChangeBindingOp::ACQUIRE_FROM_HIVE,
             TDuration::Seconds(15) + TDuration::Seconds(20));
@@ -633,7 +633,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -647,7 +647,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", false, NProto::EPreemptionSource::SOURCE_MANUAL},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             0.1,
             {},
             TDuration::Seconds(15) + TDuration::Seconds(20));
@@ -675,7 +675,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             {},
             TDuration::Seconds(15));
@@ -712,7 +712,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             {},
             TDuration::Seconds(15));
@@ -749,7 +749,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             {},
             TDuration::Seconds(15));
@@ -776,7 +776,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             {},
             TDuration::Seconds(15));
@@ -807,7 +807,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
              {.DiskId = "vol1",
               .IsLocal = true,
               .Source = NProto::EPreemptionSource::SOURCE_NONE}},
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -853,7 +853,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             1,
             {},
             TDuration::Seconds(15));
@@ -896,7 +896,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol8", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
                 {"vol9", true, NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -935,7 +935,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .IsLocal = true,
                  .Source = NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}},
             MakeError(E_INVALID_STATE),
             {},
             TDuration::Seconds(15));
@@ -977,7 +977,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}, {"vol2", {2, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -992,7 +992,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}, {"vol2", {2, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -1022,7 +1022,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}, {"vol2", {2, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));
@@ -1039,7 +1039,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", false, NProto::EPreemptionSource::SOURCE_BALANCER},
                 {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}, {"vol2", {2, 100}}},
             1,
             {},
             TDuration::Seconds(15));
@@ -1059,7 +1059,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {"vol1", false, NProto::EPreemptionSource::SOURCE_BALANCER},
                 {"vol2", true, NProto::EPreemptionSource::SOURCE_NONE},
             },
-            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            {{"vol0", {10, 100}}, {"vol1", {1, 100}}, {"vol2", {2, 100}}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             TDuration::Seconds(15));

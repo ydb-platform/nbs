@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "cloud/blockstore/libs/diagnostics/volume_stats.h"
+
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -34,7 +36,7 @@ class TVolumeBalancerState
         TInstant NextPullAttempt;
         TDuration PullInterval;
 
-        ui32 SufferCount = 0;
+        TVolumePerfStatus PerfStatus;
 
         TVolumeInfo(TDuration pullInterval)
             : PullInterval(pullInterval)
@@ -42,7 +44,7 @@ class TVolumeBalancerState
     };
 
 public:
-    using TPerfGuaranteesMap = THashMap<TString, ui32>;
+    using TPerfGuaranteesMap = THashMap<TString, TVolumePerfStatus>;
 
 private:
     TStorageConfigPtr StorageConfig;
