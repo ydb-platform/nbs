@@ -1005,6 +1005,168 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             response->GetStatus(),
             response->GetErrorReason());
     }
+
+    Y_UNIT_TEST(ShouldNotTrimInProgressWrites)
+    {
+        auto testEnv = PrepareTestActorRuntime();
+        auto& runtime = *testEnv.Runtime;
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(0, '0');
+
+        ui64 addFreshBlocksCommitId = 0;
+        std::unique_ptr<IEventHandle> stollenAddFreshBlocksRequest;
+
+        bool seenFlushCompleted = false;
+        bool seenTrimCompleted = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
+                {
+                    auto* ev = event->Get<TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>();
+                    addFreshBlocksCommitId = ev->CommitId;
+
+                    stollenAddFreshBlocksRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvCollectGarbage)
+                {
+                    auto* ev = event->Get<TEvBlobStorage::TEvCollectGarbage>();
+
+                    auto trimFreshLogToCommitId =
+                        MakeCommitId(ev->CollectGeneration, ev->CollectStep);
+                    UNIT_ASSERT(
+                        trimFreshLogToCommitId < addFreshBlocksCommitId);
+                }
+
+                seenFlushCompleted |= event->GetTypeRewrite() ==
+                                      TEvPartitionPrivate::EvFlushCompleted;
+
+                seenTrimCompleted |=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvTrimFreshLogCompleted;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        fbwClient.WriteBlocks(1, '1');
+
+        UNIT_ASSERT(stollenAddFreshBlocksRequest);
+
+        {
+            partition.SendFlushRequest();
+
+            TDispatchOptions dispatchOptions;
+            dispatchOptions.CustomFinalCondition = [&]()
+            {
+                return seenFlushCompleted;
+            };
+
+            runtime.DispatchEvents(dispatchOptions, 10ms);
+        }
+
+        {
+            partition.SendTrimFreshLogRequest();
+
+            TDispatchOptions dispatchOptions;
+            dispatchOptions.CustomFinalCondition = [&]()
+            {
+                return seenTrimCompleted;
+            };
+
+            runtime.DispatchEvents(dispatchOptions, 10ms);
+        }
+
+        runtime.Send(stollenAddFreshBlocksRequest.release());
+
+        auto actualContent = GetBlocksContent(
+            fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 2)));
+
+        TStringBuilder expectedContent;
+        expectedContent << GetBlockContent('0') << GetBlockContent('1');
+
+        UNIT_ASSERT_EQUAL(expectedContent, actualContent);
+    }
+
+    Y_UNIT_TEST(ShouldNotLoseInFlightWritesOnReboot)
+    {
+        auto testEnv = PrepareTestActorRuntime();
+        auto& runtime = *testEnv.Runtime;
+
+        TPartitionClient partition(runtime);
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient fbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+        fbwClient.WaitReady();
+
+        std::unique_ptr<IEventHandle> stolenPutRequest;
+        bool stealPutRequest = true;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                    !stolenPutRequest && stealPutRequest)
+                {
+                    stolenPutRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvTrimFreshLogRequest)
+                {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        fbwClient.SendWriteBlocksRequest(0, '1');
+        runtime.DispatchEvents({}, 10ms);
+
+        fbwClient.WriteBlocks(1, '2');
+
+        partition.Flush();
+
+        fbwClient.WriteBlocks(2, '3');
+
+        partition.Flush();
+
+        stealPutRequest = false;
+        runtime.SendAsync(stolenPutRequest.release());
+
+        auto response = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        TFreshBlocksWriterClient newFbwClient(
+            runtime,
+            testEnv.FreshBlocksWriterActorId);
+        newFbwClient.WaitReady();
+
+        auto actualContent = GetBlocksContent(
+            newFbwClient.ReadBlocks(TBlockRange32::WithLength(0, 3)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuilder() << GetBlockContent('1') << GetBlockContent('2')
+                             << GetBlockContent('3'),
+            actualContent);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

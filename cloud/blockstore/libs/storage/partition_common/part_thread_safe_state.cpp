@@ -39,6 +39,28 @@ ui64 TPartitionThreadSafeState::GetLastCommitId() const
     return GetLastCommitIdImpl();
 }
 
+ui64 TPartitionThreadSafeState::StartFreshWrite(ui64 blockCount)
+{
+    TGuard guard(StateLock);
+
+    auto commitId = GenerateCommitIdImpl();
+
+    TrimFreshLogBarriers.AcquireBarrierN(commitId, blockCount);
+    return commitId;
+}
+
+void TPartitionThreadSafeState::FinishFreshWrite(
+    ui64 commitId,
+    ui64 blockCount,
+    bool isError)
+{
+    TGuard guard(StateLock);
+
+    if (isError) {
+        TrimFreshLogBarriers.ReleaseBarrierN(commitId, blockCount);
+    }
+}
+
 ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
 {
     TGuard guard(StateLock);

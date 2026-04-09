@@ -191,16 +191,6 @@ void TPartitionActor::HandleAddFreshBlocks(
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
-    if (FreshBlocksWriter) {
-        ui64 blocksCount = 0;
-        for (auto& blockRange: msg->BlockRanges) {
-            blocksCount += blockRange.Size();
-        }
-        State->AccessTrimFreshLogBarriers()->AcquireBarrierN(
-            msg->CommitId,
-            blocksCount);
-    }
-
     for (size_t i = 0; i < msg->BlockRanges.size(); ++i) {
         auto& blockRange = msg->BlockRanges[i];
 
