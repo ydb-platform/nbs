@@ -140,6 +140,8 @@ ui64 TPartitionState::GetCleanupCommitId() const
     commitId =
         Min(commitId, GetCheckpoints().GetMinCommitId() - 1);
 
+    commitId = Min(commitId, GetCheckpointsInFlight()->GetMinCommitId() - 1);
+
     return commitId;
 }
 

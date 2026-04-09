@@ -13467,7 +13467,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        bool interseptEvent = false;
+        bool interceptEvent = false;
         bool skipFirstIntercept = false;
 
         std::unique_ptr<IEventHandle> putEvent;
@@ -13477,13 +13477,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
                     auto* msg = event->Get<TEvBlobStorage::TEvPut>();
 
-                    if (msg->Id.Channel() == 0 && interseptEvent &&
+                    if (msg->Id.Channel() == 0 && interceptEvent &&
                         !skipFirstIntercept)
                     {
                         putEvent.reset(event.Release());
-                        interseptEvent = false;
+                        interceptEvent = false;
                         return TTestActorRuntime::EEventAction::DROP;
-                    } else if (msg->Id.Channel() == 0 && interseptEvent) {
+                    } else if (msg->Id.Channel() == 0 && interceptEvent) {
                         skipFirstIntercept = false;
                     }
                 }
@@ -13501,13 +13501,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.SendCreateCheckpointRequest("c1");
         partition.SendCompactionRequest();
 
-        interseptEvent = true;
+        interceptEvent = true;
 
         runtime->DispatchEvents({}, 10ms);
         UNIT_ASSERT(putEvent);
 
         skipFirstIntercept = true;
-        interseptEvent = true;
+        interceptEvent = true;
 
         // create checkpoint  and compaction transactions executed not completed
         runtime->SendAsync(putEvent.release());
@@ -13519,7 +13519,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SendAsync(putEvent.release());
 
         skipFirstIntercept = true;
-        interseptEvent = true;
+        interceptEvent = true;
 
         runtime->DispatchEvents({}, 10ms);
 
@@ -13530,16 +13530,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SendAsync(putEvent.release());
 
         skipFirstIntercept = true;
-        interseptEvent = true;
+        interceptEvent = true;
 
         partition.RecvCompactionResponse();
 
         runtime->DispatchEvents({}, 10ms);
 
-        // Delete checkpoint transaction executed not completed, now there is no
-        // checkpoints, but old blob in cleanup queue. Next checkpoint
-        // transaction should start execution after delete checkpoint
-        // transaction completed.
+        // The delete checkpoint transaction was executed, but it was not
+        // completed, so there are no checkpoints anymore, but there is an old
+        // blob in the cleanup queue. The next checkpoint transaction will start
+        // execution after the delete checkpoint transaction is completed.
 
         partition.SendCleanupRequest();
         runtime->DispatchEvents({}, 10ms);
