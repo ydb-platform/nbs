@@ -493,6 +493,8 @@ private:
 
     std::atomic<ui64> ReqIdPool{0};
 
+    TEndpointDisconnectHandler DisconnectHandler;
+
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
     {
@@ -507,7 +509,8 @@ public:
         ui32 port,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
-        TLog log);
+        TLog log,
+        TEndpointDisconnectHandler handler);
     ~TClientEndpoint() override;
 
     // called from CM and CQ threads
@@ -580,7 +583,8 @@ TClientEndpoint::TClientEndpoint(
         ui32 port,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
-        TLog log)
+        TLog log,
+        TEndpointDisconnectHandler handler)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
     , Host(std::move(host))
@@ -591,6 +595,7 @@ TClientEndpoint::TClientEndpoint(
     , OriginalConfig(std::move(config))
     , Config(*OriginalConfig)
     , WaitMode(Config.WaitMode)
+    , DisconnectHandler(std::move(handler))
 {
     // user data attached to connection events
     Connection->context = this;
@@ -1316,6 +1321,9 @@ void TClientEndpoint::ClearDisconnectEvent() noexcept
 
 void TClientEndpoint::Disconnect() noexcept
 {
+    if (DisconnectHandler) {
+        DisconnectHandler();
+    }
     switch (State) {
         // queues are empty, reconnect is scheduled, nothing to do
         case EEndpointState::Disconnecting:
@@ -1828,6 +1836,10 @@ public:
     void Stop() noexcept override;
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
+        ui32 port,
+        TEndpointDisconnectHandler handler) noexcept override;
+    TFuture<IClientEndpointPtr> StartEndpoint(
+        TString host,
         ui32 port) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
     bool IsAlignedDataEnabled() const override;
@@ -1917,9 +1929,11 @@ void TClient::Stop() noexcept
 }
 
 // implements IClient
+
 TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
-    ui32 port) noexcept
+    ui32 port,
+    TEndpointDisconnectHandler handler) noexcept
 {
     auto unavailable = [&](TString message) {
         return MakeErrorFuture<IClientEndpointPtr>(
@@ -1939,7 +1953,8 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
             port,
             Config,
             Counters,
-            Log);
+            Log,
+            std::move(handler));
 
         auto future = endpoint->StartResult.GetFuture();
 
@@ -1951,6 +1966,13 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     } catch (const TServiceError& e) {
         return unavailable("unable to start rdma endpoint");
     }
+}
+
+TFuture<IClientEndpointPtr> TClient::StartEndpoint(
+    TString host,
+    ui32 port) noexcept
+{
+    return StartEndpoint(std::move(host), port, {});
 }
 
 ////////////////////////////////////////////////////////////////////////////////

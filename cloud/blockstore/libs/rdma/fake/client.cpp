@@ -1085,6 +1085,12 @@ public:
     auto StartEndpoint(TString host, ui32 port)
         -> TFuture<NRdma::IClientEndpointPtr> override;
 
+    auto StartEndpoint(
+            TString host,
+            ui32 port,
+            NRdma::TEndpointDisconnectHandler handler)
+        -> TFuture<NRdma::IClientEndpointPtr> override;
+
     void DumpHtml(IOutputStream& out) const override;
 
     [[nodiscard]] bool IsAlignedDataEnabled() const override;
@@ -1123,6 +1129,16 @@ auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
     ActorSystem->Send(RdmaActorId, std::move(request));
 
     return future;
+}
+
+auto TFakeRdmaClient::StartEndpoint(
+        TString host,
+        ui32 port,
+        NRdma::TEndpointDisconnectHandler handler)
+    -> TFuture<NRdma::IClientEndpointPtr>
+{
+    Y_UNUSED(handler);
+    return StartEndpoint(std::move(host), port);
 }
 
 void TFakeRdmaClient::DumpHtml(IOutputStream& out) const
