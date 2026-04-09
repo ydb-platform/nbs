@@ -91,7 +91,7 @@ Y_UNIT_TEST_SUITE(TVhostEndpointTest)
         {
             NProto::TVolume volume;
             volume.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
-            volume.AddTags(DropDiscardRequestsTagName);
+            (*volume.MutableTags())[TString(DropDiscardRequestsTagName)] = "";
 
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
