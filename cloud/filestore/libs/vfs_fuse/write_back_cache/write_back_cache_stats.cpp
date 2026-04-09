@@ -139,7 +139,7 @@ public:
         IMetricsRegistry& aggregatableMetricsRegistry) override
     {
         // Local metrics can be aggregated when two WriteBackCache instances are
-        // running on for the same FileSystemId/ClientId pair (due to migration)
+        // running for the same FileSystemId/ClientId pair (migration scenario)
 
         Stats->CreateMetrics().Register(
             localMetricsRegistry,

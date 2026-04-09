@@ -1053,11 +1053,12 @@ private:
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
 
                     ModuleStatsRegistry->Register(
-                        Config->GetFileSystemId(),
-                        Config->GetClientId(),
-                        response.GetFileStore().GetCloudId(),
-                        response.GetFileStore().GetFolderId(),
-                        WriteBackCache.CreateModuleStats());
+                        {.FileSystemId = Config->GetFileSystemId(),
+                         .ClientId = Config->GetClientId(),
+                         .CloudId = response.GetFileStore().GetCloudId(),
+                         .FolderId = response.GetFileStore().GetFolderId(),
+                         .SessionId = SessionId,
+                         .ModuleStats = WriteBackCache.CreateModuleStats()});
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(

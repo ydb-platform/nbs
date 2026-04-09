@@ -10,6 +10,8 @@
 
 #include <util/datetime/base.h>
 
+#include <functional>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
