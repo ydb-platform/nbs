@@ -566,6 +566,12 @@ private:
                     if (const char* basePath = getenv("NFS_SHM_BASE_PATH")) {
                         shmFullPath = TFsPath(basePath) / shmFileName;
                     }
+                    auto shmControl =
+                        std::dynamic_pointer_cast<IShmControl>(Client);
+                    Y_ABORT_UNLESS(
+                        shmControl,
+                        "SharedMemoryFilePath requires a gRPC client that "
+                        "implements IShmControl");
                     ShmClient_ = CreateSharedMemoryClient(
                         shmFullPath,
                         shmFileName,
@@ -574,6 +580,7 @@ private:
                             (ui64)spec.GetReadBytes(),
                             (ui64)spec.GetWriteBytes()),
                         Client,
+                        std::move(shmControl),
                         Session,
                         Scheduler,
                         Timer,

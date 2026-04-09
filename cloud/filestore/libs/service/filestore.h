@@ -123,26 +123,29 @@ struct IFileStoreService
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
         IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) = 0;
+};
 
-    // Shared memory transport methods (non-pure-virtual: default returns E_FAIL)
+////////////////////////////////////////////////////////////////////////////////
+
+// Narrow interface for shared-memory transport control RPCs.
+// Implemented by the gRPC client; not part of IFileStoreService so that
+// implementations that don't support SHM need not stub these out.
+struct IShmControl
+{
+    virtual ~IShmControl() = default;
+
 #define FILESTORE_DECLARE_SHM_METHOD(name, ...)                                \
     virtual NThreading::TFuture<NProto::T##name##Response> name(               \
         TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request)                     \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        NProto::T##name##Response response;                                    \
-        *response.MutableError() =                                             \
-            MakeError(E_FAIL, #name " is not supported");                      \
-        return NThreading::MakeFuture(std::move(response));                    \
-    }                                                                          \
+        std::shared_ptr<NProto::T##name##Request> request) = 0;                \
 // FILESTORE_DECLARE_SHM_METHOD
 
     FILESTORE_SHAREDMEM_METHODS(FILESTORE_DECLARE_SHM_METHOD)
 
 #undef FILESTORE_DECLARE_SHM_METHOD
 };
+
+using IShmControlPtr = std::shared_ptr<IShmControl>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

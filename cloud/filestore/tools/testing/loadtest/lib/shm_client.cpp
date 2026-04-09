@@ -65,7 +65,6 @@ public:
 
     FILESTORE_CONTROL_SERVICE(FORWARD_METHOD)
     FILESTORE_DATA_SERVICE(FORWARD_METHOD)
-    FILESTORE_SHAREDMEM_METHODS(FORWARD_METHOD)
 
 #undef FORWARD_METHOD
 
@@ -115,6 +114,9 @@ private:
     const ISchedulerPtr Scheduler_;
     const ITimerPtr Timer_;
 
+    // Control transport for SHM RPCs (Mmap / Munmap / PingMmapRegion).
+    const IShmControlPtr ShmControl_;
+
     // Session-aware data transport: WriteData/ReadData go through this so that
     // session headers (sessionId, seqNo) are properly filled in.
     const std::shared_ptr<IFileStore> DataOps_;
@@ -133,6 +135,7 @@ public:
             ui64 shmSize,
             ui64 slotSize,
             IFileStoreServicePtr inner,
+            IShmControlPtr shmControl,
             std::shared_ptr<IFileStore> dataOps,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
@@ -145,6 +148,7 @@ public:
         , NumSlots_(slotSize ? shmSize / slotSize : 1)
         , Scheduler_(std::move(scheduler))
         , Timer_(std::move(timer))
+        , ShmControl_(std::move(shmControl))
         , DataOps_(std::move(dataOps))
     {
         Log = logging->CreateLog("NFS_SHM_CLIENT");
@@ -240,7 +244,7 @@ private:
         req->SetFilePath(FileName_);
         req->SetSize(ShmSize_);
 
-        auto response = Inner_->Mmap(std::move(ctx), std::move(req)).GetValueSync();
+        auto response = ShmControl_->Mmap(std::move(ctx), std::move(req)).GetValueSync();
         if (HasError(response)) {
             ythrow TServiceError(response.GetError()) << "Mmap RPC failed";
         }
@@ -259,7 +263,7 @@ private:
             auto ctx = MakeIntrusive<TCallContext>();
             auto req = std::make_shared<NProto::TMunmapRequest>();
             req->SetId(RegionId_);
-            Inner_->Munmap(std::move(ctx), std::move(req)).Wait();
+            ShmControl_->Munmap(std::move(ctx), std::move(req)).Wait();
             RegionId_ = 0;
         }
 
@@ -290,7 +294,7 @@ private:
         auto req = std::make_shared<NProto::TPingMmapRegionRequest>();
         req->SetId(RegionId_);
 
-        Inner_->PingMmapRegion(std::move(ctx), std::move(req))
+        ShmControl_->PingMmapRegion(std::move(ctx), std::move(req))
             .Subscribe([weakSelf = weak_from_this()](
                            const TFuture<NProto::TPingMmapRegionResponse>&) {
                 if (auto self = weakSelf.lock()) {
@@ -320,6 +324,7 @@ IFileStoreServicePtr CreateSharedMemoryClient(
     ui64 shmSize,
     ui64 slotSize,
     IFileStoreServicePtr inner,
+    IShmControlPtr shmControl,
     std::shared_ptr<IFileStore> dataOps,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
@@ -331,6 +336,7 @@ IFileStoreServicePtr CreateSharedMemoryClient(
         shmSize,
         slotSize,
         std::move(inner),
+        std::move(shmControl),
         std::move(dataOps),
         std::move(scheduler),
         std::move(timer),

@@ -798,6 +798,7 @@ using TUdsFileStoreClientBase = TUdsClient<
 template <typename TBase>
 class TFileStoreClient final
     : public TBase
+    , public IShmControl
 {
 public:
     using TBase::TBase;
