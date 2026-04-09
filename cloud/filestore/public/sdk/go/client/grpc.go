@@ -35,7 +35,9 @@ type grpcClient struct {
 
 func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers := req.GetHeaders()
-	headers.ClientId = []byte(client.clientID)
+	if headers.GetClientId() == nil {
+		headers.ClientId = []byte(client.clientID)
+	}
 
 	if val := ctx.Value(IdempotenceIDHeaderKey); val != nil {
 		if idempotenceID, ok := val.([]byte); ok {

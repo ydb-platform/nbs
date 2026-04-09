@@ -41,6 +41,10 @@ func (s *sessionWithMetrics) SetSession(nfsSession nfs_client.Session) {
 	s.session = nfsSession
 }
 
+func (s *sessionWithMetrics) GetID() string {
+	return s.session.SessionID
+}
+
 func NewSession(
 	nfs nfs_client.ClientInterface,
 	nfsSession nfs_client.Session,
@@ -240,6 +244,10 @@ func (s *sessionWithReEstablish) SetSession(
 ) {
 
 	s.impl.SetSession(nfsSession)
+}
+
+func (s *sessionWithReEstablish) GetID() string {
+	return s.impl.GetID()
 }
 
 func NewSessionWithReEstablish(

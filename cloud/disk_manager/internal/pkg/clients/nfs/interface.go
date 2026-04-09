@@ -81,6 +81,8 @@ type Session interface {
 
 	SetSession(nfsSession nfs_client.Session)
 
+	GetID() string
+
 	Close(ctx context.Context) error
 }
 

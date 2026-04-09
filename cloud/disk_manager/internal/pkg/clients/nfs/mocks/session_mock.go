@@ -97,6 +97,11 @@ func (s *SessionMock) SetSession(nfsSession nfs_client.Session) {
 	s.Called(nfsSession)
 }
 
+func (s *SessionMock) GetID() string {
+	args := s.Called()
+	return args.String(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewSessionMock() *SessionMock {
