@@ -104,7 +104,7 @@ class TBufferPool::TImpl
     using TChunkList = TIntrusiveListWithAutoDelete<TChunk, TDelete>;
 
 private:
-    TBufferPoolConfig Config;
+    const TBufferPoolConfig Config;
     NVerbs::IVerbsPtr Verbs;
 
     ibv_pd* const ProtectionDomain;

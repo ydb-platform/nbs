@@ -529,6 +529,7 @@ struct TTestVerbs
             TestContext->CreateQP(id, attr);
         }
 
+        id->qp = new ibv_qp();
         id->pd = new ibv_pd();
 
         auto g = Guard(TestContext->CompletionLock);
@@ -537,6 +538,7 @@ struct TTestVerbs
 
     void RdmaDestroyQP(rdma_cm_id* id) override
     {
+        delete id->qp;
         delete id->pd;
 
         if (TestContext->DestroyQP) {

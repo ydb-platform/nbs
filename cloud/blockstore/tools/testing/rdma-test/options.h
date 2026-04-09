@@ -2,6 +2,8 @@
 
 #include "private.h"
 
+#include <cloud/blockstore/libs/rdma/iface/buffer.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
@@ -74,10 +76,7 @@ struct TOptions
     TString TracePath;
     ui32 TraceRate = 1;
 
-    // buffer pool options
-    size_t ChunkSize = 4_MB;
-    size_t MaxChunkAlloc = ChunkSize / 4;
-    size_t MaxFreeChunks = 10;
+    NRdma::TBufferPoolConfig BufferPoolConfig;
 
     void Parse(int argc, char** argv);
 };

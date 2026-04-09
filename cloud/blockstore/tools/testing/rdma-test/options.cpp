@@ -140,18 +140,18 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption("chunk-size")
         .RequiredArgument("NUM")
-        .DefaultValue(ToString(ChunkSize))
-        .StoreResult(&ChunkSize);
+        .DefaultValue(ToString(BufferPoolConfig.ChunkSize))
+        .StoreResult(&BufferPoolConfig.ChunkSize);
 
     opts.AddLongOption("max-chunk-alloc")
         .RequiredArgument("NUM")
-        .DefaultValue(ToString(MaxChunkAlloc))
-        .StoreResult(&MaxChunkAlloc);
+        .DefaultValue(ToString(BufferPoolConfig.MaxChunkAlloc))
+        .StoreResult(&BufferPoolConfig.MaxChunkAlloc);
 
     opts.AddLongOption("max-free-chunks")
         .RequiredArgument("NUM")
-        .DefaultValue(ToString(MaxFreeChunks))
-        .StoreResult(&MaxFreeChunks);
+        .DefaultValue(ToString(BufferPoolConfig.MaxFreeChunks))
+        .StoreResult(&BufferPoolConfig.MaxFreeChunks);
 
     TOptsParseResultException res(&opts, argc, argv);
 

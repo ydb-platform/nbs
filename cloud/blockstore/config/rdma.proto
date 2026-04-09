@@ -18,11 +18,11 @@ enum EWaitMode
 message TBufferPool
 {
     // Memory chunks of this size will be kept for reuse. Buffers smaller or
-    // equal to ChunkSize will be baked by one of the available chunks
+    // equal to the ChunkSize will be backed by one of the available chunks
     uint64 ChunkSize = 1;
 
-    // Maximum buffer size, that will be baked by a chunk. Anything bigger will
-    // spawn a custom chunk that won't be saved for reuse
+    // Maximum buffer size that will be backed by a chunk. Anything bigger will
+    // spawn a custom chunk that won't be reused
     uint64 MaxChunkAlloc = 2;
 
     // Number of unused chunks to be kept to speed up allocations

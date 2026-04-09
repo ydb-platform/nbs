@@ -34,6 +34,11 @@ NRdma::EWaitMode Convert(NProto::EWaitMode mode)
         param = __VA_ARGS__(value); \
     }
 
+#define SET_NESTED(param1, param2, ...) \
+    if (const auto& value = config.Get##param1().Get##param2()) { \
+        param1##Config.param2 = __VA_ARGS__(value); \
+    }
+
 TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
 {
     SET(Backlog);
@@ -48,8 +53,13 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(IpTypeOfService);
     SET(SourceInterface);
     SET(VerbsQP);
+
+    SET_NESTED(BufferPool, ChunkSize);
+    SET_NESTED(BufferPool, MaxChunkAlloc);
+    SET_NESTED(BufferPool, MaxFreeChunks);
 }
 
+#undef SET_NESTED
 #undef SET
 
 void TServerConfig::DumpHtml(IOutputStream& out) const
