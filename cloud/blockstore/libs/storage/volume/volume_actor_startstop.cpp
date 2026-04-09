@@ -160,6 +160,7 @@ void TVolumeActor::OnPartitionStateChanged(
                     GetDiskId(),
                     State->GetMeta().GetVolumeConfig().GetBlockSize(),
                     State->GetMeta().GetVolumeConfig().GetBlocksPerStripe(),
+                    Config->GetRequestSplitterPolicy(),
                     std::move(partitionActors)),
                 TActorsStack::EActorPurpose::MultiPartitionWrapper);
 

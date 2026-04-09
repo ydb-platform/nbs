@@ -685,6 +685,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(OverlappingRequestsPolicy,                                             \
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
+    xxx(RequestSplitterPolicy,                                                 \
+        NProto::ERequestSplitterPolicy,                                        \
+        NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
     xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
     xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
         bool,                                                                  \
@@ -845,6 +848,13 @@ IOutputStream& operator<<(
     NProto::EOverlappingRequestsPolicy orp)
 {
     return out << NProto::EOverlappingRequestsPolicy_Name(orp);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::ERequestSplitterPolicy rsp)
+{
+    return out << NProto::ERequestSplitterPolicy_Name(rsp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

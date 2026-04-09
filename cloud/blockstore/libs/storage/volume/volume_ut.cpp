@@ -9177,6 +9177,98 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, overlappingRequestsCounter->Val());
     }
 
+    Y_UNIT_TEST(ShouldReportCrossPartitionRequestDetected)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetRequestSplitterPolicy(
+            NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            2,
+            1024);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto crossPartitionCounter = counters->GetCounter(
+            "AppCriticalEvents/CrossPartitionRequestDetected",
+            true);
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(512, 1024),
+            clientInfo.GetClientId(),
+            1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, crossPartitionCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCrossPartitionRequestDetectedForSinglePartition)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetRequestSplitterPolicy(
+            NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            2,
+            1024);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto crossPartitionCounter = counters->GetCounter(
+            "AppCriticalEvents/CrossPartitionRequestDetected",
+            true);
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 512),
+            clientInfo.GetClientId(),
+            1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crossPartitionCounter->Val());
+    }
+
     Y_UNIT_TEST(ShouldDescribeFromBaseDisk)
     {
         NProto::TStorageServiceConfig storageServiceConfig;

@@ -86,6 +86,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(DiskRegistryStateIntegrityBroken)                                      \
     xxx(AddFreshBlocksResultedInError)                                         \
     xxx(OverlappingRequestsDetected)                                           \
+    xxx(CrossPartitionRequestDetected)                                         \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
