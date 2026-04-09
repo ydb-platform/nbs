@@ -16,6 +16,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TEnvironment
+{
+    ILoggingServicePtr Logging =
+        CreateLoggingService("console", {TLOG_RESOURCES});
+    TLog Log;
+
+    TEnvironment()
+        : Log(Logging->CreateLog("LOWLEVEL_TEST"))
+    {}
+};
+
 mode_t GetUmask()
 {
     const auto currentUmask = ::umask(0);
@@ -31,22 +42,38 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
 {
     Y_UNIT_TEST(ShouldRespectOptionalUmaskOverride)
     {
+        TEnvironment env;
         const auto originalUmask = ::umask(0027);
 
         {
-            NLowLevel::UnixCredentialsGuard guard(0, 0, std::nullopt, false);
+            NLowLevel::UnixCredentialsGuard guard(
+                env.Log,
+                0,
+                0,
+                std::nullopt,
+                false);
             UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0027);
         }
 
         {
-            NLowLevel::UnixCredentialsGuard guard(0, 0, 0, false);
+            NLowLevel::UnixCredentialsGuard guard(
+                env.Log,
+                0,
+                0,
+                0,
+                false);
             UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0027);
 
         {
-            NLowLevel::UnixCredentialsGuard guard(0, 0, 0077, false);
+            NLowLevel::UnixCredentialsGuard guard(
+                env.Log,
+                0,
+                0,
+                0077,
+                false);
             UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0077);
         }
 

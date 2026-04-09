@@ -40,6 +40,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         ? request.GetMode() : Config->GetDefaultPermissions();
 
     NLowLevel::UnixCredentialsGuard credGuard(
+        Log,
         request.GetUid(),
         request.GetGid(),
         session->GuestPosixAclEnabled

@@ -50,6 +50,7 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     }
 
     NLowLevel::UnixCredentialsGuard credGuard(
+        Log,
         request.GetUid(),
         request.GetGid(),
         session->GuestPosixAclEnabled

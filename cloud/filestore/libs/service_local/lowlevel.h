@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -24,9 +26,11 @@ private:
     bool IsUmaskRestoreNeeded = false;
     bool IsIdRestoreNeeded = false;
     Y_POD_STATIC_THREAD(bool) IsThreadOwnsUmask;
+    TLog& Log;
 
 public:
     UnixCredentialsGuard(
+        TLog& log,
         uid_t uid,
         gid_t gid,
         std::optional<mode_t> umaskMode,

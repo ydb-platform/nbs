@@ -685,14 +685,21 @@ bool Flock(const TFileHandle& handle, int operation)
 ////////////////////////////////////////////////////////////////////////////////
 
 UnixCredentialsGuard::UnixCredentialsGuard(
-    uid_t uid,
-    gid_t gid,
-    std::optional<mode_t> umaskMode,
-    bool trustUserCredentials)
+        TLog& log,
+        uid_t uid,
+        gid_t gid,
+        std::optional<mode_t> umaskMode,
+        bool trustUserCredentials)
+    : Log(log)
 {
     if (umaskMode.has_value()) {
         if (!IsThreadOwnsUmask) {
-            // umask is shared across threads unless we unshare fs state first.
+            // By default umask is process state shared by all threads. If one
+            // request changes it while another thread is creating a file for a
+            // different user, the second request may observe the wrong umask
+            // and create the file with incorrect permissions. unshare(CLONE_FS)
+            // asks the kernel to allocate private fs state for this thread,
+            // including umask, so later umask changes affect only this thread.
             Y_ABORT_UNLESS(
                 unshare(CLONE_FS) != -1,
                 "unshare(CLONE_FS) failed: %d, %s",
@@ -719,11 +726,17 @@ UnixCredentialsGuard::UnixCredentialsGuard(
         // threads
         int ret = syscall(SYS_setresgid, -1, gid, -1);
         if (ret == -1) {
+            STORAGE_ERROR(
+                "SYS_setresgid failed, gid=" << gid << " : "
+                                             << LastSystemErrorText())
             return;
         }
 
         ret = syscall(SYS_setresuid, -1, uid, -1);
         if (ret == -1) {
+            STORAGE_ERROR(
+                "SYS_setresuid failed, uid=" << uid << " : "
+                                             << LastSystemErrorText())
             syscall(SYS_setresgid, -1, OriginalGid, -1);
             return;
         }

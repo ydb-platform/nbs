@@ -2425,8 +2425,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             createNodeResponse.GetError().GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            bootstrap.GetNodeAttr(RootNodeId, "node-created").GetNode().GetMode(),
-            0644);
+            0644,
+            bootstrap.GetNodeAttr(RootNodeId, "node-created").GetNode().GetMode());
 
         auto createHandle = bootstrap.CreateCreateHandleRequest(
             RootNodeId,
