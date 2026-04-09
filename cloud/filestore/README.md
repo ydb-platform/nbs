@@ -16,7 +16,7 @@ usermod -a -G kvm $USER
 To build run the following command from the repository root folder:
 
 ```bash
-./ya make -r -- cloud/filestore/buildall -D CFLAGS="-fno-omit-frame-pointer"
+./ya make -r -DCFLAGS="-fno-omit-frame-pointer" -- cloud/filestore/buildall
 ```
 or
 ```bash
