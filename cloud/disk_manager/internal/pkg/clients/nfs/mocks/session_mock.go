@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +91,10 @@ func (s *SessionMock) UnlinkNode(
 func (s *SessionMock) Close(ctx context.Context) error {
 	args := s.Called(ctx)
 	return args.Error(0)
+}
+
+func (s *SessionMock) SetSession(nfsSession nfs_client.Session) {
+	s.Called(nfsSession)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -6,6 +6,7 @@ import (
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nfs_protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,10 +31,14 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type session struct {
+type sessionWithMetrics struct {
 	nfs     nfs_client.ClientInterface
 	session nfs_client.Session
 	metrics client_metrics.Metrics
+}
+
+func (s *sessionWithMetrics) SetSession(nfsSession nfs_client.Session) {
+	s.session = nfsSession
 }
 
 func NewSession(
@@ -42,14 +47,14 @@ func NewSession(
 	metrics client_metrics.Metrics,
 ) Session {
 
-	return &session{
+	return &sessionWithMetrics{
 		nfs:     nfs,
 		session: nfsSession,
 		metrics: metrics,
 	}
 }
 
-func (s *session) CreateCheckpoint(
+func (s *sessionWithMetrics) CreateCheckpoint(
 	ctx context.Context,
 	filesystemID string,
 	checkpointID string,
@@ -71,13 +76,13 @@ func (s *session) CreateCheckpoint(
 	)
 }
 
-func (s *session) Close(ctx context.Context) (err error) {
+func (s *sessionWithMetrics) Close(ctx context.Context) (err error) {
 	defer s.metrics.StatRequest("DestroySession")(&err)
 
 	return wrapError(s.nfs.DestroySession(ctx, s.session))
 }
 
-func (s *session) ListNodes(
+func (s *sessionWithMetrics) ListNodes(
 	ctx context.Context,
 	parentNodeID uint64,
 	cookie string,
@@ -103,7 +108,7 @@ func (s *session) ListNodes(
 	return resultNodes, cookie, wrapError(err)
 }
 
-func (s *session) CreateNode(
+func (s *sessionWithMetrics) CreateNode(
 	ctx context.Context,
 	node Node,
 ) (_ uint64, err error) {
@@ -118,7 +123,7 @@ func (s *session) CreateNode(
 	return nodeID, wrapError(err)
 }
 
-func (s *session) CreateNodeIdempotent(
+func (s *sessionWithMetrics) CreateNodeIdempotent(
 	ctx context.Context,
 	node Node,
 ) (_ uint64, err error) {
@@ -147,7 +152,7 @@ func (s *session) CreateNodeIdempotent(
 	return nodeID, wrapError(err)
 }
 
-func (s *session) ReadLink(
+func (s *sessionWithMetrics) ReadLink(
 	ctx context.Context,
 	nodeID uint64,
 ) (_ []byte, err error) {
@@ -158,7 +163,7 @@ func (s *session) ReadLink(
 	return data, wrapError(err)
 }
 
-func (s *session) GetNodeAttr(
+func (s *sessionWithMetrics) GetNodeAttr(
 	ctx context.Context,
 	parentNodeID uint64,
 	name string,
@@ -170,7 +175,7 @@ func (s *session) GetNodeAttr(
 	return Node(node), wrapError(err)
 }
 
-func (s *session) UnlinkNode(
+func (s *sessionWithMetrics) UnlinkNode(
 	ctx context.Context,
 	parentNodeID uint64,
 	name string,
@@ -182,4 +187,189 @@ func (s *session) UnlinkNode(
 	return wrapError(
 		s.nfs.UnlinkNode(ctx, s.session, parentNodeID, name, unlinkDirectory),
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type sessionWithReEstablish struct {
+	impl         Session
+	nfs          nfs_client.ClientInterface
+	filesystemID string
+	checkpointID string
+	readonly     bool
+}
+
+func requestWithReEstablishSession[T any](
+	ctx context.Context,
+	s *sessionWithReEstablish,
+	callback func() (T, error),
+) (T, error) {
+
+	for {
+		result, err := callback()
+		if !isSessionInvalidError(err) {
+			return result, err
+		}
+
+		logging.Warn(
+			ctx,
+			"re-establishing invalid session for filesystem %v, checkpoint %v",
+			s.filesystemID,
+			s.checkpointID,
+		)
+
+		newSession, err := s.nfs.CreateSession(
+			ctx,
+			s.filesystemID,
+			s.checkpointID,
+			s.readonly,
+		)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+
+		s.impl.SetSession(newSession)
+	}
+}
+
+func (s *sessionWithReEstablish) SetSession(
+	nfsSession nfs_client.Session,
+) {
+
+	s.impl.SetSession(nfsSession)
+}
+
+func NewSessionWithReEstablish(
+	impl Session,
+	nfs nfs_client.ClientInterface,
+	filesystemID string,
+	checkpointID string,
+	readonly bool,
+) Session {
+
+	return &sessionWithReEstablish{
+		impl:         impl,
+		nfs:          nfs,
+		filesystemID: filesystemID,
+		checkpointID: checkpointID,
+		readonly:     readonly,
+	}
+}
+
+func (s *sessionWithReEstablish) Close(ctx context.Context) error {
+	return s.impl.Close(ctx)
+}
+
+func (s *sessionWithReEstablish) CreateCheckpoint(
+	ctx context.Context,
+	filesystemID string,
+	checkpointID string,
+	nodeID uint64,
+) error {
+
+	_, err := requestWithReEstablishSession(ctx, s, func() (struct{}, error) {
+		return struct{}{}, s.impl.CreateCheckpoint(
+			ctx,
+			filesystemID,
+			checkpointID,
+			nodeID,
+		)
+	})
+	return err
+}
+
+func (s *sessionWithReEstablish) ListNodes(
+	ctx context.Context,
+	parentNodeID uint64,
+	cookie string,
+	maxBytes uint32,
+	unsafe bool,
+) ([]Node, string, error) {
+
+	type result struct {
+		nodes  []Node
+		cookie string
+	}
+
+	r, err := requestWithReEstablishSession(ctx, s, func() (result, error) {
+		nodes, cookie, err := s.impl.ListNodes(
+			ctx,
+			parentNodeID,
+			cookie,
+			maxBytes,
+			unsafe,
+		)
+		return result{nodes, cookie}, err
+	})
+	return r.nodes, r.cookie, err
+}
+
+func (s *sessionWithReEstablish) CreateNode(
+	ctx context.Context,
+	node Node,
+) (uint64, error) {
+
+	return requestWithReEstablishSession(ctx, s, func() (uint64, error) {
+		return s.impl.CreateNode(ctx, node)
+	})
+}
+
+func (s *sessionWithReEstablish) CreateNodeIdempotent(
+	ctx context.Context,
+	node Node,
+) (uint64, error) {
+
+	return requestWithReEstablishSession(ctx, s, func() (uint64, error) {
+		return s.impl.CreateNodeIdempotent(ctx, node)
+	})
+}
+
+func (s *sessionWithReEstablish) ReadLink(
+	ctx context.Context,
+	nodeID uint64,
+) ([]byte, error) {
+
+	return requestWithReEstablishSession(ctx, s, func() ([]byte, error) {
+		return s.impl.ReadLink(ctx, nodeID)
+	})
+}
+
+func (s *sessionWithReEstablish) GetNodeAttr(
+	ctx context.Context,
+	parentNodeID uint64,
+	name string,
+) (Node, error) {
+
+	return requestWithReEstablishSession(ctx, s, func() (Node, error) {
+		return s.impl.GetNodeAttr(ctx, parentNodeID, name)
+	})
+}
+
+func (s *sessionWithReEstablish) UnlinkNode(
+	ctx context.Context,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) error {
+
+	_, err := requestWithReEstablishSession(ctx, s, func() (struct{}, error) {
+		return struct{}{}, s.impl.UnlinkNode(
+			ctx,
+			parentNodeID,
+			name,
+			unlinkDirectory,
+		)
+	})
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func assertSessionWithMetricsIsSession(arg *sessionWithMetrics) Session {
+	return arg
+}
+
+func assertSessionWithReEstablishIsSession(arg *sessionWithReEstablish) Session {
+	return arg
 }

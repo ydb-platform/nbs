@@ -47,6 +47,17 @@ func wrapError(err error) error {
 	return err
 }
 
+func isSessionInvalidError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_INVALID_SESSION {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isAbortedError(err error) bool {
 	var clientErr *nfs_client.ClientError
 	if errors.As(err, &clientErr) {
@@ -339,7 +350,7 @@ func (c *client) CreateSession(
 		return nil, wrapError(err)
 	}
 
-	return &session{
+	return &sessionWithMetrics{
 		nfs:     c.nfs,
 		session: s,
 		metrics: client_metrics.NewSessionMetrics(

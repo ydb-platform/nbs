@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,6 +78,8 @@ type Session interface {
 		name string,
 		unlinkDirectory bool,
 	) error
+
+	SetSession(nfsSession nfs_client.Session)
 
 	Close(ctx context.Context) error
 }
