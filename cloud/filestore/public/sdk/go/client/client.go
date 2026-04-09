@@ -290,7 +290,6 @@ func (client *Client) CreateSession(
 		FileSystemId:         fileSystemID,
 		ReadOnly:             readonly,
 		CheckpointId:         checkpointId,
-		RestoreClientSession: true,
 		Headers: &protos.THeaders{
 			ClientId: []byte(clientID),
 		},
