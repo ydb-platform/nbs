@@ -807,6 +807,10 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.ParentNode->Attrs);
 
     if (!Config->GetParentlessFilesOnly()) {
+        const bool isNewlyCreatedDirectory =
+            args.Attrs.GetType() == NProto::E_DIRECTORY_NODE;
+        // If this NodeRef is for a newly created directory, we can say that its
+        // contents are exhaustively stored in the in-memory state
         CreateNodeRef(
             db,
             args.ParentNodeId,
@@ -814,7 +818,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             args.Name,
             args.ChildNodeId,
             args.ShardId,
-            args.ShardNodeName);
+            args.ShardNodeName,
+            isNewlyCreatedDirectory /* markExhaustive */);
     }
 
     if (args.ShardId.empty()) {

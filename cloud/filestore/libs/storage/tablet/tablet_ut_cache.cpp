@@ -1203,8 +1203,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             statsBefore = statsAfter;
         }
 
-        // Let us evict information about RootNodeId by creating an empty
-        // directory and listing it.
+        // Creating an empty directory marks it as exhaustive immediately,
+        // evicting RootNodeId from the per-node exhaustiveness info (capacity
+        // is 1). Both listings of the empty directory are cache hits.
         {
             auto emptyDirId =
                 tablet
@@ -1218,13 +1219,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 tablet.ListNodes(emptyDirId)->Record.NodesSize());
-            // First listing is a miss, second is a hit
+            // Both listings are cache hits since the directory is marked
+            // exhaustive upon creation
             auto statsAfter = GetTxStats(env, tablet);
             UNIT_ASSERT_VALUES_EQUAL(
-                1,
+                2,
                 statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
             UNIT_ASSERT_VALUES_EQUAL(
-                1,
+                0,
                 statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
             statsBefore = statsAfter;
         }
@@ -1266,6 +1268,46 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
                 statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
             statsBefore = statsAfter;
         }
+    }
+
+    Y_UNIT_TEST(ShouldMarkDirectoryExhaustiveOnCreation)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(10);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        // Create a directory and populate it — no explicit listing before
+        auto dirId =
+            tablet.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
+        tablet.CreateNode(TCreateNodeArgs::File(dirId, "child1"));
+        tablet.CreateNode(TCreateNodeArgs::File(dirId, "child2"));
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // The directory was marked exhaustive on creation, so listing it
+        // (even without a prior explicit list) should be a cache hit.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(dirId)->Record.NodesSize());
+
+        auto statsAfter = GetTxStats(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
     }
 
     Y_UNIT_TEST(ShouldUseCacheForNonExistentChildrenOfExhaustiveParents)
