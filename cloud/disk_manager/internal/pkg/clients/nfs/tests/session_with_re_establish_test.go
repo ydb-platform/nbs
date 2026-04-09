@@ -47,13 +47,26 @@ func TestSessionWithReEstablishCreateCheckpoint(t *testing.T) {
 
 	sessionMock.On("CreateCheckpoint", mock.Anything, "fs-1", "cp-1", uint64(42)).
 		Return(invalidSessionError).Once()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
-		Return(reEstablishedSession, nil).Once()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Once()
 	sessionMock.On("SetSession", reEstablishedSession).Once()
 	sessionMock.On("CreateCheckpoint", mock.Anything, "fs-1", "cp-1", uint64(42)).
 		Return(nil).Once()
 
-	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "cp-1", true)
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
 
 	err := s.CreateCheckpoint(ctx, "fs-1", "cp-1", 42)
 	require.NoError(t, err)
@@ -78,13 +91,19 @@ func TestSessionWithReEstablishListNodes(t *testing.T) {
 
 	sessionMock.On("ListNodes", mock.Anything, uint64(0), "", uint32(1024), false).
 		Return([]nfs.Node(nil), "", invalidSessionError).Once()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
-		Return(reEstablishedSession, nil).Once()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Once()
 	sessionMock.On("SetSession", reEstablishedSession).Once()
 	sessionMock.On("ListNodes", mock.Anything, uint64(0), "", uint32(1024), false).
 		Return(expectedNodes, "next", nil).Once()
 
-	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "cp-1", true)
+	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "client-1", "cp-1", true)
 
 	nodes, cookie, err := s.ListNodes(ctx, 0, "", 1024, false)
 	require.NoError(t, err)
@@ -111,13 +130,26 @@ func TestSessionWithReEstablishCreateNode(t *testing.T) {
 
 	sessionMock.On("CreateNode", mock.Anything, testNode).
 		Return(uint64(0), invalidSessionError).Once()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
-		Return(reEstablishedSession, nil).Once()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Once()
 	sessionMock.On("SetSession", reEstablishedSession).Once()
 	sessionMock.On("CreateNode", mock.Anything, testNode).
 		Return(uint64(42), nil).Once()
 
-	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "cp-1", true)
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
 
 	nodeID, err := s.CreateNode(ctx, testNode)
 	require.NoError(t, err)
@@ -143,13 +175,26 @@ func TestSessionWithReEstablishCreateNodeIdempotent(t *testing.T) {
 
 	sessionMock.On("CreateNodeIdempotent", mock.Anything, testNode).
 		Return(uint64(0), invalidSessionError).Once()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
-		Return(reEstablishedSession, nil).Once()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Once()
 	sessionMock.On("SetSession", reEstablishedSession).Once()
 	sessionMock.On("CreateNodeIdempotent", mock.Anything, testNode).
 		Return(uint64(42), nil).Once()
 
-	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "cp-1", true)
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
 
 	nodeID, err := s.CreateNodeIdempotent(ctx, testNode)
 	require.NoError(t, err)
@@ -173,13 +218,26 @@ func TestSessionWithReEstablishReadLink(t *testing.T) {
 
 	sessionMock.On("ReadLink", mock.Anything, uint64(42)).
 		Return([]byte(nil), invalidSessionError).Once()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
-		Return(reEstablishedSession, nil).Once()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Once()
 	sessionMock.On("SetSession", reEstablishedSession).Once()
 	sessionMock.On("ReadLink", mock.Anything, uint64(42)).
 		Return([]byte("/target"), nil).Once()
 
-	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "cp-1", true)
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
 
 	data, err := s.ReadLink(ctx, 42)
 	require.NoError(t, err)
@@ -205,13 +263,26 @@ func TestSessionWithReEstablishGetNodeAttr(t *testing.T) {
 
 	sessionMock.On("GetNodeAttr", mock.Anything, uint64(1), "testfile").
 		Return(nfs.Node{}, invalidSessionError).Once()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
-		Return(reEstablishedSession, nil).Once()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Once()
 	sessionMock.On("SetSession", reEstablishedSession).Once()
 	sessionMock.On("GetNodeAttr", mock.Anything, uint64(1), "testfile").
 		Return(expectedNode, nil).Once()
 
-	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "cp-1", true)
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
 
 	node, err := s.GetNodeAttr(ctx, 1, "testfile")
 	require.NoError(t, err)
@@ -235,13 +306,26 @@ func TestSessionWithReEstablishUnlinkNode(t *testing.T) {
 
 	sessionMock.On("UnlinkNode", mock.Anything, uint64(1), "testfile", false).
 		Return(invalidSessionError).Once()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
-		Return(reEstablishedSession, nil).Once()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Once()
 	sessionMock.On("SetSession", reEstablishedSession).Once()
 	sessionMock.On("UnlinkNode", mock.Anything, uint64(1), "testfile", false).
 		Return(nil).Once()
 
-	s := nfs.NewSessionWithReEstablish(sessionMock, nfsMock, "fs-1", "cp-1", true)
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
 
 	err := s.UnlinkNode(ctx, 1, "testfile", false)
 	require.NoError(t, err)

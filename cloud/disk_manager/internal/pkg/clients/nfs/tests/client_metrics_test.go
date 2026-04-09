@@ -418,7 +418,7 @@ func TestClientCreateSessionSuccess(t *testing.T) {
 	setupRequestMocks(registryMock, "CreateSession", true)
 
 	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
+	nfsMock.On("CreateSession", mock.Anything, "fs-1", mock.Anything, "cp-1", true).
 		Return(nfs_client.Session{
 			SessionID:    "session-1",
 			SessionSeqNo: 1,
@@ -442,7 +442,7 @@ func TestClientCreateSessionError(t *testing.T) {
 	setupRequestMocks(registryMock, "CreateSession", false)
 
 	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
-	nfsMock.On("CreateSession", mock.Anything, "fs-1", "cp-1", true).
+	nfsMock.On("CreateSession", mock.Anything, "fs-1", mock.Anything, "cp-1", true).
 		Return(nfs_client.Session{}, testError)
 
 	c := newTestClient(nfsMock, registryMock)
@@ -930,8 +930,14 @@ func TestClientCreateSessionWrappedError(t *testing.T) {
 	}).Once()
 
 	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
-	nfsMock.On("CreateSession", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nfs_client.Session{}, testNfsClientError)
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(nfs_client.Session{}, testNfsClientError)
 
 	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
 
@@ -1253,7 +1259,10 @@ func TestClientDestroyCheckpointNonRetriableError(t *testing.T) {
 	ctx := context.Background()
 
 	metricsMock := client_metrics_mocks.NewMetricsMock()
-	metricsMock.On("StatRequest", "DestroyCheckpoint").Return(func(err *error) {
+	metricsMock.On(
+		"StatRequest",
+		"DestroyCheckpoint",
+	).Return(func(err *error) {
 		require.Error(t, *err)
 		var clientErr *nfs_client.ClientError
 		require.ErrorAs(t, *err, &clientErr)
@@ -1261,8 +1270,12 @@ func TestClientDestroyCheckpointNonRetriableError(t *testing.T) {
 	}).Once()
 
 	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
-	nfsMock.On("DestroyCheckpoint", mock.Anything, mock.Anything, mock.Anything).
-		Return(testNfsClientNonRetriableError)
+	nfsMock.On(
+		"DestroyCheckpoint",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(testNfsClientNonRetriableError)
 
 	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
 
@@ -1335,8 +1348,14 @@ func TestClientCreateSessionNonRetriableError(t *testing.T) {
 	}).Once()
 
 	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
-	nfsMock.On("CreateSession", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nfs_client.Session{}, testNfsClientNonRetriableError)
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(nfs_client.Session{}, testNfsClientNonRetriableError)
 
 	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
 
@@ -1517,8 +1536,13 @@ func TestSessionGetNodeAttrNonRetriableError(t *testing.T) {
 	}).Once()
 
 	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
-	nfsMock.On("GetNodeAttr", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nfs_client.Node{}, testNfsClientNonRetriableError)
+	nfsMock.On(
+		"GetNodeAttr",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(nfs_client.Node{}, testNfsClientNonRetriableError)
 
 	s := newTestSessionWithMetricsMock(nfsMock, metricsMock, testSession)
 

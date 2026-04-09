@@ -195,6 +195,7 @@ type sessionWithReEstablish struct {
 	impl         Session
 	nfs          nfs_client.ClientInterface
 	filesystemID string
+	clientID     string
 	checkpointID string
 	readonly     bool
 }
@@ -221,6 +222,7 @@ func requestWithReEstablishSession[T any](
 		newSession, err := s.nfs.CreateSession(
 			ctx,
 			s.filesystemID,
+			s.clientID,
 			s.checkpointID,
 			s.readonly,
 		)
@@ -244,6 +246,7 @@ func NewSessionWithReEstablish(
 	impl Session,
 	nfs nfs_client.ClientInterface,
 	filesystemID string,
+	clientID string,
 	checkpointID string,
 	readonly bool,
 ) Session {
@@ -252,6 +255,7 @@ func NewSessionWithReEstablish(
 		impl:         impl,
 		nfs:          nfs,
 		filesystemID: filesystemID,
+		clientID:     clientID,
 		checkpointID: checkpointID,
 		readonly:     readonly,
 	}
