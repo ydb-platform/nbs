@@ -140,6 +140,10 @@ struct TNodeState
         }
 
         if (HandleToReleaseCount > 0) {
+            // Non-zero value of HandleToReleaseCount indicates that there are
+            // handles that are requested for release but cannot be released
+            // because there are pending or unflushed WriteData requests
+            // associated with them. We need to flush these requests first.
             return ENodeFlushStatus::FlushRequested;
         }
 
