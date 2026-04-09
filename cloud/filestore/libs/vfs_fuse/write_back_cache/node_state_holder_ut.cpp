@@ -24,7 +24,7 @@ struct TBootstrap
     TBootstrap()
         : Timer(std::make_shared<TTestTimer>())
         , Stats(CreateNodeStateHolderStats())
-        , NodeStateHolder(Stats)
+        , NodeStateHolder(Timer, Stats)
         , Metrics(Stats->CreateMetrics())
     {}
 };
@@ -49,6 +49,13 @@ Y_UNIT_TEST_SUITE(TNodeStateHolderTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.Nodes.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.Nodes.MaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.DeletedNodes.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.DeletedNodes.MaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Pins.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Pins.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.Pins.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.Pins.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(10'000, b.Metrics.Pins.MaxTime->Get());
 
         b.Timer->AdvanceTime(TDuration::MilliSeconds(5));
         b.NodeStateHolder.Unpin(pin);
@@ -56,6 +63,13 @@ Y_UNIT_TEST_SUITE(TNodeStateHolderTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Nodes.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.Nodes.MaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.DeletedNodes.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.DeletedNodes.MaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.Pins.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Pins.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Pins.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(15'000, b.Metrics.Pins.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(15'000, b.Metrics.Pins.MaxTime->Get());
 
         // Max value is calculated over a sliding window with 15 buckets
         for (int i = 0; i <= 15; i++) {
@@ -63,6 +77,9 @@ Y_UNIT_TEST_SUITE(TNodeStateHolderTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Nodes.MaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.DeletedNodes.MaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.Pins.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.Pins.MaxTime->Get());
     }
 }
 

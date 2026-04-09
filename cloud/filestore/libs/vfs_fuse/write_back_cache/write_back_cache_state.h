@@ -19,6 +19,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/function_ref.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/intrlist.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -62,6 +63,13 @@ private:
 
     TWriteDataRequestManager RequestManager;
     TQueuedOperations QueuedOperations;
+
+    // The following lists hold references to objects owned by TNodeState for
+    // all nodes. They are used to track and report MaxTime.
+    TIntrusiveList<TBarrier> ActiveBarriers;
+    TIntrusiveList<TBarrier> PendingBarriers;
+    TIntrusiveList<TFlushRequest> FlushRequests;
+    TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
 
 public:
     using TEntryVisitor = TFunctionRef<bool(const TCachedWriteDataRequest*)>;

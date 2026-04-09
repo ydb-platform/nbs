@@ -20,6 +20,8 @@ class TNodeStateHolderStats
 {
 private:
     TRelaxedCombinedMaxCounter<> NodeCounter;
+    TRelaxedCombinedMaxCounter<> DeletedNodeCounter;
+    TRelaxedEventCounterWithTimeStats<> PinCounter;
 
 public:
     void IncrementNodeCount() override
@@ -32,6 +34,26 @@ public:
         NodeCounter.Dec();
     }
 
+    void IncrementDeletedNodeCount() override
+    {
+        DeletedNodeCounter.Inc();
+    }
+
+    void DecrementDeletedNodeCount() override
+    {
+        DeletedNodeCounter.Dec();
+    }
+
+    void PinCreated() override
+    {
+        PinCounter.Started();
+    }
+
+    void PinReleased(TDuration holdDuration) override
+    {
+        PinCounter.Completed(holdDuration);
+    }
+
     TNodeStateHolderMetrics CreateMetrics() const override
     {
         auto self = shared_from_this();
@@ -42,12 +64,30 @@ public:
                      [self] { return self->NodeCounter.GetCurrent(); }),
                  .MaxCount = CreateMetric(
                      [self] { return self->NodeCounter.GetMax(); })},
+            .DeletedNodes =
+                {.Count = CreateMetric(
+                     [self] { return self->DeletedNodeCounter.GetCurrent(); }),
+                 .MaxCount = CreateMetric(
+                     [self] { return self->DeletedNodeCounter.GetMax(); })},
+            .Pins =
+                {.ActiveCount = NMetrics::CreateMetric(
+                     [self] { return self->PinCounter.GetActiveCount(); }),
+                 .ActiveMaxCount = NMetrics::CreateMetric(
+                     [self] { return self->PinCounter.GetActiveMaxCount(); }),
+                 .CompletedCount = NMetrics::CreateMetric(
+                     [self] { return self->PinCounter.GetCompletedCount(); }),
+                 .CompletedTime = NMetrics::CreateMetric(
+                     [self] { return self->PinCounter.GetCompletedTime(); }),
+                 .MaxTime = NMetrics::CreateMetric(
+                     [self] { return self->PinCounter.GetMaxTime(); })},
         };
     }
 
-    void UpdateStats() override
+    void UpdateStats(TDuration maxActivePinDuration) override
     {
         NodeCounter.Update();
+        DeletedNodeCounter.Update();
+        PinCounter.Update(maxActivePinDuration);
     }
 };
 
@@ -71,6 +111,50 @@ void TNodeStateHolderMetrics::Register(
         {CreateSensor("Nodes_MaxCount")},
         Nodes.MaxCount,
         EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("DeletedNodes_Count")},
+        DeletedNodes.Count,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("DeletedNodes_MaxCount")},
+        DeletedNodes.MaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    // Pins
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Pins_ActiveCount")},
+        Pins.ActiveCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Pins_ActiveMaxCount")},
+        Pins.ActiveMaxCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Pins_CompletedCount")},
+        Pins.CompletedCount,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("Pins_CompletedTime")},
+        Pins.CompletedTime,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
+
+    aggregatableMetricsRegistry.Register(
+        {CreateSensor("Pins_MaxTime")},
+        Pins.MaxTime,
+        EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 }
 
