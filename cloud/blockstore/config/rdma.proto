@@ -15,6 +15,20 @@ enum EWaitMode
     WAIT_MODE_ADAPTIVE_WAIT = 2;
 }
 
+message TBufferPool
+{
+    // Memory chunks of this size will be kept for reuse. Buffers smaller or
+    // equal to ChunkSize will be baked by one of the available chunks
+    uint64 ChunkSize = 1;
+
+    // Maximum buffer size, that will be baked by a chunk. Anything bigger will
+    // spawn a custom chunk that won't be saved for reuse
+    uint64 MaxChunkAlloc = 2;
+
+    // Number of unused chunks to be kept to speed up allocations
+    uint64 MaxFreeChunks = 3;
+}
+
 message TRdmaServer
 {
     uint32 Backlog = 1;
@@ -34,6 +48,8 @@ message TRdmaServer
 
     // use ibv_create_qp instead of rdma_create_qp
     bool VerbsQP = 13;
+
+    TBufferPool BufferPool = 14;
 }
 
 message TRdmaClient
@@ -55,6 +71,8 @@ message TRdmaClient
 
     uint64 MaxReconnectDelay = 11;  // in milliseconds
     uint64 MaxResponseDelay = 12;   // in milliseconds
+
+    TBufferPool BufferPool = 13;
 }
 
 message TRdmaTarget

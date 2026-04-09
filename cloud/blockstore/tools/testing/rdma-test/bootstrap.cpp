@@ -69,6 +69,9 @@ void TBootstrap::Init()
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
+        config->BufferPoolConfig.ChunkSize = Options->ChunkSize;
+        config->BufferPoolConfig.MaxChunkAlloc = Options->MaxChunkAlloc;
+        config->BufferPoolConfig.MaxFreeChunks = Options->MaxFreeChunks;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 
@@ -85,6 +88,9 @@ void TBootstrap::Init()
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
+        config->BufferPoolConfig.ChunkSize = Options->ChunkSize;
+        config->BufferPoolConfig.MaxChunkAlloc = Options->MaxChunkAlloc;
+        config->BufferPoolConfig.MaxFreeChunks = Options->MaxFreeChunks;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 

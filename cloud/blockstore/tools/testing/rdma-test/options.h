@@ -74,6 +74,11 @@ struct TOptions
     TString TracePath;
     ui32 TraceRate = 1;
 
+    // buffer pool options
+    size_t ChunkSize = 4_MB;
+    size_t MaxChunkAlloc = ChunkSize / 4;
+    size_t MaxFreeChunks = 10;
+
     void Parse(int argc, char** argv);
 };
 

@@ -349,6 +349,8 @@ TServerSession::TServerSession(
     , Counters(std::move(stats))
     , Log(log)
     , MaxInflightBytes(Config->MaxInflightBytes)
+    , SendBuffers(Config->BufferPoolConfig)
+    , RecvBuffers(Config->BufferPoolConfig)
 {
     Connection->context = this;
 

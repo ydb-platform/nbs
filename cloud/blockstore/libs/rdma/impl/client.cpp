@@ -591,6 +591,8 @@ TClientEndpoint::TClientEndpoint(
     , OriginalConfig(std::move(config))
     , Config(*OriginalConfig)
     , WaitMode(Config.WaitMode)
+    , SendBuffers(OriginalConfig->BufferPoolConfig)
+    , RecvBuffers(OriginalConfig->BufferPoolConfig)
 {
     // user data attached to connection events
     Connection->context = this;

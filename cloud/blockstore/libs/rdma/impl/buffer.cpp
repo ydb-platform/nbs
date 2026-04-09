@@ -9,12 +9,6 @@ namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t ChunkSize = 4 * 1024 * 1024;
-constexpr size_t MaxChunkAlloc = ChunkSize / 4;
-constexpr size_t MaxFreeChunks = 10;
-
-////////////////////////////////////////////////////////////////////////////////
-
 TPooledBuffer::operator TStringBuf() const
 {
     return {reinterpret_cast<char*>(Address), Length};
@@ -110,6 +104,7 @@ class TBufferPool::TImpl
     using TChunkList = TIntrusiveListWithAutoDelete<TChunk, TDelete>;
 
 private:
+    TBufferPoolConfig Config;
     NVerbs::IVerbsPtr Verbs;
 
     ibv_pd* const ProtectionDomain;
@@ -122,8 +117,13 @@ private:
     TBufferPoolStats Stats;
 
 public:
-    TImpl(NVerbs::IVerbsPtr verbs, ibv_pd* pd, int flags)
-        : Verbs(std::move(verbs))
+    TImpl(
+            TBufferPoolConfig config,
+            NVerbs::IVerbsPtr verbs,
+            ibv_pd* pd,
+            int flags)
+        : Config(config)
+        , Verbs(std::move(verbs))
         , ProtectionDomain(pd)
         , Flags(flags)
     {}
@@ -133,7 +133,7 @@ public:
         size_t allocSize = AlignUp(bytesCount, GetPlatformPageSize());
 
         TChunk* chunk;
-        if (!ignoreCache && allocSize <= MaxChunkAlloc) {
+        if (!ignoreCache && allocSize <= Config.MaxChunkAlloc) {
             chunk = AcquireChunk(allocSize);
         } else {
             // allocate custom chunk
@@ -198,7 +198,7 @@ private:
             --Stats.FreeChunksCount;
         } else {
             // allocate new chunk
-            chunk = AllocateChunk(ChunkSize, false);
+            chunk = AllocateChunk(Config.ChunkSize, false);
         }
 
         ActiveChunks.PushFront(chunk);
@@ -212,7 +212,7 @@ private:
         ActiveChunks.Remove(chunk);
         --Stats.ActiveChunksCount;
 
-        if (Stats.FreeChunksCount < MaxFreeChunks) {
+        if (Stats.FreeChunksCount < Config.MaxFreeChunks) {
             // keep chunk cached
             chunk->Reset();
 
@@ -248,7 +248,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBufferPool::TBufferPool()
+TBufferPool::TBufferPool(TBufferPoolConfig config)
+    : Config(config)
 {}
 
 TBufferPool::~TBufferPool()
@@ -256,7 +257,7 @@ TBufferPool::~TBufferPool()
 
 void TBufferPool::Init(NVerbs::IVerbsPtr verbs, ibv_pd* pd, int flags)
 {
-    Impl.reset(new TImpl(std::move(verbs), pd, flags));
+    Impl.reset(new TImpl(Config, std::move(verbs), pd, flags));
 }
 
 TBufferPool::TBuffer TBufferPool::AcquireBuffer(size_t bytesCount, bool ignoreCache)

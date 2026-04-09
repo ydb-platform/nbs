@@ -138,6 +138,21 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(ToString(TraceRate))
         .StoreResult(&TraceRate);
 
+    opts.AddLongOption("chunk-size")
+        .RequiredArgument("NUM")
+        .DefaultValue(ToString(ChunkSize))
+        .StoreResult(&ChunkSize);
+
+    opts.AddLongOption("max-chunk-alloc")
+        .RequiredArgument("NUM")
+        .DefaultValue(ToString(MaxChunkAlloc))
+        .StoreResult(&MaxChunkAlloc);
+
+    opts.AddLongOption("max-free-chunks")
+        .RequiredArgument("NUM")
+        .DefaultValue(ToString(MaxFreeChunks))
+        .StoreResult(&MaxFreeChunks);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.Has(&verbose) && !VerboseLevel) {

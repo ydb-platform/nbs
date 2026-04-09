@@ -42,6 +42,8 @@ struct TTestContext: TAtomicRefCount<TTestContext>
         GetAddressInfo;
     std::function<void(rdma_cm_id* id)> DestroyQP;
     std::function<void(ibv_qp* qp, ibv_qp_attr* attr, int mask)> ModifyQP;
+    std::function<void(ibv_pd* pd, void* addr, size_t length, int flags)>
+        RegisterMemoryRegion;
 };
 
 using TTestContextPtr = TIntrusivePtr<TTestContext>;
