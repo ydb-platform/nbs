@@ -59,8 +59,6 @@ private:
 
     TDeque<TPendingRequest> PendingRequests;
 
-    ui64 WriteAndZeroRequestsInProgress = 0;
-
     TRunningActors Actors;
 
     TLogTitle LogTitle;
@@ -223,6 +221,10 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange,               TEvVolume)
 
     BLOCKSTORE_IMPLEMENT_REQUEST(GetPartCounters, TEvPartitionCommonPrivate)
+
+    BLOCKSTORE_PARTITION_REQUESTS(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        NPartition::TEvPartition);
 
     BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(
         BLOCKSTORE_IMPLEMENT_REQUEST,

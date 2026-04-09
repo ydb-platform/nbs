@@ -432,6 +432,43 @@ void TFreshBlocksWriterActor::HandleWaitReady(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TFreshBlocksWriterActor::HandleDrain(
+    const TEvPartition::TEvDrainRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    SharedState->AccessDrainActorCompanion()->HandleDrain(ev, ctx);
+}
+
+void TFreshBlocksWriterActor::HandleWaitReady(
+    const TEvPartition::TEvWaitReadyRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+
+    Y_DEBUG_ABORT_UNLESS(false, "Unexpected event");
+}
+
+void TFreshBlocksWriterActor::HandleLockAndDrainRange(
+    const TEvPartition::TEvLockAndDrainRangeRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+
+    Y_DEBUG_ABORT_UNLESS(false, "Unexpected event");
+}
+
+void TFreshBlocksWriterActor::HandleWaitForInFlightWrites(
+    const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
+
+    Y_DEBUG_ABORT_UNLESS(false, "Unexpected event");
+}
+
 bool TFreshBlocksWriterActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
@@ -474,6 +511,8 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             RejectGetPartCounters);
+
+        HFunc(TEvPartition::TEvDrainRequest, RejectDrain);
 
         default:
             return false;
@@ -529,6 +568,8 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
             HandleZeroBlocksCompleted);
+
+        HFunc(TEvPartition::TEvDrainRequest, HandleDrain);
 
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&

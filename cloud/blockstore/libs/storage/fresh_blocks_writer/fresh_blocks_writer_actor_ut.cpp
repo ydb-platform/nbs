@@ -214,6 +214,12 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvPartition::TEvDrainRequest> CreateDrainRequest()
+    {
+        auto request = std::make_unique<TEvPartition::TEvDrainRequest>();
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -251,6 +257,7 @@ public:
     BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(
         BLOCKSTORE_DECLARE_METHOD,
         TEvVolume)
+    BLOCKSTORE_DECLARE_METHOD(Drain, TEvPartition)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
@@ -1557,6 +1564,104 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         }
 
         UNIT_ASSERT(askPartitionToReassignWasObserved);
+    }
+
+    Y_UNIT_TEST(ShouldDrain)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        std::unique_ptr<IEventHandle> writeBlobRequestForFBW;
+        std::unique_ptr<IEventHandle> writeBlobRequestForPartition;
+
+        bool interceptWriteBlobRequest = false;
+
+        bool drainResponseObserved = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvWriteBlobRequest &&
+                    interceptWriteBlobRequest)
+                {
+                    if (event->GetRecipientRewrite() ==
+                        testEnv.FreshBlocksWriterActorId)
+                    {
+                        writeBlobRequestForFBW.reset(event.Release());
+                    } else if (
+                        event->GetRecipientRewrite() ==
+                        testEnv.PartitionActorId)
+                    {
+                        writeBlobRequestForPartition.reset(event.Release());
+                    } else {
+                        UNIT_ASSERT(false);
+                    }
+
+                    return TTestActorRuntime::EEventAction::DROP;
+                } else if (
+                    event->GetTypeRewrite() == TEvPartition::EvDrainResponse)
+                {
+                    drainResponseObserved = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto doTest = [&](bool fbwCompletedFirst)
+        {
+            // request processed by fbw
+            fbwClient.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1));
+
+            // request processed by partition
+            fbwClient.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1024));
+
+            fbwClient.SendDrainRequest();
+
+            interceptWriteBlobRequest = true;
+
+            runtime.DispatchEvents({}, 10ms);
+
+            interceptWriteBlobRequest = false;
+
+            UNIT_ASSERT(writeBlobRequestForFBW);
+            UNIT_ASSERT(writeBlobRequestForPartition);
+            UNIT_ASSERT(!drainResponseObserved);
+
+            auto& firstEventToSend = fbwCompletedFirst
+                                         ? writeBlobRequestForFBW
+                                         : writeBlobRequestForPartition;
+            auto& secondEventToSend = fbwCompletedFirst
+                                          ? writeBlobRequestForPartition
+                                          : writeBlobRequestForFBW;
+
+            runtime.SendAsync(firstEventToSend.release());
+
+            fbwClient.RecvWriteBlocksResponse();
+
+            UNIT_ASSERT(!drainResponseObserved);
+
+            runtime.SendAsync(secondEventToSend.release());
+
+            fbwClient.RecvWriteBlocksResponse();
+
+            UNIT_ASSERT(drainResponseObserved);
+            fbwClient.RecvDrainResponse();
+
+            drainResponseObserved = false;
+            writeBlobRequestForFBW.reset();
+            writeBlobRequestForPartition.reset();
+        };
+
+        doTest(true);
+        doTest(false);
     }
 }
 

@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
+#include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
+#include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 
 #include <util/system/spinlock.h>
 
@@ -63,6 +65,7 @@ struct TConstObjectGuard
 
 class TPartitionThreadSafeState
     : public std::enable_shared_from_this<TPartitionThreadSafeState>
+    , private IRequestsInProgress
 {
     using TTxPtr = std::unique_ptr<ITransactionBase>;
 
@@ -74,8 +77,11 @@ public:
 
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
 
+    std::atomic<ui64> WriteAndZeroRequestsInProgress = 0;
+
 private:
     const ui64 TabletId = 0;
+    const TString DiskId;
 
     TAdaptiveLock StateLock;
 
@@ -90,6 +96,11 @@ private:
     NPartition::TCheckpointsInFlight CheckpointsInFlight;
 
     std::atomic<ui64> FreshBlocksInFlight = 0;
+
+    TAdaptiveLock DrainLock;
+    TDrainActorCompanion DrainActorCompanion{
+        *this,
+        DiskId};
 
 public:
     explicit TPartitionThreadSafeState(ui64 tabletId)
@@ -204,6 +215,26 @@ public:
     void DecrementFreshBlocksInFlight(size_t value);
 
     size_t GetFreshBlocksInFlight() const;
+
+    auto AccessDrainActorCompanion()
+    {
+        return TObjectGuard<TDrainActorCompanion, TAdaptiveLock>(
+            DrainLock,
+            DrainActorCompanion);
+    }
+
+    auto GetDrainActorCompanion()
+    {
+        return TConstObjectGuard<TDrainActorCompanion, TAdaptiveLock>(
+            DrainLock,
+            DrainActorCompanion);
+    }
+
+    // IRequestsInProgress
+    bool WriteRequestInProgress() const override;
+    bool OverlapsWithWrites(TBlockRange64 range) const override;
+    void WaitForInFlightWrites() override;
+    bool IsWaitingForInFlightWrites() const override;
 
 private:
     ui64 GenerateCommitIdImpl();

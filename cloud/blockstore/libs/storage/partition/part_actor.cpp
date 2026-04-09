@@ -869,14 +869,16 @@ void TPartitionActor::HandleDrain(
     const TEvPartition::TEvDrainRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    DrainActorCompanion.HandleDrain(ev, ctx);
+    SharedState->AccessDrainActorCompanion()->HandleDrain(ev, ctx);
 }
 
 void TPartitionActor::HandleWaitForInFlightWrites(
     const TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    DrainActorCompanion.HandleWaitForInFlightWrites(ev, ctx);
+    SharedState->AccessDrainActorCompanion()->HandleWaitForInFlightWrites(
+        ev,
+        ctx);
 }
 
 void TPartitionActor::HandleLockAndDrainRange(

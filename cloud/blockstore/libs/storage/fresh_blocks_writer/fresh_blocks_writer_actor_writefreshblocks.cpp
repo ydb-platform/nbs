@@ -162,7 +162,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     const ui32 blockCount = writeRange.Size();
     SharedState->IncrementFreshBlocksInFlight(blockCount);
