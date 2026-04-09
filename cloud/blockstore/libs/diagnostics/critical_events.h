@@ -92,6 +92,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
     xxx(AcquiredDiskEraseAttempt)                                              \
     xxx(DiskAgentConfigMismatch)                                               \
+    xxx(DiskAgentDevicePartlabelMismatch)                                      \
     xxx(DiskAgentIoDuringSecureErase)                                          \
     xxx(DiskAgentSecureEraseDuringIo)                                          \
     xxx(DiskAgentSessionCacheRestoreError)                                     \

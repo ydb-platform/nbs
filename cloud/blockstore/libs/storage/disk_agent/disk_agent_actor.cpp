@@ -180,7 +180,8 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
             NDiskAgent::CreateDeviceHealthCheckActor(
                 ctx.SelfID,
                 State->GetEnabledDevices(),
-                UpdateCountersInterval));
+                UpdateCountersInterval,
+                NvmeManager));
     }
 }
 

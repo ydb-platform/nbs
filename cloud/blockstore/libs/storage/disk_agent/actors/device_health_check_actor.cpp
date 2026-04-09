@@ -1,6 +1,8 @@
 #include "device_health_check_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -12,6 +14,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
 #include <util/random/fast.h>
+#include <util/string/builder.h>
 
 #include <optional>
 
@@ -46,30 +49,36 @@ EDeviceHealthStatus GetHealthStatus(EWellKnownResultCodes code)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceHealthCheckActor
-    : public TActorBootstrapped<TDeviceHealthCheckActor>
+class TDeviceIntegrityCheckActor
+    : public TActorBootstrapped<TDeviceIntegrityCheckActor>
 {
 private:
     const TActorId DiskAgent;
     const TVector<NProto::TDeviceConfig> Devices;
     const TDuration HealthCheckDelay;
+    const NNvme::INvmeManagerPtr NvmeManager;
+    const TDuration PartlabelCheckInterval;
 
     TVector<EDeviceHealthStatus> DevicesHealth;
     std::optional<TFastRng<ui64>> Rng;
+    TInstant LastPartlabelCheckAt;
 
     int PendingRequests = 0;
 
 public:
-    TDeviceHealthCheckActor(
+    TDeviceIntegrityCheckActor(
         const TActorId& diskAgent,
         TVector<NProto::TDeviceConfig> devices,
-        TDuration healthCheckDelay);
+        TDuration healthCheckDelay,
+        NNvme::INvmeManagerPtr nvmeManager,
+        TDuration partlabelCheckInterval);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void ScheduleHealthCheck(const TActorContext& ctx);
     void CheckDevicesHealth(const TActorContext& ctx);
+    void CheckPartlabels(const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -89,17 +98,21 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDeviceHealthCheckActor::TDeviceHealthCheckActor(
-        const TActorId& diskAgent,
-        TVector<NProto::TDeviceConfig> devices,
-        TDuration healthCheckDelay)
+TDeviceIntegrityCheckActor::TDeviceIntegrityCheckActor(
+    const TActorId& diskAgent,
+    TVector<NProto::TDeviceConfig> devices,
+    TDuration healthCheckDelay,
+    NNvme::INvmeManagerPtr nvmeManager,
+    TDuration partlabelCheckInterval)
     : DiskAgent{diskAgent}
     , Devices(std::move(devices))
     , HealthCheckDelay(healthCheckDelay)
+    , NvmeManager(std::move(nvmeManager))
+    , PartlabelCheckInterval(partlabelCheckInterval)
     , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
 {}
 
-void TDeviceHealthCheckActor::Bootstrap(const TActorContext& ctx)
+void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
 {
     Rng.emplace(ctx.Now().GetValue());
 
@@ -109,10 +122,10 @@ void TDeviceHealthCheckActor::Bootstrap(const TActorContext& ctx)
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT_WORKER,
-        "Device Health Check Actor started. Devices: " << Devices.size());
+        "Device Integrity Check Actor started. Devices: " << Devices.size());
 }
 
-void TDeviceHealthCheckActor::ScheduleHealthCheck(const TActorContext& ctx)
+void TDeviceIntegrityCheckActor::ScheduleHealthCheck(const TActorContext& ctx)
 {
     LOG_DEBUG(
         ctx,
@@ -122,7 +135,49 @@ void TDeviceHealthCheckActor::ScheduleHealthCheck(const TActorContext& ctx)
     ctx.Schedule(HealthCheckDelay, new TEvents::TEvWakeup());
 }
 
-void TDeviceHealthCheckActor::CheckDevicesHealth(const TActorContext& ctx)
+void TDeviceIntegrityCheckActor::CheckPartlabels(const TActorContext& ctx)
+{
+    if (!NvmeManager) {
+        return;
+    }
+
+    for (const auto& device: Devices) {
+        if (device.GetSerialNumber().empty()) {
+            continue;
+        }
+
+        auto [currentSerial, error] =
+            NvmeManager->GetSerialNumber(device.GetDeviceName());
+
+        if (HasError(error)) {
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::DISK_AGENT_WORKER,
+                "Failed to read serial number for device "
+                    << device.GetDeviceUUID().Quote() << " at "
+                    << device.GetDeviceName().Quote() << ": "
+                    << FormatError(error));
+            continue;
+        }
+
+        if (currentSerial != device.GetSerialNumber()) {
+            auto message =
+                TStringBuilder()
+                << "Device " << device.GetDeviceUUID().Quote() << " at path "
+                << device.GetDeviceName().Quote()
+                << " has unexpected serial number: got "
+                << currentSerial.Quote() << ", expected "
+                << device.GetSerialNumber().Quote()
+                << ". The partlabel may point to a different physical disk.";
+
+            LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, message);
+
+            ReportDiskAgentDevicePartlabelMismatch(message);
+        }
+    }
+}
+
+void TDeviceIntegrityCheckActor::CheckDevicesHealth(const TActorContext& ctx)
 {
     for (size_t i = 0; i < Devices.size(); ++i) {
         const auto& device = Devices[i];
@@ -146,7 +201,7 @@ void TDeviceHealthCheckActor::CheckDevicesHealth(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDeviceHealthCheckActor::HandlePoisonPill(
+void TDeviceIntegrityCheckActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -155,16 +210,21 @@ void TDeviceHealthCheckActor::HandlePoisonPill(
     Die(ctx);
 }
 
-void TDeviceHealthCheckActor::HandleWakeup(
+void TDeviceIntegrityCheckActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
+    if (ctx.Now() - LastPartlabelCheckAt >= PartlabelCheckInterval) {
+        CheckPartlabels(ctx);
+        LastPartlabelCheckAt = ctx.Now();
+    }
+
     CheckDevicesHealth(ctx);
 }
 
-void TDeviceHealthCheckActor::HandleReadDeviceBlocksResponse(
+void TDeviceIntegrityCheckActor::HandleReadDeviceBlocksResponse(
     const TEvDiskAgent::TEvReadDeviceBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -233,7 +293,7 @@ void TDeviceHealthCheckActor::HandleReadDeviceBlocksResponse(
     }
 }
 
-STFUNC(TDeviceHealthCheckActor::StateWork)
+STFUNC(TDeviceIntegrityCheckActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -257,12 +317,16 @@ STFUNC(TDeviceHealthCheckActor::StateWork)
 std::unique_ptr<IActor> CreateDeviceHealthCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
-    TDuration healthCheckDelay)
+    TDuration healthCheckDelay,
+    NNvme::INvmeManagerPtr nvmeManager,
+    TDuration partlabelCheckInterval)
 {
-    return std::make_unique<TDeviceHealthCheckActor>(
+    return std::make_unique<TDeviceIntegrityCheckActor>(
         diskAgent,
         std::move(devices),
-        healthCheckDelay);
+        healthCheckDelay,
+        std::move(nvmeManager),
+        partlabelCheckInterval);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent
