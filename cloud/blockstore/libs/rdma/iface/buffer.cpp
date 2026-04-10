@@ -11,7 +11,7 @@ void TBufferPoolConfig::Validate(TLog& log)
             log,
             "MaxChunkAlloc=" << MaxChunkAlloc
                              << " is greater than ChunkSize=" << ChunkSize
-                             << ", set MaxChunkAlloc to " << ChunkSize);
+                             << ", set MaxChunkAlloc=" << ChunkSize);
 
         MaxChunkAlloc = ChunkSize;
     }
