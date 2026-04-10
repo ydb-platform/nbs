@@ -118,6 +118,7 @@ TVolumeState::TVolumeState(
         TVector<TVolumeMetaHistoryItem> metaHistory,
         TVector<TRuntimeVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
+        double spentShapingBudgetShare,
         THashMap<TString, TVolumeClientState> infos,
         TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
@@ -133,6 +134,10 @@ TVolumeState::TVolumeState(
     , ClientInfosByClientId(std::move(infos))
     , ThrottlerConfig(std::move(throttlerConfig))
     , ThrottlingPolicy(Config->GetPerformanceProfile(), ThrottlerConfig)
+    , ShapingThrottler(
+        StorageConfig->GetShapingThrottlerConfig(),
+        Config->GetStorageMediaKind(),
+        spentShapingBudgetShare)
     , MountHistory(std::move(mountHistory))
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
