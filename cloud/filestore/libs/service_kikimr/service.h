@@ -12,6 +12,7 @@ namespace NCloud::NFileStore {
 
 IFileStoreServicePtr CreateKikimrFileStore(
     IActorSystemPtr actorSystem,
-    bool usePermanentActor);
+    bool usePermanentActor,
+    ui32 permanentActorCount);
 
 }   // namespace NCloud::NFileStore

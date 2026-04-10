@@ -131,7 +131,8 @@ public:
         const TString& name,
         const NProto::TClientConfig& config,
         NDaemon::EServiceKind kind,
-        bool usePermanentActor)
+        bool usePermanentActor,
+        ui32 permanentActorCount)
     {
         auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
         IFileStoreServicePtr fileStore;
@@ -142,8 +143,10 @@ public:
             }
 
             case NDaemon::EServiceKind::Kikimr: {
-                fileStore =
-                    CreateKikimrFileStore(ActorSystem, usePermanentActor);
+                fileStore = CreateKikimrFileStore(
+                    ActorSystem,
+                    usePermanentActor,
+                    permanentActorCount);
                 break;
             }
 
@@ -394,12 +397,14 @@ void TBootstrapVhost::InitEndpoints()
         LocalService,
         ActorSystem);
 
-    for (const auto& endpoint: Configs->VhostServiceConfig->GetServiceEndpoints()) {
+    const auto& serviceConfig = *Configs->VhostServiceConfig;
+    for (const auto& endpoint: serviceConfig.GetServiceEndpoints()) {
         bool inserted = endpoints->AddEndpoint(
             endpoint.GetName(),
             endpoint.GetClientConfig(),
             Configs->Options->Service,
-            Configs->AppConfig.GetVhostServiceConfig().GetUsePermanentActor());
+            serviceConfig.GetUsePermanentActor(),
+            serviceConfig.GetPermanentActorCount());
 
         if (inserted) {
             STORAGE_INFO("configured endpoint type %s -> %s",

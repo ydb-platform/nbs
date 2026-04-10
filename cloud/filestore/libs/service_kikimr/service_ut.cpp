@@ -25,6 +25,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
+constexpr ui32 PermanentActorCount = 4;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -84,7 +85,10 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(actorSystem, usePermanentActor);
+        auto service = CreateKikimrFileStore(
+            actorSystem,
+            usePermanentActor,
+            PermanentActorCount);
         service->Start();
 
         auto context = MakeIntrusive<TCallContext>();
@@ -121,7 +125,10 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(actorSystem, false);
+        auto service = CreateKikimrFileStore(
+            actorSystem,
+            false,
+            PermanentActorCount);
         service->Start();
 
         {
@@ -176,7 +183,10 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(actorSystem, false);
+        auto service = CreateKikimrFileStore(
+            actorSystem,
+            false,
+            PermanentActorCount);
         service->Start();
 
         auto context = MakeIntrusive<TCallContext>();

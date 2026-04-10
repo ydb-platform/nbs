@@ -44,6 +44,8 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
     xxx(DirectoryHandlesStoragePath,                TString,    ""            )\
     xxx(DirectoryHandlesInitialDataSize,            ui64,       1_GB          )\
+    xxx(UsePermanentActor,                          bool,       false         )\
+    xxx(PermanentActorCount,                        ui32,       4             )\
 // VHOST_SERVICE_CONFIG
 
 #define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \

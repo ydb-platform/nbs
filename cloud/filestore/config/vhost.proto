@@ -87,6 +87,7 @@ message TVhostServiceConfig
     // If true, a permanent THandler actor will be used instead of one
     // TRequestActor per each request.
     optional bool UsePermanentActor = 21;
+    optional uint32 PermanentActorCount = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
