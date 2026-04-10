@@ -48,6 +48,10 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(IpTypeOfService);
     SET(SourceInterface);
     SET(VerbsQP);
+    SET(MinRnRTimer);
+    SET(Timeout);
+    SET(RetryCount);
+    SET(RnrRetry);
 }
 
 #undef SET
@@ -75,6 +79,10 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(IpTypeOfService, IpTypeOfService);
                 ENTRY(SourceInterface, SourceInterface);
                 ENTRY(VerbsQP, VerbsQP);
+                ENTRY(MinRnRTimer, MinRnRTimer);
+                ENTRY(Timeout, Timeout);
+                ENTRY(RetryCount, RetryCount);
+                ENTRY(RnrRetry, RnrRetry);
             }
         }
     }

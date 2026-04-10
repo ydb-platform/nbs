@@ -2385,6 +2385,46 @@ void TClient::HandleConnected(
 
     RDMA_INFO(endpoint->Log, "connected");
 
+    try {
+        ibv_qp_attr attr = {};
+        int mask = 0;
+        if (endpoint->Config.RetryCount > 0) {
+            mask |= IBV_QP_RETRY_CNT;
+            attr.retry_cnt = endpoint->Config.RetryCount;
+        }
+        if (endpoint->Config.RnrRetry > 0) {
+            mask |= IBV_QP_RNR_RETRY;
+            attr.rnr_retry = endpoint->Config.RnrRetry;
+        }
+        if (endpoint->Config.Timeout > 0) {
+            mask |= IBV_QP_TIMEOUT;
+            attr.timeout = endpoint->Config.Timeout;
+        }
+        if (endpoint->Config.MinRnRTimer > 0) {
+            mask |= IBV_QP_MIN_RNR_TIMER;
+            attr.min_rnr_timer = endpoint->Config.MinRnRTimer;
+        }
+
+        if (mask > 0) {
+            RDMA_INFO(
+                endpoint->Log,
+                "modify QP with mask "
+                    << mask << "; retry_cnt=" << attr.retry_cnt
+                    << "; rnr_retry=" << attr.rnr_retry
+                    << "; timeout=" << attr.timeout
+                    << "; min_rnr_timer=" << attr.min_rnr_timer);
+
+            Verbs->ModifyQP(endpoint->Connection->qp, &attr, mask);
+        }
+
+        endpoint->StartReceive();
+
+    } catch (const TServiceError& e) {
+        RDMA_ERROR(endpoint->Log, e.what());
+        endpoint->Disconnect();
+        return;
+    }
+
     if (endpoint->StartResult.Initialized()) {
         auto startResult = std::move(endpoint->StartResult);
         startResult.SetValue(endpoint->shared_from_this());

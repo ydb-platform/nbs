@@ -39,6 +39,10 @@ struct TClientConfig
     ui8 IpTypeOfService = 0;
     TString SourceInterface;
     bool VerbsQP = false;
+    ui8 MinRnRTimer = 0;
+    ui8 Timeout = 0;
+    ui8 RetryCount = 0;
+    ui8 RnrRetry = 0;
 
     TClientConfig() = default;
 

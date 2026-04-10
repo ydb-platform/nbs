@@ -1932,7 +1932,38 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
 
 void TServer::HandleConnected(TServerSession* session) noexcept
 {
+    RDMA_INFO("TServer::HandleConnected");
+
     try {
+        ibv_qp_attr attr = {};
+        int mask = 0;
+        if (Config->RetryCount > 0) {
+            mask |= IBV_QP_RETRY_CNT;
+            attr.retry_cnt = Config->RetryCount;
+        }
+        if (Config->RnrRetry > 0) {
+            mask |= IBV_QP_RNR_RETRY;
+            attr.rnr_retry = Config->RnrRetry;
+        }
+        if (Config->Timeout > 0) {
+            mask |= IBV_QP_TIMEOUT;
+            attr.timeout = Config->Timeout;
+        }
+        if (Config->MinRnRTimer > 0) {
+            mask |= IBV_QP_MIN_RNR_TIMER;
+            attr.min_rnr_timer = Config->MinRnRTimer;
+        }
+
+        if (mask > 0) {
+            RDMA_INFO(
+                "modify QP with mask "
+                << mask << "; retry_cnt=" << attr.retry_cnt << "; rnr_retry="
+                << attr.rnr_retry << "; timeout=" << attr.timeout
+                << "; min_rnr_timer=" << attr.min_rnr_timer);
+
+            Verbs->ModifyQP(session->Connection->qp, &attr, mask);
+        }
+
         session->Start();
         session->CompletionPoller->Attach(session);
         RDMA_INFO(session->Log, "connected");
