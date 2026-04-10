@@ -76,7 +76,7 @@ struct TOptions
     TString TracePath;
     ui32 TraceRate = 1;
 
-    NRdma::TBufferPoolConfig BufferPoolConfig;
+    NRdma::TBufferPoolConfig BufferPool;
 
     void Parse(int argc, char** argv);
 };

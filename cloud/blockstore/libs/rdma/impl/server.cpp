@@ -3,7 +3,6 @@
 #include "buffer.h"
 #include "event.h"
 #include "list.h"
-#include "log.h"
 #include "poll.h"
 #include "rcu.h"
 #include "utils.h"
@@ -11,9 +10,10 @@
 #include "work_queue.h"
 #include "adaptive_wait.h"
 
-#include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/rdma/iface/log.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -349,8 +349,8 @@ TServerSession::TServerSession(
     , Counters(std::move(stats))
     , Log(log)
     , MaxInflightBytes(Config->MaxInflightBytes)
-    , SendBuffers(Config->BufferPoolConfig)
-    , RecvBuffers(Config->BufferPoolConfig)
+    , SendBuffers(Config->BufferPool)
+    , RecvBuffers(Config->BufferPool)
 {
     Connection->context = this;
 
@@ -1561,6 +1561,8 @@ void TServer::Start()
             Log);
         CompletionPollers[i]->Start();
     }
+
+    Config->Validate(Log);
 
     try {
         ConnectionPoller = std::make_unique<TConnectionPoller>(Verbs, this, Log);

@@ -69,7 +69,7 @@ void TBootstrap::Init()
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
-        config->BufferPoolConfig = Options->BufferPoolConfig;
+        config->BufferPool = Options->BufferPool;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 
@@ -86,7 +86,7 @@ void TBootstrap::Init()
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
-        config->BufferPoolConfig = Options->BufferPoolConfig;
+        config->BufferPool = Options->BufferPool;
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 

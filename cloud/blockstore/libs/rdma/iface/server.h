@@ -34,13 +34,12 @@ struct TServerConfig
     ui8 IpTypeOfService = 0;
     TString SourceInterface;
     bool VerbsQP = false;
-
-    TBufferPoolConfig BufferPoolConfig;
+    TBufferPoolConfig BufferPool;
 
     TServerConfig() = default;
-
     explicit TServerConfig(const NProto::TRdmaServer& config);
 
+    void Validate(TLog& log);
     void DumpHtml(IOutputStream& out) const;
 };
 

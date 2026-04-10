@@ -41,13 +41,12 @@ struct TClientConfig
     ui8 IpTypeOfService = 0;
     TString SourceInterface;
     bool VerbsQP = false;
-
-    TBufferPoolConfig BufferPoolConfig;
+    TBufferPoolConfig BufferPool;
 
     TClientConfig() = default;
-
     TClientConfig(const NProto::TRdmaClient& config);
 
+    void Validate(TLog& log);
     void DumpHtml(IOutputStream& out) const;
 };
 

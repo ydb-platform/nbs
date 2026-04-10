@@ -140,18 +140,18 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption("chunk-size")
         .RequiredArgument("NUM")
-        .DefaultValue(ToString(BufferPoolConfig.ChunkSize))
-        .StoreResult(&BufferPoolConfig.ChunkSize);
+        .DefaultValue(ToString(BufferPool.ChunkSize))
+        .StoreResult(&BufferPool.ChunkSize);
 
     opts.AddLongOption("max-chunk-alloc")
         .RequiredArgument("NUM")
-        .DefaultValue(ToString(BufferPoolConfig.MaxChunkAlloc))
-        .StoreResult(&BufferPoolConfig.MaxChunkAlloc);
+        .DefaultValue(ToString(BufferPool.MaxChunkAlloc))
+        .StoreResult(&BufferPool.MaxChunkAlloc);
 
     opts.AddLongOption("max-free-chunks")
         .RequiredArgument("NUM")
-        .DefaultValue(ToString(BufferPoolConfig.MaxFreeChunks))
-        .StoreResult(&BufferPoolConfig.MaxFreeChunks);
+        .DefaultValue(ToString(BufferPool.MaxFreeChunks))
+        .StoreResult(&BufferPool.MaxFreeChunks);
 
     TOptsParseResultException res(&opts, argc, argv);
 
@@ -165,6 +165,7 @@ void TOptions::Parse(int argc, char** argv)
         MaxBlocksCount = MinBlocksCount;
     }
 
+    Y_ENSURE(BufferPool.ChunkSize >= BufferPool.MaxChunkAlloc);
     Y_ENSURE(BlockSize && (BlockSize & (BlockSize - 1)) == 0);
     Y_ENSURE(BlocksCount && BlocksCount > MaxBlocksCount);
     Y_ENSURE(MinBlocksCount && MinBlocksCount <= MaxBlocksCount);

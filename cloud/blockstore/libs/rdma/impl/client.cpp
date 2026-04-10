@@ -4,13 +4,13 @@
 #include "buffer.h"
 #include "event.h"
 #include "list.h"
-#include "log.h"
 #include "poll.h"
 #include "rcu.h"
 #include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
 
+#include <cloud/blockstore/libs/rdma/iface/log.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
@@ -591,8 +591,8 @@ TClientEndpoint::TClientEndpoint(
     , OriginalConfig(std::move(config))
     , Config(*OriginalConfig)
     , WaitMode(Config.WaitMode)
-    , SendBuffers(OriginalConfig->BufferPoolConfig)
-    , RecvBuffers(OriginalConfig->BufferPoolConfig)
+    , SendBuffers(Config.BufferPool)
+    , RecvBuffers(Config.BufferPool)
 {
     // user data attached to connection events
     Connection->context = this;
@@ -1892,6 +1892,8 @@ void TClient::Start() noexcept
             Log);
         CompletionPollers[i]->Start();
     }
+
+    Config->Validate(Log);
 
     try {
         ConnectionPoller = std::make_unique<TConnectionPoller>(Verbs, this, Log);

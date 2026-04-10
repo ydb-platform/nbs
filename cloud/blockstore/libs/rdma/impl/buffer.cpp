@@ -126,7 +126,9 @@ public:
         , Verbs(std::move(verbs))
         , ProtectionDomain(pd)
         , Flags(flags)
-    {}
+    {
+        Y_DEBUG_ABORT_UNLESS(Config.ChunkSize >= Config.MaxChunkAlloc);
+    }
 
     TBuffer AcquireBuffer(size_t bytesCount, bool ignoreCache)
     {
