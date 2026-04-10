@@ -134,7 +134,9 @@ def setup_logger(
     return logger
 
 
-def set_logging_level(verbosity: int, fmt: str = "%(asctime)s - %(levelname)s - %(message)s"):
+def set_logging_level(
+    verbosity: int, fmt: str = "%(asctime)s - %(levelname)s - %(message)s"
+):
     level = max(10, 40 - 10 * verbosity)
     return setup_logger(level, fmt=fmt)
 
@@ -182,10 +184,10 @@ def ttl_to_seconds(ttl_str: str) -> int:
         name: int(value) for name, value in matches.groupdict(default="0").items()
     }
     return (
-        time_parts["days"] * 86400
-        + time_parts["hours"] * 3600
-        + time_parts["minutes"] * 60
-        + time_parts["seconds"]
+        time_parts["days"] * 86400  # noqa: W503
+        + time_parts["hours"] * 3600  # noqa: W503
+        + time_parts["minutes"] * 60  # noqa: W503
+        + time_parts["seconds"]  # noqa: W503
     )
 
 

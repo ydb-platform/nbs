@@ -1,5 +1,4 @@
 import os
-import logging
 import requests
 import zipfile
 import io

@@ -21,6 +21,7 @@ FORCE_TEXT_PLAIN_PATTERNS = (
     r".*stderr.*",
 )
 
+
 def sizeof_fmt(num, suffix="B"):
     """Convert file size to a human-readable format."""
     for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:

@@ -8,6 +8,7 @@ from .junit_utils import iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
 
+
 def write_to_env(key: str, value: str, is_secret: bool = False):
     write_to_file_from_env(LOGGER, key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
 
