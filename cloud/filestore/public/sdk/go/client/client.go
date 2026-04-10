@@ -37,7 +37,7 @@ type Session struct {
 	SessionSeqNo uint64
 	FileSystemID string
 	CheckpointId string
-	ClientID 	 string
+	ClientID     string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -239,7 +239,7 @@ func (client *Client) CreateCheckpoint(
 ) error {
 	req := &protos.TCreateCheckpointRequest{
 		FileSystemId: fileSystemID,
-		Headers: headersForSession(session),
+		Headers:      headersForSession(session),
 	}
 
 	if opts != nil {
@@ -314,7 +314,7 @@ func (client *Client) CreateSession(
 		SessionSeqNo: session.GetSessionSeqNo(),
 		FileSystemID: fileSystemID,
 		CheckpointId: checkpointId,
-		ClientID:    clientID,
+		ClientID:     clientID,
 	}, nil
 }
 
@@ -325,7 +325,7 @@ func (client *Client) DestroySession(
 
 	req := &protos.TDestroySessionRequest{
 		FileSystemId: session.FileSystemID,
-		Headers: headersForSession(session),
+		Headers:      headersForSession(session),
 	}
 	_, err := client.Impl.DestroySession(ctx, req)
 	return err
@@ -344,9 +344,9 @@ func (client *Client) ListNodes(
 		FileSystemId: session.FileSystemID,
 		NodeId:       nodeID,
 		Cookie:       []byte(cookie),
-		Headers: headersForSession(session),
-		MaxBytes: maxBytes,
-		Unsafe:   unsafe,
+		Headers:      headersForSession(session),
+		MaxBytes:     maxBytes,
+		Unsafe:       unsafe,
 	}
 	resp, err := client.Impl.ListNodes(ctx, req)
 	if err != nil {
@@ -398,7 +398,7 @@ func (client *Client) CreateNode(
 		FileSystemId: session.FileSystemID,
 		Uid:          node.UID,
 		Gid:          node.GID,
-		Headers: headersForSession(session),
+		Headers:      headersForSession(session),
 	}
 
 	switch node.Type {
@@ -451,7 +451,7 @@ func (client *Client) ReadLink(
 	req := &protos.TReadLinkRequest{
 		NodeId:       nodeID,
 		FileSystemId: session.FileSystemID,
-		Headers: headersForSession(session),
+		Headers:      headersForSession(session),
 	}
 
 	resp, err := client.Impl.ReadLink(ctx, req)
@@ -473,7 +473,7 @@ func (client *Client) GetNodeAttr(
 		FileSystemId: session.FileSystemID,
 		NodeId:       parentNodeID,
 		Name:         []byte(name),
-		Headers: headersForSession(session),
+		Headers:      headersForSession(session),
 	}
 
 	resp, err := client.Impl.GetNodeAttr(ctx, req)
@@ -511,7 +511,7 @@ func (client *Client) UnlinkNode(
 		NodeId:          parentNodeID,
 		Name:            []byte(name),
 		UnlinkDirectory: unlinkDirectory,
-		Headers: headersForSession(session),
+		Headers:         headersForSession(session),
 	}
 
 	_, err := client.Impl.UnlinkNode(ctx, req)
