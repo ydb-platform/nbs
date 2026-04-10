@@ -34,6 +34,7 @@ class NfsLauncher:
         storage_config = TStorageConfig()
         storage_config.AllowFileStoreForceDestroy = allow_filestore_force_destroy
         storage_config.MultiTabletForwardingEnabled = True
+        storage_config.AutomaticallyCreatedShardSize = 1073741824
         self.__nfs_configurator = FilestoreServerConfigGenerator(
             binary_path=nfs_binary_path,
             app_config=server_config,
