@@ -33,9 +33,10 @@ void TDiskRegistryActor::HandleUpdateVolumeHealth(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Volume reported disk recovered: DiskId=%s",
+            "%s Volume reported disk recovered: DiskId=%s, Health=%s",
             LogTitle.GetWithTime().c_str(),
-            msg->Record.GetDiskId().Quote().c_str());
+            msg->Record.GetDiskId().Quote().c_str(),
+            NProto::EVolumeHealth_Name(health).c_str());
     }
 
     ExecuteTx<TUpdateVolumeHealth>(
