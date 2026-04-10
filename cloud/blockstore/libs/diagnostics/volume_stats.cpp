@@ -560,6 +560,7 @@ public:
         , UserCounters(CreateUserCounterSupplier())
     {}
 
+    // Not thread-safe
     bool MountVolumeImpl(
         NProto::TVolume volume,
         const TRealInstanceId& realInstanceId,
@@ -637,6 +638,7 @@ public:
         // mounts are allowed simultaneously
     }
 
+    // Not thread-safe
     void AlterVolumeImpl(
         const TString& diskId,
         const TString& cloudId,
@@ -681,6 +683,7 @@ public:
         AlterVolumeImpl(NStorage::GetLogicalDiskId(diskId), cloudId, folderId);
     }
 
+    // Not thread-safe
     TVolumeInfoPtr GetVolumeInfoImpl(
         const TString& diskId,
         const TString& clientId) const
@@ -714,7 +717,7 @@ public:
     /**
      * Increment corresponding VolumeInfo::PinCounter
      *
-     * MT-Safe
+     * Thread-safe
      *
      * @return
      *  true  - increment succeeded
@@ -743,7 +746,7 @@ public:
     /**
      * Decrement corresponding VolumeInfo::PinCounter
      *
-     * MT-Safe
+     * Thread-safe
      *
      * VolumeInfo with specified [diskId, clientId] must exist and be pinned.
      */
@@ -833,6 +836,7 @@ public:
         return infos.empty();
     }
 
+    // Not thread-safe
     void TrimVolumesImpl()
     {
         const auto now = Timer->Now();
