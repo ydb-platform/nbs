@@ -5987,7 +5987,7 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
     }
 
     NProto::EDiskState state =
-        disk.VolumeHealth == NProto::VOLUME_HEALTH_UNHEALTHY
+        disk.VolumeHealth != NProto::VOLUME_HEALTH_HEALTHY
             ? NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE
             : NProto::DISK_STATE_ONLINE;
 

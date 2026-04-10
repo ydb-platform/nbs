@@ -21,13 +21,14 @@ void TDiskRegistryActor::HandleUpdateVolumeHealth(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     const auto health = msg->Record.GetVolumeHealth();
-    if (health == NProto::VOLUME_HEALTH_UNHEALTHY) {
+    if (health != NProto::VOLUME_HEALTH_HEALTHY) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "%s Volume reported disk broken: DiskId=%s",
+            "%s Volume reported disk broken: DiskId=%s, Health=%s",
             LogTitle.GetWithTime().c_str(),
-            msg->Record.GetDiskId().Quote().c_str());
+            msg->Record.GetDiskId().Quote().c_str(),
+            NProto::EVolumeHealth_Name(health).c_str());
     } else {
         LOG_INFO(
             ctx,
