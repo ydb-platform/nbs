@@ -264,7 +264,7 @@ message TDiagnosticsConfig
     // Enables passing trace id to blobstorage.
     optional bool PassTraceIdToBlobstorage = 58;
 
-    // Makes VolumeInfo stats durable for endpoints
-    // (not removed by InactiveClientsTimeout until endpoint exists)
+    // Makes VolumeInfo stats for endpoints durable by pinning the VolumeInfo
+    // object (not removed by InactiveClientsTimeout while the endpoint exists)
     optional bool EnableDurableVolumeInfo = 59;
 }
