@@ -12,6 +12,7 @@ from enum import Enum
 from operator import attrgetter
 from pathlib import Path
 from typing import IO, Iterable, Protocol, TypeAlias
+from xml.etree import ElementTree as ET
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -28,7 +29,7 @@ class IssueCommentLike(Protocol):
     id: int
     body: str
 
-    def edit(self, body: str) -> None: ...
+    def edit(self, body: str) -> None: ...  # noqa: U100
 
 
 class PullRequestHeadLike(Protocol):
@@ -40,7 +41,7 @@ class PullRequestLike(Protocol):
     head: PullRequestHeadLike
 
     def get_issue_comments(self) -> Iterable[IssueCommentLike]: ...
-    def create_issue_comment(self, body: str) -> None: ...
+    def create_issue_comment(self, body: str) -> None: ...  # noqa: U100
 
 
 @contextmanager

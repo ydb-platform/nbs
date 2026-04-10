@@ -11,7 +11,9 @@ from .junit_utils import iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
 FailureRecord: TypeAlias = tuple[str, str]
-FailureLists: TypeAlias = tuple[list[FailureRecord], list[FailureRecord], list[FailureRecord]]
+FailureLists: TypeAlias = tuple[
+    list[FailureRecord], list[FailureRecord], list[FailureRecord]
+]
 
 
 def write_to_env(key: str, value: str, is_secret: bool = False) -> None:

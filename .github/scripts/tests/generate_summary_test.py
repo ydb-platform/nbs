@@ -68,7 +68,10 @@ def test_gen_summary_counts_renders_plain_number_table(
     summary = gs.gen_summary_counts([("GA Scripts pytest", str(xml_path))])
     markdown = gs.render_summary_markdown(summary)
 
-    assert "| TESTS | PASSED | ERRORS | FAILED | FAILED BUILD | SKIPPED | MUTED" in markdown
+    assert (
+        "| TESTS | PASSED | ERRORS | FAILED | FAILED BUILD | SKIPPED | MUTED"
+        in markdown
+    )
     assert "| 3 | 1 | 0 | 1 | 0 | 0 | 1 |" in markdown
     assert "[3](" not in markdown
     assert "[1](None#PASS)" not in markdown
