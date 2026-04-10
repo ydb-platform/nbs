@@ -384,6 +384,102 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReuseChunks)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->BufferPool.ChunkSize = 80_MB;
+        clientConfig->BufferPool.MaxChunkAlloc = 4_MB;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<size_t> registered;
+        testContext->RegisterMemoryRegion = [&](auto...)
+        {
+            registered++;
+        };
+
+        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+
+        TVector<TClientRequestPtr> requests;
+        int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
+                                    clientConfig->BufferPool.MaxChunkAlloc;
+
+        for (int i = 0; i < maxRequestsInOneChunk; i++) {
+            auto [req, err] = endpoint->AllocateRequest(
+                std::make_shared<TClientHandler>(),
+                std::make_unique<TNullContext>(),
+                4_MB,
+                4_MB);
+            UNIT_ASSERT_VALUES_EQUAL(false, HasError(err));
+            requests.push_back(std::move(req));
+        }
+
+        // 2 for recv/send buffers
+        // 2 for input/output buffers
+        UNIT_ASSERT_VALUES_EQUAL(registered.load(), 2 + 2);
+    }
+
+    Y_UNIT_TEST(ShouldAdjustMaxChunkAlloc)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->BufferPool.ChunkSize = 4_MB;
+        clientConfig->BufferPool.MaxChunkAlloc = 8_MB;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<size_t> registered;
+        testContext->RegisterMemoryRegion = [&](auto...)
+        {
+            registered++;
+        };
+
+        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+
+        TVector<TClientRequestPtr> requests;
+        int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
+                                    clientConfig->BufferPool.MaxChunkAlloc;
+        constexpr int chunks = 10;
+
+        for (int i = 0; i < maxRequestsInOneChunk * chunks; i++) {
+            auto [req, err] = endpoint->AllocateRequest(
+                std::make_shared<TClientHandler>(),
+                std::make_unique<TNullContext>(),
+                4_MB,
+                4_MB);
+            UNIT_ASSERT_VALUES_EQUAL(false, HasError(err));
+            requests.push_back(std::move(req));
+        }
+
+        // 2 for recv/send buffers
+        // 2 * chunks for input/output buffers
+        UNIT_ASSERT_VALUES_EQUAL(registered.load(), 2 + 2 * chunks);
+    }
+
+
     Y_UNIT_TEST(ShouldAbortRequests)
     {
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();

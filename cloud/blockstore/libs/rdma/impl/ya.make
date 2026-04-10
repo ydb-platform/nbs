@@ -6,7 +6,6 @@ SRCS(
     client.cpp
     event.cpp
     list.cpp
-    log.cpp
     poll.cpp
     rcu.cpp
     server.cpp
