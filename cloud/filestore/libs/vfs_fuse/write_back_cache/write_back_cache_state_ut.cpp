@@ -352,6 +352,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL("2", b.DumpEvents());
     }
 
+    Y_UNIT_TEST(ReleaseHandleShouldTriggerFlush)
+    {
+        TBootstrap b;
+
+        UNIT_ASSERT(b.Add(1, 101, 1, "a").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+
+        auto releaseHandle = b.State->AddReleaseHandleRequest(1, 101);
+        UNIT_ASSERT(!releaseHandle.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+
+        b.FlushCache(1);
+        UNIT_ASSERT(!HasError(releaseHandle.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+    }
+
     Y_UNIT_TEST(HandleFlushFailures)
     {
         TBootstrap b;
