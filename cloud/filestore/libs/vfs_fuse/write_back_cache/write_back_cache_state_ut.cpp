@@ -1,6 +1,7 @@
 #include "write_back_cache_state.h"
 
 #include "queued_operations.h"
+#include "relaxed_counters.h"
 #include "write_back_cache_stats.h"
 #include "write_data_request.h"
 
@@ -9,7 +10,7 @@
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -55,7 +56,7 @@ struct TProcessor: IQueuedOperationsProcessor
 
 struct TBootstrap
 {
-    ITimerPtr Timer;
+    std::shared_ptr<TTestTimer> Timer;
     IWriteBackCacheStatsPtr Stats;
     std::shared_ptr<TTestStorage> Storage;
     TProcessor Processor;
@@ -63,7 +64,7 @@ struct TBootstrap
     TWriteBackCacheStateMetrics Metrics;
 
     TBootstrap()
-        : Timer(CreateWallClockTimer())
+        : Timer(std::make_shared<TTestTimer>())
         , Stats(CreateWriteBackCacheStats())
         , Storage(CreateTestStorage(Stats))
         , Metrics(Stats->CreateMetrics())
@@ -97,6 +98,11 @@ struct TBootstrap
             "[test]");
 
         return State->Init(Storage);
+    }
+
+    void UpdateStats() const
+    {
+        State->UpdateStats();
     }
 
     TString DumpEvents()
@@ -730,6 +736,405 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(3, b.State->GetMaxWrittenOffset(1));
         b.FlushCache(1);
         UNIT_ASSERT_VALUES_EQUAL(0, b.State->GetMaxWrittenOffset(1));
+    }
+
+    Y_UNIT_TEST(ReportStats_Flush)
+    {
+        TBootstrap b;
+
+        auto& stats = b.Metrics.Flush;
+
+        b.Add(1, 101, 0, "abc");
+        b.Add(2, 102, 0, "def");
+        b.Add(2, 103, 0, "ghi");
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.State->AddFlushRequest(1);
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.State->FlushFailed(1, MakeError(E_FAIL));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+
+        b.State->FlushSucceeded(1, 1);
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+
+        b.State->AddFlushRequest(2);
+        b.State->AddReleaseHandleRequest(2, 102);
+        b.State->AddReleaseHandleRequest(2, 103);
+        b.State->FlushFailed(2, MakeError(E_FAIL));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.FailedCount->Get());
+
+        for (size_t i = 0; i <= DefaultMaxCalculatorBucketSize; i++) {
+            b.UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.FailedCount->Get());
+    }
+
+    Y_UNIT_TEST(ReportStats_WriteDataRequestDropped)
+    {
+        TBootstrap b;
+
+        auto& stats = b.Metrics;
+
+        b.Add(1, 101, 0, "abc");
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.WriteDataRequestDroppedCount->Get());
+
+        b.State->AddFlushRequest(1);
+        b.State->AddReleaseHandleRequest(1, 101);
+        b.State->FlushFailed(1, MakeError(E_FAIL));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ReportStats_Barriers)
+    {
+        TBootstrap b;
+
+        auto& stats = b.Metrics.Barriers;
+
+        auto barrier1 = b.State->AcquireBarrier(1);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.ReleasedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.ReleasedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1000, stats.MaxTime->Get());
+
+        b.Add(1, 102, 0, "abc");
+        auto barrier2 = b.State->AcquireBarrier(1);
+        auto barrier3 = b.State->AcquireBarrier(1);
+        b.State->ReleaseBarrier(1, barrier1.GetValue().GetResult());
+        b.State->FlushSucceeded(1, 1);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(4));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ReleasedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1000, stats.ReleasedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(4000, stats.MaxTime->Get());
+
+        b.State->ReleaseBarrier(1, barrier2.GetValue().GetResult());
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ReleasedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(5000, stats.ReleasedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(6000, stats.MaxTime->Get());
+
+        for (size_t i = 0; i <= DefaultMaxCalculatorBucketSize; i++) {
+            b.UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ReleasedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(5000, stats.ReleasedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(6000, stats.MaxTime->Get());
+
+        b.State->ReleaseBarrier(1, barrier3.GetValue().GetResult());
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.ReleasedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(11000, stats.ReleasedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(6000, stats.MaxTime->Get());
+
+        for (size_t i = 0; i <= DefaultMaxCalculatorBucketSize; i++) {
+            b.UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.ActiveCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.ActiveMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.ReleasedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(11000, stats.ReleasedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
+    }
+
+    void DoReportStats_FlushRequests(bool flushAll)
+    {
+        TBootstrap b;
+
+        auto& stats =
+            flushAll ? b.Metrics.FlushAllRequests : b.Metrics.FlushRequests;
+
+        if (flushAll) {
+            b.State->AddFlushAllRequest();
+        } else {
+            b.State->AddFlushRequest(1);
+        }
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.Add(1, 101, 0, "abc");
+        if (flushAll) {
+            b.State->AddFlushAllRequest();
+        } else {
+            b.State->AddFlushRequest(1);
+        }
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.Add(2, 102, 0, "def");
+        if (flushAll) {
+            b.State->AddFlushAllRequest();
+        } else {
+            b.State->AddFlushRequest(2);
+        }
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
+
+        b.State->FlushSucceeded(1, 1);
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(3000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(3000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(5));
+
+        b.State->FlushFailed(2, MakeError(E_FAIL));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(10000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(7000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+
+        for (size_t i = 0; i <= DefaultMaxCalculatorBucketSize; i++) {
+            b.UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(10000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+    }
+
+    Y_UNIT_TEST(ReportStats_FlushRequests)
+    {
+        DoReportStats_FlushRequests(false);
+    }
+
+    Y_UNIT_TEST(ReportStats_FlushAllRequests)
+    {
+        DoReportStats_FlushRequests(true);
+    }
+
+    Y_UNIT_TEST(ReportStats_ReleaseHandleRequests)
+    {
+        TBootstrap b;
+
+        auto& stats = b.Metrics.ReleaseHandleRequests;
+
+        b.State->AddReleaseHandleRequest(1, 101);
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.Add(1, 102, 0, "abc");
+        b.Add(1, 103, 0, "def");
+        b.State->AddReleaseHandleRequest(1, 102);
+        b.State->AddReleaseHandleRequest(1, 103);
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.State->AddFlushRequest(1);
+        b.State->FlushSucceeded(1, 1);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.State->FlushFailed(1, MakeError(E_FAIL));
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(3000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+
+        for (size_t i = 0; i <= DefaultMaxCalculatorBucketSize; i++) {
+            b.UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(3000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+    }
+
+    Y_UNIT_TEST(ReportStats_AcquireBarrierRequests)
+    {
+        TBootstrap b;
+
+        auto& stats = b.Metrics.AcquireBarrierRequests;
+
+        auto barrier1 = b.State->AcquireBarrier(1);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.Add(1, 101, 0, "abc");
+        auto barrier2 = b.State->AcquireBarrier(1);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.State->ReleaseBarrier(1, barrier1.GetValue().GetResult());
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(4));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(6000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.State->FlushSucceeded(1, 1);
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(6000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(6000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+
+        b.Add(1, 101, 0, "abc");
+        auto barrier3 = b.State->AcquireBarrier(1);
+        b.State->ReleaseBarrier(1, barrier2.GetValue().GetResult());
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+        b.State->FlushFailed(1, MakeError(E_FAIL));
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(7000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(6000, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+
+        for (size_t i = 0; i <= DefaultMaxCalculatorBucketSize; i++) {
+            b.UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressMaxCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(7000, stats.CompletedTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.MaxTime->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedImmediately->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
     }
 }
 

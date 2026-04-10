@@ -273,4 +273,39 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+template <size_t BucketCount = DefaultMaxCalculatorBucketSize>
+class TRelaxedExtendedEventCounterWithTimeStats
+    : public TRelaxedEventCounterWithTimeStats<BucketCount>
+{
+private:
+    TRelaxedCounter FailedCount;
+    TRelaxedCounter CompletedImmediatelyCount;
+
+public:
+    // Can be called concurrently
+    i64 GetFailedCount() const
+    {
+        return FailedCount.Get();
+    }
+
+    // Can be called concurrently
+    i64 GetCompletedImmediately() const
+    {
+        return CompletedImmediatelyCount.Get();
+    }
+
+    void Failed(TDuration duration)
+    {
+        FailedCount.Inc();
+        this->Completed(duration);
+    }
+
+    void CompletedImmediately()
+    {
+        CompletedImmediatelyCount.Inc();
+    }
+};
+
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

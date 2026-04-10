@@ -10,9 +10,26 @@
 
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/intrlist.h>
 #include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Referenced from TWriteBackCacheState::ReleaseHandleRequests
+struct TReleaseHandleRequest: public TIntrusiveListItem<TReleaseHandleRequest>
+{
+    TInstant RequestStartTime = TInstant::Zero();
+
+    // The promise is fulfilled when |THandleState::RequestCount| hits 0
+    NThreading::TPromise<NCloud::NProto::TError> ReadyToReleasePromise =
+        NThreading::NewPromise<NCloud::NProto::TError>();
+
+    explicit TReleaseHandleRequest(TInstant now)
+        : RequestStartTime(now)
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -21,9 +38,9 @@ struct THandleState
     // Number of pending and unflushed requests associated with the handle
     ui64 ActiveWriteDataRequestCount = 0;
 
-    // The promise is fulfilled when |RequestCount| hits 0
-    // Not initialized by default unless ReleaseHandle is requested
-    NThreading::TPromise<NCloud::NProto::TError> ReadyToReleasePromise;
+    // The field is initialized when ReleaseHandle request is made.
+    // Only one ReleaseHandle request may be active at a time for a handle.
+    std::unique_ptr<TReleaseHandleRequest> ReleaseHandleRequest;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,28 +59,37 @@ enum class ENodeFlushStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFlushRequest
+// Referenced from TWriteBackCacheState::FlushRequests
+struct TFlushRequest: public TIntrusiveListItem<TFlushRequest>
 {
     const ui64 SequenceId = 0;
+    const TInstant RequestStartTime = TInstant::Zero();
 
     // The promise is fulfilled when there are no pending or unflushed requests
     // with SequenceId <= TFlushRequest::SequenceId (for a node or global)
     NThreading::TPromise<NCloud::NProto::TError> Promise =
         NThreading::NewPromise<NCloud::NProto::TError>();
 
-    explicit TFlushRequest(ui64 sequenceId)
+    explicit TFlushRequest(ui64 sequenceId, TInstant requestStartTime)
         : SequenceId(sequenceId)
+        , RequestStartTime(requestStartTime)
     {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBarrier
+// Referenced from TWriteBackCacheState::ActiveBarriers when the barrier has
+// been acquired or from TWriteBackCacheState::PendingBarriers when the
+// acquisition request has not been completed
+struct TBarrier: public TIntrusiveListItem<TBarrier>
 {
     // The promise is fulfilled when all requests associated with a node with
-     // SequenceId less than or equal to the barrier id (the key in
-     // TNodeState::Barriers) are evicted
+    // SequenceId less than or equal to the barrier id (the key in
+    // TNodeState::Barriers) are evicted
     NThreading::TPromise<TResultOrError<ui64>> Promise;
+
+    TInstant RequestStartTime = TInstant::Zero();
+    TInstant BarrierAcquisitionTime = TInstant::Zero();
 
     bool IsAcquired = false;
 };
@@ -89,7 +115,7 @@ struct TNodeState
     // requests with SequenceId less or equal than |TFlushRequest::SequenceId|.
     // Flush requests are stored in chronological order: SequenceId values are
     // strictly increasing so newer flush requests have larger SequenceId.
-    TDeque<TFlushRequest> FlushRequests;
+    TDeque<std::unique_ptr<TFlushRequest>> FlushRequests;
 
     // Holds active request handles and tracks handle release
     // Key: handle
@@ -102,7 +128,7 @@ struct TNodeState
     size_t HandleToReleaseCount = 0;
 
     // Requests with SequenceId > BarrierId are prevented from being flushed
-    TMap<ui64, TBarrier> Barriers;
+    TMap<ui64, std::unique_ptr<TBarrier>> Barriers;
 
     bool CanBeDeleted() const
     {
