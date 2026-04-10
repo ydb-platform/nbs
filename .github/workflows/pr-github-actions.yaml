@@ -319,7 +319,7 @@ jobs:
         shell: bash
         run: |
           set -x
-          export PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github"
+          export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           pytest --tb=short --disable-warnings --maxfail=1 \
             --junitxml="${GITHUB_WORKSPACE}/ga-scripts-pytest-results.xml" \
             --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
@@ -356,7 +356,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github"
+          export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
           SUMMARY_OUT=$(mktemp)
           python3 -m scripts.tests.pytest_summary \
             --title "GA Scripts pytest" \
