@@ -245,8 +245,8 @@ public:
 
     void PinVolumeInfo(const TString& diskId, const TString& clientId)
     {
-        // One-shot pin VolumeInfo from remove by timeout until
-        // unmounted or until TStorageDataClient is destroyed
+        // One-time pinning of the VolumeInfo object until the disk is unmounted
+        // or the object is destroyed
         if (VolumeInfoPin.AtomicLoad() != nullptr) {
             return;
         }
