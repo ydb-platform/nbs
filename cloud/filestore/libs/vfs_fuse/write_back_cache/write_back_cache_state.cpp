@@ -298,27 +298,40 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         "Flush wasn't requested for node %lu",
         nodeId);
 
+    Y_ABORT_UNLESS(
+        nodeState.Cache.HasUnflushedRequests(),
+        "Node %lu has no unflushed requests",
+        nodeId);
+
     Stats->FlushFailed();
 
     const auto now = Timer->Now();
 
-    // Fail Flush and FlushAll requests
+    // Fail all Flush requests
     for (auto& it: nodeState.FlushRequests) {
         Stats->RequestFailed(ERequestType::Flush, now - it->RequestStartTime);
         QueuedOperations.FailFlushOrReleasePromise(
             std::move(it->Promise),
             error);
     }
-
-    for (auto& it: FlushAllRequestQueue) {
-        Stats->RequestFailed(ERequestType::FlushAll, now - it.RequestStartTime);
-        QueuedOperations.FailFlushOrReleasePromise(
-            std::move(it.Promise),
-            error);
-    }
-
     nodeState.FlushRequests.clear();
-    FlushAllRequestQueue.clear();
+
+    // Fail FlushAll requests that were requested after the failed request
+    auto failedRequestSequenceId = nodeState.Cache.GetMinUnflushedSequenceId();
+    while (!FlushAllRequestQueue.empty()) {
+        auto& rq = FlushAllRequestQueue.back();
+        if (rq.SequenceId < failedRequestSequenceId) {
+            // The items in FlushAllRequestQueue are strictly ordered - no need
+            // to check any further requests once we find one that was requested
+            // before the failed request
+            break;
+        }
+        Stats->RequestFailed(ERequestType::FlushAll, now - rq.RequestStartTime);
+        QueuedOperations.FailFlushOrReleasePromise(
+            std::move(rq.Promise),
+            error);
+        FlushAllRequestQueue.pop_back();
+    }
 
     // Fail barrier acquisitions
     while (!nodeState.Barriers.empty()) {
