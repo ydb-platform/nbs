@@ -20,6 +20,7 @@ from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
 TitlePathTriplet: TypeAlias = tuple[str, str, str]
+TitlePathPair: TypeAlias = tuple[str, str]
 LogUrls: TypeAlias = dict[str, str]
 
 
@@ -313,7 +314,10 @@ class TestSummary:
                 count = line.count(status)
                 if status == TestStatus.FAIL_BUILD:
                     count = max(build_failed_count, count)
-                row.append(render_pm(count, f"{report_url}#{status.report_anchor}", 0))
+                status_url = (
+                    f"{report_url}#{status.report_anchor}" if report_url else None
+                )
+                row.append(render_pm(count, status_url, 0))
             result.append(self.render_line(row))
 
         if add_footnote:
@@ -331,7 +335,7 @@ def get_build_failed_count() -> int:
 
 
 def render_pm(value: int, url: str | None, diff: int | None = None) -> str:
-    if value:
+    if value and url:
         text = f"[{value}]({url})"
     else:
         text = str(value)
@@ -345,6 +349,22 @@ def render_pm(value: int, url: str | None, diff: int | None = None) -> str:
         text = f"{text} {sign}{abs(diff)}"
 
     return text
+
+
+def render_summary_markdown(
+    summary: TestSummary,
+    *,
+    add_footnote: bool = False,
+    build_failed_count: int = 0,
+) -> str:
+    if summary.is_empty:
+        return ""
+    return "\n".join(
+        summary.render(
+            add_footnote=add_footnote,
+            build_failed_count=build_failed_count,
+        )
+    )
 
 
 def render_testlist_html(rows: list[TestResult], fn: str, summary_url: str) -> None:
@@ -422,6 +442,24 @@ def gen_summary(
             summary_url=summary_url_prefix,
         )
         summary_line.add_report(html_fn, report_url)
+        summary.add_line(summary_line)
+
+    return summary
+
+
+def gen_summary_counts(paths: list[TitlePathPair]) -> TestSummary:
+    summary = TestSummary()
+
+    for title, path in paths:
+        summary_line = TestSummaryLine(title)
+
+        for _fn, _suite, case in iter_xml_files(path):
+            test_result = TestResult.from_junit(case)
+            summary_line.add(test_result)
+
+        if not summary_line.tests:
+            continue
+
         summary.add_line(summary_line)
 
     return summary

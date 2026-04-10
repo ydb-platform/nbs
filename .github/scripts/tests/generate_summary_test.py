@@ -54,6 +54,26 @@ def test_gen_summary_creates_html_and_aggregates_counters(
     assert "Summary dir file listing" in html
 
 
+def test_gen_summary_counts_renders_plain_number_table(
+    tmp_path: Path, mk_testcase, write_junit_xml
+) -> None:
+    xml_path = tmp_path / "junit.xml"
+    write_junit_xml(
+        xml_path,
+        mk_testcase(classname="a", name="pass"),
+        mk_testcase(classname="a", name="fail", failure="boom"),
+        mk_testcase(classname="a", name="mute", props={"mute": "rule-1"}),
+    )
+
+    summary = gs.gen_summary_counts([("GA Scripts pytest", str(xml_path))])
+    markdown = gs.render_summary_markdown(summary)
+
+    assert "| TESTS | PASSED | ERRORS | FAILED | FAILED BUILD | SKIPPED | MUTED" in markdown
+    assert "| 3 | 1 | 0 | 1 | 0 | 0 | 1 |" in markdown
+    assert "[3](" not in markdown
+    assert "[1](None#PASS)" not in markdown
+
+
 def test_write_summary_writes_markdown_table_and_footnote(tmp_path: Path) -> None:
     line = gs.TestSummaryLine("Tests")
     line.add(gs.TestResult("cls", "ok", gs.TestStatus.PASS, {}, 1.2, False))

@@ -350,12 +350,36 @@ jobs:
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-report.html "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-report.html"
           sudo -E -H -u github aws s3 cp --acl public-read --follow-symlinks --no-progress ga-scripts-pytest-results.xml "$S3_BUCKET_PATH/test_reports/ga-scripts-pytest-results.xml"
 
+      - name: build pytest summary table
+        if: ${{ always() }}
+        id: pytest-summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github"
+          SUMMARY_OUT=$(mktemp)
+          python3 -m scripts.tests.pytest_summary \
+            --title "GA Scripts pytest" \
+            ga-scripts-pytest-results.xml > "$SUMMARY_OUT"
+          {
+            echo "markdown<<EOF"
+            cat "$SUMMARY_OUT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: add test report links to summary
         if: ${{ always() }}
         shell: bash
+        env:
+          PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         run: |
           {
             echo "### GA Scripts pytest reports"
+            if [ -n "${PYTEST_SUMMARY_MARKDOWN}" ]; then
+              echo
+              printf '%s\n' "${PYTEST_SUMMARY_MARKDOWN}"
+              echo
+            fi
             if [ "${ACT}" = "true" ]; then
               echo "- Local act run: reports were written to ga-scripts-pytest-report.html and ga-scripts-pytest-results.xml"
             else
@@ -373,17 +397,22 @@ jobs:
           STEP_OUTCOME: ${{ steps.pytest.outcome }}
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           HTML_ARTIFACT_URL: ${{ steps.upload-html.outputs.artifact-url }}
+          PYTEST_SUMMARY_MARKDOWN: ${{ steps.pytest-summary.outputs.markdown }}
         with:
           script: |
             const outcome = process.env.STEP_OUTCOME;
             const status_emoji = outcome == 'success' ? ':green_circle:' : ':red_circle:';
             const s3_path = process.env.S3_URL_PREFIX;
-            const comment =
+            let comment =
               'status: ' + status_emoji +
               ' [GA scripts pytest result (artifact)](' + process.env.ARTIFACT_URL + ')' +
               ' [GA scripts pytest report (artifact)](' + process.env.HTML_ARTIFACT_URL + ')' +
               ' [GA scripts pytest report (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-report.html)' +
               ' [GA scripts pytest results (s3)](' + s3_path + '/test_reports/ga-scripts-pytest-results.xml)';
+
+            if (process.env.PYTEST_SUMMARY_MARKDOWN) {
+              comment += '\n\n' + process.env.PYTEST_SUMMARY_MARKDOWN;
+            }
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
