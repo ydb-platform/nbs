@@ -1,9 +1,12 @@
+from __future__ import annotations
+
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from scripts.tests import junit_utils as ju
 
 
-def test_add_junit_property_replaces_existing_value():
+def test_add_junit_property_replaces_existing_value() -> None:
     case = ET.Element("testcase")
     ju.add_junit_property(case, "x", "1")
     ju.add_junit_property(case, "x", "2")
@@ -13,7 +16,7 @@ def test_add_junit_property_replaces_existing_value():
     assert props[0].get("value") == "2"
 
 
-def test_iter_xml_files_reads_testsuite_and_testsuites(tmp_path):
+def test_iter_xml_files_reads_testsuite_and_testsuites(tmp_path: Path) -> None:
     suite_only = tmp_path / "suite.xml"
     root1 = ET.Element("testsuite")
     ET.SubElement(root1, "testcase", {"classname": "a", "name": "b"})

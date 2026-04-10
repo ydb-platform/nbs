@@ -1,11 +1,15 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 import pytest
 
 from scripts.tests import fail_checker as fc
 
 
 def test_check_for_fail_returns_237_for_build_failures(
-    tmp_path, monkeypatch, mk_testcase, write_junit_xml
-):
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mk_testcase, write_junit_xml
+) -> None:
     report = tmp_path / "junit.xml"
     write_junit_xml(
         report,
@@ -23,8 +27,8 @@ def test_check_for_fail_returns_237_for_build_failures(
 
 
 def test_check_for_fail_returns_1_for_regular_failures(
-    tmp_path, mk_testcase, write_junit_xml
-):
+    tmp_path: Path, mk_testcase, write_junit_xml
+) -> None:
     report = tmp_path / "junit.xml"
     write_junit_xml(report, mk_testcase(classname="a", name="b", failure="boom"))
 
@@ -35,8 +39,8 @@ def test_check_for_fail_returns_1_for_regular_failures(
 
 
 def test_get_fail_dirs_prints_unique_classnames(
-    tmp_path, capsys, mk_testcase, write_junit_xml
-):
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], mk_testcase, write_junit_xml
+) -> None:
     report = tmp_path / "junit.xml"
     write_junit_xml(
         report,

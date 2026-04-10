@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import dataclasses
 import json
@@ -9,7 +11,7 @@ from contextlib import contextmanager
 from enum import Enum
 from operator import attrgetter
 from pathlib import Path
-from typing import Dict, Iterable
+from typing import IO, Iterable, Protocol, TypeAlias
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -17,10 +19,31 @@ from ..helpers import setup_logger
 from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
+TitlePathTriplet: TypeAlias = tuple[str, str, str]
+LogUrls: TypeAlias = dict[str, str]
+
+
+class IssueCommentLike(Protocol):
+    id: int
+    body: str
+
+    def edit(self, body: str) -> None: ...
+
+
+class PullRequestHeadLike(Protocol):
+    sha: str
+
+
+class PullRequestLike(Protocol):
+    number: int
+    head: PullRequestHeadLike
+
+    def get_issue_comments(self) -> Iterable[IssueCommentLike]: ...
+    def create_issue_comment(self, body: str) -> None: ...
 
 
 @contextmanager
-def _summary_output_stream(summary_fn: str):
+def _summary_output_stream(summary_fn: str | None) -> Iterable[IO[str]]:
     if summary_fn:
         with open(summary_fn, "at") as fp:
             yield fp
@@ -37,7 +60,9 @@ class TestStatus(Enum):
     MUTE = 4
     FAIL_BUILD = 5
 
-    def __lt__(self, other):
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, TestStatus):
+            return NotImplemented
         return self.value < other.value
 
     @property
@@ -102,7 +127,7 @@ class TestResult:
     classname: str
     name: str
     status: TestStatus
-    log_urls: Dict[str, str]
+    log_urls: LogUrls
     elapsed: float
     is_timed_out: bool
 
@@ -124,8 +149,9 @@ class TestResult:
         return f"{self.classname}/{self.name}"
 
     @classmethod
-    def from_junit(cls, testcase):
-        classname, name = testcase.get("classname"), testcase.get("name")
+    def from_junit(cls, testcase: ET.Element) -> TestResult:
+        classname = testcase.get("classname") or ""
+        name = testcase.get("name") or ""
         is_timed_out = False
 
         if testcase.find("failure") is not None:
@@ -149,7 +175,7 @@ class TestResult:
         if logs_directory is not None:
             logs_directory = f"{logs_directory}/index.html"
 
-        log_urls = {
+        log_urls: dict[str, str | None] = {
             "DIR": logs_directory,
             "Log": get_property_value(testcase, "url:Log"),
             "log": get_property_value(testcase, "url:log"),
@@ -180,11 +206,11 @@ class TestResult:
 class TestSummaryLine:
     def __init__(self, title: str):
         self.title = title
-        self.tests = []
+        self.tests: list[TestResult] = []
         self.is_failed = False
-        self.report_fn = None
-        self.report_url = None
-        self.counter = {s: 0 for s in TestStatus}
+        self.report_fn: str | None = None
+        self.report_url: str | None = None
+        self.counter: dict[TestStatus, int] = {s: 0 for s in TestStatus}
 
     def add(self, test: TestResult) -> None:
         self.is_failed |= test.status.is_failure
@@ -304,7 +330,7 @@ def get_build_failed_count() -> int:
         return 0
 
 
-def render_pm(value, url, diff=None):
+def render_pm(value: int, url: str | None, diff: int | None = None) -> str:
     if value:
         text = f"[{value}]({url})"
     else:
@@ -321,15 +347,15 @@ def render_pm(value, url, diff=None):
     return text
 
 
-def render_testlist_html(rows, fn: str, summary_url: str) -> None:
+def render_testlist_html(rows: list[TestResult], fn: str, summary_url: str) -> None:
     templates_path = Path(__file__).with_name("templates")
 
     env = Environment(
         loader=FileSystemLoader(str(templates_path)), undefined=StrictUndefined
     )
 
-    status_test = {}
-    has_any_log = set()
+    status_test: dict[TestStatus, list[TestResult]] = {}
+    has_any_log: set[TestStatus] = set()
 
     for t in rows:
         status_test.setdefault(t.status, []).append(t)
@@ -371,7 +397,11 @@ def write_summary(summary: TestSummary, summary_out_env_path: str = "") -> None:
         fp.write("\n")
 
 
-def gen_summary(summary_url_prefix: str, summary_out_folder: str, paths):
+def gen_summary(
+    summary_url_prefix: str,
+    summary_out_folder: str,
+    paths: list[TitlePathTriplet],
+) -> TestSummary:
     summary = TestSummary()
 
     for title, html_fn, path in paths:
@@ -398,13 +428,13 @@ def gen_summary(summary_url_prefix: str, summary_out_folder: str, paths):
 
 
 def get_comment_text(
-    pr,
+    pr: PullRequestLike,
     summary: TestSummary,
     build_preset: str,
     test_history_url: str,
     test_target: str,
     test_time: str,
-):
+) -> list[str]:
     test_target_message = f" target: **{test_target}**" if test_target else ""
     test_time_message = (
         f" (test time: {test_time}s)" if test_time and test_time != "0" else ""
@@ -437,18 +467,18 @@ def get_comment_text(
 
 def update_pr_comment(
     run_number: int,
-    pr,
+    pr: PullRequestLike,
     summary: TestSummary,
     build_preset: str,
     test_history_url: str,
     test_target: str,
     test_time: str,
     is_dry_run: bool,
-):
+) -> None:
     header = f"<!-- status pr={pr.number}, run={run_number}, build_preset={build_preset}, dry_run={is_dry_run} -->"
 
-    body = None
-    comment = None
+    body: list[str] | None = None
+    comment: IssueCommentLike | None = None
 
     for c in pr.get_issue_comments():
         if c.body.startswith(header):
@@ -499,7 +529,7 @@ def update_pr_comment(
         comment.edit(body)
 
 
-def parse_title_html_path_args(args: list[str]) -> list[tuple[str, str, str]]:
+def parse_title_html_path_args(args: list[str]) -> list[TitlePathTriplet]:
     if len(args) % 3 != 0:
         raise ValueError("Invalid argument count")
     it = iter(args)

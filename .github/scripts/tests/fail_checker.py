@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import logging
 import os
+from typing import TypeAlias
 
 from ..helpers import write_to_file_from_env
 from .junit_utils import iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
+FailureRecord: TypeAlias = tuple[str, str]
+FailureLists: TypeAlias = tuple[list[FailureRecord], list[FailureRecord], list[FailureRecord]]
 
 
-def write_to_env(key: str, value: str, is_secret: bool = False):
+def write_to_env(key: str, value: str, is_secret: bool = False) -> None:
     write_to_file_from_env(LOGGER, key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
 
 
-def collect_failures(paths: list[str]):
-    failed_list = []
-    build_failed_list = []
-    error_list = []
+def collect_failures(paths: list[str]) -> FailureLists:
+    failed_list: list[FailureRecord] = []
+    build_failed_list: list[FailureRecord] = []
+    error_list: list[FailureRecord] = []
 
     for path in paths:
         for fn, _suite, case in iter_xml_files(path):
@@ -35,7 +40,7 @@ def collect_failures(paths: list[str]):
     return failed_list, build_failed_list, error_list
 
 
-def check_for_fail(paths: list[str]):
+def check_for_fail(paths: list[str]) -> None:
     failed_list, build_failed_list, error_list = collect_failures(paths)
 
     if failed_list or error_list:
@@ -54,9 +59,9 @@ def check_for_fail(paths: list[str]):
         raise SystemExit(1)
 
 
-def get_fail_dirs(paths: list[str]):
-    failed_list = set()
-    error_list = set()
+def get_fail_dirs(paths: list[str]) -> None:
+    failed_list: set[str] = set()
+    error_list: set[str] = set()
 
     for path in paths:
         for _fn, _suite, case in iter_xml_files(path):
@@ -73,14 +78,14 @@ def get_fail_dirs(paths: list[str]):
             print(test_name)
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("path", nargs="+", help="jsuite xml reports directories")
     parser.add_argument("--paths-only", default=False, action="store_true")
     return parser
 
 
-def main():
+def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 

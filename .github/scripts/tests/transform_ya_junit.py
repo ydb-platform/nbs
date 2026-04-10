@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -6,6 +8,7 @@ import os
 import re
 import shutil
 import urllib.parse
+from typing import Any, Pattern, TextIO, TypeAlias
 from xml.etree import ElementTree as ET
 
 from ..helpers import setup_logger
@@ -14,12 +17,17 @@ from .mute_utils import mute_target, pattern_to_re
 
 LOGGER = logging.getLogger(__name__)
 
+CompiledPatternPair: TypeAlias = tuple[Pattern[str], Pattern[str]]
+TraceKey: TypeAlias = tuple[str, str] | tuple[str, int, int]
+TraceEvent: TypeAlias = dict[str, Any]
+LogMap: TypeAlias = dict[str, str]
+
 
 class YaMuteCheck:
-    def __init__(self):
-        self.regexps = []
+    def __init__(self) -> None:
+        self.regexps: list[CompiledPatternPair] = []
 
-    def load(self, fn):
+    def load(self, fn: str) -> None:
         with open(fn, "r") as fp:
             for line in fp:
                 line = line.strip()
@@ -30,8 +38,8 @@ class YaMuteCheck:
                     continue
                 self.populate(testsuite, testcase)
 
-    def populate(self, testsuite, testcase):
-        check = []
+    def populate(self, testsuite: str, testcase: str) -> None:
+        check: list[Pattern[str]] = []
 
         for pattern in (pattern_to_re(testsuite), pattern_to_re(testcase)):
             try:
@@ -42,8 +50,8 @@ class YaMuteCheck:
 
         self.regexps.append(tuple(check))
 
-    def __call__(self, suite_name, test_name, test_case):
-        matching_tests_by_suite_regexps = []
+    def __call__(self, suite_name: str, test_name: str, test_case: ET.Element) -> bool:
+        matching_tests_by_suite_regexps: list[Pattern[str]] = []
         for ps, pt in self.regexps:
             if ps.match(suite_name) and pt.match(test_name):
                 return True
@@ -92,11 +100,11 @@ class YaMuteCheck:
 
 
 class YTestReportTrace:
-    def __init__(self, out_root):
+    def __init__(self, out_root: str) -> None:
         self.out_root = out_root
-        self.traces = {}
+        self.traces: dict[TraceKey, TraceEvent] = {}
 
-    def load(self, subdir):
+    def load(self, subdir: str) -> None:
         test_results_dir = os.path.join(self.out_root, f"{subdir}/test-results/")
 
         if not os.path.isdir(test_results_dir):
@@ -132,13 +140,13 @@ class YTestReportTrace:
                         )
                         self.traces[(subdir, chunk_idx, chunk_total)] = event
 
-    def get_logs(self, class_event, name):
+    def get_logs(self, class_event: str, name: str) -> LogMap:
         trace = self.traces.get((class_event, name))
         if not trace:
             return {}
 
         logs = trace["logs"]
-        result = {}
+        result: LogMap = {}
         for key, path in logs.items():
             if key == "logsdir":
                 continue
@@ -146,13 +154,13 @@ class YTestReportTrace:
 
         return result
 
-    def get_logs_chunks(self, suite, idx, total):
+    def get_logs_chunks(self, suite: str, idx: int, total: int) -> LogMap:
         trace = self.traces.get((suite, idx, total))
         if not trace:
             return {}
 
         logs = trace["logs"]
-        result = {}
+        result: LogMap = {}
         for key, path in logs.items():
             if key == "logsdir":
                 continue
@@ -160,7 +168,7 @@ class YTestReportTrace:
 
         return result
 
-    def get_log_dir(self, class_event, name):
+    def get_log_dir(self, class_event: str, name: str) -> str | None:
         logs_dir = (
             self.traces.get((class_event, name), {}).get("logs", {}).get("logsdir")
         )
@@ -170,7 +178,7 @@ class YTestReportTrace:
 
         return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
 
-    def get_log_dir_chunk(self, suite, idx, total):
+    def get_log_dir_chunk(self, suite: str, idx: int, total: int) -> str | None:
         logs_dir = (
             self.traces.get((suite, idx, total), {}).get("logs", {}).get("logsdir")
         )
@@ -181,8 +189,8 @@ class YTestReportTrace:
         return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
 
 
-def filter_empty_logs(logs):
-    result = {}
+def filter_empty_logs(logs: LogMap) -> LogMap:
+    result: LogMap = {}
     for key, value in logs.items():
         if not os.path.isfile(value) or os.stat(value).st_size == 0:
             LOGGER.info("skipping log file %s as empty or missing", value)
@@ -191,7 +199,13 @@ def filter_empty_logs(logs):
     return result
 
 
-def save_log(build_root, fn, out_dir, log_url_prefix, trunc_size):
+def save_log(
+    build_root: str,
+    fn: str,
+    out_dir: str | None,
+    log_url_prefix: str,
+    trunc_size: int,
+) -> str:
     fpath = os.path.relpath(fn, build_root)
 
     if out_dir is not None:
@@ -221,32 +235,36 @@ def save_log(build_root, fn, out_dir, log_url_prefix, trunc_size):
 
 
 def transform(
-    fp,
-    mute_check,
-    ya_out_dir,
-    save_inplace,
-    log_url_prefix,
-    log_out_dir,
-    log_trunc_size,
-    output,
-    data_url_prefix,
-):
+    fp: TextIO,
+    ya_mute_check: YaMuteCheck,
+    ya_out_dir: str,
+    save_inplace: bool,
+    log_url_prefix: str,
+    log_out_dir: str | None,
+    log_trunc_size: int,
+    output: str | None,
+    data_url_prefix: str,
+) -> None:
     tree = ET.parse(fp)
     root = tree.getroot()
 
     for suite in root.findall("testsuite"):
         suite_name = suite.get("name")
+        if suite_name is None:
+            continue
         traces = YTestReportTrace(ya_out_dir)
         traces.load(suite_name)
 
         for case in suite.findall("testcase"):
             test_name = case.get("name")
+            if test_name is None:
+                continue
             case.set("classname", suite_name)
 
             is_fail = is_faulty_testcase(case)
             is_mute = False
 
-            if mute_check(suite_name, test_name, case):
+            if ya_mute_check(suite_name, test_name, case):
                 LOGGER.info("mute %s %s", suite_name, test_name)
                 mute_target(case)
                 is_mute = True
@@ -311,7 +329,7 @@ def transform(
         print(ET.tostring(root, encoding="unicode"))
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
@@ -324,7 +342,7 @@ def build_parser():
         "-o",
         "--output",
         dest="output",
-        default=False,
+        default=None,
         help=(
             "set output path. If -i specified this parameter will be ignored. "
             "If -i not specified and this parameter also not specified everything will be dumped to stdout"
@@ -354,18 +372,18 @@ def build_parser():
     return parser
 
 
-def main():
+def main() -> None:
     setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
     parser = build_parser()
     args = parser.parse_args()
 
-    mute_check = YaMuteCheck()
+    ya_mute_check = YaMuteCheck()
     if args.m:
-        mute_check.load(args.m)
+        ya_mute_check.load(args.m)
 
     transform(
         args.in_file,
-        mute_check,
+        ya_mute_check,
         args.ya_out,
         args.save_inplace,
         args.log_url_prefix,

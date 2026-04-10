@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 from scripts.tests import generate_summary as gs
 
 
-def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase):
+def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase) -> None:
     case = mk_testcase(
         failure="Killed by timeout; skipped due to a failed build",
         props={
@@ -19,8 +23,8 @@ def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase):
 
 
 def test_gen_summary_creates_html_and_aggregates_counters(
-    tmp_path, mk_testcase, write_junit_xml
-):
+    tmp_path: Path, mk_testcase, write_junit_xml
+) -> None:
     xml_path = tmp_path / "junit.xml"
     write_junit_xml(
         xml_path,
@@ -50,7 +54,7 @@ def test_gen_summary_creates_html_and_aggregates_counters(
     assert "Summary dir file listing" in html
 
 
-def test_write_summary_writes_markdown_table_and_footnote(tmp_path):
+def test_write_summary_writes_markdown_table_and_footnote(tmp_path: Path) -> None:
     line = gs.TestSummaryLine("Tests")
     line.add(gs.TestResult("cls", "ok", gs.TestStatus.PASS, {}, 1.2, False))
     line.add_report("ya-test.html", "https://summary/ya-test.html")
@@ -69,7 +73,7 @@ def test_write_summary_writes_markdown_table_and_footnote(tmp_path):
     assert "[^1]: All mute rules are defined" in content
 
 
-def test_get_comment_text_respects_build_failed_count(monkeypatch):
+def test_get_comment_text_respects_build_failed_count(monkeypatch) -> None:
     class _Head:
         sha = "abc123"
 
@@ -90,7 +94,7 @@ def test_get_comment_text_respects_build_failed_count(monkeypatch):
     assert "some tests FAILED" in body[0]
 
 
-def test_parse_title_html_path_args_rejects_incomplete_triplet():
+def test_parse_title_html_path_args_rejects_incomplete_triplet() -> None:
     try:
         gs.parse_title_html_path_args(["title", "out.html"])
     except ValueError as err:
@@ -99,7 +103,7 @@ def test_parse_title_html_path_args_rejects_incomplete_triplet():
         raise AssertionError("ValueError was expected")
 
 
-def test_status_metadata_defines_orders_and_labels():
+def test_status_metadata_defines_orders_and_labels() -> None:
     assert gs.TestStatus.FAIL.label == "FAIL"
     assert gs.TestStatus.FAIL_BUILD.summary_header == "FAILED BUILD"
     assert gs.TestStatus.MUTE.report_anchor == "MUTE"
@@ -124,7 +128,7 @@ def test_status_metadata_defines_orders_and_labels():
     )
 
 
-def test_write_summary_renders_expected_table_row(tmp_path, monkeypatch):
+def test_write_summary_renders_expected_table_row(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
     line = gs.TestSummaryLine("Tests")
     line.add(gs.TestResult("cls", "ok", gs.TestStatus.PASS, {}, 1.0, False))
@@ -147,7 +151,7 @@ def test_write_summary_renders_expected_table_row(tmp_path, monkeypatch):
     ) in content
 
 
-def test_update_pr_comment_creates_new_comment(monkeypatch):
+def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
 
     class FakeHead:
@@ -157,13 +161,13 @@ def test_update_pr_comment_creates_new_comment(monkeypatch):
         number = 77
         head = FakeHead()
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.created = []
 
-        def get_issue_comments(self):
+        def get_issue_comments(self) -> list[object]:
             return []
 
-        def create_issue_comment(self, body):
+        def create_issue_comment(self, body: str) -> None:
             self.created.append(body)
 
     summary = gs.TestSummary()
@@ -191,18 +195,18 @@ def test_update_pr_comment_creates_new_comment(monkeypatch):
     assert "all tests PASSED for commit deadbeef." in body
 
 
-def test_update_pr_comment_updates_existing_comment():
+def test_update_pr_comment_updates_existing_comment() -> None:
     class FakeHead:
         sha = "abc123"
 
     class FakeComment:
         id = 1001
 
-        def __init__(self, body):
+        def __init__(self, body: str) -> None:
             self.body = body
             self.edits = []
 
-        def edit(self, body):
+        def edit(self, body: str) -> None:
             self.body = body
             self.edits.append(body)
 
@@ -210,14 +214,14 @@ def test_update_pr_comment_updates_existing_comment():
         number = 77
         head = FakeHead()
 
-        def __init__(self, comment):
+        def __init__(self, comment: FakeComment) -> None:
             self._comment = comment
             self.created = []
 
-        def get_issue_comments(self):
+        def get_issue_comments(self) -> list[FakeComment]:
             return [self._comment]
 
-        def create_issue_comment(self, body):
+        def create_issue_comment(self, body: str) -> None:
             self.created.append(body)
 
     header = "<!-- status pr=77, run=12, build_preset=linux, dry_run=False -->"

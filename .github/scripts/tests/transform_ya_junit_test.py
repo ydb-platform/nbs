@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import json
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -6,7 +9,7 @@ import pytest
 from scripts.tests import transform_ya_junit as tyj
 
 
-def _write_junit(path):
+def _write_junit(path: Path) -> None:
     root = ET.Element("testsuites")
     suite = ET.SubElement(root, "testsuite", {"name": "suite-name"})
     case = ET.SubElement(
@@ -19,7 +22,7 @@ def _write_junit(path):
     ET.ElementTree(root).write(path)
 
 
-def _write_trace(ya_out):
+def _write_trace(ya_out: Path) -> None:
     trace_dir = ya_out / "suite-name" / "test-results" / "run-1"
     trace_dir.mkdir(parents=True)
     trace = trace_dir / "ytest.report.trace"
@@ -44,7 +47,7 @@ def _write_trace(ya_out):
     )
 
 
-def _get_property_value(case, name):
+def _get_property_value(case: ET.Element, name: str) -> str | None:
     props = case.find("properties")
     if props is None:
         return None
@@ -54,7 +57,7 @@ def _get_property_value(case, name):
     return None
 
 
-def test_transform_adds_links_and_copies_logs(tmp_path):
+def test_transform_adds_links_and_copies_logs(tmp_path: Path) -> None:
     ya_out = tmp_path / "ya-out"
     logs_file = ya_out / "suite-name" / "stdout.log"
     logs_file.parent.mkdir(parents=True)
@@ -95,7 +98,7 @@ def test_transform_adds_links_and_copies_logs(tmp_path):
     assert (logs_out / "suite-name" / "stdout.log").exists()
 
 
-def test_save_log_applies_truncation(tmp_path):
+def test_save_log_applies_truncation(tmp_path: Path) -> None:
     src_dir = tmp_path / "src"
     src_dir.mkdir()
     src = src_dir / "a.log"
@@ -109,7 +112,7 @@ def test_save_log_applies_truncation(tmp_path):
     assert (out_dir / "a.log").read_bytes() == b"7890"
 
 
-def test_transform_skips_malformed_chunk_name_without_crash(tmp_path):
+def test_transform_skips_malformed_chunk_name_without_crash(tmp_path: Path) -> None:
     root = ET.Element("testsuites")
     suite = ET.SubElement(root, "testsuite", {"name": "suite-name"})
     case = ET.SubElement(
@@ -163,8 +166,8 @@ def test_transform_skips_malformed_chunk_name_without_crash(tmp_path):
     ],
 )
 def test_ya_mute_check_loads_real_style_rules(
-    tmp_path, suite_name, test_name, expected
-):
+    tmp_path: Path, suite_name: str, test_name: str, expected: bool
+) -> None:
     mute_file = tmp_path / "muted_ya.txt"
     mute_file.write_text(
         "\n".join(
@@ -182,7 +185,7 @@ def test_ya_mute_check_loads_real_style_rules(
     assert check(suite_name, test_name, case) is expected
 
 
-def test_ya_mute_check_ignores_invalid_config_lines(tmp_path):
+def test_ya_mute_check_ignores_invalid_config_lines(tmp_path: Path) -> None:
     mute_file = tmp_path / "muted_ya.txt"
     mute_file.write_text(
         "\n".join(
@@ -200,7 +203,7 @@ def test_ya_mute_check_ignores_invalid_config_lines(tmp_path):
     assert len(check.regexps) == 1
 
 
-def test_ya_mute_check_chunk_mode_requires_all_failed_subtests_match():
+def test_ya_mute_check_chunk_mode_requires_all_failed_subtests_match() -> None:
     check = tyj.YaMuteCheck()
     check.populate("cloud/storage/core/libs/kikimr/ut", "TConfigInitializerTest.*")
 
