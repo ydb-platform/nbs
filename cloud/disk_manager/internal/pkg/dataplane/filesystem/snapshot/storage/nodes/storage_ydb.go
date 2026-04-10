@@ -596,7 +596,7 @@ func (s *storageYDB) updateRestorationNodeIDMapping(
 		))
 	}
 
-	return upsertInBatches(values, func(batch []persistence.Value) error {
+	return s.upsertInBatches(values, func(batch []persistence.Value) error {
 		_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
