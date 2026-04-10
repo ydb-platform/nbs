@@ -14,11 +14,6 @@ from .mute_utils import mute_target, pattern_to_re
 LOGGER = logging.getLogger(__name__)
 
 
-def log_print(*args):
-    message = " ".join(str(arg) for arg in args)
-    LOGGER.info(message)
-
-
 class YaMuteCheck:
     def __init__(self):
         self.regexps = []
@@ -30,7 +25,7 @@ class YaMuteCheck:
                 try:
                     testsuite, testcase = line.split(" ", maxsplit=1)
                 except ValueError:
-                    log_print(f"SKIP INVALID MUTE CONFIG LINE: {line!r}")
+                    LOGGER.info("SKIP INVALID MUTE CONFIG LINE: %r", line)
                     continue
                 self.populate(testsuite, testcase)
 
@@ -41,7 +36,7 @@ class YaMuteCheck:
             try:
                 check.append(re.compile(pattern))
             except re.error:
-                log_print(f"Unable to compile regex {pattern!r}")
+                LOGGER.info("Unable to compile regex %r", pattern)
                 return
 
         self.regexps.append(tuple(check))
@@ -79,8 +74,10 @@ class YaMuteCheck:
             failed_by_current_chunk_cases.append(test_case_name)
 
         if len(failed_by_current_chunk_cases) == 0:
-            log_print(
-                f"Error, no failed subtests found for the failed test case: {suite_name} {test_name}"
+            LOGGER.info(
+                "Error, no failed subtests found for the failed test case: %s %s",
+                suite_name,
+                test_name,
             )
 
         matched_test_cases = []
@@ -102,7 +99,7 @@ class YTestReportTrace:
         test_results_dir = os.path.join(self.out_root, f"{subdir}/test-results/")
 
         if not os.path.isdir(test_results_dir):
-            log_print(f"Directory {test_results_dir} doesn't exist")
+            LOGGER.info("Directory %s doesn't exist", test_results_dir)
             return
 
         for folder in os.listdir(test_results_dir):
@@ -123,13 +120,15 @@ class YTestReportTrace:
                         event = event["value"]
                         class_event = event["class"].replace("::", ".")
                         subtest = event["subtest"]
-                        log_print(f"loaded ({class_event}, {subtest})")
+                        LOGGER.info("loaded (%s, %s)", class_event, subtest)
                         self.traces[(class_event, subtest)] = event
                     elif event["name"] == "chunk-event":
                         event = event["value"]
                         chunk_idx = event["chunk_index"]
                         chunk_total = event["nchunks"]
-                        log_print(f"loaded ({subdir}, {chunk_idx}, {chunk_total})")
+                        LOGGER.info(
+                            "loaded (%s, %s, %s)", subdir, chunk_idx, chunk_total
+                        )
                         self.traces[(subdir, chunk_idx, chunk_total)] = event
 
     def get_logs(self, class_event, name):
@@ -185,7 +184,7 @@ def filter_empty_logs(logs):
     result = {}
     for key, value in logs.items():
         if not os.path.isfile(value) or os.stat(value).st_size == 0:
-            log_print(f"skipping log file {value} as empty or missing")
+            LOGGER.info("skipping log file %s as empty or missing", value)
             continue
         result[key] = value
     return result
@@ -205,7 +204,7 @@ def save_log(build_root, fn, out_dir, log_url_prefix, trunc_size):
         if trunc_size and fsize > trunc_size:
             with open(fn, "rb") as in_fp:
                 in_fp.seek(fsize - trunc_size)
-                log_print(f"truncate {out_fn} to {trunc_size}")
+                LOGGER.info("truncate %s to %s", out_fn, trunc_size)
                 with open(out_fn, "wb") as out_fp:
                     while 1:
                         buf = in_fp.read(8192)
@@ -247,7 +246,7 @@ def transform(
             is_mute = False
 
             if mute_check(suite_name, test_name, case):
-                log_print("mute", suite_name, test_name)
+                LOGGER.info("mute %s %s", suite_name, test_name)
                 mute_target(case)
                 is_mute = True
 
@@ -267,8 +266,9 @@ def transform(
                 else:
                     match = re.search(r"\[(\d+)/(\d+)\]", test_name)
                     if match is None:
-                        log_print(
-                            f"Unable to parse chunk indices from test name: {test_name!r}"
+                        LOGGER.info(
+                            "Unable to parse chunk indices from test name: %r",
+                            test_name,
                         )
                         continue
                     chunk_idx = int(match.group(1))
