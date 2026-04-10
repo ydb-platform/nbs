@@ -99,8 +99,6 @@ void TNodeStateHolderMetrics::Register(
     NMetrics::IMetricsRegistry& localMetricsRegistry,
     NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const
 {
-    Y_UNUSED(aggregatableMetricsRegistry);
-
     localMetricsRegistry.Register(
         {CreateSensor("Nodes_Count")},
         Nodes.Count,

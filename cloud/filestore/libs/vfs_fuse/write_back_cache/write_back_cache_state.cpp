@@ -3,7 +3,6 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
-#include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
