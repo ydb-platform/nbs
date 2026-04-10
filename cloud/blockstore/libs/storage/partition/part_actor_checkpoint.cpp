@@ -91,7 +91,8 @@ void TPartitionActor::HandleCreateCheckpoint(
     //  reading some blocks when we don't have to.
     //
 
-    State->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, commitId);
+    SharedState
+        ->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, commitId);
 }
 
 bool TPartitionActor::PrepareCreateCheckpoint(
@@ -229,7 +230,7 @@ void TPartitionActor::DeleteCheckpoint(
         reply,
         deleteOnlyData);
 
-    State->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, 0);
+    SharedState->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, 0);
 }
 
 bool TPartitionActor::PrepareDeleteCheckpoint(

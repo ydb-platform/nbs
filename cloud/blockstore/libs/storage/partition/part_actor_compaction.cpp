@@ -1480,7 +1480,7 @@ void TPartitionActor::HandleCompaction(
         msg->CompactionOptions,
         std::move(ranges));
 
-    State->WaitCommitForCompaction(ctx, std::move(tx), commitId);
+    SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
