@@ -1,33 +1,15 @@
 #!/usr/bin/env python3
 import argparse
+import logging
 import os
 
+from ..helpers import write_to_file_from_env
 from .junit_utils import iter_xml_files
 
-
-def write_to_file_from_env(key: str, value: str, env_var: str, is_secret: bool = False):
-    filename = os.environ.get(env_var)
-    if filename:
-        with open(filename, "a") as fp:
-            fp.write(f"{key}={value}\n")
-
-        print_with_secret_masked(key, value, env_var, filename, is_secret)
-
-
-def print_with_secret_masked(
-    key: str,
-    value: str,
-    env_var: str,
-    filename: str,
-    is_secret: bool = False,
-):
-    if is_secret:
-        value = "******"
-    print(f'echo "{key}={value}" >> ${env_var} ({filename})')
-
+LOGGER = logging.getLogger(__name__)
 
 def write_to_env(key: str, value: str, is_secret: bool = False):
-    write_to_file_from_env(key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
+    write_to_file_from_env(LOGGER, key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
 
 
 def collect_failures(paths: list[str]):

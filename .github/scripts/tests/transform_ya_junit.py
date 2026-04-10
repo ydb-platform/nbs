@@ -8,6 +8,7 @@ import shutil
 import urllib.parse
 from xml.etree import ElementTree as ET
 
+from ..helpers import setup_logger
 from .junit_utils import add_junit_link_property, is_faulty_testcase
 from .mute_utils import mute_target, pattern_to_re
 
@@ -354,7 +355,7 @@ def build_parser():
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
     parser = build_parser()
     args = parser.parse_args()
 

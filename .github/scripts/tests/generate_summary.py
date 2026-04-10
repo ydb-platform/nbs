@@ -13,6 +13,7 @@ from typing import Dict, Iterable
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from ..helpers import setup_logger
 from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
@@ -506,7 +507,7 @@ def parse_title_html_path_args(args: list[str]) -> list[tuple[str, str, str]]:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary-out-path", required=True)
     parser.add_argument(
