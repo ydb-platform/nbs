@@ -54,6 +54,14 @@ func (c *ClientMock) Resize(
 	return args.Error(0)
 }
 
+func (c *ClientMock) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+) error {
+	args := c.Called(ctx, filesystemID)
+	return args.Error(0)
+}
+
 func (c *ClientMock) DescribeModel(
 	ctx context.Context,
 	blocksCount uint64,

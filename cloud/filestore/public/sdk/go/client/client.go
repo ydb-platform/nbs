@@ -18,6 +18,7 @@ type CreateFileStoreOpts struct {
 	BlockSize        uint32
 	BlocksCount      uint64
 	StorageMediaKind coreprotos.EStorageMediaKind
+	ShardCount       uint32
 }
 
 type AlterFileStoreOpts struct {
@@ -64,19 +65,22 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Node struct {
-	ParentID   uint64
-	NodeID     uint64
-	Name       string
-	Atime      uint64
-	Mtime      uint64
-	Ctime      uint64
-	Size       uint64
-	Mode       uint32
-	UID        uint64
-	GID        uint64
-	Links      uint32
-	Type       NodeType
-	LinkTarget string
+	ParentID          uint64
+	NodeID            uint64
+	Name              string
+	Atime             uint64
+	Mtime             uint64
+	Ctime             uint64
+	Size              uint64
+	Mode              uint32
+	UID               uint64
+	GID               uint64
+	Links             uint32
+	Type              NodeType
+	LinkTarget        string
+	ShardFileSystemID string
+	ShardNodeName     string
+	DevID             uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,6 +117,9 @@ func (client *Client) CreateFileStore(
 		req.BlockSize = opts.BlockSize
 		req.BlocksCount = opts.BlocksCount
 		req.StorageMediaKind = opts.StorageMediaKind
+		if opts.ShardCount > 0 {
+			req.ShardCount = opts.ShardCount
+		}
 	}
 
 	resp, err := client.Impl.CreateFileStore(ctx, req)
@@ -157,6 +164,24 @@ func (client *Client) ResizeFileStore(
 		FileSystemId:  fileSystemID,
 		BlocksCount:   blocksCount,
 		ConfigVersion: configVersion,
+	}
+
+	_, err := client.Impl.ResizeFileStore(ctx, req)
+	return err
+}
+
+func (client *Client) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+	blocksCount uint64,
+	configVersion uint32,
+) error {
+
+	req := &protos.TResizeFileStoreRequest{
+		FileSystemId:                    filesystemID,
+		BlocksCount:                     blocksCount,
+		ConfigVersion:                   configVersion,
+		EnableDirectoryCreationInShards: true,
 	}
 
 	_, err := client.Impl.ResizeFileStore(ctx, req)
@@ -331,18 +356,21 @@ func (client *Client) ListNodes(
 	result := make([]Node, len(nodes))
 	for idx, name := range resp.GetNames() {
 		result[idx] = Node{
-			ParentID: nodeID,
-			NodeID:   nodes[idx].GetId(),
-			Name:     string(name),
-			Atime:    nodes[idx].GetATime(),
-			Mtime:    nodes[idx].GetMTime(),
-			Ctime:    nodes[idx].GetCTime(),
-			Size:     nodes[idx].GetSize(),
-			Mode:     nodes[idx].GetMode(),
-			UID:      uint64(nodes[idx].GetUid()),
-			GID:      uint64(nodes[idx].GetGid()),
-			Links:    nodes[idx].GetLinks(),
-			Type:     NodeType(nodes[idx].GetType()),
+			ParentID:          nodeID,
+			NodeID:            nodes[idx].GetId(),
+			Name:              string(name),
+			Atime:             nodes[idx].GetATime(),
+			Mtime:             nodes[idx].GetMTime(),
+			Ctime:             nodes[idx].GetCTime(),
+			Size:              nodes[idx].GetSize(),
+			Mode:              nodes[idx].GetMode(),
+			UID:               uint64(nodes[idx].GetUid()),
+			GID:               uint64(nodes[idx].GetGid()),
+			Links:             nodes[idx].GetLinks(),
+			Type:              NodeType(nodes[idx].GetType()),
+			ShardFileSystemID: nodes[idx].GetShardFileSystemId(),
+			ShardNodeName:     nodes[idx].GetShardNodeName(),
+			DevID:             nodes[idx].GetDevId(),
 		}
 	}
 
@@ -455,18 +483,21 @@ func (client *Client) GetNodeAttr(
 
 	attr := resp.GetNode()
 	return Node{
-		ParentID: parentNodeID,
-		NodeID:   attr.GetId(),
-		Name:     name,
-		Atime:    attr.GetATime(),
-		Mtime:    attr.GetMTime(),
-		Ctime:    attr.GetCTime(),
-		Size:     attr.GetSize(),
-		Mode:     attr.GetMode(),
-		UID:      uint64(attr.GetUid()),
-		GID:      uint64(attr.GetGid()),
-		Links:    attr.GetLinks(),
-		Type:     NodeType(attr.GetType()),
+		ParentID:          parentNodeID,
+		NodeID:            attr.GetId(),
+		Name:              name,
+		Atime:             attr.GetATime(),
+		Mtime:             attr.GetMTime(),
+		Ctime:             attr.GetCTime(),
+		Size:              attr.GetSize(),
+		Mode:              attr.GetMode(),
+		UID:               uint64(attr.GetUid()),
+		GID:               uint64(attr.GetGid()),
+		Links:             attr.GetLinks(),
+		Type:              NodeType(attr.GetType()),
+		ShardFileSystemID: attr.GetShardFileSystemId(),
+		ShardNodeName:     attr.GetShardNodeName(),
+		DevID:             attr.GetDevId(),
 	}, nil
 }
 

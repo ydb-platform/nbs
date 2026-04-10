@@ -156,6 +156,7 @@ func (c *client) Create(
 			BlockSize:        params.BlockSize,
 			BlocksCount:      params.BlocksCount,
 			StorageMediaKind: mediaKind,
+			ShardCount:       params.ShardCount,
 		},
 	)
 
@@ -284,6 +285,49 @@ func (c *client) DestroyCheckpoint(
 			checkpointID,
 		),
 	)
+}
+
+func (c *client) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+) (err error) {
+	defer c.metrics.StatRequest("EnableDirectoryCreationInShards")(&err)
+
+	retries := 0
+	for {
+		filestore, err := c.nfs.GetFileStoreInfo(ctx, filesystemID)
+		if err != nil {
+			return wrapError(err)
+		}
+
+		if filestore.BlockSize == 0 {
+			return errors.NewNonRetriableErrorf(
+				"invalid filestore config %v",
+				filestore,
+			)
+		}
+
+		err = c.nfs.EnableDirectoryCreationInShards(
+			ctx,
+			filesystemID,
+			filestore.BlocksCount,
+			filestore.ConfigVersion,
+		)
+		if err != nil {
+			if !isAbortedError(err) {
+				return wrapError(err)
+			}
+
+			if retries == maxConsecutiveRetries {
+				return errors.NewRetriableError(err)
+			}
+
+			retries++
+			continue
+		}
+
+		return nil
+	}
 }
 
 func (c *client) CreateSession(

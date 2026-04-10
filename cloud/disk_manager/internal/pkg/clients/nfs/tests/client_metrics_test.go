@@ -349,6 +349,67 @@ func TestClientDestroyCheckpointError(t *testing.T) {
 	registryMock.AssertAllExpectations(t)
 }
 
+func TestClientEnableDirectoryCreationInShardsSuccess(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "EnableDirectoryCreationInShards", true)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetFileStoreInfo", mock.Anything, "fs-1").Return(
+		&protos.TFileStore{
+			BlockSize:     4096,
+			BlocksCount:   100,
+			ConfigVersion: 1,
+		},
+		nil,
+	)
+	nfsMock.On(
+		"EnableDirectoryCreationInShards",
+		mock.Anything,
+		"fs-1",
+		uint64(100),
+		uint32(1),
+	).Return(nil)
+
+	c := newTestClient(nfsMock, registryMock)
+
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
+	require.NoError(t, err)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientEnableDirectoryCreationInShardsError(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "EnableDirectoryCreationInShards", false)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetFileStoreInfo", mock.Anything, "fs-1").
+		Return(&protos.TFileStore{
+			BlockSize:     4096,
+			BlocksCount:   100,
+			ConfigVersion: 1,
+		}, nil)
+	nfsMock.On(
+		"EnableDirectoryCreationInShards",
+		mock.Anything,
+		"fs-1",
+		uint64(100),
+		uint32(1),
+	).Return(testError)
+
+	c := newTestClient(nfsMock, registryMock)
+
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
+	require.Error(t, err)
+	require.ErrorIs(t, err, testError)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
 func TestClientCreateSessionSuccess(t *testing.T) {
 	ctx := context.Background()
 	registryMock := metrics_mocks.NewRegistryMock()
@@ -811,6 +872,49 @@ func TestClientDestroyCheckpointWrappedError(t *testing.T) {
 	metricsMock.AssertExpectations(t)
 }
 
+func TestClientEnableDirectoryCreationInShardsWrappedError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"EnableDirectoryCreationInShards",
+	).Return(
+		func(err *error) {
+			require.Error(t, *err)
+			var clientErr *nfs_client.ClientError
+			require.ErrorAs(t, *err, &clientErr)
+			require.ErrorIs(t, *err, retriableError)
+		},
+	).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetFileStoreInfo", mock.Anything, "fs-1").
+		Return(&protos.TFileStore{
+			BlockSize:     4096,
+			BlocksCount:   100,
+			ConfigVersion: 1,
+		}, nil)
+	nfsMock.On(
+		"EnableDirectoryCreationInShards",
+		mock.Anything,
+		"fs-1",
+		uint64(100),
+		uint32(1),
+	).Return(testNfsClientError)
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.ErrorIs(t, err, retriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
 func TestClientCreateSessionWrappedError(t *testing.T) {
 	ctx := context.Background()
 
@@ -1160,6 +1264,50 @@ func TestClientDestroyCheckpointNonRetriableError(t *testing.T) {
 	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
 
 	err := c.DestroyCheckpoint(ctx, "fs-1", "cp-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.NotErrorIs(t, err, retriableError)
+	require.ErrorIs(t, err, testNfsClientNonRetriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
+func TestClientEnableDirectoryCreationInShardsNonRetriableError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"EnableDirectoryCreationInShards",
+	).Return(
+		func(err *error) {
+			require.Error(t, *err)
+			var clientErr *nfs_client.ClientError
+			require.ErrorAs(t, *err, &clientErr)
+			require.NotErrorIs(t, *err, retriableError)
+		},
+	).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On("GetFileStoreInfo", mock.Anything, "fs-1").
+		Return(&protos.TFileStore{
+			BlockSize:     4096,
+			BlocksCount:   100,
+			ConfigVersion: 1,
+		}, nil)
+	nfsMock.On(
+		"EnableDirectoryCreationInShards",
+		mock.Anything,
+		"fs-1",
+		uint64(100),
+		uint32(1),
+	).Return(testNfsClientNonRetriableError)
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
 	require.Error(t, err)
 	var clientErr *nfs_client.ClientError
 	require.ErrorAs(t, err, &clientErr)
