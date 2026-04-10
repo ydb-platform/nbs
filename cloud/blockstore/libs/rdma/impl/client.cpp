@@ -45,6 +45,63 @@ using namespace NThreading;
 
 LWTRACE_USING(BLOCKSTORE_RDMA_PROVIDER);
 
+////////////////////////////////////////////////////////////////////////////////
+//
+// Threading model
+// ===============
+//
+// Three thread groups interact with TClientEndpoint:
+//
+//  1. External threads (actor system / caller)
+//     - AllocateRequest, SendRequest (public), CancelRequest,
+//       TryForceReconnect, Stop, GetNewReqId
+//     - Enqueue work via lock-free lists (InputRequests, CancelRequests)
+//       and signal via EventHandle.
+//
+//  2. RDMA.CM  (TConnectionPoller thread, one per TClient)
+//     - Connection lifecycle: resolve address/route, connect, disconnect,
+//       reconnect, create/destroy QP, flush queues.
+//     - Drives state machine: Disconnected -> ResolvingAddress ->
+//       ResolvingRoute -> Connecting -> Connected -> Disconnecting -> ...
+//
+//  3. RDMA.CQ  (TCompletionPoller thread, one per poller)
+//     - Request processing: dequeue from lock-free lists, post send/recv,
+//       handle completions, abort/timeout requests.
+//     - Owns QueuedRequests / ActiveRequests (no concurrent access: CQ thread
+//       is the only writer/reader once requests leave the lock-free list).
+//
+// Synchronization
+// ---------------
+//  - State (atomic)           : read from any thread, exchanged by CM/CQ
+//  - InputRequests/CancelRequests (TLockFreeList) : produced by external,
+//                                                   consumed by CQ
+//  - AllocationLock (TMutex)  : protects buffer pool alloc/free across
+//                               external and any-thread (~TRequest)
+//  - Reconnect (internal lock): protects timer schedule/cancel across CM,
+//                               CQ, and external threads
+//  - DisconnectEvent          : set by any thread, consumed by CM
+//  - FlushStartCycles (atomic): written by CM, read by CQ
+//
+// Thread safety notes
+// -------------------
+//  - RecvResponse is called from RDMA.CM (initial posting via StartReceive)
+//    and RDMA.CQ (re-posting after completion). This is safe because the
+//    initial posting finishes before any completions can arrive.
+//
+//  - Disconnect() can be called from any thread. For the Connected state it
+//    only sets DisconnectEvent (idempotent); the CM thread is the sole
+//    consumer that performs the actual Connected -> Disconnecting transition.
+//
+//  - HandleCancelRequests cancels active requests whose RDMA send/recv may
+//    still be in-flight. The freed request buffers (OutBuffer) could be
+//    reused by the pool while the remote server performs RDMA WRITE to the
+//    old address. The current code shares MR rkeys directly; switching to
+//    Type 2 Memory Windows with IBV_WR_LOCAL_INV would allow revoking
+//    remote access per-request on cancel (at the cost of extra bind/inv WRs
+//    per request and server-side handling of remote access errors).
+//
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -563,6 +620,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread: any (destructor runs on whichever thread releases the last reference)
 TRequest::~TRequest()
 {
     auto clientEndpoint = Endpoint.lock();
@@ -573,6 +631,7 @@ TRequest::~TRequest()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread: external (created by TClient::StartEndpoint on caller's thread)
 TClientEndpoint::TClientEndpoint(
         NVerbs::IVerbsPtr verbs,
         NVerbs::TConnectionPtr connection,
@@ -606,6 +665,7 @@ TClientEndpoint::TClientEndpoint(
         << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
 }
 
+// Thread: any (destructor, typically RDMA.CQ via TCompletionPoller::Release)
 TClientEndpoint::~TClientEndpoint()
 {
     // release any leftover resources if endpoint hasn't been properly stopped
@@ -616,11 +676,13 @@ TClientEndpoint::~TClientEndpoint()
     RDMA_INFO("stop endpoint");
 }
 
+// Thread: any (thread-safe: atomic read)
 bool TClientEndpoint::CheckState(EEndpointState expectedState) const
 {
     return State == expectedState;
 }
 
+// Thread: RDMA.CM or RDMA.CQ (atomic exchange; each transition is owned by one thread)
 void TClientEndpoint::ChangeState(
     EEndpointState expectedState,
     EEndpointState newState) noexcept
@@ -637,6 +699,7 @@ void TClientEndpoint::ChangeState(
         << " -> " << GetEndpointStateName(newState));
 }
 
+// Thread: RDMA.CM (called from BeginConnect)
 void TClientEndpoint::CreateQP()
 {
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
@@ -733,6 +796,7 @@ void TClientEndpoint::CreateQP()
     }
 }
 
+// Thread: RDMA.CM (called from Reconnect, StopEndpoint; state is Disconnected)
 void TClientEndpoint::DestroyQP() noexcept
 {
     if (Connection && Connection->qp) {
@@ -763,6 +827,7 @@ void TClientEndpoint::DestroyQP() noexcept
     FlushStartCycles = 0;
 }
 
+// Thread: RDMA.CM (called from HandleConnected after state becomes Connected)
 void TClientEndpoint::StartReceive() noexcept
 {
     while (auto* recv = RecvQueue.Pop()) {
@@ -770,6 +835,7 @@ void TClientEndpoint::StartReceive() noexcept
     }
 }
 
+// Thread: external (actor system thread, e.g. partition_nonrepl)
 // implements IClientEndpoint
 TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     IClientHandlerPtr handler,
@@ -819,6 +885,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     return TClientRequestPtr(std::move(req));
 }
 
+// Thread: external (actor system thread)
 // implements IClientEndpoint
 ui64 TClientEndpoint::SendRequest(
     TClientRequestPtr creq,
@@ -850,6 +917,7 @@ ui64 TClientEndpoint::SendRequest(
     return clientReqId;
 }
 
+// Thread: RDMA.CQ
 bool TClientEndpoint::HandleInputRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
@@ -870,6 +938,7 @@ bool TClientEndpoint::HandleInputRequests() noexcept
     return true;
 }
 
+// Thread: RDMA.CQ
 void TClientEndpoint::HandleQueuedRequests() noexcept
 {
     if (!CheckState(EEndpointState::Connected)) {
@@ -891,6 +960,7 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
     }
 }
 
+// Thread: external (actor system thread)
 void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
 {
     if (!CheckState(EEndpointState::Connected)) {
@@ -906,6 +976,7 @@ void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
     }
 }
 
+// Thread: external (actor system thread)
 void TClientEndpoint::TryForceReconnect() noexcept
 {
     switch (State) {
@@ -923,6 +994,7 @@ void TClientEndpoint::TryForceReconnect() noexcept
     Reconnect.InstantReschedule(MIN_CONNECT_TIMEOUT / 2);
 }
 
+// Thread: RDMA.CQ
 bool TClientEndpoint::HandleCancelRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
@@ -973,6 +1045,7 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     return true;
 }
 
+// Thread: RDMA.CQ
 void TClientEndpoint::AbortRequests() noexcept
 {
     if (WaitMode == EWaitMode::Poll) {
@@ -1003,6 +1076,8 @@ void TClientEndpoint::AbortRequests() noexcept
     }
 }
 
+// Thread: RDMA.CQ or external (external only in SendRequest error path
+// when request hasn't been enqueued yet, so no concurrent access)
 void TClientEndpoint::AbortRequest(
     TRequestPtr req,
     ui32 err, const
@@ -1017,6 +1092,7 @@ void TClientEndpoint::AbortRequest(
     handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, len);
 }
 
+// Thread: RDMA.CQ
 bool TClientEndpoint::HandleCompletionEvents() noexcept
 {
     if (!CheckState(EEndpointState::Connected) &&
@@ -1049,6 +1125,7 @@ bool TClientEndpoint::HandleCompletionEvents() noexcept
     return false;
 }
 
+// Thread: RDMA.CQ
 int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
 {
     auto id = TWorkRequestId(wc->wr_id);
@@ -1114,6 +1191,7 @@ int TClientEndpoint::ValidateCompletion(ibv_wc* wc) noexcept
     return -1;
 }
 
+// Thread: RDMA.CQ (called via Verbs->PollCompletionQueue callback)
 // implements NVerbs::ICompletionHandler
 void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
 {
@@ -1140,6 +1218,7 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
     }
 }
 
+// Thread: RDMA.CQ (private overload: posts RDMA send for a queued request)
 void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 {
     req->ReqId = ActiveRequests.CreateId();
@@ -1180,6 +1259,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
     ActiveRequests.Push(std::move(req));
 }
 
+// Thread: RDMA.CQ
 void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
 {
     auto reqId = SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
@@ -1196,6 +1276,8 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
     // request has already been completed
 }
 
+// Thread: RDMA.CM (from StartReceive) or RDMA.CQ (from RecvResponseCompleted)
+// safe: initial recv posting happens before any completions can arrive
 void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
 {
     auto id = TWorkRequestId(recv->wr.wr_id);
@@ -1217,6 +1299,7 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
     Counters->RecvResponseStarted();
 }
 
+// Thread: RDMA.CQ
 void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
 {
     const auto wrId = TWorkRequestId(recv->wr.wr_id);
@@ -1265,6 +1348,7 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
         responseBytes);
 }
 
+// Thread: external
 TFuture<void> TClientEndpoint::Stop() noexcept
 {
     if (!StopFlag.test_and_set()) {
@@ -1273,22 +1357,26 @@ TFuture<void> TClientEndpoint::Stop() noexcept
     return StopResult.GetFuture();
 }
 
+// Thread: RDMA.CM (atomic read, also safe from any thread)
 bool TClientEndpoint::ShouldStop() const
 {
     return StopFlag.test();
 }
 
+// Thread: RDMA.CM
 void TClientEndpoint::SetConnection(NVerbs::TConnectionPtr connection) noexcept
 {
     connection->context = this;
     Connection = std::move(connection);
 }
 
+// Thread: RDMA.CM
 int TClientEndpoint::ReconnectTimerHandle() const
 {
     return Reconnect.Handle();
 }
 
+// Thread: RDMA.CM (called from TClient::Disconnect)
 void TClientEndpoint::FlushQueues() noexcept
 {
     RDMA_DEBUG("flush queues");
@@ -1304,16 +1392,22 @@ void TClientEndpoint::FlushQueues() noexcept
     }
 }
 
+// Thread: RDMA.CM
 int TClientEndpoint::DisconnectEventHandle() const
 {
     return DisconnectEvent.Handle();
 }
 
+// Thread: RDMA.CM
 void TClientEndpoint::ClearDisconnectEvent() noexcept
 {
     DisconnectEvent.Clear();
 }
 
+// Thread: any (RDMA.CM, RDMA.CQ, or external via Stop)
+// Safe: reads atomic State, then either calls Reconnect.Schedule (has internal
+// lock) or sets DisconnectEvent (idempotent). The CM thread is the sole
+// consumer of DisconnectEvent and performs the actual state transition.
 void TClientEndpoint::Disconnect() noexcept
 {
     switch (State) {
@@ -1336,6 +1430,7 @@ void TClientEndpoint::Disconnect() noexcept
     }
 }
 
+// Thread: RDMA.CQ (called from DisconnectFlushed)
 bool TClientEndpoint::Flushed() const
 {
     return SendQueue.Size() == Config.QueueSize
@@ -1346,6 +1441,7 @@ bool TClientEndpoint::Flushed() const
         && !CancelRequests;
 }
 
+// Thread: RDMA.CQ (called from DisconnectFlushed; FlushStartCycles is atomic)
 bool TClientEndpoint::FlushHanging() const
 {
     auto start = FlushStartCycles.load();
@@ -1353,6 +1449,7 @@ bool TClientEndpoint::FlushHanging() const
            CyclesToDurationSafe(GetCycleCount() - start) >= FLUSH_TIMEOUT;
 }
 
+// Thread: any (called from ~TRequest; protected by AllocationLock)
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 {
     with_lock (AllocationLock) {
@@ -1361,6 +1458,7 @@ void TClientEndpoint::FreeRequest(TRequest* req) noexcept
     }
 }
 
+// Thread: external (atomic increment, thread-safe)
 ui64 TClientEndpoint::GetNewReqId() noexcept
 {
     return ReqIdPool.fetch_add(1);
@@ -1872,6 +1970,7 @@ TClient::TClient(
     Verbs->GetAddressInfo("localhost", 10020, nullptr);
 }
 
+// Thread: external
 void TClient::Start() noexcept
 {
     Log = Logging->CreateLog("BLOCKSTORE_RDMA");
@@ -1901,6 +2000,7 @@ void TClient::Start() noexcept
     }
 }
 
+// Thread: external
 void TClient::Stop() noexcept
 {
     if (ConnectionPoller) {
@@ -1916,6 +2016,7 @@ void TClient::Stop() noexcept
     RDMA_INFO("stop client");
 }
 
+// Thread: external (actor system thread)
 // implements IClient
 TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
@@ -1955,6 +2056,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Thread: RDMA.CM
 // implements IConnectionEventHandler
 void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 {
@@ -2011,6 +2113,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
     }
 }
 
+// Thread: RDMA.CM
 void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
 {
     RDMA_INFO(endpoint->Log, "release resources");
@@ -2024,6 +2127,7 @@ void TClient::StopEndpoint(TClientEndpoint* endpoint) noexcept
     endpoint->Poller->Release(endpoint);
 }
 
+// Thread: RDMA.CM
 // implements IConnectionEventHandler
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 {
@@ -2099,6 +2203,7 @@ void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
     BeginResolveAddress(endpoint);
 }
 
+// Thread: RDMA.CM (triggered by DisconnectEvent from any thread)
 // implements IConnectionEventHandler
 void TClient::Disconnect(TClientEndpoint* endpoint) noexcept
 {
@@ -2122,6 +2227,7 @@ void TClient::Disconnect(TClientEndpoint* endpoint) noexcept
     }
 }
 
+// Thread: RDMA.CM
 void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
 {
     try {
@@ -2166,6 +2272,7 @@ void TClient::BeginResolveAddress(TClientEndpoint* endpoint) noexcept
     }
 }
 
+// Thread: RDMA.CM
 void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
 {
     RDMA_DEBUG(endpoint->Log, "resolve route");
@@ -2184,6 +2291,7 @@ void TClient::BeginResolveRoute(TClientEndpoint* endpoint) noexcept
     }
 }
 
+// Thread: RDMA.CM
 void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
 {
     Y_ABORT_UNLESS(endpoint);
@@ -2224,6 +2332,7 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
     }
 }
 
+// Thread: RDMA.CM
 void TClient::HandleConnected(
     TClientEndpoint* endpoint,
     NVerbs::TConnectionEventPtr event) noexcept
@@ -2256,6 +2365,7 @@ void TClient::HandleConnected(
     }
 }
 
+// Thread: RDMA.CM
 void TClient::HandleRejected(
     TClientEndpoint* endpoint,
     NVerbs::TConnectionEventPtr event) noexcept
@@ -2292,6 +2402,7 @@ void TClient::HandleRejected(
     endpoint->Disconnect();
 }
 
+// Thread: RDMA.CM
 void TClient::HandleDisconnected(TClientEndpoint* endpoint) noexcept
 {
     // we can't reset config right away, because we need to know queue size to
@@ -2300,6 +2411,7 @@ void TClient::HandleDisconnected(TClientEndpoint* endpoint) noexcept
     endpoint->Disconnect();
 }
 
+// Thread: external (called from StartEndpoint)
 TCompletionPoller& TClient::PickPoller() noexcept
 {
     size_t index = RandomNumber(CompletionPollers.size());
