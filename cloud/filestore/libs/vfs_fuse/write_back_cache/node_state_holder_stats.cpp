@@ -44,12 +44,12 @@ public:
         DeletedNodeCounter.Dec();
     }
 
-    void PinCreated() override
+    void Pinned() override
     {
         PinCounter.Started();
     }
 
-    void PinReleased(TDuration holdDuration) override
+    void Unpinned(TDuration holdDuration) override
     {
         PinCounter.Completed(holdDuration);
     }

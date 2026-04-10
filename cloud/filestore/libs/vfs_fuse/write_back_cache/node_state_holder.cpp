@@ -22,6 +22,7 @@ TNodeState& TNodeStateHolder::GetOrCreateNodeState(ui64 nodeId)
 
     TItem& nodeState = it->second;
     if (nodeState.DeletionSequenceId != 0) {
+        // Resurrect previously deleted node state
         auto erased = Deletions.erase(nodeState.DeletionSequenceId);
         Y_ABORT_UNLESS(
             erased,
@@ -84,7 +85,7 @@ ui64 TNodeStateHolder::Pin()
 {
     const ui64 pinId = ++SequenceId;
     Pins[pinId] = Timer->Now();
-    Stats->PinCreated();
+    Stats->Pinned();
     return pinId;
 }
 
@@ -92,7 +93,7 @@ void TNodeStateHolder::Unpin(ui64 pinId)
 {
     auto pinIt = Pins.find(pinId);
     Y_ABORT_UNLESS(pinIt != Pins.end(), "Pin %lu is not found", pinId);
-    Stats->PinReleased(Timer->Now() - pinIt->second);
+    Stats->Unpinned(Timer->Now() - pinIt->second);
     Pins.erase(pinIt);
 
     // Erase deleted nodes that are no more pinned

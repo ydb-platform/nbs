@@ -46,8 +46,8 @@ struct INodeStateHolderStats
     virtual void IncrementDeletedNodeCount() = 0;
     virtual void DecrementDeletedNodeCount() = 0;
 
-    virtual void PinCreated() = 0;
-    virtual void PinReleased(TDuration holdDuration) = 0;
+    virtual void Pinned() = 0;
+    virtual void Unpinned(TDuration holdDuration) = 0;
 
     virtual TNodeStateHolderMetrics CreateMetrics() const = 0;
     virtual void UpdateStats(TDuration maxActivePinDuration) = 0;
