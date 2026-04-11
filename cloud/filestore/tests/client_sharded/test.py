@@ -268,7 +268,6 @@ def test_force_directory_creation_in_shards():
         block_count,
         enable_directory_creation_in_shards=True,
         force_directory_creation_in_shards=True)
-    #out = "".encode("utf8")
 
     items = [
         _d("/a1"),
