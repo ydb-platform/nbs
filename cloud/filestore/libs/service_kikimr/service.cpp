@@ -403,8 +403,7 @@ class TKikimrFileStore final
 {
 private:
     const IActorSystemPtr ActorSystem;
-    const bool UsePermanentActor;
-    const ui32 PermanentActorCount;
+    TLog Log;
 
     using THandlerPtr = std::shared_ptr<THandler>;
     TVector<THandlerPtr> Handlers;
@@ -413,23 +412,24 @@ private:
 public:
     TKikimrFileStore(
             IActorSystemPtr actorSystem,
-            bool usePermanentActor,
             ui32 permanentActorCount)
         : ActorSystem(std::move(actorSystem))
-        , UsePermanentActor(usePermanentActor)
-        , PermanentActorCount(permanentActorCount)
-    {}
+        , Log(ActorSystem->CreateLog("KIKIMR_SERVICE"))
+    {
+        Handlers.resize(permanentActorCount);
+    }
 
     void Start() override
     {
-        if (UsePermanentActor && PermanentActorCount) {
-            Handlers.resize(PermanentActorCount);
-            for (auto& handler: Handlers) {
-                handler = std::make_shared<THandler>();
-                auto actorId = ActorSystem->Register(
-                    std::make_unique<THandlerActor>(handler));
-                handler->SelfId = actorId;
-            }
+        for (auto& handler: Handlers) {
+            handler = std::make_shared<THandler>();
+            auto actorId = ActorSystem->Register(
+                std::make_unique<THandlerActor>(handler));
+            handler->SelfId = actorId;
+
+            // we'll switch prio to INFO after the scheme with permanent actors
+            // gets widely adopted
+            STORAGE_WARN("created THandlerActor: " << actorId);
         }
     }
 
@@ -501,7 +501,7 @@ private:
         std::shared_ptr<typename T::TRequest> request,
         TPromise<typename T::TResponse> response)
     {
-        if (UsePermanentActor) {
+        if (Handlers.size()) {
             const ui32 handlerIdx =
                 Selector.fetch_add(1, std::memory_order_relaxed);
             auto& handler = Handlers[handlerIdx % Handlers.size()];
@@ -564,12 +564,10 @@ private:
 
 IFileStoreServicePtr CreateKikimrFileStore(
     IActorSystemPtr actorSystem,
-    bool usePermanentActor,
     ui32 permanentActorCount)
 {
     return std::make_shared<TKikimrFileStore>(
         std::move(actorSystem),
-        usePermanentActor,
         permanentActorCount);
 }
 

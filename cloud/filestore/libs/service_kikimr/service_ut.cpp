@@ -25,7 +25,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
-constexpr ui32 PermanentActorCount = 4;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,7 +71,7 @@ struct TTestServiceActor final
 
 Y_UNIT_TEST_SUITE(TKikimrFileStore)
 {
-    void DoTestShouldHandleRequests(bool usePermanentActor)
+    void DoTestShouldHandleRequests(ui32 permanentActorCount)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->CreateFileStoreHandler =
@@ -87,8 +86,7 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
 
         auto service = CreateKikimrFileStore(
             actorSystem,
-            usePermanentActor,
-            PermanentActorCount);
+            permanentActorCount);
         service->Start();
 
         auto context = MakeIntrusive<TCallContext>();
@@ -110,12 +108,12 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
 
     Y_UNIT_TEST(ShouldHandleRequests)
     {
-        DoTestShouldHandleRequests(false);
+        DoTestShouldHandleRequests(0 /* permanentActorCount */);
     }
 
     Y_UNIT_TEST(ShouldHandleRequestsWithPermanentActor)
     {
-        DoTestShouldHandleRequests(true);
+        DoTestShouldHandleRequests(4 /* permanentActorCount */);
     }
 
     Y_UNIT_TEST(ShouldHandleFsyncRequestsOutsideActorSystem)
@@ -125,10 +123,8 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(
-            actorSystem,
-            false,
-            PermanentActorCount);
+        auto service =
+            CreateKikimrFileStore(actorSystem, 0 /* permanentActorCount */);
         service->Start();
 
         {
@@ -183,10 +179,8 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
 
-        auto service = CreateKikimrFileStore(
-            actorSystem,
-            false,
-            PermanentActorCount);
+        auto service =
+            CreateKikimrFileStore(actorSystem, 0 /* permanentActorCount */);
         service->Start();
 
         auto context = MakeIntrusive<TCallContext>();
