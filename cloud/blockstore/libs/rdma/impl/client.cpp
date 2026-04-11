@@ -34,6 +34,7 @@
 #include <util/network/interface.h>
 #include <util/random/random.h>
 #include <util/stream/format.h>
+#include <util/stream/str.h>
 #include <util/system/datetime.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
@@ -112,6 +113,7 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
+constexpr ui32 INVALID_REQUEST_ID = Max<ui32>();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -144,6 +146,90 @@ TString
 GetLogTitle(TStringBuf opcode, const TWorkRequestId& id, ui32 reqId)
 {
     return TStringBuilder() << opcode << " [" << id << "][" << reqId << "]: ";
+}
+
+void AppendIbGid(TStringStream& ss, const ibv_gid& gid)
+{
+    for (size_t i = 0; i < sizeof(gid.raw); ++i) {
+        if (i) {
+            ss << ':';
+        }
+        ss << Hex(static_cast<ui8>(gid.raw[i]), HF_FULL);
+    }
+}
+
+void AppendIbGlobalRoute(TStringStream& ss, const ibv_global_route& grh)
+{
+    ss << "{dgid=";
+    AppendIbGid(ss, grh.dgid);
+    ss << " flow_label=" << grh.flow_label << " sgid_index="
+       << static_cast<int>(grh.sgid_index) << " hop_limit="
+       << static_cast<int>(grh.hop_limit) << " traffic_class="
+       << static_cast<int>(grh.traffic_class) << "}";
+}
+
+void AppendIbAhAttr(TStringStream& ss, const ibv_ah_attr& ah)
+{
+    ss << "{grh=";
+    AppendIbGlobalRoute(ss, ah.grh);
+    ss << " dlid=" << ah.dlid << " sl=" << static_cast<int>(ah.sl)
+       << " src_path_bits=" << static_cast<int>(ah.src_path_bits)
+       << " static_rate=" << static_cast<int>(ah.static_rate)
+       << " is_global=" << static_cast<int>(ah.is_global)
+       << " port_num=" << static_cast<int>(ah.port_num) << "}";
+}
+
+void AppendIbQpCap(TStringStream& ss, const ibv_qp_cap& cap)
+{
+    ss << "{max_send_wr=" << cap.max_send_wr
+       << " max_recv_wr=" << cap.max_recv_wr
+       << " max_send_sge=" << cap.max_send_sge
+       << " max_recv_sge=" << cap.max_recv_sge
+       << " max_inline_data=" << cap.max_inline_data << "}";
+}
+
+void AppendIbQpInitAttr(TStringStream& ss, const ibv_qp_init_attr& a)
+{
+    ss << "{qp_context=" << static_cast<const void*>(a.qp_context)
+       << " send_cq=" << static_cast<const void*>(a.send_cq)
+       << " recv_cq=" << static_cast<const void*>(a.recv_cq)
+       << " srq=" << static_cast<const void*>(a.srq) << " cap=";
+    AppendIbQpCap(ss, a.cap);
+    ss << " qp_type=" << static_cast<int>(a.qp_type)
+       << " sq_sig_all=" << a.sq_sig_all << "}";
+}
+
+void AppendIbQpAttr(TStringStream& ss, const ibv_qp_attr& a)
+{
+    ss << "{qp_state=" << static_cast<int>(a.qp_state)
+       << " cur_qp_state=" << static_cast<int>(a.cur_qp_state)
+       << " path_mtu=" << static_cast<int>(a.path_mtu)
+       << " path_mig_state=" << static_cast<int>(a.path_mig_state)
+       << " qkey=" << a.qkey << " rq_psn=" << a.rq_psn
+       << " sq_psn=" << a.sq_psn << " dest_qp_num=" << a.dest_qp_num
+       << " qp_access_flags="
+       << Hex(static_cast<ui32>(a.qp_access_flags), HF_FULL | HF_ADDX)
+       << " cap=";
+    AppendIbQpCap(ss, a.cap);
+    ss << " ah_attr=";
+    AppendIbAhAttr(ss, a.ah_attr);
+    ss << " alt_ah_attr=";
+    AppendIbAhAttr(ss, a.alt_ah_attr);
+    ss << " pkey_index=" << a.pkey_index
+       << " alt_pkey_index=" << a.alt_pkey_index
+       << " en_sqd_async_notify="
+       << static_cast<int>(a.en_sqd_async_notify)
+       << " sq_draining=" << static_cast<int>(a.sq_draining)
+       << " max_rd_atomic=" << static_cast<int>(a.max_rd_atomic)
+       << " max_dest_rd_atomic=" << static_cast<int>(a.max_dest_rd_atomic)
+       << " min_rnr_timer=" << static_cast<int>(a.min_rnr_timer)
+       << " port_num=" << static_cast<int>(a.port_num)
+       << " timeout=" << static_cast<int>(a.timeout)
+       << " retry_cnt=" << static_cast<int>(a.retry_cnt)
+       << " rnr_retry=" << static_cast<int>(a.rnr_retry)
+       << " alt_port_num=" << static_cast<int>(a.alt_port_num)
+       << " alt_timeout=" << static_cast<int>(a.alt_timeout)
+       << " rate_limit=" << a.rate_limit << "}";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1298,6 +1384,22 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
             req->CallContext->RequestId);
     }
     // request has already been completed
+
+    static std::atomic<ui32> count = 0;
+    if (count++ % 50 == 0) {
+        ibv_qp_attr attr;
+        ibv_qp_init_attr init_attr;
+        Zero(attr);
+        Zero(init_attr);
+
+        Verbs->QueryQP(Connection->qp, &attr, (1 << 26) - 1, &init_attr);
+        TStringStream qpDump;
+        qpDump << "ibv_qp_attr ";
+        AppendIbQpAttr(qpDump, attr);
+        qpDump << " ibv_qp_init_attr ";
+        AppendIbQpInitAttr(qpDump, init_attr);
+        RDMA_TRACE(qpDump.Str());
+    }
 }
 
 // Thread: RDMA.CM (from StartReceive) or RDMA.CQ (from RecvResponseCompleted)
@@ -1310,10 +1412,10 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
 
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
-        RDMA_TRACE(GetLogTitle("RECV", id, GetRequestId(*recv)) << "posted");
+        RDMA_TRACE(GetLogTitle("RECV", id, INVALID_REQUEST_ID) << "posted");
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(GetLogTitle("RECV", id, GetRequestId(*recv)) << e.what());
+        RDMA_ERROR(GetLogTitle("RECV", id, INVALID_REQUEST_ID) << e.what());
         Counters->Error();
         RecvQueue.Push(recv);
         Disconnect();
@@ -2406,13 +2508,15 @@ void TClient::HandleConnected(
         }
 
         if (mask > 0) {
-            RDMA_INFO(
+            RDMA_WARN(
                 endpoint->Log,
                 "modify QP with mask "
-                    << mask << "; retry_cnt=" << attr.retry_cnt
-                    << "; rnr_retry=" << attr.rnr_retry
-                    << "; timeout=" << attr.timeout
-                    << "; min_rnr_timer=" << attr.min_rnr_timer);
+                    << mask
+                    << "; retry_cnt=" << static_cast<int>(attr.retry_cnt)
+                    << "; rnr_retry=" << static_cast<int>(attr.rnr_retry)
+                    << "; timeout=" << static_cast<int>(attr.timeout)
+                    << "; min_rnr_timer="
+                    << static_cast<int>(attr.min_rnr_timer));
 
             Verbs->ModifyQP(endpoint->Connection->qp, &attr, mask);
         }

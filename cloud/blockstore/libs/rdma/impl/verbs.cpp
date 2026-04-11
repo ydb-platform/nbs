@@ -395,6 +395,19 @@ struct TVerbs
             RDMA_THROW_ERROR("ibv_modify_qp");
         }
     }
+
+    void QueryQP(
+        ibv_qp* qp,
+        ibv_qp_attr* attr,
+        int mask,
+        ibv_qp_init_attr* init_attr) override
+    {
+        int res = ibv_query_qp(qp, attr, mask, init_attr);
+        if (res < 0) {
+            RDMA_THROW_ERROR("ibv_query_qp");
+        }
+    }
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////

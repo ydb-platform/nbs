@@ -556,6 +556,18 @@ struct TTestVerbs
             TestContext->ModifyQP(qp, attr, mask);
         }
     }
+
+    void QueryQP(
+        ibv_qp* qp,
+        ibv_qp_attr* attr,
+        int mask,
+        ibv_qp_init_attr* init_attr) override
+    {
+        Y_UNUSED(qp);
+        Y_UNUSED(attr);
+        Y_UNUSED(mask);
+        Y_UNUSED(init_attr);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
