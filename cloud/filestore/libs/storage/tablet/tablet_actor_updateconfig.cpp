@@ -164,6 +164,8 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetShardAllocationUnit(oldConfig.GetShardAllocationUnit());
     newConfig.SetDirectoryCreationInShardsEnabled(
         oldConfig.GetDirectoryCreationInShardsEnabled());
+    newConfig.SetForceDirectoryCreationInShards(
+        oldConfig.GetForceDirectoryCreationInShards());
     newConfig.SetStrictFileSystemSizeEnforcementEnabled(
         oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
 
@@ -363,6 +365,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
         std::move(*args.Request.MutableShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
+    config.SetForceDirectoryCreationInShards(
+        args.Request.GetForceDirectoryCreationInShards());
     config.SetStrictFileSystemSizeEnforcementEnabled(
         args.Request.GetStrictFileSystemSizeEnforcementEnabled());
 
@@ -464,6 +468,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
         std::move(*args.Request.MutableShardFileSystemIds());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
+    config.SetForceDirectoryCreationInShards(
+        args.Request.GetForceDirectoryCreationInShards());
     config.SetStrictFileSystemSizeEnforcementEnabled(
         args.Request.GetStrictFileSystemSizeEnforcementEnabled());
 

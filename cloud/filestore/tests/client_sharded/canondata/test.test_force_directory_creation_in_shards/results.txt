@@ -1,0 +1,125 @@
+[
+    {
+        "ShardFileSystemId": "fs0_s2",
+        "Name": ".something"
+    },
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "a0",
+        "Mode": 511,
+        "Id": 2
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "a1"
+    },
+    {
+        "ShardFileSystemId": "fs0_s3",
+        "Name": "another.something"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "f18.txt"
+    },
+    {
+        "ShardFileSystemId": "fs0_s1",
+        "Name": "file.txt"
+    }
+][
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "b1",
+        "Mode": 511,
+        "Id": 72057594037927950
+    },
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "b2",
+        "Mode": 511,
+        "Id": 144115188075855874
+    },
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "b3",
+        "Mode": 511,
+        "Id": 216172782113783810
+    },
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "b5",
+        "Mode": 511,
+        "Id": 72057594037927960
+    },
+    {
+        "Type": 2,
+        "Links": 1,
+        "Name": "b6",
+        "Mode": 511,
+        "Id": 72057594037927962
+    }
+]dirViewer(1):
+[
+    {
+        "name": ".something",
+        "node": {
+            "shardId": "fs0_s2",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
+    },
+    {
+        "name": "a0",
+        "node": {
+            "shardId": "",
+            "type": 2,
+            "size": 0,
+            "mode": 511
+        }
+    },
+    {
+        "name": "a1",
+        "node": {
+            "shardId": "fs0_s1",
+            "type": 2,
+            "size": 0,
+            "mode": 511
+        }
+    },
+    {
+        "name": "another.something",
+        "node": {
+            "shardId": "fs0_s3",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
+    },
+    {
+        "name": "f18.txt",
+        "node": {
+            "shardId": "fs0_s1",
+            "type": 1,
+            "size": 62,
+            "mode": 0
+        }
+    },
+    {
+        "name": "file.txt",
+        "node": {
+            "shardId": "fs0_s1",
+            "type": 1,
+            "size": 0,
+            "mode": 420
+        }
+    }
+]
+locks():
+{
+    "locks": []
+}

@@ -51,6 +51,10 @@ private:
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
     const bool Alter;
     const bool Force;
+    const bool EnableDirectoryCreationInShards;
+    const bool ForceDirectoryCreationInShards;
+    const bool EnableStrictFileSystemSizeEnforcement;
+
     ui32 ExplicitShardCount;
 
     NKikimrFileStore::TConfig TargetConfig;
@@ -68,11 +72,8 @@ private:
 
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
-    bool EnableDirectoryCreationInShards = false;
-
+    bool DirectoryCreationInShardsForced = false;
     bool StrictFileSystemSizeEnforcementEnabled = false;
-    bool EnableStrictFileSystemSizeEnforcement = false;
-
     bool ShouldConfigureMainFileStore = false;
 
     const ui64 MainFileStoreCookie = Max<ui64>();
@@ -193,6 +194,9 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
     , Force(false)
+    , EnableDirectoryCreationInShards(false)
+    , ForceDirectoryCreationInShards(false)
+    , EnableStrictFileSystemSizeEnforcement(false)
     , ExplicitShardCount(0)
 {
     TargetConfig.SetCloudId(request.GetCloudId());
@@ -211,11 +215,13 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , PerformanceProfile(request.GetPerformanceProfile())
     , Alter(false)
     , Force(request.GetForce())
-    , ExplicitShardCount(request.GetShardCount())
     , EnableDirectoryCreationInShards(
           request.GetEnableDirectoryCreationInShards())
+    , ForceDirectoryCreationInShards(
+        request.GetForceDirectoryCreationInShards())
     , EnableStrictFileSystemSizeEnforcement(
           request.GetEnableStrictFileSystemSizeEnforcement())
+    , ExplicitShardCount(request.GetShardCount())
 {
     TargetConfig.SetBlocksCount(request.GetBlocksCount());
     TargetConfig.SetVersion(request.GetConfigVersion());
@@ -519,6 +525,9 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     DirectoryCreationInShardsEnabled =
         EnableDirectoryCreationInShards ||
         msg->Record.GetDirectoryCreationInShardsEnabled();
+    DirectoryCreationInShardsForced =
+        ForceDirectoryCreationInShards ||
+        msg->Record.GetForceDirectoryCreationInShards();
     StrictFileSystemSizeEnforcementEnabled =
         EnableStrictFileSystemSizeEnforcement ||
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
@@ -735,6 +744,8 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
         request->Record.SetMainFileSystemId(FileSystemId);
         request->Record.SetDirectoryCreationInShardsEnabled(
             DirectoryCreationInShardsEnabled);
+        request->Record.SetForceDirectoryCreationInShards(
+            DirectoryCreationInShardsForced);
         request->Record.SetStrictFileSystemSizeEnforcementEnabled(
             StrictFileSystemSizeEnforcementEnabled);
 
@@ -816,6 +827,8 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
         FileStoreConfig.MainFileSystemConfig.GetFileSystemId());
     request->Record.SetDirectoryCreationInShardsEnabled(
         DirectoryCreationInShardsEnabled);
+    request->Record.SetForceDirectoryCreationInShards(
+        DirectoryCreationInShardsForced);
     request->Record.SetStrictFileSystemSizeEnforcementEnabled(
         StrictFileSystemSizeEnforcementEnabled);
 

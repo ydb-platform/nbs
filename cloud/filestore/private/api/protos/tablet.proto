@@ -675,6 +675,10 @@ message TConfigureShardsRequest
     // Allow shards aggregate statistics from all other shards and strictly
     // enforce filesystem size.
     bool StrictFileSystemSizeEnforcementEnabled = 5;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 6;
 }
 
 message TConfigureShardsResponse
@@ -705,6 +709,10 @@ message TConfigureAsShardRequest
     // Allow shards aggregate statistics from all other shards and strictly
     // enforce filesystem size.
     bool StrictFileSystemSizeEnforcementEnabled = 6;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 7;
 }
 
 message TConfigureAsShardResponse
@@ -954,6 +962,8 @@ message TGetFileSystemTopologyResponse
     bool StrictFileSystemSizeEnforcementEnabled = 5;
 
     uint32 MaxShardCount = 6;
+
+    bool ForceDirectoryCreationInShards = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

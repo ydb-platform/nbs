@@ -559,7 +559,8 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
                 && !isParentNodeLinkRequest
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
-                && !isMainWithLocalNodes))
+                && (!isMainWithLocalNodes
+                    || GetFileSystem().GetForceDirectoryCreationInShards())))
     {
         args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
         if (HasError(args.Error)) {
