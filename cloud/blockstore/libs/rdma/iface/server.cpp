@@ -52,6 +52,8 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(Timeout);
     SET(RetryCount);
     SET(RnrRetry);
+    SET(SendQueueSize);
+    SET(RecvQueueSize);
 }
 
 #undef SET
@@ -83,6 +85,8 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(Timeout, Timeout);
                 ENTRY(RetryCount, RetryCount);
                 ENTRY(RnrRetry, RnrRetry);
+                ENTRY(SendQueueSize, SendQueueSize);
+                ENTRY(RecvQueueSize, RecvQueueSize);
             }
         }
     }

@@ -39,6 +39,9 @@ message TRdmaServer
     uint32 Timeout = 15;
     uint32 RetryCount = 16;
     uint32 RnrRetry = 17;
+
+    uint32 SendQueueSize = 18;
+    uint32 RecvQueueSize = 19;
 }
 
 message TRdmaClient
@@ -65,6 +68,9 @@ message TRdmaClient
     uint32 Timeout = 14;
     uint32 RetryCount = 15;
     uint32 RnrRetry = 16;
+
+    uint32 SendQueueSize = 17;
+    uint32 RecvQueueSize = 18;
 }
 
 message TRdmaTarget

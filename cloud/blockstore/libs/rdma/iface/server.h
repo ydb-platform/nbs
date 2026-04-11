@@ -36,6 +36,8 @@ struct TServerConfig
     ui8 Timeout = 0;
     ui8 RetryCount = 0;
     ui8 RnrRetry = 0;
+    ui32 SendQueueSize = 10;
+    ui32 RecvQueueSize = 10;
 
     TServerConfig() = default;
 

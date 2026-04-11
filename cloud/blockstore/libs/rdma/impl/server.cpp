@@ -473,7 +473,7 @@ void TServerSession::CreateQP()
 
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        2 * Config->QueueSize,   // send + recv
+        Config->SendQueueSize + Config->RecvQueueSize,   // send + recv
         this,
         CompletionChannel.get(),
         0);                      // comp_vector
@@ -483,8 +483,8 @@ void TServerSession::CreateQP()
         .send_cq = CompletionQueue.get(),
         .recv_cq = CompletionQueue.get(),
         .cap = {
-            .max_send_wr = Config->QueueSize,
-            .max_recv_wr = Config->QueueSize,
+            .max_send_wr = Config->SendQueueSize,
+            .max_recv_wr = Config->RecvQueueSize,
             .max_send_sge = RDMA_MAX_SEND_SGE,
             .max_recv_sge = RDMA_MAX_RECV_SGE,
             .max_inline_data = 16,
@@ -510,15 +510,15 @@ void TServerSession::CreateQP()
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     SendBuffer = SendBuffers.AcquireBuffer(
-        Config->QueueSize * sizeof(TResponseMessage),
+        Config->SendQueueSize * sizeof(TResponseMessage),
         true);
 
     RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config->QueueSize * sizeof(TRequestMessage),
+        Config->RecvQueueSize * sizeof(TRequestMessage),
         true);
 
-    SendWrs.resize(Config->QueueSize);
-    RecvWrs.resize(Config->QueueSize);
+    SendWrs.resize(Config->SendQueueSize);
+    RecvWrs.resize(Config->RecvQueueSize);
 
     ui32 i = 0;
     ui64 responseMsg = SendBuffer.Address;
@@ -701,8 +701,8 @@ void TServerSession::Flush() noexcept
 bool TServerSession::IsFlushed() const
 {
     return FlushStarted
-        && SendQueue.Size() == Config->QueueSize
-        && RecvQueue.Size() == Config->QueueSize;
+        && SendQueue.Size() == Config->SendQueueSize
+        && RecvQueue.Size() == Config->RecvQueueSize;
 }
 
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
