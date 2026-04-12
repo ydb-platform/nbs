@@ -219,6 +219,8 @@ message TLocalServiceConfig
     // Refresh .snapshots entries every SnapshotsDirRefreshInterval ms.
     optional uint32 SnapshotsDirRefreshInterval = 39;
 
+    // Enable FUSE_POSIX_ACL on guest (FUSE client)
+    optional bool GuestPosixAclEnabled = 40;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

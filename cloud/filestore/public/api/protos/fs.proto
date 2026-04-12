@@ -52,6 +52,7 @@ message TFileStoreFeatures
     bool WriteBlobDisabled = 37;
     bool FakeDescribeDataEnabled = 38;
     bool UnconfirmedFlowEnabled = 39;
+    bool GuestPosixAclEnabled = 40;
 }
 
 message TFileStore

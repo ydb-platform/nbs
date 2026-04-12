@@ -141,6 +141,12 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 &TLocalFileStoreConfig::GetGuestHandleKillPrivV2Enabled,
                 &TLocalFileStoreConfig::GetGuestHandleKillPrivV2Enabled,
             },
+            {
+                "GuestPosixAclEnabled",
+                &NProto::TLocalServiceConfig::SetGuestPosixAclEnabled,
+                &TLocalFileStoreConfig::GetGuestPosixAclEnabled,
+                &TLocalFileStoreConfig::GetGuestPosixAclEnabled,
+            },
         };
 
         for (const auto& test: tests) {
@@ -168,6 +174,12 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 &NProto::TLocalServiceConfig::SetGuestHandleKillPrivV2Enabled,
                 &TLocalFileStoreConfig::GetGuestHandleKillPrivV2Enabled,
                 &TLocalFileStoreConfig::GetGuestHandleKillPrivV2Enabled,
+            },
+            {
+                "GuestPosixAclEnabled",
+                &NProto::TLocalServiceConfig::SetGuestPosixAclEnabled,
+                &TLocalFileStoreConfig::GetGuestPosixAclEnabled,
+                &TLocalFileStoreConfig::GetGuestPosixAclEnabled,
             },
         };
 

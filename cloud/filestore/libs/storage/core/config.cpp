@@ -300,6 +300,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
     xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
     xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
+    xxx(GuestPosixAclEnabled,              bool,      false                   )\
     xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
                                                                                \
     xxx(ZeroCopyReadEnabled,               bool,      false                   )\

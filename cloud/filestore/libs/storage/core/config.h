@@ -365,6 +365,8 @@ public:
 
     bool GetGuestHandleKillPrivV2Enabled() const;
 
+    bool GetGuestPosixAclEnabled() const;
+
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
     bool GetZeroCopyReadEnabled() const;
