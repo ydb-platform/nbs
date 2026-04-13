@@ -1,4 +1,5 @@
 //go:build linux
+// +build linux
 
 /*
 Copyright 2014 The Kubernetes Authors.
@@ -110,50 +111,6 @@ func (mounter *Mounter) hasSystemd() bool {
 	return *mounter.withSystemd
 }
 
-// Map unix.Statfs mount flags ro, nodev, noexec, nosuid, noatime, relatime,
-// nodiratime to mount option flag strings.
-func getBindMountOptions(path string, statfs func(path string, buf *unix.Statfs_t) (err error)) ([]string, error) {
-	var s unix.Statfs_t
-	var mountOpts []string
-	if err := statfs(path, &s); err != nil {
-		return nil, &os.PathError{Op: "statfs", Path: path, Err: err}
-	}
-	flagMapping := map[int]string{
-		unix.MS_RDONLY:     "ro",
-		unix.MS_NODEV:      "nodev",
-		unix.MS_NOEXEC:     "noexec",
-		unix.MS_NOSUID:     "nosuid",
-		unix.MS_NOATIME:    "noatime",
-		unix.MS_RELATIME:   "relatime",
-		unix.MS_NODIRATIME: "nodiratime",
-	}
-	for k, v := range flagMapping {
-		if int(s.Flags)&k == k {
-			mountOpts = append(mountOpts, v)
-		}
-	}
-	return mountOpts, nil
-}
-
-// Performs a bind mount with the specified options, and then remounts
-// the mount point with the same `nodev`, `nosuid`, `noexec`, `nosuid`, `noatime`,
-// `relatime`, `nodiratime` options as the original mount point.
-func (mounter *Mounter) bindMountSensitive(mounterPath string, mountCmd string, source string, target string, fstype string, bindOpts []string, bindRemountOpts []string, bindRemountOptsSensitive []string, mountFlags []string, systemdMountRequired bool) error {
-	err := mounter.doMount(mounterPath, mountCmd, source, target, fstype, bindOpts, bindRemountOptsSensitive, mountFlags, systemdMountRequired)
-	if err != nil {
-		return err
-	}
-	// Check if the source has ro, nodev, noexec, nosuid, noatime, relatime,
-	// nodiratime flag...
-	fixMountOpts, err := getBindMountOptions(source, unix.Statfs)
-	if err != nil {
-		return &os.PathError{Op: "statfs", Path: source, Err: err}
-	}
-	// ... and retry the mount with flags found above.
-	bindRemountOpts = append(bindRemountOpts, fixMountOpts...)
-	return mounter.doMount(mounterPath, mountCmd, source, target, fstype, bindRemountOpts, bindRemountOptsSensitive, mountFlags, systemdMountRequired)
-}
-
 // Mount mounts source to target as fstype with given options. 'source' and 'fstype' must
 // be an empty string in case it's not required, e.g. for remount, or for auto filesystem
 // type, where kernel handles fstype for you. The mount 'options' is a list of options,
@@ -174,7 +131,11 @@ func (mounter *Mounter) MountSensitive(source string, target string, fstype stri
 	mounterPath := ""
 	bind, bindOpts, bindRemountOpts, bindRemountOptsSensitive := MakeBindOptsSensitive(options, sensitiveOptions)
 	if bind {
-		return mounter.bindMountSensitive(mounterPath, defaultMountCommand, source, target, fstype, bindOpts, bindRemountOpts, bindRemountOptsSensitive, nil /* mountFlags */, mounter.trySystemd)
+		err := mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindOpts, bindRemountOptsSensitive, nil /* mountFlags */, mounter.trySystemd)
+		if err != nil {
+			return err
+		}
+		return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindRemountOpts, bindRemountOptsSensitive, nil /* mountFlags */, mounter.trySystemd)
 	}
 	// The list of filesystems that require containerized mounter on GCI image cluster
 	fsTypesNeedMounter := map[string]struct{}{
@@ -199,7 +160,11 @@ func (mounter *Mounter) MountSensitiveWithoutSystemdWithMountFlags(source string
 	mounterPath := ""
 	bind, bindOpts, bindRemountOpts, bindRemountOptsSensitive := MakeBindOptsSensitive(options, sensitiveOptions)
 	if bind {
-		return mounter.bindMountSensitive(mounterPath, defaultMountCommand, source, target, fstype, bindOpts, bindRemountOpts, bindRemountOptsSensitive, mountFlags, false)
+		err := mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindOpts, bindRemountOptsSensitive, mountFlags, false)
+		if err != nil {
+			return err
+		}
+		return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindRemountOpts, bindRemountOptsSensitive, mountFlags, false)
 	}
 	// The list of filesystems that require containerized mounter on GCI image cluster
 	fsTypesNeedMounter := map[string]struct{}{
@@ -399,13 +364,11 @@ func AddSystemdScopeSensitive(systemdRunPath, mountName, command string, args []
 // If the mounter has safe "not mounted" behavior, no error will be returned when the target is not a mount point.
 func (mounter *Mounter) Unmount(target string) error {
 	klog.V(4).Infof("Unmounting %s", target)
-	command := exec.Command("umount", "-v", target)
+	command := exec.Command("umount", target)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return checkUmountError(target, command, output, err, mounter.withSafeNotMountedBehavior)
 	}
-
-	klog.V(4).Infof("Umount output: %s", string(output))
 	return nil
 }
 
@@ -430,7 +393,7 @@ func (*Mounter) List() ([]MountPoint, error) {
 
 func statx(file string) (unix.Statx_t, error) {
 	var stat unix.Statx_t
-	if err := unix.Statx(unix.AT_FDCWD, file, unix.AT_STATX_DONT_SYNC, 0, &stat); err != nil {
+	if err := unix.Statx(0, file, unix.AT_STATX_DONT_SYNC, 0, &stat); err != nil {
 		if err == unix.ENOSYS {
 			return stat, errStatxNotSupport
 		}
@@ -614,7 +577,7 @@ func (mounter *SafeFormatAndMount) formatAndMountSensitive(source string, target
 			sensitiveOptionsLog := sanitizedOptionsForLogging(options, sensitiveOptions)
 			detailedErr := fmt.Sprintf("format of disk %q failed: type:(%q) target:(%q) options:(%q) errcode:(%v) output:(%v) ", source, fstype, target, sensitiveOptionsLog, err, string(output))
 			klog.Error(detailedErr)
-			return NewMountError(FormatFailed, "%s", detailedErr)
+			return NewMountError(FormatFailed, detailedErr)
 		}
 
 		klog.Infof("Disk successfully formatted (mkfs): %s - %s %s", fstype, source, target)
@@ -622,7 +585,7 @@ func (mounter *SafeFormatAndMount) formatAndMountSensitive(source string, target
 		if fstype != existingFormat {
 			// Verify that the disk is formatted with filesystem type we are expecting
 			mountErrorValue = FilesystemMismatch
-			klog.Warningf("Configured to mount disk %s as %s but current format is %s, things might break", source, fstype, existingFormat)
+			klog.Warningf("Configured to mount disk %s as %s but current format is %s, things might break", source, existingFormat, fstype)
 		}
 
 		if !readOnly {
@@ -637,7 +600,7 @@ func (mounter *SafeFormatAndMount) formatAndMountSensitive(source string, target
 	// Mount the disk
 	klog.V(4).Infof("Attempting to mount disk %s in %s format at %s", source, fstype, target)
 	if err := mounter.MountSensitive(source, target, fstype, options, sensitiveOptions); err != nil {
-		return NewMountError(mountErrorValue, "%s", err.Error())
+		return NewMountError(mountErrorValue, err.Error())
 	}
 
 	return nil
@@ -723,7 +686,7 @@ func (mounter *SafeFormatAndMount) GetDiskFormat(disk string) (string, error) {
 	return getDiskFormat(mounter.Exec, disk)
 }
 
-// ListProcMounts returns a list of all mounted filesystems.
+// ListProcMounts is shared with NsEnterMounter
 func ListProcMounts(mountFilePath string) ([]MountPoint, error) {
 	content, err := readMountInfo(mountFilePath)
 	if err != nil {
@@ -777,6 +740,7 @@ func parseProcMounts(content []byte) ([]MountPoint, error) {
 // Some filesystems may share a source name, e.g. tmpfs. And for bind mounting,
 // it's possible to mount a non-root path of a filesystem, so we need to use
 // root path and major:minor to represent mount source uniquely.
+// This implementation is shared between Linux and NsEnterMounter
 func SearchMountPoints(hostSource, mountInfoPath string) ([]string, error) {
 	mis, err := ParseMountInfo(mountInfoPath)
 	if err != nil {
