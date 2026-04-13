@@ -9,7 +9,7 @@
 #include <util/stream/str.h>
 
 namespace NKikimr {
-    struct TEvHive {
+    namespace TEvHive {
         enum EEv {
             // requests
             EvBootTablet = EventSpaceBegin(TKikimrEvents::ES_HIVE),
@@ -88,9 +88,6 @@ namespace NKikimr {
             EvResponseTabletDistribution,
             EvResponseScaleRecommendation,
             EvConfigureScaleRecommenderReply,
-            EvDrainNodeAck,
-            EvResponseDrainInfo,
-            EvSetDownReply,
 
             EvEnd
         };
@@ -724,9 +721,13 @@ namespace NKikimr {
         {
             TEvLockTabletExecutionLost() = default;
 
-            explicit TEvLockTabletExecutionLost(ui64 tabletId, NKikimrHive::ELockLostReason reason) {
+            TEvLockTabletExecutionLost(ui64 tabletId, NKikimrHive::ELockLostReason reason) {
                 Record.SetTabletID(tabletId);
                 Record.SetReason(reason);
+            }
+
+            explicit TEvLockTabletExecutionLost(ui64 tabletId) {
+                Record.SetTabletID(tabletId);
             }
         };
 
@@ -906,16 +907,12 @@ namespace NKikimr {
 
         struct TEvResponseScaleRecommendation : TEventPB<TEvResponseScaleRecommendation,
             NKikimrHive::TEvResponseScaleRecommendation, EvResponseScaleRecommendation> {};
-
+        
         struct TEvConfigureScaleRecommender : TEventPB<TEvConfigureScaleRecommender,
             NKikimrHive::TEvConfigureScaleRecommender, EvConfigureScaleRecommender> {};
-
+        
         struct TEvConfigureScaleRecommenderReply : TEventPB<TEvConfigureScaleRecommenderReply,
             NKikimrHive::TEvConfigureScaleRecommenderReply, EvConfigureScaleRecommenderReply> {};
-        struct TEvDrainNodeAck: TEventLocal<TEvDrainNodeAck, EvDrainNodeAck>
-        {
-            TEvDrainNodeAck() = default;
-        };
     };
 
     IActor* CreateDefaultHive(const TActorId &tablet, TTabletStorageInfo *info);

@@ -1,5 +1,6 @@
 #include "sequenceproxy.h"
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/scheme_board/cache.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/sequenceshard/public/events.h>

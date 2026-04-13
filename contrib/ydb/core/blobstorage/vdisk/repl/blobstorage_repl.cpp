@@ -103,6 +103,7 @@ namespace NKikimr {
                         PARAM_V(CommitDuration);
                         PARAM_V(OtherDuration);
                         PARAM_V(PhantomDuration);
+                        PARAM_V(OutOfSpaceDelayDuration);
                     }
                     GROUP("VDisk Stats") {
                         PARAM_V(ProxyStat->VDiskReqs);
@@ -156,7 +157,7 @@ namespace NKikimr {
         };
 
         std::shared_ptr<TReplCtx> ReplCtx;
-        ui32 NextMinREALHugeBlobInBytes;
+        ui32 NextMinHugeBlobInBytes;
         THistory History;
         EState State;
         TInstant LastReplStart;
@@ -266,7 +267,7 @@ namespace NKikimr {
         }
 
         void Handle(TEvMinHugeBlobSizeUpdate::TPtr ev) {
-            NextMinREALHugeBlobInBytes = ev->Get()->MinREALHugeBlobInBytes;
+            NextMinHugeBlobInBytes = ev->Get()->MinHugeBlobInBytes;
         }
 
         void StartReplication() {
@@ -279,8 +280,8 @@ namespace NKikimr {
             ReplCtx->MonGroup.ReplWorkUnitsDone() = 0;
             ReplCtx->MonGroup.ReplItemsRemaining() = 0;
             ReplCtx->MonGroup.ReplItemsDone() = 0;
-            Y_ABORT_UNLESS(NextMinREALHugeBlobInBytes);
-            ReplCtx->MinREALHugeBlobInBytes = NextMinREALHugeBlobInBytes;
+            Y_ABORT_UNLESS(NextMinHugeBlobInBytes);
+            ReplCtx->MinHugeBlobInBytes = NextMinHugeBlobInBytes;
             UnrecoveredNonphantomBlobs = false;
 
             Become(&TThis::StateRepl);
@@ -615,7 +616,7 @@ namespace NKikimr {
             DonorQueryActors.insert(Register(new TDonorQueryActor(*ev->Get(), Donors, ReplCtx->VCtx)));
         }
 
-        void Handle(TEvents::TEvActorDied::TPtr ev) {
+        void Handle(TEvents::TEvGone::TPtr ev) {
             const size_t num = DonorQueryActors.erase(ev->Sender);
             Y_ABORT_UNLESS(num);
         }
@@ -641,7 +642,7 @@ namespace NKikimr {
             hFunc(TEvVGenerationChange, HandleGenerationChange)
             hFunc(TEvResumeForce, Handle)
             hFunc(TEvBlobStorage::TEvEnrichNotYet, Handle)
-            hFunc(TEvents::TEvActorDied, Handle)
+            hFunc(TEvents::TEvGone, Handle)
             cFunc(TEvBlobStorage::EvCommenceRepl, StartReplication)
             hFunc(TEvReplInvoke, Handle)
             hFunc(TEvReplCheckProgress, ReplProgressWatchdog)
@@ -694,7 +695,7 @@ namespace NKikimr {
             hFunc(TEvVGenerationChange, HandleGenerationChange)
             hFunc(TEvResumeForce, Handle)
             hFunc(TEvBlobStorage::TEvEnrichNotYet, Handle)
-            hFunc(TEvents::TEvActorDied, Handle)
+            hFunc(TEvents::TEvGone, Handle)
             cFunc(TEvBlobStorage::EvCommenceRepl, Ignore)
             hFunc(TEvReplInvoke, Handle)
             hFunc(TEvReplCheckProgress, ReplProgressWatchdog)
@@ -709,7 +710,7 @@ namespace NKikimr {
         TReplScheduler(std::shared_ptr<TReplCtx> &replCtx)
             : TActorBootstrapped<TReplScheduler>()
             , ReplCtx(replCtx)
-            , NextMinREALHugeBlobInBytes(ReplCtx->MinREALHugeBlobInBytes)
+            , NextMinHugeBlobInBytes(ReplCtx->MinHugeBlobInBytes)
             , History(HistorySize)
             , State(Relaxation)
             , ReplProgressWatchdog(

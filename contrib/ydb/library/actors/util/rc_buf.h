@@ -12,6 +12,7 @@
 #include <util/system/valgrind.h>
 #include <util/generic/array_ref.h>
 #include <util/system/sys_alloc.h>
+#include <util/system/info.h>
 
 #include "shared_data.h"
 #include "rc_buf_backend.h"
@@ -269,6 +270,11 @@ public:
 struct IContiguousChunk : TThrRefBase {
     using TPtr = TIntrusivePtr<IContiguousChunk>;
 
+    enum EInnerType {
+        OTHER=0,
+        RDMA_MEM_REG=1,
+    };
+
     virtual ~IContiguousChunk() = default;
 
     /**
@@ -293,12 +299,18 @@ struct IContiguousChunk : TThrRefBase {
 
     virtual size_t GetOccupiedMemorySize() const = 0;
 
+    /**
+     * Returns type of the inner data
+     * Used to distinguish between different types of data and downcast
+     */
+    virtual EInnerType GetInnerType() const noexcept {
+        return OTHER;
+    }
 
     /**
      * Allocate new chunk and copy data into it
      * NOTE: The actual implementation of clonned chunk may be different
      */
-
     virtual IContiguousChunk::TPtr Clone() = 0;
 };
 
@@ -838,6 +850,13 @@ public:
         return TRcBuf(res, res.data() + headroom, size);
     }
 
+    static TRcBuf UninitializedPageAligned(size_t size, size_t tailroom = 0) {
+        const size_t pageSize = NSystemInfo::GetPageSize();
+        TRcBuf res = Uninitialized(size + pageSize - 1, 0, tailroom);
+        const size_t misalign = (pageSize - reinterpret_cast<uintptr_t>(res.data())) & (pageSize - 1);
+        return TRcBuf(Piece, res.data() + misalign, size, res);
+    }
+
     static TRcBuf Copy(TContiguousSpan data, size_t headroom = 0, size_t tailroom = 0) {
         TRcBuf res = Uninitialized(data.size(), headroom, tailroom);
         std::memcpy(res.UnsafeGetDataMut(), data.GetData(), data.GetSize());
@@ -929,6 +948,17 @@ public:
             std::memcpy(data, GetData(), GetSize());
         }
 
+        return res;
+    }
+
+    template<class TResult>
+    std::optional<TResult> ExtractFullUnderlyingContainer() const {
+        std::optional<TResult> res = std::nullopt;
+        Backend.ApplySpecificValue<TResult>([&](const TResult *raw) {
+            if (raw) {
+                res = *raw;
+            }
+        });
         return res;
     }
 
@@ -1096,7 +1126,7 @@ public:
     }
 
     size_t Headroom() const {
-        if (Backend.CanGrowFront(Begin)) {
+        if (Backend.CanGrowFront(Begin) || IsPrivate()) {
             return UnsafeHeadroom();
         }
 
@@ -1104,7 +1134,7 @@ public:
     }
 
     size_t Tailroom() const {
-        if (Backend.CanGrowBack(End)) {
+        if (Backend.CanGrowBack(End) || IsPrivate()) {
             return UnsafeTailroom();
         }
 
@@ -1119,3 +1149,12 @@ public:
         return TMutableContiguousSpan(GetDataMut(), GetSize());
     }
 };
+
+class IRcBufAllocator {
+public:
+    virtual ~IRcBufAllocator() = default;
+    virtual TRcBuf AllocRcBuf(size_t size, size_t headRoom, size_t tailRoom) noexcept = 0;
+    virtual TRcBuf AllocPageAlignedRcBuf(size_t size, size_t tailRoom) noexcept = 0;
+};
+
+IRcBufAllocator* GetDefaultRcBufAllocator() noexcept;

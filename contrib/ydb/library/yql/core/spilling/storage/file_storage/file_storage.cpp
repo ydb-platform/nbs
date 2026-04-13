@@ -28,7 +28,7 @@
 #include <contrib/ydb/library/yql/core/spilling/storage/storage.h>
 
 
-#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <yql/essentials/utils/log/log.h>
 
 
 namespace NYql {

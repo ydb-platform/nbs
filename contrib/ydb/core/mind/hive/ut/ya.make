@@ -2,8 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/mind/hive)
 
 FORK_SUBTESTS()
 
-TIMEOUT(600)
-
 SIZE(MEDIUM)
 
 PEERDIR(

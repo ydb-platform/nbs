@@ -5,7 +5,7 @@
 
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 
 #include <util/stream/input.h>
 #include <util/string/printf.h>

@@ -2,7 +2,12 @@
 #include "schemeshard__operation_common.h"
 #include "schemeshard_impl.h"
 
+#include <contrib/ydb/core/base/auth.h>
+
+#include "schemeshard_utils.h"  // for TransactionTemplate
+
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/base/hive.h>
 
 namespace {
 
@@ -26,18 +31,6 @@ bool CheckFreezeStateAlreadySet(const TTableInfo::TPtr table, const NKikimrSchem
     }
 
     return false;
-}
-
-bool IsSuperUser(const NACLib::TUserToken* userToken) {
-    if (!userToken)
-        return false;
-
-    const auto& adminSids = AppData()->AdministrationAllowedSIDs;
-    auto hasSid = [userToken](const TString& sid) -> bool {
-        return userToken->IsExist(sid);
-    };
-    auto it = std::find_if(adminSids.begin(), adminSids.end(), hasSid);
-    return (it != adminSids.end());
 }
 
 template <typename TMessage>
@@ -92,7 +85,8 @@ TTableInfo::TAlterDataPtr ParseParams(const TPath& path, TTableInfo::TPtr table,
     if (!hasSchemaChanges
         && !copyAlter.HasPartitionConfig()
         && !copyAlter.HasTTLSettings()
-        && !copyAlter.HasReplicationConfig())
+        && !copyAlter.HasReplicationConfig()
+        && !copyAlter.HasIncrementalBackupConfig())
     {
         errStr = Sprintf("No changes specified");
         status = NKikimrScheme::StatusInvalidParameter;
@@ -271,7 +265,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TAlterTable TConfigureParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -330,7 +324,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TAlterTable TPropose"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -502,7 +496,7 @@ public:
         TPathId pathId;
         if (alter.HasId_Deprecated() || alter.HasPathId()) {
             pathId = alter.HasPathId()
-                ? PathIdFromPathId(alter.GetPathId())
+                ? TPathId::FromProto(alter.GetPathId())
                 : context.SS->MakeLocalId(alter.GetId_Deprecated());
         }
 
@@ -714,7 +708,7 @@ TVector<ISubOperation::TPtr> CreateConsistentAlterTable(TOperationId id, const T
     const TString& parentPathStr = tx.GetWorkingDir();
     const TString& name = alter.GetName();
 
-    TPathId pathId = alter.HasPathId() ? PathIdFromPathId(alter.GetPathId()) : InvalidPathId;
+    TPathId pathId = alter.HasPathId() ? TPathId::FromProto(alter.GetPathId()) : InvalidPathId;
 
     if (!alter.HasName() && !pathId) {
         return {CreateAlterTable(id, tx)};
@@ -749,12 +743,15 @@ TVector<ISubOperation::TPtr> CreateConsistentAlterTable(TOperationId id, const T
         return {CreateAlterTable(id, tx)};
     }
 
-    // Admins can alter indexImplTable unconditionally.
-    // Regular users can only alter allowed fields.
-    if (!IsSuperUser(context.UserToken.Get())
-        && (!CheckAllowedFields(alter, {"Name", "PathId", "PartitionConfig", "ReplicationConfig"})
+    // Index table (indexImplTable) altering:
+    // - regular users can only alter a list of allowed fields
+    // - as a special case, admins can alter index table unconditionally:
+    //   - but only cluster admins
+    //   - and only the real ones, no "all users are admins by default" trick can be used here
+    if (!(IsAdministrator(AppData(), context.UserToken.Get()) && !AppData()->AdministrationAllowedSIDs.empty())
+        && (!CheckAllowedFields(alter, {"Name", "PathId", "PartitionConfig", "ReplicationConfig", "IncrementalBackupConfig"})
             || (alter.HasPartitionConfig()
-                && !CheckAllowedFields(alter.GetPartitionConfig(), {"PartitioningPolicy"})
+                && !CheckAllowedFields(alter.GetPartitionConfig(), {"PartitioningPolicy", "FollowerCount", "FollowerGroups"})
             )
         )
     ) {

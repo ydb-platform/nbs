@@ -8,23 +8,28 @@ TEST_SRCS(
     test_ydb_impex.py
     test_ydb_flame_graph.py
     test_ydb_scheme.py
+    test_ydb_sql.py
 )
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
 ENV(YDB_CLI_BINARY="contrib/ydb/apps/ydb/ydb")
 ENV(YDB_ENABLE_COLUMN_TABLES="true")
 
-TIMEOUT(600)
-SIZE(MEDIUM)
+IF (SANITIZER_TYPE)
+    SIZE(LARGE)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
 DEPENDS(
-    contrib/ydb/apps/ydbd
     contrib/ydb/apps/ydb
 )
 
 PEERDIR(
     contrib/python/pyarrow
     contrib/ydb/tests/library
+    contrib/ydb/tests/library/fixtures
     contrib/ydb/tests/oss/canonical
     contrib/ydb/tests/oss/ydb_sdk_import
 )

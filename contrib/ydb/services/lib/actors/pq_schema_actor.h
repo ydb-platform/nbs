@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/grpc_services/rpc_scheme_base.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
@@ -28,6 +29,10 @@ struct TYdbPqCodes {
         PQCode(PQCode) {}
 };
 
+namespace Ydb::Topic {
+    class CreateTopicRequest;
+    class AlterTopicRequest;
+}
 
 namespace NKikimr::NGRpcProxy::V1 {
 
@@ -82,6 +87,7 @@ namespace NKikimr::NGRpcProxy::V1 {
         const TClientServiceTypes& supportedReadRuleServiceTypes,
         const NKikimrPQ::TPQConfig& pqConfig
     );
+
     TString RemoveReadRuleFromConfig(
         NKikimrPQ::TPQTabletConfig *config,
         const NKikimrPQ::TPQTabletConfig& originalConfig,
@@ -270,8 +276,10 @@ namespace NKikimr::NGRpcProxy::V1 {
         TPQGrpcSchemaBase(NGRpcService::IRequestOpCtx *request, const TString& topicPath)
             : TBase(request)
             , TActorBase(topicPath, this->Request_->GetDatabaseName().GetOrElse(""))
+            , InternalRequest(!!dynamic_cast<NGRpcService::IInternalRequestCtx*>(request))
         {
         }
+
         TPQGrpcSchemaBase(NGRpcService::IRequestOpCtx* request)
             : TBase(request)
             , TActorBase(TBase::GetProtoRequest()->path(), this->Request_->GetDatabaseName().GetOrElse(""))
@@ -279,7 +287,7 @@ namespace NKikimr::NGRpcProxy::V1 {
         }
 
         TString GetTopicPath() const override {
-            auto path = NPersQueue::GetFullTopicPath(this->ActorContext(), this->Request_->GetDatabaseName(), TActorBase::TopicPath);
+            auto path = NPersQueue::GetFullTopicPath(this->Request_->GetDatabaseName(), TActorBase::TopicPath);
             if (PrivateTopicName) {
                 path = JoinPath(ChildPath(NKikimr::SplitPath(path), *PrivateTopicName));
             }
@@ -315,7 +323,7 @@ namespace NKikimr::NGRpcProxy::V1 {
             SetDatabase(proposal.get(), *this->Request_);
             SetPeerName(proposal.get(), *this->Request_);
 
-            if (this->Request_->GetSerializedToken().empty()) {
+            if (this->Request_->GetSerializedToken().empty() && !InternalRequest) {
                 if (AppData(ctx)->EnforceUserTokenRequirement || AppData(ctx)->PQConfig.GetRequireCredentialsInNewProtocol()) {
                     return ReplyWithError(Ydb::StatusIds::UNAUTHORIZED, Ydb::PersQueue::ErrorCode::ACCESS_DENIED,
                                           "Unauthenticated access is forbidden, please provide credentials");
@@ -402,6 +410,7 @@ namespace NKikimr::NGRpcProxy::V1 {
     private:
         TMaybe<TString> PrivateTopicName;
         TMaybe<TString> CdcStreamName;
+        bool InternalRequest = false;
     };
 
     //-----------------------------------------------------------------------------------

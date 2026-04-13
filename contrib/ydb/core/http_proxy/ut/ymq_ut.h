@@ -8,7 +8,6 @@
 #include <contrib/ydb/core/ymq/base/limits.h>
 
 #include <chrono>
-#include <future>
 #include <thread>
 
 extern TString Name_;
@@ -765,7 +764,7 @@ Y_UNIT_TEST_SUITE(TestYmqHttpProxy) {
 
         WaitQueueAttributes(queueUrl, 10, {
             {"ApproximateNumberOfMessages", "0"},
-            {"ApproximateNumberOfMessagesNotVisible", "0"},
+            {"ApproximateNumberOfMessagesNotVisible", "0"}
         });
 
         DeleteMessage({{"QueueUrl", queueUrl}, {"ReceiptHandle", receiptHandle}});
@@ -786,16 +785,14 @@ Y_UNIT_TEST_SUITE(TestYmqHttpProxy) {
         // Set VisibilityTimeout to large value to be sure the message is in-flight during the test.
         ReceiveMessage({{"QueueUrl", queueUrl}, {"WaitTimeSeconds", 1}, {"VisibilityTimeout", 43000}});  // ~12 hours
 
-        WaitQueueAttributes(queueUrl, 10, {
-            {"ApproximateNumberOfMessages", "2"},
-            {"ApproximateNumberOfMessagesNotVisible", "1"},
+        WaitQueueAttributes(queueUrl, 10, [](NJson::TJsonMap json) {
+            return json["Attributes"]["ApproximateNumberOfMessages"] == "2" && json["Attributes"]["ApproximateNumberOfMessagesNotVisible"] == "1";
         });
 
         PurgeQueue({{"QueueUrl", queueUrl}});
 
-        WaitQueueAttributes(queueUrl, 10, {
-            {"ApproximateNumberOfMessages", "0"},
-            {"ApproximateNumberOfMessagesNotVisible", "0"},
+        WaitQueueAttributes(queueUrl, 10, [](NJson::TJsonMap json) {
+            return json["Attributes"]["ApproximateNumberOfMessages"] == "0" && json["Attributes"]["ApproximateNumberOfMessagesNotVisible"] == "0";
         });
     }
 
@@ -1093,9 +1090,8 @@ Y_UNIT_TEST_SUITE(TestYmqHttpProxy) {
             {"VisibilityTimeout", 1}
         });
 
-        WaitQueueAttributes(queueUrl, 10, {
-            {"ApproximateNumberOfMessages", "1"},
-            {"ApproximateNumberOfMessagesNotVisible", "0"},
+        WaitQueueAttributes(queueUrl, 10, [](NJson::TJsonMap json) {
+            return json["Attributes"]["ApproximateNumberOfMessages"] == "1" && json["Attributes"]["ApproximateNumberOfMessagesNotVisible"] == "0";
         });
 
         ChangeMessageVisibility({

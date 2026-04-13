@@ -1,6 +1,6 @@
 #pragma once
 #include <contrib/ydb/core/formats/arrow/accessor/abstract/request.h>
-#include <contrib/ydb/library/formats/arrow/accessor/common/const.h>
+#include <contrib/ydb/core/formats/arrow/accessor/common/const.h>
 
 namespace NKikimr::NArrow::NAccessor::NSparsed {
 

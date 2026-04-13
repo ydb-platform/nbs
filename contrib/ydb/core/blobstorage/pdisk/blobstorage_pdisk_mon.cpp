@@ -1,6 +1,7 @@
 #include "blobstorage_pdisk_mon.h"
 #include "blobstorage_pdisk_requestimpl.h"
 #include <contrib/ydb/core/blobstorage/base/vdisk_priorities.h>
+#include <contrib/ydb/core/base/feature_flags.h>
 
 namespace NKikimr {
 
@@ -19,7 +20,7 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
     using EVisibility = NMonitoring::TCountableBase::EVisibility;
 
     bool extendedPDiskSensors = NActors::TlsActivationContext
-        && NActors::TlsActivationContext->ExecutorThread.ActorSystem
+        && NActors::TActivationContext::ActorSystem()
         && AppData()->FeatureFlags.GetExtendedPDiskSensors();
 
     EVisibility visibilityForExtended = extendedPDiskSensors
@@ -71,6 +72,9 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
     COUNTER_INIT(StatsGroup, UsedSpaceBytes, false);
     COUNTER_INIT(StatsGroup, SectorMapAllocatedBytes, false);
 
+    COUNTER_INIT(StatsGroup, NumActiveSlots, false);
+    COUNTER_INIT(StatsGroup, ExpectedSlotCount, false);
+
     // states subgroup
     COUNTER_INIT(StateGroup, PDiskState, false);
     COUNTER_INIT(StateGroup, PDiskBriefState, false);
@@ -78,9 +82,11 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
     COUNTER_INIT(StateGroup, AtLeastOneVDiskNotLogged, false);
     COUNTER_INIT(StateGroup, TooMuchLogChunks, false);
     COUNTER_INIT(StateGroup, SerialNumberMismatched, false);
-    L6. Initialize(StateGroup, "L6");
-    L7. Initialize(StateGroup, "L7");
-    IdleLight.Initialize(StateGroup, "DeviceBusyPeriods", "DeviceIdleTimeMsPerSec", "DeviceBusyTimeMsPerSec");
+    L6.Initialize(StateGroup, TLightCounterConfig::WithDefaultLightSet("L6"));
+    L7.Initialize(StateGroup, TLightCounterConfig::WithDefaultLightSet("L7"));
+    IdleLight.Initialize(StateGroup, TLightCounterConfig::Create()
+        .WithRedMs("DeviceIdleTimeMsPerSec")
+        .WithGreenMs("DeviceBusyTimeMsPerSec"));
 
     COUNTER_INIT_IF_EXTENDED(StateGroup, OwnerIdsIssued, false);
     COUNTER_INIT_IF_EXTENDED(StateGroup, LastOwnerId, false);
@@ -219,6 +225,8 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
     NAMED_DER_COUNTER_INIT_IF_EXTENDED(BandwidthGroup, BandwidthPChunkReadPayload, Bandwidth/PDisk/ChunkRead/Payload);
     NAMED_DER_COUNTER_INIT_IF_EXTENDED(BandwidthGroup, BandwidthPChunkReadSectorFooter, Bandwidth/PDisk/ChunkRead/SectorFooter);
 
+    COUNTER_INIT_IF_EXTENDED(PDiskGroup, WriteBufferCompactedBytes, true);
+
     // pdisk (interface)
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, YardInit, YardInit);
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, CheckSpace, YardCheckSpace);
@@ -229,12 +237,18 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, YardSlay, YardSlay);
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, YardControl, YardControl);
 
+    IO_REQ_INIT_IF_EXTENDED(PDiskGroup, ShredPDisk, ShredPDisk);
+    IO_REQ_INIT_IF_EXTENDED(PDiskGroup, PreShredCompactVDisk, PreShredCompactVDisk);
+    IO_REQ_INIT_IF_EXTENDED(PDiskGroup, ShredVDiskResult, ShredVDiskResult);
+    IO_REQ_INIT_IF_EXTENDED(PDiskGroup, MarkDirty, MarkDirty);
+
     IO_REQ_INIT(PDiskGroup, WriteSyncLog, WriteSyncLog);
     IO_REQ_INIT(PDiskGroup, WriteFresh, WriteFresh);
     IO_REQ_INIT(PDiskGroup, WriteHugeAsync, WriteHugeAsync);
     IO_REQ_INIT(PDiskGroup, WriteHugeUser, WriteHugeUser);
     IO_REQ_INIT(PDiskGroup, WriteComp, WriteComp);
     IO_REQ_INIT(PDiskGroup, Trim, WriteTrim);
+    IO_REQ_INIT(PDiskGroup, ChunkShred, WriteShred);
 
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, ReadSyncLog, ReadSyncLog);
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, ReadComp, ReadComp);
@@ -473,4 +487,3 @@ TPDiskMon::TIoCounters *TPDiskMon::GetReadCounter(ui8 priority) {
 }
 
 } // NKikimr
-

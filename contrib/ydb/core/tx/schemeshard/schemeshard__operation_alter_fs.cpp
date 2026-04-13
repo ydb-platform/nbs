@@ -4,6 +4,7 @@
 
 #include <contrib/ydb/core/base/subdomain.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
+#include <contrib/ydb/core/filestore/core/filestore.h>
 
 namespace {
 
@@ -19,7 +20,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "TAlterFileStore::TConfigureParts"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:
@@ -127,7 +128,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "TAlterFileStore::TPropose"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:

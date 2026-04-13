@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/core/cbo/cbo_optimizer_new.h> 
+#include <yql/essentials/core/cbo/cbo_optimizer_new.h> 
 
 /*
  * This header contains an algorithm for resolving join conflicts with TConflictRulesCollector class

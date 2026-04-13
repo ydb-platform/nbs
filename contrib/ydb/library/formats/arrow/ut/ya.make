@@ -7,8 +7,8 @@ PEERDIR(
     contrib/ydb/library/arrow_kernels
 
     # for NYql::NUdf alloc stuff used in binary_json
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
 )
 
 ADDINCL(
@@ -24,6 +24,7 @@ CFLAGS(
 SRCS(
     ut_arrow.cpp
     ut_size_calcer.cpp
+    ut_splitter.cpp
 )
 
 END()

@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/kqp/workload_service/actors/actors.h>
 #include <contrib/ydb/core/protos/console_config.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/resource_pools/resource_pool_classifier_settings.h>
 
 #include <contrib/ydb/library/query_actor/query_actor.h>
@@ -113,12 +114,12 @@ public:
         if (!RanksToCheck.empty()) {
             NYdb::TResultSetParser result(ResultSets[resultSetId++]);
             while (result.TryNextRow()) {
-                TMaybe<i64> rank = result.ColumnParser("rank").GetOptionalInt64();
+                std::optional<i64> rank = result.ColumnParser("rank").GetOptionalInt64();
                 if (!rank) {
                     continue;
                 }
 
-                TMaybe<TString> name = result.ColumnParser("name").GetOptionalUtf8();
+                std::optional<TString> name = result.ColumnParser("name").GetOptionalUtf8();
                 if (!name) {
                     continue;
                 }
@@ -137,7 +138,7 @@ public:
                 return;
             }
 
-            MaxRank = result.ColumnParser("MaxRank").GetOptionalInt64().GetOrElse(0);
+            MaxRank = result.ColumnParser("MaxRank").GetOptionalInt64().value_or(0);
             NumberClassifiers = result.ColumnParser("NumberClassifiers").GetUint64();
         }
 
@@ -257,7 +258,7 @@ private:
     void GetDatabaseInfo() const {
         const auto& externalContext = Context.GetExternalData();
         const auto userToken = externalContext.GetUserToken() ? MakeIntrusive<NACLib::TUserToken>(*externalContext.GetUserToken()) : nullptr;
-        Register(CreateDatabaseFetcherActor(SelfId(), externalContext.GetDatabase(), userToken, NACLib::EAccessRights::GenericFull));
+        Register(CreateDatabaseFetcherActor(SelfId(), externalContext.GetDatabase(), userToken, NACLib::EAccessRights::GenericUse));
     }
 
     void ValidateRanks() {

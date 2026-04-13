@@ -4,7 +4,7 @@ PEERDIR(
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/proto
     contrib/ydb/library/yql/providers/dq/config
-    contrib/ydb/library/yql/providers/common/proto
+    yql/essentials/providers/common/proto
     contrib/ydb/library/yql/providers/dq/api/protos
     contrib/ydb/library/yql/providers/dq/common
     contrib/ydb/library/yql/providers/dq/counters

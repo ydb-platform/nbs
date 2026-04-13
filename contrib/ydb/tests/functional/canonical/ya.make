@@ -5,13 +5,15 @@ ENV(YDB_ADDITIONAL_LOG_CONFIGS="GRPC_SERVER:DEBUG,TICKET_PARSER:WARN,KQP_COMPILE
 TEST_SRCS(
     test_sql.py
 )
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    SIZE(LARGE)
+    TAG(ya:fat)
+ELSE()
+    SIZE(MEDIUM)
+ENDIF()
 
-TIMEOUT(600)
-SIZE(MEDIUM)
-
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 

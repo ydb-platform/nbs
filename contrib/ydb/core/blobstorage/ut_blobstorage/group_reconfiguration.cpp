@@ -1,6 +1,6 @@
 #include <contrib/ydb/core/blobstorage/ut_blobstorage/lib/env.h>
 #include <contrib/ydb/core/base/blobstorage_common.h>
-#include "ut_helpers.h"
+#include <contrib/ydb/core/blobstorage/ut_blobstorage/lib/ut_helpers.h>
 
 Y_UNIT_TEST_SUITE(GroupReconfiguration) {
 

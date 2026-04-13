@@ -2,15 +2,15 @@ LIBRARY()
 
 PEERDIR(
     contrib/ydb/library/actors/core
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     yt/cpp/mapreduce/interface
     contrib/ydb/library/yql/providers/dq/config
-    contrib/ydb/library/yql/core/issue
-    contrib/ydb/library/yql/providers/common/metrics
+    yql/essentials/core/issue
+    yql/essentials/providers/common/metrics
     contrib/ydb/library/yql/providers/dq/api/grpc
     contrib/ydb/library/yql/providers/dq/api/protos
     contrib/ydb/library/yql/providers/dq/common
-    contrib/ydb/library/yql/providers/yt/lib/log
+    yt/yql/providers/yt/lib/log
     contrib/ydb/library/yql/providers/dq/actors/events
 )
 

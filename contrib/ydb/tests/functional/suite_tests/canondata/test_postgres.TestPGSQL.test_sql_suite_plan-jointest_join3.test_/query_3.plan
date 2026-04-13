@@ -57,7 +57,7 @@
                                                         "ExternalPlanNodeId": 6
                                                     },
                                                     {
-                                                        "ExternalPlanNodeId": 4
+                                                        "ExternalPlanNodeId": 5
                                                     }
                                                 ],
                                                 "Name": "LeftJoin (MapJoin)"
@@ -66,71 +66,74 @@
                                         "PlanNodeId": 7,
                                         "Plans": [
                                             {
+                                                "Node Type": "TableFullScan",
+                                                "Operators": [
+                                                    {
+                                                        "Inputs": [],
+                                                        "Name": "TableFullScan",
+                                                        "Path": "/Root/postgres_jointest/join3.test_plan/parent",
+                                                        "ReadColumns": [
+                                                            "k",
+                                                            "pd"
+                                                        ],
+                                                        "ReadRanges": [
+                                                            "k (-\u221e, +\u221e)"
+                                                        ],
+                                                        "ReadRangesPointPrefixLen": "0",
+                                                        "Scan": "Parallel",
+                                                        "Table": "postgres_jointest/join3.test_plan/parent"
+                                                    }
+                                                ],
+                                                "PlanNodeId": 6,
+                                                "Tables": [
+                                                    "postgres_jointest/join3.test_plan/parent"
+                                                ]
+                                            },
+                                            {
                                                 "Node Type": "Broadcast",
-                                                "PlanNodeId": 4,
+                                                "PlanNodeId": 5,
                                                 "PlanNodeType": "Connection",
                                                 "Plans": [
                                                     {
-                                                        "Node Type": "Collect",
-                                                        "PlanNodeId": 3,
+                                                        "Node Type": "Stage",
+                                                        "PlanNodeId": 4,
                                                         "Plans": [
                                                             {
                                                                 "Node Type": "UnionAll",
-                                                                "PlanNodeId": 2,
+                                                                "PlanNodeId": 3,
                                                                 "PlanNodeType": "Connection",
                                                                 "Plans": [
                                                                     {
-                                                                        "Node Type": "TableFullScan",
-                                                                        "Operators": [
+                                                                        "Node Type": "Stage",
+                                                                        "PlanNodeId": 2,
+                                                                        "Plans": [
                                                                             {
-                                                                                "Inputs": [],
-                                                                                "Name": "TableFullScan",
-                                                                                "ReadColumns": [
-                                                                                    "k"
+                                                                                "Node Type": "TableFullScan",
+                                                                                "Operators": [
+                                                                                    {
+                                                                                        "Inputs": [],
+                                                                                        "Name": "TableFullScan",
+                                                                                        "Path": "/Root/postgres_jointest/join3.test_plan/child",
+                                                                                        "ReadColumns": [
+                                                                                            "k"
+                                                                                        ],
+                                                                                        "ReadRanges": [
+                                                                                            "k (-\u221e, +\u221e)"
+                                                                                        ],
+                                                                                        "ReadRangesPointPrefixLen": "0",
+                                                                                        "Scan": "Parallel",
+                                                                                        "Table": "postgres_jointest/join3.test_plan/child"
+                                                                                    }
                                                                                 ],
-                                                                                "ReadRanges": [
-                                                                                    "k (-\u221e, +\u221e)"
-                                                                                ],
-                                                                                "Scan": "Parallel",
-                                                                                "Table": "postgres_jointest/join3.test_plan/child"
+                                                                                "PlanNodeId": 1,
+                                                                                "Tables": [
+                                                                                    "postgres_jointest/join3.test_plan/child"
+                                                                                ]
                                                                             }
-                                                                        ],
-                                                                        "PlanNodeId": 1,
-                                                                        "Tables": [
-                                                                            "postgres_jointest/join3.test_plan/child"
                                                                         ]
                                                                     }
                                                                 ]
                                                             }
-                                                        ]
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "Node Type": "Map",
-                                                "PlanNodeId": 6,
-                                                "PlanNodeType": "Connection",
-                                                "Plans": [
-                                                    {
-                                                        "Node Type": "TableFullScan",
-                                                        "Operators": [
-                                                            {
-                                                                "Inputs": [],
-                                                                "Name": "TableFullScan",
-                                                                "ReadColumns": [
-                                                                    "k",
-                                                                    "pd"
-                                                                ],
-                                                                "ReadRanges": [
-                                                                    "k (-\u221e, +\u221e)"
-                                                                ],
-                                                                "Scan": "Parallel",
-                                                                "Table": "postgres_jointest/join3.test_plan/parent"
-                                                            }
-                                                        ],
-                                                        "PlanNodeId": 5,
-                                                        "Tables": [
-                                                            "postgres_jointest/join3.test_plan/parent"
                                                         ]
                                                     }
                                                 ]
@@ -146,7 +149,10 @@
                     }
                 ]
             }
-        ]
+        ],
+        "Stats": {
+            "ResourcePoolId": "default"
+        }
     },
     "meta": {
         "type": "query",
