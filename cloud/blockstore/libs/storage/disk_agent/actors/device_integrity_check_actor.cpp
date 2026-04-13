@@ -1,4 +1,4 @@
-#include "device_health_check_actor.h"
+#include "device_integrity_check_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -323,7 +323,7 @@ STFUNC(TDeviceIntegrityCheckActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IActor> CreateDeviceHealthCheckActor(
+std::unique_ptr<IActor> CreateDeviceIntegrityCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
     TDuration healthCheckDelay,
