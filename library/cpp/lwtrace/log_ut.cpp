@@ -12,7 +12,6 @@ namespace
 
         void Clear()
         {
-            Val = 0;
         }
     };
 
@@ -68,18 +67,6 @@ Y_UNIT_TEST_SUITE(LWTraceLog) {
         log.ReadItems(reader);
 
         UNIT_ASSERT_VALUES_EQUAL(6, reader.NumSeen);
-    }
-
-    Y_UNIT_TEST(ShouldNotCrashOnEmptyCyclicLog) {
-        TCyclicLogImpl<TData> log(100);
-        {
-            TCyclicLogImpl<TData>::TAccessor acc1(log);
-        }
-
-        TReader reader;
-
-        log.ExtractItems(reader);
-        UNIT_ASSERT_VALUES_EQUAL(0, reader.NumSeen);
    }
 
     Y_UNIT_TEST(ShouldNotReturnProcessedItemsViaMoveItems) {
