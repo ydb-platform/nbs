@@ -59,7 +59,7 @@ func (c *ClientMock) EnableDirectoryCreationInShards(
 	filesystemID string,
 	shardCount uint32,
 ) error {
-	args := c.Called(ctx, filesystemID)
+	args := c.Called(ctx, filesystemID, shardCount)
 	return args.Error(0)
 }
 

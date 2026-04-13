@@ -369,8 +369,6 @@ func TestGetNodeAttr(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Delete(ctx, filesystemID, false)
 
-	require.NoError(t, err)
-
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
 	require.NoError(t, err)
 	defer session.Close(ctx)
