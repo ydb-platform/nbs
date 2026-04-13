@@ -181,7 +181,8 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
                 ctx.SelfID,
                 State->GetEnabledDevices(),
                 UpdateCountersInterval,
-                NvmeManager));
+                NvmeManager,
+                NDiskAgent::DefaultPartlabelCheckInterval));
     }
 }
 

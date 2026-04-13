@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -12,9 +13,9 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 #include <util/random/fast.h>
-#include <util/string/builder.h>
 
 #include <optional>
 
@@ -23,6 +24,14 @@ using namespace NActors;
 namespace NCloud::NBlockStore::NStorage::NDiskAgent {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EWakeupTag : ui64
+{
+    WAKEUP_TAG_HEALTH_CHECK = 1,
+    WAKEUP_TAG_PARTLABEL_CHECK = 2,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -61,7 +70,6 @@ private:
 
     TVector<EDeviceHealthStatus> DevicesHealth;
     std::optional<TFastRng<ui64>> Rng;
-    TInstant LastPartlabelCheckAt;
 
     int PendingRequests = 0;
 
@@ -76,7 +84,6 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ScheduleHealthCheck(const TActorContext& ctx);
     void CheckDevicesHealth(const TActorContext& ctx);
     void CheckPartlabels(const TActorContext& ctx);
 
@@ -117,22 +124,17 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
     Rng.emplace(ctx.Now().GetValue());
 
     Become(&TThis::StateWork);
-    ScheduleHealthCheck(ctx);
+    ctx.Schedule(
+        HealthCheckDelay,
+        new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_HEALTH_CHECK));
+    ctx.Schedule(
+        PartlabelCheckInterval,
+        new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK));
 
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT_WORKER,
         "Device Integrity Check Actor started. Devices: " << Devices.size());
-}
-
-void TDeviceIntegrityCheckActor::ScheduleHealthCheck(const TActorContext& ctx)
-{
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::DISK_AGENT_WORKER,
-        "Schedule health check");
-
-    ctx.Schedule(HealthCheckDelay, new TEvents::TEvWakeup());
 }
 
 void TDeviceIntegrityCheckActor::CheckPartlabels(const TActorContext& ctx)
@@ -141,8 +143,14 @@ void TDeviceIntegrityCheckActor::CheckPartlabels(const TActorContext& ctx)
         return;
     }
 
+    THashSet<TString> checkedPaths;
+
     for (const auto& device: Devices) {
         if (device.GetSerialNumber().empty()) {
+            continue;
+        }
+
+        if (!checkedPaths.insert(device.GetDeviceName()).second) {
             continue;
         }
 
@@ -161,18 +169,12 @@ void TDeviceIntegrityCheckActor::CheckPartlabels(const TActorContext& ctx)
         }
 
         if (currentSerial != device.GetSerialNumber()) {
-            auto message =
-                TStringBuilder()
-                << "Device " << device.GetDeviceUUID().Quote() << " at path "
-                << device.GetDeviceName().Quote()
-                << " has unexpected serial number: got "
-                << currentSerial.Quote() << ", expected "
-                << device.GetSerialNumber().Quote()
-                << ". The partlabel may point to a different physical disk.";
-
-            LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, message);
-
-            ReportDiskAgentDevicePartlabelMismatch(message);
+            ReportDiskAgentDevicePartlabelMismatch(
+                "The partlabel may point to a different physical disk.",
+                {{"deviceId", device.GetDeviceUUID()},
+                 {"path", device.GetDeviceName()},
+                 {"expectedSerial", device.GetSerialNumber()},
+                 {"actualSerial", currentSerial}});
         }
     }
 }
@@ -214,14 +216,19 @@ void TDeviceIntegrityCheckActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    if (ctx.Now() - LastPartlabelCheckAt >= PartlabelCheckInterval) {
-        CheckPartlabels(ctx);
-        LastPartlabelCheckAt = ctx.Now();
+    switch (ev->Get()->Tag) {
+        case EWakeupTag::WAKEUP_TAG_HEALTH_CHECK:
+            CheckDevicesHealth(ctx);
+            break;
+        case EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK:
+            CheckPartlabels(ctx);
+            ctx.Schedule(
+                PartlabelCheckInterval,
+                new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK));
+            break;
+        default:
+            break;
     }
-
-    CheckDevicesHealth(ctx);
 }
 
 void TDeviceIntegrityCheckActor::HandleReadDeviceBlocksResponse(
@@ -289,7 +296,9 @@ void TDeviceIntegrityCheckActor::HandleReadDeviceBlocksResponse(
     }
 
     if (--PendingRequests == 0) {
-        ScheduleHealthCheck(ctx);
+        ctx.Schedule(
+            HealthCheckDelay,
+            new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_HEALTH_CHECK));
     }
 }
 

@@ -7188,11 +7188,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
 
         const TVector<std::pair<TString, TString>> pathToSerial{
-            {Devices[0], "SN-0"},
-            {Devices[1], "SN-1"},
-            {Devices[2], "SN-2"},
-            {Devices[3], "SN-3"},
-            {newDevice, "SN-NEW"},
+            {Devices[0], "SN-NVME0"},
+            {Devices[1], "SN-NVME0"},
+            {Devices[2], "SN-NVME0"},
+            {Devices[3], "SN-NVME0"},
+            {newDevice, "SN-OTHER"},
         };
 
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();

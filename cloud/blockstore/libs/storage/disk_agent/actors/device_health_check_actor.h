@@ -17,7 +17,7 @@ std::unique_ptr<NActors::IActor> CreateDeviceHealthCheckActor(
     const NActors::TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
     TDuration healthCheckDelay,
-    NNvme::INvmeManagerPtr nvmeManager = nullptr,
-    TDuration partlabelCheckInterval = DefaultPartlabelCheckInterval);
+    NNvme::INvmeManagerPtr nvmeManager,
+    TDuration partlabelCheckInterval);
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent
