@@ -330,6 +330,7 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
             node->SetShardFileSystemId(std::move(shardFileSystemId));
             node->SetShardNodeName(std::move(shardNodeName));
         }
+
         ++responseIter;
     }
 

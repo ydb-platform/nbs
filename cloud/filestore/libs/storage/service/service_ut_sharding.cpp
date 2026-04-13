@@ -789,7 +789,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             listNodesResponse.GetNodes(0).GetShardNodeName());
     }
 
-    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldReturnShardInfoFromListNodes)
+    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldReturnShardInfoFromUnsafeListNodes)
     {
         config.SetMultiTabletForwardingEnabled(true);
 
@@ -7221,36 +7221,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const auto response = GetStorageStats(service, fsId);
         const auto& stats = response.GetStats();
         UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());
-    }
-
-    SERVICE_TEST_SID_SELECT_IN_LEADER(
-        ShouldReturnShardInfoInListNodesWithMultiTabletForwarding)
-    {
-        config.SetMultiTabletForwardingEnabled(true);
-
-        TShardedFileSystemConfig fsConfig;
-        CREATE_ENV_AND_SHARDED_FILESYSTEM();
-
-        auto headers = service.InitSession(fsConfig.FsId, "client");
-
-        service.CreateNode(
-            headers,
-            TCreateNodeArgs::File(RootNodeId, "file1"));
-
-        auto listNodesResponse = service.ListNodes(
-            headers,
-            fsConfig.FsId,
-            RootNodeId)->Record;
-
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
-        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedShardId,
-            listNodesResponse.GetNodes(0).GetShardFileSystemId());
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedShardNodeName,
-            listNodesResponse.GetNodes(0).GetShardNodeName());
     }
 
     SERVICE_TEST_SIMPLE(ShouldReturnListNodesMissingFromShardsWithUnsafeFlag)
