@@ -23,7 +23,7 @@ kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 def setup_kikimr():
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=kikimr_binary_path,
+        binary_paths=[kikimr_binary_path],
         use_in_memory_pdisks=True,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),

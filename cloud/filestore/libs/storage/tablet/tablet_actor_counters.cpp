@@ -591,6 +591,7 @@ void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
 {
     const i64 curUsageMicros =
         Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
+
     const TInstant ts = ctx.Now();
     if (Metrics.PrevCPUUsageMicrosTs) {
         const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
