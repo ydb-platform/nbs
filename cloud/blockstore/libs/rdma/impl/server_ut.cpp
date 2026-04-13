@@ -10,8 +10,9 @@
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
-#include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/testing/gtest/gtest.h>
 
+#include <util/generic/scope.h>
 #include <util/stream/printf.h>
 
 namespace NCloud::NBlockStore::NRdma {
@@ -50,278 +51,276 @@ struct TServerHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TRdmaServerTest)
+TEST(TRdmaServerTest, ShouldStartEndpoint)
 {
-    Y_UNIT_TEST(ShouldStartEndpoint)
-    {
-        auto verbs =
-            NVerbs::CreateTestVerbs(MakeIntrusive<NVerbs::TTestContext>());
-        auto monitoring = CreateMonitoringServiceStub();
-        auto serverConfig = std::make_shared<TServerConfig>();
-        auto clientConfig = std::make_shared<TClientConfig>();
+    auto verbs =
+        NVerbs::CreateTestVerbs(MakeIntrusive<NVerbs::TTestContext>());
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    auto clientConfig = std::make_shared<TClientConfig>();
 
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
 
-        auto server = CreateServer(
-            verbs,
-            logging,
-            monitoring,
-            serverConfig);
+    auto server = CreateServer(
+        verbs,
+        logging,
+        monitoring,
+        serverConfig);
 
-        server->Start();
+    server->Start();
 
+    auto serverEndpoint = server->StartEndpoint(
+        "::",
+        10020,
+        std::make_shared<TServerHandler>());
+
+    server->Stop();
+}
+
+TEST(TRdmaServerTest, ShouldStartEndpointWithToS)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    auto verbs =
+        NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    serverConfig->IpTypeOfService = 42;
+    ASSERT_NE(42, testContext->ToS);
+
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateServer(
+        verbs,
+        logging,
+        monitoring,
+        serverConfig);
+
+    server->Start();
+
+    auto serverEndpoint = server->StartEndpoint(
+        "::",
+        10020,
+        std::make_shared<TServerHandler>());
+    ASSERT_EQ(42, testContext->ToS);
+
+    server->Stop();
+}
+
+TEST(TRdmaServerTest, StartEndpointShouldNotThrow)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    context->Listen = [](rdma_cm_id* id, int backlog) {
+        Y_UNUSED(id);
+        Y_UNUSED(backlog);
+
+        STORAGE_THROW_SERVICE_ERROR(ENODEV)
+            << "rdma_listen error: No such device";
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(std::move(context));
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateServer(
+        verbs,
+        logging,
+        monitoring,
+        serverConfig);
+
+    server->Start();
+
+    try {
         auto serverEndpoint = server->StartEndpoint(
             "::",
             10020,
             std::make_shared<TServerHandler>());
 
-        server->Stop();
+    } catch (...) {
+        FAIL() << "should not throw";
     }
 
-    Y_UNIT_TEST(ShouldStartEndpointWithToS)
-    {
-        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
-        auto verbs =
-            NVerbs::CreateTestVerbs(testContext);
-        auto monitoring = CreateMonitoringServiceStub();
-        auto serverConfig = std::make_shared<TServerConfig>();
-        auto clientConfig = std::make_shared<TClientConfig>();
-        serverConfig->IpTypeOfService = 42;
-        UNIT_ASSERT_VALUES_UNEQUAL(42, testContext->ToS);
+    server->Stop();
+}
 
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
+TEST(TRdmaServerTest, ShouldHandleSessionError)
+{
+    NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
 
-        auto server = CreateServer(
-            verbs,
-            logging,
-            monitoring,
-            serverConfig);
+    context->CreateQP = [](rdma_cm_id* id, ibv_qp_init_attr* attr) {
+        Y_UNUSED(id);
+        Y_UNUSED(attr);
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EINVAL));
+    };
 
-        server->Start();
-
-        auto serverEndpoint = server->StartEndpoint(
-            "::",
-            10020,
-            std::make_shared<TServerHandler>());
-        UNIT_ASSERT_VALUES_EQUAL(42, testContext->ToS);
-
-        server->Stop();
-    }
-
-    Y_UNIT_TEST(StartEndpointShouldNotThrow)
-    {
-        auto context = MakeIntrusive<NVerbs::TTestContext>();
-
-        context->Listen = [](rdma_cm_id* id, int backlog) {
-            Y_UNUSED(id);
-            Y_UNUSED(backlog);
-
-            STORAGE_THROW_SERVICE_ERROR(ENODEV)
-                << "rdma_listen error: No such device";
-        };
-
-        auto verbs = NVerbs::CreateTestVerbs(std::move(context));
-        auto monitoring = CreateMonitoringServiceStub();
-        auto serverConfig = std::make_shared<TServerConfig>();
-        auto clientConfig = std::make_shared<TClientConfig>();
-
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
-
-        auto server = CreateServer(
-            verbs,
-            logging,
-            monitoring,
-            serverConfig);
-
-        server->Start();
-
-        try {
-            auto serverEndpoint = server->StartEndpoint(
-                "::",
-                10020,
-                std::make_shared<TServerHandler>());
-
-        } catch (...) {
-            UNIT_FAIL("should not throw");
-        }
-
-        server->Stop();
-    }
-
-    Y_UNIT_TEST(ShouldHandleSessionError)
-    {
-        NThreading::TPromise<void> done = NThreading::NewPromise<void>();
-        auto context = MakeIntrusive<NVerbs::TTestContext>();
-
-        context->CreateQP = [](rdma_cm_id* id, ibv_qp_init_attr* attr) {
-            Y_UNUSED(id);
-            Y_UNUSED(attr);
+    context->DestroyQP = [](rdma_cm_id* id) {
+        if (id->qp == nullptr) {
             STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EINVAL));
-        };
+        }
+    };
 
-        context->DestroyQP = [](rdma_cm_id* id) {
-            if (id->qp == nullptr) {
-                STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(EINVAL));
-            }
-        };
+    context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size) {
+        Y_UNUSED(data);
+        Y_UNUSED(size);
 
-        context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size) {
-            Y_UNUSED(data);
-            Y_UNUSED(size);
+        // TestRdmaDestroyId doesn't free anything, just fills rdma_cm_id
+        // with FF's
+        rdma_cm_id reference;
+        memset(&reference, 0xFF, sizeof(rdma_cm_id));
 
-            // TestRdmaDestroyId doesn't free anything, just fills rdma_cm_id
-            // with FF's
-            rdma_cm_id reference;
-            memset(&reference, 0xFF, sizeof(rdma_cm_id));
-
-            // make sure rdma_destroy_id hasn't been called before Reject
-            UNIT_ASSERT(memcmp(
+        // make sure rdma_destroy_id hasn't been called before Reject
+        ASSERT_NE(
+            0,
+            memcmp(
                 reinterpret_cast<void*>(&reference),
                 reinterpret_cast<void*>(id),
                 sizeof(rdma_cm_id)));
 
-            done.SetValue();
-        };
+        done.SetValue();
+    };
 
-        auto verbs = NVerbs::CreateTestVerbs(context);
-        auto monitoring = CreateMonitoringServiceStub();
-        auto serverConfig = std::make_shared<TServerConfig>();
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
 
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
 
-        auto server = CreateServer(
-            verbs,
-            logging,
-            monitoring,
-            serverConfig);
+    auto server = CreateServer(
+        verbs,
+        logging,
+        monitoring,
+        serverConfig);
 
-        server->Start();
+    server->Start();
 
-        auto serverEndpoint = server->StartEndpoint(
-            "::",
-            10020,
-            std::make_shared<TServerHandler>());
+    auto serverEndpoint = server->StartEndpoint(
+        "::",
+        10020,
+        std::make_shared<TServerHandler>());
 
-        NVerbs::CreateConnection(context);
+    NVerbs::CreateConnection(context);
 
-        done.GetFuture().Wait();
+    done.GetFuture().Wait();
+    server->Stop();
+}
+
+TEST(TRdmaServerTest, ShouldHandleErrors)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateServer(
+        verbs,
+        logging,
+        monitoring,
+        serverConfig);
+
+    server->Start();
+    Y_DEFER {
         server->Stop();
-    }
+    };
 
-    Y_UNIT_TEST(ShouldHandleErrors)
-    {
-        NThreading::TPromise<void> done = NThreading::NewPromise<void>();
-        auto context = MakeIntrusive<NVerbs::TTestContext>();
+    auto endpoint = server
+        ->StartEndpoint("::", 10020, std::make_shared<TServerHandler>());
 
-        auto verbs = NVerbs::CreateTestVerbs(context);
-        auto monitoring = CreateMonitoringServiceStub();
-        auto serverConfig = std::make_shared<TServerConfig>();
+    // emulate client connection
 
-        auto logging = CreateLoggingService(
-            "console",
-            TLogSettings{TLOG_RESOURCES});
+    NVerbs::CreateConnection(context);
 
-        auto server = CreateServer(
-            verbs,
-            logging,
-            monitoring,
-            serverConfig);
+    // wait for client session
 
-        server->Start();
-        Y_DEFER {
-            server->Stop();
-        };
-
-        auto endpoint = server
-            ->StartEndpoint("::", 10020, std::make_shared<TServerHandler>());
-
-        // emulate client connection
-
-        NVerbs::CreateConnection(context);
-
-        // wait for client session
-
-        auto wait = [](auto& counter, auto value) {
-            auto start = GetCycleCount();
-            while (counter->Val() != value) {
-                auto now = GetCycleCount();
-                if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
-                    UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
-                }
-                SpinLockPause();
+    auto wait = [](auto& counter, auto value) {
+        auto start = GetCycleCount();
+        while (counter->Val() != value) {
+            auto now = GetCycleCount();
+            if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
+                ASSERT_EQ(value, counter->Val());
             }
-        };
-
-        auto counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "rdma_server");
-
-        auto activeRecv = counters->GetCounter("ActiveRecv");
-        auto abortedRequests = counters->GetCounter("AbortedRequests");
-        auto activeRequests = counters->GetCounter("ActiveRequests");
-        auto errors = counters->GetCounter("Errors");
-
-        wait(activeRecv, serverConfig->QueueSize);
-
-        // emulate exchange with the client
-
-        TVector<ibv_recv_wr*> recv;
-
-        with_lock(context->CompletionLock) {
-            for (size_t i = 0; i < 5; i++) {
-                auto* wr = context->RecvEvents.back();
-                context->RecvEvents.pop_back();
-                context->ProcessedRecvEvents.push_back(wr);
-                recv.push_back(wr);
-            }
-            context->HandleCompletionEvent = [&](ibv_wc* wc) {
-                // good id, good opcode, error status
-                if (wc->wr_id == recv[0]->wr_id) {
-                    wc->status = IBV_WC_RETRY_EXC_ERR;
-                    return;
-                }
-                // bad id, good opcode
-                if (wc->wr_id == recv[1]->wr_id) {
-                    wc->wr_id = Max<ui64>();
-                    return;
-                }
-                // good id, bad opcode
-                if (wc->wr_id == recv[2]->wr_id) {
-                    wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
-                    return;
-                }
-                // good id and opcode, success status, good message
-                if (wc->wr_id == recv[3]->wr_id) {
-                    auto* msg = reinterpret_cast<TRequestMessage*>(recv[3]->sg_list[0].addr);
-                    InitMessageHeader(msg, RDMA_PROTO_VERSION);
-                    msg->In.Length = 4096;
-                    return;
-                }
-                // fail all reads
-                if (wc->opcode == IBV_WC_RDMA_READ) {
-                    wc->status = IBV_WC_GENERAL_ERR;
-                    return;
-                }
-                // good id and opcode, success status, bad message
-            };
-            context->CompletionHandle.Set();
+            SpinLockPause();
         }
+    };
 
-        wait(errors, 5);
-        wait(activeRecv, 8);
-        wait(abortedRequests, 1);
-        wait(activeRequests, 0);
+    auto counters = monitoring
+        ->GetCounters()
+        ->GetSubgroup("counters", "blockstore")
+        ->GetSubgroup("component", "rdma_server");
+
+    auto activeRecv = counters->GetCounter("ActiveRecv");
+    auto abortedRequests = counters->GetCounter("AbortedRequests");
+    auto activeRequests = counters->GetCounter("ActiveRequests");
+    auto errors = counters->GetCounter("Errors");
+
+    wait(activeRecv, serverConfig->QueueSize);
+
+    // emulate exchange with the client
+
+    TVector<ibv_recv_wr*> recv;
+
+    with_lock(context->CompletionLock) {
+        for (size_t i = 0; i < 5; i++) {
+            auto* wr = context->RecvEvents.back();
+            context->RecvEvents.pop_back();
+            context->ProcessedRecvEvents.push_back(wr);
+            recv.push_back(wr);
+        }
+        context->HandleCompletionEvent = [&](ibv_wc* wc) {
+            // good id, good opcode, error status
+            if (wc->wr_id == recv[0]->wr_id) {
+                wc->status = IBV_WC_RETRY_EXC_ERR;
+                return;
+            }
+            // bad id, good opcode
+            if (wc->wr_id == recv[1]->wr_id) {
+                wc->wr_id = Max<ui64>();
+                return;
+            }
+            // good id, bad opcode
+            if (wc->wr_id == recv[2]->wr_id) {
+                wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
+                return;
+            }
+            // good id and opcode, success status, good message
+            if (wc->wr_id == recv[3]->wr_id) {
+                auto* msg = reinterpret_cast<TRequestMessage*>(recv[3]->sg_list[0].addr);
+                InitMessageHeader(msg, RDMA_PROTO_VERSION);
+                msg->In.Length = 4096;
+                return;
+            }
+            // fail all reads
+            if (wc->opcode == IBV_WC_RDMA_READ) {
+                wc->status = IBV_WC_GENERAL_ERR;
+                return;
+            }
+            // good id and opcode, success status, bad message
+        };
+        context->CompletionHandle.Set();
     }
-};
+
+    wait(errors, 5);
+    wait(activeRecv, 8);
+    wait(abortedRequests, 1);
+    wait(activeRequests, 0);
+}
 
 int NVerbs::DestroyId(rdma_cm_id* id)
 {
