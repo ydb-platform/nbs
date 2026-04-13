@@ -826,8 +826,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             headers,
             fsConfig.FsId,
             RootNodeId,
-            true, /* unsafe */
-            )->Record;
+            true)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
