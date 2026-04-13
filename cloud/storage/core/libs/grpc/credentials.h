@@ -1,11 +1,13 @@
 #pragma once
 
 #include "public.h"
+#include "tls_certificate_provider.h"
 
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
 
 #include <util/stream/file.h>
+#include <util/system/yassert.h>
 
 #include <memory>
 
@@ -34,18 +36,40 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
         tlsOptions.set_verify_server_certs(false);
         credentials = grpc::experimental::TlsCredentials(tlsOptions);
     } else {
-        grpc::SslCredentialsOptions sslOptions;
+        const auto& rootCertsFile = config.GetRootCertsFile();
+        const auto& certFile = config.GetCertFile();
+        const auto& certPrivateKeyFile = config.GetCertPrivateKeyFile();
+        const bool hasIdentity = !!certFile || !!certPrivateKeyFile;
 
-        if (const auto& rootCertsFile = config.GetRootCertsFile()) {
-            sslOptions.pem_root_certs = ReadFile(rootCertsFile);
+        if (hasIdentity) {
+            Y_ENSURE(certFile, "Empty CertFile");
+            Y_ENSURE(certPrivateKeyFile, "Empty CertPrivateKeyFile");
+
+            TCertificateFiles certPaths;
+            certPaths.PrivateKeyPath = certPrivateKeyFile;
+            certPaths.CertChainPath = certFile;
+
+            auto provider = CreatePeriodicCertificateProvider(
+                rootCertsFile,
+                TVector<TCertificateFiles>{certPaths},
+                60);
+
+            grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
+            tlsOptions.set_certificate_provider(std::move(provider));
+
+            tlsOptions.watch_identity_key_cert_pairs();
+            if (rootCertsFile) {
+                tlsOptions.watch_root_certs();
+            }
+
+            credentials = grpc::experimental::TlsCredentials(tlsOptions);
+        } else {
+            grpc::SslCredentialsOptions sslOptions;
+            if (rootCertsFile) {
+                sslOptions.pem_root_certs = ReadFile(rootCertsFile);
+            }
+            credentials = grpc::SslCredentials(sslOptions);
         }
-
-        if (const auto& certFile = config.GetCertFile()) {
-            sslOptions.pem_cert_chain = ReadFile(certFile);
-            sslOptions.pem_private_key = ReadFile(config.GetCertPrivateKeyFile());
-        }
-
-        credentials = grpc::SslCredentials(sslOptions);
     }
     return credentials;
 }

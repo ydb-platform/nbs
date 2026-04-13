@@ -48,6 +48,7 @@ constexpr TDuration Seconds(int s)
     xxx(SharedMemoryRegionTimeout,                                             \
         TDuration,                                                             \
         TDuration::Max())                                                      \
+    xxx(RefreshCertsPeriod,           ui32,                     0             )\
 // FILESTORE_SERVER_CONFIG
 
 #define FILESTORE_SERVER_DECLARE_CONFIG(name, type, value)                     \
