@@ -833,6 +833,8 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
     response->Record.SetDirectoryCreationInShardsEnabled(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());
+    response->Record.SetForceDirectoryCreationInShards(
+        GetFileSystem().GetForceDirectoryCreationInShards());
     response->Record.SetStrictFileSystemSizeEnforcementEnabled(
         GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled());
     response->Record.SetMaxShardCount(Config->GetMaxShardCount());

@@ -1,11 +1,20 @@
 import json
 import os
-import requests
 import time
 
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.fs import (
+    FsItem,
+    fill_fs,
+    DIR,
+    FILE,
+    SYMLINK,
+    fetch_dir_viewer_entries,
+    fetch_locks,
+)
+
 import cloud.filestore.tools.testing.profile_log.common as profile
 
 BLOCK_SIZE = 4 * 1024
@@ -51,63 +60,6 @@ def __exec_ls(client, *args):
     return json.dumps(nodes, indent=4).encode('utf-8')
 
 
-def __write_some_data(client, fs_id, path, data):
-    data_file = os.path.join(common.output_path(), "data.txt")
-    with open(data_file, "w") as f:
-        f.write("data for %s" % path)
-        f.write(":: actual data: %s" % data)
-
-    client.write(fs_id, path, "--data", data_file)
-
-
-_DIR = 1
-_FILE = 2
-_SYMLINK = 3
-
-
-class FsItem:
-
-    def __init__(self, path, node_type, data):
-        self.path = path
-        self.node_type = node_type
-        self.data = data
-
-
-def __fill_fs(client, fs_id, items):
-    for item in items:
-        if item.node_type == _DIR:
-            client.mkdir(fs_id, item.path)
-        elif item.node_type == _FILE:
-            if item.data is not None:
-                __write_some_data(client, fs_id, item.path, item.data)
-            else:
-                client.touch(fs_id, item.path)
-        else:
-            client.ln(fs_id, item.path, "--symlink", item.data)
-
-
-def __fetch_dir_viewer_entries(tablet_id, node_id):
-    mon_port = os.getenv("NFS_MON_PORT")
-    response = requests.get(
-        url=f"http://localhost:{mon_port}/tablets/app?"
-            f"TabletID={tablet_id}&action=dirViewer&nodeId={node_id}")
-    response.raise_for_status()
-    entries = response.json()["entries"]
-    for entry in entries:
-        del entry["node"]["shardNodeName"]
-        del entry["node"]["id"]
-    return entries
-
-
-def __fetch_locks(tablet_id):
-    mon_port = os.getenv("NFS_MON_PORT")
-    response = requests.get(
-        url=f"http://localhost:{mon_port}/tablets/app?"
-            f"TabletID={tablet_id}&action=locks&getContent=1")
-    response.raise_for_status()
-    return response.json()
-
-
 def test_nonsharded_vs_sharded_fs():
     client, client_nocheck, results_path = __init_test()
     client.create(
@@ -124,13 +76,13 @@ def test_nonsharded_vs_sharded_fs():
         3 * int(SHARD_SIZE / BLOCK_SIZE))
 
     def _d(path):
-        return FsItem(path, _DIR, None)
+        return FsItem(path, DIR, None)
 
     def _f(path, data=None):
-        return FsItem(path, _FILE, data)
+        return FsItem(path, FILE, data)
 
     def _l(path, symlink):
-        return FsItem(path, _SYMLINK, symlink)
+        return FsItem(path, SYMLINK, symlink)
 
     items = [
         _d("/a0"),
@@ -173,8 +125,8 @@ def test_nonsharded_vs_sharded_fs():
         _f("/file.txt"),
     ]
 
-    __fill_fs(client, "fs0", items)
-    __fill_fs(client, "fs1", items)
+    fill_fs(client, "fs0", items)
+    fill_fs(client, "fs1", items)
 
     # checking that mv, rm and ln work properly
     client.mv("fs0", "/a0/b0/c0/d0/f9.txt", "/a0/b0/c0/d0/f9_moved.txt")
@@ -238,7 +190,7 @@ def test_nonsharded_vs_sharded_fs():
 
     tablet_id = json.loads(client.describe("fs1"))["FileStore"]["MainTabletId"]
     root_node_id = 1
-    entries = __fetch_dir_viewer_entries(tablet_id, root_node_id)
+    entries = fetch_dir_viewer_entries(tablet_id, root_node_id)
     result = json.dumps(entries, indent=4)
     with open(results_path, 'a') as results:
         results.write('dirViewer(1):\n')
@@ -253,7 +205,7 @@ def test_nonsharded_vs_sharded_fs():
         "fs1",
         {"HideFileNamesInTabletDirectoryViewer": True})
     root_node_id = 1
-    entries = __fetch_dir_viewer_entries(tablet_id, root_node_id)
+    entries = fetch_dir_viewer_entries(tablet_id, root_node_id)
     result = json.dumps(entries, indent=4)
     with open(results_path, 'a') as results:
         results.write('dirViewer(1):\n')
@@ -264,7 +216,7 @@ def test_nonsharded_vs_sharded_fs():
     # so this is just a smoke test.
     #
 
-    locks = __fetch_locks(tablet_id)
+    locks = fetch_locks(tablet_id)
     result = json.dumps(locks, indent=4)
     with open(results_path, 'a') as results:
         results.write('locks():\n')

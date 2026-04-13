@@ -53,6 +53,7 @@ message TFileSystem
     bool DirectoryCreationInShardsEnabled = 18;
     bool StrictFileSystemSizeEnforcementEnabled = 19;
     bool Frozen = 20;
+    bool ForceDirectoryCreationInShards = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
