@@ -76,7 +76,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto provider = CreatePeriodicCertificateProvider(
             "",
             TVector<TCertificateFiles>{pair},
-            1);
+            TDuration::Seconds(1));
 
         const auto error = provider->UpdateCertificates().GetValueSync();
         UNIT_ASSERT(!HasError(error));
@@ -98,7 +98,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto provider = CreatePeriodicCertificateProvider(
             rootPath,
             TVector<TCertificateFiles>{pair},
-            1);
+            TDuration::Seconds(1));
 
         const auto error = provider->UpdateCertificates().GetValueSync();
         UNIT_ASSERT(HasError(error));
@@ -129,7 +129,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             TVector<TCertificateFiles>{
                 serverPair,
                 clientPair},
-            1);
+            TDuration::Seconds(1));
 
         const auto initialError = provider->UpdateCertificates().GetValueSync();
         UNIT_ASSERT(!HasError(initialError));

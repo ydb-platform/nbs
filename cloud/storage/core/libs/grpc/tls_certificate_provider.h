@@ -34,6 +34,6 @@ struct ICertificateProvider
 std::shared_ptr<ICertificateProvider> CreatePeriodicCertificateProvider(
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    ui32 refreshIntervalSec);
+    TDuration refreshIntervalSec);
 
 }   // namespace NCloud

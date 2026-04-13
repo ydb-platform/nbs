@@ -52,9 +52,9 @@ public:
     TPeriodicCertificateProviderBase(
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
-        ui32 refreshIntervalSec)
+        TDuration refreshIntervalSec)
         : RootCertPath(std::move(rootCertPath))
-        , RefreshIntervalSec(std::max<ui32>(1, refreshIntervalSec))
+        , RefreshIntervalSec(refreshIntervalSec)
     {
         Y_ENSURE(!certificates.empty(), "Certificates list should not be empty");
 
@@ -146,7 +146,7 @@ protected:
                 std::unique_lock lock(Mutex);
                 if (Wakeup.wait_for(
                         lock,
-                        std::chrono::seconds(RefreshIntervalSec),
+                        std::chrono::seconds(RefreshIntervalSec.Seconds()),
                         [this] { return Stopping.load(); }))
                 {
                     return;
@@ -452,7 +452,7 @@ private:
 
 private:
     const TString RootCertPath;
-    const ui32 RefreshIntervalSec;
+    const TDuration RefreshIntervalSec;
     mutable std::mutex Mutex;
     y_absl::optional<TString> RootCertificate;
     TVector<TCertificateState> Certificates;
@@ -472,7 +472,7 @@ public:
     TPeriodicCertificateProvider(
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
-        ui32 refreshIntervalSec)
+        TDuration refreshIntervalSec)
         : TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>(
             std::move(rootCertPath),
             std::move(certificates),
@@ -591,9 +591,8 @@ public:
     TPeriodicCertificateProviderWrapper(
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
-        ui32 refreshIntervalSec)
+        TDuration refreshIntervalSec)
     {
-        Y_ENSURE(refreshIntervalSec > 0, "refreshIntervalSec should be greater than 0");
         Provider = grpc_core::RefCountedPtr<TPeriodicCertificateProvider>(
             new TPeriodicCertificateProvider(
                 std::move(rootCertPath),
@@ -620,7 +619,7 @@ private:
 std::shared_ptr<ICertificateProvider> CreatePeriodicCertificateProvider(
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    ui32 refreshIntervalSec)
+    TDuration refreshIntervalSec)
 {
     return std::make_shared<TPeriodicCertificateProviderWrapper>(
         std::move(rootCertPath),
