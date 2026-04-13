@@ -2,7 +2,6 @@ LIBRARY()
 
 PEERDIR(
     library/cpp/lwtrace
-    library/cpp/pop_count
     contrib/ydb/core/base
     contrib/ydb/core/protos
 )

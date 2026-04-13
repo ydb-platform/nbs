@@ -12,13 +12,12 @@
 
 #include <library/cpp/lwtrace/shuttle.h>
 
-#include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/grpc_services/cancelation/cancelation.h>
 #include <contrib/ydb/core/grpc_services/cancelation/cancelation_event.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
 #include <contrib/ydb/library/aclib/aclib.h>
 #include <contrib/ydb/library/yql/dq/actors/dq.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_value.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_query.pb.h>

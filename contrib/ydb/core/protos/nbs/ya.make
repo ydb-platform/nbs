@@ -12,6 +12,8 @@ SRCS(
     blockstore.proto
 )
 
+CPP_PROTO_PLUGIN0(config_proto_plugin contrib/ydb/core/config/tools/protobuf_plugin)
+
 EXCLUDE_TAGS(GO_PROTO)
 
 END()

@@ -32,14 +32,16 @@ public:
         if (Self->State != TShardState::Ready) {
             Result = MakeHolder<TEvDataShard::TEvApplyReplicationChangesResult>(
                 NKikimrTxDataShard::TEvApplyReplicationChangesResult::STATUS_REJECTED,
-                NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_WRONG_STATE);
+                NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_WRONG_STATE,
+                TStringBuilder() << "DataShard is not ready");
             return true;
         }
 
-        if (!Self->IsReplicated()) {
+        if (!Self->IsReplicated() && !Self->IsIncrementalRestore()) {
             Result = MakeHolder<TEvDataShard::TEvApplyReplicationChangesResult>(
                 NKikimrTxDataShard::TEvApplyReplicationChangesResult::STATUS_REJECTED,
-                NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_BAD_REQUEST);
+                NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_BAD_REQUEST,
+                TStringBuilder() << "Table is nor replicated nor under incremental restore");
             return true;
         }
 
@@ -70,7 +72,9 @@ public:
                 << " and cannot apply changes for schema version " << tableId.GetSchemaVersion();
             Result = MakeHolder<TEvDataShard::TEvApplyReplicationChangesResult>(
                 NKikimrTxDataShard::TEvApplyReplicationChangesResult::STATUS_REJECTED,
-                NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_SCHEME_ERROR,
+                tableId.GetSchemaVersion() < userTable.GetTableSchemaVersion()
+                    ? NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_OUTDATED_SCHEME
+                    : NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_SCHEME_ERROR,
                 std::move(error));
             return true;
         }
@@ -84,9 +88,9 @@ public:
             }
         }
 
-        if (MvccReadWriteVersion) {
-            Self->PromoteImmediatePostExecuteEdges(*MvccReadWriteVersion, TDataShard::EPromotePostExecuteEdges::ReadWrite, txc);
-            Pipeline.AddCommittingOp(*MvccReadWriteVersion);
+        if (MvccVersion) {
+            Self->PromoteImmediatePostExecuteEdges(*MvccVersion, TDataShard::EPromotePostExecuteEdges::ReadWrite, txc);
+            Pipeline.AddCommittingOp(*MvccVersion);
         }
 
         if (!Result) {
@@ -109,18 +113,18 @@ public:
             TTransactionContext& txc, const TTableId& tableId, const TUserTable& userTable,
             TReplicationSourceState& source, const NKikimrTxDataShard::TEvApplyReplicationChanges::TChange& change)
     {
-        Y_ABORT_UNLESS(userTable.IsReplicated());
+        Y_ABORT_UNLESS(userTable.IsReplicated() || Self->IsIncrementalRestore());
 
         // TODO: check source and offset, persist new values
         i64 sourceOffset = change.GetSourceOffset();
 
         ui64 writeTxId = change.GetWriteTxId();
-        if (userTable.ReplicationConfig.HasWeakConsistency()) {
+        if (userTable.ReplicationConfig.HasRowConsistency() || userTable.IncrementalBackupConfig.HasWeakConsistency()) {
             if (writeTxId) {
                 Result = MakeHolder<TEvDataShard::TEvApplyReplicationChangesResult>(
                     NKikimrTxDataShard::TEvApplyReplicationChangesResult::STATUS_REJECTED,
                     NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_BAD_REQUEST,
-                    "WriteTxId cannot be specified for weak consistency");
+                    "WriteTxId cannot be specified for row consistency");
                 return false;
             }
         } else {
@@ -128,7 +132,7 @@ public:
                 Result = MakeHolder<TEvDataShard::TEvApplyReplicationChangesResult>(
                     NKikimrTxDataShard::TEvApplyReplicationChangesResult::STATUS_REJECTED,
                     NKikimrTxDataShard::TEvApplyReplicationChangesResult::REASON_BAD_REQUEST,
-                    "Non-zero WriteTxId must be specified for strong consistency");
+                    "Non-zero WriteTxId must be specified for global consistency");
                 return false;
             }
         }
@@ -191,14 +195,12 @@ public:
             txc.DB.UpdateTx(userTable.LocalTid, rop, key, update, writeTxId);
             Self->GetConflictsCache().GetTableCache(userTable.LocalTid).AddUncommittedWrite(keyCellVec.GetCells(), writeTxId, txc.DB);
         } else {
-            if (!MvccReadWriteVersion) {
-                auto [readVersion, writeVersion] = Self->GetReadWriteVersions();
-                Y_DEBUG_ABORT_UNLESS(readVersion == writeVersion);
-                MvccReadWriteVersion = writeVersion;
+            if (!MvccVersion) {
+                MvccVersion = Self->GetMvccVersion();
             }
 
             Self->SysLocksTable().BreakLocks(tableId, keyCellVec.GetCells());
-            txc.DB.Update(userTable.LocalTid, rop, key, update, *MvccReadWriteVersion);
+            txc.DB.Update(userTable.LocalTid, rop, key, update, *MvccVersion);
             Self->GetConflictsCache().GetTableCache(userTable.LocalTid).RemoveUncommittedWrites(keyCellVec.GetCells(), txc.DB);
         }
 
@@ -250,9 +252,9 @@ public:
         Y_ABORT_UNLESS(Ev);
         Y_ABORT_UNLESS(Result);
 
-        if (MvccReadWriteVersion) {
-            Pipeline.RemoveCommittingOp(*MvccReadWriteVersion);
-            Self->SendImmediateWriteResult(*MvccReadWriteVersion, Ev->Sender, Result.Release(), Ev->Cookie);
+        if (MvccVersion) {
+            Pipeline.RemoveCommittingOp(*MvccVersion);
+            Self->SendImmediateWriteResult(*MvccVersion, Ev->Sender, Result.Release(), Ev->Cookie);
         } else {
             ctx.Send(Ev->Sender, Result.Release(), 0, Ev->Cookie);
         }
@@ -262,7 +264,7 @@ private:
     TPipeline& Pipeline;
     TEvDataShard::TEvApplyReplicationChanges::TPtr Ev;
     THolder<TEvDataShard::TEvApplyReplicationChangesResult> Result;
-    std::optional<TRowVersion> MvccReadWriteVersion;
+    std::optional<TRowVersion> MvccVersion;
 }; // TTxApplyReplicationChanges
 
 void TDataShard::Handle(TEvDataShard::TEvApplyReplicationChanges::TPtr& ev, const TActorContext& ctx) {

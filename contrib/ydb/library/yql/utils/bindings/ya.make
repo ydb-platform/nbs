@@ -4,8 +4,8 @@ PEERDIR(
     library/cpp/json
     library/cpp/json/yson
     library/cpp/yson
-    contrib/ydb/library/yql/sql/settings
-    contrib/ydb/library/yql/utils    
+    yql/essentials/sql/settings
+    yql/essentials/utils    
 )
 
 SRCS(utils.cpp)

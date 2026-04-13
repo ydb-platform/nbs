@@ -2,10 +2,10 @@
 
 #include <functional>
 
-#include <contrib/ydb/library/yql/public/udf/udf_data_type.h>
-#include <contrib/ydb/library/yql/public/udf/udf_value.h>
+#include <yql/essentials/public/udf/udf_data_type.h>
+#include <yql/essentials/public/udf/udf_value.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
+#include <ydb-cpp-sdk/client/topic/client.h>
 
 #include <util/generic/string.h>
 

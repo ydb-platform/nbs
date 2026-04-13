@@ -1,8 +1,6 @@
 IF (OS_LINUX OR OS_DARWIN)
     UNITTEST_FOR(contrib/ydb/library/yql/utils/actors)
 
-    TAG(ya:manual)
-
     SIZE(SMALL)
 
     SRCS(
@@ -11,7 +9,7 @@ IF (OS_LINUX OR OS_DARWIN)
 
     PEERDIR(
         contrib/ydb/core/testlib/basics/default
-        contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+        yql/essentials/minikql/comp_nodes/llvm16
     )
 
     END()

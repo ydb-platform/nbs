@@ -3,19 +3,18 @@ UNITTEST_FOR(contrib/ydb/core/kqp)
 FORK_SUBTESTS()
 SPLIT_FACTOR(50)
 
-IF (WITH_VALGRIND)
-    TIMEOUT(3600)
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
     kqp_acl_ut.cpp
-    kqp_scheme_ut.cpp
     kqp_constraints_ut.cpp
+    kqp_scheme_ut.cpp
+    kqp_secrets_ut.cpp
 )
 
 PEERDIR(
@@ -24,8 +23,8 @@ PEERDIR(
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/kqp/workload_service/ut/common
     contrib/ydb/core/tx/columnshard/hooks/testing
-    contrib/ydb/library/yql/sql/pg
-    contrib/ydb/library/yql/parser/pg_wrapper
+    yql/essentials/sql/pg
+    yql/essentials/parser/pg_wrapper
 )
 
 YQL_LAST_ABI_VERSION()

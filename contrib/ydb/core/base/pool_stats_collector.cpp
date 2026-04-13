@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
-#include <contrib/ydb/library/yql/minikql/aligned_page_pool.h>
+#include <yql/essentials/minikql/aligned_page_pool.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/helpers/pool_stats_collector.h>
@@ -32,15 +32,22 @@ private:
         void Init(::NMonitoring::TDynamicCounters* group) {
             CounterGroup = group->GetSubgroup("subsystem", "mkqlalloc");
             TotalBytes = CounterGroup->GetCounter("GlobalPoolTotalBytes", false);
+            TotalMmapped = CounterGroup->GetCounter("TotalMmappedBytes", false);
+            TotalFreeList = CounterGroup->GetCounter("TotalFreeListBytes", false);
         }
 
         void Update() {
+            TAlignedPagePool::DoCleanupGlobalFreeList();
             *TotalBytes = TAlignedPagePool::GetGlobalPagePoolSize();
+            *TotalMmapped = ::NKikimr::GetTotalMmapedBytes();
+            *TotalFreeList = ::NKikimr::GetTotalFreeListBytes();
         }
 
     private:
         TIntrusivePtr<::NMonitoring::TDynamicCounters> CounterGroup;
         ::NMonitoring::TDynamicCounters::TCounterPtr TotalBytes;
+        ::NMonitoring::TDynamicCounters::TCounterPtr TotalMmapped;
+        ::NMonitoring::TDynamicCounters::TCounterPtr TotalFreeList;
     };
 
     void OnWakeup(const TActorContext &ctx) override {

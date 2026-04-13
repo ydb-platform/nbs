@@ -14,7 +14,7 @@
 #include <contrib/ydb/core/tx/long_tx_service/public/lock_handle.h>
 #include <contrib/ydb/core/ydb_convert/table_profiles.h>
 #include <contrib/ydb/library/accessor/accessor.h>
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
+#include <yql/essentials/ast/yql_expr.h>
 
 #include <contrib/ydb/library/actors/wilson/wilson_trace.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -135,6 +135,8 @@ public:
             : TxAlloc(txAlloc)
         {}
 
+        static void FillRequestFrom(IKqpGateway::TExecPhysicalRequest& request, const IKqpGateway::TExecPhysicalRequest& from);
+
         bool AllowTrailingResults = false;
         NKikimrKqp::EQueryType QueryType = NKikimrKqp::EQueryType::QUERY_TYPE_UNDEFINED;
         NKikimr::TControlWrapper PerRequestDataSizeLimit;
@@ -190,8 +192,6 @@ public:
 public:
     virtual TString GetDatabase() = 0;
     virtual TString GetDatabaseId() = 0;
-    virtual bool GetDomainLoginOnly() = 0;
-    virtual TMaybe<TString> GetDomainName() = 0;
 
     /* Scheme */
     virtual NThreading::TFuture<TKqpTableProfilesResult> GetTableProfiles() = 0;

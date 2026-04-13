@@ -1,7 +1,7 @@
 #include "handlers.h"
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/exceptions/exceptions.h>
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 void ThrowFatalError(const TString& str) {
     throw TContractViolation(str);

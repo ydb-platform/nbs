@@ -26,6 +26,8 @@
 
 namespace NKikimr::NKqp {
 
+class TKqpQueryCache;
+
 // basically it's a state that holds all the context
 // about the specific query execution.
 // it holds the unique pointer to the query request, which may include
@@ -131,6 +133,7 @@ public:
     TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
     TString ClientAddress;
     NActors::TMonotonic StartedAt;
+    bool CompilationRunning = false;
 
     THashMap<NKikimr::TTableId, ui64> TableVersions;
 
@@ -151,7 +154,7 @@ public:
     TKqpTempTablesState::TConstPtr TempTablesState;
     TMaybe<TActorId> PoolHandlerActor;
 
-    THolder<NYql::TExprContext> SplittedCtx;
+    std::shared_ptr<NYql::TExprContext> SplittedCtx;
     TVector<NYql::TExprNode::TPtr> SplittedExprs;
     NYql::TExprNode::TPtr SplittedWorld;
     int NextSplittedExpr = 0;
@@ -167,16 +170,20 @@ public:
     ui32 StatementResultSize = 0;
 
     TMaybe<TString> CommandTagName;
-    THashSet<uint32_t> ParticipantNodes;
+    THashSet<ui32> ParticipantNodes;
 
     bool IsLocalExecution(ui32 nodeId) const {
         if (RequestEv->GetRequestCtx() == nullptr) {
             return false;
         }
-        if (ParticipantNodes.size() == 1) {
+        if (IsSingleNodeExecution()) {
             return *ParticipantNodes.begin() == nodeId;
         }
         return false;
+    }
+
+    bool IsSingleNodeExecution() const {
+        return ParticipantNodes.size() == 1;
     }
 
     NKikimrKqp::EQueryAction GetAction() const {
@@ -241,6 +248,10 @@ public:
 
     bool HasTopicOperations() const {
         return RequestEv->HasTopicOperations();
+    }
+
+    bool HasKafkaApiOperations() const {
+        return RequestEv->HasKafkaApiOperations();
     }
 
     bool GetQueryKeepInCache() const {
@@ -325,8 +336,12 @@ public:
         return RequestEv->GetQuery();
     }
 
-    const ::NKikimrKqp::TTopicOperationsRequest& GetTopicOperations() const {
+    const ::NKikimrKqp::TTopicOperationsRequest& GetTopicOperationsFromRequest() const {
         return RequestEv->GetTopicOperations();
+    }
+
+    const ::NKikimrKqp::TKafkaApiOperationsRequest& GetKafkaApiOperationsFromRequest() const {
+        return RequestEv->GetKafkaApiOperations();
     }
 
     bool NeedPersistentSnapshot() const {
@@ -357,17 +372,18 @@ public:
             return true;
         }
 
-        if (HasTxSinkInTx(tx)) {
-            // At current time transactional internal sinks require separate tnx with commit.
-            return false;
-        }
-
         if (TxCtx->HasOlapTable) {
-            // HTAP/OLAP transactions always use separate commit.
+            // Olap sink results can't be committed with changes
             return false;
         }
 
-        if (TxCtx->HasUncommittedChangesRead || AppData()->FeatureFlags.GetEnableForceImmediateEffectsExecution()) {
+        if (TxCtx->EffectiveIsolationLevel == NKikimrKqp::ISOLATION_LEVEL_SNAPSHOT_RW) {
+            // ReadWrite snapshot isolation transaction with can only use uncommitted data.
+            // WriteOnly snapshot isolation transaction is executed like serializable transaction.
+            return !TxCtx->HasTableRead;
+        }
+
+        if (TxCtx->NeedUncommittedChangesFlush || AppData()->FeatureFlags.GetEnableForceImmediateEffectsExecution()) {
             if (tx && tx->GetHasEffects()) {
                 YQL_ENSURE(tx->ResultsSize() == 0);
                 // commit can be applied to the last transaction with effects
@@ -382,12 +398,14 @@ public:
     }
 
     bool ShouldAcquireLocks(const TKqpPhyTxHolder::TConstPtr& tx) {
-        if (*TxCtx->EffectiveIsolationLevel != NKikimrKqp::ISOLATION_LEVEL_SERIALIZABLE) {
+        Y_UNUSED(tx);
+        if (*TxCtx->EffectiveIsolationLevel != NKikimrKqp::ISOLATION_LEVEL_SERIALIZABLE &&
+                *TxCtx->EffectiveIsolationLevel != NKikimrKqp::ISOLATION_LEVEL_SNAPSHOT_RW) {
             return false;
         }
 
         // Inconsistent writes (CTAS) don't require locks.
-        if (IsSplitted() && !HasTxSinkInTx(tx)) {
+        if (IsSplitted()) {
             return false;
         }
 
@@ -422,14 +440,14 @@ public:
         return true;
     }
 
-    TKqpPhyTxHolder::TConstPtr GetCurrentPhyTx() {
+    TKqpPhyTxHolder::TConstPtr GetCurrentPhyTx(NMiniKQL::TTypeEnvironment& txTypeEnv) {
         const auto& phyQuery = PreparedQuery->GetPhysicalQuery();
         auto tx = PreparedQuery->GetPhyTxOrEmpty(CurrentTx);
 
         if (TxCtx->CanDeferEffects()) {
-            // At current time sinks require separate tnx with commit.
-            while (tx && tx->GetHasEffects() && !HasTxSinkInTx(tx)) {
-                QueryData->CreateKqpValueMap(tx);
+            // Olap sinks require separate tnx with commit.
+            while (tx && tx->GetHasEffects() && !TxCtx->HasOlapTable) {
+                QueryData->PrepareParameters(tx, PreparedQuery, txTypeEnv);
                 bool success = TxCtx->AddDeferredEffect(tx, QueryData);
                 YQL_ENSURE(success);
                 if (CurrentTx + 1 < phyQuery.TransactionsSize()) {
@@ -443,40 +461,6 @@ public:
         TxCtx->HasImmediateEffects |= tx && tx->GetHasEffects();
 
         return tx;
-    }
-
-    bool HasTxSinkInStage(const ::NKqpProto::TKqpPhyStage& stage) const {
-        for (const auto& sink : stage.GetSinks()) {
-            if (sink.GetTypeCase() == NKqpProto::TKqpSink::kInternalSink && sink.GetInternalSink().GetSettings().Is<NKikimrKqp::TKqpTableSinkSettings>()) {
-                NKikimrKqp::TKqpTableSinkSettings settings;
-                YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
-                if (!settings.GetInconsistentTx()) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    bool HasTxSink() const {
-        const auto& query = PreparedQuery->GetPhysicalQuery();
-        for (auto& tx : query.GetTransactions()) {
-            for (const auto& stage : tx.GetStages()) {
-                if (HasTxSinkInStage(stage)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    bool HasTxSinkInTx(const TKqpPhyTxHolder::TConstPtr& tx) const {
-        for (const auto& stage : tx->GetStages()) {
-            if (HasTxSinkInStage(stage)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     bool HasTxControl() const {
@@ -518,9 +502,17 @@ public:
     // execution.
     std::unique_ptr<TEvTxProxySchemeCache::TEvNavigateKeySet> BuildNavigateKeySet();
     // same the context of the compiled query to the query state.
+    bool SaveAndCheckCompileResult(TKqpCompileResult::TConstPtr compileResult);
     bool SaveAndCheckCompileResult(TEvKqp::TEvCompileResponse* ev);
     bool SaveAndCheckParseResult(TEvKqp::TEvParseResponse&& ev);
     bool SaveAndCheckSplitResult(TEvKqp::TEvSplitResponse* ev);
+
+    bool TryGetFromCache(
+        TKqpQueryCache& cache,
+        const TGUCSettings::TPtr& gUCSettingsPtr,
+        TIntrusivePtr<TKqpCounters>& counters,
+        const TActorId& sender);
+
     // build the compilation request.
     std::unique_ptr<TEvKqp::TEvCompileRequest> BuildCompileRequest(std::shared_ptr<std::atomic<bool>> cookie, const TGUCSettings::TPtr& gUCSettingsPtr);
     // TODO(gvit): get rid of code duplication in these requests,
@@ -589,11 +581,6 @@ public:
         return CpuTime;
     }
 
-    // Returns nullptr in case of no local event
-    google::protobuf::Arena* GetArena() {
-        return RequestEv->GetArena();
-    }
-
     bool GetCollectDiagnostics() {
         return RequestEv->GetCollectDiagnostics();
     }
@@ -603,7 +590,7 @@ public:
     }
 
     //// Topic ops ////
-    void AddOffsetsToTransaction();
+    void FillTopicOperations();
     bool TryMergeTopicOffsets(const NTopic::TTopicOperations &operations, TString& message);
     std::unique_ptr<NSchemeCache::TSchemeCacheNavigate> BuildSchemeCacheNavigate();
     bool IsAccessDenied(const NSchemeCache::TSchemeCacheNavigate& response, TString& message);

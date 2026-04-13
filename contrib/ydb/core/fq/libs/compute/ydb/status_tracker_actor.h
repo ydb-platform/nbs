@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/fq/libs/compute/common/utils.h>
 #include <contrib/ydb/core/fq/libs/metrics/status_code_counters.h>
 
-#include <contrib/ydb/library/yql/providers/common/metrics/service_counters.h>
+#include <yql/essentials/providers/common/metrics/service_counters.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 

@@ -1,8 +1,10 @@
 LIBRARY(clicommands)
 
+ADDINCL(
+    contrib/ydb/public/sdk/cpp
+)
+
 SRCS(
-    interactive/interactive_cli.cpp
-    interactive/line_reader.cpp
     benchmark_utils.cpp
     topic_operations_scenario.cpp
     topic_read_scenario.cpp
@@ -11,8 +13,12 @@ SRCS(
     query_workload.cpp
     ydb_admin.cpp
     ydb_benchmark.cpp
-    ydb_sdk_core_access.cpp
+    ydb_cluster.cpp
+    ydb_debug.cpp
     ydb_dynamic_config.cpp
+    ydb_latency.cpp
+    ydb_node_config.cpp
+    ydb_ping.cpp
     ydb_profile.cpp
     ydb_root_common.cpp
     ydb_service_auth.cpp
@@ -25,6 +31,7 @@ SRCS(
     ydb_service_topic.cpp
     ydb_service_table.cpp
     ydb_sql.cpp
+    ydb_storage_config.cpp
     ydb_tools.cpp
     ydb_workload.cpp
     ydb_workload_import.cpp
@@ -33,40 +40,55 @@ SRCS(
 
 PEERDIR(
     contrib/libs/fmt
-    contrib/restricted/patched/replxx
     library/cpp/histogram/hdr
     library/cpp/protobuf/json
     library/cpp/regex/pcre
     library/cpp/threading/local_executor
     contrib/ydb/library/backup
+    contrib/ydb/library/formats/arrow/csv/table
     contrib/ydb/library/workload
     contrib/ydb/library/yaml_config/public
-    contrib/ydb/public/lib/operation_id
     contrib/ydb/public/lib/stat_visualization
-    contrib/ydb/public/lib/ydb_cli/common
     contrib/ydb/public/lib/ydb_cli/commands/command_base
+    contrib/ydb/public/lib/ydb_cli/commands/interactive
+    contrib/ydb/public/lib/ydb_cli/commands/sdk_core_access
     contrib/ydb/public/lib/ydb_cli/commands/topic_workload
     contrib/ydb/public/lib/ydb_cli/commands/transfer_workload
     contrib/ydb/public/lib/ydb_cli/commands/ydb_discovery
+    contrib/ydb/public/lib/ydb_cli/common
     contrib/ydb/public/lib/ydb_cli/dump
+    contrib/ydb/public/lib/ydb_cli/dump/files
     contrib/ydb/public/lib/ydb_cli/import
     contrib/ydb/public/lib/ydb_cli/topic
-    contrib/ydb/public/sdk/cpp/client/draft
-    contrib/ydb/public/sdk/cpp/client/ydb_coordination
-    contrib/ydb/public/sdk/cpp/client/ydb_export
-    contrib/ydb/public/sdk/cpp/client/ydb_import
-    contrib/ydb/public/sdk/cpp/client/ydb_monitoring
-    contrib/ydb/public/sdk/cpp/client/ydb_operation
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/login
+    contrib/ydb/public/sdk/cpp/src/client/config
+    contrib/ydb/public/sdk/cpp/src/client/coordination
+    contrib/ydb/public/sdk/cpp/src/client/debug
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/export
+    contrib/ydb/public/sdk/cpp/src/client/import
+    contrib/ydb/public/sdk/cpp/src/client/monitoring
+    contrib/ydb/public/sdk/cpp/src/client/operation
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
+    contrib/ydb/public/sdk/cpp/src/client/proto
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials/login
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    yql/essentials/public/decimal
 )
+
+GENERATE_ENUM_SERIALIZATION(ydb_benchmark.h)
+GENERATE_ENUM_SERIALIZATION(ydb_ping.h)
+GENERATE_ENUM_SERIALIZATION(ydb_latency.h)
 
 END()
 
-RECURSE_FOR_TESTS(
-    topic_workload/ut
+RECURSE(
+    command_base
+    interactive
+    sdk_core_access
+    topic_workload
+    transfer_workload
+    ydb_discovery
 )

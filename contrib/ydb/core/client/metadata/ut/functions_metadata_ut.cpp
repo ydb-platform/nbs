@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/scheme_types/scheme_type_registry.h>
 #include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
-#include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
+#include <yql/essentials/minikql/invoke_builtins/mkql_builtins.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

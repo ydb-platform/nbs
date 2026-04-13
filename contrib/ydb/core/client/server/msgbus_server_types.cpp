@@ -2,8 +2,8 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/scheme/scheme_type_registry.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
-#include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/invoke_builtins/mkql_builtins.h>
 #include <contrib/ydb/core/client/metadata/types_metadata.h>
 #include <contrib/ydb/core/client/metadata/functions_metadata.h>
 

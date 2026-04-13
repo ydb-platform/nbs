@@ -92,6 +92,8 @@ void TGRpcYdbTableService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
     ADD_REQUEST_LIMIT(CreateTable, DoCreateTableRequest, Rps, CREATETABLE, TAuditMode::Modifying(TAuditMode::TLogClassConfig::Ddl))
     ADD_REQUEST_LIMIT(DropTable, DoDropTableRequest, Rps, DROPTABLE, TAuditMode::Modifying(TAuditMode::TLogClassConfig::Ddl))
     ADD_REQUEST_LIMIT(DescribeTable, DoDescribeTableRequest, Rps, DESCRIBETABLE, TAuditMode::NonModifying())
+    ADD_REQUEST_LIMIT(DescribeExternalDataSource, DoDescribeExternalDataSourceRequest, Rps, DESCRIBEEXTERNALDATASOURCE, TAuditMode::NonModifying())
+    ADD_REQUEST_LIMIT(DescribeExternalTable, DoDescribeExternalTableRequest, Rps, DESCRIBEEXTERNALTABLE, TAuditMode::NonModifying())
     ADD_REQUEST_LIMIT(CopyTable, DoCopyTableRequest, Rps, COPYTABLE, TAuditMode::Modifying(TAuditMode::TLogClassConfig::Ddl))
     ADD_REQUEST_LIMIT(CopyTables, DoCopyTablesRequest, Rps, COPYTABLES, TAuditMode::Modifying(TAuditMode::TLogClassConfig::Ddl))
     ADD_REQUEST_LIMIT(RenameTables, DoRenameTablesRequest, Rps, RENAMETABLES, TAuditMode::Modifying(TAuditMode::TLogClassConfig::Ddl))

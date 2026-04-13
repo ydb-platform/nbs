@@ -8,6 +8,7 @@
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 #include <contrib/ydb/core/tablet/tablet_pipe_client_cache.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/jaeger_tracing/sampling_throttling_control.h>
 #include <contrib/ydb/core/persqueue/events/internal.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/tx/time_cast/time_cast.h>
@@ -94,6 +95,7 @@ class TPersQueue : public NKeyValue::TKeyValueFlat {
 
     bool OnRenderAppHtmlPage(NMon::TEvRemoteHttpInfo::TPtr ev, const TActorContext& ctx) override;
     bool OnRenderAppHtmlPageTx(NMon::TEvRemoteHttpInfo::TPtr ev, const TActorContext& ctx);
+    bool OnSendReadSetToYourself(NMon::TEvRemoteHttpInfo::TPtr& ev, const TActorContext& ctx);
 
     void HandleDie(const TActorContext& ctx) override;
 
@@ -136,7 +138,7 @@ class TPersQueue : public NKeyValue::TKeyValueFlat {
 
     //client request
     void Handle(TEvPersQueue::TEvRequest::TPtr& ev, const TActorContext& ctx);
-#define DESCRIBE_HANDLE(A) void A(const ui64 responseCookie, const TActorId& partActor, \
+#define DESCRIBE_HANDLE(A) void A(const ui64 responseCookie, NWilson::TTraceId traceId, const TActorId& partActor, \
                                   const NKikimrClient::TPersQueuePartitionRequest& req, const TActorContext& ctx);
     DESCRIBE_HANDLE(HandleGetMaxSeqNoRequest)
     DESCRIBE_HANDLE(HandleSetClientOffsetRequest)
@@ -148,7 +150,7 @@ class TPersQueue : public NKeyValue::TKeyValueFlat {
     DESCRIBE_HANDLE(HandleSplitMessageGroupRequest)
 #undef DESCRIBE_HANDLE
 
-#define DESCRIBE_HANDLE_WITH_SENDER(A) void A(const ui64 responseCookie, const TActorId& partActor, \
+#define DESCRIBE_HANDLE_WITH_SENDER(A) void A(const ui64 responseCookie, NWilson::TTraceId traceId, const TActorId& partActor, \
                                   const NKikimrClient::TPersQueuePartitionRequest& req, const TActorContext& ctx,\
                                   const TActorId& pipeClient, const TActorId& sender);
 
@@ -205,6 +207,8 @@ private:
         TMaybe<ui64> TxId;
         NKikimrLongTxService::TEvLockStatus::EStatus LongTxSubscriptionStatus = NKikimrLongTxService::TEvLockStatus::STATUS_UNSPECIFIED;
         bool Deleting = false;
+        bool KafkaTransaction = false;
+        TInstant CreatedAt;
     };
 
     THashMap<TWriteId, TTxWriteInfo> TxWrites;
@@ -287,6 +291,16 @@ private:
     TSet<std::pair<ui64, ui64>> ChangedTxs;
     TMaybe<NKikimrPQ::TPQTabletConfig> TabletConfigTx;
     TMaybe<NKikimrPQ::TBootstrapConfig> BootstrapConfigTx;
+    TMaybe<NKikimrPQ::TPartitions> PartitionsDataConfigTx;
+    /**
+    Requests are placed in this queue when there is a GetOwnership request with writeId that is being deleted.
+    In kafka transactions (kafka api prior to 4.0.0 version) all transactional writes in same session will have
+    same producerId+producerEpoch pairs. Thus we can't distinguish write to one transaction from the write to the next one.
+
+    But we know for sure that all writes coming after the commit of the kafka transaction refer to the next transaction.
+    That's why we queue them here till previous transaction is completely deleted (all supportive partitions are deleted and writeId is erased from TxWrites).
+     */
+    THashMap<NKafka::TProducerInstanceId, TEvPersQueue::TEvRequest::TPtr, NKafka::TProducerInstanceIdHashFn> KafkaNextTransactionRequests;
 
     // PLANNED -> CALCULATING -> CALCULATED -> WAIT_RS -> EXECUTING -> EXECUTED
     THashMap<TDistributedTransaction::EState, TDeque<ui64>> TxsOrder;
@@ -410,6 +424,7 @@ private:
     void AddCmdWriteConfig(TEvKeyValue::TEvRequest* request,
                            const NKikimrPQ::TPQTabletConfig& cfg,
                            const NKikimrPQ::TBootstrapConfig& bootstrapCfg,
+                           const NKikimrPQ::TPartitions& partitionsData,
                            const TActorContext& ctx);
 
     void ClearNewConfig();
@@ -447,9 +462,11 @@ private:
     void MediatorTimeCastUnregisterTablet(const TActorContext& ctx);
     void Handle(TEvMediatorTimecast::TEvRegisterTabletResult::TPtr& ev, const TActorContext& ctx);
 
-    TIntrusivePtr<TMediatorTimecastEntry> MediatorTimeCastEntry;
+    TMediatorTimecastEntry::TCPtr MediatorTimeCastEntry;
 
     void DeleteExpiredTransactions(const TActorContext& ctx);
+    void ScheduleDeleteExpiredKafkaTransactions();
+    void TryContinueKafkaWrites(const TMaybe<TWriteId> writeId, const TActorContext& ctx);
     void Handle(TEvPersQueue::TEvCancelTransactionProposal::TPtr& ev, const TActorContext& ctx);
 
     void SetTxCounters();
@@ -485,18 +502,22 @@ private:
                                            const TActorId& sender,
                                            const TActorContext& ctx);
     void HandleEventForSupportivePartition(const ui64 responseCookie,
+                                           NWilson::TTraceId traceId,
                                            const NKikimrClient::TPersQueuePartitionRequest& req,
                                            const TActorId& sender,
                                            const TActorContext& ctx);
     void HandleGetOwnershipRequestForSupportivePartition(const ui64 responseCookie,
+                                                         NWilson::TTraceId traceId,
                                                          const NKikimrClient::TPersQueuePartitionRequest& req,
                                                          const TActorId& sender,
                                                          const TActorContext& ctx);
     void HandleReserveBytesRequestForSupportivePartition(const ui64 responseCookie,
+                                                         NWilson::TTraceId traceId,
                                                          const NKikimrClient::TPersQueuePartitionRequest& req,
                                                          const TActorId& sender,
                                                          const TActorContext& ctx);
     void HandleWriteRequestForSupportivePartition(const ui64 responseCookie,
+                                                  NWilson::TTraceId traceId,
                                                   const NKikimrClient::TPersQueuePartitionRequest& req,
                                                   const TActorContext& ctx);
 
@@ -526,7 +547,7 @@ private:
     void Handle(TEvPQ::TEvDeletePartitionDone::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvPQ::TEvTransactionCompleted::TPtr& ev, const TActorContext& ctx);
 
-    void BeginDeletePartitions(TTxWriteInfo& writeInfo);
+    void BeginDeletePartitions(const TWriteId& writeId, TTxWriteInfo& writeInfo);
     void BeginDeletePartitions(const TDistributedTransaction& tx);
 
     bool CheckTxWriteOperation(const NKikimrPQ::TPartitionOperation& operation,
@@ -559,6 +580,7 @@ private:
 
     bool AllSupportivePartitionsHaveBeenDeleted(const TMaybe<TWriteId>& writeId) const;
     void DeleteWriteId(const TMaybe<TWriteId>& writeId);
+    void TryDeleteWriteId(const TWriteId& writeId, const TTxWriteInfo& writeInfo, const TActorContext& ctx);
 
     void UpdateReadRuleGenerations(NKikimrPQ::TPQTabletConfig& cfg) const;
 
@@ -573,6 +595,19 @@ private:
     void ProcessPendingEvents();
 
     void AckReadSetsToTablet(ui64 tabletId, const TActorContext& ctx);
+
+    void BeginDeleteTransaction(const TActorContext& ctx,
+                                TDistributedTransaction& tx,
+                                NKikimrPQ::TTransaction::EState state);
+
+    TIntrusivePtr<NJaegerTracing::TSamplingThrottlingControl> SamplingControl;
+    NWilson::TSpan WriteTxsSpan;
+
+    void InitPipeClientCache();
+
+    bool HasTxPersistSpan = false;
+    bool HasTxDeleteSpan = false;
+    ui8 WriteTxsSpanVerbosity = 0;
 };
 
 

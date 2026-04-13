@@ -29,7 +29,7 @@ public:
 
     void Initialize(const TIntrusivePtr<::NMonitoring::TDynamicCounters> &counters,
                     const TString& group, const TString& subgroup, const TString& name,
-                    const TVector<float> &thresholds, 
+                    const TVector<float> &thresholds,
                     NMonitoring::TCountableBase::EVisibility visibility = NMonitoring::TCountableBase::EVisibility::Public) {
         Tracker.Initialize(counters, group, subgroup, name, thresholds, visibility);
     }
@@ -85,7 +85,7 @@ struct TPDiskMon {
             BootingCommonLogRead,
             BootingFormatMagicChecking,
             BootingDeviceFormattingAndTrimming,
-            ErrorInitialFormatRead,
+            ErrorInitialFormatRead, // deprecated; kept for backward compatibility, replaced with two following states
             ErrorInitialFormatReadDueToGuid,
             ErrorInitialFormatReadIncompleteFormat,
             ErrorDiskCannotBeFormated,
@@ -124,7 +124,7 @@ struct TPDiskMon {
         static const char *DetailedStateToStr(i64 val) {
             switch (val) {
                 case EverythingIsOk: return "EverythingIsOk";
-                case BootingFormatRead: return "BootingSysLogRead";
+                case BootingFormatRead: return "BootingFormatRead";
                 case BootingSysLogRead: return "BootingSysLogRead";
                 case BootingCommonLogRead: return "BootingCommonLogRead";
                 case BootingFormatMagicChecking: return "BootingFormatMagicChecking";
@@ -212,10 +212,10 @@ struct TPDiskMon {
             }
         }
 
-        void UpdateEnded() {
+        float UpdateEnded() {
             NHPTimer::STime updateEndedAt = HPNow();
+            float entireUpdateMs = HPMilliSecondsFloat(updateEndedAt - BeginUpdateAt);
             if (IsLwProbeEnabled) {
-                float entireUpdateMs = HPMilliSecondsFloat(updateEndedAt - BeginUpdateAt);
                 float inputQueueMs = HPMilliSecondsFloat(SchedulingStartAt - BeginUpdateAt);
                 float schedulingMs = HPMilliSecondsFloat(ProcessingStartAt - SchedulingStartAt);
                 float processingMs = HPMilliSecondsFloat(WaitingStartAt - ProcessingStartAt);
@@ -224,6 +224,7 @@ struct TPDiskMon {
                         schedulingMs, processingMs, waitingMs);
             }
             BeginUpdateAt = updateEndedAt;
+            return entireUpdateMs;
         }
     };
 
@@ -244,13 +245,16 @@ struct TPDiskMon {
     // statistics subgroup
     TIntrusivePtr<::NMonitoring::TDynamicCounters> StatsGroup;
     ::NMonitoring::TDynamicCounters::TCounterPtr FreeSpacePerMile;
-    ::NMonitoring::TDynamicCounters::TCounterPtr UsedSpacePerMile;
+    ::NMonitoring::TDynamicCounters::TCounterPtr UsedSpacePerMile; // reflects PDiskUsage
     ::NMonitoring::TDynamicCounters::TCounterPtr SplicedLogChunks;
 
     ::NMonitoring::TDynamicCounters::TCounterPtr TotalSpaceBytes;
     ::NMonitoring::TDynamicCounters::TCounterPtr FreeSpaceBytes;
     ::NMonitoring::TDynamicCounters::TCounterPtr UsedSpaceBytes;
     ::NMonitoring::TDynamicCounters::TCounterPtr SectorMapAllocatedBytes;
+
+    ::NMonitoring::TDynamicCounters::TCounterPtr NumActiveSlots;
+    ::NMonitoring::TDynamicCounters::TCounterPtr ExpectedSlotCount;
 
     // states subgroup
     TIntrusivePtr<::NMonitoring::TDynamicCounters> StateGroup;
@@ -410,6 +414,8 @@ struct TPDiskMon {
     ::NMonitoring::TDynamicCounters::TCounterPtr BandwidthPChunkReadPayload;
     ::NMonitoring::TDynamicCounters::TCounterPtr BandwidthPChunkReadSectorFooter;
 
+    ::NMonitoring::TDynamicCounters::TCounterPtr WriteBufferCompactedBytes;
+
     struct TIoCounters {
         ::NMonitoring::TDynamicCounters::TCounterPtr Requests;
         ::NMonitoring::TDynamicCounters::TCounterPtr Bytes;
@@ -475,13 +481,18 @@ struct TPDiskMon {
     TReqCounters YardSlay;
     TReqCounters YardControl;
 
+    TReqCounters ShredPDisk;
+    TReqCounters PreShredCompactVDisk;
+    TReqCounters ShredVDiskResult;
+    TReqCounters MarkDirty;
+
     TIoCounters WriteSyncLog;
     TIoCounters WriteFresh;
     TIoCounters WriteHugeAsync;
     TIoCounters WriteHugeUser;
     TIoCounters WriteComp;
     TIoCounters Trim;
-
+    TIoCounters ChunkShred;
     TIoCounters ReadSyncLog;
     TIoCounters ReadComp;
     TIoCounters ReadOnlineRt;
@@ -523,4 +534,3 @@ struct TPDiskMon {
 };
 
 } // NKikimr
-

@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/util/proto_duration.h>
-#include "contrib/ydb/core/grpc_services/grpc_request_proxy.h"
+#include "contrib/ydb/core/grpc_services/base/base.h"
 
 namespace NKikimr {
 namespace NGRpcService {

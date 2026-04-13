@@ -1,6 +1,5 @@
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/testlib/cs_helper.h>
-#include <contrib/ydb/core/tx/tiering/external_data.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/formats/arrow/size_calcer.h>
@@ -9,7 +8,7 @@
 #include <contrib/ydb/core/wrappers/fake_storage.h>
 #include <contrib/ydb/library/formats/arrow/hash/xx_hash.h>
 #include <contrib/ydb/library/accessor/accessor.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/services/metadata/manager/alter.h>
 #include <contrib/ydb/services/metadata/manager/common.h>
 #include <contrib/ydb/services/metadata/manager/table_record.h>
@@ -25,8 +24,6 @@
 
 namespace NKikimr {
 
-using namespace NColumnShard;
-
 class TLocalHelper: public Tests::NCS::THelper {
 private:
     using TBase = Tests::NCS::THelper;
@@ -35,8 +32,7 @@ public:
     void CreateTestOlapTable(TString tableName = "olapTable", ui32 tableShardsCount = 3,
         TString storeName = "olapStore", ui32 storeShardsCount = 4,
         TString shardingFunction = "HASH_FUNCTION_CLOUD_LOGS") {
-        TActorId sender = Server.GetRuntime()->AllocateEdgeActor();
-        CreateTestOlapStore(sender, Sprintf(R"(
+        CreateTestOlapStore(Sprintf(R"(
              Name: "%s"
              ColumnShardCount: %d
              SchemaPresets {
@@ -52,7 +48,7 @@ public:
             shardingColumns = "[\"uid\"]";
         }
 
-        TBase::CreateTestOlapTable(sender, storeName, Sprintf(R"(
+        TBase::CreateTestOlapTable(storeName, Sprintf(R"(
             Name: "%s"
             ColumnShardCount: %d
             TtlSettings: {

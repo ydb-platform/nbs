@@ -6,11 +6,13 @@
 #include <contrib/ydb/core/tx/columnshard/engines/changes/abstract/abstract.h>
 #include <contrib/ydb/core/tx/columnshard/engines/portions/write_with_blobs.h>
 #include <contrib/ydb/core/tx/columnshard/engines/scheme/versions/filtered_scheme.h>
+#include <contrib/ydb/core/tx/columnshard/common/path_id.h>
 
 namespace NKikimr::NOlap::NCompaction {
 class TMerger {
 private:
     YDB_ACCESSOR(bool, OptimizationWritingPackMode, false);
+    YDB_ACCESSOR(ui64, PortionExpectedSize, 1.5 * (1 << 20));
     std::vector<std::shared_ptr<NArrow::TGeneralContainer>> Batches;
     std::vector<std::shared_ptr<NArrow::TColumnFilter>> Filters;
     const TConstructionContext& Context;
@@ -39,6 +41,6 @@ public:
 
     std::vector<TWritePortionInfoWithBlobsResult> Execute(const std::shared_ptr<NArrow::NSplitter::TSerializationStats>& stats,
         const NArrow::NMerger::TIntervalPositions& checkPoints, const std::shared_ptr<TFilteredSnapshotSchema>& resultFiltered,
-        const ui64 pathId, const std::optional<ui64> shardingActualVersion);
+        const TInternalPathId pathId, const std::optional<ui64> shardingActualVersion);
 };
 }   // namespace NKikimr::NOlap::NCompaction

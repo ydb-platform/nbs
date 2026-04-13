@@ -2,34 +2,24 @@ PY3TEST()
 
     TAG(ya:manual)
 
-    TIMEOUT(600)
+    SIZE(LARGE)
 
-    PY_SRCS (
-        conftest.py
-    )
+    ENV(YDB_CLI_BINARY="contrib/ydb/apps/ydb/ydb")
 
     TEST_SRCS (
         test_clickbench.py
+        test_tpcds.py
         test_tpch.py
     )
 
     PEERDIR (
-        contrib/python/allure-pytest
-        contrib/python/allure-python-commons
-        contrib/ydb/public/sdk/python/enable_v3_new_behavior
-        contrib/ydb/tests/olap/lib
-        library/python/testing/yatest_common
-        contrib/ydb/public/sdk/python
+        contrib/ydb/tests/olap/load/lib
     )
-    IF(NOT OPENSOURCE)
-        DATA (
-            sbr://6581137886
-        )
-    ENDIF()
 
     IF(NOT NOT_INCLUDE_CLI)
         DEPENDS (
             contrib/ydb/apps/ydb
         )
     ENDIF()
+
 END()

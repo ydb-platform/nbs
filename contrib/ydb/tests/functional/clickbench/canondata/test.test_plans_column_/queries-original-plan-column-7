@@ -35,22 +35,32 @@
                                         "PlanNodeType": "Connection",
                                         "Plans": [
                                             {
-                                                "Node Type": "TopSort",
+                                                "Node Type": "TopSort-Aggregate",
                                                 "Operators": [
+                                                    {
+                                                        "Inputs": [
+                                                            {
+                                                                "InternalOperatorId": 1
+                                                            }
+                                                        ],
+                                                        "Limit": "1001",
+                                                        "Name": "TopSort",
+                                                        "TopSortBy": "argument.Count0"
+                                                    },
                                                     {
                                                         "Inputs": [
                                                             {
                                                                 "ExternalPlanNodeId": 2
                                                             }
                                                         ],
-                                                        "Limit": "1001",
-                                                        "Name": "TopSort",
-                                                        "TopSortBy": "argument.Count0"
+                                                        "Name": "Aggregate",
+                                                        "Phase": "Final"
                                                     }
                                                 ],
                                                 "PlanNodeId": 3,
                                                 "Plans": [
                                                     {
+                                                        "HashFunc": "HashV1",
                                                         "KeyColumns": [
                                                             "AdvEngineID"
                                                         ],
@@ -68,11 +78,13 @@
                                                                             }
                                                                         ],
                                                                         "Name": "Filter",
-                                                                        "Predicate": "AdvEngineID != 0"
+                                                                        "Predicate": "AdvEngineID != 0",
+                                                                        "Pushdown": "True"
                                                                     },
                                                                     {
                                                                         "Inputs": [],
                                                                         "Name": "TableFullScan",
+                                                                        "Path": "/local/clickbench/plans/column/hits",
                                                                         "ReadColumns": [
                                                                             "AdvEngineID"
                                                                         ],
@@ -154,8 +166,7 @@
                                                                                         ]
                                                                                     }
                                                                                 }
-                                                                            ],
-                                                                            "Version": 4
+                                                                            ]
                                                                         },
                                                                         "Table": "clickbench/plans/column/hits"
                                                                     }
@@ -178,7 +189,10 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
             },
             "tables": [
                 {

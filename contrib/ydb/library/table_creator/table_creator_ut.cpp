@@ -3,8 +3,8 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/core/testlib/test_client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
+#include <ydb-cpp-sdk/client/table/table.h>
 
 namespace NKikimr {
 

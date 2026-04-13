@@ -8,6 +8,7 @@
 #include "replica.h"
 
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
+#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
 #include <contrib/ydb/library/services/services.pb.h>
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
@@ -1269,6 +1270,9 @@ public:
 
     void Bootstrap() {
         TMonitorableActor::Bootstrap();
+        auto localNodeId = SelfId().NodeId();
+        auto whiteboardId = NNodeWhiteboard::MakeNodeWhiteboardServiceId(localNodeId);
+        Send(whiteboardId, new NNodeWhiteboard::TEvWhiteboard::TEvSystemStateAddRole("SchemeBoard"));
         Become(&TThis::StateWork);
     }
 
