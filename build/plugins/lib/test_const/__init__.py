@@ -1,6 +1,16 @@
 # coding: utf-8
 import re
 
+TEST_BT_COLORS = {
+    "function_name": "[[alt1]]",
+    "function_arg": "[[good]]",
+    "stack_frame": "[[bad]]",
+    "thread_prefix": "[[alt3]]",
+    "thread_id": "[[bad]]",
+    "file_path": "[[warn]]",
+    "line_num": "[[alt2]]",
+    "address": "[[unimp]]",
+}
 
 RESTART_TEST_INDICATOR = '##restart-test##'
 INFRASTRUCTURE_ERROR_INDICATOR = '##infrastructure-error##'
@@ -54,6 +64,10 @@ CANON_SBR_RESOURCE_REGEX = re.compile(r'(sbr:/?/?(\d+))')
 
 MANDATORY_ENV_VAR_NAME = 'YA_MANDATORY_ENV_VARS'
 
+STYLE_CPP_SOURCE_EXTS = [".cpp", ".cxx", ".cc", ".c", ".C"]
+STYLE_CPP_HEADER_EXTS = [".h", ".H", ".hh", ".hpp", ".hxx", ".ipp"]
+STYLE_CPP_ALL_EXTS = STYLE_CPP_SOURCE_EXTS + STYLE_CPP_HEADER_EXTS
+
 BUILD_FLAGS_ALLOWED_IN_CONTEXT = {
     'AUTOCHECK',
     # Required for local test runs
@@ -61,37 +75,6 @@ BUILD_FLAGS_ALLOWED_IN_CONTEXT = {
     'USE_ARCADIA_PYTHON',
     'USE_SYSTEM_PYTHON',
 }
-
-STYLE_TEST_TYPES = [
-    "classpath.clash",
-    "clang_tidy",
-    "eslint",
-    "gofmt",
-    "govet",
-    "java.style",
-    "ktlint",
-    "py2_flake8",
-    "flake8",
-    "black",
-]
-
-REGULAR_TEST_TYPES = [
-    "benchmark",
-    "boost_test",
-    "exectest",
-    "fuzz",
-    "g_benchmark",
-    "go_bench",
-    "go_test",
-    "gtest",
-    "hermione",
-    "java",
-    "jest",
-    "py2test",
-    "py3test",
-    "pytest",
-    "unittest",
-]
 
 TEST_NODE_OUTPUT_RESULTS = [TESTING_OUT_TAR_NAME, YT_RUN_TEST_TAR_NAME]
 
@@ -134,11 +117,14 @@ COVERAGE_ENV_VARS = (
 PYTHON_COVERAGE_PREFIX_FILTER_ENV_NAME = 'PYTHON_COVERAGE_PREFIX_FILTER'
 PYTHON_COVERAGE_EXCLUDE_REGEXP_ENV_NAME = 'PYTHON_COVERAGE_EXCLUDE_REGEXP'
 
+# TODO get rid of this list - resolve nodes should be added automatically depending on the lang of the target module and their deps
 CLANG_COVERAGE_TEST_TYPES = (
     "boost_test",
     "coverage_extractor",
     "exectest",
+    "fuzz",
     "gtest",
+    "go_test",
     # java tests might use shared libraries
     "java",
     "py2test",
@@ -146,6 +132,7 @@ CLANG_COVERAGE_TEST_TYPES = (
     "pytest",
     "unittest",
 )
+
 COVERAGE_TABLE_CHUNKS = 20
 COVERAGE_TESTS_TIMEOUT_FACTOR = 1.5
 COVERAGE_YT_PROXY = "hahn.yt.yandex.net"
@@ -186,16 +173,14 @@ SANDBOX_RUN_TEST_YT_TOKEN_VALUE_NAME = 'YA_MAKE_SANDBOX_RUN_TEST_YT_TOKEN'
 # global resources
 ANDROID_AVD_ROOT = 'ANDROID_AVD_RESOURCE_GLOBAL'
 ANDROID_SDK_ROOT = 'ANDROID_SDK_RESOURCE_GLOBAL'
-COVERAGE_PUSH_TOOL_LOCAL = 'USE_SYSTEM_COVERAGE_PUSH_TOOL'
-COVERAGE_PUSH_TOOL_RESOURCE = 'COVERAGE_PUSH_TOOL_RESOURCE_GLOBAL'
-COVERAGE_PUSH_TOOL_LB_LOCAL = 'USE_SYSTEM_COVERAGE_PUSH_TOOL_LB'
-COVERAGE_PUSH_TOOL_LB_RESOURCE = 'COVERAGE_PUSH_TOOL_LB_RESOURCE_GLOBAL'
 FLAKE8_PY2_RESOURCE = 'FLAKE8_PY2_RESOURCE_GLOBAL'
 FLAKE8_PY3_RESOURCE = 'FLAKE8_PY3_RESOURCE_GLOBAL'
 GO_TOOLS_RESOURCE = 'GO_TOOLS_RESOURCE_GLOBAL'
 JSTYLE_RUNNER_LIB = 'JSTYLE_LIB_RESOURCE_GLOBAL'
 NODEJS_RESOURCE = 'NODEJS_RESOURCE_GLOBAL'
 NYC_RESOURCE = 'NYC_RESOURCE_GLOBAL'
+RUFF_RESOURCE = 'RUFF_RESOURCE_GLOBAL'
+CLANG_FORMAT_RESOURCE = 'CLANG_FORMAT_RESOURCE_GLOBAL'
 
 # test_tool resource for host platform.
 # source - build/platform/test_tool/host.ya.make.inc.
@@ -221,11 +206,21 @@ XCODE_TOOLS_RESOURCE = 'XCODE_TOOLS_ROOT_RESOURCE_GLOBAL'
 WINE_TOOL = 'WINE_TOOL_RESOURCE_GLOBAL'
 WINE32_TOOL = 'WINE32_TOOL_RESOURCE_GLOBAL'
 
+DEFAULT_CRASHED_STATUS_COMMENT = "Test crashed"
+
+DOCKER_LINK_RE = re.compile(r"(docker:\/\/)(\S+?)(\/\S*)?\@sha\d+:(\w+)")
+
 
 class Enum(object):
     @classmethod
     def enumerate(cls):
         return [v for k, v in cls.__dict__.items() if not k.startswith("_")]
+
+
+class SuiteClassType(Enum):
+    UNCLASSIFIED = '0'
+    REGULAR = '1'
+    STYLE = '2'
 
 
 class TestRequirements(Enum):
@@ -373,6 +368,30 @@ class TestSize(Enum):
         raise Exception("Unknown test size '{}'".format(size))
 
 
+class ModuleLang(Enum):
+    CPP = "cpp"
+    DOCS = "docs"
+    GO = "go"
+    JAVA = "java"
+    KOTLIN = "kotlin"
+    LANG_AGNOSTIC = "agnostic"  # This module (or node) is not language specific
+    PY = "py"
+    TS = "ts"
+    UNKNOWN = "unknown"
+
+
+class AggregateLang(Enum):
+    ABSENT = "absent"
+    NUMEROUS = "numerous"
+
+
+class NodeType(Enum):
+    TEST = "test"
+    TEST_AUX = "test-aux"
+    TEST_RESULTS = "test-results"
+    DOWNLOAD = "download"
+
+
 class TestRunExitCode(Enum):
     Skipped = 2
     Failed = 3
@@ -382,6 +401,8 @@ class TestRunExitCode(Enum):
 
 class YaTestTags(Enum):
     AlwaysMinimize = "ya:always_minimize"
+    CopyData = "ya:copydata"
+    CopyDataRO = "ya:copydataro"
     Dirty = "ya:dirty"
     DumpNodeEnvironment = "ya:dump_node_env"
     DumpTestEnvironment = "ya:dump_test_env"
@@ -393,10 +414,11 @@ class YaTestTags(Enum):
     GoNoSubtestReport = "ya:go_no_subtest_report"
     GoTotalReport = "ya:go_total_report"
     HugeLogs = "ya:huge_logs"
+    JavaTmpInRamDisk = "ya:java_tmp_in_ram_disk"
     Manual = "ya:manual"
     MapRootUser = "ya:map_root_user"
-    NoFuse = "ya:nofuse"
     NoGracefulShutdown = "ya:no_graceful_shutdown"
+    NoPstreeTrim = "ya:no_pstree_trim"
     Norestart = "ya:norestart"
     Noretries = "ya:noretries"
     NotAutocheck = "ya:not_autocheck"
@@ -409,12 +431,40 @@ class YaTestTags(Enum):
     SequentialRun = "ya:sequential_run"
     TraceOutput = "ya:trace_output"
     YtRunner = "ya:yt"
-    CopyData = "ya:copydata"
-    CopyDataRO = "ya:copydataro"
 
 
 class ServiceTags(Enum):
     AnyTag = "ya:anytag"
+
+
+# Linter names must match `NAME` set in `_ADD_*_LINTER_CHECK`
+class PythonLinterName(Enum):
+    Black = "black"
+    DummyLinter = "dummy_linter"
+    Flake8 = "flake8"
+    Py2Flake8 = "py2_flake8"
+    Ruff = "ruff"
+
+
+class CppLinterName(Enum):
+    ClangFormat = "clang_format"
+
+
+class DefaultLinterConfig(Enum):
+    Cpp = "build/config/tests/cpp_style/default_configs.json"
+    Python = "build/config/tests/py_style/default_configs.json"
+
+
+LINTER_CONFIG_TYPES = {
+    CppLinterName.ClangFormat: (".clang-format",),
+    PythonLinterName.Black: ("pyproject.toml",),
+    PythonLinterName.Ruff: ("pyproject.toml", "ruff.toml"),
+}
+
+AUTOINCLUDE_PATHS = (
+    'build/conf/autoincludes.json',
+    'build/internal/conf/autoincludes.json',
+)
 
 
 class Status(object):
