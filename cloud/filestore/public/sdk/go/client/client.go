@@ -497,9 +497,6 @@ func (client *Client) GetNodeAttr(
 		GID:               uint64(attr.GetGid()),
 		Links:             attr.GetLinks(),
 		Type:              NodeType(attr.GetType()),
-		ShardFileSystemID: attr.GetShardFileSystemId(),
-		ShardNodeName:     attr.GetShardNodeName(),
-		DevID:             attr.GetDevId(),
 	}, nil
 }
 
