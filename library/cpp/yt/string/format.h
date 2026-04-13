@@ -1,6 +1,11 @@
 #pragma once
 
+#include "format_string.h"
 #include "string_builder.h"
+
+#include <util/generic/string.h>
+
+#include <iterator>
 
 namespace NYT {
 
@@ -55,9 +60,17 @@ namespace NYT {
  */
 
 template <class... TArgs>
-void Format(TStringBuilderBase* builder, TFormatString<TArgs...> format, TArgs&&... args);
-template <class... TArgs>
 TString Format(TFormatString<TArgs...> format, TArgs&&... args);
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class... TArgs>
+void Format(TStringBuilderBase* builder, TFormatString<TArgs...> format, TArgs&&... args);
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class T>
+TString ToStringViaBuilder(const T& value, TStringBuf spec = TStringBuf("v"));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -90,6 +103,63 @@ TFormattableView<TRange, TFormatter> MakeShrunkFormattableView(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <class TRange, class TValueGetter, class TIntervalFormatter>
+struct TCompactIntervalView
+{
+    using TBegin = std::decay_t<decltype(std::declval<const TRange>().begin())>;
+    using TEnd = std::decay_t<decltype(std::declval<const TRange>().end())>;
+
+    TBegin RangeBegin;
+    TEnd RangeEnd;
+
+    TValueGetter ValueGetter;
+    TIntervalFormatter IntervalFormatter;
+
+    TBegin begin() const;
+    TEnd end() const;
+};
+
+template <class TRange>
+struct TDefaultValueGetter
+{
+    using TIterator = std::decay_t<decltype(std::declval<const TRange>().begin())>;
+
+    auto operator()(const TIterator& iterator) const
+        -> typename std::iterator_traits<TIterator>::value_type;
+};
+
+template <class TRange, class TValueGetter>
+struct TDefaultIntervalFormatter
+{
+    using TIterator = std::decay_t<decltype(std::declval<const TRange>().begin())>;
+
+    void operator()(
+        TStringBuilderBase* builder,
+        const TIterator& first,
+        const TIterator& last,
+        const TValueGetter& valueGetter,
+        bool firstInterval) const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+//! Writes a given integral #range as a sequence of intervals.
+//! Example:
+// MakeCompactIntervalView(std::vector {1, 2, 3, 5, 7, 8})
+// => [1-3,5,7-8]
+
+template <
+    class TRange,
+    class TValueGetter = TDefaultValueGetter<TRange>,
+    class TIntervalFormatter = TDefaultIntervalFormatter<TRange, TValueGetter>
+>
+TCompactIntervalView<TRange, TValueGetter, TIntervalFormatter> MakeCompactIntervalView(
+    const TRange& range,
+    TValueGetter&& valueGetter = {},
+    TIntervalFormatter&& intervalFormatter = {});
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <class TFormatter>
 struct TFormatterWrapper
 {
@@ -99,11 +169,11 @@ struct TFormatterWrapper
 // Allows insertion of text conditionally.
 // Usage:
 /*
- NYT::Format(
+NYT::Format(
     "Value is %v%v",
     42,
     MakeFormatterWrapper([&] (auto* builder) {
-        If (PossiblyMissingInfo_) {
+        if (PossiblyMissingInfo_) {
             builder->AppendString(", PossiblyMissingInfo: ");
             FormatValue(builder, PossiblyMissingInfo_, "v");
         }
