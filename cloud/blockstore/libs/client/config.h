@@ -70,6 +70,7 @@ public:
     ui32 GetMemoryQuotaBytes() const;
     ui32 GetSecurePort() const;
     bool GetSkipCertVerification() const;
+    ui32 GetRefreshCertsPeriod() const;
     TString GetRootCertsFile() const;
     TString GetCertFile() const;
     TString GetCertPrivateKeyFile() const;

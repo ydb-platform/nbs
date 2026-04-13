@@ -49,6 +49,10 @@ message TClientConfig
 
     // Unix-socket path.
     optional string UnixSocketPath = 18;
+
+    // Certificate refresh period in seconds for automatic TLS certificate
+    // reloading. Zero disables periodic certificate reloading.
+    optional uint32 RefreshCertsPeriod = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

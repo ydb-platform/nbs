@@ -1155,7 +1155,7 @@ grpc::SslServerCredentialsOptions TServer::CreateSslOptions()
 
 std::shared_ptr<grpc::ServerCredentials> TServer::CreateSecureServerCredentials()
 {
-    if (Config->GetRefreshCertsPeriod() == 0) {
+    if (!Config->GetRefreshCertsPeriod()) {
         auto sslOptions = CreateSslOptions();
         return grpc::SslServerCredentials(sslOptions);
     }

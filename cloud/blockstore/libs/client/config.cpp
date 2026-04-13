@@ -55,6 +55,7 @@ TDuration MSeconds(ui64 x)
                                                                                \
     xxx(MemoryQuotaBytes,       ui32,             0                           )\
     xxx(SecurePort,             ui32,             0                           )\
+    xxx(RefreshCertsPeriod,     ui32,             0                           )\
     xxx(RootCertsFile,          TString,          {}                          )\
     xxx(CertFile,               TString,          {}                          )\
     xxx(CertPrivateKeyFile,     TString,          {}                          )\
