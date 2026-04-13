@@ -63,9 +63,10 @@ func (m *ClientInterfaceMock) EnableDirectoryCreationInShards(
 	filesystemID string,
 	blocksCount uint64,
 	configVersion uint32,
+	shardCount uint32,
 ) error {
 
-	args := m.Called(ctx, filesystemID, blocksCount, configVersion)
+	args := m.Called(ctx, filesystemID, blocksCount, configVersion, shardCount)
 	return args.Error(0)
 }
 

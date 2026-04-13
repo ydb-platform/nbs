@@ -369,11 +369,12 @@ func TestClientEnableDirectoryCreationInShardsSuccess(t *testing.T) {
 		"fs-1",
 		uint64(100),
 		uint32(1),
+		uint32(1),
 	).Return(nil)
 
 	c := newTestClient(nfsMock, registryMock)
 
-	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1", 1)
 	require.NoError(t, err)
 
 	nfsMock.AssertExpectations(t)
@@ -398,11 +399,12 @@ func TestClientEnableDirectoryCreationInShardsError(t *testing.T) {
 		"fs-1",
 		uint64(100),
 		uint32(1),
+		uint32(1),
 	).Return(testError)
 
 	c := newTestClient(nfsMock, registryMock)
 
-	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1", 1)
 	require.Error(t, err)
 	require.ErrorIs(t, err, testError)
 
@@ -901,11 +903,12 @@ func TestClientEnableDirectoryCreationInShardsWrappedError(t *testing.T) {
 		"fs-1",
 		uint64(100),
 		uint32(1),
+		uint32(1),
 	).Return(testNfsClientError)
 
 	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
 
-	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1", 1)
 	require.Error(t, err)
 	var clientErr *nfs_client.ClientError
 	require.ErrorAs(t, err, &clientErr)
@@ -1303,11 +1306,12 @@ func TestClientEnableDirectoryCreationInShardsNonRetriableError(t *testing.T) {
 		"fs-1",
 		uint64(100),
 		uint32(1),
+		uint32(1),
 	).Return(testNfsClientNonRetriableError)
 
 	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
 
-	err := c.EnableDirectoryCreationInShards(ctx, "fs-1")
+	err := c.EnableDirectoryCreationInShards(ctx, "fs-1", 1)
 	require.Error(t, err)
 	var clientErr *nfs_client.ClientError
 	require.ErrorAs(t, err, &clientErr)

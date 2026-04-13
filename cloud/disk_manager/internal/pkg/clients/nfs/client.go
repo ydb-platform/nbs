@@ -290,6 +290,7 @@ func (c *client) DestroyCheckpoint(
 func (c *client) EnableDirectoryCreationInShards(
 	ctx context.Context,
 	filesystemID string,
+	shardCount uint32,
 ) (err error) {
 	defer c.metrics.StatRequest("EnableDirectoryCreationInShards")(&err)
 
@@ -312,6 +313,7 @@ func (c *client) EnableDirectoryCreationInShards(
 			filesystemID,
 			filestore.BlocksCount,
 			filestore.ConfigVersion,
+			shardCount,
 		)
 		if err != nil {
 			if !isAbortedError(err) {

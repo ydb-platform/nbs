@@ -38,6 +38,7 @@ type ClientInterface interface {
 		filesystemID string,
 		blocksCount uint64,
 		configVersion uint32,
+		shardCount uint32,
 	) error
 
 	DestroyFileStore(

@@ -175,6 +175,7 @@ func (client *Client) EnableDirectoryCreationInShards(
 	filesystemID string,
 	blocksCount uint64,
 	configVersion uint32,
+	shardCount uint32,
 ) error {
 
 	req := &protos.TResizeFileStoreRequest{
@@ -182,6 +183,7 @@ func (client *Client) EnableDirectoryCreationInShards(
 		BlocksCount:                     blocksCount,
 		ConfigVersion:                   configVersion,
 		EnableDirectoryCreationInShards: true,
+		ShardCount: shardCount,
 	}
 
 	_, err := client.Impl.ResizeFileStore(ctx, req)

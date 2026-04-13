@@ -101,6 +101,7 @@ type Client interface {
 	EnableDirectoryCreationInShards(
 		ctx context.Context,
 		filesystemID string,
+		shardCount uint32,
 	) error
 
 	DescribeModel(

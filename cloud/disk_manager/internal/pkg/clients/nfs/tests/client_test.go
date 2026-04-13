@@ -115,7 +115,7 @@ func TestListNodesFileSystem(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Delete(ctx, filesystemID, false)
 
-	err = client.EnableDirectoryCreationInShards(ctx, filesystemID)
+	err = client.EnableDirectoryCreationInShards(ctx, filesystemID, 5)
 	require.NoError(t, err)
 
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
@@ -319,12 +319,10 @@ func TestGetNodeAttr(t *testing.T) {
 		BlocksCount: 1024,
 		BlockSize:   4096,
 		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
-		ShardCount:  5,
 	})
 	require.NoError(t, err)
 	defer client.Delete(ctx, filesystemID, false)
 
-	err = client.EnableDirectoryCreationInShards(ctx, filesystemID)
 	require.NoError(t, err)
 
 	session, err := client.CreateSession(ctx, filesystemID, "", false)
@@ -343,16 +341,12 @@ func TestGetNodeAttr(t *testing.T) {
 	require.Equal(t, "testfile", fileNode.Name)
 	require.False(t, fileNode.Type.IsDirectory())
 	require.NotZero(t, fileNode.NodeID)
-	require.NotEmpty(t, fileNode.ShardNodeName)
-	require.NotEqual(t, fileNode.ShardFileSystemID, filesystemID)
 
 	dirNode, err := session.GetNodeAttr(ctx, nfs.RootNodeID, "testdir")
 	require.NoError(t, err)
 	require.Equal(t, "testdir", dirNode.Name)
 	require.True(t, dirNode.Type.IsDirectory())
 	require.NotZero(t, dirNode.NodeID)
-	require.NotEmpty(t, dirNode.ShardNodeName)
-	require.NotEqual(t, dirNode.ShardFileSystemID, filesystemID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
