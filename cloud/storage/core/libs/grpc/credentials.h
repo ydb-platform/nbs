@@ -6,6 +6,7 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
 
+#include <util/datetime/base.h>
 #include <util/stream/file.h>
 #include <util/system/yassert.h>
 
@@ -39,30 +40,41 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
         const auto& rootCertsFile = config.GetRootCertsFile();
         const auto& certFile = config.GetCertFile();
         const auto& certPrivateKeyFile = config.GetCertPrivateKeyFile();
+        const ui32 refreshCertsPeriod = config.GetRefreshCertsPeriod();
         const bool hasIdentity = !!certFile || !!certPrivateKeyFile;
 
         if (hasIdentity) {
             Y_ENSURE(certFile, "Empty CertFile");
             Y_ENSURE(certPrivateKeyFile, "Empty CertPrivateKeyFile");
 
-            TCertificateFiles certPaths;
-            certPaths.PrivateKeyPath = certPrivateKeyFile;
-            certPaths.CertChainPath = certFile;
+            if (refreshCertsPeriod == 0) {
+                grpc::SslCredentialsOptions sslOptions;
+                if (rootCertsFile) {
+                    sslOptions.pem_root_certs = ReadFile(rootCertsFile);
+                }
+                sslOptions.pem_private_key = ReadFile(certPrivateKeyFile);
+                sslOptions.pem_cert_chain = ReadFile(certFile);
+                credentials = grpc::SslCredentials(sslOptions);
+            } else {
+                TCertificateFiles certPaths;
+                certPaths.PrivateKeyPath = certPrivateKeyFile;
+                certPaths.CertChainPath = certFile;
 
-            auto provider = CreatePeriodicCertificateProvider(
-                rootCertsFile,
-                TVector<TCertificateFiles>{certPaths},
-                60);
+                auto provider = CreatePeriodicCertificateProvider(
+                    rootCertsFile,
+                    TVector<TCertificateFiles>{certPaths},
+                    TDuration::Seconds(refreshCertsPeriod));
 
-            grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
-            tlsOptions.set_certificate_provider(std::move(provider));
+                grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
+                tlsOptions.set_certificate_provider(std::move(provider));
 
-            tlsOptions.watch_identity_key_cert_pairs();
-            if (rootCertsFile) {
-                tlsOptions.watch_root_certs();
+                tlsOptions.watch_identity_key_cert_pairs();
+                if (rootCertsFile) {
+                    tlsOptions.watch_root_certs();
+                }
+
+                credentials = grpc::experimental::TlsCredentials(tlsOptions);
             }
-
-            credentials = grpc::experimental::TlsCredentials(tlsOptions);
         } else {
             grpc::SslCredentialsOptions sslOptions;
             if (rootCertsFile) {
