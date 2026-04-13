@@ -237,6 +237,10 @@ void TPartitionActor::HandleAddFreshBlocks(
     auto response = std::make_unique<TResponse>();
 
     NCloud::Reply(ctx, *ev, std::move(response));
+
+    if (FreshBlocksWriter) {
+        EnqueueFlushIfNeeded(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
