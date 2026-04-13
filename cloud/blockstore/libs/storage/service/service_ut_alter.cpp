@@ -1,5 +1,7 @@
 #include "service_ut.h"
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
+
 #include <cloud/blockstore/config/storage.pb.h>
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
