@@ -1,5 +1,5 @@
 #pragma once
-#include <contrib/ydb/core/tx/columnshard/counters/common/owner.h>
+#include <contrib/ydb/library/signals/owner.h>
 
 namespace NKikimr::NOlap::NGroupedMemoryManager {
 
@@ -8,19 +8,35 @@ private:
     using TBase = NColumnShard::TCommonCountersOwner;
     NMonitoring::TDynamicCounters::TCounterPtr AllocatedBytes;
     NMonitoring::TDynamicCounters::TCounterPtr AllocatedChunks;
+    NMonitoring::TDynamicCounters::TCounterPtr Allocations;
+    NMonitoring::TDynamicCounters::TCounterPtr Free;
     NMonitoring::TDynamicCounters::TCounterPtr WaitingBytes;
     NMonitoring::TDynamicCounters::TCounterPtr WaitingChunks;
+    NMonitoring::TDynamicCounters::TCounterPtr AllocationFailCount;
 
 public:
+    const NMonitoring::TDynamicCounters::TCounterPtr ValueHardLimit;
+    const NMonitoring::TDynamicCounters::TCounterPtr ValueSoftLimit;
+
     TStageCounters(const TCommonCountersOwner& owner, const TString& name)
         : TBase(owner, "stage", name)
         , AllocatedBytes(TBase::GetValue("Allocated/Bytes"))
         , AllocatedChunks(TBase::GetValue("Allocated/Count"))
+        , Allocations(TBase::GetDeriviative("Allocated/Count"))
+        , Free(TBase::GetDeriviative("Free/Count"))
         , WaitingBytes(TBase::GetValue("Waiting/Bytes"))
-        , WaitingChunks(TBase::GetValue("Waiting/Count")) {
+        , WaitingChunks(TBase::GetValue("Waiting/Count"))
+        , AllocationFailCount(TBase::GetValue("AllocationFails/Count"))
+        , ValueHardLimit(TBase::GetValue("Limit/Hard/Bytes"))
+        , ValueSoftLimit(TBase::GetValue("Limit/Soft/Bytes")) {
+    }
+
+    void OnCannotAllocate() {
+        AllocationFailCount->Add(1);
     }
 
     void Add(const ui64 volume, const bool allocated) {
+        Allocations->Inc();
         if (allocated) {
             AllocatedBytes->Add(volume);
             AllocatedChunks->Add(1);
@@ -31,6 +47,7 @@ public:
     }
 
     void Sub(const ui64 volume, const bool allocated) {
+        Free->Inc();
         if (allocated) {
             AllocatedBytes->Sub(volume);
             AllocatedChunks->Sub(1);

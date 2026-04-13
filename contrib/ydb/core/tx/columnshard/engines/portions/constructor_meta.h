@@ -1,5 +1,7 @@
 #pragma once
+#include "common.h"
 #include "meta.h"
+
 #include <contrib/ydb/core/formats/arrow/special_keys.h>
 #include <contrib/ydb/core/tx/columnshard/common/portion.h>
 #include <contrib/ydb/core/tx/columnshard/common/snapshot.h>
@@ -14,14 +16,39 @@ private:
     std::optional<TString> TierName;
     std::optional<TSnapshot> RecordSnapshotMin;
     std::optional<TSnapshot> RecordSnapshotMax;
-    std::optional<NPortion::EProduced> Produced;
+    std::optional<ui64> CompactionLevel;
+
+    std::optional<ui32> RecordsCount;
+    std::optional<ui64> ColumnRawBytes;
+    std::optional<ui32> ColumnBlobBytes;
+    std::optional<ui32> IndexRawBytes;
+    std::optional<ui32> IndexBlobBytes;
+
     std::optional<ui32> DeletionsCount;
+
     friend class TPortionInfoConstructor;
-    void FillMetaInfo(const NArrow::TFirstLastSpecialKeys& primaryKeys, const ui32 deletionsCount, const NArrow::TMinMaxSpecialKeys& snapshotKeys, const TIndexInfo& indexInfo);
+    friend class TPortionAccessorConstructor;
+    void FillMetaInfo(const NArrow::TFirstLastSpecialKeys& primaryKeys, const ui32 deletionsCount,
+        const std::optional<NArrow::TMinMaxSpecialKeys>& snapshotKeys, const TIndexInfo& indexInfo);
 
 public:
     TPortionMetaConstructor() = default;
     TPortionMetaConstructor(const TPortionMeta& meta);
+
+    const NArrow::TFirstLastSpecialKeys& GetFirstAndLastPK() const {
+        AFL_VERIFY(FirstAndLastPK);
+        return *FirstAndLastPK;
+    }
+
+    ui64 GetTotalBlobBytes() const {
+        AFL_VERIFY(ColumnBlobBytes);
+        AFL_VERIFY(IndexBlobBytes);
+        return *ColumnBlobBytes + *IndexBlobBytes;
+    }
+
+    void SetCompactionLevel(const ui64 level) {
+        CompactionLevel = level;
+    }
 
     void SetTierName(const TString& tierName);
     void ResetTierName(const TString& tierName) {
@@ -29,14 +56,10 @@ public:
         SetTierName(tierName);
     }
 
-    void UpdateRecordsMeta(const NPortion::EProduced prod) {
-        Produced = prod;
-    }
-
     TPortionMeta Build();
 
-    [[nodiscard]] bool LoadMetadata(const NKikimrTxColumnShard::TIndexPortionMeta& portionMeta, const TIndexInfo& indexInfo);
-
+    [[nodiscard]] bool LoadMetadata(
+        const NKikimrTxColumnShard::TIndexPortionMeta& portionMeta, const TIndexInfo& indexInfo, const IBlobGroupSelector& groupSelector);
 };
 
-}
+}   // namespace NKikimr::NOlap

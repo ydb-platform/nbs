@@ -144,7 +144,7 @@ TClientBlob TClientBlob::Deserialize(const char* data, ui32 size)
         keySize = ReadUnaligned<ui8>(data);
         data += sizeof(ui8);
         explicitHashKey = TString(data, keySize);
-        data += explicitHashKey.Size();
+        data += explicitHashKey.size();
     }
 
     TInstant writeTimestamp;
@@ -172,7 +172,7 @@ TClientBlob TClientBlob::Deserialize(const char* data, ui32 size)
     Y_ABORT_UNLESS(data < end, "size %u SeqNo %" PRIu64 " SourceId %s", size, seqNo, sourceId.c_str());
     TString dt(data, end - data);
 
-    return TClientBlob(sourceId, seqNo, dt, std::move(partData), writeTimestamp, createTimestamp, us, partitionKey, explicitHashKey);
+    return TClientBlob(sourceId, seqNo, std::move(dt), std::move(partData), writeTimestamp, createTimestamp, us, partitionKey, explicitHashKey);
 }
 
 void TBatch::SerializeTo(TString& res) const{
@@ -220,7 +220,6 @@ void TBatch::Pack() {
         return;
     Packed = true;
     PackedData.Clear();
-
     bool hasUncompressed = false;
     bool hasKinesis = false;
     for (ui32 i = 0; i < Blobs.size(); ++i) {
@@ -606,7 +605,7 @@ void TBatch::UnpackToType1(TVector<TClientBlob> *blobs) const {
         auto it = partData.find(pos[i]);
         if (it != partData.end())
             pd = it->second;
-        (*blobs)[pos[i]] = TClientBlob(sourceIds[currentSID], seqNo[i], dt[i], std::move(pd), wtime[pos[i]], ctime[pos[i]], uncompressedSize[pos[i]],
+        (*blobs)[pos[i]] = TClientBlob(sourceIds[currentSID], seqNo[i], std::move(dt[i]), std::move(pd), wtime[pos[i]], ctime[pos[i]], uncompressedSize[pos[i]],
                                        partitionKey[i], explicitHash[i]);
         if (i + 1 == end[currentSID])
             ++currentSID;

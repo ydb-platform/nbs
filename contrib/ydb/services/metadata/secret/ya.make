@@ -21,6 +21,7 @@ PEERDIR(
     contrib/ydb/core/grpc_services/base
     contrib/ydb/core/grpc_services
     contrib/ydb/services/metadata/request
+    contrib/ydb/services/metadata/secret/accessor
 )
 
 END()

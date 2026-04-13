@@ -1,8 +1,8 @@
 #include "service_node_pinger.h"
 #include <contrib/ydb/library/yql/providers/dq/worker_manager/interface/events.h>
 
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
-#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <yql/essentials/utils/yql_panic.h>
+#include <yql/essentials/utils/log/log.h>
 
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -269,7 +269,7 @@ private:
             req.AddKnownNodes(node);
         }
 
-        auto* actorSystem = ctx.ExecutorThread.ActorSystem;
+        auto* actorSystem = ctx.ActorSystem();
         auto selfId = SelfId();
 
         Resolver->GetConnection()

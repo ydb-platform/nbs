@@ -12,17 +12,17 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/dq/integration
+    yql/essentials/core/dq_integration
     contrib/ydb/library/yql/providers/common/token_accessor/client
-    contrib/ydb/library/yql/providers/common/dq
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/providers/common/schema/mkql
+    yql/essentials/providers/common/dq
+    yql/essentials/providers/common/provider
+    yql/essentials/providers/common/schema/mkql
     contrib/ydb/library/yql/providers/function/expr_nodes
     contrib/ydb/library/yql/providers/function/common
     contrib/ydb/library/yql/providers/function/gateway
     contrib/ydb/library/yql/providers/function/proto
-    contrib/ydb/library/yql/core
-    contrib/ydb/library/yql/core/expr_nodes
+    yql/essentials/core
+    yql/essentials/core/expr_nodes
     contrib/ydb/library/yql/dq/expr_nodes
     contrib/ydb/library/yql/dq/opt
 )

@@ -15,7 +15,6 @@ SRCS(
 PEERDIR(
     contrib/libs/openssl
     contrib/libs/protobuf
-    contrib/libs/yaml-cpp
     library/cpp/protobuf/json
     contrib/ydb/core/base
     contrib/ydb/core/cms/console/util
@@ -26,6 +25,7 @@ PEERDIR(
     contrib/ydb/library/fyamlcpp
     contrib/ydb/library/yaml_config/protos
     contrib/ydb/library/yaml_config/public
+    contrib/ydb/library/yaml_json
 )
 
 END()

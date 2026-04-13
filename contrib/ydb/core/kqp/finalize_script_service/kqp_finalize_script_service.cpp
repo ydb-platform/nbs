@@ -7,6 +7,8 @@
 
 #include <contrib/ydb/core/protos/config.pb.h>
 
+#include <queue>
+
 namespace NKikimr::NKqp {
 
 namespace {

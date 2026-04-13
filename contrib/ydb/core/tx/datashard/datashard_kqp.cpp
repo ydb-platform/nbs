@@ -13,6 +13,7 @@
 #include <contrib/ydb/core/protos/kqp_stats.pb.h>
 
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
+#include <contrib/ydb/library/yql/dq/common/rope_over_buffer.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_transport.h>
 
 #include <util/generic/size_literals.h>
@@ -503,8 +504,8 @@ THolder<TEvDataShard::TEvProposeTransactionResult> KqpCompleteTransaction(const 
                         const size_t outputDataSize = serialized.Size();
                         *outputData = std::move(serialized.Proto);
                         outputData->ClearPayloadId();
-                        if (!serialized.Payload.IsEmpty()) {
-                            outputData->SetPayloadId(dataEv->AddPayload(std::move(serialized.Payload)));
+                        if (!serialized.Payload.Empty()) {
+                            outputData->SetPayloadId(dataEv->AddPayload(NYql::MakeReadOnlyRope(std::move(serialized.Payload))));
                         }
                         dataEv->Record.MutableChannelData()->SetFinished(fetchStatus == NUdf::EFetchStatus::Finish);
                         if (outputDataSize > MaxDatashardReplySize) {
@@ -522,7 +523,7 @@ THolder<TEvDataShard::TEvProposeTransactionResult> KqpCompleteTransaction(const 
                     NDq::TDqSerializedBatch outputData;
                     auto fetchStatus = FetchOutput(taskRunner.GetOutputChannel(channel.GetId()).Get(), outputData);
                     MKQL_ENSURE_S(fetchStatus == NUdf::EFetchStatus::Finish);
-                    MKQL_ENSURE_S(outputData.Proto.GetRows() == 0);
+                    MKQL_ENSURE_S(outputData.Proto.GetChunks() == 0);
                 }
             }
         }
@@ -570,38 +571,33 @@ void KqpFillOutReadSets(TOutputOpData::TOutReadSets& outReadSets, const NKikimrD
     NKikimrTx::TReadSetData::EDecision decision = NKikimrTx::TReadSetData::DECISION_COMMIT;
     TMap<std::pair<ui64, ui64>, NKikimrTx::TReadSetData> genericData;
 
-    if (kqpLocks.HasOp() && NeedValidateLocks(kqpLocks.GetOp())) {
-        bool sendLocks = SendLocks(kqpLocks, tabletId);
-        YQL_ENSURE(sendLocks == !kqpLocks.GetLocks().empty());
+    if (SendLocks(kqpLocks, tabletId) && !kqpLocks.GetReceivingShards().empty()) {
+        auto brokenLocks = ValidateLocks(kqpLocks, sysLocks, tabletId);
 
-        if (sendLocks && !kqpLocks.GetReceivingShards().empty()) {
-            auto brokenLocks = ValidateLocks(kqpLocks, sysLocks, tabletId);
+        NKikimrTxDataShard::TKqpValidateLocksResult validateLocksResult;
+        validateLocksResult.SetSuccess(brokenLocks.empty());
 
-            NKikimrTxDataShard::TKqpValidateLocksResult validateLocksResult;
-            validateLocksResult.SetSuccess(brokenLocks.empty());
+        for (auto& lock : brokenLocks) {
+            LOG_TRACE_S(*TlsActivationContext, NKikimrServices::TX_DATASHARD, "Found broken lock: " << lock.ShortDebugString());
+            if (useGenericReadSets) {
+                decision = NKikimrTx::TReadSetData::DECISION_ABORT;
+            } else {
+                validateLocksResult.AddBrokenLocks()->Swap(&lock);
+            }
+        }
 
-            for (auto& lock : brokenLocks) {
-                LOG_TRACE_S(*TlsActivationContext, NKikimrServices::TX_DATASHARD, "Found broken lock: " << lock.ShortDebugString());
-                if (useGenericReadSets) {
-                    decision = NKikimrTx::TReadSetData::DECISION_ABORT;
-                } else {
-                    validateLocksResult.AddBrokenLocks()->Swap(&lock);
-                }
+        for (auto& dstTabletId : kqpLocks.GetReceivingShards()) {
+            if (tabletId == dstTabletId) {
+                continue;
             }
 
-            for (auto& dstTabletId : kqpLocks.GetReceivingShards()) {
-                if (tabletId == dstTabletId) {
-                    continue;
-                }
+            LOG_TRACE_S(*TlsActivationContext, NKikimrServices::TX_DATASHARD, "Send locks from " << tabletId << " to " << dstTabletId << ", locks: " << validateLocksResult.ShortDebugString());
 
-                LOG_TRACE_S(*TlsActivationContext, NKikimrServices::TX_DATASHARD, "Send locks from " << tabletId << " to " << dstTabletId << ", locks: " << validateLocksResult.ShortDebugString());
-
-                auto key = std::make_pair(tabletId, dstTabletId);
-                if (useGenericReadSets) {
-                    genericData[key].SetDecision(decision);
-                } else {
-                    readsetData[key].MutableValidateLocksResult()->CopyFrom(validateLocksResult);
-                }
+            auto key = std::make_pair(tabletId, dstTabletId);
+            if (useGenericReadSets) {
+                genericData[key].SetDecision(decision);
+            } else {
+                readsetData[key].MutableValidateLocksResult()->CopyFrom(validateLocksResult);
             }
         }
     }
@@ -638,15 +634,10 @@ std::tuple<bool, TVector<NKikimrDataEvents::TLock>> KqpValidateLocks(ui64 origin
         return {true, {}};
     }
 
-    bool sendLocks = SendLocks(*kqpLocks, origin);
-    YQL_ENSURE(sendLocks == !kqpLocks->GetLocks().empty());
+    auto brokenLocks = ValidateLocks(*kqpLocks, sysLocks, origin);
 
-    if (sendLocks) {
-        auto brokenLocks = ValidateLocks(*kqpLocks, sysLocks, origin);
-
-        if (!brokenLocks.empty()) {
-            return {false, std::move(brokenLocks)};
-        }
+    if (!brokenLocks.empty()) {
+        return {false, std::move(brokenLocks)};
     }
 
     for (const auto& readSet : inReadSets) {
@@ -827,7 +818,7 @@ void KqpEraseLocks(ui64 origin, const NKikimrDataEvents::TKqpLocks* kqpLocks, TS
     }
 }
 
-void KqpCommitLocks(ui64 origin, const NKikimrDataEvents::TKqpLocks* kqpLocks, TSysLocks& sysLocks, const TRowVersion& writeVersion, IDataShardUserDb& userDb) {
+void KqpCommitLocks(ui64 origin, const NKikimrDataEvents::TKqpLocks* kqpLocks, TSysLocks& sysLocks, IDataShardUserDb& userDb) {
     if (kqpLocks == nullptr) {
         return;
     }
@@ -847,7 +838,7 @@ void KqpCommitLocks(ui64 origin, const NKikimrDataEvents::TKqpLocks* kqpLocks, T
             TTableId tableId(lockProto.GetSchemeShard(), lockProto.GetPathId());
             auto txId = lockProto.GetLockId();
 
-            userDb.CommitChanges(tableId, txId, writeVersion);
+            userDb.CommitChanges(tableId, txId);
         }
     } else {
         KqpEraseLocks(origin, kqpLocks, sysLocks);
@@ -1000,8 +991,11 @@ namespace {
 
 class TKqpTaskRunnerExecutionContext: public NDq::IDqTaskRunnerExecutionContext {
 public:
-    NDq::IDqOutputConsumer::TPtr CreateOutputConsumer(const NDqProto::TTaskOutput& outputDesc, const NMiniKQL::TType* type, NUdf::IApplyContext* applyCtx, const NMiniKQL::TTypeEnvironment& typeEnv, const NKikimr::NMiniKQL::THolderFactory& holderFactory, TVector<NDq::IDqOutput::TPtr>&& outputs) const override {
-        return NKqp::KqpBuildOutputConsumer(outputDesc, type, applyCtx, typeEnv, holderFactory, std::move(outputs));
+    NDq::IDqOutputConsumer::TPtr CreateOutputConsumer(const NDqProto::TTaskOutput& outputDesc, const NMiniKQL::TType* type,
+        NUdf::IApplyContext* applyCtx, const NMiniKQL::TTypeEnvironment& typeEnv, const NKikimr::NMiniKQL::THolderFactory& holderFactory,
+        TVector<NDq::IDqOutput::TPtr>&& outputs, NUdf::IPgBuilder* /* pgBuilder */) const override
+    {
+        return NKqp::KqpBuildOutputConsumer(outputDesc, type, applyCtx, typeEnv, holderFactory, std::move(outputs), {});
     }
 
     NDq::IDqChannelStorage::TPtr CreateChannelStorage(ui64 /* channelId */, bool /* withSpilling */) const override {

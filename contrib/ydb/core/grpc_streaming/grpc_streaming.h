@@ -227,7 +227,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] stream accepted Name# %s ok# %s peer# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         if (status == NYdbGrpc::EQueueEventStatus::ERROR) {
             // Don't bother registering if accept failed
@@ -268,7 +268,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] stream done notification Name# %s ok# %s peer# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         bool success = status == NYdbGrpc::EQueueEventStatus::OK;
 
@@ -288,7 +288,7 @@ private:
     void Cancel() {
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade cancel Name# %s peer# %s",
             this, Name,
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         this->Context.TryCancel();
     }
@@ -301,7 +301,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade attach Name# %s actor# %s peer# %s",
             this, Name,
             actor.ToString().c_str(),
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         auto guard = SingleThreaded.Enforce();
 
@@ -325,7 +325,7 @@ private:
     bool Read() {
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade read Name# %s peer# %s",
             this, Name,
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         auto guard = SingleThreaded.Enforce();
 
@@ -353,7 +353,7 @@ private:
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
             NYdbGrpc::FormatMessage<TIn>(ReadInProgress->Record, status == NYdbGrpc::EQueueEventStatus::OK).c_str(),
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         // Take current in-progress read first
         auto read = std::move(ReadInProgress);
@@ -376,7 +376,7 @@ private:
                 Y_DEBUG_ABORT_UNLESS(flags & FlagFinishCalled);
                 if (Flags.compare_exchange_weak(flags, flags & ~FlagRegistered, std::memory_order_acq_rel)) {
                     LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] deregistering request Name# %s peer# %s (read done)",
-                        this, Name, this->GetPeerName().c_str());
+                        this, Name, this->GetPeer().c_str());
                     Server->DeregisterRequestCtx(this);
                     break;
                 }
@@ -394,14 +394,14 @@ private:
             LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade write Name# %s data# %s peer# %s grpc status# (%d) message# %s",
                 this, Name,
                 NYdbGrpc::FormatMessage<TOut>(message).c_str(),
-                this->GetPeerName().c_str(),
+                this->GetPeer().c_str(),
                 static_cast<int>(status->error_code()),
                 status->error_message().c_str());
         } else {
             LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade write Name# %s data# %s peer# %s",
                 this, Name,
                 NYdbGrpc::FormatMessage<TOut>(message).c_str(),
-                this->GetPeerName().c_str());
+                this->GetPeer().c_str());
         }
 
         Y_ABORT_UNLESS(!options.is_corked(),
@@ -456,7 +456,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] write finished Name# %s ok# %s peer# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         auto event = MakeHolder<typename IContext::TEvWriteFinished>();
         event->Success = status == NYdbGrpc::EQueueEventStatus::OK;
@@ -509,7 +509,7 @@ private:
     bool Finish(const grpc::Status& status) {
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade finish Name# %s peer# %s grpc status# (%d) message# %s",
             this, Name,
-            this->GetPeerName().c_str(),
+            this->GetPeer().c_str(),
             static_cast<int>(status.error_code()),
             status.error_message().c_str());
 
@@ -545,7 +545,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] stream finished Name# %s ok# %s peer# %s grpc status# (%d) message# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str(),
+            this->GetPeer().c_str(),
             static_cast<int>(Status->error_code()),
             Status->error_message().c_str());
 
@@ -580,7 +580,7 @@ private:
         while ((flags & FlagRegistered) && ReadQueue.load() == 0) {
             if (Flags.compare_exchange_weak(flags, flags & ~FlagRegistered, std::memory_order_acq_rel)) {
                 LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] deregistering request Name# %s peer# %s (finish done)",
-                    this, Name, this->GetPeerName().c_str());
+                    this, Name, this->GetPeer().c_str());
                 Server->DeregisterRequestCtx(this);
                 break;
             }
@@ -653,7 +653,7 @@ private:
         }
 
         TString GetPeerName() const override {
-            return Self->GetPeerName();
+            return Self->GetPeer();
         }
 
         TVector<TStringBuf> GetPeerMetaValues(TStringBuf key) const override {

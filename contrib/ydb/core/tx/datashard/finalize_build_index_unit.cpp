@@ -31,7 +31,7 @@ public:
 
         const auto& params = schemeTx.GetFinalizeBuildIndex();
 
-        const auto pathId = PathIdFromPathId(params.GetPathId());
+        const auto pathId = TPathId::FromProto(params.GetPathId());
         Y_ABORT_UNLESS(pathId.OwnerId == DataShard.GetPathOwnerId());
 
         const auto version = params.GetTableSchemaVersion();
@@ -39,15 +39,15 @@ public:
 
         TUserTable::TPtr tableInfo;
         if (params.HasOutcome() && params.GetOutcome().HasApply()) {
-            const auto indexPathId = PathIdFromPathId(params.GetOutcome().GetApply().GetIndexPathId());
+            const auto indexPathId = TPathId::FromProto(params.GetOutcome().GetApply().GetIndexPathId());
 
             tableInfo = DataShard.AlterTableSwitchIndexState(ctx, txc, pathId, version, indexPathId, NKikimrSchemeOp::EIndexStateReady);
         } else if (params.HasOutcome() && params.GetOutcome().HasCancel()) {
-            const auto indexPathId = PathIdFromPathId(params.GetOutcome().GetCancel().GetIndexPathId());
+            const auto indexPathId = TPathId::FromProto(params.GetOutcome().GetCancel().GetIndexPathId());
 
             const auto& userTables = DataShard.GetUserTables();
             Y_ABORT_UNLESS(userTables.contains(pathId.LocalPathId));
-            userTables.at(pathId.LocalPathId)->ForAsyncIndex(indexPathId, [&] (const auto&) {
+            userTables.at(pathId.LocalPathId)->ForAsyncIndex(indexPathId, [&](const auto&) {
                 RemoveSender.Reset(new TEvChangeExchange::TEvRemoveSender(indexPathId));
             });
 
@@ -68,10 +68,11 @@ public:
         ui64 txId = params.GetSnapshotTxId();
         Y_ABORT_UNLESS(step != 0);
 
-        if (DataShard.GetBuildIndexManager().Contains(params.GetBuildIndexId())) {
-            auto record = DataShard.GetBuildIndexManager().Get(params.GetBuildIndexId());
-            DataShard.CancelScan(tableInfo->LocalTid, record.ScanId);
-            DataShard.GetBuildIndexManager().Drop(params.GetBuildIndexId());
+        if (const auto* record = DataShard.GetScanManager().Get(params.GetBuildIndexId())) {
+            for (auto scanId : record->ScanIds) {
+                DataShard.CancelScan(tableInfo->LocalTid, scanId);
+            }
+            DataShard.GetScanManager().Drop(params.GetBuildIndexId());
         }
 
         const TSnapshotKey key(pathId, step, txId);

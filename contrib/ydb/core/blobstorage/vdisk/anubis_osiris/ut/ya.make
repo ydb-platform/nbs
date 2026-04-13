@@ -2,8 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/blobstorage/vdisk/anubis_osiris)
 
 FORK_SUBTESTS()
 
-TIMEOUT(600)
-
 SIZE(MEDIUM)
 
 PEERDIR(

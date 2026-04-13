@@ -7,7 +7,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/actors/core
-    contrib/ydb/library/yql/minikql
+    yql/essentials/minikql
     contrib/ydb/library/yql/dq/actors/compute
 )
 

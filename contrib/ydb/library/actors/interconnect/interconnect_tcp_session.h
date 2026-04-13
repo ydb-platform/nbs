@@ -4,6 +4,9 @@
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/interconnect/logging/logging.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_tcp.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_actor.h>
 #include <contrib/ydb/library/actors/protos/services_common.pb.h>
 #include <contrib/ydb/library/actors/util/datetime.h>
 #include <contrib/ydb/library/actors/util/rope.h>
@@ -12,6 +15,9 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <contrib/ydb/library/actors/interconnect/rdma/mem_pool.h>
+#include <contrib/ydb/library/actors/interconnect/rdma/events.h>
+
 #define XXH_INLINE_ALL
 #include <contrib/libs/xxhash/xxhash.h>
 
@@ -19,12 +25,10 @@
 #include <util/generic/deque.h>
 #include <util/datetime/cputimer.h>
 
+#include "events_local.h"
 #include "interconnect_impl.h"
 #include "interconnect_zc_processor.h"
-#include "poller_tcp.h"
-#include "poller_actor.h"
 #include "interconnect_channel.h"
-#include "logging.h"
 #include "watchdog_timer.h"
 #include "event_holder_pool.h"
 #include "channel_scheduler.h"
@@ -104,26 +108,34 @@ namespace NActors {
         CONFIRMING,           // confirmation inflight
     };
 
-    struct TReceiveContext: public TAtomicRefCount<TReceiveContext> {
-        /* All invokations to these fields should be thread-safe */
+    struct TRdmaReadContext : public TAtomicRefCount<TRdmaReadContext> {
+        using TPtr = TIntrusivePtr<TRdmaReadContext>;
+        TRdmaReadContext(std::shared_ptr<NInterconnect::NRdma::TQueuePair> qp)
+            : SizeLeft(0)
+            , Qp(qp)
+        {}
+        std::atomic<size_t> SizeLeft;
+        std::shared_ptr<NInterconnect::NRdma::TQueuePair> Qp;
+    };
 
+    struct TReceiveContext: public TAtomicRefCount<TReceiveContext> {
         ui64 ControlPacketSendTimer = 0;
         ui64 ControlPacketId = 0;
 
         // last processed packet by input session
-        std::atomic_uint64_t LastPacketSerialToConfirm = 0;
+        ui64 LastPacketSerialToConfirm = 0;
         static constexpr uint64_t LastPacketSerialToConfirmLockBit = uint64_t(1) << 63;
 
         // for hardened checks
-        TAtomic NumInputSessions = 0;
+        ui32 NumInputSessions = 0;
 
         NHPTimer::STime StartTime;
 
-        std::atomic<ui64> PingRTT_us = 0;
-        std::atomic<i64> ClockSkew_us = 0;
+        ui64 PingRTT_us = 0;
+        i64 ClockSkew_us = 0;
 
-        std::atomic<EUpdateState> UpdateState;
-        static_assert(std::atomic<EUpdateState>::is_always_lock_free);
+        bool UpdateInFlight = false;
+        bool NextUpdatePending = false;
 
         bool MainWriteBlocked = false;
         bool XdcWriteBlocked = false;
@@ -139,6 +151,11 @@ namespace NActors {
 
                 // number of bytes remaining through XDC channel
                 size_t XdcSizeLeft = 0;
+
+                std::deque<NInterconnect::NRdma::TMemRegionSlice> RdmaBuffers;
+                TRdmaReadContext::TPtr RdmaReadContext = nullptr;
+                size_t RdmaSize = 0;
+                ui32 RdmaCumulativeCheckSum = 0;
             };
 
             std::deque<TPendingEvent> PendingEvents;
@@ -151,13 +168,19 @@ namespace NActors {
 
             void PrepareCatchBuffer();
             void ApplyCatchBuffer();
-            void FetchBuffers(ui16 channel, size_t numBytes, std::deque<std::tuple<ui16, TMutableContiguousSpan>>& outQ);
+            int FetchBuffers(ui16 channel, size_t numBytes, std::deque<std::tuple<ui16, TMutableContiguousSpan>>& outQ);
             void DropFront(TRope *from, size_t numBytes);
+
+            struct TRdmaReadReqOk {};
+            using ScheduleRdmaReadRequestsResult = std::variant<TRdmaReadReqOk, NInterconnect::NRdma::ICq::TBusy, NInterconnect::NRdma::ICq::TErr>;
+            ScheduleRdmaReadRequestsResult ScheduleRdmaReadRequests(const NActorsInterconnect::TRdmaCreds& creds,
+                NInterconnect::NRdma::ICq::TPtr cq, TActorId notify, ui16 channel);
         };
 
         std::array<TPerChannelContext, 16> ChannelArray;
         std::unordered_map<ui16, TPerChannelContext> ChannelMap;
         ui64 LastProcessedSerial = 0;
+        bool Terminated = false;
 
         TReceiveContext() {
             GetTimeFast(&StartTime);
@@ -165,28 +188,17 @@ namespace NActors {
 
         // returns false if sessions needs to be terminated
         bool AdvanceLastPacketSerialToConfirm(ui64 nextValue) {
-            for (;;) {
-                uint64_t value = LastPacketSerialToConfirm.load();
-                if (value & LastPacketSerialToConfirmLockBit) {
-                    return false;
-                }
-                Y_DEBUG_ABORT_UNLESS(value + 1 == nextValue);
-                if (LastPacketSerialToConfirm.compare_exchange_weak(value, nextValue)) {
-                    return true;
-                }
+            if (LastPacketSerialToConfirm & LastPacketSerialToConfirmLockBit) {
+                return false;
             }
+            Y_DEBUG_ABORT_UNLESS(LastPacketSerialToConfirm + 1 == nextValue);
+            LastPacketSerialToConfirm = nextValue;
+            return true;
         }
 
         ui64 LockLastPacketSerialToConfirm() {
-            for (;;) {
-                uint64_t value = LastPacketSerialToConfirm.load();
-                if (value & LastPacketSerialToConfirmLockBit) {
-                    return value & ~LastPacketSerialToConfirmLockBit;
-                }
-                if (LastPacketSerialToConfirm.compare_exchange_strong(value, value | LastPacketSerialToConfirmLockBit)) {
-                    return value;
-                }
-            }
+            LastPacketSerialToConfirm |= LastPacketSerialToConfirmLockBit;
+            return GetLastPacketSerialToConfirm();
         }
 
         void UnlockLastPacketSerialToConfirm() {
@@ -194,7 +206,7 @@ namespace NActors {
         }
 
         ui64 GetLastPacketSerialToConfirm() {
-            return LastPacketSerialToConfirm.load() & ~LastPacketSerialToConfirmLockBit;
+            return LastPacketSerialToConfirm & ~LastPacketSerialToConfirmLockBit;
         }
     };
 
@@ -223,7 +235,9 @@ namespace NActors {
                          ui32 nodeId,
                          ui64 lastConfirmed,
                          TDuration deadPeerTimeout,
-                         TSessionParams params);
+                         TSessionParams params,
+                         NInterconnect::NRdma::TQueuePair::TPtr qp,
+                         NInterconnect::NRdma::ICq::TPtr cq);
 
     private:
         friend class TActorBootstrapped<TInputSessionTCP>;
@@ -244,6 +258,7 @@ namespace NActors {
             cFunc(TEvents::TSystem::PoisonPill, PassAway)
             hFunc(TEvPollerReady, Handle)
             hFunc(TEvPollerRegisterResult, Handle)
+            hFunc(NInterconnect::NRdma::TEvRdmaReadDone, Handle)
             cFunc(EvResumeReceiveData, ReceiveData)
             cFunc(TEvInterconnect::TEvCloseInputSession::EventType, CloseInputSession)
             cFunc(EvCheckDeadPeer, HandleCheckDeadPeer)
@@ -263,10 +278,12 @@ namespace NActors {
         TInterconnectProxyCommon::TPtr Common;
         const ui32 NodeId;
         const TSessionParams Params;
+        NInterconnect::NRdma::TQueuePair::TPtr RdmaQp;
+        NInterconnect::NRdma::ICq::TPtr RdmaCq;
         XXH3_state_t XxhashState;
         XXH3_state_t XxhashXdcState;
 
-        size_t PayloadSize;
+        size_t PayloadSize = 0;
         ui32 ChecksumExpected, Checksum;
         bool IgnorePayload;
         TRope Payload;
@@ -281,7 +298,8 @@ namespace NActors {
 
         struct TInboundPacket {
             ui64 Serial;
-            size_t XdcUnreadBytes; // number of unread bytes from XDC stream for this exact unprocessed packet
+            size_t XdcUnreadBytes = 0; // number of unread bytes from XDC stream for this exact unprocessed packet
+            size_t RdmaUnreadBytes = 0;
         };
         std::deque<TInboundPacket> InboundPacketQ;
         std::deque<std::tuple<ui16, TMutableContiguousSpan>> XdcInputQ; // target buffers for the XDC stream with channel reference
@@ -307,6 +325,9 @@ namespace NActors {
         std::array<ui32, 16> InputTrafficArray;
         THashMap<ui16, ui32> InputTrafficMap;
 
+        ui64 RdmaBytesReadScheduled = 0;
+        ui64 RdmaWrReadScheduled = 0;
+
         ui64 StarvingInRow = 0;
 
         bool CloseInputSessionRequested = false;
@@ -316,12 +337,14 @@ namespace NActors {
         void Handle(TEvPollerReady::TPtr ev);
         void Handle(TEvPollerRegisterResult::TPtr ev);
         void HandleConfirmUpdate();
+        void Handle(NInterconnect::NRdma::TEvRdmaReadDone::TPtr& ev);
         void ReceiveData();
         void ProcessHeader();
         void ProcessPayload(ui64 *numDataBytes);
-        void ProcessInboundPacketQ(ui64 numXdcBytesRead);
+        void ProcessInboundPacketQ(ui64 numXdcBytesRead, ui64 numRdmaBytesRead);
+        void UpdateInboundPacketQ(ui64& numXdcBytesRead, ui64& numRdmaBytesRead);
         void ProcessXdcCommand(ui16 channel, TReceiveContext::TPerChannelContext& context);
-        void ProcessEvents(TReceiveContext::TPerChannelContext& context);
+        void ProcessEvents(TReceiveContext::TPerChannelContext& context, bool processPacketQueue = true);
         ssize_t Read(NInterconnect::TStreamSocket& socket, const TPollerToken::TPtr& token, bool *readPending,
             const TIoVec *iov, size_t num);
         bool ReadMore();
@@ -329,6 +352,7 @@ namespace NActors {
         void ApplyXdcCatchStream();
         bool ReadXdc(ui64 *numDataBytes);
         void HandleXdcChecksum(TContiguousSpan span);
+        TRcBuf AllocateRcBuf(ui64 size, ui64 headroom, ui64 tailroom, bool isRdma);
 
         TReceiveContext::TPerChannelContext& GetPerChannelContext(ui16 channel) const;
 
@@ -346,6 +370,13 @@ namespace NActors {
 
         inline ui64 GetMaxCyclesPerEvent() const {
             return DurationToCycles(TDuration::MicroSeconds(500));
+        }
+
+        bool UseKernelLivenessMode() const {
+            // Once kernel liveness is negotiated for this session, user-space liveness checks
+            // are disabled and both actors rely on kernel keepalive/user-timeout.
+            // Keep this condition identical to TInterconnectSessionTCP::UseKernelLivenessMode().
+            return Params.UseKernelLiveness;
         }
 
         const TDuration DeadPeerTimeout;
@@ -429,6 +460,7 @@ namespace NActors {
 
         void Init();
         void CloseInputSession();
+        bool IsRdmaInUse();
 
         static TEvTerminate* NewEvTerminate(TDisconnectReason reason) {
             return new TEvTerminate(std::move(reason));
@@ -442,7 +474,7 @@ namespace NActors {
             return ReceiveContext->ClockSkew_us;
         }
 
-        std::optional<ui8> GetXDCFlags() const;
+        std::optional<ui8> GetXDCFlags() const noexcept;
 
     private:
         friend class TInterconnectProxyTCP;
@@ -482,6 +514,7 @@ namespace NActors {
                 hFunc(TEvTerminate, Handle)
                 hFunc(TEvProcessPingRequest, Handle)
             )
+            UpdateUtilization();
         }
 
         void Handle(TEvUpdateFromInputSession::TPtr& ev);
@@ -535,6 +568,10 @@ namespace NActors {
         TDuration GetLostConnectionTimeout() const;
         ui32 GetTotalInflightAmountOfData() const;
         ui64 GetMaxCyclesPerEvent() const;
+        bool UseKernelLivenessMode() const {
+            // Effective liveness mode for the currently attached transport connection.
+            return KernelLivenessMode;
+        }
 
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -572,7 +609,9 @@ namespace NActors {
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        const TSessionParams Params;
+        const TSessionParams Params; // stable session template used for continuation handshakes
+        // Runtime mode negotiated for the current socket; may differ from Params on reconnect.
+        bool KernelLivenessMode = false;
         std::unique_ptr<TEventHolderPool> Pool;
         TMaybe<TChannelScheduler> ChannelScheduler;
         ui64 TotalOutputQueueSize;
@@ -590,6 +629,7 @@ namespace NActors {
         struct TOutgoingPacket {
             ui32 PacketSize; // including header
             ui32 ExternalSize;
+            ui32 RdmaPayloadSize;
         };
         std::deque<TOutgoingPacket> SendQueue; // packet boundaries
         size_t OutgoingOffset = 0;
@@ -619,6 +659,7 @@ namespace NActors {
         TPollerToken::TPtr XdcPollerToken;
         ui32 SendBufferSize;
         ui64 InflightDataAmount = 0;
+        ui64 RdmaInflightDataAmount = 0;
 
         std::unordered_map<TActorId, ui64, TActorId::THash> Subscribers;
 
@@ -631,6 +672,7 @@ namespace NActors {
         // time at which we want to send confirmation packet even if there was no outgoing data
         ui64 UnconfirmedBytes = 0;
         TMonotonic ForcePacketTimestamp = TMonotonic::Max();
+        TMonotonic ClockSkewPingTimestamp = TMonotonic::Max();
         TPriorityQueue<TMonotonic, TVector<TMonotonic>, std::greater<TMonotonic>> FlushSchedule;
         size_t MaxFlushSchedule = 0;
         ui64 FlushEventsScheduled = 0;
@@ -659,7 +701,52 @@ namespace NActors {
 
         ui64 StarvingInRow = 0;
 
+        enum class EState {
+            Utilized = 0,
+            WaitingCpu = 1,
+            Idle = 2,
+        } State = EState::Idle;
+
+        double UtilizedPart = 0;
+        double WaitingCpuPart = 0;
+        double IdlePart = 0;
+        double Total = 0;
+        double Utilized = 0;
+        double Starving = 0;
+        NHPTimer::STime PartUpdateTimestamp = 0;
+
         NInterconnect::TInterconnectZcProcessor ZcProcessor;
+        NInterconnect::NRdma::TQueuePair::TPtr RdmaQp;
+
+        void UpdateState(std::optional<EState> newState = std::nullopt) {
+            if (!newState || *newState != State) {
+                const NHPTimer::STime timestamp = GetCycleCountFast();
+                const TDuration passed = CyclesToDuration(timestamp - std::exchange(PartUpdateTimestamp, timestamp));
+                const double seconds = passed.SecondsFloat();
+                const double factor = pow(0.8, seconds); // in 20 seconds we will get approx 1% of initial value
+                const double shift = 4 * (1 - factor);
+                UtilizedPart *= factor;
+                WaitingCpuPart *= factor;
+                IdlePart *= factor;
+                switch (State) {
+                    case EState::Utilized:   UtilizedPart   += shift; break;
+                    case EState::WaitingCpu: WaitingCpuPart += shift; break;
+                    case EState::Idle:       IdlePart       += shift; break;
+                }
+                Total = UtilizedPart + WaitingCpuPart + IdlePart;
+                if (Total) {
+                    Utilized = (UtilizedPart + WaitingCpuPart) / Total;
+                    Starving = WaitingCpuPart / Total;
+                } else {
+                    Utilized = Starving = 0;
+                }
+                if (newState) {
+                    State = *newState;
+                }
+            }
+        }
+
+        void UpdateUtilization();
     };
 
     class TInterconnectSessionKiller
@@ -680,15 +767,7 @@ namespace NActors {
         {
         }
 
-        void Bootstrap() {
-            auto sender = SelfId();
-            const auto eventFabric = [&sender](const TActorId& recp) -> IEventHandle* {
-                auto ev = new TEvSessionBufferSizeRequest();
-                return new IEventHandle(recp, sender, ev, IEventHandle::FlagTrackDelivery);
-            };
-            RepliesNumber = TlsActivationContext->ExecutorThread.ActorSystem->BroadcastToProxies(eventFabric);
-            Become(&TInterconnectSessionKiller::StateFunc);
-        }
+        void Bootstrap();
 
         STRICT_STFUNC(StateFunc,
             hFunc(TEvSessionBufferSizeResponse, ProcessResponse)

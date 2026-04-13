@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/grpc_services/rpc_deferrable.h>
+#include <contrib/ydb/public/api/protos/ydb_table.pb.h>
 
 namespace NKikimr::NGRpcService::NYdbOverFq {
 

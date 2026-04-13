@@ -2,12 +2,12 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/public/lib/ut_helpers/ut_helpers_query.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
+#include <ydb-cpp-sdk/client/discovery/discovery.h>
+#include <ydb-cpp-sdk/client/draft/ydb_scripting.h>
 
 #include <library/cpp/threading/local_executor/local_executor.h>
-#include <contrib/ydb/library/grpc/client/grpc_common.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_common.h>
 
 #include <contrib/ydb/public/api/grpc/ydb_query_v1.grpc.pb.h>
 

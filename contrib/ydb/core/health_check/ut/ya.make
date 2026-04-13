@@ -2,7 +2,7 @@ UNITTEST_FOR(contrib/ydb/core/health_check)
 
 FORK_SUBTESTS()
 
-SIZE(SMALL)
+SIZE(MEDIUM)
 
 PEERDIR(
     contrib/ydb/core/testlib/default

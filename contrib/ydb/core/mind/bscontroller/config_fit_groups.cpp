@@ -594,6 +594,7 @@ namespace NKikimr {
                 }
 
                 ui32 maxSlots = info.ExpectedSlotCount;
+
                 auto location = State.HostRecords->GetLocation(id.NodeId);
 
                 // register PDisk in the mapper
@@ -684,10 +685,39 @@ namespace NKikimr {
 
                 groupInfo->FinishVDisksInGroup();
                 groupInfo->CalculateGroupStatus();
+                groupInfo->CalculateLayoutStatus(&State.Self, groupInfo->Topology.get(), [&] {
+                    const auto& pools = State.StoragePools.Get();
+                    if (const auto it = pools.find(groupInfo->StoragePoolId); it != pools.end()) {
+                        return TGroupGeometryInfo(groupInfo->Topology->GType, it->second.GetGroupGeometry());
+                    }
+                    Y_DEBUG_ABORT(); // this can't normally happen
+                    return TGroupGeometryInfo();
+                });
 
                 return res;
             }
         };
+
+        void FillGroupMapperError(NKikimrBlobStorage::TGroupMapperError& groupMapperErrorProto, const TGroupMapperError& error) {
+            auto fillStats = [](NKikimrBlobStorage::TGroupMapperError::TStats& statsProto, const TGroupMapperError::TStats& stats) {
+                statsProto.SetDomain(stats.Domain);
+                statsProto.SetAllSlotsAreOccupied(stats.AllSlotsAreOccupied);
+                statsProto.SetNotEnoughSpace(stats.NotEnoughSpace);
+                statsProto.SetNotAcceptingNewSlots(stats.NotAcceptingNewSlots);
+                statsProto.SetNotOperational(stats.NotOperational);
+                statsProto.SetDecommission(stats.Decommission);
+            };
+            fillStats(*groupMapperErrorProto.MutableTotalStats(), error.TotalStats);
+            for (const auto& domainStat : error.MatchingDomainsStats) {
+                auto* domainStatsProto = groupMapperErrorProto.AddMatchingDomainsStats();
+                fillStats(*domainStatsProto, domainStat);
+            }
+            groupMapperErrorProto.SetMissingFailRealmsCount(error.MissingFailRealmsCount);
+            groupMapperErrorProto.SetFailRealmsWithMissingDomainsCount(error.FailRealmsWithMissingDomainsCount);
+            groupMapperErrorProto.SetOkDisksCount(error.OkDisksCount);
+            groupMapperErrorProto.SetRealmLocationKey(error.RealmLocationKey);
+            groupMapperErrorProto.SetDomainLocationKey(error.DomainLocationKey);
+        }
 
         void TBlobStorageController::FitGroupsForUserConfig(TConfigState& state, ui32 availabilityDomainId,
                 const NKikimrBlobStorage::TConfigRequest& cmd, std::deque<ui64> expectedSlotSize,
@@ -736,10 +766,16 @@ namespace NKikimr {
                         }
                     }
                 } catch (const TExFitGroupError& ex) {
-                    throw TExError() << "Group fit error"
+                    TExError err;
+                    err << "Group fit error"
                         << " BoxId# " << std::get<0>(storagePoolId)
                         << " StoragePoolId# " << std::get<1>(storagePoolId)
                         << " Error# " << ex.what();
+                    if (ex.GroupMapperError) {
+                        auto& failParam = err.FailParams.emplace_back();
+                        FillGroupMapperError(*failParam.MutableGroupMapperError(), *ex.GroupMapperError);
+                    }
+                    throw err;
                 }
                 if (storagePool.NumGroups < numActualGroups) {
                     throw TExError() << "Storage pool modification error"

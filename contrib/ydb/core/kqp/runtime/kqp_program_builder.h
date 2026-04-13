@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/scheme_types/scheme_type_info.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
+#include <yql/essentials/minikql/mkql_program_builder.h>
 
 namespace NKikimr {
 

@@ -1,11 +1,14 @@
 #pragma once
+
+#include <contrib/ydb/public/sdk/cpp/client/ydb_types/fwd.h>
+
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
 
 #include <util/generic/string.h>
 
 #include <vector>
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 // Lists supported algorithms for creation of OAuth 2.0 token exchange provider via config file
 std::vector<TString> GetSupportedOauth2TokenExchangeJwtAlgorithms();
@@ -17,7 +20,7 @@ std::vector<TString> GetSupportedOauth2TokenExchangeJwtAlgorithms();
 //
 // Fields of json file
 //     grant-type:           [string] Grant type option (default: see TOauth2TokenExchangeParams)
-//     res:                  [string] Resource option (optional)
+//     res:                  [string | list of strings] Resource option (optional)
 //     aud:                  [string | list of strings] Audience option for token exchange request (optional)
 //     scope:                [string | list of strings] Scope option (optional)
 //     requested-token-type: [string] Requested token type option (default: see TOauth2TokenExchangeParams)

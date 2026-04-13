@@ -1,6 +1,6 @@
 #pragma once
 #include <contrib/ydb/core/fq/libs/events/event_subspace.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/events.h>

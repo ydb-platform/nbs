@@ -2,13 +2,13 @@
 #include <contrib/ydb/core/scheme_types/scheme_type_info.h>
 #include <contrib/ydb/core/scheme/scheme_type_id.h>
 #include <contrib/ydb/library/formats/arrow/switch/switch_type.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
+#include <yql/essentials/parser/pg_wrapper/interface/type_desc.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/api.h>
 #include <util/system/yassert.h>
 
 extern "C" {
-#include <contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include/catalog/pg_type_d.h>
+#include <yql/essentials/parser/pg_wrapper/postgresql/src/include/catalog/pg_type_d.h>
 }
 
 namespace NKikimr::NArrow {
@@ -64,7 +64,8 @@ template <typename TFunc>
         case NScheme::NTypeIds::Interval:
             return callback(TTypeWrapper<arrow::DurationType>());
         case NScheme::NTypeIds::Decimal:
-            return callback(TTypeWrapper<arrow::Decimal128Type>());
+        case NScheme::NTypeIds::Uuid:
+            return callback(TTypeWrapper<arrow::FixedSizeBinaryType>());
 
         case NScheme::NTypeIds::Datetime64:
         case NScheme::NTypeIds::Timestamp64:
@@ -93,9 +94,9 @@ template <typename TFunc>
                 case TEXTOID:
                     return callback(TTypeWrapper<arrow::StringType>());
                 default:
-                    break;
+                    return false;
             }
-            break; // TODO: support pg types
+            break;
     }
     return false;
 }

@@ -4,12 +4,10 @@ FORK_SUBTESTS()
 
 SIZE(MEDIUM)
 
-TIMEOUT(600)
-
 PEERDIR(
     contrib/ydb/core/tx/replication/ut_helpers
     contrib/ydb/core/tx/replication/ydb_proxy
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
+    contrib/ydb/public/sdk/cpp/src/client/topic
     library/cpp/testing/unittest
 )
 

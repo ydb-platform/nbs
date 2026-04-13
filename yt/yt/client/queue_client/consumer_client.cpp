@@ -60,11 +60,6 @@ static const TTableSchemaPtr YTConsumerTableSchema = New<TTableSchema>(std::vect
     TColumnSchema("meta", EValueType::Any).SetRequired(false),
 }, /*strict*/ true, /*uniqueKeys*/ true);
 
-static const TTableSchemaPtr BigRTConsumerTableSchema = New<TTableSchema>(std::vector<TColumnSchema>{
-    TColumnSchema("ShardId", EValueType::Uint64, ESortOrder::Ascending),
-    TColumnSchema("Offset", EValueType::Uint64),
-}, /*strict*/ true, /*uniqueKeys*/ true);
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TConsumerMeta::Register(TRegistrar registrar)
@@ -340,14 +335,6 @@ public:
             }));
     }
 
-    TFuture<TCrossClusterReference> FetchTargetQueue() const override
-    {
-        return ConsumerClusterClient_->GetNode(ConsumerPath_ + "/@target_queue")
-            .Apply(BIND([] (const TYsonString& ysonString) {
-                return TCrossClusterReference::FromString(ConvertTo<TString>(ysonString));
-            }));
-    }
-
     TFuture<TPartitionStatistics> FetchPartitionStatistics(
         const TYPath& queuePath,
         int partitionIndex) const override
@@ -458,7 +445,7 @@ private:
                 YT_ABORT();
             }
 
-            // NB: in BigRT offsets encode the last read row, while we operate with the first unread row.
+            // NB: In BigRT offsets encode the last read row, while we operate with the first unread row.
             auto partitionInfo = TPartitionInfo{
                 .PartitionIndex = FromUnversionedValue<i64>(partitionIndexValue),
                 .NextRowIndex = offset,
@@ -590,48 +577,6 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISubConsumerClientPtr CreateBigRTConsumerClient(
-    const IClientPtr& client,
-    const TYPath& path,
-    const TTableSchema& schema)
-{
-    if (!schema.IsUniqueKeys()) {
-        THROW_ERROR_EXCEPTION("Consumer schema must have unique keys, schema does not")
-            << TErrorAttribute("actual_schema", schema);
-    }
-
-    if (schema == *BigRTConsumerTableSchema) {
-        return New<TGenericConsumerClient>(
-            client,
-            client,
-            path,
-            /*queuePath*/ std::nullopt,
-            TUnversionedOwningRow(),
-            "ShardId",
-            "Offset",
-            /*decrementOffset*/ true,
-            BigRTConsumerTableSchema,
-            /*queueTableSchema*/ nullptr);
-    } else {
-        THROW_ERROR_EXCEPTION("Table schema is not recognized as a valid BigRT consumer schema")
-            << TErrorAttribute("expected_schema", *BigRTConsumerTableSchema)
-            << TErrorAttribute("actual_schema", schema);
-    }
-}
-
-ISubConsumerClientPtr CreateBigRTConsumerClient(
-    const IClientPtr& client,
-    const TYPath& path)
-{
-    auto tableInfo = WaitFor(client->GetTableMountCache()->GetTableInfo(path))
-        .ValueOrThrow();
-    auto schema = tableInfo->Schemas[ETableSchemaKind::Primary];
-
-    return CreateBigRTConsumerClient(client, path, *schema);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TYTConsumerClient
     : public IConsumerClient
 {
@@ -726,6 +671,11 @@ ISubConsumerClientPtr CreateSubConsumerClient(
     TRichYPath queuePath)
 {
     auto queueCluster = queuePath.GetCluster();
+    if (!queueCluster && queueClusterClient) {
+        if (auto queueClusterFromClient = queueClusterClient->GetClusterName()) {
+            queueCluster = *queueClusterFromClient;
+        }
+    }
     if (!queueCluster) {
         if (auto clientCluster = consumerClusterClient->GetClusterName()) {
             queueCluster = *clientCluster;

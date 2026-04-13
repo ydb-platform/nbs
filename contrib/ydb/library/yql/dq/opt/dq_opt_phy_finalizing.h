@@ -5,8 +5,8 @@
 #include <contrib/ydb/library/yql/dq/common/dq_common.h>
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <yql/essentials/ast/yql_expr.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
 
 namespace NYql::NDq {
 

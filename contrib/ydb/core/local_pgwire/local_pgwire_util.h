@@ -4,14 +4,14 @@
 #include <contrib/ydb/core/pgproxy/pg_proxy_types.h>
 #include <contrib/ydb/core/pgproxy/pg_proxy_events.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_scripting.h>
+#include <ydb-cpp-sdk/client/draft/ydb_scripting.h>
 #define INCLUDE_YDB_INTERNAL_H
-#include <contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/plain_status/status.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/operation/operation.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_value/value.h>
+#include <src/client/impl/ydb_internal/plain_status/status.h>
+#include <ydb-cpp-sdk/client/table/table.h>
+#include <ydb-cpp-sdk/client/types/operation/operation.h>
+#include <ydb-cpp-sdk/client/value/value.h>
 #include <contrib/ydb/public/api/grpc/ydb_scripting_v1.grpc.pb.h>
 
 #include <util/string/builder.h>
@@ -31,7 +31,7 @@ struct TConnectionState {
 };
 
 struct TPgWireAuthData {
-    TActorId Sender;
+    NActors::TActorId Sender;
     TString UserName;
     TString DatabasePath;
     TString Password;
@@ -112,15 +112,15 @@ struct TEvEvents {
         TString SerializedToken;
         TString Ticket;
         TString ErrorMessage;
-        TActorId Sender;
+        NActors::TActorId Sender;
 
-        TEvAuthResponse(const TString& serializedToken, const TString& ticket, const TActorId& sender)
+        TEvAuthResponse(const TString& serializedToken, const TString& ticket, const NActors::TActorId& sender)
             : SerializedToken(serializedToken)
             , Ticket(ticket)
             , Sender(sender)
         {}
 
-        TEvAuthResponse(const TString& errorMessage, const TActorId& sender)
+        TEvAuthResponse(const TString& errorMessage, const NActors::TActorId& sender)
             : ErrorMessage(errorMessage)
             , Sender(sender)
         {}

@@ -1,25 +1,25 @@
 #pragma once
-#include "kqp_compute_events.h"
 #include "kqp_compute_actor.h"
-#include "kqp_scan_events.h"
+#include "kqp_compute_events.h"
 #include "kqp_compute_state.h"
-#include "kqp_scan_compute_manager.h"
 #include "kqp_scan_common.h"
+#include "kqp_scan_compute_manager.h"
+#include "kqp_scan_events.h"
 
 #include <contrib/ydb/core/base/events.h>
-
-#include <contrib/ydb/core/kqp/runtime/kqp_scan_data_meta.h>
-#include <contrib/ydb/core/protos/tx_datashard.pb.h>
-#include <contrib/ydb/core/protos/kqp.pb.h>
-#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
+#include <contrib/ydb/core/kqp/common/kqp_resolve.h>
+#include <contrib/ydb/core/kqp/runtime/kqp_scan_data_meta.h>
+#include <contrib/ydb/core/protos/kqp.pb.h>
+#include <contrib/ydb/core/protos/tx_datashard.pb.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
-#include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
+#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/wilson/wilson_trace.h>
 #include <contrib/ydb/library/actors/core/interconnect.h>
+#include <contrib/ydb/library/actors/wilson/wilson_trace.h>
+#include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
 
 namespace NKikimr::NKqp::NScanPrivate {
 
@@ -36,6 +36,7 @@ private:
             explicit TEvRetryShard(const ui64 tabletId)
                 : TabletId(tabletId) {
             }
+
         public:
             ui64 TabletId = 0;
             ui32 Generation = 0;
@@ -52,6 +53,9 @@ private:
     const NYql::NDq::TTxId TxId;
     const TMaybe<ui64> LockTxId;
     const ui32 LockNodeId;
+    const TMaybe<NKikimrDataEvents::ELockMode> LockMode;
+    const TCPULimits CPULimits;
+
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::KQP_SCAN_FETCH_ACTOR;
@@ -59,14 +63,18 @@ public:
 
     TKqpScanFetcherActor(const NKikimrKqp::TKqpSnapshot& snapshot, const NYql::NDq::TComputeRuntimeSettings& settings,
         std::vector<NActors::TActorId>&& computeActors, const ui64 txId, const TMaybe<ui64> lockTxId, const ui32 lockNodeId,
-        const NKikimrTxDataShard::TKqpTransaction_TScanTaskMeta& meta,
-        const TShardsScanningPolicy& shardsScanningPolicy, TIntrusivePtr<TKqpCounters> counters, NWilson::TTraceId traceId);
+        const TMaybe<NKikimrDataEvents::ELockMode> lockMode, const NKikimrTxDataShard::TKqpTransaction_TScanTaskMeta& meta,
+        const TShardsScanningPolicy& shardsScanningPolicy, TIntrusivePtr<TKqpCounters> counters, NWilson::TTraceId traceId,
+        const TCPULimits& cpuLimits);
 
-    static TVector<TSerializedTableRange> BuildSerializedTableRanges(const NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta::TReadOpMeta& readData);
+    static TVector<TSerializedTableRange> BuildSerializedTableRanges(
+        const NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta::TReadOpMeta& readData);
 
     void Bootstrap();
 
     STATEFN(StateFunc) {
+        NActors::TLogContextGuard lGuard =
+            NActors::TLogContextBuilder::Build()("self_id", SelfId())("scan_id", ScanId)("tx_id", std::get<ui64>(TxId));
         try {
             switch (ev->GetTypeRewrite()) {
                 hFunc(TEvKqpCompute::TEvScanInitActor, HandleExecute);
@@ -79,6 +87,7 @@ public:
                 hFunc(TEvInterconnect::TEvNodeDisconnected, HandleExecute);
                 hFunc(TEvScanExchange::TEvTerminateFromCompute, HandleExecute);
                 hFunc(TEvScanExchange::TEvAckData, HandleExecute);
+                hFunc(NActors::TEvents::TEvWakeup, HandleExecute);
                 IgnoreFunc(TEvInterconnect::TEvNodeConnected);
                 IgnoreFunc(TEvTxProxySchemeCache::TEvInvalidateTableResult);
                 default:
@@ -94,25 +103,28 @@ public:
 
     void HandleExecute(TEvScanExchange::TEvTerminateFromCompute::TPtr& ev);
 
-private:
+    void HandleExecute(NActors::TEvents::TEvWakeup::TPtr& ev);
 
+private:
     void CheckFinish();
     ui32 GetShardsInProgressCount() const;
 
     std::vector<NActors::TActorId> ComputeActorIds;
 
     void StopOnError(const TString& errorMessage) const;
-    bool SendGlobalFail(const NYql::NDqProto::StatusIds::StatusCode statusCode, const NYql::TIssuesIds::EIssueCode issueCode, const TString& message) const;
+    bool SendGlobalFail(
+        const NYql::NDqProto::StatusIds::StatusCode statusCode, const NYql::TIssuesIds::EIssueCode issueCode, const TString& message) const;
 
-    bool SendGlobalFail(const NYql::NDqProto::EComputeState state, NYql::NDqProto::StatusIds::StatusCode statusCode, const NYql::TIssues& issues) const;
+    bool SendGlobalFail(
+        const NYql::NDqProto::EComputeState state, NYql::NDqProto::StatusIds::StatusCode statusCode, const NYql::TIssues& issues) const;
 
     bool SendScanFinished();
 
-    virtual std::unique_ptr<NKikimr::TEvDataShard::TEvKqpScan> BuildEvKqpScan(const ui32 scanId, const ui32 gen, const TSmallVec<TSerializedTableRange>& ranges) const override;
+    virtual std::unique_ptr<NKikimr::TEvDataShard::TEvKqpScan> BuildEvKqpScan(const ui32 scanId, const ui32 gen,
+        const TSmallVec<TSerializedTableRange>& ranges, const std::optional<NKikimrKqp::TEvKqpScanCursor>& cursor) const override;
     virtual const TVector<NScheme::TTypeInfo>& GetKeyColumnTypes() const override {
         return KeyColumnTypes;
     }
-
 
     void HandleExecute(TEvKqpCompute::TEvScanInitActor::TPtr& ev);
 
@@ -135,7 +147,6 @@ private:
     void HandleExecute(TEvInterconnect::TEvNodeDisconnected::TPtr& ev);
 
 private:
-
     void StartTableScan();
 
     void RetryDeliveryProblem(TShardState::TPtr state);
@@ -175,11 +186,13 @@ private:
 
     TInFlightShards InFlightShards;
     TInFlightComputes InFlightComputes;
-    ui32 TotalRetries = 0;
+    const NKqp::ETableKind TableKind = NKqp::ETableKind::Unknown;
 
     std::set<ui32> TrackingNodes;
     ui32 MaxInFlight = 1024;
     bool IsAggregationRequest = false;
+    bool RegistrationFinished = false;
+    TInstant RegistrationStartTime;
 };
 
-}
+}   // namespace NKikimr::NKqp::NScanPrivate

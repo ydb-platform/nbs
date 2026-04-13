@@ -1,11 +1,11 @@
 #pragma once
-#include "columns_set.h"
-#include "source.h"
 #include "scanner.h"
+#include "source.h"
 
 #include <contrib/ydb/core/tx/columnshard/engines/reader/abstract/read_context.h>
 #include <contrib/ydb/core/tx/columnshard/engines/reader/abstract/read_metadata.h>
 #include <contrib/ydb/core/tx/columnshard/engines/reader/common/queue.h>
+#include <contrib/ydb/core/tx/columnshard/engines/reader/common_reader/common/columns_set.h>
 
 namespace NKikimr::NOlap::NReader::NPlain {
 
@@ -14,8 +14,9 @@ private:
     using TBase = IDataReader;
     std::shared_ptr<TScanHead> Scanner;
     std::shared_ptr<TSpecialReadContext> SpecialReadContext;
-    std::vector<std::shared_ptr<TPartialReadResult>> PartialResults;
+    std::vector<std::unique_ptr<TPartialReadResult>> PartialResults;
     ui32 ReadyResultsCount = 0;
+
 protected:
     virtual TConclusionStatus DoStart() override {
         return Scanner->Start();
@@ -30,7 +31,7 @@ protected:
         return sb;
     }
 
-    virtual std::vector<std::shared_ptr<TPartialReadResult>> DoExtractReadyResults(const int64_t maxRowsInBatch) override;
+    virtual std::vector<std::unique_ptr<TPartialReadResult>> DoExtractReadyResults(const int64_t maxRowsInBatch) override;
     virtual TConclusion<bool> DoReadNextInterval() override;
 
     virtual void DoAbort() override {
@@ -42,12 +43,18 @@ protected:
     virtual bool DoIsFinished() const override {
         return (Scanner->IsFinished() && PartialResults.empty());
     }
+
 public:
-    virtual void OnSentDataFromInterval(const ui32 intervalIdx) const override {
-        Scanner->OnSentDataFromInterval(intervalIdx);
+    virtual void OnSentDataFromInterval(const TPartialSourceAddress& address) override {
+        Scanner->OnSentDataFromInterval(address);
     }
 
-    const TReadMetadata::TConstPtr& GetReadMetadata() const {
+    template <class T>
+    std::shared_ptr<T> GetReadMetadataVerifiedAs() const {
+        return SpecialReadContext->GetReadMetadataVerifiedAs<T>();
+    }
+
+    const NCommon::TReadMetadata::TConstPtr& GetReadMetadata() const {
         return SpecialReadContext->GetReadMetadata();
     }
 
@@ -63,7 +70,7 @@ public:
         return *Scanner;
     }
 
-    void OnIntervalResult(const std::shared_ptr<TPartialReadResult>& result);
+    void OnIntervalResult(std::unique_ptr<TPartialReadResult>&& result);
 
     TPlainReadData(const std::shared_ptr<TReadContext>& context);
     ~TPlainReadData() {
@@ -73,4 +80,4 @@ public:
     }
 };
 
-}
+}   // namespace NKikimr::NOlap::NReader::NPlain

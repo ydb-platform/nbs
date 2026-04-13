@@ -7,12 +7,12 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/scheme_types
-    contrib/ydb/library/binary_json
-    contrib/ydb/library/dynumber
-    contrib/ydb/library/yql/minikql/dom
-    contrib/ydb/library/yql/public/decimal
-    contrib/ydb/library/yql/public/udf
-    contrib/ydb/library/yql/utils
+    yql/essentials/types/binary_json
+    yql/essentials/types/dynumber
+    yql/essentials/minikql/dom
+    yql/essentials/public/decimal
+    yql/essentials/public/udf
+    yql/essentials/utils
     contrib/libs/double-conversion
     library/cpp/json
     library/cpp/json/yson

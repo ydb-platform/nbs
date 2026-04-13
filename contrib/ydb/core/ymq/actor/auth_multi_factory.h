@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/base/ticket_parser.h>
 #include "contrib/ydb/core/protos/sqs.pb.h"
-#include "contrib/ydb/library/grpc/client/grpc_client_low.h"
+#include "contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h"
 #include "contrib/ydb/library/http_proxy/error/error.h"
 #include <contrib/ydb/core/ymq/actor/auth_factory.h>
 #include <contrib/ydb/library/ycloud/api/access_service.h>

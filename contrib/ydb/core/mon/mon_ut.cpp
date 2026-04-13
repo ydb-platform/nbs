@@ -15,6 +15,7 @@ using namespace NKikimr::Tests;
 
 void GrantConnect(Tests::TClient& client) {
     client.CreateUser("/Root", "username", "password");
+    client.GrantConnect("username");
 
     const auto alterAttrsStatus = client.AlterUserAttributes("/", "Root", {
         { "folder_id", "test_folder_id" },
@@ -35,6 +36,8 @@ struct THttpMonTestEnvOptions {
     enum class ERegKind {
         None,
         ActorPage,
+        ActorHandler,
+        MonPage,
     };
 
     ERegKind RegKind = ERegKind::None;
@@ -93,6 +96,21 @@ public:
                 });
                 break;
             }
+            case THttpMonTestEnvOptions::ERegKind::ActorHandler: {
+                TestActorHandler = new TTestActorHandler();
+                TestActorId = Runtime->Register(TestActorHandler);
+                mon->RegisterActorHandler({
+                    .Path = MakeDefaultUrl(),
+                    .Handler = TestActorId,
+                    .UseAuth = Options.UseAuth,
+                    .AllowedSIDs = Options.ActorAllowedSIDs,
+                });
+                break;
+            }
+            case THttpMonTestEnvOptions::ERegKind::MonPage: {
+                mon->Register(new TTestMonPage());
+                break;
+            }
         }
 
         HttpClient = std::make_unique<TKeepAliveHttpClient>("localhost", MonPort);
@@ -129,6 +147,7 @@ private:
     std::unique_ptr<TClient> Client;
     TTestActorRuntime* Runtime = nullptr;
     TTestActorPage* TestActorPage = nullptr;
+    TTestActorHandler* TestActorHandler = nullptr;
     TActorId TestActorId;
     TFakeTicketParserActor* TicketParser = nullptr;
     std::unique_ptr<TKeepAliveHttpClient> HttpClient;
@@ -226,6 +245,140 @@ Y_UNIT_TEST_SUITE(ActorPage) {
     }
 }
 
+Y_UNIT_TEST_SUITE(ActorHandler) {
+    Y_UNIT_TEST(HttpOk) {
+        THttpMonTestEnv env({
+            .RegKind = THttpMonTestEnvOptions::ERegKind::ActorHandler,
+            .ActorAllowedSIDs = {"valid_group"},
+            .TicketParserGroupSIDs = {"valid_group"},
+        });
+
+        TStringStream responseStream;
+        const auto status = env.GetHttpClient().DoGet(env.MakeDefaultUrl(), &responseStream, env.MakeAuthHeaders());
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_OK);
+
+        const TString response = responseStream.ReadAll();
+        UNIT_ASSERT_STRING_CONTAINS(response, TEST_RESPONSE);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+
+    Y_UNIT_TEST(NoValidGroupForbidden) {
+        THttpMonTestEnv env({
+            .RegKind = THttpMonTestEnvOptions::ERegKind::ActorHandler,
+            .ActorAllowedSIDs = {"valid_group"},
+            .TicketParserGroupSIDs = {"wrong_group"},
+        });
+
+        TStringStream responseStream;
+        THttpHeaders outHeaders;
+        const auto status = env.GetHttpClient().DoGet(env.MakeDefaultUrl(), &responseStream, env.MakeAuthHeaders(), &outHeaders);
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_FORBIDDEN);
+
+        AssertCorsHeaders(outHeaders);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+
+    Y_UNIT_TEST(InvalidTokenForbidden) {
+        THttpMonTestEnv env({
+            .RegKind = THttpMonTestEnvOptions::ERegKind::ActorHandler,
+        });
+
+        TStringStream responseStream;
+        THttpHeaders outHeaders;
+        const TString invalidToken = TString("Bearer invalid");
+        const auto status = env.GetHttpClient().DoGet(env.MakeDefaultUrl(), &responseStream, env.MakeAuthHeaders(invalidToken), &outHeaders);
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_FORBIDDEN);
+
+        AssertCorsHeaders(outHeaders);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 1);
+    }
+
+    Y_UNIT_TEST(NoUseAuthOk) {
+        THttpMonTestEnv env({
+            .RegKind = THttpMonTestEnvOptions::ERegKind::ActorHandler,
+            .UseAuth = false,
+        });
+
+        TStringStream responseStream;
+        const TString invalidToken = TString("Bearer invalid");
+        const auto status = env.GetHttpClient().DoGet(env.MakeDefaultUrl(), &responseStream, env.MakeAuthHeaders(invalidToken));
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_OK);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+
+    Y_UNIT_TEST(OptionsNoContent) {
+        THttpMonTestEnv env({
+            .RegKind = THttpMonTestEnvOptions::ERegKind::ActorHandler,
+        });
+
+        TStringStream responseStream;
+        THttpHeaders outHeaders;
+        const auto status = env.GetHttpClient().DoRequest("OPTIONS", env.MakeDefaultUrl(), "", &responseStream, TKeepAliveHttpClient::THeaders(), &outHeaders);
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_NO_CONTENT);
+
+        AssertCorsHeaders(outHeaders);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+}
+
+Y_UNIT_TEST_SUITE(MonPage) {
+    Y_UNIT_TEST(HttpOk) {
+        THttpMonTestEnv env({
+            .RegKind = THttpMonTestEnvOptions::ERegKind::MonPage,
+        });
+
+        TStringStream responseStream;
+        const auto status = env.GetHttpClient().DoGet(env.MakeDefaultUrl(), &responseStream, env.MakeAuthHeaders());
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_OK);
+
+        const TString response = responseStream.ReadAll();
+        UNIT_ASSERT_STRING_CONTAINS(response, TEST_RESPONSE);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+
+    Y_UNIT_TEST(OptionsNoContent) {
+        THttpMonTestEnv env({
+            .RegKind = THttpMonTestEnvOptions::ERegKind::MonPage,
+        });
+
+        TStringStream responseStream;
+        THttpHeaders outHeaders;
+        const auto status = env.GetHttpClient().DoRequest("OPTIONS", env.MakeDefaultUrl(), "", &responseStream, TKeepAliveHttpClient::THeaders(), &outHeaders);
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_NO_CONTENT);
+
+        AssertCorsHeaders(outHeaders);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+}
+
 Y_UNIT_TEST_SUITE(Other) {
     Y_UNIT_TEST(UnknownPathNotFound) {
         THttpMonTestEnv env;
@@ -234,6 +387,54 @@ Y_UNIT_TEST_SUITE(Other) {
         const auto status = env.GetHttpClient().DoGet("/wrong_path", &responseStream, env.MakeAuthHeaders());
         UNIT_ASSERT_VALUES_EQUAL(status, HTTP_NOT_FOUND);
         // NOTE: no CORS check, because 404 response is generated by monlib
+    }
+
+    Y_UNIT_TEST(TraceHttpOk) {
+        THttpMonTestEnv env({
+            .TicketParserGroupSIDs = {"ydb.clusters.monitor@as"},
+        });
+
+        TStringStream responseStream;
+        const auto status = env.GetHttpClient().DoGet("/trace", &responseStream, env.MakeAuthHeaders());
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_OK);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+
+    Y_UNIT_TEST(TraceNoValidGroupForbidden) {
+        THttpMonTestEnv env;
+
+        TStringStream responseStream;
+        THttpHeaders outHeaders;
+        const auto status = env.GetHttpClient().DoGet("/trace", &responseStream, env.MakeAuthHeaders(), &outHeaders);
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_FORBIDDEN);
+
+        AssertCorsHeaders(outHeaders);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 0);
+    }
+
+    Y_UNIT_TEST(TraceInvalidTokenForbidden) {
+        THttpMonTestEnv env;
+
+        TStringStream responseStream;
+        THttpHeaders outHeaders;
+        const TString invalidToken = TString("Bearer invalid");
+        const auto status = env.GetHttpClient().DoGet("/trace", &responseStream, env.MakeAuthHeaders(invalidToken), &outHeaders);
+        UNIT_ASSERT_VALUES_EQUAL(status, HTTP_FORBIDDEN);
+
+        AssertCorsHeaders(outHeaders);
+
+        TFakeTicketParserActor* ticketParser = env.GetTicketParser();
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketSuccesses, 0);
+        UNIT_ASSERT_VALUES_EQUAL(ticketParser->AuthorizeTicketFails, 1);
     }
 }
 

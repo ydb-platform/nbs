@@ -26,7 +26,7 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
             .Erasure = erasure,
         });
 
-        // create 2 pdisks per node to allow self-healings and
+        // create 2 pdisks per node to allow self-healings and 
         // allocate groups
         env.CreateBoxAndPool(2, groupsCount);
         env.Sim(TDuration::Minutes(1));
@@ -38,7 +38,7 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
 
         std::set<TActorId> reassignersInFlight;
 
-        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) {
+        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) { 
             if (ev->GetTypeRewrite() == TEvBlobStorage::TEvControllerConfigRequest::EventType) {
                 const auto& request = ev->Get<TEvBlobStorage::TEvControllerConfigRequest>()->Record.GetRequest();
                 for (const auto& command : request.GetCommand()) {
@@ -148,7 +148,7 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
                 orderNumberToPDiskId[orderNumber] = pdiskId;
                 pdiskIdToOrderNumber[pdiskId] = orderNumber;
             }
-
+    
             for (ui32 orderNumber = 0; orderNumber < groupSize; ++orderNumber) {
                 TPDiskId pdiskId = orderNumberToPDiskId[orderNumber];
                 TPDiskStatus pdiskStatus = pdisks[orderNumber];
@@ -243,10 +243,10 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
         env.CreateBoxAndPool(1, 1);
 
         env.UpdateSettings(false, true, false); // disable self-heal
-        
+
         // set PDisk (9,1000) to ACTIVE + NO_NEW_VDISKS
         ChangeDiskStatus(env, { 9, 1000 }, NKikimrBlobStorage::EDriveStatus::ACTIVE, NKikimrBlobStorage::TMaintenanceStatus::NO_NEW_VDISKS);
-    
+
         // set PDisk (1,1000) to ACTIVE + LONG_TERM_MAINTENANCE_PLANNED
         ChangeDiskStatus(env, { 1, 1000 }, NKikimrBlobStorage::EDriveStatus::ACTIVE, NKikimrBlobStorage::TMaintenanceStatus::LONG_TERM_MAINTENANCE_PLANNED);
 
@@ -254,7 +254,7 @@ Y_UNIT_TEST_SUITE(SelfHeal) {
         bool reassignSeen = false;
         bool seenReassignFailure = false;
 
-        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) { 
+        auto catchReassigns = [&](ui32 /*nodeId*/, std::unique_ptr<IEventHandle>& ev) {
             if (seenReassignFailure) {
                 return true;
             }

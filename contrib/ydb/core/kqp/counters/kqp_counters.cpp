@@ -10,7 +10,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <util/generic/size_literals.h>
 
-#include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
+#include <yql/essentials/core/issue/protos/issue_id.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
 
 namespace NKikimr {
@@ -762,6 +762,8 @@ TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, co
     CompileQueryCacheSize = YdbGroup->GetNamedCounter("name", "table.query.compilation.cached_query_count", false);
     CompileQueryCacheBytes = YdbGroup->GetNamedCounter("name", "table.query.compilation.cache_size_bytes", false);
     CompileQueryCacheEvicted = YdbGroup->GetNamedCounter("name", "table.query.compilation.cache_evictions", true);
+    CompileQueueWaitTime = KqpGroup->GetHistogram(
+        "Compilation/QueueWaitTimeMs", NMonitoring::ExponentialHistogram(20, 2, 1));
 
     CompileQueueSize = KqpGroup->GetCounter("Compilation/QueueSize", false);
 
@@ -817,14 +819,39 @@ TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, co
     /* sink writes */
     WriteActorsShardResolve = KqpGroup->GetCounter("SinkWrites/WriteActorShardResolve", true);
     WriteActorsCount = KqpGroup->GetCounter("SinkWrites/WriteActorsCount", false);
+    BufferActorsCount = KqpGroup->GetCounter("SinkWrites/BufferActorsCount", false);
+    ForwardActorsCount = KqpGroup->GetCounter("SinkWrites/ForwardActorsCount", false);
+
     WriteActorImmediateWrites = KqpGroup->GetCounter("SinkWrites/WriteActorImmediateWrites", true);
     WriteActorImmediateWritesRetries = KqpGroup->GetCounter("SinkWrites/WriteActorImmediateWritesRetries", true);
+    WriteActorPrepareWrites = KqpGroup->GetCounter("SinkWrites/WriteActorPrepareWrites", true);
+
+    WriteActorWriteOnlyOperations = KqpGroup->GetCounter("SinkWrites/WriteActorWriteOnlyOperations", true);
+    WriteActorReadWriteOperations = KqpGroup->GetCounter("SinkWrites/WriteActorReadWriteOperations", true);
+
+    BufferActorFlushes = KqpGroup->GetCounter("SinkWrites/BufferActorFlushes", true);
+    BufferActorImmediateCommits = KqpGroup->GetCounter("SinkWrites/BufferActorImmediateCommits", true);
+    BufferActorDistributedCommits = KqpGroup->GetCounter("SinkWrites/BufferActorDistributedCommits", true);
+    BufferActorRollbacks = KqpGroup->GetCounter("SinkWrites/BufferActorRollbacks", true);
+
     WriteActorWritesSizeHistogram =
         KqpGroup->GetHistogram("SinkWrites/WriteActorWritesSize", NMonitoring::ExponentialHistogram(28, 2, 1));
     WriteActorWritesOperationsHistogram =
         KqpGroup->GetHistogram("SinkWrites/WriteActorWritesOperations", NMonitoring::ExponentialHistogram(20, 2, 1));
     WriteActorWritesLatencyHistogram =
-        KqpGroup->GetHistogram("SinkWrites/WriteActorWritesLatencyMs", NMonitoring::ExponentialHistogram(20, 2, 1));
+        KqpGroup->GetHistogram("SinkWrites/WriteActorWritesLatencyUs", NMonitoring::ExponentialHistogram(28, 2, 1));
+
+    BufferActorPrepareLatencyHistogram =
+        KqpGroup->GetHistogram("SinkWrites/BufferActorPrepareLatencyUs", NMonitoring::ExponentialHistogram(28, 2, 1));
+    BufferActorCommitLatencyHistogram =
+        KqpGroup->GetHistogram("SinkWrites/BufferActorCommitLatencyUs", NMonitoring::ExponentialHistogram(28, 2, 1));
+    BufferActorFlushLatencyHistogram =
+        KqpGroup->GetHistogram("SinkWrites/BufferActorFlushLatencyUs", NMonitoring::ExponentialHistogram(28, 2, 1));
+
+    ForwardActorWritesSizeHistogram =
+        KqpGroup->GetHistogram("SinkWrites/ForwardActorWritesSize", NMonitoring::ExponentialHistogram(28, 2, 1));
+    ForwardActorWritesLatencyHistogram =
+        KqpGroup->GetHistogram("SinkWrites/ForwardActorWritesLatencyUs", NMonitoring::ExponentialHistogram(28, 2, 1));
 
     /* sequencers */
 
@@ -842,14 +869,39 @@ TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, co
     FullScansExecuted = KqpGroup->GetCounter("FullScans", true);
 
     SchedulerThrottled = KqpGroup->GetCounter("NodeScheduler/ThrottledUs", true);
+    SchedulerGroupsCount = KqpGroup->GetCounter("NodeScheduler/GroupsCount", false);
+    SchedulerValuesCount = KqpGroup->GetCounter("NodeScheduler/ValuesCount", false);
     SchedulerCapacity = KqpGroup->GetCounter("NodeScheduler/Capacity");
     ComputeActorExecutions = KqpGroup->GetHistogram("NodeScheduler/BatchUs", NMonitoring::ExponentialHistogram(20, 2, 1));
     ComputeActorDelays = KqpGroup->GetHistogram("NodeScheduler/Delays", NMonitoring::ExponentialHistogram(20, 2, 1));
     ThrottledActorsSpuriousActivations = KqpGroup->GetCounter("NodeScheduler/SpuriousActivations", true);
     SchedulerDelays = KqpGroup->GetHistogram("NodeScheduler/Delay", NMonitoring::ExponentialHistogram(20, 2, 1));
 
+    RowsDuplicationsFound = KqpGroup->GetCounter("RowsDuplicationFound", true);
+    ForcedImmediateEffectsExecution = KqpGroup->GetCounter("ForcedImmediateEffectsExecution", true);
+
     TotalSingleNodeReqCount = KqpGroup->GetCounter("TotalSingleNodeReqCount", true);
     NonLocalSingleNodeReqCount = KqpGroup->GetCounter("NonLocalSingleNodeReqCount", true);
+
+    /* Statistics performance */
+    QueryStatCpuCollectUs = KqpGroup->GetCounter("Query/Stat/CpuCollectUs", true);
+    QueryStatCpuFinishUs = KqpGroup->GetCounter("Query/Stat/CpuFinishUs", true);
+    QueryStatCpuConvertUs = KqpGroup->GetCounter("Query/Stat/CpuConvertUs", true);
+
+    QueryStatMemCollectInflightBytes = KqpGroup->GetCounter("Query/Stat/MemCollectInflightBytes", false);
+    QueryStatMemFinishInflightBytes = KqpGroup->GetCounter("Query/Stat/MemFinishInflightBytes", false);
+
+    QueryStatMemFinishBytes = KqpGroup->GetCounter("Query/Stat/MemFinishBytes", true);
+    QueryStatMemConvertBytes = KqpGroup->GetCounter("Query/Stat/MemConvertBytes", true);
+
+    /* Statistics batch operations */
+    BatchOperationUpdateRows = KqpGroup->GetCounter("BatchOperation/Update/Rows", true);
+    BatchOperationUpdateBytes = KqpGroup->GetCounter("BatchOperation/Update/Bytes", true);
+
+    BatchOperationDeleteRows = KqpGroup->GetCounter("BatchOperation/Delete/Rows", true);
+    BatchOperationDeleteBytes = KqpGroup->GetCounter("BatchOperation/Delete/Bytes", true);
+
+    BatchOperationRetries = KqpGroup->GetCounter("BatchOperation/Retries", true);
 }
 
 ::NMonitoring::TDynamicCounterPtr TKqpCounters::GetKqpCounters() const {
@@ -1035,6 +1087,10 @@ void TKqpCounters::ReportTransaction(TKqpDbCountersPtr dbCounters, const TKqpTra
     if (txInfo.Status == TKqpTransactionInfo::EStatus::Committed) {
         UpdateTxCounters(txInfo, TxByKind);
     }
+}
+
+void TKqpCounters::ReportCompileQueueWaitTime(const TDuration& duration) {
+    CompileQueueWaitTime->Collect(duration.MilliSeconds());
 }
 
 void TKqpCounters::ReportLeaseUpdateLatency(const TDuration& duration) {
@@ -1273,7 +1329,7 @@ const ::NMonitoring::TDynamicCounters::TCounterPtr TKqpCounters::GetDataShardTxR
 }
 
 TKqpDbCountersPtr TKqpCounters::GetDbCounters(const TString& database) {
-    if (!ActorSystem || !AppData(ActorSystem)->FeatureFlags.GetEnableDbCounters() || database.empty()) {
+    if (!ActorSystem || !DbWatcherActorId || database.empty()) {
         return {};
     }
 
