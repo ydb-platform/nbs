@@ -9,9 +9,9 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/logbroker/iface
 
-    contrib/ydb/public/sdk/cpp/client/iam
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
+    contrib/ydb/public/sdk/cpp/src/client/iam
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/topic
 
     library/cpp/threading/future
 )
