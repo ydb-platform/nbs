@@ -9,7 +9,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/ingress/blobstorage_ingress.h>
 #include <contrib/ydb/core/driver_lib/version/version.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 
 namespace NKikimr {
 

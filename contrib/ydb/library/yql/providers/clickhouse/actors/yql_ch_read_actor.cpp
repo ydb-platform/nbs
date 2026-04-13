@@ -1,9 +1,9 @@
 #include "yql_ch_read_actor.h"
 
-#include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <yql/essentials/minikql/mkql_string_util.h>
+#include <yql/essentials/utils/yql_panic.h>
 #include <contrib/ydb/library/yql/providers/clickhouse/proto/range.pb.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
+#include <yql/essentials/providers/common/provider/yql_provider_names.h>
 
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>

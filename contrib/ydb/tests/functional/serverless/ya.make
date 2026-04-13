@@ -7,22 +7,22 @@ TEST_SRCS(
 
 FORK_TEST_FILES()
 FORK_SUBTESTS()
-TIMEOUT(600)
 
-REQUIREMENTS(
-    cpu:4
-    ram:32
-)
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:32 cpu:4)
+ENDIF()
+
 SIZE(MEDIUM)
 
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+ENV(YDB_ENABLE_COLUMN_TABLES="true")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
 DEPENDS(
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
     contrib/python/tornado/tornado-4
     contrib/ydb/tests/library
+    contrib/ydb/tests/library/fixtures
     contrib/ydb/tests/oss/ydb_sdk_import
     contrib/ydb/public/sdk/python
 )

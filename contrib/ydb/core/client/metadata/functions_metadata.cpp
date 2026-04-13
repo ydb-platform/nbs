@@ -1,6 +1,6 @@
 #include "functions_metadata.h"
 
-#include <contrib/ydb/library/yql/minikql/mkql_function_metadata.h>
+#include <yql/essentials/minikql/mkql_function_metadata.h>
 #include <contrib/ydb/core/protos/scheme_type_operation.pb.h>
 
 

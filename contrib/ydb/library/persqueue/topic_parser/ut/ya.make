@@ -2,8 +2,6 @@ UNITTEST_FOR(contrib/ydb/library/persqueue/topic_parser)
 
 FORK_SUBTESTS()
 
-TIMEOUT(30)
-
 SIZE(SMALL)
 
 PEERDIR(

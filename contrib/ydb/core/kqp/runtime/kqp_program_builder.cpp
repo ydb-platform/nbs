@@ -3,8 +3,8 @@
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
-#include <contrib/ydb/library/yql/minikql/mkql_runtime_version.h>
+#include <yql/essentials/minikql/mkql_node_cast.h>
+#include <yql/essentials/minikql/mkql_runtime_version.h>
 
 namespace NKikimr {
 namespace NMiniKQL {

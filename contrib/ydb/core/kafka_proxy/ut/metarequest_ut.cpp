@@ -1,5 +1,5 @@
 #include <library/cpp/testing/unittest/registar.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils/test_server.h>
 
 #include <contrib/ydb/core/kafka_proxy/kafka_events.h>
 #include <contrib/ydb/core/kafka_proxy/actors/kafka_metadata_actor.h>
@@ -24,13 +24,15 @@ Y_UNIT_TEST_SUITE(TMetadataActorTests) {
             Config.MutableProxy()->SetHostname(proxyHost);
             Config.MutableProxy()->SetPort(9097);
         }
-
+        Config.SetAutoCreateTopicsEnable(false);
+        Config.SetAutoCreateConsumersEnable(false);
         auto* runtime = server.CleverServer->GetRuntime();
         auto request = GetMetadataRequest(topics);
 
         auto context = std::make_shared<TContext>(Config);
         context->ConnectionId = edgeActor;
         context->DatabasePath = "/Root";
+        context->ResourceDatabasePath = "/Root";
         context->UserToken = new NACLib::TUserToken("root@builtin", {});
 
         auto actorId = runtime->Register(new TKafkaMetadataActor(context, 1, TMessagePtr<TMetadataRequestData>(std::make_shared<TBuffer>(), request),

@@ -13,7 +13,7 @@ PEERDIR(
     contrib/ydb/library/accessor
     contrib/ydb/library/services
     contrib/ydb/core/tx/columnshard/bg_tasks/protos
-    contrib/ydb/public/lib/operation_id/protos
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
     contrib/ydb/public/api/protos
 )
 

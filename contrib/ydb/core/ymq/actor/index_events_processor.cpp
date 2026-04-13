@@ -1,5 +1,5 @@
 #include "index_events_processor.h"
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/ydb.h>
+#include <ydb-cpp-sdk/client/types/ydb.h>
 
 namespace NKikimr::NSQS {
 using namespace NActors;
@@ -76,7 +76,7 @@ void TSearchEventsProcessor::HandleWakeup(TEvWakeup::TPtr&, const TActorContext&
 }
 
 void TSearchEventsProcessor::HandleQueryResponse(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev, const TActorContext& ctx) {
-    const auto& record = ev->Get()->Record.GetRef();
+    const auto& record = ev->Get()->Record;
     if (record.GetYdbStatus() != Ydb::StatusIds::SUCCESS) {
         LOG_ERROR_S(ctx, NKikimrServices::SQS,
                     "YC Search events processor: Got error trying to perform request: " << record);
@@ -143,7 +143,7 @@ void TSearchEventsProcessor::RunQueuesListQuery(const TActorContext& ctx) {
 void TSearchEventsProcessor::OnQueuesListQueryComplete(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev,
                                                        const TActorContext& ctx) {
 
-    auto& response = ev->Get()->Record.GetRef().GetResponse();
+    auto& response = ev->Get()->Record.GetResponse();
 
     Y_ABORT_UNLESS(response.YdbResultsSize() == 1);
     TString queueName, cloudId;
@@ -155,7 +155,7 @@ void TSearchEventsProcessor::OnQueuesListQueryComplete(NKqp::TEvKqp::TEvQueryRes
         auto customName = *parser.ColumnParser(2).GetOptionalUtf8();
         auto createTs = *parser.ColumnParser(3).GetOptionalUint64();
         auto folderId = *parser.ColumnParser(4).GetOptionalUtf8();
-        auto tags = parser.ColumnParser(5).GetOptionalUtf8().GetOrElse("{}");
+        auto tags = parser.ColumnParser(5).GetOptionalUtf8().value_or("{}");
         auto insResult = ExistingQueues.insert(std::make_pair(
                 queueName, TQueueEvent{EQueueEventType::Existed, createTs, customName, cloudId, folderId, tags}
         ));
@@ -185,7 +185,7 @@ void TSearchEventsProcessor::RunEventsListing(const TActorContext& ctx) {
 
 void TSearchEventsProcessor::OnEventsListingDone(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev, const TActorContext& ctx) {
     QueuesEvents.clear();
-    const auto& record = ev->Get()->Record.GetRef();
+    const auto& record = ev->Get()->Record;
     Y_ABORT_UNLESS(record.GetResponse().YdbResultsSize() == 1);
     NYdb::TResultSetParser parser(record.GetResponse().GetYdbResults(0));
 
@@ -197,7 +197,7 @@ void TSearchEventsProcessor::OnEventsListingDone(NKqp::TEvKqp::TEvQueryResponse:
         auto customName = *parser.ColumnParser(3).GetOptionalUtf8();
         auto timestamp = *parser.ColumnParser(4).GetOptionalUint64();
         auto folderId = *parser.ColumnParser(5).GetOptionalUtf8();
-        auto labels = parser.ColumnParser(6).GetOptionalUtf8().GetOrElse("{}");
+        auto labels = parser.ColumnParser(6).GetOptionalUtf8().value_or("{}");
         auto& qEvents = QueuesEvents[queueName];
         auto insResult = qEvents.insert(std::make_pair(
                 timestamp, TQueueEvent{EQueueEventType(evType), timestamp, customName, cloudId, folderId, labels}

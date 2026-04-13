@@ -6,7 +6,6 @@
 
 #include <contrib/ydb/core/base/storage_pools.h>
 #include <contrib/ydb/core/base/location.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
 #include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/core/driver_lib/cli_config_base/config_base.h>
@@ -19,20 +18,20 @@
 #include <contrib/ydb/public/api/grpc/draft/dummy.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_table.pb.h>
 
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 
 #include <google/protobuf/any.h>
 
-#include <contrib/ydb/library/yql/core/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/core/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_params/params.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
-#include <contrib/ydb/public/sdk/cpp/client/resources/ydb_resources.h>
+#include <ydb-cpp-sdk/client/params/params.h>
+#include <ydb-cpp-sdk/client/result/result.h>
+#include <ydb-cpp-sdk/client/scheme/scheme.h>
+#include <ydb-cpp-sdk/client/table/table.h>
+#include <ydb-cpp-sdk/client/discovery/discovery.h>
+#include <ydb-cpp-sdk/client/resources/ydb_resources.h>
 
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 

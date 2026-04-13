@@ -14,13 +14,17 @@
 
 #include <contrib/ydb/library/grpc/server/event_callback.h>
 #include <contrib/ydb/library/grpc/server/grpc_async_ctx_base.h>
-#include <contrib/ydb/public/sdk/cpp/client/resources/ydb_resources.h>
+#include <ydb-cpp-sdk/client/resources/ydb_resources.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
 namespace NKikimr {
 namespace NKesus {
+
+// Note: this is an extremely high default to avoid breaking clients
+// TODO: make it configurable
+static constexpr i64 DEFAULT_MAX_SESSIONS_INFLIGHT = 100000;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -616,30 +620,43 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TKesusGRpcService::TKesusGRpcService(
+        NActors::TActorSystem* system,
+        TIntrusivePtr<::NMonitoring::TDynamicCounters> counters,
+        TIntrusivePtr<NGRpcService::TInFlightLimiterRegistry> limiterRegistry,
+        const NActors::TActorId& proxyId,
+        bool rlAllowed)
+    : TBase(system, counters, proxyId, rlAllowed)
+    , LimiterRegistry_(limiterRegistry)
+{}
+
 void TKesusGRpcService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
+    using NGRpcService::TRateLimiterMode;
     using NGRpcService::TAuditMode;
     auto getCounterBlock = NGRpcService::CreateCounterCb(Counters_, ActorSystem_);
-    using NGRpcService::TRateLimiterMode;
+    auto getLimiter = CreateLimiterCb(LimiterRegistry_);
 
 #ifdef ADD_REQUEST
 #error ADD_REQUEST macro is already defined
 #endif
 
 #define ADD_REQUEST(NAME, IN, OUT, CB, AUDIT_MODE) \
-    MakeIntrusive<NGRpcService::TGRpcRequest<Ydb::Coordination::IN, Ydb::Coordination::OUT, TKesusGRpcService>>( \
-        this, \
-        &Service_, \
-        CQ_, \
-        [this](NYdbGrpc::IRequestContextBase* reqCtx) { \
-            NGRpcService::ReportGrpcReqToMon(*ActorSystem_, reqCtx->GetPeer()); \
-            ActorSystem_->Send(GRpcRequestProxyId_, \
-                new NGRpcService::TGrpcRequestOperationCall<Ydb::Coordination::IN, Ydb::Coordination::OUT> \
-                    (reqCtx, &CB, NGRpcService::TRequestAuxSettings{RLSWITCH(TRateLimiterMode::Rps), nullptr, AUDIT_MODE})); \
-        }, \
-        &Ydb::Coordination::V1::CoordinationService::AsyncService::Request ## NAME, \
-        "Coordination/" #NAME,             \
-        logger, \
-        getCounterBlock("coordination", #NAME))->Run();
+    for (auto* cq : CQS) { \
+        MakeIntrusive<NGRpcService::TGRpcRequest<Ydb::Coordination::IN, Ydb::Coordination::OUT, TKesusGRpcService>>( \
+            this, \
+            &Service_, \
+            cq, \
+            [this](NYdbGrpc::IRequestContextBase* reqCtx) { \
+                NGRpcService::ReportGrpcReqToMon(*ActorSystem_, reqCtx->GetPeer()); \
+                ActorSystem_->Send(GRpcRequestProxyId_, \
+                    new NGRpcService::TGrpcRequestOperationCall<Ydb::Coordination::IN, Ydb::Coordination::OUT> \
+                        (reqCtx, &CB, NGRpcService::TRequestAuxSettings{RLSWITCH(TRateLimiterMode::Rps), nullptr, AUDIT_MODE})); \
+            }, \
+            &Ydb::Coordination::V1::CoordinationService::AsyncService::Request ## NAME, \
+            #NAME,  \
+            logger, \
+            getCounterBlock("coordination", #NAME))->Run(); \
+    }
 
     ADD_REQUEST(CreateNode, CreateNodeRequest, CreateNodeResponse, NGRpcService::DoCreateCoordinationNode, TAuditMode::Modifying(TAuditMode::TLogClassConfig::Ddl));
     ADD_REQUEST(AlterNode, AlterNodeRequest, AlterNodeResponse, NGRpcService::DoAlterCoordinationNode, TAuditMode::Modifying(TAuditMode::TLogClassConfig::Ddl));
@@ -648,19 +665,21 @@ void TKesusGRpcService::SetupIncomingRequests(NYdbGrpc::TLoggerPtr logger) {
 
 #undef ADD_REQUEST
 
-    TGRpcSessionActor::TGRpcRequest::Start(
-        this,
-        this->GetService(),
-        CQ_,
-        &Ydb::Coordination::V1::CoordinationService::AsyncService::RequestSession,
-        [this](TIntrusivePtr<TGRpcSessionActor::IContext> context) {
-            NGRpcService::ReportGrpcReqToMon(*ActorSystem_, context->GetPeerName());
-            ActorSystem_->Send(GRpcRequestProxyId_, new NGRpcService::TEvCoordinationSessionRequest(context));
-        },
-        *ActorSystem_,
-        "Coordination/Session",
-        getCounterBlock("coordination", "Session", true),
-        /* TODO: limiter */ nullptr);
+    for (auto* cq : CQS) {
+        TGRpcSessionActor::TGRpcRequest::Start(
+            this,
+            this->GetService(),
+            cq,
+            &Ydb::Coordination::V1::CoordinationService::AsyncService::RequestSession,
+            [this](TIntrusivePtr<TGRpcSessionActor::IContext> context) {
+                NGRpcService::ReportGrpcReqToMon(*ActorSystem_, context->GetPeerName());
+                ActorSystem_->Send(GRpcRequestProxyId_, new NGRpcService::TEvCoordinationSessionRequest(context));
+            },
+            *ActorSystem_,
+            "Session",
+            getCounterBlock("coordination", "Session", true),
+            getLimiter("CoordinationService", "Session", DEFAULT_MAX_SESSIONS_INFLIGHT));
+    }
 }
 
 } // namespace NKesus

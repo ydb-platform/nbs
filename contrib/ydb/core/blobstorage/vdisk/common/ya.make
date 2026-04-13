@@ -47,6 +47,7 @@ SRCS(
     vdisk_lsnmngr.h
     vdisk_events_quoter.h
     vdisk_mon.h
+    vdisk_mongroups.cpp
     vdisk_mongroups.h
     vdisk_outofspace.cpp
     vdisk_outofspace.h

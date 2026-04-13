@@ -5,7 +5,7 @@
 #include <library/cpp/monlib/counters/counters.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
-namespace NKikimr::NCache {
+namespace NKikimr::NSharedCache {
 
 // TODO: remove template args and make some page base class
 
@@ -401,7 +401,7 @@ private:
         }
     }
 
-    TPageEntry* AsEntry(typename THashSet<TPageEntry, TPageKeyHash, TPageKeyEqual>::iterator it) const {
+    TPageEntry* AsEntry(THashSet<TPageEntry, TPageKeyHash, TPageKeyEqual>::iterator it) const {
         return const_cast<TPageEntry*>(&*it);
     }
 

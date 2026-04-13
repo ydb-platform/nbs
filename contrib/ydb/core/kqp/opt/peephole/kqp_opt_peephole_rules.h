@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/kqp/opt/kqp_opt.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_expr_nodes.h>
 
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
+#include <yql/essentials/ast/yql_expr.h>
 
 /*
  * This file contains declaration of all rule functions for peephole optimizer

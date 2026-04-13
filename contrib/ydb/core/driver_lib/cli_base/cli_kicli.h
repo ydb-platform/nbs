@@ -43,6 +43,8 @@ int HandleResponse(const NThreading::TFuture<ResultType>& future, std::function<
     return callback(result);
 }
 
+std::optional<TString> AcquireSecurityToken(TClientCommand::TConfig& config);
+
 int InvokeThroughKikimr(TClientCommand::TConfig& config, std::function<int(NClient::TKikimr&)> handler);
 
 template <typename RequestType>
@@ -57,19 +59,13 @@ void PrepareRequest(TClientCommand::TConfig& config, TAutoPtr<RequestType>& requ
     SetToken(config, request);
 }
 
-inline void PrepareRequest(TClientCommand::TConfig&, TAutoPtr<NMsgBusProxy::TBusLoginRequest>&) {
-}
-
-inline void PrepareRequest(TClientCommand::TConfig&, TAutoPtr<NMsgBusProxy::TBusKeyValue>&) { // not used in real life, not implemented in server
-}
-
 template <typename ResponseType>
 int OnMessageBus(const TClientCommand::TConfig& config, const ResponseType& response);
 
 template <typename RequestType, typename ResponseType>
 int MessageBusCall(TClientCommand::TConfig& config, TAutoPtr<RequestType> request, std::function<int(const ResponseType&)> callback) {
-    PrepareRequest(config, request);
     auto handler = [&](NClient::TKikimr& kikimr) {
+        PrepareRequest(config, request);
         NThreading::TFuture<NClient::TResult> future(kikimr.ExecuteRequest(request.Release()));
         return HandleResponse<NClient::TResult>(future, [&](const NClient::TResult& result) -> int {
             if (!result.HaveResponse<ResponseType>()) {

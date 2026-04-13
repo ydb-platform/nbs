@@ -2,7 +2,7 @@
 #include <contrib/ydb/core/tablet_flat/shared_cache_switchable.h>
 #include <contrib/ydb/core/util/cache_cache_iface.h>
 
-namespace NKikimr::NCache {
+namespace NKikimr::NSharedCache {
 
 namespace {
 

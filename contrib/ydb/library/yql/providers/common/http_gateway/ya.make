@@ -1,5 +1,7 @@
 LIBRARY()
 
+ENV(TZ="UTC+23")
+
 SRCS(
     yql_aws_signature.cpp
     yql_http_default_retry_policy.cpp
@@ -13,10 +15,10 @@ PEERDIR(
     contrib/ydb/library/actors/http
     contrib/ydb/library/actors/prof
     contrib/ydb/library/actors/protos
-    contrib/ydb/library/yql/providers/common/proto
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/utils
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/providers/common/proto
+    yql/essentials/public/issue
+    yql/essentials/utils
+    yql/essentials/utils/log
 )
 
 YQL_LAST_ABI_VERSION()

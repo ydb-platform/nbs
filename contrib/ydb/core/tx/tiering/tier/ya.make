@@ -1,18 +1,16 @@
 LIBRARY()
 
 SRCS(
-    manager.cpp
     object.cpp
-    initializer.cpp
-    checker.cpp
-    GLOBAL behaviour.cpp
+    s3_uri.cpp
+    identifier.cpp
 )
 
 PEERDIR(
-    contrib/ydb/services/metadata/initializer
-    contrib/ydb/services/metadata/abstract
-    contrib/ydb/services/metadata/secret
-    contrib/ydb/core/tx/schemeshard
+    contrib/ydb/core/base
+    contrib/ydb/library/conclusion
+    contrib/ydb/services/metadata/secret/accessor
+    contrib/restricted/aws/aws-crt-cpp
 )
 
 YQL_LAST_ABI_VERSION()

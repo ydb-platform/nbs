@@ -1,6 +1,5 @@
 #pragma once
 
-#include "process_response.h"
 #include "query.h"
 
 #include <contrib/ydb/core/kqp/common/simple/kqp_event_ids.h>
@@ -9,7 +8,7 @@
 #include <contrib/ydb/core/kqp/common/shutdown/events.h>
 #include <contrib/ydb/public/api/protos/ydb_query.pb.h>
 #include <contrib/ydb/library/yql/dq/actors/dq.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
@@ -20,8 +19,6 @@ namespace NKikimr::NKqp {
 
 struct TEvKqp {
     using TEvQueryRequestRemote = NPrivateEvents::TEvQueryRequestRemote;
-
-    using TEvProcessResponse = NPrivateEvents::TEvProcessResponse;
 
     using TEvQueryRequest = NPrivateEvents::TEvQueryRequest;
 
@@ -51,9 +48,6 @@ struct TEvKqp {
     using TEvDataQueryStreamPart = NPrivateEvents::TEvDataQueryStreamPart;
 
     struct TEvDataQueryStreamPartAck : public TEventLocal<TEvDataQueryStreamPartAck, TKqpEvents::EvDataQueryStreamPartAck> {};
-
-    template <typename TProto>
-    using TProtoArenaHolder = NPrivateEvents::TProtoArenaHolder<TProto>;
 
     using TEvQueryResponse = NPrivateEvents::TEvQueryResponse;
 
@@ -209,6 +203,12 @@ struct TEvKqp {
         THolder<IEventHandle> RequestEvent;
         Ydb::StatusIds::StatusCode Status;
         NYql::TIssues Issues;
+    };
+
+    struct TEvProxyPingRequest : public TEventLocal<TEvProxyPingRequest, TKqpEvents::EvProxyPingRequest> {
+    };
+
+    struct TEvProxyPingResponse : public TEventLocal<TEvProxyPingResponse, TKqpEvents::EvProxyPingResponse> {
     };
 };
 

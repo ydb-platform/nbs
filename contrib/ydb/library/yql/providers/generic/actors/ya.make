@@ -9,13 +9,13 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/minikql/computation
-    contrib/ydb/library/yql/providers/common/structured_token
+    yql/essentials/minikql/computation
+    yql/essentials/providers/common/structured_token
     contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/providers/generic/proto
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/types
     contrib/ydb/library/yql/providers/generic/connector/libcpp
-    contrib/ydb/public/sdk/cpp/client/ydb_types/credentials
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
 )
 
 YQL_LAST_ABI_VERSION()

@@ -10,6 +10,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+static auto& Cconf = Cnull;
+
 struct TEnvironmentSetup {
     std::unique_ptr<TTestActorSystem> Runtime;
     static constexpr ui32 DrivesPerNode = 5;
@@ -51,10 +53,12 @@ struct TEnvironmentSetup {
         const bool UseFakeConfigDispatcher = false;
         const float SlowDiskThreshold = 2;
         const float VDiskPredictedDelayMultiplier = 1;
-        const ui32 MaxNumOfSlowDisks = 2;
         const bool UseActorSystemTimeInBSQueue = true;
+        const ui32 MaxNumOfSlowDisks = 2;
         const ui64 PDiskSize = 10_TB;
         const ui64 PDiskChunkSize = 0;
+        const bool TrackSharedQuotaInPDiskMock = false;
+        const bool EnableDeepScrubbing = false;
     };
 
     const TSettings Settings;
@@ -72,15 +76,16 @@ struct TEnvironmentSetup {
             const auto key = std::make_pair(nodeId, pdiskId);
             TIntrusivePtr<TPDiskMockState>& state = Env.PDiskMockStates[key];
             if (!state) {
-                // state.Reset(new TPDiskMockState(nodeId, pdiskId, cfg->PDiskGuid, ui64(10) << 40, cfg->ChunkSize,
-                //         cfg->ReadOnly, Env.Settings.DiskType));
                 ui64 chunkSize = Env.Settings.PDiskChunkSize ? Env.Settings.PDiskChunkSize : cfg->ChunkSize;
+                TPDiskMockState::ESpaceColorPolicy spaceColorPolicy = Env.Settings.TrackSharedQuotaInPDiskMock
+                        ? TPDiskMockState::ESpaceColorPolicy::SharedQuota
+                        : TPDiskMockState::ESpaceColorPolicy::None;
                 state.Reset(new TPDiskMockState(nodeId, pdiskId, cfg->PDiskGuid, Env.Settings.PDiskSize, chunkSize,
-                        cfg->ReadOnly, Env.Settings.DiskType));
+                        cfg->ReadOnly, Env.Settings.DiskType, spaceColorPolicy));
             }
             const TActorId& actorId = ctx.Register(CreatePDiskMockActor(state), TMailboxType::HTSwap, poolId);
             const TActorId& serviceId = MakeBlobStoragePDiskID(nodeId, pdiskId);
-            ctx.ExecutorThread.ActorSystem->RegisterLocalService(serviceId, actorId);
+            ctx.ActorSystem()->RegisterLocalService(serviceId, actorId);
             Env.PDiskActors.push_back(actorId);
         }
     };
@@ -88,7 +93,23 @@ struct TEnvironmentSetup {
 
     class TFakeConfigDispatcher : public TActor<TFakeConfigDispatcher> {
         std::unordered_set<TActorId> Subscribers;
-        TActorId EdgeId;
+
+        struct TConfigDistributionTask {
+            TActorId Sender;
+            ui64 Cookie;
+            std::unique_ptr<IEventBase> Response;
+            THashSet<TActorId> RepliesPending;
+
+            TConfigDistributionTask(NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr& ev)
+                : Sender(ev->Sender)
+                , Cookie(ev->Cookie)
+                , Response(std::make_unique<NConsole::TEvConsole::TEvConfigNotificationResponse>(ev->Get()->Record))
+            {}
+        };
+
+        std::map<std::tuple<TActorId, ui64>, std::shared_ptr<TConfigDistributionTask>> TasksPending;
+        ui64 LastCookie = 0;
+
     public:
         TFakeConfigDispatcher()
             : TActor<TFakeConfigDispatcher>(&TFakeConfigDispatcher::StateWork)
@@ -97,10 +118,11 @@ struct TEnvironmentSetup {
 
         STFUNC(StateWork) {
             switch (ev->GetTypeRewrite()) {
-                hFunc(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest, Handle);
+                hFunc(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest, Handle)
                 hFunc(NConsole::TEvConsole::TEvConfigNotificationRequest, Handle)
                 hFunc(NConsole::TEvConsole::TEvConfigNotificationResponse, Handle)
                 hFunc(NConsole::TEvConfigsDispatcher::TEvRemoveConfigSubscriptionRequest, Handle)
+                hFunc(TEvents::TEvUndelivered, Handle)
             }
         }
 
@@ -109,24 +131,61 @@ struct TEnvironmentSetup {
             if (items.at(0) != NKikimrConsole::TConfigItem::BlobStorageConfigItem) {
                 return;
             }
+            Cconf << "@ subscribed " << ev->Sender << Endl;
             Subscribers.emplace(ev->Sender);
         }
 
         void Handle(NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr& ev) {
-            EdgeId = ev->Sender;
+            auto task = std::make_shared<TConfigDistributionTask>(ev);
+            const ui64 cookie = ++LastCookie;
+
             for (auto& id : Subscribers) {
                 auto update = MakeHolder<NConsole::TEvConsole::TEvConfigNotificationRequest>();
                 update->Record.CopyFrom(ev->Get()->Record);
-                Send(id, update.Release());
+                Send(id, update.Release(), IEventHandle::FlagTrackDelivery, cookie);
+                task->RepliesPending.insert(id);
+                const auto [it, inserted] = TasksPending.emplace(std::make_tuple(id, cookie), task);
+                Y_ABORT_UNLESS(inserted);
+            }
+
+            Cconf << "@ created task " << cookie << " for " << Subscribers.size() << " subscribers from " <<
+                ev->Sender << " cookie " << ev->Cookie << Endl;
+        }
+
+        void Handle(TEvents::TEvUndelivered::TPtr& ev) {
+            Cconf << "@ undelivered " << ev->Sender << " cookie " << ev->Cookie << Endl;
+            const auto nh = TasksPending.extract(std::make_tuple(ev->Sender, ev->Cookie));
+            Y_ABORT_UNLESS(nh);
+            Finish(*nh.mapped(), ev->Sender);
+        }
+
+        void Finish(TConfigDistributionTask& task, TActorId sender) {
+            Cconf << "@ finish from " << sender << " task " << task.Sender << " cookie " << task.Cookie << Endl;
+            const size_t numErased = task.RepliesPending.erase(sender);
+            Y_ABORT_UNLESS(numErased);
+            if (task.RepliesPending.empty()) {
+                Send(task.Sender, task.Response.release(), 0, task.Cookie);
             }
         }
 
         void Handle(NConsole::TEvConsole::TEvConfigNotificationResponse::TPtr& ev) {
-            Forward(ev, EdgeId);
+            Cconf << "@ TEvConfigNotificationResponse from " << ev->Sender << " cookie " << ev->Cookie << Endl;
+            const auto nh = TasksPending.extract(std::make_tuple(ev->Sender, ev->Cookie));
+            Y_ABORT_UNLESS(nh);
+            Finish(*nh.mapped(), ev->Sender);
         }
 
         void Handle(NConsole::TEvConfigsDispatcher::TEvRemoveConfigSubscriptionRequest::TPtr& ev) {
-                Send(ev->Sender, MakeHolder<NConsole::TEvConsole::TEvRemoveConfigSubscriptionResponse>().Release());
+            Cconf << "@ TEvRemoveConfigSubscriptionRequest from " << ev->Sender << Endl;
+
+            for (auto it = TasksPending.lower_bound(std::make_tuple(ev->Sender, 0)); it != TasksPending.end() &&
+                    std::get<0>(it->first) == ev->Sender; it = TasksPending.erase(it)) {
+                Finish(*it->second, ev->Sender);
+            }
+
+            const size_t numErased = Subscribers.erase(ev->Sender);
+            Y_ABORT_UNLESS(numErased);
+            Send(ev->Sender, MakeHolder<NConsole::TEvConsole::TEvRemoveConfigSubscriptionResponse>().Release());
         }
     };
 
@@ -159,7 +218,6 @@ struct TEnvironmentSetup {
     }
 
     static void SetupEnv() {
-        TAppData::TimeProvider = TTestActorSystem::CreateTimeProvider();
         ui64 seed = RandomNumber<ui64>();
         if (const TString& s = GetEnv("SEED", "")) {
             seed = FromString<ui64>(s);
@@ -208,6 +266,7 @@ struct TEnvironmentSetup {
 
     void Initialize() {
         Runtime = MakeRuntime();
+        TAppData::TimeProvider = TTestActorSystem::CreateTimeProvider();
         if (Settings.PrepareRuntime) {
             Settings.PrepareRuntime(*Runtime);
         }
@@ -323,6 +382,7 @@ struct TEnvironmentSetup {
 //            NKikimrServices::BS_VDISK_PATCH,
 //            NKikimrServices::BS_VDISK_PUT,
 //            NKikimrServices::BS_VDISK_OTHER,
+            NKikimrServices::BS_VDISK_SCRUB,
 //            NKikimrServices::BS_PROXY,
 //            NKikimrServices::BS_PROXY_RANGE,
 //            NKikimrServices::BS_PROXY_GET,
@@ -417,13 +477,15 @@ struct TEnvironmentSetup {
                 ADD_ICB_CONTROL("DSProxyControls.MaxNumOfSlowDisks", 2, 1, 2, Settings.MaxNumOfSlowDisks);
                 ADD_ICB_CONTROL("DSProxyControls.MaxNumOfSlowDisksHDD", 2, 1, 2, Settings.MaxNumOfSlowDisks);
                 ADD_ICB_CONTROL("DSProxyControls.MaxNumOfSlowDisksSSD", 2, 1, 2, Settings.MaxNumOfSlowDisks);
+
+                ADD_ICB_CONTROL("VDiskControls.EnableDeepScrubbing", false, false, true, Settings.EnableDeepScrubbing);
                 ADD_ICB_CONTROL("VDiskControls.HullCompThrottlerBytesRate", 0, 0, 10737418240, 0);
                 ADD_ICB_CONTROL("VDiskControls.DefragThrottlerBytesRate", 0, 0, 10'000'000'000, 0);
+                ADD_ICB_CONTROL("PDiskControls.MaxActiveCompactionsPerPDisk", 0, 0, 1'000'000, 0);
 
                 ADD_ICB_CONTROL("VDiskControls.MaxChunksToDefragInflight", 10, 1, 50, 10);
                 ADD_ICB_CONTROL("VDiskControls.DefaultHugeGarbagePerMille", 300, 0, 1000, 300);
                 ADD_ICB_CONTROL("VDiskControls.GarbageThresholdToRunFullCompactionPerMille", 0, 0, 300, 0);
-                
 #undef ADD_ICB_CONTROL
 
                 {
@@ -904,14 +966,14 @@ struct TEnvironmentSetup {
         auto realProxyActorId = MakeBlobStorageProxyID(groupId);
         auto& appData = *(Runtime->GetNode(nodeId)->AppData.get());
         TIntrusivePtr<NKikimr::TDsProxyNodeMon> nodeMon = new NKikimr::TDsProxyNodeMon(appData.Counters, true);
-        TString name = Sprintf("%09" PRIu64, (ui64)groupId);
+        TString name = Sprintf("%09" PRIu64, groupId);
 
         TDsProxyPerPoolCounters perPoolCounters(appData.Counters);
         TIntrusivePtr<TStoragePoolCounters> storagePoolCounters = perPoolCounters.GetPoolCounters("pool_name");
         TControlWrapper enablePutBatching(true, false, true);
         TControlWrapper enableVPatch(false, false, true);
         auto info = GetGroupInfo(groupId);
-        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(info), true, nodeMon,
+        IActor *dsproxy = CreateBlobStorageGroupProxyConfigured(TIntrusivePtr(info), nullptr, true, nodeMon,
             std::move(storagePoolCounters), TBlobStorageProxyParameters{
                     .Controls = TBlobStorageProxyControlWrappers{
                         .EnablePutBatching = enablePutBatching,
@@ -1036,6 +1098,31 @@ struct TEnvironmentSetup {
                     cntr = cntr->GetSubgroup(label, value);
                 }
                 ctr += cntr->GetCounter(counter, derivative)->Val();
+            }
+        }
+        return ctr;
+    }
+
+    template <class TCallback>
+    ui64 AggregateVDiskCountersWithCallback(TString storagePool, ui32 nodesCount, ui32 groupSize, ui32 groupId,
+            const std::vector<ui32>& pdiskLayout, TCallback callback) {
+        ui64 ctr = 0;
+
+        for (ui32 nodeId = 1; nodeId <= nodesCount; ++nodeId) {
+            auto* appData = Runtime->GetNode(nodeId)->AppData.get();
+            for (ui32 i = 0; i < groupSize; ++i) {
+                TStringStream ss;
+                ss << LeftPad(i, 2, '0');
+                TString orderNumber = ss.Str();
+                ss.Clear();
+                ss << LeftPad(pdiskLayout[i], 9, '0');
+                TString pdisk = ss.Str();
+                ctr += callback(GetServiceCounters(appData->Counters, "vdisks")->
+                        GetSubgroup("storagePool", storagePool)->
+                        GetSubgroup("group", std::to_string(groupId))->
+                        GetSubgroup("orderNumber", orderNumber)->
+                        GetSubgroup("pdisk", pdisk)->
+                        GetSubgroup("media", "rot"));
             }
         }
         return ctr;

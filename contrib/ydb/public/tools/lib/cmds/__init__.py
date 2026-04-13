@@ -8,16 +8,18 @@ import random
 import string
 import typing  # noqa: F401
 import sys
+import types
 from six.moves.urllib.parse import urlparse
 
-from contrib.ydb.library.yql.providers.common.proto.gateways_config_pb2 import TGenericConnectorConfig
-from contrib.ydb.tests.library.common import yatest_common
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+import yatest
+
+from yql.essentials.providers.common.proto.gateways_config_pb2 import TGenericConnectorConfig
+from contrib.ydb.tests.library.harness.kikimr_runner import KiKiMR
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.common.types import Erasure
 from contrib.ydb.tests.library.harness.daemon import Daemon
 from contrib.ydb.tests.library.harness.util import LogLevels
-from contrib.ydb.tests.library.harness.kikimr_port_allocator import KikimrFixedPortAllocator, KikimrFixedNodePortAllocator
+from contrib.ydb.tests.library.harness.kikimr_port_allocator import KikimrFixedPortAllocator
 from library.python.testing.recipe import set_env
 
 
@@ -30,6 +32,7 @@ class EmptyArguments(object):
         self.suppress_version_check = False
         self.ydb_udfs_dir = None
         self.fq_config_path = None
+        self.config_path = None
         self.auth_config_path = None
         self.debug_logging = []
         self.fixed_ports = False
@@ -38,6 +41,15 @@ class EmptyArguments(object):
         self.dont_use_log_files = False
         self.enabled_feature_flags = []
         self.enabled_grpc_services = []
+
+
+def _get_build_path(path):
+    try:
+        result = yatest.common.build_path(path)
+    except (AttributeError, yatest.common.NoRuntimeFormed):
+        result = path
+
+    return result
 
 
 def ensure_path_exists(path):
@@ -56,19 +68,9 @@ def parse_erasure(args):
 
 
 def driver_path_packages(package_path):
-    return yatest_common.build_path(
-        "{}/Berkanavt/kikimr/bin/kikimr".format(
-            package_path
-        )
-    )
-
-
-def udfs_path_packages(package_path):
-    return yatest_common.build_path(
-        "{}/Berkanavt/kikimr/libs".format(
-            package_path
-        )
-    )
+    if os.getenv('YDB_DRIVER_BINARY') is not None:
+        return os.getenv('YDB_DRIVER_BINARY')
+    return yatest.common.build_path("{}/ydbd".format(package_path))
 
 
 def wrap_path(path):
@@ -93,7 +95,7 @@ def write_file(args, suffix, content):
         write_file_flushed(os.path.join(args.ydb_working_dir, suffix), content)
         return
 
-    write_file_flushed(os.path.join(yatest_common.output_path(suffix)), content)
+    write_file_flushed(os.path.join(yatest.common.output_path(suffix)), content)
 
     try:
         write_file_flushed(suffix, content)
@@ -106,7 +108,7 @@ def read_file(args, suffix):
         with open(os.path.join(args.ydb_working_dir, suffix), 'r') as fd:
             return fd.read()
 
-    with open(os.path.join(yatest_common.output_path(suffix)), 'r') as fd:
+    with open(os.path.join(yatest.common.output_path(suffix)), 'r') as fd:
         return fd.read()
 
 
@@ -213,6 +215,9 @@ class Recipe(object):
     def write_certificates_path(self, certificates_path):
         self.setenv('YDB_SSL_ROOT_CERTIFICATES_FILE', certificates_path)
 
+    def write_mon_port(self, mon_port):
+        self.setenv('YDB_MON_PORT', str(mon_port))
+
     def read_metafile(self):
         return json.loads(self.read(self.metafile_path()))
 
@@ -222,7 +227,7 @@ class Recipe(object):
         if self.arguments.ydb_working_dir:
             self.data_path = self.arguments.ydb_working_dir
             return self.data_path
-        self.data_path = yatest_common.output_path(self.data_path_template % random_string())
+        self.data_path = yatest.common.output_path(self.data_path_template % random_string())
         return ensure_path_exists(self.data_path)
 
 
@@ -250,12 +255,16 @@ def default_users():
     return {user: password}
 
 
-def enable_survive_restart():
-    return os.getenv('YDB_LOCAL_SURVIVE_RESTART') == 'true'
-
-
 def enable_tls():
     return os.getenv('YDB_GRPC_ENABLE_TLS') == 'true'
+
+
+def is_tiny_mode():
+    return os.getenv('YDB_TINY_MODE') == 'true'
+
+
+def report_monitoring_info():
+    return os.getenv('YDB_REPORT_MONITORING_INFO') == 'true'
 
 
 def generic_connector_config():
@@ -314,7 +323,7 @@ def deploy(arguments):
     initialize_working_dir(arguments)
     recipe = Recipe(arguments)
 
-    if os.path.exists(recipe.metafile_path()) and enable_survive_restart():
+    if os.path.exists(recipe.metafile_path()):
         return start(arguments)
 
     if getattr(arguments, 'use_packages', None) is not None:
@@ -332,7 +341,7 @@ def deploy(arguments):
     port_allocator = None
     if getattr(arguments, 'fixed_ports', False):
         base_port_offset = getattr(arguments, 'base_port_offset', 0)
-        port_allocator = KikimrFixedPortAllocator(base_port_offset, [KikimrFixedNodePortAllocator(base_port_offset=base_port_offset)])
+        port_allocator = KikimrFixedPortAllocator(base_port_offset)
 
     optionals = {}
     if enable_tls():
@@ -349,17 +358,29 @@ def deploy(arguments):
     if 'YDB_EXPERIMENTAL_PG' in os.environ:
         optionals['pg_compatible_expirement'] = True
 
+    kafka_api_port = int(os.environ.get("YDB_KAFKA_PROXY_PORT", "0"))
+    if kafka_api_port != 0:
+        optionals['kafka_api_port'] = kafka_api_port
+
+    enabled_grpc_services = arguments.enabled_grpc_services.copy()  # type: typing.List[str]
+    if 'YDB_GRPC_SERVICES' in os.environ:
+        services = os.environ['YDB_GRPC_SERVICES'].split(",")
+        for service in services:
+            enabled_grpc_services.append(service)
+
+    if is_tiny_mode():
+        optionals['tiny_mode'] = True
+
     configuration = KikimrConfigGenerator(
-        parse_erasure(arguments),
-        arguments.ydb_binary_path,
+        erasure=parse_erasure(arguments),
+        binary_paths=[arguments.ydb_binary_path] if arguments.ydb_binary_path else None,
         output_path=recipe.generate_data_path(),
         pdisk_store_path=pdisk_store_path,
         domain_name='local',
         pq_client_service_types=pq_client_service_types(arguments),
         enable_pqcd=enable_pqcd(arguments),
-        load_udfs=True,
         suppress_version_check=arguments.suppress_version_check,
-        udfs_path=arguments.ydb_udfs_dir,
+        udfs_path=arguments.ydb_udfs_dir or _get_build_path("yql/udfs"),
         additional_log_configs=additional_log_configs,
         port_allocator=port_allocator,
         use_in_memory_pdisks=use_in_memory_pdisks_flag(arguments.ydb_working_dir),
@@ -369,16 +390,29 @@ def deploy(arguments):
         use_log_files=not arguments.dont_use_log_files,
         default_users=default_users(),
         extra_feature_flags=enable_feature_flags,
-        extra_grpc_services=arguments.enabled_grpc_services,
+        extra_grpc_services=enabled_grpc_services,
         generic_connector_config=generic_connector_config(),
+        column_shard_config={"disabled_on_scheme_shard": False},
         **optionals
     )
 
-    cluster = kikimr_cluster_factory(configuration)
+    config_path = getattr(arguments, 'config_path', None)
+    if config_path:
+        def _write_proto_configs(self, configs_path):
+            # This override only triggers on the very first deploy before the recipe metafile exists.
+            # Subsequent deploy invocations reuse the saved config directory and skip calling this hook.
+            self.write_tls_data()
+            os.makedirs(configs_path, exist_ok=True)
+            shutil.copyfile(config_path, os.path.join(configs_path, "config.yaml"))
+
+        configuration.write_proto_configs = types.MethodType(_write_proto_configs, configuration)
+
+    cluster = KiKiMR(configuration)
     cluster.start()
 
     info = {'nodes': {}}
     endpoints = []
+    mon_port = None
     for node_id, node in cluster.nodes.items():
         info['nodes'][node_id] = {
             'pid': node.pid,
@@ -388,7 +422,6 @@ def deploy(arguments):
             'mon_port': node.mon_port,
             'command': node.command,
             'cwd': node.cwd,
-            'stdin_file': node.stdin_file_name,
             'stderr_file': node.stderr_file_name,
             'stdout_file': node.stdout_file_name,
             'pdisks': [
@@ -396,6 +429,9 @@ def deploy(arguments):
                 for drive in cluster.config.pdisks_info
             ]
         }
+
+        if mon_port is None:
+            mon_port = node.mon_port
 
         endpoints.append("localhost:%d" % node.grpc_port)
 
@@ -405,6 +441,8 @@ def deploy(arguments):
     recipe.write_endpoint(endpoint)
     recipe.write_database(cluster.domain_name)
     recipe.write_connection_string(("grpcs://" if enable_tls() else "grpc://") + endpoint + "?database=/" + cluster.domain_name)
+    if report_monitoring_info():
+        recipe.write_mon_port(mon_port)
     if enable_tls():
         recipe.write_certificates_path(configuration.grpc_tls_ca.decode("utf-8"))
     return endpoint, database
@@ -471,7 +509,6 @@ def start(arguments):
         files = {}
         if node_meta['stderr_file'] is not None and os.path.exists(node_meta['stderr_file']):
             files = {
-                'stdin_file': node_meta['stdin_file'],
                 'stderr_file': node_meta['stderr_file'],
                 'stdout_file': node_meta['stdout_file'],
             }
@@ -515,8 +552,8 @@ def produce_arguments(args):
     parser.add_argument("--fixed-ports", action='store_true', default=False)
     parser.add_argument("--base-port-offset", action="store", type=int, default=0)
     parser.add_argument("--pq-client-service-type", action='append', default=[])
-    parser.add_argument("--enable-datastreams", action='store_true', default=False)
     parser.add_argument("--enable-pqcd", action='store_true', default=False)
+    parser.add_argument("--config-path", action="store")
     parsed, _ = parser.parse_known_args(args)
     arguments = EmptyArguments()
     arguments.suppress_version_check = parsed.suppress_version_check
@@ -529,8 +566,8 @@ def produce_arguments(args):
         arguments.debug_logging = parsed.debug_logging
     arguments.enable_pq = parsed.enable_pq
     arguments.pq_client_service_types = parsed.pq_client_service_type
-    arguments.enable_datastreams = parsed.enable_datastreams
     arguments.enable_pqcd = parsed.enable_pqcd
+    arguments.config_path = parsed.config_path
     return arguments
 
 

@@ -1,20 +1,41 @@
 #include "schema.h"
 
 #include <contrib/ydb/core/base/appdata.h>
+#include <yql/essentials/parser/pg_catalog/catalog.h>
 
 namespace NKikimr {
 namespace NSysView {
 
-const TVector<Schema::PgColumn> Schema::PgTables::Columns = {
-    Schema::PgColumn(1, "pgname", "schemaname"),
-    Schema::PgColumn(2, "pgname", "tablename"),
-    Schema::PgColumn(3, "pgname", "tableowner"),
-    Schema::PgColumn(4, "pgname", "tablespace"),
-    Schema::PgColumn(5, "pgbool", "hasindexes"),
-    Schema::PgColumn(6, "pgbool", "hasrules"),
-    Schema::PgColumn(7, "pgbool", "hastriggers"),
-    Schema::PgColumn(8, "pgbool", "rowsecurity")
-};
+namespace {
+TVector<Schema::PgColumn> GetPgStaticTableColumns(const TString& schema, const TString& tableName) {
+    TVector<Schema::PgColumn> res;
+    auto columns = NYql::NPg::GetStaticColumns().FindPtr(NYql::NPg::TTableInfoKey{schema, tableName});
+    res.reserve(columns->size());
+    for (size_t i = 0; i < columns->size(); i++) {
+        const auto& column = columns->at(i);
+        res.emplace_back(i, column.UdtType, column.Name);
+    }
+    return res;
+}
+}
+
+Schema::PgColumn::PgColumn(NIceDb::TColumnId columnId, TStringBuf columnTypeName, TStringBuf columnName)
+    : _ColumnId(columnId)
+    , _ColumnTypeInfo(NPg::TypeDescFromPgTypeId(NYql::NPg::LookupType(TString(columnTypeName)).TypeId))
+    , _ColumnName(columnName)
+{}
+
+const TVector<Schema::PgColumn>& Schema::PgTablesSchemaProvider::GetColumns(TStringBuf tableName) const {
+    TString key(tableName);
+    Y_ENSURE(columnsStorage.contains(key));
+    return columnsStorage.at(key);
+}
+
+Schema::PgTablesSchemaProvider::PgTablesSchemaProvider() {
+    columnsStorage[TString(PgTablesName)] = GetPgStaticTableColumns("pg_catalog", "pg_tables");
+    columnsStorage[TString(InformationSchemaTablesName)] = GetPgStaticTableColumns("information_schema", "tables");
+    columnsStorage[TString(PgClassName)] = GetPgStaticTableColumns("pg_catalog", "pg_class");
+}
 
 bool MaybeSystemViewPath(const TVector<TString>& path) {
     auto length = path.size();
@@ -179,17 +200,31 @@ private:
         }
     };
 
-    void RegisterPgTablesSystemView() {
-        auto& dsv  = DomainSystemViews[PgTablesName];
-        auto& sdsv = SubDomainSystemViews[PgTablesName];
-        for (const auto& column : Schema::PgTables::Columns) {
-            dsv.Columns[column._ColumnId] = TSysTables::TTableColumnInfo(
-                column._ColumnName, column._ColumnId, column._ColumnTypeInfo, "", -1
-            );
-            sdsv.Columns[column._ColumnId] = TSysTables::TTableColumnInfo(
-                column._ColumnName, column._ColumnId, column._ColumnTypeInfo, "", -1
-            );
-        }
+    void RegisterPgTablesSystemViews() {
+        auto registerView = [&](TStringBuf tableName, const TVector<Schema::PgColumn>& columns) {
+            auto& dsv  = DomainSystemViews[tableName];
+            auto& sdsv = SubDomainSystemViews[tableName];
+            for (const auto& column : columns) {
+                dsv.Columns[column._ColumnId + 1] = TSysTables::TTableColumnInfo(
+                    column._ColumnName, column._ColumnId + 1, column._ColumnTypeInfo, "", -1
+                );
+                sdsv.Columns[column._ColumnId + 1] = TSysTables::TTableColumnInfo(
+                    column._ColumnName, column._ColumnId + 1, column._ColumnTypeInfo, "", -1
+                );
+            }
+        };
+        registerView(
+            PgTablesName,
+            Singleton<Schema::PgTablesSchemaProvider>()->GetColumns(PgTablesName)
+        );
+        registerView(
+            InformationSchemaTablesName,
+            Singleton<Schema::PgTablesSchemaProvider>()->GetColumns(InformationSchemaTablesName)
+        );
+        registerView(
+            PgClassName,
+            Singleton<Schema::PgTablesSchemaProvider>()->GetColumns(PgClassName)
+        );
     }
 
     template <typename Table>
@@ -239,18 +274,35 @@ private:
         RegisterSystemView<Schema::QueryMetrics>(QueryMetricsName);
 
         RegisterOlapStoreSystemView<Schema::PrimaryIndexStats>(StorePrimaryIndexStatsName);
+        RegisterOlapStoreSystemView<Schema::PrimaryIndexSchemaStats>(StorePrimaryIndexSchemaStatsName);
         RegisterOlapStoreSystemView<Schema::PrimaryIndexPortionStats>(StorePrimaryIndexPortionStatsName);
         RegisterOlapStoreSystemView<Schema::PrimaryIndexGranuleStats>(StorePrimaryIndexGranuleStatsName);
         RegisterOlapStoreSystemView<Schema::PrimaryIndexOptimizerStats>(StorePrimaryIndexOptimizerStatsName);
         RegisterColumnTableSystemView<Schema::PrimaryIndexStats>(TablePrimaryIndexStatsName);
+        RegisterColumnTableSystemView<Schema::PrimaryIndexSchemaStats>(TablePrimaryIndexSchemaStatsName);
         RegisterColumnTableSystemView<Schema::PrimaryIndexPortionStats>(TablePrimaryIndexPortionStatsName);
         RegisterColumnTableSystemView<Schema::PrimaryIndexGranuleStats>(TablePrimaryIndexGranuleStatsName);
         RegisterColumnTableSystemView<Schema::PrimaryIndexOptimizerStats>(TablePrimaryIndexOptimizerStatsName);
 
-        RegisterSystemView<Schema::TopPartitions>(TopPartitions1MinuteName);
-        RegisterSystemView<Schema::TopPartitions>(TopPartitions1HourName);
+        RegisterSystemView<Schema::TopPartitions>(TopPartitionsByCpu1MinuteName);
+        RegisterSystemView<Schema::TopPartitions>(TopPartitionsByCpu1HourName);
+        RegisterSystemView<Schema::TopPartitionsTli>(TopPartitionsByTli1MinuteName);
+        RegisterSystemView<Schema::TopPartitionsTli>(TopPartitionsByTli1HourName);
 
-        RegisterPgTablesSystemView();
+        RegisterPgTablesSystemViews();
+
+        RegisterSystemView<Schema::ResourcePoolClassifiers>(ResourcePoolClassifiersName);
+        RegisterSystemView<Schema::ResourcePools>(ResourcePoolsName);
+
+        {
+            using namespace NAuth;
+            RegisterSystemView<Schema::AuthUsers>(UsersName);
+            RegisterSystemView<Schema::AuthGroups>(NAuth::GroupsName);
+            RegisterSystemView<Schema::AuthGroupMembers>(GroupMembersName);
+            RegisterSystemView<Schema::AuthOwners>(OwnersName);
+            RegisterSystemView<Schema::AuthPermissions>(PermissionsName);
+            RegisterSystemView<Schema::AuthPermissions>(EffectivePermissionsName);
+        }
     }
 
 private:

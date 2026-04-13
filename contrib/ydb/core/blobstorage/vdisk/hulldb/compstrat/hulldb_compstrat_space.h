@@ -124,9 +124,11 @@ namespace NKikimr {
 
                 if (Candidate.CompactSstToFreeSpace()) {
                     // free space by compacting this Sst
-                    LOG_INFO_S(*HullCtx->VCtx->ActorSystem, NKikimrServices::BS_HULLCOMP,
-                            HullCtx->VCtx->VDiskLogPrefix << " TStrategyFreeSpace decided to compact Ssts " << Task->CompactSsts.ToString()
-                            << " because of high garbage/data retio " << Candidate.ToString());
+                    if (HullCtx->VCtx->ActorSystem) {
+                        LOG_INFO_S(*HullCtx->VCtx->ActorSystem, NKikimrServices::BS_HULLCOMP,
+                                HullCtx->VCtx->VDiskLogPrefix << " TStrategyFreeSpace decided to compact Ssts " << Task->CompactSsts.ToString()
+                                << " because of high garbage/data retio " << Candidate.ToString());
+                    }
                     action = ActCompactSsts;
                     TUtils::SqueezeOneSst(LevelSnap.SliceSnap, Candidate.LevelSstPtr, Task->CompactSsts);
                 }
