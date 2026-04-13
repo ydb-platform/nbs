@@ -9,5 +9,7 @@
     "stat-lat-us": true,
     "list": true,
     "list-lat-us": true,
+    "list-w": true,
+    "list-wlat-us": true,
     "errors": false
 }
