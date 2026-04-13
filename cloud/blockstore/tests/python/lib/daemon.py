@@ -229,7 +229,7 @@ def __modify_scheme(ydb):
     request += "}}"
 
     subprocess.check_call([
-        ydb.config.binary_path,
+        ydb.config.get_binary_path(0),
         "--server", f"grpc://localhost:{list(ydb.nodes.values())[0].port}",
         "db", "schema", "exec",
         request,
@@ -254,7 +254,7 @@ def __enable_custom_cms_configs(ydb):
 def start_ydb(grpc_ssl_enable=False):
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        binary_paths=[yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")],
         use_in_memory_pdisks=True,
         grpc_ssl_enable=grpc_ssl_enable,
         dynamic_storage_pools=[

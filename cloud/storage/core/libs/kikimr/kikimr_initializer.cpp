@@ -16,7 +16,7 @@ void TKikimrServicesInitializer::InitializeServices(
     //
 
     IActorPtr grpcReqProxy {
-        NGRpcService::CreateGRpcRequestProxy(*Config, {})};
+        NGRpcService::CreateGRpcRequestProxy(*Config)};
     setup->LocalServices.emplace_back(
         NGRpcService::CreateGRpcRequestProxyId(0),
         TActorSetupCmd(
