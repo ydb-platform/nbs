@@ -28,7 +28,6 @@ PEERDIR(
     cloud/storage/core/libs/version
 
     contrib/ydb/core/protos
-    contrib/ydb/library/yql/public/udf/service/exception_policy
 
     library/cpp/lwtrace/mon
 
@@ -38,6 +37,8 @@ PEERDIR(
     library/cpp/monlib/dynamic_counters
     library/cpp/protobuf/util
     library/cpp/sighandler
+
+    yql/essentials/public/udf/service/exception_policy
 )
 
 YQL_LAST_ABI_VERSION()
