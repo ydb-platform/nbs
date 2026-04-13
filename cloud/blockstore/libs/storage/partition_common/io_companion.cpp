@@ -19,14 +19,10 @@ TIOCompanion::TIOCompanion(
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigPtr diagnosticsConfig,
         EStorageAccessMode storageAccessMode,
-        TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
-        ui64& bsGroupOperationId,
+        TPartitionThreadSafeStatePtr sharedState,
         IIOCompanionClient& client,
         TPartitionChannelsState& channelsState,
-        TLogTitle& logTitle,
-        std::shared_ptr<NPartition::TResourceMetricsQueue> resourceMetricsQueue,
-        std::shared_ptr<NPartition::TGroupDowntimes> groupDowntimes,
-        std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters)
+        TLogTitle& logTitle)
     : Config(std::move(config))
     , PartitionConfig(partitionConfig)
     , TabletStorageInfo(std::move(tabletStorageInfo))
@@ -35,14 +31,10 @@ TIOCompanion::TIOCompanion(
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , StorageAccessMode(storageAccessMode)
-    , BSGroupOperationTimeTracker(bsGroupOperationTimeTracker)
-    , BSGroupOperationId(bsGroupOperationId)
+    , SharedState(std::move(sharedState))
     , Client(client)
     , ChannelsState(channelsState)
     , LogTitle(logTitle)
-    , ResourceMetricsQueue(std::move(resourceMetricsQueue))
-    , GroupDowntimes(std::move(groupDowntimes))
-    , PartCounters(std::move(partCounters))
 {}
 
 void TIOCompanion::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
@@ -56,7 +48,7 @@ void TIOCompanion::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
             LogTitle.GetWithTime().c_str(),
             actorId);
         Actors.Insert(actorId);
-        BSGroupOperationTimeTracker.OnStarted(
+        SharedState->AccessBSGroupOperationTimeTracker()->OnStarted(
             request->BSGroupOperationId,
             request->Group,
             request->OperationType,

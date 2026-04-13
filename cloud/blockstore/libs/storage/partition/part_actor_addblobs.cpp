@@ -579,13 +579,16 @@ private:
                 bool inserted =
                     State.GetCleanupQueue().Add({kv.first, DeletionCommitId});
 
-                STORAGE_VERIFY_DEBUG_C(
-                    inserted,
-                    TWellKnownEntityTypes::TABLET,
-                    TabletId,
-                    "Cleanup queue: blob already in cleanup queue");
                 if (inserted) {
                     db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                } else {
+                    ReportDuplicateCleanupQueueItem(
+                        "blob already in cleanup queue",
+                        {
+                            {"TabletId", TabletId},
+                            {"BlobId",
+                             ToString(MakeBlobId(TabletId, kv.first))},
+                        });
                 }
             }
         }

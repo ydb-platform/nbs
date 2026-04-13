@@ -67,9 +67,6 @@ private:
 
     TLogTitle LogTitle;
 
-    ui64 BSGroupOperationId = 0;
-    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
-
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 

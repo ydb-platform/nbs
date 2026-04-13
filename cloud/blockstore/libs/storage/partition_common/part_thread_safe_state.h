@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h"
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
@@ -73,6 +74,7 @@ public:
     NPartition::TGroupDowntimes GroupDowntimes;
 
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
+    std::atomic<ui64> BSGroupOperationId = 0;
 
 private:
     TAdaptiveLock StateLock;
@@ -85,6 +87,9 @@ private:
 
     NPartition::TCheckpointsInFlight CheckpointsInFlight;
 
+    TAdaptiveLock BSGroupOperationTimeTrackerLock;
+    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
+
 public:
     TPartitionThreadSafeState() = default;
 
@@ -92,75 +97,33 @@ public:
 
     void Init(ui32 generation, ui32 lastCommitId);
 
-    NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
-    {
-        return {shared_from_this(), &ResourceMetricsQueue};
-    }
-
-    NPartition::TThreadSafePartCountersPtr GetPartCounters()
-    {
-        return {shared_from_this(), &PartCounters};
-    }
-
-    NPartition::TGroupDowntimesPtr GetGroupDowntimes()
-    {
-        return {shared_from_this(), &GroupDowntimes};
-    }
-
-    std::shared_ptr<std::atomic<ui64>> GetUnflushedFreshBlobByteCount()
-    {
-        return {shared_from_this(), &UnflushedFreshBlobByteCount};
-    }
-
     ui64 GenerateCommitId();
     ui64 GetLastCommitId() const;
 
     ui64 StartFreshWrite(ui64 blockCount);
     void FinishFreshWrite(ui64 commitId, ui64 blockCount, bool isError);
 
-    auto GetTrimFreshLogBarriers()
-    {
-        return TConstObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
-            StateLock,
-            TrimFreshLogBarriers);
-    }
-
-    auto AccessTrimFreshLogBarriers()
-    {
-        return TObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
-            StateLock,
-            TrimFreshLogBarriers);
-    }
-
     ui64 GetTrimFreshLogToCommitId() const;
 
-    auto GetCommitQueue()
-    {
-        return TConstObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
-            StateLock,
-            CommitQueue);
-    }
+#define DEFINE_THREAD_SAFE_STATE_ACCESSORS(field, lock)                        \
+    auto Get##field()                                                          \
+    {                                                                          \
+        return TConstObjectGuard<decltype(field), TAdaptiveLock>(lock, field); \
+    }                                                                          \
+    auto Access##field()                                                       \
+    {                                                                          \
+        return TObjectGuard<decltype(field), TAdaptiveLock>(lock, field);      \
+    }                                                                          \
+    // DEFINE_THREAD_SAFE_STATE_ACCESSORS
 
-    auto AccessCommitQueue()
-    {
-        return TObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
-            StateLock,
-            CommitQueue);
-    }
+    DEFINE_THREAD_SAFE_STATE_ACCESSORS(TrimFreshLogBarriers, StateLock)
+    DEFINE_THREAD_SAFE_STATE_ACCESSORS(CommitQueue, StateLock)
+    DEFINE_THREAD_SAFE_STATE_ACCESSORS(CheckpointsInFlight, StateLock)
+    DEFINE_THREAD_SAFE_STATE_ACCESSORS(
+        BSGroupOperationTimeTracker,
+        BSGroupOperationTimeTrackerLock)
 
-    auto GetCheckpointsInFlight()
-    {
-        return TConstObjectGuard<
-            NPartition::TCheckpointsInFlight,
-            TAdaptiveLock>(StateLock, CheckpointsInFlight);
-    }
-
-    auto AccessCheckpointsInFlight()
-    {
-        return TObjectGuard<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
-            StateLock,
-            CheckpointsInFlight);
-    }
+#undef DEFINE_THREAD_SAFE_STATE_ACCESSORS
 
 private:
     ui64 GenerateCommitIdImpl();

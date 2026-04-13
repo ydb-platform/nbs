@@ -44,7 +44,7 @@ void TIOCompanion::HandleReadBlob(
     const auto& blob = msg->BlobId;
     ui32 channel = blob.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    ui64 bsGroupOperationId = BSGroupOperationId++;
+    ui64 bsGroupOperationId = SharedState->BSGroupOperationId.fetch_add(1);
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
@@ -68,7 +68,7 @@ void TIOCompanion::HandleReadBlob(
         // disk partition tablet.
         auto actorId = NCloud::Register(ctx, std::move(readBlobActor));
         Actors.Insert(actorId);
-        BSGroupOperationTimeTracker.OnStarted(
+        SharedState->AccessBSGroupOperationTimeTracker()->OnStarted(
             bsGroupOperationId,
             groupId,
             TBSGroupOperationTimeTracker::EOperationType::Read,
@@ -93,7 +93,7 @@ void TIOCompanion::HandleReadBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    BSGroupOperationTimeTracker.OnFinished(
+    SharedState->AccessBSGroupOperationTimeTracker()->OnFinished(
         msg->BSGroupOperationId,
         GetCycleCount());
 
@@ -104,14 +104,14 @@ void TIOCompanion::HandleReadBlobCompleted(
     const ui32 channel = msg->BlobId.Channel();
     const ui32 groupId = msg->GroupId;
     const bool isOverlayDisk = blobTabletId != TabletID;
-    ResourceMetricsQueue->Push(
+    SharedState->ResourceMetricsQueue.Push(
         NPartition::TUpdateNetworkStat(ctx.Now(), msg->BytesCount));
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleReadBlobCompleted: invalid blob id received");
     } else {
-        ResourceMetricsQueue->Push(
+        SharedState->ResourceMetricsQueue.Push(
             NPartition::TUpdateReadThroughput(
                 ctx.Now(),
                 channel,
@@ -125,7 +125,7 @@ void TIOCompanion::HandleReadBlobCompleted(
         // TODO(svartmetal): verify that |blobTabletId| corresponds to base
         // disk partition tablet.
 
-        PartCounters->Access(
+        SharedState->PartCounters.Access(
             [&](auto& counters)
             {
                 counters->RequestCounters.ReadBlob.AddRequest(
@@ -138,7 +138,7 @@ void TIOCompanion::HandleReadBlobCompleted(
         return;
     }
 
-    PartCounters->Access(
+    SharedState->PartCounters.Access(
         [&](auto& counters)
         {
             counters->RequestCounters.ReadBlob.AddRequest(
@@ -174,7 +174,7 @@ void TIOCompanion::HandleReadBlobCompleted(
         }
 
         if (msg->DeadlineSeen) {
-            PartCounters->Access(
+            SharedState->PartCounters.Access(
                 [](auto& counters)
                 { counters->Simple.ReadBlobDeadlineCount.Increment(1); });
         }
@@ -192,7 +192,7 @@ void TIOCompanion::HandleReadBlobCompleted(
             return;
         }
     } else {
-        GroupDowntimes->RegisterSuccess(ctx.Now(), groupId);
+        SharedState->GroupDowntimes.RegisterSuccess(ctx.Now(), groupId);
     }
 
     ProcessIOQueue(ctx, channel);

@@ -141,6 +141,7 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
     xxx(DiskDevicesSizeViolation)                                              \
+    xxx(DuplicateCleanupQueueItem)                                             \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -260,14 +260,10 @@ void TPartitionActor::CompleteLoadState(
         VolumeActorId,
         DiagnosticsConfig,
         StorageAccessMode,
-        BSGroupOperationTimeTracker,
-        BSGroupOperationId,
+        SharedState,
         *IOCompanionClient,
         *State,
-        LogTitle,
-        SharedState->GetResourceMetricsQueue(),
-        SharedState->GetGroupDowntimes(),
-        SharedState->GetPartCounters());
+        LogTitle);
 
     MapBaseDiskIdToTabletId(ctx);
 
