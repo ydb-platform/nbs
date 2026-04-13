@@ -1,6 +1,6 @@
 #pragma once
-#include <contrib/ydb/library/yql/ast/yql_expr.h>
-#include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
+#include <yql/essentials/ast/yql_expr.h>
+#include <yql/essentials/core/yql_expr_type_annotation.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_expr_nodes.h>
 
 namespace NYql {

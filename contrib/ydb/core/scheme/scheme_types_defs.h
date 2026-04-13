@@ -4,7 +4,7 @@
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/core/scheme_types/scheme_types_defs.h>
-#include <contrib/ydb/library/yql/parser/pg_wrapper/interface/type_desc.h>
+#include <yql/essentials/parser/pg_wrapper/interface/type_desc.h>
 
 #include <util/stream/output.h>
 

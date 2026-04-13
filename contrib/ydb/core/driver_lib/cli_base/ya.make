@@ -12,8 +12,11 @@ PEERDIR(
     contrib/ydb/library/aclib
     contrib/ydb/public/lib/deprecated/kicli
     contrib/ydb/public/lib/ydb_cli/common
-    contrib/ydb/public/sdk/cpp/client/resources
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/resources
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
+    contrib/ydb/public/lib/ydb_cli/commands/sdk_core_access
     contrib/ydb/public/lib/ydb_cli/commands/ydb_discovery
 )
 

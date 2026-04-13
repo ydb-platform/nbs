@@ -245,7 +245,7 @@ public:
         }
         if (WaitingOnly) {
             tabletIdIndex.reserve(Self->BootQueue.WaitQueue.size());
-            for (const TBootQueue::TBootQueueRecord& rec : Self->BootQueue.WaitQueue) {
+            for (const TBootQueue::TBootQueueRecord& rec : Self->BootQueue.WaitQueue.Container()) {
                 TTabletInfo* tablet = Self->FindTablet(rec.TabletId, rec.FollowerId);
                 if (tablet != nullptr) {
                     tabletIdIndex.push_back({tabletIndexFunction(*tablet), tablet});
@@ -485,6 +485,7 @@ public:
         out << "<th>TabletsAliveInTenantDomain</th>";
         out << "<th>TabletsAliveInOtherDomains</th>";
         out << "<th>TabletsTotal</th>";
+        out << "<th></th>";
         out << "</tr>";
         out << "</thead>";
         out << "<tbody>";
@@ -520,6 +521,11 @@ public:
                 out << "<td>-</td>";
             }
             out << "<td>" << domainInfo.TabletsTotal << "</td>";
+            if (domainInfo.Stopped) {
+                out << "<td><a href=app?TabletID=" << Self->HiveId << "&page=StopDomain&ss=" << domainKey.first << "&path=" << domainKey.second << "&stop=0>Resume</a></td>";
+            } else {
+                out << "<td><a href=app?TabletID=" << Self->HiveId << "&page=StopDomain&ss=" << domainKey.first << "&path=" << domainKey.second << "&stop=1>Stop</a></td>";
+            }
             out << "</tr>";
         }
         out << "</tbody>";
@@ -593,7 +599,7 @@ public:
             const TTabletInfo& tablet = pr.second;
             ui64 index = EqualRange(tabletIdIndex.begin(), tabletIdIndex.end(), id).first - tabletIdIndex.begin();
 
-            out << "<tr title='" << tablet.GetResourceValues().DebugString() << "'>";
+            out << "<tr>";
             out << "<td data-text='" << index << "'><a href='../tablets?TabletID=" << id << "'>" << id << "</a></td>";
             out << GetResourceValuesHtml(tablet.GetResourceValues());
             out << "</tr>";
@@ -842,6 +848,7 @@ public:
         UpdateConfig(db, "ScaleInWindowSize", configUpdates);
         UpdateConfig(db, "TargetTrackingCPUMargin", configUpdates);
         UpdateConfig(db, "DryRunTargetTrackingCPU", configUpdates);
+        UpdateConfig(db, "NodeRestartsForPenalty", configUpdates);
 
         if (params.contains("BalancerIgnoreTabletTypes")) {
             auto value = params.Get("BalancerIgnoreTabletTypes");
@@ -906,6 +913,7 @@ public:
         if (ChangeRequest) {
             Self->BuildCurrentConfig();
             db.Table<Schema::State>().Key(TSchemeIds::State::DefaultState).Update<Schema::State::Config>(Self->DatabaseConfig);
+            Self->ProcessWaitQueue();
         }
         if (params.contains("allowedMetrics")) {
             auto& jsonAllowedMetrics = jsonOperation["AllowedMetricsUpdate"];
@@ -1195,6 +1203,7 @@ public:
         ShowConfig(out, "ScaleInWindowSize");
         ShowConfig(out, "TargetTrackingCPUMargin");
         ShowConfig(out, "DryRunTargetTrackingCPU");
+        ShowConfig(out, "NodeRestartsForPenalty");
 
         out << "<div class='row' style='margin-top:40px'>";
         out << "<div class='col-sm-2' style='padding-top:30px;text-align:right'><label for='allowedMetrics'>AllowedMetrics:</label></div>";
@@ -1389,6 +1398,7 @@ public:
         if (ChangeRequest) {
             Self->ObjectDistributions.RemoveNode(*Node);
             Self->ObjectDistributions.AddNode(*Node);
+            Self->ProcessWaitQueue();
             WriteOperation(db, jsonOperation);
         }
         return true;
@@ -2007,6 +2017,40 @@ function clearAlert() {
     $('#alert-placeholder').removeClass('glyphicon-refresh');
 }
 
+
+function showConfirmationModal(message, onConfirm, onDismiss) {
+    var modal = $('<div class="modal fade" tabindex="-1" role="dialog" data-backdrop="static">'
+        + '<div class="modal-dialog" role="document">'
+        + '<div class="modal-content">'
+        + '<div class="modal-header">'
+        + '<button type="button" class="close" data-dismiss="modal">&times;</button>'
+        + '<h4 class="modal-title">Confirmation</h4>'
+        + '</div>'
+        + '<div class="modal-body">' + message + '</div>'
+        + '<div class="modal-footer">'
+        + '<button type="button" class="btn btn-default cancel-btn" data-dismiss="modal">Cancel</button>'
+        + '<button type="button" class="btn btn-danger confirm-btn">OK</button>'
+        + '</div>'
+        + '</div>'
+        + '</div>'
+        + '</div>');
+
+    $('.modal').remove();
+    $('body').append(modal);
+    modal.modal('show');
+
+    modal.find('.confirm-btn').click(function () {
+        if (onConfirm) onConfirm();
+        modal.modal('hide').remove();
+    });
+
+    modal.on('hidden.bs.modal', function () {
+        if (onDismiss) onDismiss();
+        modal.remove();
+    });
+}
+
+
 function enableType(element, node, type) {
     $(element).css('color', 'gray');
     $.ajax({url:'?TabletID=' + hiveId + '&node=' + node + '&page=TabletAvailability&resettype=' + type});
@@ -2017,14 +2061,33 @@ function disableType(element, node, type) {
     $.ajax({url:'?TabletID=' + hiveId + '&node=' + node + '&page=TabletAvailability&maxcount=0&changetype=' + type});
 }
 
-function applySetting(button, name, val) {
-    $(button).css('color', 'gray');
-    if (name == "DefaultTabletLimit") {
-        should_refresh_types = true;
+function changeDefaultTabletLimit(button, val, tabletTypeName) {
+    let text = '';
+    if (val.split(':')[1] == '0') {
+        text = 'Prohibit starting tablets of type <b>' + tabletTypeName + '</b> on every node';
+    } else {
+        text = 'Allow starting tablets of type <b>' + tabletTypeName + '</b> on every node';
     }
-    $.ajax({
-        url: document.URL + '&page=Settings&' + name + '=' + val,
-    });
+    applySetting(button, 'DefaultTabletLimit', val, text);
+}
+
+function applySetting(button, name, val, text) {
+    $(button).css('color', 'gray');
+
+    showConfirmationModal(
+        'Are you sure you want to proceed? ' + text,
+        function () {
+            if (name == "DefaultTabletLimit") {
+                should_refresh_types = true;
+            }
+            $.ajax({
+                url: document.URL + '&page=Settings&' + name + '=' + val,
+            });
+        },
+        function () {
+            $(button).css('color', '');
+        }
+    );
 }
 
 var Empty = true;
@@ -2522,7 +2585,7 @@ public:
         TNodeInfo* node = Self->FindNode(NodeId);
         if (node != nullptr) {
             node->SetDown(Down);
-            db.Table<Schema::Node>().Key(NodeId).Update(NIceDb::TUpdate<Schema::Node::Down>(Down));
+            db.Table<Schema::Node>().Key(NodeId).Update<Schema::Node::Down, Schema::Node::BecomeUpOnRestart>(Down, false);
             NJson::TJsonValue jsonOperation;
             jsonOperation["NodeId"] = NodeId;
             jsonOperation["Down"] = Down;
@@ -3265,7 +3328,7 @@ public:
     }
 };
 
-class TTxMonEvent_StopTablet : public TTransactionBase<THive> {
+class TTxMonEvent_StopTablet : public TTransactionBase<THive>, TLoggedMonTransaction {
 public:
     TAutoPtr<NMon::TEvRemoteHttpInfo> Event;
     const TActorId Source;
@@ -3274,6 +3337,7 @@ public:
 
     TTxMonEvent_StopTablet(const TActorId& source, NMon::TEvRemoteHttpInfo::TPtr& ev, TSelf* hive)
         : TBase(hive)
+        , TLoggedMonTransaction(ev, hive)
         , Event(ev->Release())
         , Source(source)
     {
@@ -3283,7 +3347,7 @@ public:
 
     TTxType GetTxType() const override { return NHive::TXTYPE_MON_STOP_TABLET; }
 
-    bool Execute(TTransactionContext&, const TActorContext& ctx) override {
+    bool Execute(TTransactionContext& txc, const TActorContext& ctx) override {
         TLeaderTabletInfo* tablet = Self->FindTablet(TabletId);
         if (tablet != nullptr) {
             TActorId waitActorId;
@@ -3294,6 +3358,11 @@ public:
                 Self->SubActors.emplace_back(waitActor);
             }
             Self->Execute(Self->CreateStopTablet(TabletId, waitActorId));
+            NIceDb::TNiceDb db(txc.DB);
+            NJson::TJsonValue jsonOperation;
+            jsonOperation["Tablet"] = TabletId;
+            jsonOperation["Stop"] = true;
+            WriteOperation(db, jsonOperation);
             if (!Wait) {
                 ctx.Send(Source, new NMon::TEvRemoteJsonInfoRes("{}"));
             }
@@ -3304,6 +3373,62 @@ public:
     }
 
     void Complete(const TActorContext&) override {}
+};
+
+class TTxMonEvent_StopDomain : public TTransactionBase<THive>, TLoggedMonTransaction {
+public:
+    THolder<NMon::TEvRemoteHttpInfo> Event;
+    const TActorId Source;
+    TSubDomainKey DomainId;
+    bool Stop = true;
+
+    TTxMonEvent_StopDomain(const TActorId& source, NMon::TEvRemoteHttpInfo::TPtr& ev, TSelf* hive)
+        : TBase(hive)
+        , TLoggedMonTransaction(ev, hive)
+        , Event(ev->Release())
+        , Source(source)
+    {
+        ui64 ssId = FromStringWithDefault<ui64>(Event->Cgi().Get("ss"), 0);
+        ui64 pathId = FromStringWithDefault<ui64>(Event->Cgi().Get("path"), 0);
+        DomainId = {ssId, pathId};
+        Stop = FromStringWithDefault(Event->Cgi().Get("stop"), Stop);
+    }
+
+    TTxType GetTxType() const override { return NHive::TXTYPE_MON_STOP_TABLET; }
+
+    bool Execute(TTransactionContext& txc, const TActorContext& ctx) override {
+        TDomainInfo* domain = Self->FindDomain(DomainId);
+        if (domain != nullptr) {
+            NIceDb::TNiceDb db(txc.DB);
+            db.Table<Schema::SubDomain>().Key(DomainId).Update<Schema::SubDomain::Stopped>(Stop);
+            domain->Stopped = Stop;
+            for (const auto& [tabletId, tablet] : Self->Tablets) {
+                if (tablet.NodeFilter.ObjectDomain == DomainId) {
+                    if (Stop) {
+                        Self->StopTenantTabletsQueue.push(tabletId);
+                    } else {
+                        Self->ResumeTenantTabletsQueue.push(tabletId);
+                    }
+                }
+            }
+            NJson::TJsonValue jsonOperation;
+            jsonOperation["SubDomain"] = TStringBuilder() << DomainId;
+            jsonOperation["Stop"] = Stop;
+            WriteOperation(db, jsonOperation);
+            ctx.Send(Source, new NMon::TEvRemoteJsonInfoRes("{\"status\":\"OK\"}"));
+        } else {
+            ctx.Send(Source, new NMon::TEvRemoteJsonInfoRes(TStringBuilder() << "{\"error\":\"Domain not found\"}"));
+        }
+        return true;
+    }
+
+    void Complete(const TActorContext&) override {
+        if (Stop) {
+            Self->ProcessPendingStopTablet();
+        } else {
+            Self->ProcessPendingResumeTablet();
+        }
+    }
 };
 
 class TResumeTabletWaitActor : public TActor<TResumeTabletWaitActor>, public ISubActor {
@@ -3348,7 +3473,7 @@ public:
 };
 
 
-class TTxMonEvent_ResumeTablet : public TTransactionBase<THive> {
+class TTxMonEvent_ResumeTablet : public TTransactionBase<THive>, TLoggedMonTransaction {
 public:
     TAutoPtr<NMon::TEvRemoteHttpInfo> Event;
     const TActorId Source;
@@ -3357,6 +3482,7 @@ public:
 
     TTxMonEvent_ResumeTablet(const TActorId& source, NMon::TEvRemoteHttpInfo::TPtr& ev, TSelf* hive)
         : TBase(hive)
+        , TLoggedMonTransaction(ev, hive)
         , Event(ev->Release())
         , Source(source)
     {
@@ -3366,7 +3492,7 @@ public:
 
     TTxType GetTxType() const override { return NHive::TXTYPE_MON_STOP_TABLET; }
 
-    bool Execute(TTransactionContext&, const TActorContext& ctx) override {
+    bool Execute(TTransactionContext& txc, const TActorContext& ctx) override {
         TLeaderTabletInfo* tablet = Self->FindTablet(TabletId);
         if (tablet != nullptr) {
             TActorId waitActorId;
@@ -3377,6 +3503,11 @@ public:
                 Self->SubActors.emplace_back(waitActor);
             }
             Self->Execute(Self->CreateResumeTablet(TabletId, waitActorId));
+            NIceDb::TNiceDb db(txc.DB);
+            NJson::TJsonValue jsonOperation;
+            jsonOperation["Tablet"] = TabletId;
+            jsonOperation["Stop"] = false;
+            WriteOperation(db, jsonOperation);
             if (!Wait) {
                 ctx.Send(Source, new NMon::TEvRemoteJsonInfoRes("{}"));
             }
@@ -3603,8 +3734,30 @@ public:
         return result;
     }
 
-    static NJson::TJsonValue MakeFrom(const NKikimrTabletBase::TMetrics& metrics) {
-        return MakeFrom((const NProtoBuf::Message&)metrics);
+    static NJson::TJsonValue MakeFrom(const NKikimrTabletBase::TThroughputRecord& record) {
+        return MakeFrom((const NProtoBuf::Message&)record);
+    }
+
+    static NJson::TJsonValue MakeFrom(const NKikimrTabletBase::TIopsRecord& record) {
+        return MakeFrom((const NProtoBuf::Message&)record);
+    }
+
+    static NJson::TJsonValue MakeFrom(const TMetrics& metrics) {
+        NJson::TJsonValue result;
+        result["CPU"] = metrics.CPU;
+        result["Memory"] = metrics.Memory;
+        result["Network"] = metrics.Network;
+        result["Counter"] = metrics.Counter;
+        result["Storage"] = metrics.Storage;
+        result["ReadThroughput"] = metrics.ReadThroughput;
+        result["WriteThroughput"] = metrics.WriteThroughput;
+        result["ReadIops"] = metrics.ReadIops;
+        result["WriteIops"] = metrics.WriteIops;
+        result["GroupReadThroughput"] = MakeFrom(metrics.GroupReadThroughput);
+        result["GroupWriteThroughput"] = MakeFrom(metrics.GroupWriteThroughput);
+        result["GroupReadIops"] = MakeFrom(metrics.GroupReadIops);
+        result["GroupWriteIops"] = MakeFrom(metrics.GroupWriteIops);
+        return result;
     }
 
     static NJson::TJsonValue MakeFrom(const TTabletMetricsAggregates& aggregates) {
@@ -4040,8 +4193,14 @@ public:
             auto group = tabletChannelGenRowset.GetValue<Schema::TabletChannelGen::Group>();
             bool filterOk = (filterTabletId == id) || (filterGroupId == group) || (filterTabletId == (ui64)-1 && filterGroupId == (ui64)-1);
             if (filterOk) {
+                TLeaderTabletInfo* tablet = Self->FindTablet(id);
                 ui32 channel = tabletChannelGenRowset.GetValue<Schema::TabletChannelGen::Channel>();
-                out << "<tr>";
+                bool isLatest = (tablet && tablet->TabletStorageInfo->Version == tabletChannelGenRowset.GetValueOrDefault<Schema::TabletChannelGen::Version>(0));
+                if (isLatest) {
+                    out << "<tr style='font-weight:bold'>";
+                } else {
+                    out << "<tr>";
+                }
                 out << "<td><a href='../tablets?TabletID=" << id << "'>" << id << "</a></td>";
                 out << "<td>" << channel << "</td>";
                 out << "<td>" << group << "</td>";
@@ -4057,7 +4216,6 @@ public:
                     out << "<td></td>";
                 }
                 TString unitSize;
-                TTabletInfo* tablet = Self->FindTablet(id);
                 if (tablet) {
                     TLeaderTabletInfo& leader = tablet->GetLeader();
                     if (channel < leader.GetChannelCount()) {
@@ -4369,7 +4527,7 @@ bool THive::IsSafeOperation(NMon::TEvRemoteHttpInfo::TPtr& ev, const TActorConte
     TCgiParameters cgi(httpInfo->Cgi());
     TStringBuilder keyData;
     keyData << cgi.Get("tablet") << cgi.Get("owner") << cgi.Get("owner_idx");
-    if (keyData.Empty()) {
+    if (keyData.empty()) {
         ctx.Send(ev->Sender, new NMon::TEvRemoteJsonInfoRes("{\"error\":\"tablet, owner or owner_idx parameters not set\"}"));
         return false;
     }
@@ -4434,6 +4592,9 @@ void THive::CreateEvMonitoring(NMon::TEvRemoteHttpInfo::TPtr& ev, const TActorCo
     }
     if (page == "StopTablet") {
         return Execute(new TTxMonEvent_StopTablet(ev->Sender, ev, this), ctx);
+    }
+    if (page == "StopDomain") {
+        return Execute(new TTxMonEvent_StopDomain(ev->Sender, ev, this), ctx);
     }
     if (page == "ResumeTablet") {
         return Execute(new TTxMonEvent_ResumeTablet(ev->Sender, ev, this), ctx);

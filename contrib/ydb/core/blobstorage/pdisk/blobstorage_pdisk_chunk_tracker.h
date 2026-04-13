@@ -55,7 +55,7 @@ public:
     }
 
     i64 ForceHardLimit(TOwner ownerId, i64 limit) {
-        Y_ABORT_UNLESS(limit >= 0);
+        Y_VERIFY(limit >= 0);
         return QuotaForOwner[ownerId].ForceHardLimit(limit, ColorLimits);
     }
 
@@ -73,8 +73,8 @@ public:
 
     void AddOwner(TOwner id, TVDiskID vdiskId) {
         TQuotaRecord &record = QuotaForOwner[id];
-        Y_ABORT_UNLESS(record.GetHardLimit() == 0);
-        Y_ABORT_UNLESS(record.GetFree() == 0);
+        Y_VERIFY(record.GetHardLimit() == 0);
+        Y_VERIFY(record.GetFree() == 0);
         record.SetName(TStringBuilder() << "Owner# " << id);
         record.SetVDiskId(vdiskId);
 
@@ -94,14 +94,14 @@ public:
                 break;
             }
         }
-        Y_ABORT_UNLESS(isFound);
+        Y_VERIFY(isFound);
         ForceHardLimit(id, 0);
     }
 
     i64 AddSystemOwner(TOwner id, i64 quota, TString name) {
         TQuotaRecord &record = QuotaForOwner[id];
-        Y_ABORT_UNLESS(record.GetHardLimit() == 0);
-        Y_ABORT_UNLESS(record.GetFree() == 0);
+        Y_VERIFY(record.GetHardLimit() == 0);
+        Y_VERIFY(record.GetFree() == 0);
         record.SetName(name);
         i64 inc = ForceHardLimit(id, quota);
         ActiveOwnerIds.push_back(id);
@@ -134,7 +134,7 @@ public:
     }
 
     bool InitialAllocate(TOwner id, i64 count) {
-        Y_ABORT_UNLESS(count >= 0);
+        Y_VERIFY(count >= 0);
         return QuotaForOwner[id].ForceAllocate(count);
     }
 
@@ -240,7 +240,7 @@ public:
 
     const i64 SysReserveSize = 5;
     const i64 CommonStaticLogSize = 70;
-    const i64 MinCommonLogSize = 200;
+    i64 MaxCommonLogChunks = 200;
 
     TChunkTracker()
         : GlobalQuota(new TPerOwnerQuotaTracker())
@@ -276,8 +276,9 @@ public:
             return false;
         }
 
+        MaxCommonLogChunks = params.MaxCommonLogChunks;
         if (params.SeparateCommonLog) {
-            i64 commonLog = MinCommonLogSize;
+            i64 commonLog = MaxCommonLogChunks;
             if (commonLog + staticLog < params.CommonLogSize) {
                 commonLog = params.CommonLogSize - staticLog;
             }
@@ -318,6 +319,7 @@ public:
                 OwnerQuota->InitialAllocate(ownerId, chunks);
                 bool isOk = SharedQuota->InitialAllocate(chunks);
                 if (!isOk) {
+                    outErrorReason = (TStringBuilder() << "Error adding OwnerQuota, ownerId# " << ownerId << " chunks# " << chunks);
                     return false;
                 }
             }
@@ -326,10 +328,12 @@ public:
         if (params.CommonLogSize) {
             if (params.SeparateCommonLog) {
                 if (!GlobalQuota->InitialAllocate(OwnerSystem, params.CommonLogSize)) {
+                    outErrorReason = (TStringBuilder() << "Error InitialAllocate with SeparateCommonLog, size# " << params.CommonLogSize);
                     return false;
                 }
             } else {
                 if (!SharedQuota->InitialAllocate(params.CommonLogSize)) {
+                    outErrorReason = (TStringBuilder() << "Error InitialAllocate, size# " << params.CommonLogSize);
                     return false;
                 }
             }
@@ -341,12 +345,12 @@ public:
     }
 
     void AddOwner(TOwner owner, TVDiskID vdiskId) {
-        Y_ABORT_UNLESS(IsOwnerUser(owner));
+        Y_VERIFY(IsOwnerUser(owner));
         OwnerQuota->AddOwner(owner, vdiskId);
     }
 
     void RemoveOwner(TOwner owner) {
-        Y_ABORT_UNLESS(IsOwnerUser(owner));
+        Y_VERIFY(IsOwnerUser(owner));
         OwnerQuota->RemoveOwner(owner);
     }
 
@@ -378,6 +382,10 @@ public:
 
     i64 GetOwnerUsed(TOwner owner) const {
         return OwnerQuota->GetUsed(owner);
+    }
+
+    i64 GetLogChunkCount() const {
+        return GlobalQuota->GetUsed(OwnerSystem);
     }
 
     /////////////////////////////////////////////////////

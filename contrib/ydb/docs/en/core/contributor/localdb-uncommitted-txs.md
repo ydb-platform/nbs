@@ -1,6 +1,6 @@
 # LocalDB: persistent uncommitted changes
 
-Tablets may need to store a potentially large amount of data over a potentially long time, and then either commit or rollback all accumulated changes atomically without keeping them in-memory. To support this [LocalDB](https://github.com/ydb-platform/ydb/blob/main/ydb/core/tablet_flat/flat_database.h) allows table changes to be marked with a unique 64-bit transaction id (TxId), which are stored in the given table alongside committed data, but not visible until the given TxId is committed. The commit or rollback itself is atomic and very cheap, with committed data eventually integrated into the table as if written normally in the first place.
+Tablets may need to store a potentially large amount of data over a potentially long time, and then either commit or rollback all accumulated changes atomically without keeping them in-memory. To support this [LocalDB](../concepts/glossary.md#local-database) allows table changes to be marked with a unique 64-bit transaction id (TxId), which are stored in the given table alongside committed data, but not visible until the given TxId is committed. The commit or rollback itself is atomic and very cheap, with committed data eventually integrated into the table as if written normally in the first place.
 
 This feature is used as a building block for various other features:
 
@@ -26,10 +26,10 @@ Redo log (see [flat_redo_writer.h](https://github.com/ydb-platform/ydb/blob/main
 
 ## Storing uncommitted changes in MemTables
 
-[MemTable](https://github.com/ydb-platform/ydb/blob/0adff98ae52cb826f7fb9705503e430b9812994f/ydb/core/tablet_flat/flat_mem_warm.h#L180) in LocalDB is a relatively small in-memory sorted tree that maps table keys to values. MemTable value is a chain of MVCC (partial) rows, each tagged with a row version (a pair of Step and TxId which is a global timestamp). Rows are normally pre-merged across the given MemTable. For example, let's suppose there have been the following operations for some key K:
+[MemTable](../concepts/glossary.md#memtable) in LocalDB is a relatively small in-memory sorted tree that maps table keys to values. MemTable value is a chain of MVCC (partial) rows, each tagged with a row version (a pair of Step and TxId which is a global timestamp). Rows are normally pre-merged across the given MemTable. For example, let's suppose there have been the following operations for some key K:
 
 | Version | Operation |
---- | ---
+| --- | --- |
 | `v1000/10` | `UPDATE ... SET A = 1` |
 | `v2000/11` | `UPDATE ... SET B = 2` |
 | `v3000/12` | `UPDATE ... SET C = 3` |
@@ -37,7 +37,7 @@ Redo log (see [flat_redo_writer.h](https://github.com/ydb-platform/ydb/blob/main
 Then the chain of rows for key K in a single MemTable will look like this:
 
 | Version | Row |
---- | ---
+| --- | --- |
 | `v3000/12` | `SET A = 1, B = 2, C = 3` |
 | `v2000/11` | `SET A = 1, B = 2` |
 | `v1000/10` | `SET A = 1` |
@@ -45,7 +45,7 @@ Then the chain of rows for key K in a single MemTable will look like this:
 However, if the MemTable was split between updates, it may look like this:
 
 | MemTable | Version | Row |
---- | --- | ---
+| --- | --- | --- |
 | Epoch 2 | `v3000/12` | `SET B = 2, C = 3` |
 | Epoch 2 | `v2000/11` | `SET B = 2` |
 | Epoch 1 | `v1000/10` | `SET A = 1` |
@@ -53,14 +53,14 @@ However, if the MemTable was split between updates, it may look like this:
 Changes are applied to the current MemTable, and uncommitted changes are no exception. However, they are tagged with a special version (where Step is the maximum possible number, as if they are in some "distant" future, and TxId is their uncommitted TxId), without any pre-merging. For example, let's suppose we additionally performed the following operations:
 
 | TxId | Operation |
---- | ---
+| --- | --- |
 | 15 | `UPDATE ... SET C = 10` |
 | 13 | `UPDATE ... SET B = 20` |
 
 The update chain for our key K will look like this:
 
 | Version | Row |
---- | ---
+| --- | --- |
 | `v{max}/13` | `SET B = 20` |
 | `v{max}/15` | `SET C = 10` |
 | `v3000/12` | `SET A = 1, B = 2, C = 3` |
@@ -74,7 +74,7 @@ Let's suppose we commit tx 13 at `v4000/20`. At that point transaction map is up
 Let's suppose we now perform an `UPDATE ... SET A = 30` at version `v5000/21`, the resulting chain will look as follows:
 
 | Version | Row |
---- | ---
+| --- | --- |
 | `v5000/21` | `SET A = 30, B = 20, C = 3` |
 | `v{max}/13` | `SET B = 20` |
 | `v{max}/15` | `SET C = 10` |
@@ -86,14 +86,14 @@ Notice how the new record has its state pre-merged, including the previously com
 
 ## Compacting uncommitted changes
 
-Compaction takes some parts from the table, merges them in a sorted order, and writes as a new SST, which replaces compacted data. When compacting MemTable it also implies compacting the relevant redo log, and includes `EvRemoveTx`/`EvCommitTx` events, which affect change visibility and must also end up in persistent storage. LocalDB writes TxStatus blobs (see [flat_page_txstatus.h](https://github.com/ydb-platform/ydb/blob/main/ydb/core/tablet_flat/flat_page_txstatus.h)), which store a list of committed and removed transactions, and replace the compacted redo log in regard to `EvRemoveTx`/`EvCommitTx` events. Compaction uses the latest transaction status maps, but it filters them leaving only those transactions that are mentioned in the relevant MemTables or previous TxStatus pages, so that it matches the compacted redo log.
+Compaction takes some parts from the table, merges them in a sorted order, and writes as a new [SST](../concepts/glossary.md#sst), which replaces compacted data. When compacting MemTable it also implies compacting the relevant redo log, and includes `EvRemoveTx`/`EvCommitTx` events, which affect change visibility and must also end up in persistent storage. LocalDB writes TxStatus blobs (see [flat_page_txstatus.h](https://github.com/ydb-platform/ydb/blob/main/ydb/core/tablet_flat/flat_page_txstatus.h)), which store a list of committed and removed transactions, and replace the compacted redo log in regard to `EvRemoveTx`/`EvCommitTx` events. Compaction uses the latest transaction status maps, but it filters them leaving only those transactions that are mentioned in the relevant MemTables or previous TxStatus pages, so that it matches the compacted redo log.
 
 Data pages (see [flat_page_data.h](https://github.com/ydb-platform/ydb/blob/main/ydb/core/tablet_flat/flat_page_data.h)) store uncommitted deltas from MemTables (or other SSTs) aggregated by their TxId in the same order just before the primary record. Records may have MVCC flags (HasHistory, IsVersioned, IsErased), which specify whether there is MVCC fields and data present. Delta records have an [IsDelta flag](https://github.com/ydb-platform/ydb/blob/0adff98ae52cb826f7fb9705503e430b9812994f/ydb/core/tablet_flat/flat_page_data.h#L98), which is really a HasHistory flag without other MVCC flags. Since it was never used by previous versions (HasHistory flag was only ever used together with IsVersioned flag, you could not have history rows without a verioned record), it clearly identifies record as an uncommitted delta. Delta records have a [TDelta](https://github.com/ydb-platform/ydb/blob/0adff98ae52cb826f7fb9705503e430b9812994f/ydb/core/tablet_flat/flat_page_data.h#L66) info immediately after the fixed record data, which specifies TxId of the uncommitted delta.
 
 One key may have several uncommitted delta records, as well as (optionally) the latest committed record data. Historically, data pages could only have one record (and one record pointer) per key, so the record pointer leads to the top of the delta chain, and other records are available via additional per-record offset table for other records:
 
 | Offset | Description |
---- | ---
+| --- | --- |
 | -X*8 | offset of Main |
 | ... | ... |
 | -16 | offset of Delta 2 |
@@ -109,7 +109,7 @@ Having a pointer to Delta 0, other records for the same key are available with t
 Let's suppose that after writing tx 13 above the MemTable was compacted. Entry for the 32-bit key K may look like this (offsets are relative to the record pointer on the table):
 
 | Offset | Value | Description |
---- | --- | ---
+| --- | --- | --- |
 | -16 | 58 | offset of Main |
 | -8 | 29 | offset of Delta 1 |
 | 0 | 0x21 | Delta 0: IsDelta + ERowOp::Upsert |

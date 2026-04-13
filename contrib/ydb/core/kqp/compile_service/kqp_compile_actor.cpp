@@ -54,7 +54,7 @@ public:
         NWilson::TTraceId traceId, TKqpTempTablesState::TConstPtr tempTablesState, bool collectFullDiagnostics,
         bool perStatementResult,
         ECompileActorAction compileAction, TMaybe<TQueryAst> queryAst,
-        NYql::TExprContext* splitCtx,
+        std::shared_ptr<NYql::TExprContext> splitCtx,
         NYql::TExprNode::TPtr splitExpr)
         : Owner(owner)
         , ModuleResolverState(moduleResolverState)
@@ -71,14 +71,14 @@ public:
         , Config(MakeIntrusive<TKikimrConfiguration>())
         , QueryServiceConfig(queryServiceConfig)
         , CompilationTimeout(TDuration::MilliSeconds(tableServiceConfig.GetCompileTimeoutMs()))
+        , SplitCtx(std::move(splitCtx))
+        , SplitExpr(std::move(splitExpr))
         , UserRequestContext(userRequestContext)
         , CompileActorSpan(TWilsonKqp::CompileActor, std::move(traceId), "CompileActor")
         , TempTablesState(std::move(tempTablesState))
         , CollectFullDiagnostics(collectFullDiagnostics)
         , CompileAction(compileAction)
         , QueryAst(std::move(queryAst))
-        , SplitCtx(splitCtx)
-        , SplitExpr(splitExpr)
     {
         Config->Init(kqpSettings->DefaultSettings.GetDefaultSettings(), QueryId.Cluster, kqpSettings->Settings, false);
 
@@ -127,7 +127,7 @@ private:
     STFUNC(CompileState) {
         try {
             switch (ev->GetTypeRewrite()) {
-                HFunc(TEvKqp::TEvContinueProcess, Handle);
+                HFunc(TEvKqp::TEvContinueProcess, HandleCompile);
                 cFunc(TEvents::TSystem::Wakeup, HandleTimeout);
             default:
                 UnexpectedEvent("CompileState", ev->GetTypeRewrite());
@@ -136,6 +136,20 @@ private:
             InternalError(e.what());
         }
     }
+
+    STFUNC(SplitState) {
+        try {
+            switch (ev->GetTypeRewrite()) {
+                HFunc(TEvKqp::TEvContinueProcess, HandleSplit);
+                cFunc(TEvents::TSystem::Wakeup, HandleTimeout);
+            default:
+                UnexpectedEvent("SplitState", ev->GetTypeRewrite());
+            }
+        } catch (const yexception& e) {
+            InternalError(e.what());
+        }
+    }
+
 
 private:
     TVector<TQueryAst> GetAstStatements(const TActorContext &ctx) {
@@ -158,9 +172,11 @@ private:
         ALOG_DEBUG(NKikimrServices::KQP_COMPILE_ACTOR, "Send split result"
             << ", self: " << SelfId()
             << ", owner: " << Owner
-            << (!result.Exprs.empty() ? ", split is successful" : ", split is not successful"));
+            << ", success: " << GetYdbStatus(result)
+            << ", issues: " << result.Issues().ToOneLineString());
 
         auto responseEv = MakeHolder<TEvKqp::TEvSplitResponse>(
+            GetYdbStatus(result), result.Issues(),
             QueryId, std::move(result.Exprs), std::move(result.World), std::move(result.Ctx));
         Send(Owner, responseEv.Release());
 
@@ -174,11 +190,38 @@ private:
     }
 
     void StartSplitting(const TActorContext &ctx) {
-        const auto prepareSettings = PrepareCompilationSettings(ctx);
-        auto result = KqpHost->SplitQuery(QueryRef, prepareSettings);
+        Become(&TKqpCompileActor::SplitState);
+        TimeoutTimerActorId = CreateLongTimer(ctx, CompilationTimeout, new IEventHandle(SelfId(), SelfId(),
+            new TEvents::TEvWakeup()));
 
-        Become(&TKqpCompileActor::CompileState);
-        ReplySplitResult(ctx, std::move(result));
+        const auto prepareSettings = PrepareCompilationSettings(ctx);
+        AsyncSplitResult = KqpHost->SplitQuery(QueryRef, prepareSettings);
+        ContinueSplittig(ctx);
+    }
+
+    void ContinueSplittig(const TActorContext &ctx) {
+        TActorSystem* actorSystem = ctx.ActorSystem();
+        TActorId selfId = ctx.SelfID;
+
+        auto callback = [actorSystem, selfId](const TFuture<bool>& future) {
+            bool finished = future.GetValue();
+            auto processEv = MakeHolder<TEvKqp::TEvContinueProcess>(0, finished);
+            actorSystem->Send(selfId, processEv.Release());
+        };
+
+        AsyncSplitResult->Continue().Apply(callback);
+    }
+
+    void HandleSplit(TEvKqp::TEvContinueProcess::TPtr &ev, const TActorContext &ctx) {
+        Y_ENSURE(!ev->Get()->QueryId);
+
+        if (!ev->Get()->Finished) {
+            ContinueSplittig(ctx);
+            return;
+        }
+
+        auto splitResult = std::move(AsyncSplitResult->GetResult());
+        ReplySplitResult(ctx, std::move(splitResult));
     }
 
     void StartParsing(const TActorContext &ctx) {
@@ -227,15 +270,15 @@ private:
 
             case NKikimrKqp::QUERY_TYPE_SQL_GENERIC_QUERY:
                 prepareSettings.ConcurrentResults = false;
-                AsyncCompileResult = KqpHost->PrepareGenericQuery(QueryRef, prepareSettings, SplitExpr);
+                AsyncCompileResult = KqpHost->PrepareGenericQuery(QueryRef, prepareSettings, SplitExpr.get());
                 break;
 
             case NKikimrKqp::QUERY_TYPE_SQL_GENERIC_CONCURRENT_QUERY:
-                AsyncCompileResult = KqpHost->PrepareGenericQuery(QueryRef, prepareSettings, SplitExpr);
+                AsyncCompileResult = KqpHost->PrepareGenericQuery(QueryRef, prepareSettings, SplitExpr.get());
                 break;
 
             case NKikimrKqp::QUERY_TYPE_SQL_GENERIC_SCRIPT:
-                AsyncCompileResult = KqpHost->PrepareGenericScript(QueryRef, prepareSettings);
+                AsyncCompileResult = KqpHost->PrepareGenericScript(QueryRef, prepareSettings, SplitExpr.get());
                 break;
 
             default:
@@ -247,7 +290,7 @@ private:
     }
 
     void Continue(const TActorContext &ctx) {
-        TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+        TActorSystem* actorSystem = ctx.ActorSystem();
         TActorId selfId = ctx.SelfID;
 
         auto callback = [actorSystem, selfId](const TFuture<bool>& future) {
@@ -268,7 +311,7 @@ private:
             std::make_shared<TKqpTableMetadataLoader>(
                 QueryId.Cluster, TlsActivationContext->ActorSystem(), Config, true, TempTablesState);
         Gateway = CreateKikimrIcGateway(QueryId.Cluster, QueryId.Settings.QueryType, QueryId.Database, QueryId.DatabaseId, std::move(loader),
-            ctx.ExecutorThread.ActorSystem, ctx.SelfID.NodeId(), counters, QueryServiceConfig);
+            ctx.ActorSystem(), ctx.SelfID.NodeId(), counters, QueryServiceConfig);
         Gateway->SetToken(QueryId.Cluster, UserToken);
         Gateway->SetClientAddress(ClientAddress);
 
@@ -276,7 +319,7 @@ private:
 
         KqpHost = CreateKqpHost(Gateway, QueryId.Cluster, QueryId.Database, Config, ModuleResolverState->ModuleResolver,
             FederatedQuerySetup, UserToken, GUCSettings, QueryServiceConfig, ApplicationName, AppData(ctx)->FunctionRegistry,
-            false, false, std::move(TempTablesState), nullptr, SplitCtx, UserRequestContext);
+            false, false, std::move(TempTablesState), nullptr, SplitCtx.get(), UserRequestContext);
 
         IKqpHost::TPrepareSettings prepareSettings;
         prepareSettings.DocumentApiRestricted = QueryId.Settings.DocumentApiRestricted;
@@ -310,7 +353,6 @@ private:
 
         replayMessage.InsertValue("query_id", Uid);
         replayMessage.InsertValue("version", "1.0");
-        replayMessage.InsertValue("query_text", EscapeC(QueryId.Text));
         NJson::TJsonValue queryParameterTypes(NJson::JSON_MAP);
         if (QueryId.QueryParameterTypes) {
             for (const auto& [paramName, paramType] : *QueryId.QueryParameterTypes) {
@@ -322,7 +364,6 @@ private:
         replayMessage.InsertValue("query_syntax", ToString(Config->_KqpYqlSyntaxVersion.Get().GetRef()));
         replayMessage.InsertValue("query_database", QueryId.Database);
         replayMessage.InsertValue("query_cluster", QueryId.Cluster);
-        replayMessage.InsertValue("query_plan", queryPlan);
         replayMessage.InsertValue("query_type", ToString(QueryId.Settings.QueryType));
 
         if (CollectFullDiagnostics) {
@@ -337,6 +378,8 @@ private:
             ReplayMessageUserView = NJson::WriteJson(replayMessage, /*formatOutput*/ false);
         }
 
+        replayMessage.InsertValue("query_plan", queryPlan);
+        replayMessage.InsertValue("query_text", EscapeC(QueryId.Text));
         replayMessage.InsertValue("table_metadata", TString(NJson::WriteJson(tablesMeta, false)));
         replayMessage.InsertValue("table_meta_serialization_type", EMetaSerializationType::EncodedProto);
 
@@ -358,10 +401,12 @@ private:
             << ", issues: " << KqpCompileResult->Issues.ToString()
             << ", uid: " << KqpCompileResult->Uid);
 
+        if (ReplayMessageUserView) {
+            KqpCompileResult->ReplayMessageUserView = std::move(*ReplayMessageUserView);
+        }
         auto responseEv = MakeHolder<TEvKqp::TEvCompileResponse>(KqpCompileResult);
 
         responseEv->ReplayMessage = std::move(ReplayMessage);
-        responseEv->ReplayMessageUserView = std::move(ReplayMessageUserView);
         ReplayMessage = std::nullopt;
         ReplayMessageUserView = std::nullopt;
         auto& stats = responseEv->Stats;
@@ -460,7 +505,7 @@ private:
         KqpCompileResult->AllowCache = CanCacheQuery(KqpCompileResult->PreparedQuery->GetPhysicalQuery()) && allowCache;
     }
 
-    void Handle(TEvKqp::TEvContinueProcess::TPtr &ev, const TActorContext &ctx) {
+    void HandleCompile(TEvKqp::TEvContinueProcess::TPtr &ev, const TActorContext &ctx) {
         Y_ENSURE(!ev->Get()->QueryId);
 
         TYqlLogScope logScope(ctx, NKikimrServices::KQP_YQL, YqlName, UserRequestContext->TraceId);
@@ -555,9 +600,12 @@ private:
     TDuration CompileCpuTime;
     TInstant RecompileStartTime;
     TActorId TimeoutTimerActorId;
+    std::shared_ptr<NYql::TExprContext> SplitCtx;
+    NYql::TExprNode::TPtr SplitExpr;
     TIntrusivePtr<IKqpGateway> Gateway;
     TIntrusivePtr<IKqpHost> KqpHost;
     TIntrusivePtr<IKqpHost::IAsyncQueryResult> AsyncCompileResult;
+    TIntrusivePtr<IKqpHost::IAsyncSplitResult> AsyncSplitResult;
     std::shared_ptr<TKqpCompileResult> KqpCompileResult;
     std::optional<TString> ReplayMessage;  // here metadata is encoded protobuf - for logs
     std::optional<TString> ReplayMessageUserView;  // here metadata is part of json - full readable json for diagnostics
@@ -571,9 +619,6 @@ private:
     bool PerStatementResult;
     ECompileActorAction CompileAction;
     TMaybe<TQueryAst> QueryAst;
-
-    NYql::TExprContext* SplitCtx = nullptr;
-    NYql::TExprNode::TPtr SplitExpr = nullptr;
 };
 
 void ApplyServiceConfig(TKikimrConfiguration& kqpConfig, const TTableServiceConfig& serviceConfig) {
@@ -584,35 +629,43 @@ void ApplyServiceConfig(TKikimrConfiguration& kqpConfig, const TTableServiceConf
         kqpConfig._ResultRowsLimit = serviceConfig.GetQueryLimits().GetResultRowsLimit();
     }
 
-    kqpConfig.EnableKqpDataQuerySourceRead = serviceConfig.GetEnableKqpDataQuerySourceRead();
     kqpConfig.EnableKqpScanQuerySourceRead = serviceConfig.GetEnableKqpScanQuerySourceRead();
     kqpConfig.EnableKqpDataQueryStreamLookup = serviceConfig.GetEnableKqpDataQueryStreamLookup();
-    kqpConfig.EnableKqpScanQueryStreamLookup = serviceConfig.GetEnableKqpScanQueryStreamLookup();
     kqpConfig.EnableKqpScanQueryStreamIdxLookupJoin = serviceConfig.GetEnableKqpScanQueryStreamIdxLookupJoin();
     kqpConfig.EnableKqpDataQueryStreamIdxLookupJoin = serviceConfig.GetEnableKqpDataQueryStreamIdxLookupJoin();
-    kqpConfig.EnablePreparedDdl = serviceConfig.GetEnablePreparedDdl();
-    kqpConfig.EnableSequences = serviceConfig.GetEnableSequences();
-    kqpConfig.EnableColumnsWithDefault = serviceConfig.GetEnableColumnsWithDefault();
     kqpConfig.BindingsMode = RemapBindingsMode(serviceConfig.GetBindingsMode());
-    kqpConfig.PredicateExtract20 = serviceConfig.GetPredicateExtract20();
     kqpConfig.IndexAutoChooserMode = serviceConfig.GetIndexAutoChooseMode();
     kqpConfig.EnablePgConstsToParams = serviceConfig.GetEnablePgConstsToParams() && serviceConfig.GetEnableAstCache();
     kqpConfig.ExtractPredicateRangesLimit = serviceConfig.GetExtractPredicateRangesLimit();
     kqpConfig.EnablePerStatementQueryExecution = serviceConfig.GetEnablePerStatementQueryExecution();
     kqpConfig.EnableCreateTableAs = serviceConfig.GetEnableCreateTableAs();
+    kqpConfig.AllowOlapDataQuery = serviceConfig.GetAllowOlapDataQuery();
     kqpConfig.EnableOlapSink = serviceConfig.GetEnableOlapSink();
     kqpConfig.EnableOltpSink = serviceConfig.GetEnableOltpSink();
     kqpConfig.EnableHtapTx = serviceConfig.GetEnableHtapTx();
+    kqpConfig.EnableStreamWrite = serviceConfig.GetEnableStreamWrite();
     kqpConfig.BlockChannelsMode = serviceConfig.GetBlockChannelsMode();
     kqpConfig.IdxLookupJoinsPrefixPointLimit = serviceConfig.GetIdxLookupJoinPointsLimit();
-    kqpConfig.OldLookupJoinBehaviour = serviceConfig.GetOldLookupJoinBehaviour();
-    kqpConfig.EnableSpillingGenericQuery = serviceConfig.GetEnableQueryServiceSpilling();
     kqpConfig.DefaultCostBasedOptimizationLevel = serviceConfig.GetDefaultCostBasedOptimizationLevel();
+    kqpConfig.DefaultEnableShuffleElimination = serviceConfig.GetDefaultEnableShuffleElimination();
     kqpConfig.EnableConstantFolding = serviceConfig.GetEnableConstantFolding();
+    kqpConfig.EnableFoldUdfs = serviceConfig.GetEnableFoldUdfs();
     kqpConfig.SetDefaultEnabledSpillingNodes(serviceConfig.GetEnableSpillingNodes());
+    kqpConfig.EnableSnapshotIsolationRW = serviceConfig.GetEnableSnapshotIsolationRW();
+    kqpConfig.EnableSpilling = serviceConfig.GetEnableQueryServiceSpilling();
+    kqpConfig.EnableSpillingInHashJoinShuffleConnections = serviceConfig.GetEnableSpillingInHashJoinShuffleConnections();
+    kqpConfig.EnableOlapScalarApply = serviceConfig.GetEnableOlapScalarApply();
+    kqpConfig.EnableOlapSubstringPushdown = serviceConfig.GetEnableOlapSubstringPushdown();
+    kqpConfig.EnableTempTablesForUser = serviceConfig.GetEnableTempTablesForUser();
 
     if (const auto limit = serviceConfig.GetResourceManager().GetMkqlHeavyProgramMemoryLimit()) {
         kqpConfig._KqpYqlCombinerMemoryLimit = std::max(1_GB, limit - (limit >> 2U));
+    }
+
+    if (serviceConfig.GetFilterPushdownOverJoinOptionalSide()) {
+        kqpConfig.FilterPushdownOverJoinOptionalSide = true;
+        kqpConfig.YqlCoreOptimizerFlags.insert("fuseequijoinsinputmultilabels");
+        kqpConfig.YqlCoreOptimizerFlags.insert("pullupflatmapoverjoinmultiplelabels");
     }
 }
 
@@ -625,7 +678,7 @@ IActor* CreateKqpCompileActor(const TActorId& owner, const TKqpSettings::TConstP
     const TMaybe<TString>& applicationName, const TIntrusivePtr<TUserRequestContext>& userRequestContext,
     NWilson::TTraceId traceId, TKqpTempTablesState::TConstPtr tempTablesState,
     ECompileActorAction compileAction, TMaybe<TQueryAst> queryAst, bool collectFullDiagnostics,
-    bool perStatementResult, NYql::TExprContext* splitCtx, NYql::TExprNode::TPtr splitExpr)
+    bool perStatementResult, std::shared_ptr<NYql::TExprContext> splitCtx, NYql::TExprNode::TPtr splitExpr)
 {
     return new TKqpCompileActor(owner, kqpSettings, tableServiceConfig, queryServiceConfig,
                                 moduleResolverState, counters, gUCSettings, applicationName,
@@ -633,7 +686,7 @@ IActor* CreateKqpCompileActor(const TActorId& owner, const TKqpSettings::TConstP
                                 federatedQuerySetup, userRequestContext,
                                 std::move(traceId), std::move(tempTablesState), collectFullDiagnostics,
                                 perStatementResult, compileAction, std::move(queryAst),
-                                splitCtx, splitExpr);
+                                std::move(splitCtx), std::move(splitExpr));
 }
 
 } // namespace NKqp

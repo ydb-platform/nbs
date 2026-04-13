@@ -1,4 +1,8 @@
 #include "node_warden_impl.h"
+#include "node_warden.h"
+#include <util/system/fs.h>
+#include <contrib/ydb/library/yaml_config/yaml_config.h>
+#include <contrib/ydb/library/yaml_config/yaml_config_helpers.h>
 
 using namespace NKikimr;
 using namespace NStorage;
@@ -69,7 +73,10 @@ void TNodeWarden::SendRegisterNode() {
 
     TVector<ui32> startedDynamicGroups, generations;
     for (const auto& [groupId, group] : Groups) {
-        if (group.ProxyId && TGroupID(groupId).ConfigurationType() == EGroupConfigurationType::Dynamic &&
+        // RegisterNode carries dynamic groups that are either actively proxied now or marked as sticky
+        // local-placement subscriptions (MustSubscribe) to keep their updates across reconnects.
+        if ((group.ProxyId || group.MustSubscribe) &&
+                TGroupID(groupId).ConfigurationType() == EGroupConfigurationType::Dynamic &&
                 (!group.Info || group.Info->DecommitStatus != NKikimrBlobStorage::TGroupDecommitStatus::DONE)) {
             startedDynamicGroups.push_back(groupId);
             generations.push_back(group.Info ? group.Info->GroupGeneration : 0);
@@ -82,6 +89,30 @@ void TNodeWarden::SendRegisterNode() {
         WorkingLocalDrives);
     FillInVDiskStatus(ev->Record.MutableVDiskStatus(), true);
     ev->Record.SetDeclarativePDiskManagement(true);
+
+    for (const auto& [key, pdisk] : LocalPDisks) {
+        if (pdisk.ShredGenerationIssued) {
+            auto *item = ev->Record.AddShredStatus();
+            item->SetPDiskId(key.PDiskId);
+            if (pdisk.Record.HasPDiskGuid()) {
+                item->SetPDiskGuid(pdisk.Record.GetPDiskGuid());
+            }
+            std::visit(TOverloaded{
+                [item](const std::monostate&) { item->SetShredInProgress(true); },
+                [item](const ui64& generation) { item->SetShredGenerationFinished(generation); },
+                [item](const TString& aborted) { item->SetShredAborted(aborted); }
+            }, pdisk.ShredState);
+        }
+    }
+
+    if (!Cfg->ConfigDirPath.empty() && YamlConfig) {
+        ev->Record.SetMainConfigVersion(YamlConfig->GetMainConfigVersion());
+        ev->Record.SetMainConfigHash(NYaml::GetConfigHash(YamlConfig->GetMainConfig()));
+        if (YamlConfig->HasStorageConfigVersion()) {
+            ev->Record.SetStorageConfigVersion(YamlConfig->GetStorageConfigVersion());
+            ev->Record.SetStorageConfigHash(NYaml::GetConfigHash(YamlConfig->GetStorageConfig()));
+        }
+    }
 
     SendToController(std::move(ev));
 }

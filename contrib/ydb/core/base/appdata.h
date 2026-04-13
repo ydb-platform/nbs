@@ -29,14 +29,12 @@
 #include "event_filter.h"
 
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
-#include <contrib/ydb/core/grpc_services/grpc_helper.h>
 #include <contrib/ydb/library/pdisk_io/aio.h>
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 
-#include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_tcp.h>
 #include <contrib/ydb/library/actors/core/monotonic_provider.h>
 #include <contrib/ydb/library/actors/util/should_continue.h>
 #include <library/cpp/random_provider/random_provider.h>

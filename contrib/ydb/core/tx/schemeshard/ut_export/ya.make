@@ -5,11 +5,9 @@ FORK_SUBTESTS()
 SPLIT_FACTOR(11)
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
     SIZE(LARGE)
     TAG(ya:fat)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -20,12 +18,12 @@ IF (NOT OS_WINDOWS)
         library/cpp/getopt
         library/cpp/regex/pcre
         library/cpp/svnversion
-        contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core
         contrib/ydb/core/testlib/default
         contrib/ydb/core/tx
         contrib/ydb/core/tx/schemeshard/ut_helpers
+        contrib/ydb/core/util
         contrib/ydb/core/wrappers/ut_helpers
-        contrib/ydb/library/yql/public/udf/service/exception_policy
+        yql/essentials/public/udf/service/exception_policy
     )
     SRCS(
         ut_export.cpp

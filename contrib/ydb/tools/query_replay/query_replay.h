@@ -1,8 +1,8 @@
 #pragma once
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
+#include <ydb-cpp-sdk/client/table/table.h>
+#include <ydb-cpp-sdk/client/result/result.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
@@ -18,13 +18,13 @@
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/core/scheme/scheme_type_registry.h>
 #include <library/cpp/json/json_value.h>
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
 #include <optional>
 #include <unordered_set>
 #include <deque>
 
-#include <contrib/ydb/library/yql/core/services/mounts/yql_mounts.h>
-#include <contrib/ydb/library/yql/minikql/invoke_builtins/mkql_builtins.h>
+#include <yql/essentials/core/services/mounts/yql_mounts.h>
+#include <yql/essentials/minikql/invoke_builtins/mkql_builtins.h>
 
 struct TQueryReplayStats;
 

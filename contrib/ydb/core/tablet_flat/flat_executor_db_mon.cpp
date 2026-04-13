@@ -1,7 +1,7 @@
 #include "flat_executor.h"
 
-#include <contrib/ydb/library/binary_json/read.h>
-#include <contrib/ydb/library/dynumber/dynumber.h>
+#include <yql/essentials/types/binary_json/read.h>
+#include <yql/essentials/types/dynumber/dynumber.h>
 
 #include <util/stream/hex.h>
 #include <util/string/escape.h>
@@ -140,8 +140,6 @@ public:
                     rowOffset = Max<ssize_t>(rowOffset, 0);
                     ssize_t rowLimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxRows"), 1000);
                     rowLimit = Max<ssize_t>(rowLimit, 1);
-                    ssize_t stringlimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxString"), 1024);
-                    stringlimit = Max<ssize_t>(stringlimit, 1);
                     ssize_t rowCount = 0;
                     while (result->Next(NTable::ENext::Data) == NTable::EReady::Data && rowCount < rowOffset + rowLimit) {
                             ++rowCount;
@@ -215,7 +213,7 @@ public:
                                         case NScheme::NTypeIds::String:
                                         case NScheme::NTypeIds::String4k:
                                         case NScheme::NTypeIds::String2m:
-                                            str << EncodeHtmlPcdata(EscapeC(TStringBuf(static_cast<const char*>(data), Min(size, (ui32)stringlimit))));
+                                            str << EncodeHtmlPcdata(EscapeC(TStringBuf(static_cast<const char*>(data), Min(size, (ui32)1024))));
                                             break;
                                         case NScheme::NTypeIds::ActorId:
                                             str << *(TActorId*)data;

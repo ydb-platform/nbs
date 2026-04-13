@@ -1,6 +1,6 @@
 #pragma once
-#include <contrib/ydb/library/yql/minikql/defs.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/minikql/defs.h>
+#include <yql/essentials/minikql/mkql_node.h>
 #include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_value.pb.h>
 #include <contrib/ydb/library/mkql_proto/mkql_proto.h>

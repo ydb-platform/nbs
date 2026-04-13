@@ -9,7 +9,7 @@ PEERDIR(
     util
     contrib/ydb/library/actors/core
     contrib/ydb/library/query_actor
-    contrib/ydb/library/minsketch
+    yql/essentials/core/minsketch
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
 )

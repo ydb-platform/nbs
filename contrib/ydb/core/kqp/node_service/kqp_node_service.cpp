@@ -7,6 +7,7 @@
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>
 #include <contrib/ydb/core/mon/mon.h>
+#include <contrib/ydb/core/util/stlog.h>
 
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/compute_actor/kqp_compute_actor.h>
@@ -32,18 +33,18 @@ namespace NKqp {
 using namespace NActors;
 
 namespace {
-
-#define LOG_C(stream) LOG_CRIT_S(*TlsActivationContext, NKikimrServices::KQP_NODE, stream)
-#define LOG_D(stream) LOG_DEBUG_S(*TlsActivationContext, NKikimrServices::KQP_NODE, stream)
-#define LOG_I(stream) LOG_INFO_S(*TlsActivationContext, NKikimrServices::KQP_NODE, stream)
-#define LOG_E(stream) LOG_ERROR_S(*TlsActivationContext, NKikimrServices::KQP_NODE, stream)
-#define LOG_W(stream) LOG_WARN_S(*TlsActivationContext, NKikimrServices::KQP_NODE, stream)
-#define LOG_N(stream) LOG_NOTICE_S(*TlsActivationContext, NKikimrServices::KQP_NODE, stream)
+#define STLOG_C(MESSAGE, ...) STLOG(PRI_CRIT, NKikimrServices::KQP_NODE, KQPNS, MESSAGE, __VA_ARGS__)
+#define STLOG_E(MESSAGE, ...) STLOG(PRI_ERROR, NKikimrServices::KQP_NODE, KQPNS, MESSAGE, __VA_ARGS__)
+#define STLOG_W(MESSAGE, ...) STLOG(PRI_WARN, NKikimrServices::KQP_NODE, KQPNS, MESSAGE, __VA_ARGS__)
+#define STLOG_N(MESSAGE, ...) STLOG(PRI_NOTICE, NKikimrServices::KQP_NODE, KQPNS, MESSAGE, __VA_ARGS__)
+#define STLOG_I(MESSAGE, ...) STLOG(PRI_INFO, NKikimrServices::KQP_NODE, KQPNS, MESSAGE, __VA_ARGS__)
+#define STLOG_D(MESSAGE, ...) STLOG(PRI_DEBUG, NKikimrServices::KQP_NODE, KQPNS, MESSAGE, __VA_ARGS__)
+#define STLOG_T(MESSAGE, ...) STLOG(PRI_TRACE, NKikimrServices::KQP_NODE, KQPNS, MESSAGE, __VA_ARGS__)
 
 // Min interval between stats send from scan/compute actor to executor
 constexpr TDuration MinStatInterval = TDuration::MilliSeconds(20);
 // Max interval in case of no activety
-constexpr TDuration MaxStatInterval = TDuration::MilliSeconds(100);
+constexpr TDuration MaxStatInterval = TDuration::Seconds(1);
 
 template <class TTasksCollection>
 TString TasksIdsStr(const TTasksCollection& tasks) {
@@ -95,7 +96,8 @@ public:
     }
 
     void Bootstrap() {
-        LOG_I("Starting KQP Node service");
+        STLOG_I("Starting KQP Node service",
+            (node_id, SelfId().NodeId()));
 
         // Subscribe for TableService config changes
         ui32 tableServiceConfigKind = (ui32) NKikimrConsole::TConfigItem::TableServiceConfigItem;
@@ -107,7 +109,7 @@ public:
         if (mon) {
             NMonitoring::TIndexMonPage* actorsMonPage = mon->RegisterIndexPage("actors", "Actors");
             mon->RegisterActorPage(actorsMonPage, "kqp_node", "KQP Node", false,
-                TlsActivationContext->ExecutorThread.ActorSystem, SelfId());
+                TActivationContext::ActorSystem(), SelfId());
         }
 
         Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
@@ -153,11 +155,19 @@ private:
             ? TMaybe<ui64>(msg.GetLockTxId())
             : Nothing();
         ui32 lockNodeId = msg.GetLockNodeId();
+        TMaybe<NKikimrDataEvents::ELockMode> lockMode = msg.HasLockMode()
+            ? TMaybe<NKikimrDataEvents::ELockMode>(msg.GetLockMode())
+            : Nothing();
 
         YQL_ENSURE(msg.GetStartAllOrFail()); // todo: support partial start
 
-        LOG_D("TxId: " << txId << ", new compute tasks request from " << requester
-            << " with " << msg.GetTasks().size() << " tasks: " << TasksIdsStr(msg.GetTasks()));
+        STLOG_D("HandleStartKqpTasksRequest",
+            (node_id, SelfId().NodeId()),
+            (tx_id, txId),
+            (requester, requester),
+            (tasks_count, msg.GetTasks().size()),
+            (task_ids, TasksIdsStr(msg.GetTasks())),
+            (trace_id, ev->TraceId.GetHexTraceIdLowerCase()));
 
         auto now = TAppData::TimeProvider->Now();
         NKqpNode::TTasksRequest request(txId, ev->Sender, now);
@@ -171,7 +181,10 @@ private:
         auto& bucket = State_->GetStateBucketByTx(txId);
 
         if (bucket.Exists(txId, requester)) {
-            LOG_E("TxId: " << txId << ", requester: " << requester << ", request already exists");
+            STLOG_E("Request already exists",
+                (tx_id, txId),
+                (requester, requester),
+                (trace_id, ev->TraceId.GetHexTraceIdLowerCase()));
             return ReplyError(txId, request.Executer, msg, NKikimrKqp::TEvStartKqpTasksResponse::INTERNAL_ERROR);
         }
 
@@ -199,6 +212,31 @@ private:
 
         auto schedulerNow = TlsActivationContext->Monotonic();
 
+        TString schedulerGroup = msg.GetSchedulerGroup();
+
+        if (SchedulerOptions.Scheduler->Disabled(schedulerGroup)) {
+            auto share = msg.GetPoolMaxCpuShare();
+            if (share <= 0 && (msg.HasQueryCpuShare() || msg.HasResourceWeight())) {
+                share = 1.0;
+            }
+            std::optional<double> resourceWeight;
+            if (msg.HasResourceWeight() && msg.GetResourceWeight() >= 0) {
+                resourceWeight = msg.GetResourceWeight();
+            }
+
+            if (share > 0) {
+                Scheduler->UpdateGroupShare(schedulerGroup, share, schedulerNow, resourceWeight);
+                Send(SchedulerActorId, new TEvSchedulerNewPool(msg.GetDatabase(), schedulerGroup));
+            } else {
+                schedulerGroup = "";
+            }
+        }
+
+        std::optional<ui64> querySchedulerGroup;
+        if (msg.HasQueryCpuShare() && schedulerGroup) {
+            querySchedulerGroup = Scheduler->MakePerQueryGroup(schedulerNow, msg.GetQueryCpuShare(), schedulerGroup);
+        }
+
         // start compute actors
         TMaybe<NYql::NDqProto::TRlPath> rlPath = Nothing();
         if (msgRtSettings.HasRlPath()) {
@@ -208,41 +246,33 @@ private:
         TIntrusivePtr<NRm::TTxState> txInfo = MakeIntrusive<NRm::TTxState>(
             txId, TInstant::Now(), ResourceManager_->GetCounters(),
             msg.GetSchedulerGroup(), msg.GetMemoryPoolPercent(),
-            msg.GetDatabase());
+            msg.GetDatabase(), Config.GetVerboseMemoryLimitException());
 
         const ui32 tasksCount = msg.GetTasks().size();
         for (auto& dqTask: *msg.MutableTasks()) {
-            TString group = msg.GetSchedulerGroup();
-
             TComputeActorSchedulingOptions schedulingTaskOptions {
                 .Now = schedulerNow,
                 .SchedulerActorId = SchedulerActorId,
                 .Scheduler = Scheduler.get(),
-                .Group = group,
+                .Group = schedulerGroup,
                 .Weight = 1,
-                .NoThrottle = false,
+                .NoThrottle = schedulerGroup.empty(),
                 .Counters = Counters
             };
 
-            if (SchedulerOptions.Scheduler->Disabled(group)) {
-                auto share = msg.GetMaxCpuShare();
-                if (share > 0) {
-                    Scheduler->UpdateMaxShare(group, share, schedulerNow);
-                    Send(SchedulerActorId, new TEvSchedulerNewPool(msg.GetDatabaseId(), group, share));
-                } else {
-                    schedulingTaskOptions.NoThrottle = true;
-                }
-            } 
-
             if (!schedulingTaskOptions.NoThrottle) {
                 schedulingTaskOptions.Handle = SchedulerOptions.Scheduler->Enroll(schedulingTaskOptions.Group, schedulingTaskOptions.Weight, schedulingTaskOptions.Now);
+                if (querySchedulerGroup) {
+                    Scheduler->AddToGroup(schedulerNow, *querySchedulerGroup, schedulingTaskOptions.Handle);
+                }
             }
 
-            auto result = CaFactory_->CreateKqpComputeActor({
+            NComputeActor::IKqpNodeComputeActorFactory::TCreateArgs createArgs{
                 .ExecuterId = request.Executer,
                 .TxId = txId,
                 .LockTxId = lockTxId,
                 .LockNodeId = lockNodeId,
+                .LockMode = lockMode,
                 .Task = &dqTask,
                 .TxInfo = txInfo,
                 .RuntimeSettings = runtimeSettingsBase,
@@ -254,13 +284,22 @@ private:
                 .MemoryPool = memoryPool,
                 .WithSpilling = msgRtSettings.GetUseSpilling(),
                 .StatsMode = msgRtSettings.GetStatsMode(),
+                .WithProgressStats = msgRtSettings.GetWithProgressStats(),
                 .Deadline = TInstant(),
                 .ShareMailbox = false,
                 .RlPath = rlPath,
                 .ComputesByStages = &computesByStage,
                 .State = State_,
                 .SchedulingOptions = std::move(schedulingTaskOptions),
-            });
+                // TODO: block tracking mode is not set!
+            };
+            if (msg.HasUserToken() && msg.GetUserToken()) {
+                createArgs.UserToken.Reset(MakeIntrusive<NACLib::TUserToken>(msg.GetUserToken()));
+            }
+
+            createArgs.Database = msg.GetDatabase();
+
+            auto result = CaFactory_->CreateKqpComputeActor(std::move(createArgs));
 
             if (const auto* rmResult = std::get_if<NRm::TKqpRMAllocateResult>(&result)) {
                 ReplyError(txId, request.Executer, msg, rmResult->GetStatus(), rmResult->GetFailReason());
@@ -278,17 +317,32 @@ private:
             Y_ABORT_UNLESS(actorId);
             taskCtx.ComputeActorId = *actorId;
 
-            LOG_D("TxId: " << txId << ", executing task: " << taskCtx.TaskId << " on compute actor: " << taskCtx.ComputeActorId);
+            STLOG_D("Executing task",
+                (tx_id, txId),
+                (task_id, taskCtx.TaskId),
+                (compute_actor_id, taskCtx.ComputeActorId),
+                (trace_id, ev->TraceId.GetHexTraceIdLowerCase()));
 
             auto* startedTask = reply->Record.AddStartedTasks();
             startedTask->SetTaskId(taskCtx.TaskId);
             ActorIdToProto(taskCtx.ComputeActorId, startedTask->MutableActorId());
         }
 
+        if (!schedulerGroup.empty()) {
+            Scheduler->AdvanceTime(TlsActivationContext->Monotonic());
+        }
+
+        TCPULimits cpuLimits;
+        if (msg.GetPoolMaxCpuShare() > 0) {
+            // Share <= 0 means disabled limit
+            cpuLimits.DeserializeFromProto(msg).Validate();
+        }
+
         for (auto&& i : computesByStage) {
             for (auto&& m : i.second.MutableMetaInfo()) {
                 Register(CreateKqpScanFetcher(msg.GetSnapshot(), std::move(m.MutableActorIds()),
-                    m.GetMeta(), runtimeSettingsBase, txId, lockTxId, lockNodeId, scanPolicy, Counters, NWilson::TTraceId(ev->TraceId)));
+                    m.GetMeta(), runtimeSettingsBase, txId, lockTxId, lockNodeId, lockMode,
+                    scanPolicy, Counters, NWilson::TTraceId(ev->TraceId), cpuLimits));
             }
         }
 
@@ -311,7 +365,11 @@ private:
                 << ", NodeId: "<< SelfId().NodeId()
                 << ", TxId: " << msg.TxId;
 
-            LOG_E(finalReason);
+            STLOG_E("Task cancelled",
+                (final_reason, finalReason),
+                (node_id, SelfId().NodeId()),
+                (tx_id, msg.TxId),
+                (trace_id, ev->TraceId.GetHexTraceIdLowerCase()));
             for (const auto& [taskId, computeActorId]: tasksToAbort) {
                 if (msg.TaskId != taskId)
                     continue;
@@ -327,7 +385,10 @@ private:
         ui64 txId = ev->Get()->Record.GetTxId();
         auto& reason = ev->Get()->Record.GetReason();
 
-        LOG_W("TxId: " << txId << ", terminate transaction, reason: " << reason);
+        STLOG_W("Terminate transaction",
+            (node_id, SelfId().NodeId()),
+            (tx_id, txId),
+            (reason, reason));
         TerminateTx(txId, reason);
 
         Counters->NodeServiceProcessCancelTime->Collect(timer.Passed() * SecToUsec);
@@ -338,12 +399,10 @@ private:
         auto tasksToAbort = bucket.GetTasksByTxId(txId);
 
         if (!tasksToAbort.empty()) {
-            TStringBuilder finalReason;
-            finalReason << "node service cancelled the task, because it " << reason
-                << ", NodeId: "<< SelfId().NodeId()
-                << ", TxId: " << txId;
-
-            LOG_E(finalReason);
+            STLOG_E("Task cancelled",
+                (reason, reason),
+                (node_id, SelfId().NodeId()),
+                (tx_id, txId));
             for (const auto& [taskId, computeActorId]: tasksToAbort) {
                 auto abortEv = std::make_unique<TEvKqp::TEvAbortExecution>(status, reason);
                 Send(computeActorId, abortEv.release());
@@ -363,7 +422,7 @@ private:
 
 private:
     static void HandleWork(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr&) {
-        LOG_D("Subscribed for config changes");
+        STLOG_D("Subscribed for config changes");
     }
 
     void HandleWork(NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr& ev) {
@@ -385,7 +444,9 @@ private:
             FORCE_VALUE(MinMemFreeSize);
 #undef FORCE_VALUE
 
-            LOG_I("Updated table service config: " << Config.DebugString());
+            STLOG_I("Updated table service config",
+                (node_id, SelfId().NodeId()),
+                (config, Config.DebugString()));
         }
 
         CaFactory_->ApplyConfig(event.GetConfig().GetTableServiceConfig().GetResourceManager());
@@ -427,8 +488,6 @@ private:
         auto ptr = MakeIntrusive<NKikimr::NKqp::TWriteActorSettings>();
 
         ptr->InFlightMemoryLimitPerActorBytes = settings.GetInFlightMemoryLimitPerActorBytes();
-        ptr->MemoryLimitPerMessageBytes = settings.GetMemoryLimitPerMessageBytes();
-        ptr->MaxBatchesPerMessage = settings.GetMaxBatchesPerMessage();
 
         ptr->StartRetryDelay = TDuration::MilliSeconds(settings.GetStartRetryDelayMs());
         ptr->MaxRetryDelay = TDuration::MilliSeconds(settings.GetMaxRetryDelayMs());
@@ -452,15 +511,19 @@ private:
             }
 
             case NConsole::TEvConfigsDispatcher::EvSetConfigSubscriptionRequest:
-                LOG_C("Failed to deliver subscription request to config dispatcher");
+                STLOG_C("Failed to deliver subscription request to config dispatcher",
+                    (node_id, SelfId().NodeId()));
                 break;
 
             case NConsole::TEvConsole::EvConfigNotificationResponse:
-                LOG_E("Failed to deliver config notification response");
+                STLOG_E("Failed to deliver config notification response",
+                    (node_id, SelfId().NodeId()));
                 break;
 
             default:
-                LOG_E("Undelivered event with unexpected source type: " << ev->Get()->SourceType);
+                STLOG_E("Undelivered event with unexpected source type",
+                    (node_id, SelfId().NodeId()),
+                    (source_type, ev->Get()->SourceType));
                 break;
         }
     }

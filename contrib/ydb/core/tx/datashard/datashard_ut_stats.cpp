@@ -98,7 +98,7 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 3);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 704);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 728);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetIndexSize(), 0);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetImmediateTxCompleted(), 1);
         }
@@ -164,7 +164,7 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 3);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 752);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 800);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetIndexSize(), 0);
         }
 
@@ -222,7 +222,7 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 2000);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 196096);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 212096);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetIndexSize(), 0);
         }
 
@@ -305,7 +305,7 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 5);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 4232);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetDataSize(), 4312);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetIndexSize(), 0);
         }
 
@@ -334,6 +334,7 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
     }
 
     Y_UNIT_TEST(SharedCacheGarbage) {
+        using namespace NSharedCache;
         TPortManager pm;
         TServerSettings serverSettings(pm.GetPort(2134));
         serverSettings.SetDomainName("Root")
@@ -378,7 +379,7 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
         }
 
         // each batch ~70KB, ~700KB in total
-        auto counters = MakeIntrusive<TSharedPageCacheCounters>(runtime.GetDynamicCounters());
+        auto counters = MakeHolder<TSharedPageCacheCounters>(GetServiceCounters(runtime.GetDynamicCounters(), "tablets")->GetSubgroup("type", "S_CACHE"));
         Cerr << "ActiveBytes = " << counters->ActiveBytes->Val() << " PassiveBytes = " << counters->PassiveBytes->Val() << Endl;
         UNIT_ASSERT_LE(counters->ActiveBytes->Val(), 800*1024); // one index
     }
@@ -388,6 +389,8 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
         TServerSettings serverSettings(pm.GetPort(2134));
         serverSettings.SetDomainName("Root")
             .SetUseRealThreads(false);
+        serverSettings.AppConfig->MutableDataShardConfig()
+            ->SetStatsReportIntervalSeconds(0);
 
         TServer::TPtr server = new TServer(serverSettings);
         auto& runtime = *server->GetRuntime();
@@ -398,8 +401,6 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
         runtime.SetLogPriority(NKikimrServices::TABLET_SAUSAGECACHE, NLog::PRI_TRACE);
 
         InitRoot(server, sender);
-
-        NDataShard::gDbStatsReportInterval = TDuration::Seconds(0);
 
         NLocalDb::TCompactionPolicyPtr policy = NLocalDb::CreateDefaultUserTablePolicy();
         policy->InMemForceStepsToSnapshot = 1;
@@ -501,6 +502,141 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
         NDataShard::gDbStatsRowCountResolution = gDbStatsRowCountResolutionBefore;
     }
 
+    Y_UNIT_TEST(Follower) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root")
+            .SetUseRealThreads(false)
+            .SetEnableForceFollowers(true);
+
+        TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+        
+        //runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
+        // runtime.SetLogPriority(NKikimrServices::TABLET_STATS_BUILDER, NLog::PRI_TRACE);
+
+        InitRoot(server, sender);
+
+        auto [shards, tableId1] = CreateShardedTable(server, sender, "/Root", "table-1",
+            TShardedTableOptions()
+                .Followers(3));
+        ui64 shard1 = shards.at(0);
+
+        ExecSQL(server, sender, "UPSERT INTO `/Root/table-1` (key, value) VALUES (1, 1), (2, 2);");
+
+        {
+            Cerr << "... waiting leader stats" << Endl;
+            auto stats = WaitTableStats(runtime, shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowUpdates(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 2);
+        }        
+        
+        {
+            auto selectResult = KqpSimpleStaleRoExec(runtime, "SELECT * FROM `/Root/table-1`", "/Root");
+            TString expectedSelectResult = 
+                "{ items { uint32_value: 1 } items { uint32_value: 1 } }, "
+                "{ items { uint32_value: 2 } items { uint32_value: 2 } }";
+            UNIT_ASSERT_VALUES_EQUAL(selectResult, expectedSelectResult);
+        }
+
+        {
+            Cerr << "... waiting for follower stats" << Endl;
+            auto stats = WaitTableFollowerStats(runtime, shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
+            UNIT_ASSERT_GE(stats.GetFollowerId(), 1);
+            UNIT_ASSERT_LE(stats.GetFollowerId(), 3);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRangeReadRows(), 2);
+        }
+    }
+
+    Y_UNIT_TEST(Tli) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root")
+            .SetUseRealThreads(false);
+
+        TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+        
+        runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::TABLET_STATS_BUILDER, NLog::PRI_TRACE);
+
+        InitRoot(server, sender);
+
+        const ui64 lockTxId = 1011121314;
+        i64 txId = 100;
+        TShardedTableOptions opts;        
+        auto [shards, tableId1] = CreateShardedTable(server, sender, "/Root", "table-1", opts);
+        ui64 shard1 = shards.at(0);
+
+        auto [tablesMap, ownerId] = GetTablesByPathId(server, shard1);
+        const auto& userTable = tablesMap.at(tableId1.PathId);
+        const auto& description = userTable.GetDescription();
+
+        {
+            Cerr << "... UPSERT" << Endl;
+            UpsertOneKeyValue(runtime, sender, shard1, tableId1, opts.Columns_, 1, 1, txId, NKikimrDataEvents::TEvWrite::MODE_IMMEDIATE);
+        }
+
+        {
+            Cerr << "... waiting for UPSERT stats" << Endl;
+            auto stats = WaitTableStats(runtime, shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowUpdates(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 1);
+        }          
+
+        {
+            Cerr << "... Read and set lock" << Endl;
+            auto request1 = GetBaseReadRequest(tableId1, description, 1);
+            request1->Record.SetLockTxId(lockTxId);
+            AddKeyQuery(*request1, {1});
+
+            auto readResult1 = SendRead(server, shard1, request1.release(), sender);
+
+            UNIT_ASSERT_VALUES_EQUAL(readResult1->Record.TxLocksSize(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(readResult1->Record.BrokenTxLocksSize(), 0);
+        }
+
+        {
+            Cerr << "... waiting for SELECT stats" << Endl;
+            auto stats = WaitTableStats(runtime, shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowReads(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetLocksAcquired(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetLocksBroken(), 0);
+        }        
+
+        {
+            Cerr << "... UPSERT and break lock" << Endl;
+            UpsertOneKeyValue(runtime, sender, shard1, tableId1, opts.Columns_, 1, 101, ++txId, NKikimrDataEvents::TEvWrite::MODE_IMMEDIATE);
+        }
+
+        {
+            Cerr << "... Read and check broken lock" << Endl;
+            auto request2 = GetBaseReadRequest(tableId1, description, 1);
+            request2->Record.SetLockTxId(lockTxId);
+            AddKeyQuery(*request2, {1});
+
+            auto readResult2 = SendRead(server, shard1, request2.release(), sender);
+
+            UNIT_ASSERT_VALUES_EQUAL(readResult2->Record.TxLocksSize(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(readResult2->Record.BrokenTxLocksSize(), 1);
+        }     
+
+        {
+            Cerr << "... waiting for SELECT stats with broken locks" << Endl;
+            auto stats = WaitTableStats(runtime, shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowReads(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetLocksAcquired(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetLocksBroken(), 1);
+        }
+    }    
+
     Y_UNIT_TEST(HasSchemaChanges_BTreeIndex) {
         TPortManager pm;
         TServerSettings serverSettings(pm.GetPort(2134));
@@ -570,31 +706,31 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
         {
             auto stats = WaitTableStats(runtime, shard1, HasPartCountCondition(1));
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetHasSchemaChanges(), false);
-            // UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetByKeyFilterSize(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetByKeyFilterSize(), 0);
         }
 
         WaitTxNotification(server, sender,
             AsyncSetEnableFilterByKey(server, "/Root", "table-1", true));
         {
             auto stats = WaitTableStats(runtime, shard1, HasSchemaChangesCondition());
-            // UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetByKeyFilterSize(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetByKeyFilterSize(), 0);
         }
         CompactTable(runtime, shard1, tableId1, false);
         {
             auto stats = WaitTableStats(runtime, shard1, DoesNotHaveSchemaChangesCondition());
-            // UNIT_ASSERT_GT(stats.GetTableStats().GetByKeyFilterSize(), 0);
+            UNIT_ASSERT_GT(stats.GetTableStats().GetByKeyFilterSize(), 0);
         }
 
         WaitTxNotification(server, sender,
             AsyncSetEnableFilterByKey(server, "/Root", "table-1", false));
         {
             auto stats = WaitTableStats(runtime, shard1, HasSchemaChangesCondition());
-            // UNIT_ASSERT_GT(stats.GetTableStats().GetByKeyFilterSize(), 0);
+            UNIT_ASSERT_GT(stats.GetTableStats().GetByKeyFilterSize(), 0);
         }
         CompactTable(runtime, shard1, tableId1, false);
         {
             auto stats = WaitTableStats(runtime, shard1, DoesNotHaveSchemaChangesCondition());
-            // UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetByKeyFilterSize(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetByKeyFilterSize(), 0);
         }
     }
 
@@ -696,6 +832,47 @@ Y_UNIT_TEST_SUITE(DataShardStats) {
         WaitTableStats(runtime, shard1, DoesNotHaveSchemaChangesCondition());
     }
 
+    Y_UNIT_TEST(BackupTableStatsReportInterval) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root")
+            .SetUseRealThreads(false);
+
+        TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
+
+        InitRoot(server, sender);
+
+        auto [shards, tableId1] = CreateShardedTable(server, sender, "/Root", "table-1", 1);
+
+        // Create a backup copy table
+        {
+            auto senderCopy = runtime.AllocateEdgeActor();
+            ui64 txId = AsyncCreateCopyTable(
+                server, senderCopy, "/Root", "table-2", "/Root/table-1", /*isBackup=*/true);
+            WaitTxNotification(server, senderCopy, txId);
+        }
+        auto tableId2 = ResolveTableId(server, sender, "/Root/table-2");
+
+        std::unordered_map<TLocalPathId, size_t> tableToStatsCount;
+        auto observerFunc = [&](auto& ev) {
+            const NKikimrTxDataShard::TEvPeriodicTableStats& record = ev->Get()->Record;
+            ++tableToStatsCount[record.GetTableLocalId()];
+        };
+        auto observer = runtime.AddObserver<TEvDataShard::TEvPeriodicTableStats>(observerFunc);
+
+        runtime.WaitFor("First stats event", [&]{ return !tableToStatsCount.empty(); });
+        runtime.SimulateSleep(TDuration::Seconds(45));
+        // Once every 10 seconds
+        UNIT_ASSERT_GE(tableToStatsCount[tableId1.PathId.LocalPathId], 4);
+        UNIT_ASSERT_LE(tableToStatsCount[tableId1.PathId.LocalPathId], 5);
+        // Once every 30 seconds
+        UNIT_ASSERT_GE(tableToStatsCount[tableId2.PathId.LocalPathId], 1);
+        UNIT_ASSERT_LE(tableToStatsCount[tableId2.PathId.LocalPathId], 2);
+    }
 }
 
 }

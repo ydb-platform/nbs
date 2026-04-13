@@ -2,7 +2,7 @@
 
 #include <optional>
 #include <util/network/sock.h>
-#include <contrib/ydb/library/actors/interconnect/poller_actor.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_actor.h>
 #include "sock_settings.h"
 #include "sock_ssl.h"
 
@@ -129,6 +129,11 @@ protected:
         if (AF == AF_INET6) {
             SetSockOpt(s, SOL_SOCKET, IPV6_V6ONLY, (int)false);
         }
+        SetSockOpt(s, SOL_SOCKET, SO_REUSEADDR, (int)true);
+#ifdef SO_REUSEPORT
+        SetSockOpt(s, SOL_SOCKET, SO_REUSEPORT, (int)true);
+#endif
+
         TSocketHolder sock(s);
         sock.Swap(*this);
     }

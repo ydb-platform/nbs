@@ -33,5 +33,7 @@ TMaybe<Ydb::Table::CreateTableRequest> GenYdbScheme(
     const TMap<ui32, TUserTable::TUserColumn>& columns,
     const NKikimrSchemeOp::TPathDescription& pathDesc);
 
+TMaybe<Ydb::Scheme::ModifyPermissionsRequest> GenYdbPermissions(
+    const NKikimrSchemeOp::TPathDescription& pathDesc);
 
 } // NKikimr::NDataShard

@@ -2,7 +2,6 @@
 #include <contrib/ydb/core/grpc_services/base/base.h>
 #include <contrib/ydb/core/grpc_services/base/flow_control.h>
 
-#include "rpc_common/rpc_common.h"
 #include "rpc_kqp_base.h"
 #include "service_table.h"
 
@@ -83,6 +82,27 @@ bool NeedReportPlan(const Ydb::Table::ExecuteScanQueryRequest& req) {
                 case Ydb::Table::QueryStatsCollection::STATS_COLLECTION_PROFILE:
                     return true;
 
+                default:
+                    break;
+            }
+
+            return false;
+
+        default:
+            return false;
+    }
+}
+
+bool NeedCollectDiagnostics(const Ydb::Table::ExecuteScanQueryRequest& req) {
+    switch (req.mode()) {
+        case ExecuteScanQueryRequest_Mode_MODE_EXPLAIN:
+            return true;
+
+        case ExecuteScanQueryRequest_Mode_MODE_EXEC:
+            switch (req.collect_stats()) {
+                case Ydb::Table::QueryStatsCollection::STATS_COLLECTION_FULL:
+                case Ydb::Table::QueryStatsCollection::STATS_COLLECTION_PROFILE:
+                    return true;
                 default:
                     break;
             }
@@ -192,7 +212,6 @@ private:
             HFunc(NKqp::TEvKqp::TEvQueryResponse, Handle);
             HFunc(NKqp::TEvKqp::TEvAbortExecution, Handle);
             HFunc(NKqp::TEvKqpExecuter::TEvStreamData, Handle);
-            HFunc(NKqp::TEvKqpExecuter::TEvStreamProfile, Handle);
             default: {
                 auto issue = MakeIssue(NKikimrIssues::TIssuesIds::DEFAULT_ERROR, TStringBuilder()
                     << "Unexpected event received in TStreamExecuteScanQueryRPC::StateWork: " << ev->GetTypeRewrite());
@@ -230,7 +249,7 @@ private:
             nullptr
         );
 
-        ev->Record.MutableRequest()->SetCollectDiagnostics(req->Getcollect_full_diagnostics());
+        ev->Record.MutableRequest()->SetCollectDiagnostics(NeedCollectDiagnostics(*req));
 
         if (!ctx.Send(NKqp::MakeKqpProxyID(ctx.SelfID.NodeId()), ev.Release())) {
             NYql::TIssues issues;
@@ -277,7 +296,7 @@ private:
     }
 
     void Handle(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev, const TActorContext&) {
-        auto& record = ev->Get()->Record.GetRef();
+        auto& record = ev->Get()->Record;
 
         NYql::TIssues issues;
         const auto& issueMessage = record.GetResponse().GetQueryIssues();
@@ -293,19 +312,16 @@ private:
 
             bool reportStats = NeedReportStats(*Request_->GetProtoRequest());
             bool reportPlan = reportStats && NeedReportPlan(*Request_->GetProtoRequest());
+            bool collectDiagnostics = NeedCollectDiagnostics(*Request_->GetProtoRequest());
 
             if (reportStats) {
                 if (kqpResponse.HasQueryStats()) {
-                    for (const auto& execStats: ExecutionProfiles_) {
-                        record.MutableResponse()->MutableQueryStats()->AddExecutions()->Swap(execStats.get());
-                    }
 
                     record.MutableResponse()->SetQueryPlan(reportPlan
                         ? SerializeAnalyzePlan(kqpResponse.GetQueryStats())
                         : "");
 
                     FillQueryStats(*response.mutable_result()->mutable_query_stats(), kqpResponse);
-                    ExecutionProfiles_.clear();
                 } else if (reportPlan) {
                     response.mutable_result()->mutable_query_stats()->set_query_plan(kqpResponse.GetQueryPlan());
                 }
@@ -314,7 +330,9 @@ private:
                     response.mutable_result()->mutable_query_stats()->set_query_ast(kqpResponse.GetQueryAst());
                 }
 
-                response.mutable_result()->set_query_full_diagnostics(kqpResponse.GetQueryDiagnostics());
+                if (collectDiagnostics) {
+                    response.mutable_result()->mutable_query_stats()->set_query_meta(kqpResponse.GetQueryDiagnostics());
+                }
 
                 Y_PROTOBUF_SUPPRESS_NODISCARD response.SerializeToString(&out);
                 Request_->SendSerializedResult(std::move(out), record.GetYdbStatus());
@@ -377,18 +395,6 @@ private:
         resp->Record.SetFreeSpace(freeSpaceBytes);
 
         ctx.Send(ev->Sender, resp.Release());
-    }
-
-    void Handle(NKqp::TEvKqpExecuter::TEvStreamProfile::TPtr& ev, const TActorContext&) {
-        auto req = Request_->GetProtoRequest();
-        if (!NeedReportStats(*req)) {
-            return;
-        }
-
-        // every TKqpExecuter sends its own profile
-        auto profile = std::make_unique<NYql::NDqProto::TDqExecutionStats>();
-        profile->Swap(ev->Get()->Record.MutableProfile());
-        ExecutionProfiles_.emplace_back(std::move(profile));
     }
 
 private:
@@ -490,17 +496,22 @@ private:
 
     TSchedulerCookieHolder TimeoutTimerCookieHolder_;
 
-    TVector<std::unique_ptr<NYql::NDqProto::TDqExecutionStats>> ExecutionProfiles_;
     TActorId ExecuterActorId_;
 };
 
 } // namespace
 
-void DoExecuteScanQueryRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
-    ui64 rpcBufferSize = f.GetChannelBufferSize();
-    auto* req = dynamic_cast<TEvStreamExecuteScanQueryRequest*>(p.release());
+template<>
+template<>
+IActor* TEvStreamExecuteScanQueryRequest::CreateRpcActor(IRequestNoOpCtx* msg, ui64 rpcBufferSize) {
+    auto* req = dynamic_cast<TEvStreamExecuteScanQueryRequest*>(msg);
     Y_ABORT_UNLESS(req != nullptr, "Wrong using of TGRpcRequestWrapper");
-    f.RegisterActor(new TStreamExecuteScanQueryRPC(req, rpcBufferSize));
+    return new TStreamExecuteScanQueryRPC(req, rpcBufferSize);
+}
+
+void DoExecuteScanQueryRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
+    auto actor = TEvStreamExecuteScanQueryRequest::CreateRpcActor(p.release(), f.GetChannelBufferSize());
+    f.RegisterActor(actor);
 }
 
 } // namespace NGRpcService

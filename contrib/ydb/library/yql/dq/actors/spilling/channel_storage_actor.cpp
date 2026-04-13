@@ -3,7 +3,7 @@
 #include "spilling.h"
 #include "spilling_file.h"
 
-#include <contrib/ydb/library/yql/utils/yql_panic.h>
+#include <yql/essentials/utils/yql_panic.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -88,8 +88,7 @@ protected:
     }
 
     void SendInternal(const TActorId& recipient, IEventBase* ev, TEventFlags flags = IEventHandle::FlagTrackDelivery) {
-        bool isSent = Send(recipient, ev, flags);
-        Y_ABORT_UNLESS(isSent, "Event was not sent");
+        if (!Send(recipient, ev, flags)) FailWithError("Event was not sent");
     }
 
 private:
@@ -129,7 +128,7 @@ private:
 
         auto opBegin = TInstant::Now();
 
-        auto writingBlobInfo = TWritingBlobInfo{msg.Blob_.size(), std::move(msg.Promise_), opBegin};
+        auto writingBlobInfo = TWritingBlobInfo{msg.Blob_.Size(), std::move(msg.Promise_), opBegin};
         WritingBlobs_.emplace(msg.BlobId_, std::move(writingBlobInfo));
 
         SendInternal(SpillingActorId_, new TEvDqSpilling::TEvWrite(msg.BlobId_, std::move(msg.Blob_)));

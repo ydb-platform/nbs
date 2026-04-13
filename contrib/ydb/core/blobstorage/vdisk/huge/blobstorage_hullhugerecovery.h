@@ -71,7 +71,6 @@ namespace NKikimr {
         class THeap;
 
         struct THullHugeKeeperPersState {
-            typedef THashSet<NHuge::THugeSlot> TAllocatedSlots;
             static const ui32 Signature;
 
             TIntrusivePtr<TVDiskContext> VCtx;
@@ -79,7 +78,8 @@ namespace NKikimr {
             THullHugeRecoveryLogPos LogPos;
             std::unique_ptr<NHuge::THeap> Heap;
             // slots that are already allocated, but not written to log
-            TAllocatedSlots AllocatedSlots;
+            THashSet<THugeSlot> SlotsInFlight;
+            THashMap<ui32, std::tuple<ui32, ui32>> ChunkToSlotSize;
             // guard to avoid using structure before recovery has been completed
             bool Recovered = false;
             // guid for this instance of pers state
@@ -92,7 +92,6 @@ namespace NKikimr {
                                      const ui32 chunkSize,
                                      const ui32 appendBlockSize,
                                      const ui32 minHugeBlobInBytes,
-                                     const ui32 oldMinHugeBlobInBytes,
                                      const ui32 milestoneHugeBlobInBytes,
                                      const ui32 maxBlobInBytes,
                                      const ui32 overhead,
@@ -103,7 +102,6 @@ namespace NKikimr {
                                      const ui32 chunkSize,
                                      const ui32 appendBlockSize,
                                      const ui32 minHugeBlobInBytes,
-                                     const ui32 oldMinHugeBlobInBytes,
                                      const ui32 milestoneHugeBlobInBytes,
                                      const ui32 maxBlobInBytes,
                                      const ui32 overhead,
@@ -116,7 +114,6 @@ namespace NKikimr {
                                      const ui32 chunkSize,
                                      const ui32 appendBlockSize,
                                      const ui32 minHugeBlobInBytes,
-                                     const ui32 oldMinHugeBlobInBytes,
                                      const ui32 milestoneHugeBlobInBytes,
                                      const ui32 maxBlobInBytes,
                                      const ui32 overhead,
@@ -136,7 +133,7 @@ namespace NKikimr {
             static bool CheckEntryPoint(TContiguousSpan data);
             TString ToString() const;
             void RenderHtml(IOutputStream &str) const;
-            ui32 GetMinREALHugeBlobInBytes() const;
+            ui32 GetMinHugeBlobInBytes() const;
             ui64 FirstLsnToKeep(ui64 minInFlightLsn = Max<ui64>()) const;
             TString FirstLsnToKeepDecomposed() const;
             bool WouldNewEntryPointAdvanceLog(ui64 freeUpToLsn, ui64 minInFlightLsn, ui32 itemsAfterCommit) const;
@@ -145,6 +142,13 @@ namespace NKikimr {
             void InitiateNewEntryPointCommit(ui64 lsn, ui64 minInFlightLsn);
             // finish commit
             void EntryPointCommitted(ui64 lsn);
+
+            void AddSlotInFlight(THugeSlot hugeSlot);
+            bool DeleteSlotInFlight(THugeSlot hugeSlot);
+
+            void AddChunkSize(THugeSlot hugeSlot);
+            void DeleteChunkSize(THugeSlot hugeSlot);
+            void RegisterBlob(TDiskPart diskPart);
 
             enum ESlotDelDbType {
                 LogoBlobsDb,

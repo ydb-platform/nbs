@@ -6,6 +6,7 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/auth.h>
 #include <contrib/ydb/core/base/nameservice.h>
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
@@ -173,18 +174,10 @@ public:
 
 private:
     bool CheckAccess() {
-        const auto serializedToken = TBase::GetSerializedToken();
-        // Empty serializedToken means token is not required. Checked in secure_request.h
-        if (!serializedToken.empty() && !AppData()->RegisterDynamicNodeAllowedSIDs.empty()) {
-            NACLib::TUserToken token(serializedToken);
-            for (const auto& sid : AppData()->RegisterDynamicNodeAllowedSIDs) {
-                if (token.IsExist(sid)) {
-                    IsNodeAuthorizedByCertificate = true;
-                    return true;
-                }
-            }
-            return false;
+        if (TBase::IsTokenRequired()) {
+            return IsTokenAllowed(TBase::GetParsedToken().Get(), AppData()->RegisterDynamicNodeAllowedSIDs);
         }
+        // if token is not required access is granted
         return true;
     }
 

@@ -9,9 +9,11 @@
 namespace NYql {
 
 struct TDummyTopic {
-    TDummyTopic(const TString& cluster, const TString& path)
+    TDummyTopic(const TString& cluster, const TString& topicName, const TMaybe<TString>& path = {}, size_t partitionCount = 1)
         : Cluster(cluster)
+        , TopicName(topicName)
         , Path(path)
+        , PartitionsCount(partitionCount)
     {
     }
 
@@ -21,16 +23,18 @@ struct TDummyTopic {
     }
 
     TString Cluster;
-    TString Path;
-    size_t PartitionsCount = 1;
+    TString TopicName;
+    TMaybe<TString> Path;
+    size_t PartitionsCount;
+    bool CancelOnFileFinish = false;
 };
 
 // Dummy Pq gateway for tests.
 class TDummyPqGateway : public IPqGateway {
 public:
     TDummyPqGateway& AddDummyTopic(const TDummyTopic& topic);
+    ~TDummyPqGateway() {}
 
-public:
     NThreading::TFuture<void> OpenSession(const TString& sessionId, const TString& username) override;
     NThreading::TFuture<void> CloseSession(const TString& sessionId) override;
 
@@ -54,11 +58,17 @@ public:
         const TString& endpoint,
         const TString& database,
         bool secure) override;
+    
+    ITopicClient::TPtr GetTopicClient(const NYdb::TDriver& driver, const NYdb::NTopic::TTopicClientSettings& settings) override;
 
+    using TClusterNPath = std::pair<TString, TString>;
 private:
     mutable TMutex Mutex;
-    THashMap<std::pair<TString, TString>, TDummyTopic> Topics;
+    THashMap<TClusterNPath, TDummyTopic> Topics;
+
     THashSet<TString> OpenedSessions;
 };
+
+IPqGateway::TPtr CreatePqFileGateway();
 
 } // namespace NYql

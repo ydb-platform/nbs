@@ -7,7 +7,7 @@
 #include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/storage.h>
 #include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/storages_manager.h>
 #include <contrib/ydb/core/tx/columnshard/splitter/abstract/chunks.h>
-#include <contrib/ydb/library/formats/arrow/common/validation.h>
+#include <contrib/ydb/library/formats/arrow/validation/validation.h>
 #include <contrib/ydb/core/tx/columnshard/engines/scheme/abstract/index_info.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/type.h>

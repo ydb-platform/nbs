@@ -26,9 +26,10 @@ PEERDIR(
     contrib/ydb/core/testlib/actors
     contrib/ydb/core/tx/columnshard
     contrib/ydb/core/tx/scheme_board
+    contrib/ydb/core/tx/schemeshard
     contrib/ydb/core/util
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    yql/essentials/minikql/invoke_builtins/llvm16
+    yql/essentials/public/udf/service/exception_policy
     contrib/ydb/services/kesus
     contrib/ydb/services/persqueue_cluster_discovery
     contrib/ydb/services/ydb
@@ -46,4 +47,5 @@ END()
 
 RECURSE(
     default
+    pg
 )

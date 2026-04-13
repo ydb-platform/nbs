@@ -258,7 +258,6 @@ public:
     bool Enqueue(const TShardCompactionInfo& info) {
         // ignore empty shard (we don't check memtable, because it's up to DS to compact it),
         // note that Config.RowDeletesThreshold == 0 is expected in tests only
-        //
         if (info.PartCount == 0 && Config.RowCountThreshold != 0)
             return false;
 
@@ -271,13 +270,17 @@ public:
         if (info.RowCount < Config.RowCountThreshold)
             return false;
 
+        bool enqueued = false;
+
         if (info.SearchHeight >= Config.SearchHeightThreshold)
-            QueueSearchHeight.Enqueue(info);
+            enqueued |= QueueSearchHeight.Enqueue(info);
 
         if (info.RowDeletes >= Config.RowDeletesThreshold)
-            QueueRowDeletes.Enqueue(info);
+            enqueued |= QueueRowDeletes.Enqueue(info);
 
-        return QueueLastCompaction.Enqueue(info);
+        enqueued |= QueueLastCompaction.Enqueue(info);
+
+        return enqueued;
     }
 
     bool Remove(const TShardCompactionInfo& info) {

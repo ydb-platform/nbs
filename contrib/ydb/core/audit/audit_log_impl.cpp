@@ -6,15 +6,15 @@
 #include <library/cpp/logger/record.h>
 #include <library/cpp/logger/backend.h>
 
+#include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <contrib/ydb/core/base/events.h>
-
 #include "audit_log_impl.h"
+#include "audit_log_item_builder.h"
 #include "audit_log_service.h"
 #include "audit_log.h"
 
@@ -59,9 +59,9 @@ struct TEvAuditLog {
 
     struct TEvWriteAuditLog : public NActors::TEventLocal<TEvWriteAuditLog, EvWriteAuditLog> {
         TInstant Time;
-        TVector<std::pair<TString, TString>> Parts;
+        TAuditLogParts Parts;
 
-        TEvWriteAuditLog(TInstant time, TVector<std::pair<TString, TString>>&& parts)
+        TEvWriteAuditLog(TInstant time, TAuditLogParts&& parts)
             : Time(time)
             , Parts(std::move(parts))
         {}
@@ -82,12 +82,11 @@ void WriteLog(const TString& log, const TVector<THolder<TLogBackend>>& logBacken
     }
 }
 
-TString GetJsonLog(const TEvAuditLog::TEvWriteAuditLog::TPtr& ev) {
-    const auto* msg = ev->Get();
+TString GetJsonLog(TInstant time, const TAuditLogParts& parts) {
     TStringStream ss;
-    ss << msg->Time << ": ";
+    ss << time << ": ";
     NJson::TJsonMap m;
-    for (auto& [k, v] : msg->Parts) {
+    for (auto& [k, v] : parts) {
         m[k] = v;
     }
     NJson::WriteJson(&ss, &m, false, false);
@@ -95,19 +94,18 @@ TString GetJsonLog(const TEvAuditLog::TEvWriteAuditLog::TPtr& ev) {
     return ss.Str();
 }
 
-TString GetJsonLogCompatibleLog(const TEvAuditLog::TEvWriteAuditLog::TPtr& ev) {
-    const auto* msg = ev->Get();
+TString GetJsonLogCompatibleLog(TInstant time, const TAuditLogParts& parts) {
     TStringStream ss;
     NJsonWriter::TBuf json(NJsonWriter::HEM_DONT_ESCAPE_HTML, &ss);
     {
         auto obj = json.BeginObject();
         obj
             .WriteKey("@timestamp")
-            .WriteString(msg->Time.ToString().data())
+            .WriteString(time.ToString().data())
             .WriteKey("@log_type")
             .WriteString("audit");
 
-        for (auto& [k, v] : msg->Parts) {
+        for (auto& [k, v] : parts) {
             obj.WriteKey(k).WriteString(v);
         }
         json.EndObject();
@@ -116,17 +114,33 @@ TString GetJsonLogCompatibleLog(const TEvAuditLog::TEvWriteAuditLog::TPtr& ev) {
     return ss.Str();
 }
 
-TString GetTxtLog(const TEvAuditLog::TEvWriteAuditLog::TPtr& ev) {
-    const auto* msg = ev->Get();
+TString GetTxtLog(TInstant time, const TAuditLogParts& parts) {
     TStringStream ss;
-    ss << msg->Time << ": ";
-    for (auto it = msg->Parts.begin(); it != msg->Parts.end(); it++) {
-        if (it != msg->Parts.begin())
+    ss << time << ": ";
+    for (auto it = parts.begin(); it != parts.end(); it++) {
+        if (it != parts.begin())
             ss << ", ";
         ss << it->first << "=" << it->second;
     }
     ss << Endl;
     return ss.Str();
+}
+
+// Array of functions for converting a audit event parameters to a string.
+// Indexing in the array occurs by the value of the NKikimrConfig::TAuditConfig::EFormat enumeration.
+// For each new format, we need to register the audit event conversion function.
+// The size of AuditLogItemBuilders must be larger by one of the maximum value of the NKikimrConfig::TAuditConfig::EFormat enumeration.
+// The first value of AuditLogItemBuilders is a stub for the convenience of indexing by enumeration value.
+static std::vector<TAuditLogItemBuilder> AuditLogItemBuilders = { nullptr, GetJsonLog, GetTxtLog, GetJsonLogCompatibleLog, nullptr };
+
+// numbering enumeration starts from one
+static constexpr size_t DefaultAuditLogItemBuilder = static_cast<size_t>(NKikimrConfig::TAuditConfig::JSON);
+
+void RegisterAuditLogItemBuilder(NKikimrConfig::TAuditConfig::EFormat format, TAuditLogItemBuilder builder) {
+    size_t index = static_cast<size_t>(format);
+    if (index < AuditLogItemBuilders.size()) {
+        AuditLogItemBuilders[index] = builder;
+    }
 }
 
 class TAuditLogActor final : public TActor<TAuditLogActor> {
@@ -167,19 +181,13 @@ private:
     void HandleWriteAuditLog(const TEvAuditLog::TEvWriteAuditLog::TPtr& ev) {
         EscapeNonUtf8LogParts(ev);
         for (auto& logBackends : LogBackends) {
-            switch (logBackends.first) {
-                case NKikimrConfig::TAuditConfig::JSON:
-                    WriteLog(GetJsonLog(ev), logBackends.second);
-                    break;
-                case NKikimrConfig::TAuditConfig::TXT:
-                    WriteLog(GetTxtLog(ev), logBackends.second);
-                    break;
-                case NKikimrConfig::TAuditConfig::JSON_LOG_COMPATIBLE:
-                    WriteLog(GetJsonLogCompatibleLog(ev), logBackends.second);
-                    break;
-                default:
-                    WriteLog(GetJsonLog(ev), logBackends.second);
-                    break;
+            const auto builderIndex = static_cast<size_t>(logBackends.first);
+            const auto builder = builderIndex < AuditLogItemBuilders.size() && AuditLogItemBuilders[builderIndex] != nullptr
+                ? AuditLogItemBuilders[builderIndex] : AuditLogItemBuilders[DefaultAuditLogItemBuilder];
+            const auto msg = ev->Get();
+            const auto auditLogItem = builder(msg->Time, msg->Parts);
+            if (!auditLogItem.empty()) {
+                WriteLog(auditLogItem, logBackends.second);
             }
         }
     }
@@ -197,7 +205,7 @@ private:
 
 std::atomic<bool> AUDIT_LOG_ENABLED = false;
 
-void SendAuditLog(const NActors::TActorSystem* sys, TVector<std::pair<TString, TString>>&& parts)
+void SendAuditLog(const NActors::TActorSystem* sys, TAuditLogParts&& parts)
 {
     auto request = MakeHolder<TEvAuditLog::TEvWriteAuditLog>(Now(), std::move(parts));
     sys->Send(MakeAuditServiceID(), request.Release());
@@ -218,7 +226,7 @@ static void EscapeNonUtf8(TString& s) {
     }
 }
 
-void EscapeNonUtf8LogParts(TVector<std::pair<TString, TString>>& parts) {
+void EscapeNonUtf8LogParts(TAuditLogParts& parts) {
     for (auto& [k, v] : parts) {
         EscapeNonUtf8(k);
         EscapeNonUtf8(v);

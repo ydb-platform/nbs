@@ -21,7 +21,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 class TResultSet;
 class TValue;

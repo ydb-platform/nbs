@@ -72,6 +72,10 @@ class CreateTenantRequest(AbstractProtobufBuilder):
     def set_attribute(self, name, value):
         self.protobuf.CreateTenantRequest.Request.attributes[name] = value
 
+    def set_options(self, **kwargs):
+        for name, value in kwargs.items():
+            setattr(self.protobuf.CreateTenantRequest.Request.options, name, value)
+
 
 class AlterTenantRequest(AbstractProtobufBuilder):
     """
@@ -81,6 +85,10 @@ class AlterTenantRequest(AbstractProtobufBuilder):
     def __init__(self, path):
         super(AlterTenantRequest, self).__init__(msgbus.TConsoleRequest())
         self.protobuf.AlterTenantRequest.Request.path = path
+
+    def set_user_token(self, token):
+        self.protobuf.SecurityToken = to_bytes(token)
+        self.protobuf.AlterTenantRequest.UserToken = to_bytes(token)
 
     def set_schema_quotas(self, schema_quotas):
         quotas = self.protobuf.AlterTenantRequest.Request.schema_operation_quotas

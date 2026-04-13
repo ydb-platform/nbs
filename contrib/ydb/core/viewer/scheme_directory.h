@@ -6,11 +6,6 @@
 
 namespace NKikimr::NViewer {
 
-class TSchemeDirectory : public IActor {
-public:
-    TSchemeDirectory(IViewer*, NMon::TEvHttpInfo::TPtr&) {}
-};
-
 using TSchemeDirectoryGetRpc = TJsonLocalRpc<Ydb::Scheme::ListDirectoryRequest,
                                              Ydb::Scheme::ListDirectoryResponse,
                                              Ydb::Scheme::ListDirectoryResult,
@@ -34,7 +29,7 @@ template<typename LocalRpcType>
 class TSchemeDirectoryRequest : public LocalRpcType {
 protected:
     using TBase = LocalRpcType;
-    using TRequestProtoType = typename TBase::TRequestProtoType;
+    using TRequestProtoType = TBase::TRequestProtoType;
     using TBase::Database;
 
 public:
@@ -57,10 +52,10 @@ public:
     }
 };
 
-class TJsonSchemeDirectoryHandler : public TJsonHandler<TSchemeDirectory> {
+class TJsonSchemeDirectoryHandler : public TJsonHandler<void> {
 public:
     TJsonSchemeDirectoryHandler()
-        : TJsonHandler<TSchemeDirectory>(GetSwagger())
+        : TJsonHandler(GetSwagger())
     {}
 
     IActor* CreateRequestActor(IViewer* viewer, NMon::TEvHttpInfo::TPtr& event) override {

@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
 #include <contrib/ydb/core/grpc_services/rpc_deferrable.h>
 #include <contrib/ydb/core/grpc_services/rpc_scheme_base.h>
+#include <contrib/ydb/core/protos/sqs.pb.h>
 #include <contrib/ydb/core/persqueue/partition.h>
 #include <contrib/ydb/core/persqueue/pq_rl_helpers.h>
 #include <contrib/ydb/core/persqueue/write_meta.h>
@@ -96,7 +97,7 @@ namespace NKikimr::NYmq::V1 {
                 operation.set_status(Ydb::StatusIds::StatusCode::StatusIds_StatusCode_SUCCESS);
                 Ydb::Ymq::V1::QueueTags queueTags;
                 for (const auto& t: resp.GetQueueTags()) {
-                    (*queueTags.mutable_tags())[t.GetKey()] = t.GetValue();
+                    queueTags.mutable_tags()->emplace(t.GetKey(), t.GetValue());
                 }
                 operation.mutable_metadata()->PackFrom(queueTags);
                 operation.mutable_result()->PackFrom(this->GetResult(resp));
@@ -368,7 +369,7 @@ namespace NKikimr::NYmq::V1 {
                     dstAttribute.set_binary_value(srcAttribute.GetBinaryValue());
                     dstAttribute.set_data_type(srcAttribute.GetDataType());
                     dstAttribute.set_string_value(srcAttribute.GetStringValue());
-                    dstMessage.mutable_message_attributes()->insert({srcAttribute.GetName(), dstAttribute});
+                    dstMessage.mutable_message_attributes()->emplace(srcAttribute.GetName(), dstAttribute);
                 }
 
                 dstMessage.set_message_id(srcMessage.GetMessageId());
@@ -431,17 +432,17 @@ namespace NKikimr::NYmq::V1 {
 
     template <typename T>
     void AddAttribute(Ydb::Ymq::V1::GetQueueAttributesResult& result, const TString& name, T value) {
-        result.Mutableattributes()->insert({name, std::to_string(value)});
+        result.Mutableattributes()->emplace(name, std::to_string(value));
     };
 
     template<>
     void AddAttribute<TString>(Ydb::Ymq::V1::GetQueueAttributesResult& result, const TString& name, TString value) {
-        result.Mutableattributes()->insert({name, value});
+        result.Mutableattributes()->emplace(name, value);
     };
 
     template <>
     void AddAttribute(Ydb::Ymq::V1::GetQueueAttributesResult& result, const TString& name, bool value) {
-        (*result.Mutableattributes())[name] = value ? "true" : "false";
+        result.Mutableattributes()->emplace(name, value ? "true" : "false");
     };
 
     class TGetQueueAttributesReplyCallback : public TReplyCallback<
@@ -795,7 +796,6 @@ namespace NKikimr::NYmq::V1 {
 
         Ydb::Ymq::V1::SendMessageBatchResult GetResult(const NKikimrClient::TSqsResponse& response) override {
             Ydb::Ymq::V1::SendMessageBatchResult result;
-            response.GetSendMessageBatch();
             for (auto& entry : response.GetSendMessageBatch().GetEntries()) {
                 if (entry.GetError().HasErrorCode()) {
                     auto currentFailed = result.Addfailed();
@@ -980,7 +980,7 @@ namespace NKikimr::NYmq::V1 {
             const auto& tags = GetResponse(resp);
 
             for (const auto& t: tags.GetTags()) {
-                (*result.mutable_tags())[t.GetKey()] = t.GetValue();
+                result.mutable_tags()->emplace(t.GetKey(), t.GetValue());
             }
 
             return result;

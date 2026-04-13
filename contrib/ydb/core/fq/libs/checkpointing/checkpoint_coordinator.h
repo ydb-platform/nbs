@@ -11,7 +11,7 @@
 #include <contrib/ydb/public/api/protos/draft/fq.pb.h>
 
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
-#include <contrib/ydb/library/yql/dq/actors/compute/retry_queue.h>
+#include <contrib/ydb/library/yql/dq/actors/common/retry_queue.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/events.h>
 #include <contrib/ydb/library/yql/providers/dq/actors/task_controller_impl.h>
 
@@ -193,6 +193,7 @@ private:
     std::unique_ptr<TPendingInitCoordinator> PendingInit;
     bool GraphIsRunning = false;
     bool InitingZeroCheckpoint = false;
+    bool FailedZeroCheckpoint = false;
     bool RestoringFromForeignCheckpoint = false;
 
     TCheckpointCoordinatorMetrics Metrics;

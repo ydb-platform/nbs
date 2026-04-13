@@ -1,7 +1,7 @@
 #include <contrib/ydb/core/statistics/events.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_state.h>
 #include <contrib/ydb/core/tx/datashard/datashard_impl.h>
-#include <contrib/ydb/library/minsketch/count_min_sketch.h>
+#include <yql/essentials/core/minsketch/count_min_sketch.h>
 
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -78,7 +78,7 @@ public:
             auto countMinSketch = CountMinSketches[t]->AsStringBuf();
             auto* statCMS = column->AddStatistics();
             statCMS->SetType(NKikimr::NStat::COUNT_MIN_SKETCH);
-            statCMS->SetData(countMinSketch.Data(), countMinSketch.Size());
+            statCMS->SetData(countMinSketch.data(), countMinSketch.size());
         }
 
         TlsActivationContext->Send(new IEventHandle(ReplyTo, TActorId(), response.release(), 0, Cookie));

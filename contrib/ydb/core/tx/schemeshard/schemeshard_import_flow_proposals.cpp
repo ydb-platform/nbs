@@ -4,6 +4,8 @@
 
 #include <contrib/ydb/core/base/path.h>
 #include <contrib/ydb/core/ydb_convert/table_description.h>
+#include <contrib/ydb/core/ydb_convert/ydb_convert.h>
+#include <contrib/ydb/core/protos/s3_settings.pb.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
@@ -11,25 +13,21 @@ namespace NSchemeShard {
 THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateTablePropose(
     TSchemeShard* ss,
     TTxId txId,
-    TImportInfo::TPtr importInfo,
+    const TImportInfo& importInfo,
     ui32 itemIdx,
     TString& error
 ) {
-    Y_ABORT_UNLESS(itemIdx < importInfo->Items.size());
-    const auto& item = importInfo->Items.at(itemIdx);
+    Y_ABORT_UNLESS(itemIdx < importInfo.Items.size());
+    const auto& item = importInfo.Items.at(itemIdx);
 
-    auto propose = MakeModifySchemeTransaction(ss, txId, *importInfo);
+    auto propose = MakeModifySchemeTransaction(ss, txId, importInfo);
     auto& record = propose->Record;
-
-    if (importInfo->UserSID) {
-        record.SetOwner(*importInfo->UserSID);
-    }
 
     auto& modifyScheme = *record.AddTransaction();
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpCreateIndexedTable);
     modifyScheme.SetInternal(true);
 
-    const TPath domainPath = TPath::Init(importInfo->DomainPathId, ss);
+    const TPath domainPath = TPath::Init(importInfo.DomainPathId, ss);
 
     std::pair<TString, TString> wdAndPath;
     if (!TrySplitPathByDb(item.DstPathName, domainPath.PathString(), wdAndPath, error)) {
@@ -54,30 +52,9 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateTablePropose(
             case Ydb::Table::ColumnMeta::kFromSequence: {
                 const auto& fromSequence = column.from_sequence();
 
-                auto seqDesc = indexedTable->MutableSequenceDescription()->Add();
-                seqDesc->SetName(fromSequence.name());
-                if (fromSequence.has_min_value()) {
-                    seqDesc->SetMinValue(fromSequence.min_value());
-                }
-                if (fromSequence.has_max_value()) {
-                    seqDesc->SetMaxValue(fromSequence.max_value());
-                }
-                if (fromSequence.has_start_value()) {
-                    seqDesc->SetStartValue(fromSequence.start_value());
-                }
-                if (fromSequence.has_cache()) {
-                    seqDesc->SetCache(fromSequence.cache());
-                }
-                if (fromSequence.has_increment()) {
-                    seqDesc->SetIncrement(fromSequence.increment());
-                }
-                if (fromSequence.has_cycle()) {
-                    seqDesc->SetCycle(fromSequence.cycle());
-                }
-                if (fromSequence.has_set_val()) {
-                    auto* setVal = seqDesc->MutableSetVal();
-                    setVal->SetNextUsed(fromSequence.set_val().next_used());
-                    setVal->SetNextValue(fromSequence.set_val().next_value());
+                auto* seqDesc = indexedTable->MutableSequenceDescription()->Add();
+                if (!FillSequenceDescription(*seqDesc, fromSequence, status, error)) {
+                    return nullptr;
                 }
 
                 break;
@@ -89,13 +66,22 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateTablePropose(
         }
     }
 
+    if (importInfo.UserSID) {
+        record.SetOwner(*importInfo.UserSID);
+    }
+    FillOwner(record, item.Permissions);
+
+    if (!FillACL(modifyScheme, item.Permissions, error)) {
+        return nullptr;
+    }
+
     return propose;
 }
 
 THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateTablePropose(
     TSchemeShard* ss,
     TTxId txId,
-    TImportInfo::TPtr importInfo,
+    const TImportInfo& importInfo,
     ui32 itemIdx
 ) {
     TString unused;
@@ -138,13 +124,13 @@ static NKikimrSchemeOp::TTableDescription RebuildTableDescription(
 THolder<TEvSchemeShard::TEvModifySchemeTransaction> RestorePropose(
     TSchemeShard* ss,
     TTxId txId,
-    TImportInfo::TPtr importInfo,
+    const TImportInfo& importInfo,
     ui32 itemIdx
 ) {
-    Y_ABORT_UNLESS(itemIdx < importInfo->Items.size());
-    const auto& item = importInfo->Items.at(itemIdx);
+    Y_ABORT_UNLESS(itemIdx < importInfo.Items.size());
+    const auto& item = importInfo.Items.at(itemIdx);
 
-    auto propose = MakeModifySchemeTransaction(ss, txId, *importInfo);
+    auto propose = MakeModifySchemeTransaction(ss, txId, importInfo);
     auto& record = propose->Record;
 
     auto& modifyScheme = *record.AddTransaction();
@@ -160,19 +146,27 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> RestorePropose(
     task.SetTableName(dstPath.LeafName());
     *task.MutableTableDescription() = RebuildTableDescription(GetTableDescription(ss, item.DstPathId), item.Scheme);
 
-    switch (importInfo->Kind) {
+    if (importInfo.Settings.has_encryption_settings()) {
+        auto& taskEncryptionSettings = *task.MutableEncryptionSettings();
+        *taskEncryptionSettings.MutableSymmetricKey() = importInfo.Settings.encryption_settings().symmetric_key();
+        if (item.ExportItemIV) {
+            taskEncryptionSettings.SetIV(item.ExportItemIV->GetBinaryString());
+        }
+    }
+
+    switch (importInfo.Kind) {
     case TImportInfo::EKind::S3:
         {
-            task.SetNumberOfRetries(importInfo->Settings.number_of_retries());
+            task.SetNumberOfRetries(importInfo.Settings.number_of_retries());
             auto& restoreSettings = *task.MutableS3Settings();
-            restoreSettings.SetEndpoint(importInfo->Settings.endpoint());
-            restoreSettings.SetBucket(importInfo->Settings.bucket());
-            restoreSettings.SetAccessKey(importInfo->Settings.access_key());
-            restoreSettings.SetSecretKey(importInfo->Settings.secret_key());
-            restoreSettings.SetObjectKeyPattern(importInfo->Settings.items(itemIdx).source_prefix());
-            restoreSettings.SetUseVirtualAddressing(!importInfo->Settings.disable_virtual_addressing());
+            restoreSettings.SetEndpoint(importInfo.Settings.endpoint());
+            restoreSettings.SetBucket(importInfo.Settings.bucket());
+            restoreSettings.SetAccessKey(importInfo.Settings.access_key());
+            restoreSettings.SetSecretKey(importInfo.Settings.secret_key());
+            restoreSettings.SetObjectKeyPattern(importInfo.GetItemSrcPrefix(itemIdx));
+            restoreSettings.SetUseVirtualAddressing(!importInfo.Settings.disable_virtual_addressing());
 
-            switch (importInfo->Settings.scheme()) {
+            switch (importInfo.Settings.scheme()) {
             case Ydb::Import::ImportFromS3Settings::HTTP:
                 restoreSettings.SetScheme(NKikimrSchemeOp::TS3Settings::HTTP);
                 break;
@@ -183,8 +177,12 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> RestorePropose(
                 Y_ABORT("Unknown scheme");
             }
 
-            if (const auto region = importInfo->Settings.region()) {
+            if (const auto region = importInfo.Settings.region()) {
                 restoreSettings.SetRegion(region);
+            }
+
+            if (!item.Metadata.HasVersion() || item.Metadata.GetVersion() > 0) {
+                task.SetValidateChecksums(!importInfo.Settings.skip_checksum_validation());
             }
         }
         break;
@@ -194,13 +192,13 @@ THolder<TEvSchemeShard::TEvModifySchemeTransaction> RestorePropose(
 }
 
 THolder<TEvSchemeShard::TEvCancelTx> CancelRestorePropose(
-    TImportInfo::TPtr importInfo,
+    const TImportInfo& importInfo,
     TTxId restoreTxId
 ) {
     auto propose = MakeHolder<TEvSchemeShard::TEvCancelTx>();
 
     auto& record = propose->Record;
-    record.SetTxId(importInfo->Id);
+    record.SetTxId(importInfo.Id);
     record.SetTargetTxId(ui64(restoreTxId));
 
     return propose;
@@ -209,12 +207,12 @@ THolder<TEvSchemeShard::TEvCancelTx> CancelRestorePropose(
 THolder<TEvIndexBuilder::TEvCreateRequest> BuildIndexPropose(
     TSchemeShard* ss,
     TTxId txId,
-    TImportInfo::TPtr importInfo,
+    const TImportInfo& importInfo,
     ui32 itemIdx,
     const TString& uid
 ) {
-    Y_ABORT_UNLESS(itemIdx < importInfo->Items.size());
-    const auto& item = importInfo->Items.at(itemIdx);
+    Y_ABORT_UNLESS(itemIdx < importInfo.Items.size());
+    const auto& item = importInfo.Items.at(itemIdx);
 
     NKikimrIndexBuilder::TIndexBuildSettings settings;
 
@@ -231,7 +229,7 @@ THolder<TEvIndexBuilder::TEvCreateRequest> BuildIndexPropose(
         settings.mutable_index()->mutable_global_index();
     }
 
-    const TPath domainPath = TPath::Init(importInfo->DomainPathId, ss);
+    const TPath domainPath = TPath::Init(importInfo.DomainPathId, ss);
     auto propose = MakeHolder<TEvIndexBuilder::TEvCreateRequest>(ui64(txId), domainPath.PathString(), std::move(settings));
     auto& request = propose->Record;
     (*request.MutableOperationParams()->mutable_labels())["uid"] = uid;
@@ -242,11 +240,129 @@ THolder<TEvIndexBuilder::TEvCreateRequest> BuildIndexPropose(
 
 THolder<TEvIndexBuilder::TEvCancelRequest> CancelIndexBuildPropose(
     TSchemeShard* ss,
-    TImportInfo::TPtr importInfo,
+    const TImportInfo& importInfo,
     TTxId indexBuildId
 ) {
-    const TPath domainPath = TPath::Init(importInfo->DomainPathId, ss);
+    const TPath domainPath = TPath::Init(importInfo.DomainPathId, ss);
     return MakeHolder<TEvIndexBuilder::TEvCancelRequest>(ui64(indexBuildId), domainPath.PathString(), ui64(indexBuildId));
+}
+
+THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateChangefeedPropose(
+    TSchemeShard* ss,
+    TTxId txId,
+    const TImportInfo& importInfo,
+    const TImportInfo::TItem& item,
+    TString& error
+) {
+    Y_ABORT_UNLESS(item.NextChangefeedIdx < item.Changefeeds.GetChangefeeds().size());
+
+    const auto& importChangefeedTopic = item.Changefeeds.GetChangefeeds()[item.NextChangefeedIdx];
+    const auto& changefeed = importChangefeedTopic.GetChangefeed();
+    const auto& topic = importChangefeedTopic.GetTopic();
+
+    auto propose = MakeModifySchemeTransaction(ss, txId, importInfo);
+    auto& record = propose->Record;
+
+    auto& modifyScheme = *record.AddTransaction();
+    modifyScheme.SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpCreateCdcStream);
+    auto& cdcStream = *modifyScheme.MutableCreateCdcStream();
+
+    const TPath dstPath = TPath::Init(item.DstPathId, ss);
+    modifyScheme.SetWorkingDir(dstPath.Parent().PathString());
+    cdcStream.SetTableName(dstPath.LeafName());
+
+    auto& cdcStreamDescription = *cdcStream.MutableStreamDescription();
+    Ydb::StatusIds::StatusCode status;
+    if (!FillChangefeedDescription(cdcStreamDescription, changefeed, status, error)) {
+        return nullptr;
+    }
+
+    if (topic.has_retention_period()) {
+        cdcStream.SetRetentionPeriodSeconds(topic.retention_period().seconds());
+    }
+
+    if (topic.has_partitioning_settings()) {
+        i64 minActivePartitions =
+            topic.partitioning_settings().min_active_partitions();
+        if (minActivePartitions < 0) {
+            error = "minActivePartitions must be >= 0";
+            return nullptr;
+        } else if (minActivePartitions == 0) {
+            minActivePartitions = 1;
+        }
+        cdcStream.SetTopicPartitions(minActivePartitions);
+
+        if (topic.partitioning_settings().has_auto_partitioning_settings()) {
+            auto& partitioningSettings = topic.partitioning_settings().auto_partitioning_settings();
+            cdcStream.SetTopicAutoPartitioning(partitioningSettings.strategy() != ::Ydb::Topic::AutoPartitioningStrategy::AUTO_PARTITIONING_STRATEGY_DISABLED);
+
+            i64 maxActivePartitions =
+                topic.partitioning_settings().max_active_partitions();
+            if (maxActivePartitions < 0) {
+                error = "maxActivePartitions must be >= 0";
+                return nullptr;
+            } else if (maxActivePartitions == 0) {
+                maxActivePartitions = 50;
+            }
+            cdcStream.SetMaxPartitionCount(maxActivePartitions);
+        }
+    }
+    return propose;
+}
+
+THolder<TEvSchemeShard::TEvModifySchemeTransaction> CreateConsumersPropose(
+    TSchemeShard* ss,
+    TTxId txId,
+    const TImportInfo& importInfo,
+    TImportInfo::TItem& item
+) {
+    Y_ABORT_UNLESS(item.NextChangefeedIdx < item.Changefeeds.GetChangefeeds().size());
+
+    const auto& importChangefeedTopic = item.Changefeeds.GetChangefeeds()[item.NextChangefeedIdx];
+    const auto& topic = importChangefeedTopic.GetTopic();
+
+    auto propose = MakeModifySchemeTransaction(ss, txId, importInfo);
+    auto& record = propose->Record;
+
+    auto& modifyScheme = *record.AddTransaction();
+    modifyScheme.SetOperationType(NKikimrSchemeOp::EOperationType::ESchemeOpAlterPersQueueGroup);
+    auto& pqGroup = *modifyScheme.MutableAlterPersQueueGroup();
+
+    const TPath dstPath = TPath::Init(item.DstPathId, ss);
+    const TString changefeedPath = dstPath.PathString() + "/" + importChangefeedTopic.GetChangefeed().name();
+    modifyScheme.SetWorkingDir(changefeedPath);
+    modifyScheme.SetInternal(true);
+
+    pqGroup.SetName("streamImpl");
+
+    NKikimrSchemeOp::TDescribeOptions opts;
+    opts.SetReturnPartitioningInfo(false);
+    opts.SetReturnPartitionConfig(true);
+    opts.SetReturnBoundaries(true);
+    opts.SetReturnIndexTableBoundaries(true);
+    opts.SetShowPrivateTable(true);
+    auto describeSchemeResult = DescribePath(ss, TlsActivationContext->AsActorContext(),changefeedPath + "/streamImpl", opts);
+
+    const auto& response = describeSchemeResult->GetRecord().GetPathDescription();
+    item.StreamImplPathId = {response.GetSelf().GetSchemeshardId(), response.GetSelf().GetPathId()};
+    pqGroup.CopyFrom(response.GetPersQueueGroup());
+
+    pqGroup.ClearTotalGroupCount();
+    pqGroup.MutablePQTabletConfig()->ClearPartitionKeySchema();
+
+    auto* tabletConfig = pqGroup.MutablePQTabletConfig();
+    const auto& pqConfig = AppData()->PQConfig;
+
+    for (const auto& consumer : topic.consumers()) {
+        auto& addedConsumer = *tabletConfig->AddConsumers();
+        auto consumerName = NPersQueue::ConvertNewConsumerName(consumer.name(), pqConfig);
+        addedConsumer.SetName(consumerName);
+        if (consumer.important()) {
+            addedConsumer.SetImportant(true);
+        }
+    }
+
+    return propose;
 }
 
 } // NSchemeShard

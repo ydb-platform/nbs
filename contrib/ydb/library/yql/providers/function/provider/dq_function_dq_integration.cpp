@@ -1,11 +1,11 @@
 #include "dq_function_provider_impl.h"
 
-#include <contrib/ydb/library/yql/providers/common/dq/yql_dq_integration_impl.h>
+#include <yql/essentials/providers/common/dq/yql_dq_integration_impl.h>
 #include <contrib/ydb/library/yql/dq/expr_nodes/dq_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/function/expr_nodes/dq_function_expr_nodes.h>
 #include <contrib/ydb/library/yql/providers/function/proto/dq_function.pb.h>
-#include <contrib/ydb/library/yql/providers/common/schema/mkql/yql_mkql_schema.h>
-#include <contrib/ydb/library/yql/providers/common/schema/expr/yql_expr_schema.h>
+#include <yql/essentials/providers/common/schema/mkql/yql_mkql_schema.h>
+#include <yql/essentials/providers/common/schema/expr/yql_expr_schema.h>
 
 #include <util/generic/ptr.h>
 

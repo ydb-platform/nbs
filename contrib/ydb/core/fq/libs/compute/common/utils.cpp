@@ -1,11 +1,13 @@
 #include "utils.h"
+#include <contrib/ydb/public/lib/ydb_cli/common/plan2svg.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/json/yson/json2yson.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/protos/issue_severity.pb.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <ydb-cpp-sdk/client/proto/accessor.h>
 
 namespace NFq {
 
@@ -78,6 +80,10 @@ struct TTotalStatistics {
     TAggregate EgressRows;
     TAggregate Tasks;
     TAggregates Aggregates;
+    TAggregate IngressFilteredBytes;
+    TAggregate IngressFilteredRows;
+    TAggregate IngressQueuedBytes;
+    TAggregate IngressQueuedRows;
 };
 
 TString FormatDurationMs(ui64 durationMs) {
@@ -157,9 +163,9 @@ struct TDurationParser {
         return res;
     }
 
-    constexpr ui32 ConsumeNumberPortion() noexcept {
-        ui32 dec = 1;
-        ui32 res = 0;
+    constexpr ui64 ConsumeNumberPortion() noexcept {
+        ui64 dec = 1;
+        ui64 res = 0;
         while (!Src.empty() && IsDigit(Src.back())) {
             res += (Src.back() - '0') * dec;
             dec *= 10;
@@ -307,6 +313,14 @@ void WriteNamedNode(NYson::TYsonWriter& writer, NJson::TJsonValue& node, const T
                         totals.SourceCpuTimeUs.Add(*sum);
                     } else if (name == "Tasks") {
                         totals.Tasks.Add(*sum);
+                    } else if (name == "IngressFilteredBytes") {
+                        totals.IngressFilteredBytes.Add(*sum);
+                    } else if (name == "IngressFilteredRows") {
+                        totals.IngressFilteredRows.Add(*sum);
+                    } else if (name == "IngressQueuedBytes") {
+                        totals.IngressQueuedBytes.Add(*sum);
+                    } else if (name == "IngressQueuedRows") {
+                        totals.IngressQueuedRows.Add(*sum);
                     }
                 }
             }
@@ -432,7 +446,7 @@ void EnumeratePlans(NYson::TYsonWriter& writer, NJson::TJsonValue& value, ui32& 
     }
 }
 
-TString GetV1StatFromV2Plan(const TString& plan, double* cpuUsage) {
+TString GetV1StatFromV2Plan(const TString& plan, double* cpuUsage, TString* timeline) {
     TStringStream out;
     NYson::TYsonWriter writer(&out);
     writer.OnBeginMap();
@@ -466,12 +480,21 @@ TString GetV1StatFromV2Plan(const TString& plan, double* cpuUsage) {
                         totals.IngressRows.Write(writer, "IngressRows");
                         totals.EgressBytes.Write(writer, "EgressBytes");
                         totals.EgressRows.Write(writer, "EgressRows");
+                        totals.IngressFilteredBytes.Write(writer, "IngressFilteredBytes");
+                        totals.IngressFilteredRows.Write(writer, "IngressFilteredRows");
+                        totals.IngressQueuedBytes.Write(writer, "IngressQueuedBytes");
+                        totals.IngressQueuedRows.Write(writer, "IngressQueuedRows");
                         totals.Tasks.Write(writer, "Tasks");
                         writer.OnEndMap();
                     }
                 }
             }
         }
+    }
+    if (timeline) {
+        TPlanVisualizer planViz;
+        planViz.LoadPlans(plan);
+        *timeline = planViz.PrintSvg();
     }
     writer.OnEndMap();
     return NJson2Yson::ConvertYson2Json(out.Str());
@@ -525,6 +548,26 @@ struct TStatsAggregator {
             Aggregates[source + ".Splits"] += ingress->GetIntegerSafe();
             success = true;
         }
+        if (auto ingress = node.GetValueByPath("Ingress.FilteredBytes.Sum")) {
+            auto source = name.substr(prefix.size());
+            Aggregates[source + ".FilteredBytes"] += ingress->GetIntegerSafe();
+            success = true;
+        }
+        if (auto ingress = node.GetValueByPath("Ingress.FilteredRows.Sum")) {
+            auto source = name.substr(prefix.size());
+            Aggregates[source + ".FilteredRows"] += ingress->GetIntegerSafe();
+            success = true;
+        }
+        if (auto ingress = node.GetValueByPath("Ingress.QueuedBytes.Sum")) {
+            auto source = name.substr(prefix.size());
+            Aggregates[source + ".QueuedBytes"] += ingress->GetIntegerSafe();
+            success = true;
+        }
+        if (auto ingress = node.GetValueByPath("Ingress.QueuedRows.Sum")) {
+            auto source = name.substr(prefix.size());
+            Aggregates[source + ".QueuedRows"] += ingress->GetIntegerSafe();
+            success = true;
+        }
         return success;
     }
 
@@ -536,7 +579,11 @@ struct TStatsAggregator {
         {"EgressRows", 0},
         {"InputBytes", 0},
         {"OutputBytes", 0},
-        {"CpuTimeUs", 0}
+        {"CpuTimeUs", 0},
+        {"IngressFilteredBytes", 0},
+        {"IngressFilteredRows", 0},
+        {"IngressQueuedBytes", 0},
+        {"IngressQueuedRows", 0}
     };
 };
 
@@ -982,6 +1029,10 @@ TString GetPrettyStatistics(const TString& statistics) {
                     RemapNode(writer, p.second, "TaskRunner.Stage=Total.EgressBytes", "EgressBytes");
                     RemapNode(writer, p.second, "TaskRunner.Stage=Total.EgressRows", "EgressRows");
                     RemapNode(writer, p.second, "TaskRunner.Stage=Total.MkqlMaxMemoryUsage", "MaxMemoryUsage");
+                    RemapNode(writer, p.second, "TaskRunner.Stage=Total.IngressFilteredBytes", "IngressFilteredBytes");
+                    RemapNode(writer, p.second, "TaskRunner.Stage=Total.IngressFilteredRows", "IngressFilteredRows");
+                    RemapNode(writer, p.second, "TaskRunner.Stage=Total.IngressQueuedBytes", "IngressQueuedBytes");
+                    RemapNode(writer, p.second, "TaskRunner.Stage=Total.IngressQueuedRows", "IngressQueuedRows");
                 writer.OnEndMap();
             }
             // YQv2
@@ -1003,6 +1054,10 @@ TString GetPrettyStatistics(const TString& statistics) {
                     RemapNode(writer, p.second, "EgressBytes", "EgressBytes");
                     RemapNode(writer, p.second, "EgressRows", "EgressRows");
                     RemapNode(writer, p.second, "MaxMemoryUsage", "MaxMemoryUsage");
+                    RemapNode(writer, p.second, "IngressFilteredBytes", "IngressFilteredBytes");
+                    RemapNode(writer, p.second, "IngressFilteredRows", "IngressFilteredRows");
+                    RemapNode(writer, p.second, "IngressQueuedBytes", "IngressQueuedBytes");
+                    RemapNode(writer, p.second, "IngressQueuedRows", "IngressQueuedRows");
                 writer.OnEndMap();
             }
         }
@@ -1147,7 +1202,7 @@ struct TNoneStatProcessor : IPlanStatProcessor {
         return plan;
     }
 
-    TString GetQueryStat(const TString&, double& cpuUsage) override {
+    TString GetQueryStat(const TString&, double& cpuUsage, TString*) override {
         cpuUsage = 0.0;
         return "";
     }
@@ -1180,8 +1235,8 @@ struct TPlanStatProcessor : IPlanStatProcessor {
         return plan;
     }
 
-    TString GetQueryStat(const TString& plan, double& cpuUsage) override {
-        return GetV1StatFromV2Plan(plan, &cpuUsage);
+    TString GetQueryStat(const TString& plan, double& cpuUsage, TString* timeline) override {
+        return GetV1StatFromV2Plan(plan, &cpuUsage, timeline);
     }
 
     TPublicStat GetPublicStat(const TString& stat) override {
@@ -1212,8 +1267,8 @@ struct TProfileStatProcessor : TPlanStatProcessor {
 };
 
 struct TProdStatProcessor : TFullStatProcessor {
-    TString GetQueryStat(const TString& plan, double& cpuUsage) override {
-        return GetPrettyStatistics(GetV1StatFromV2Plan(plan, &cpuUsage));
+    TString GetQueryStat(const TString& plan, double& cpuUsage, TString* timeline) override {
+        return GetPrettyStatistics(GetV1StatFromV2Plan(plan, &cpuUsage, timeline));
     }
 };
 
@@ -1231,8 +1286,12 @@ std::unique_ptr<IPlanStatProcessor> CreateStatProcessor(const TString& statViewN
 
 PingTaskRequestBuilder::PingTaskRequestBuilder(const NConfig::TCommonConfig& commonConfig, std::unique_ptr<IPlanStatProcessor>&& processor) 
     : Compressor(commonConfig.GetQueryArtifactsCompressionMethod(), commonConfig.GetQueryArtifactsCompressionMinSize())
-    , Processor(std::move(processor))
-{}
+    , Processor(std::move(processor)), ShowQueryTimeline(commonConfig.GetShowQueryTimeline()), MaxQueryTimelineSize(commonConfig.GetMaxQueryTimelineSize())
+{
+    if (!MaxQueryTimelineSize) {
+        MaxQueryTimelineSize = 200_KB;
+    }
+}
 
 Fq::Private::PingTaskRequest PingTaskRequestBuilder::Build(
     const NYdb::NQuery::TExecStats& queryStats,
@@ -1242,8 +1301,16 @@ Fq::Private::PingTaskRequest PingTaskRequestBuilder::Build(
 ) {
     Fq::Private::PingTaskRequest pingTaskRequest = Build(queryStats);
 
+    // Application-level issues, pass as is
     if (issues) {
         NYql::IssuesToMessage(issues, pingTaskRequest.mutable_issues());
+    }
+
+    // Builder own (internal) issues will be logged later, just warn the user
+    if (Issues) {
+        auto* issue = pingTaskRequest.add_issues();
+        issue->set_message("There are minor issues with query statistics processing. You can supply query ID and ask support for the information.");
+        issue->set_severity(NYql::TSeverityIds::S_WARNING);
     }
 
     if (computeStatus) {
@@ -1297,16 +1364,26 @@ Fq::Private::PingTaskRequest PingTaskRequestBuilder::Build(const TString& queryP
 
     CpuUsage = 0.0;
     try {
-        auto stat = Processor->GetQueryStat(plan, CpuUsage);
+        TString timeline;
+        auto stat = Processor->GetQueryStat(plan, CpuUsage, ShowQueryTimeline ? &timeline : nullptr);
+
+        if (MaxQueryTimelineSize && timeline.size() > MaxQueryTimelineSize) {
+            Issues.AddIssue(NYql::TIssue(TStringBuilder() << "Timeline size  " << timeline.size() << " exceeds limit of " << MaxQueryTimelineSize));
+            timeline = "";
+        }
+
         pingTaskRequest.set_statistics(stat);
         pingTaskRequest.set_dump_raw_statistics(true);
+        if (timeline) {
+            pingTaskRequest.set_timeline(timeline);
+        }
         auto flatStat = Processor->GetFlatStat(plan);
         flatStat["CompilationTimeUs"] = compilationTimeUs;
         flatStat["ComputeTimeUs"] = computeTimeUs;
         SerializeStats(*pingTaskRequest.mutable_flat_stats(), flatStat);
         PublicStat = Processor->GetPublicStat(stat);
-    } catch(const NJson::TJsonException& ex) {
-        Issues.AddIssue(NYql::TIssue(TStringBuilder() << "Error stat conversion: " << ex.what()));
+    } catch (const std::exception& e) {
+        Issues.AddIssue(NYql::TIssue(TStringBuilder() << "Error stat processing: " << e.what()));
     }
 
     return pingTaskRequest;

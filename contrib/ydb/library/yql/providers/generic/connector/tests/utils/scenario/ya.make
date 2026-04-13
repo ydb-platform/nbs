@@ -5,13 +5,11 @@ IF (AUTOCHECK)
     NO_LINT()
 ENDIF()
 
-IF (OPENSOURCE) 
-    # YQ-3351: enabling python style checks only for opensource
-    STYLE_PYTHON()
-ENDIF()
-
 PY_SRCS(
     clickhouse.py
+    ms_sql_server.py
+    mysql.py
+    oracle.py
     postgresql.py
     ydb.py
 )
@@ -22,6 +20,7 @@ PEERDIR(
     contrib/ydb/library/yql/providers/generic/connector/tests/utils
     contrib/ydb/library/yql/providers/generic/connector/tests/utils/clients
     contrib/ydb/library/yql/providers/generic/connector/tests/utils/run
+    contrib/ydb/library/yql/providers/generic/connector/tests/common_test_cases
 )
 
 END()

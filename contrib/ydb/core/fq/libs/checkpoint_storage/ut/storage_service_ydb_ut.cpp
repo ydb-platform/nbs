@@ -8,7 +8,7 @@
 
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_checkpoints.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
-#include <contrib/ydb/library/yql/minikql/comp_nodes/mkql_saveload.h>
+#include <yql/essentials/minikql/comp_nodes/mkql_saveload.h>
 
 #include <contrib/ydb/library/actors/core/executor_pool_basic.h>
 #include <contrib/ydb/library/actors/core/scheduler_basic.h>

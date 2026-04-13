@@ -17,7 +17,7 @@
 #include "cleanup_queue_data.h"
 
 #include <contrib/ydb/public/lib/value/value.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/credentials.h>
+#include <ydb-cpp-sdk/client/types/credentials/credentials.h>
 #include <contrib/ydb/core/quoter/public/quoter.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/ymq/base/counters.h>

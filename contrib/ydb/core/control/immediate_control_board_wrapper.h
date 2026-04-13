@@ -21,14 +21,6 @@ public:
         return Control->Get();
     }
 
-    bool IsDefault() const {
-        return Control->IsDefault();
-    }
-
-    TAtomicBase GetDefault() const {
-        return Control->GetDefault();
-    }
-
     i64 operator=(i64 value) {
         Control->Set(value);
         return value;
@@ -62,6 +54,11 @@ public:
         : Control(control)
         , CurrentValue(Control)
     {
+    }
+
+    void ResetControl(const TControlWrapper &control) {
+        Control = control;
+        CurrentValue = control;
     }
 
     i64 Update(TInstant now) {

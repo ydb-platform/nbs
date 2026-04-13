@@ -22,6 +22,7 @@ What's currently not supported:
 
 * Reading data from replicas
 * Secondary indexes
+* Vector indexes
 * Bloom filters
 * Change Data Capture
 * Renaming tables
@@ -32,7 +33,7 @@ What's currently not supported:
 
 ## Supported data types {#olap-data-types}
 
-| Data type | Can be used in<br>column-oriented tables | Can be used<br>as primary key |
+| Data type | Can be used in<br/>column-oriented tables | Can be used<br/>as primary key |
 ---|---|---
 | `Bool` | ☓ | ☓ |
 | `Date` | ✓ | ✓ |

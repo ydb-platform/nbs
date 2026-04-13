@@ -11,8 +11,10 @@ namespace NKikimr::NKqp::NScanPrivate {
 class TKqpScanComputeActor: public TSchedulableComputeActorBase<TKqpScanComputeActor> {
 private:
     using TBase = TSchedulableComputeActorBase<TKqpScanComputeActor>;
+
     NMiniKQL::TKqpScanComputeContext ComputeCtx;
     NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta Meta;
+
     using TBase::TaskRunner;
     using TBase::MemoryLimits;
     using TBase::GetStatsMode;
@@ -20,13 +22,12 @@ private:
     using TBase::GetTask;
     using TBase::RuntimeSettings;
     using TBase::ContinueExecute;
+
     std::set<NActors::TActorId> Fetchers;
     NMiniKQL::TKqpScanComputeContext::TScanData* ScanData = nullptr;
-    const TMaybe<ui64> LockTxId;
-    const ui32 LockNodeId;
 
     struct TLockHash {
-        bool operator()(const NKikimrDataEvents::TLock& lock) {
+        size_t operator()(const NKikimrDataEvents::TLock& lock) {
             return MultiHash(
                 lock.GetLockId(),
                 lock.GetDataShard(),
@@ -59,15 +60,18 @@ private:
         return TBase::CalcMkqlMemoryLimit() + ComputeCtx.GetTableScans().size() * MemoryLimits.ChannelBufferSize;
     }
 
+    using EBlockTrackingMode = NKikimrConfig::TTableServiceConfig::EBlockTrackingMode;
+    const EBlockTrackingMode BlockTrackingMode;
+
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
         return NKikimrServices::TActivity::KQP_SCAN_COMPUTE_ACTOR;
     }
 
-    TKqpScanComputeActor(TComputeActorSchedulingOptions, const TActorId& executerId, ui64 txId, TMaybe<ui64> lockTxId, ui32 lockNodeId,
+    TKqpScanComputeActor(TComputeActorSchedulingOptions, const TActorId& executerId, ui64 txId,
         NYql::NDqProto::TDqTask* task, NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory,
         const NYql::NDq::TComputeRuntimeSettings& settings, const NYql::NDq::TComputeMemoryLimits& memoryLimits, NWilson::TTraceId traceId,
-        TIntrusivePtr<NActors::TProtoArenaHolder> arena);
+        TIntrusivePtr<NActors::TProtoArenaHolder> arena, EBlockTrackingMode mode);
 
     STFUNC(StateFunc) {
         try {
@@ -83,6 +87,7 @@ public:
             TBase::OnMemoryLimitExceptionHandler();
         } catch (const yexception& e) {
             InternalError(NYql::NDqProto::StatusIds::INTERNAL_ERROR, NYql::TIssuesIds::DEFAULT_ERROR, e.what());
+            FreeComputeCtxData();
         }
 
         TBase::ReportEventElapsedTime();
@@ -123,7 +128,12 @@ public:
 
     void PollSources(ui64 prevFreeSpace);
 
-    void PassAway() override {
+    void DoTerminateImpl() override {
+        FreeComputeCtxData();
+        TBase::DoTerminateImpl();
+    }
+
+    void FreeComputeCtxData() {
         if (TaskRunner) {
             if (TaskRunner->IsAllocatorAttached()) {
                 ComputeCtx.Clear();
@@ -131,9 +141,8 @@ public:
                 auto guard = TaskRunner->BindAllocator(TBase::GetMkqlMemoryLimit());
                 ComputeCtx.Clear();
             }
+            ScanData = nullptr;
         }
-
-        TBase::PassAway();
     }
 
     void TerminateSources(const NYql::TIssues& issues, bool success) override {
