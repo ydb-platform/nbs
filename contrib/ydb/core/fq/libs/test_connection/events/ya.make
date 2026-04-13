@@ -7,7 +7,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/fq/libs/control_plane_storage/events
     contrib/ydb/core/fq/libs/events
-    contrib/ydb/library/yql/public/issue/protos
+    yql/essentials/public/issue/protos
     contrib/ydb/public/api/protos
 )
 

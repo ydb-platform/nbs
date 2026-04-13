@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/yverify_stream/yverify_stream.h>
 #include <contrib/ydb/public/api/protos/draft/ydb_maintenance.pb.h>
-#include <contrib/ydb/library/yql/public/issue/protos/issue_severity.pb.h>
+#include <yql/essentials/public/issue/protos/issue_severity.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>

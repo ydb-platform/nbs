@@ -1,9 +1,9 @@
 #include "kqp_transform.h"
 
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
-#include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/minikql/mkql_string_util.h>
+#include <yql/essentials/providers/common/provider/yql_provider.h>
+#include <yql/essentials/minikql/mkql_node.h>
 
 namespace NKikimr::NKqp {
 

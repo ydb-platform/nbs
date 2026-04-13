@@ -1,6 +1,6 @@
 #include <contrib/ydb/core/kqp/ut/common/kqp_ut_common.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <ydb-cpp-sdk/client/proto/accessor.h>
 
 #include <contrib/ydb/library/workload/abstract/workload_factory.h>
 #include <contrib/ydb/library/workload/stock/stock.h>

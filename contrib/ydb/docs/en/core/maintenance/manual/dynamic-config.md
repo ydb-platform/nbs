@@ -7,14 +7,52 @@ Dynamic configuration allows running dynamic [nodes](../../concepts/cluster/comm
 * The `allowed_labels` and `selector_config` fields are added for granular overrides of settings
 
 This configuration is uploaded to the cluster, where it is reliably stored and delivered to each dynamic node upon startup. [Certain settings](#dynamic-kinds) are updated on the fly without restarting nodes. Using dynamic configuration, you can centrally solve the following tasks:
+
 * Switch logging settings for components for the entire cluster or specific groups of nodes;
 * Enable experimental features (feature flags) on specific databases;
 * Change actor system settings on individual nodes or groups of nodes;
 * And more.
 
-### Configuration examples {#example}
+## Preparing to use the dynamic configuration {#preparation}
+
+The following tasks should be performed before using the dynamic configuration in the cluster:
+
+1. Enable [database node authentication and authorization](../../devops/deployment-options/manual/node-authorization.md).
+
+2. Export the current settings from the [CMS](../../concepts/glossary.md#cms) in YAML format using the following command if [CMS-based configuration management](cms.md) has been used in the cluster:
+
+    ```bash
+    ./ydbd -s grpcs://<node1.ydb.tech>:2135 --ca-file ca.crt --token-file ydbd-token \
+         admin console configs dump-yaml > dynconfig.yaml
+    ```
+
+    Before running the command shown above, obtain the authentication token using the `ydb auth get-token` command, as detailed in the [cluster initial deployment procedure](../../devops/deployment-options/manual/initial-deployment.md#initialize-cluster).
+
+3. Prepare the initial dynamic configuration file:
+
+   * If there are non-empty CMS settings exported in the previous step, adjust the YAML file with the exported CMS settings:
+      * Add the `metadata` section based on the [configuration example](#example).
+      * Add the `yaml_config_enabled: true` parameter to the `config` section.
+   * If there are no previous CMS-based settings, use the [minimal configuration example](#example).
+   * For clusters using TLS encryption for [actor system interconnect](../../concepts/glossary.md#actor-system-interconnect), add the [interconnect TLS settings](../../reference/configuration/tls.md#interconnect) to the `config` section.
+
+4. Apply the dynamic configuration settings file to the cluster:
+
+    ```bash
+    # Apply the dynconfig.yaml on the cluster
+    {{ ydb-cli }} admin config replace -f dynconfig.yaml
+    ```
+
+{% note info %}
+
+The legacy configuration management via CMS will become unavailable after enabling dynamic configuration support on the {{ ydb-short-name }} cluster.
+
+{% endnote %}
+
+## Configuration examples {#example}
 
 Example of a minimal dynamic configuration for a single-datacenter cluster:
+
 ```yaml
 # Configuration metadata.
 # This field is managed by the server.
@@ -78,7 +116,7 @@ allowed_labels: {}
 selector_config: []
 ```
 
-Detailed configuration parameters are described on the [{#T}](../../deploy/configuration/config.md) page.
+Detailed configuration parameters are described on the [{#T}](../../reference/configuration/index.md) page.
 
 By default, the cluster configuration is empty and has version 1. When applying a new configuration, the uploaded configuration's version is compared and automatically incremented by one.
 
@@ -103,7 +141,7 @@ All commands for working with configuration are described in the [{#T}](../../re
 1. The configuration file is uploaded by the user using a [grpc call](https://github.com/ydb-platform/ydb/blob/5251c9ace0a7617c25d50f1aa4d0f13e3d56f985/ydb/public/api/grpc/draft/ydb_dynamic_config_v1.proto#L22) or [{{ ydb-short-name }} CLI](../../reference/ydb-cli/index.md) to the cluster.
 2. The file is checked for validity, basic constraints, version correctness, cluster name correctness, and the correctness of the configurations obtained after DSL transformation are verified.
 3. The configuration version in the file is incremented by one.
-4. The file is reliably stored in the cluster using the Console [tablet](../../concepts/cluster/common_scheme_ydb.md#tablets).
+4. The file is reliably stored in the cluster using the Console [tablet](../../concepts/glossary.md#tablet).
 5. File updates are distributed across the cluster nodes.
 
 #### Configuration update from the cluster node's perspective
@@ -125,12 +163,14 @@ This mechanism prevents concurrent configuration modifications and makes updates
 Some system settings are updated without restarting nodes. To change them, upload a new configuration and wait for it to propagate across the cluster.
 
 List of dynamically updated settings:
-* `log_config`
+
 * `immediate_controls_config`
-* `table_service_config`
+* `log_config`
+* `memory_controller_config`
 * `monitoring_config`
-* `tracing_config.sampling`
+* `table_service_config`
 * `tracing_config.external_throttling`
+* `tracing_config.sampling`
 
 The list may be expanded in the future.
 

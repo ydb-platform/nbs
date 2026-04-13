@@ -133,6 +133,10 @@ namespace NKikimr {
                 }
             }
 
+            if (settings.has_external_data_channels_count()) {
+                MutableDefaultFamily()->MutableStorageConfig()->SetExternalChannelsCount(settings.external_data_channels_count());
+            }
+
             return true;
         }
 
@@ -144,6 +148,12 @@ namespace NKikimr {
             if (familySettings.name().empty()) {
                 *code = Ydb::StatusIds::BAD_REQUEST;
                 *error = "Missing column family name";
+                return false;
+            }
+
+            if (familySettings.has_compression_level()) {
+                *code = Ydb::StatusIds::BAD_REQUEST;
+                *error = "Field `COMPRESSION_LEVEL` is not supported for OLTP tables";
                 return false;
             }
 
@@ -214,6 +224,15 @@ namespace NKikimr {
                 *error = TStringBuilder()
                     << "Missing 'default' column family in the table definition";
                 return false;
+            }
+
+            for (size_t index = 0; index < PartitionConfig->ColumnFamiliesSize(); ++index) {
+                auto columnFamily = PartitionConfig->GetColumnFamilies(index);
+                if (columnFamily.HasColumnCodecLevel()) {
+                    *code = Ydb::StatusIds::BAD_REQUEST;
+                    *error = "Field `COMPRESSION_LEVEL` is not supported for OLTP tables";
+                    return false;
+                }
             }
 
             if (!defaultFamily->HasStorageConfig() ||

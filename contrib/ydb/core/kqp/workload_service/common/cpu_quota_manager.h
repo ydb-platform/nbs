@@ -2,9 +2,9 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_types/status_codes.h>
+#include <ydb-cpp-sdk/client/types/status_codes.h>
 
 
 namespace NKikimr::NKqp::NWorkload {

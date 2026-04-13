@@ -47,11 +47,11 @@ struct TClientBlob {
         , UncompressedSize(0)
     {}
 
-    TClientBlob(const TString& sourceId, const ui64 seqNo, const TString& data, TMaybe<TPartData> &&partData, TInstant writeTimestamp, TInstant createTimestamp,
+    TClientBlob(const TString& sourceId, const ui64 seqNo, const TString&& data, TMaybe<TPartData> &&partData, TInstant writeTimestamp, TInstant createTimestamp,
                 const ui64 uncompressedSize, const TString& partitionKey, const TString& explicitHashKey)
         : SourceId(sourceId)
         , SeqNo(seqNo)
-        , Data(data)
+        , Data(std::move(data))
         , PartData(std::move(partData))
         , WriteTimestamp(writeTimestamp)
         , CreateTimestamp(createTimestamp)
@@ -333,7 +333,7 @@ public:
     std::optional<TFormedBlobInfo> Add(TClientBlob&& blob);
     std::optional<TFormedBlobInfo> Add(const TKey& key, ui32 size);
 
-    bool IsInited() const { return TotalParts > 0; }
+    bool IsInited() const { return !SourceId.empty(); }
 
     bool IsComplete() const;
 

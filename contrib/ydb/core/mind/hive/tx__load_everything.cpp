@@ -201,7 +201,7 @@ public:
             auto end = owners.GetValue<Schema::TabletOwners::End>();
             auto ownerId = owners.GetValue<Schema::TabletOwners::OwnerId>();
 
-            Self->Keeper.AddOwnedSequence(ownerId, {begin, end});
+           Self->Keeper.AddOwnedSequence(ownerId, {begin, end});
             if (!owners.Next()) {
                 return false;
             }
@@ -281,6 +281,7 @@ public:
                 if (domainRowset.HaveValue<Schema::SubDomain::ScaleRecommenderPolicies>()) {
                     domain.SetScaleRecommenderPolicies(domainRowset.GetValue<Schema::SubDomain::ScaleRecommenderPolicies>());
                 }
+                domain.Stopped = domainRowset.GetValueOrDefault<Schema::SubDomain::Stopped>();
 
                 if (!domainRowset.Next())
                     return false;
@@ -325,6 +326,9 @@ public:
                     // That was not persisted to avoid issues with downgrades
                     node.Down = true;
                 }
+                if (node.Down) {
+                    Self->UpdateCounterNodesDown(+1);
+                }
                 if (nodeRowset.HaveValue<Schema::Node::Location>()) {
                     auto location = nodeRowset.GetValue<Schema::Node::Location>();
                     if (location.HasDataCenter()) {
@@ -332,6 +336,7 @@ public:
                         node.LocationAcquired = true;
                     }
                 }
+                node.DrainSeqNo = nodeRowset.GetValueOrDefault<Schema::Node::DrainSeqNo>();
                 if (!node.ServicedDomains) {
                     node.ServicedDomains = { Self->RootDomainKey };
                 }
@@ -454,6 +459,16 @@ public:
                 tablet.NeedToReleaseFromParent = tabletRowset.GetValueOrDefault<Schema::Tablet::NeedToReleaseFromParent>();
                 tablet.ChannelProfileReassignReason = tabletRowset.GetValueOrDefault<Schema::Tablet::ReassignReason>();
                 tablet.Statistics = tabletRowset.GetValueOrDefault<Schema::Tablet::Statistics>();
+                tablet.StoppedByTenant = tabletRowset.GetValueOrDefault<Schema::Tablet::StoppedByTenant>();
+
+                TDomainInfo* domain = Self->FindDomain(objectDomain);
+                if (domain) {
+                    if (domain->Stopped && !tablet.StoppedByTenant) {
+                        Self->StopTenantTabletsQueue.push(tabletId);
+                    } else if (!domain->Stopped && tablet.StoppedByTenant) {
+                        Self->ResumeTenantTabletsQueue.push(tabletId);
+                    }
+                }
 
                 if (tablet.NodeId == 0) {
                     tablet.BecomeStopped();
@@ -492,6 +507,9 @@ public:
                 if (tablet) {
                     ui32 channelId = tabletChannelRowset.GetValue<Schema::TabletChannel::Channel>();
                     TString storagePool = tabletChannelRowset.GetValue<Schema::TabletChannel::StoragePool>();
+                    if (storagePool.empty()) {
+                        storagePool = TLeaderTabletInfo::DEFAULT_STORAGE_POOL_NAME;
+                    }
                     Y_ABORT_UNLESS(tablet->BoundChannels.size() == channelId);
                     tablet->BoundChannels.emplace_back();
                     NKikimrStoragePool::TChannelBind& bind = tablet->BoundChannels.back();
@@ -535,8 +553,14 @@ public:
                         tablet->TabletStorageInfo->Channels.emplace_back();
                         tablet->TabletStorageInfo->Channels.back().Channel = tablet->TabletStorageInfo->Channels.size() - 1;
                     }
-                    TTabletChannelInfo& channel = tablet->TabletStorageInfo->Channels[channelId];
-                    channel.History.emplace_back(generationId, groupId, timestamp);
+                    TTabletChannelInfo::THistoryEntry entry(generationId, groupId, timestamp);
+                    auto deletedAtGeneration = tabletChannelGenRowset.GetValueOrDefault<Schema::TabletChannelGen::DeletedAtGeneration>();
+                    if (deletedAtGeneration) {
+                        tablet->DeletedHistory.emplace(channelId, entry, deletedAtGeneration);
+                    } else {
+                        TTabletChannelInfo& channel = tablet->TabletStorageInfo->Channels[channelId];
+                        channel.History.push_back(entry);
+                    }
                 } else {
                     ++numMissingTablets;
                 }
@@ -584,6 +608,12 @@ public:
                     followerGroup.LocalNodeOnly = tabletFollowerGroupRowset.GetValueOrDefault<Schema::TabletFollowerGroup::LocalNodeOnly>();
                     followerGroup.FollowerCountPerDataCenter = tabletFollowerGroupRowset.GetValueOrDefault<Schema::TabletFollowerGroup::FollowerCountPerDataCenter>();
                     followerGroup.RequireDifferentNodes = tabletFollowerGroupRowset.GetValueOrDefault<Schema::TabletFollowerGroup::RequireDifferentNodes>();
+
+                    if (followerGroup.RequireAllDataCenters && !followerGroup.FollowerCountPerDataCenter) {
+                        followerGroup.FollowerCountPerDataCenter = true;
+                        auto dataCenters = Self->DataCenters.size() ? Self->DataCenters.size() : 3ull;
+                        followerGroup.SetFollowerCount((followerGroup.GetRawFollowerCount() + dataCenters - 1) / dataCenters); // round up
+                    }
                 } else {
                     ++numMissingTablets;
                 }
@@ -644,8 +674,10 @@ public:
                     continue;
                 }
                 std::map<TDataCenterId, i32> dataCentersToCover; // dc -> need x more followers in dc
-                for (const auto& [dc, _] : Self->DataCenters) {
-                    dataCentersToCover[dc] = group.GetFollowerCountForDataCenter(dc);
+                for (const auto& [dcId, dcInfo] : Self->DataCenters) {
+                    if (dcInfo.IsRegistered()) {
+                        dataCentersToCover[dcId] = group.GetFollowerCountForDataCenter(dcId);
+                    }
                 }
                 auto groupId = group.Id;
                 auto filterGroup = [groupId](auto&& follower) { return follower->FollowerGroup.Id == groupId;};
@@ -846,6 +878,7 @@ public:
         Self->TabletCounters->Simple()[NHive::COUNTER_SEQUENCE_ALLOCATED].Set(Self->Sequencer.AllocatedSequencesSize());
         Self->ExpectedNodes = Self->Nodes.size();
         Self->TabletCounters->Simple()[NHive::COUNTER_NODES_TOTAL].Set(Self->ExpectedNodes);
+        Self->UpdateCounterTabletChannelHistorySize();
         Self->MigrationState = NKikimrHive::EMigrationState::MIGRATION_READY;
         ctx.Send(Self->SelfId(), new TEvPrivate::TEvBootTablets());
 
@@ -853,6 +886,15 @@ public:
             ctx.Send(Self->SelfId(), new TEvPrivate::TEvUpdateFollowers);
             Self->ProcessFollowerUpdatesScheduled = true;
         }
+
+        for (const auto& [dcId, dcInfo] : Self->DataCenters) {
+            if (!dcInfo.IsRegistered()) {
+                Self->Schedule(TDuration::Seconds(1), new TEvPrivate::TEvUpdateDataCenterFollowers(dcId));
+            }
+        }
+
+        Self->ProcessPendingStopTablet();
+        Self->ProcessPendingResumeTablet();
 
         for (auto it = Self->Nodes.begin(); it != Self->Nodes.end(); ++it) {
             Self->ScheduleUnlockTabletExecution(it->second, NKikimrHive::LOCK_LOST_REASON_HIVE_RESTART);

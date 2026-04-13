@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/statistics/events.h>
 #include <contrib/ydb/core/statistics/database/database.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <ydb-cpp-sdk/client/table/table.h>
 
 #include <thread>
 

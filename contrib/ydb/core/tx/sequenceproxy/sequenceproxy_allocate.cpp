@@ -3,7 +3,7 @@
 #include <contrib/ydb/library/ydb_issue/issue_helpers.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/core/tx/sequenceshard/public/events.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_manager.h>
+#include <yql/essentials/public/issue/yql_issue_manager.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
 #include <util/string/builder.h>

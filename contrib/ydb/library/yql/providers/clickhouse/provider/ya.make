@@ -27,22 +27,22 @@ PEERDIR(
     library/cpp/json
     library/cpp/random_provider
     library/cpp/time_provider
-    contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/minikql/comp_nodes
-    contrib/ydb/library/yql/core
-    contrib/ydb/library/yql/core/type_ann
+    yql/essentials/ast
+    yql/essentials/minikql/comp_nodes
+    yql/essentials/core
+    yql/essentials/core/type_ann
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
+    yql/essentials/core/dq_integration
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
     contrib/ydb/library/yql/providers/clickhouse/expr_nodes
     contrib/ydb/library/yql/providers/clickhouse/proto
-    contrib/ydb/library/yql/providers/common/config
-    contrib/ydb/library/yql/providers/common/dq
+    yql/essentials/providers/common/config
+    yql/essentials/providers/common/dq
     contrib/ydb/library/yql/providers/common/http_gateway
-    contrib/ydb/library/yql/providers/common/mkql
-    contrib/ydb/library/yql/providers/common/proto
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/providers/common/transform
+    yql/essentials/providers/common/mkql
+    yql/essentials/providers/common/proto
+    yql/essentials/providers/common/provider
+    yql/essentials/providers/common/transform
     contrib/ydb/library/yql/providers/dq/common
     contrib/ydb/library/yql/providers/dq/expr_nodes
 )

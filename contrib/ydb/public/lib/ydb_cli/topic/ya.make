@@ -7,9 +7,9 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/public/lib/ydb_cli/common
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
+    contrib/ydb/public/sdk/cpp/src/client/proto
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
+    contrib/ydb/public/sdk/cpp/src/client/topic
 )
 
 GENERATE_ENUM_SERIALIZATION(topic_metadata_fields.h)

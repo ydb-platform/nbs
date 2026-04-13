@@ -15,7 +15,7 @@ PEERDIR(
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/actors
     contrib/ydb/library/yql/dq/runtime
-    contrib/ydb/library/yql/utils
+    yql/essentials/utils
 
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/util

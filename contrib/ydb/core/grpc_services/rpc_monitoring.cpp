@@ -5,8 +5,8 @@
 #include "rpc_request_base.h"
 
 #include <contrib/ydb/core/grpc_services/base/base.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>

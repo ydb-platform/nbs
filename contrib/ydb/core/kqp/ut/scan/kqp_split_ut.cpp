@@ -14,6 +14,7 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/executer_actor/kqp_executer.h>
 
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 
@@ -305,7 +306,7 @@ Y_UNIT_TEST_SUITE(KqpSplit) {
         auto request = MakeSQLRequest(sql, dml);
         runtime.Send(new IEventHandle(NKqp::MakeKqpProxyID(runtime.GetNodeId()), sender, request.Release()));
         auto ev = runtime.GrabEdgeEventRethrow<NKqp::TEvKqp::TEvQueryResponse>(sender);
-        UNIT_ASSERT_VALUES_EQUAL(ev->Get()->Record.GetRef().GetYdbStatus(), code);
+        UNIT_ASSERT_VALUES_EQUAL(ev->Get()->Record.GetYdbStatus(), code);
     }
 
     void SendScanQuery(TTestActorRuntime* runtime, TActorId kqpProxy, TActorId sender, const TString& queryText) {
@@ -407,7 +408,6 @@ Y_UNIT_TEST_SUITE(KqpSplit) {
                 TKikimrSettings settings;
                 NKikimrConfig::TAppConfig appConfig;
                 appConfig.MutableTableServiceConfig()->SetEnableKqpScanQuerySourceRead(testActorType == ETestActorType::SorceRead);
-                appConfig.MutableTableServiceConfig()->SetEnableKqpScanQueryStreamLookup(testActorType == ETestActorType::StreamLookup);
                 settings.SetDomainRoot(KikimrDefaultUtDomainRoot);
                 settings.SetAppConfig(appConfig);
 
@@ -448,7 +448,7 @@ Y_UNIT_TEST_SUITE(KqpSplit) {
 
         void AssertSuccess() {
             auto reply = Runtime->GrabEdgeEventRethrow<TEvKqp::TEvQueryResponse>(Sender);
-            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetRef().GetYdbStatus(), Ydb::StatusIds::SUCCESS);
+            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetYdbStatus(), Ydb::StatusIds::SUCCESS);
         }
 
         void SendScanQuery(TString text) {
@@ -680,7 +680,6 @@ Y_UNIT_TEST_SUITE(KqpSplit) {
         Tests::TServerSettings serverSettings(pm.GetPort(2134));
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnableKqpScanQuerySourceRead(true);
-        appConfig.MutableTableServiceConfig()->SetEnableKqpScanQueryStreamLookup(false);
         serverSettings.SetDomainName("Root")
             .SetUseRealThreads(false)
             .SetAppConfig(appConfig);

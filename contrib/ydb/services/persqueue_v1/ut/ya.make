@@ -1,14 +1,20 @@
 UNITTEST_FOR(contrib/ydb/services/persqueue_v1)
 
+ADDINCL(
+    contrib/ydb/public/sdk/cpp
+)
+
+CFLAGS(
+    -DYDB_SDK_USE_STD_STRING
+)
+
 FORK_SUBTESTS()
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(1800)
     SIZE(LARGE)
     TAG(ya:fat)
     REQUIREMENTS(ram:32)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -45,11 +51,11 @@ PEERDIR(
     contrib/ydb/library/persqueue/tests
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/public/api/grpc
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/proto
     contrib/ydb/services/persqueue_v1
 )
 

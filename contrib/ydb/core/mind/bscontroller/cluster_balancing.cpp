@@ -109,7 +109,7 @@ namespace NKikimr::NBsController {
                             break;
                         }
                     } else {
-                        Y_DEBUG_ABORT_UNLESS(false, "%s", (TStringBuilder() << "VSlotId not found in vslotMap: " << key.ToString()).c_str());
+                        Y_DEBUG_ABORT_S("VSlotId not found in vslotMap: " << key.ToString());
                         isHealthy = false;
                         break;
                     }
@@ -152,7 +152,7 @@ namespace NKikimr::NBsController {
                 case TEvents::TSystem::Poison:
                    throw TPoison();
                 default:
-                    Y_DEBUG_ABORT_UNLESS(false, "%s", (TStringBuilder() << "unexpected event " << ev->GetTypeName()).c_str());
+                    Y_DEBUG_ABORT_S("unexpected event " << ev->GetTypeName());
             }
         }
 

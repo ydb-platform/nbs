@@ -29,7 +29,7 @@
 
 #include <contrib/ydb/library/http_proxy/authorization/auth_helpers.h>
 #include <contrib/ydb/library/http_proxy/error/error.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/ycloud/api/access_service.h>
 #include <contrib/ydb/library/ycloud/api/iam_token_service.h>
 #include <contrib/ydb/library/grpc/actor_client/grpc_service_cache.h>
@@ -37,8 +37,8 @@
 #include <contrib/ydb/library/ycloud/impl/iam_token_service.h>
 #include <contrib/ydb/services/persqueue_v1/actors/persqueue_utils.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_datastreams/datastreams.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_topic/impl/common.h>
+#include <ydb-cpp-sdk/client/datastreams/datastreams.h>
+#include <src/client/topic/impl/common.h>
 
 #include <contrib/ydb/services/datastreams/datastreams_proxy.h>
 #include <contrib/ydb/services/datastreams/next_token.h>
@@ -65,6 +65,8 @@
 #include <contrib/ydb/core/ymq/actor/serviceid.h>
 
 #include <contrib/ydb/library/http_proxy/error/error.h>
+
+#include <contrib/ydb/public/sdk/cpp/adapters/issue/issue.h>
 
 #include <contrib/ydb/services/ymq/rpc_params.h>
 #include <contrib/ydb/services/ymq/utils.h>
@@ -179,7 +181,6 @@ namespace NKikimr::NHttpProxy {
     constexpr TStringBuf REQUEST_FORWARDED_FOR = "x-forwarded-for";
     constexpr TStringBuf REQUEST_TARGET_HEADER = "x-amz-target";
     constexpr TStringBuf REQUEST_CONTENT_TYPE_HEADER = "content-type";
-    constexpr TStringBuf CRC32_HEADER = "x-amz-crc32";
     constexpr TStringBuf CREDENTIAL_PARAM = "Credential";
 
 
@@ -306,7 +307,7 @@ namespace NKikimr::NHttpProxy {
                         NYql::IssuesFromMessage(response.operation().issues(), issues);
                         result->Status = MakeHolder<NYdb::TStatus>(
                             NYdb::EStatus(response.operation().status()),
-                            std::move(issues)
+                            NYdb::NAdapters::ToSdkIssues(std::move(issues))
                         );
                         Ydb::Ymq::V1::QueueTags queueTags;
                         response.operation().metadata().UnpackTo(&queueTags);
@@ -428,7 +429,7 @@ namespace NKikimr::NHttpProxy {
                             ctx,
                             get<1>(errorAndCode),
                             get<0>(errorAndCode),
-                            issues.begin()->GetMessage()
+                            TString{issues.begin()->GetMessage()}
                         );
                     }
                 }
@@ -521,6 +522,7 @@ namespace NKikimr::NHttpProxy {
                     SendGrpcRequestNoDriver(ctx);
                 } else {
                     auto requestHolder = MakeHolder<NKikimrClient::TSqsRequest>();
+
                     NSQS::EAction action = NSQS::ActionFromString(Method);
                     requestHolder->SetRequestId(HttpContext.RequestId);
 
@@ -689,7 +691,7 @@ namespace NKikimr::NHttpProxy {
                     NYql::TIssues issues;
                     NYql::IssuesFromMessage(response.operation().issues(), issues);
                     result->Status = MakeHolder<NYdb::TStatus>(NYdb::EStatus(response.operation().status()),
-                                                               std::move(issues));
+                                                               NYdb::NAdapters::ToSdkIssues(std::move(issues)));
                     actorSystem->Send(actorId, result.Release());
                 });
                 return;
@@ -1152,7 +1154,7 @@ namespace NKikimr::NHttpProxy {
                 Request->URL + " " +
                 Request->Protocol + "/" + Request->Version + "\r\n" +
                 Request->Headers +
-                Request->Content;
+                Request->Body;
             signature = MakeHolder<NKikimr::NSQS::TAwsRequestSignV4>(fullRequest);
         }
 
@@ -1170,11 +1172,9 @@ namespace NKikimr::NHttpProxy {
             response->Set<&NHttp::THttpResponse::Connection>(request->GetConnection());
             response->Set(REQUEST_ID_HEADER_EXT, RequestId);
             if (!contentType.empty() && !body.empty()) {
-                response->Set(CRC32_HEADER, ToString(crc32(body.data(), body.size())));
                 response->Set<&NHttp::THttpResponse::ContentType>(contentType);
                 if (!request->Endpoint->CompressContentTypes.empty()) {
-                    contentType = contentType.Before(';');
-                    NHttp::Trim(contentType, ' ');
+                    contentType = NHttp::Trim(contentType.Before(';'), ' ');
                     if (Count(request->Endpoint->CompressContentTypes, contentType) != 0) {
                         response->EnableCompression();
                     }
@@ -1491,7 +1491,7 @@ namespace NKikimr::NHttpProxy {
         void HandleTicketParser(const TEvTicketParser::TEvAuthorizeTicketResult::TPtr& ev, const TActorContext& ctx) {
 
             if (ev->Get()->Error) {
-                return ReplyWithError(ctx, ev->Get()->Error.Retryable ? NYdb::EStatus::UNAVAILABLE : NYdb::EStatus::UNAUTHORIZED, ev->Get()->Error.Message);
+                return ReplyWithError(ctx, ev->Get()->Error.Retryable ? NYdb::EStatus::UNAVAILABLE : NYdb::EStatus::UNAUTHORIZED, TString{ev->Get()->Error.Message});
             }
             ctx.Send(Sender, new TEvServerlessProxy::TEvToken(ev->Get()->Token->GetUserSID(), "", ev->Get()->SerializedToken, {"", DatabaseId, DatabasePath, CloudId, FolderId}));
 

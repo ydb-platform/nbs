@@ -3,9 +3,9 @@
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 
-#include <contrib/ydb/library/yql/providers/common/mkql/yql_type_mkql.h>
+#include <yql/essentials/providers/common/mkql/yql_type_mkql.h>
 #include <contrib/ydb/library/yql/providers/dq/expr_nodes/dqs_expr_nodes.h>
-#include <contrib/ydb/library/yql/dq/integration/yql_dq_integration.h>
+#include <yql/essentials/core/dq_integration/yql_dq_integration.h>
 
 namespace NKikimr {
 namespace NKqp {
@@ -197,7 +197,7 @@ TKqpKeyRange MakeKeyRange(const TKqlReadTableBase& readTable, const TKqlCompileC
     if (settings.ItemsLimit) {
         keyRange.ItemsLimit = MkqlBuildExpr(*settings.ItemsLimit, buildCtx);
     }
-    keyRange.Reverse = settings.Reverse;
+    keyRange.Reverse = settings.IsReverse();
 
     return keyRange;
 }
@@ -210,7 +210,7 @@ TKqpKeyRanges MakeComputedKeyRanges(const TKqlReadTableRangesBase& readTable, co
     TKqpKeyRanges ranges = {
         .Ranges = MkqlBuildExpr(readTable.Ranges().Ref(), buildCtx),
         .ItemsLimit = settings.ItemsLimit ? MkqlBuildExpr(*settings.ItemsLimit, buildCtx) : ctx.PgmBuilder().NewNull(),
-        .Reverse = settings.Reverse,
+        .Reverse = settings.IsReverse(),
     };
 
     return ranges;

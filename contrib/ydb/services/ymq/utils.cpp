@@ -23,3 +23,4 @@ namespace NKikimr::NYmq {
         return {accountName, queueName};
     }
 }
+

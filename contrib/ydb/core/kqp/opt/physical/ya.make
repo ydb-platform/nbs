@@ -15,6 +15,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/core/scheme
     contrib/ydb/core/kqp/common
     contrib/ydb/core/kqp/opt/physical/effects
     contrib/ydb/library/yql/dq/common

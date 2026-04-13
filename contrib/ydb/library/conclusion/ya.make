@@ -6,8 +6,8 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/public/api/protos
-    contrib/ydb/library/actors/core
+    util
+    contrib/ydb/library/conclusion/generic
 )
 
 END()

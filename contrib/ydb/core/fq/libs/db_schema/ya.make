@@ -5,8 +5,8 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/public/sdk/cpp/client/ydb_params
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/params
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 YQL_LAST_ABI_VERSION()

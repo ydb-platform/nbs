@@ -1,6 +1,6 @@
 #pragma once
 #include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
 
 namespace NPGW {
 

@@ -28,7 +28,6 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
 
         runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_TRACE);
         runtime.SetLogPriority(NKikimrServices::TX_PROXY, NLog::PRI_DEBUG);
-        runtime.GetAppData().AllowReadTableImmediate = true;
 
         InitRoot(server, sender);
 
@@ -776,9 +775,6 @@ Y_UNIT_TEST_SUITE(DataShardFollowers) {
         UNIT_ASSERT_VALUES_EQUAL(
             FormatResult(runtime.WaitFuture(std::move(readFuture))),
             "ERROR: UNAVAILABLE");
-
-        // Let followers catch up
-        runtime.SimulateSleep(TDuration::Seconds(1));
 
         Cerr << "... reading from the left follower" << Endl;
         UNIT_ASSERT_VALUES_EQUAL(

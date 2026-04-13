@@ -11,7 +11,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/getopt
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     library/cpp/regex/pcre
     library/cpp/svnversion
     contrib/ydb/core/fq/libs/control_plane_storage
@@ -21,13 +21,11 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/library/yql/providers/common/db_id_async_resolver
     contrib/ydb/library/yql/udfs/common/clickhouse/client
-    contrib/ydb/library/yql/utils
+    yql/essentials/utils/network
     contrib/ydb/public/lib/fq
     contrib/ydb/services/ydb
 )
 
 YQL_LAST_ABI_VERSION()
-
-REQUIREMENTS(ram:14)
 
 END()

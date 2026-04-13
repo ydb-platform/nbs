@@ -33,12 +33,6 @@ public:
     virtual std::shared_ptr<arrow::Field> GetField(const ui32 columnId) const override {
         return Schema->GetFieldByColumnIdOptional(columnId);
     }
-    virtual bool NeedMinMaxForColumn(const ui32 columnId) const override {
-        return Schema->GetIndexInfo().GetMinMaxIdxColumns().contains(columnId);
-    }
-    virtual bool IsSortedColumn(const ui32 columnId) const override {
-        return Schema->GetIndexInfo().IsSortedColumn(columnId);
-    }
 
     virtual std::optional<NArrow::NSplitter::TColumnSerializationStat> GetColumnSerializationStats(const ui32 columnId) const override {
         auto stats = Stats->GetColumnInfo(columnId);
@@ -60,6 +54,7 @@ class TGeneralSerializedSlice {
 private:
     YDB_READONLY(ui32, RecordsCount, 0);
     YDB_READONLY(ui32, InternalSplitsCount, 0);
+
 protected:
     std::vector<TSplittedEntity> Data;
     ui64 Size = 0;
@@ -108,6 +103,15 @@ public:
         return arrow::RecordBatch::Make(pkSchema, 2, pkColumns);
     }
 
+    ui64 GetPackedSize() const {
+        ui64 result = 0;
+        for (auto&& i : Data) {
+            result += i.GetPackedSize();
+        }
+        AFL_VERIFY(Size == result)("size", Size)("result", result);
+        return result;
+    }
+
     ui64 GetSize() const {
         return Size;
     }
@@ -133,10 +137,6 @@ public:
     void MergeSlice(TGeneralSerializedSlice&& slice);
 
     bool GroupBlobs(std::vector<TSplittedBlob>& blobs, const NSplitter::TEntityGroups& groups);
-
-    bool operator<(const TGeneralSerializedSlice& item) const {
-        return Size < item.Size;
-    }
 };
 
 }

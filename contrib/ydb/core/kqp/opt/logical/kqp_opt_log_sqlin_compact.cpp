@@ -4,8 +4,8 @@
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider_impl.h>
 
-#include <contrib/ydb/library/yql/core/common_opt/yql_co_sqlin.h>
-#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
+#include <yql/essentials/core/common_opt/yql_co_sqlin.h>
+#include <yql/essentials/core/yql_opt_utils.h>
 
 namespace NKikimr::NKqp::NOpt {
 

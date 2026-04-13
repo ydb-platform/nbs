@@ -1,11 +1,6 @@
 UNITTEST()
 
     SIZE(MEDIUM)
-    TIMEOUT(600)
-
-    REQUIREMENTS(
-        ram:32
-    )
 
     SRCS(
         main.cpp
@@ -32,9 +27,10 @@ UNITTEST()
         contrib/ydb/core/tx/coordinator
         contrib/ydb/core/tx/scheme_board
         contrib/ydb/core/util
-        contrib/ydb/library/yql/public/udf/service/stub
-        contrib/ydb/library/yql/sql/pg_dummy
+        yql/essentials/public/udf/service/stub
+        yql/essentials/sql/pg_dummy
         library/cpp/testing/unittest
+        contrib/ydb/core/util/actorsys_test
     )
 
 END()

@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/dq/runtime)
 
-TAG(ya:manual)
-
 FORK_SUBTESTS()
 
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
@@ -16,8 +14,8 @@ SRCS(
 
 PEERDIR(
     library/cpp/testing/unittest
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
 )
 
 YQL_LAST_ABI_VERSION()

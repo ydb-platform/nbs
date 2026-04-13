@@ -8,7 +8,7 @@
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/protobuf_printer/security_printer.h>
 #include <contrib/ydb/library/grpc/server/grpc_request_base.h>
-#include <contrib/ydb/public/sdk/cpp/client/resources/ydb_resources.h>
+#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/resources/ydb_resources.h>
 
 namespace NKikimr::NGRpcService {
 
@@ -280,26 +280,6 @@ void DoInterconnectDebug(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProv
 void DoTabletStateRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
     NKikimr::NMsgBusProxy::TBusMessageContext ctx(std::move(p), NMsgBusProxy::MTYPE_CLIENT_TABLET_STATE_REQUEST);
     f.RegisterActor(CreateMessageBusTabletStateRequest(ctx));
-}
-
-void DoLocalSchemeTx(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
-    NKikimr::NMsgBusProxy::TBusMessageContext ctx(std::move(p), NMsgBusProxy::MTYPE_CLIENT_LOCAL_SCHEME_TX);
-    f.RegisterActor(NMsgBusProxy::CreateMessageBusLocalSchemeTx(ctx));
-}
-
-void DoLocalEnumerateTablets(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
-    NKikimr::NMsgBusProxy::TBusMessageContext ctx(std::move(p), NMsgBusProxy::MTYPE_CLIENT_LOCAL_ENUMERATE_TABLETS);
-    f.RegisterActor(NMsgBusProxy::CreateMessageBusLocalEnumerateTablets(ctx));
-}
-
-void DoTabletKillRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
-    NKikimr::NMsgBusProxy::TBusMessageContext ctx(std::move(p), NMsgBusProxy::MTYPE_CLIENT_TABLET_KILL_REQUEST);
-    f.RegisterActor(NMsgBusProxy::CreateMessageBusTabletKillRequest(ctx));
-}
-
-void DoLocalMKQL(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f) {
-    NKikimr::NMsgBusProxy::TBusMessageContext ctx(std::move(p), NMsgBusProxy::MTYPE_CLIENT_LOCAL_MINIKQL);
-    f.RegisterActor(NMsgBusProxy::CreateMessageBusLocalMKQL(ctx));
 }
 
 } // namespace NLegacyGrpcService

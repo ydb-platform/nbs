@@ -48,7 +48,7 @@
                                                         "InternalOperatorId": 2
                                                     },
                                                     {
-                                                        "ExternalPlanNodeId": 4
+                                                        "ExternalPlanNodeId": 5
                                                     }
                                                 ],
                                                 "Name": "InnerJoin (MapJoin)"
@@ -66,75 +66,78 @@
                                         "PlanNodeId": 7,
                                         "Plans": [
                                             {
+                                                "Node Type": "TableFullScan",
+                                                "Operators": [
+                                                    {
+                                                        "Inputs": [],
+                                                        "Name": "TableFullScan",
+                                                        "Path": "/Root/postgres_jointest/join1.test_plan/J1_TBL",
+                                                        "ReadColumns": [
+                                                            "i",
+                                                            "j",
+                                                            "t"
+                                                        ],
+                                                        "ReadRanges": [
+                                                            "i (-\u221e, +\u221e)",
+                                                            "j (-\u221e, +\u221e)",
+                                                            "t (-\u221e, +\u221e)"
+                                                        ],
+                                                        "ReadRangesPointPrefixLen": "0",
+                                                        "Scan": "Parallel",
+                                                        "Table": "postgres_jointest/join1.test_plan/J1_TBL"
+                                                    }
+                                                ],
+                                                "PlanNodeId": 6,
+                                                "Tables": [
+                                                    "postgres_jointest/join1.test_plan/J1_TBL"
+                                                ]
+                                            },
+                                            {
                                                 "Node Type": "Broadcast",
-                                                "PlanNodeId": 4,
+                                                "PlanNodeId": 5,
                                                 "PlanNodeType": "Connection",
                                                 "Plans": [
                                                     {
-                                                        "Node Type": "Collect",
-                                                        "PlanNodeId": 3,
+                                                        "Node Type": "Stage",
+                                                        "PlanNodeId": 4,
                                                         "Plans": [
                                                             {
                                                                 "Node Type": "UnionAll",
-                                                                "PlanNodeId": 2,
+                                                                "PlanNodeId": 3,
                                                                 "PlanNodeType": "Connection",
                                                                 "Plans": [
                                                                     {
-                                                                        "Node Type": "TableFullScan",
-                                                                        "Operators": [
+                                                                        "Node Type": "Stage",
+                                                                        "PlanNodeId": 2,
+                                                                        "Plans": [
                                                                             {
-                                                                                "Inputs": [],
-                                                                                "Name": "TableFullScan",
-                                                                                "ReadColumns": [
-                                                                                    "k"
+                                                                                "Node Type": "TableFullScan",
+                                                                                "Operators": [
+                                                                                    {
+                                                                                        "Inputs": [],
+                                                                                        "Name": "TableFullScan",
+                                                                                        "Path": "/Root/postgres_jointest/join1.test_plan/J2_TBL",
+                                                                                        "ReadColumns": [
+                                                                                            "k"
+                                                                                        ],
+                                                                                        "ReadRanges": [
+                                                                                            "i (-\u221e, +\u221e)",
+                                                                                            "k (-\u221e, +\u221e)"
+                                                                                        ],
+                                                                                        "ReadRangesPointPrefixLen": "0",
+                                                                                        "Scan": "Parallel",
+                                                                                        "Table": "postgres_jointest/join1.test_plan/J2_TBL"
+                                                                                    }
                                                                                 ],
-                                                                                "ReadRanges": [
-                                                                                    "i (-\u221e, +\u221e)",
-                                                                                    "k (-\u221e, +\u221e)"
-                                                                                ],
-                                                                                "Scan": "Parallel",
-                                                                                "Table": "postgres_jointest/join1.test_plan/J2_TBL"
+                                                                                "PlanNodeId": 1,
+                                                                                "Tables": [
+                                                                                    "postgres_jointest/join1.test_plan/J2_TBL"
+                                                                                ]
                                                                             }
-                                                                        ],
-                                                                        "PlanNodeId": 1,
-                                                                        "Tables": [
-                                                                            "postgres_jointest/join1.test_plan/J2_TBL"
                                                                         ]
                                                                     }
                                                                 ]
                                                             }
-                                                        ]
-                                                    }
-                                                ]
-                                            },
-                                            {
-                                                "Node Type": "Map",
-                                                "PlanNodeId": 6,
-                                                "PlanNodeType": "Connection",
-                                                "Plans": [
-                                                    {
-                                                        "Node Type": "TableFullScan",
-                                                        "Operators": [
-                                                            {
-                                                                "Inputs": [],
-                                                                "Name": "TableFullScan",
-                                                                "ReadColumns": [
-                                                                    "i",
-                                                                    "j",
-                                                                    "t"
-                                                                ],
-                                                                "ReadRanges": [
-                                                                    "i (-\u221e, +\u221e)",
-                                                                    "j (-\u221e, +\u221e)",
-                                                                    "t (-\u221e, +\u221e)"
-                                                                ],
-                                                                "Scan": "Parallel",
-                                                                "Table": "postgres_jointest/join1.test_plan/J1_TBL"
-                                                            }
-                                                        ],
-                                                        "PlanNodeId": 5,
-                                                        "Tables": [
-                                                            "postgres_jointest/join1.test_plan/J1_TBL"
                                                         ]
                                                     }
                                                 ]
@@ -150,7 +153,10 @@
                     }
                 ]
             }
-        ]
+        ],
+        "Stats": {
+            "ResourcePoolId": "default"
+        }
     },
     "meta": {
         "type": "query",

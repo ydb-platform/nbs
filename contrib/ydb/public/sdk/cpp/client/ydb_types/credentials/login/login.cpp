@@ -8,7 +8,7 @@
 #include <contrib/ydb/library/security/util.h>
 #include <util/string/cast.h>
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 class TLoginCredentialsProvider : public ICredentialsProvider {
 public:

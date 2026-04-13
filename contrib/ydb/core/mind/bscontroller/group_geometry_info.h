@@ -8,19 +8,23 @@
 
 namespace NKikimr::NBsController {
 
-    struct TExFitGroupError : yexception {};
+    struct TExFitGroupError : yexception {
+        std::optional<TGroupMapperError> GroupMapperError;
+    };
 
     class TGroupGeometryInfo {
-        const TBlobStorageGroupType Type;
-        ui32 NumFailRealms;
-        ui32 NumFailDomainsPerFailRealm;
-        ui32 NumVDisksPerFailDomain;
-        ui32 RealmLevelBegin;
-        ui32 RealmLevelEnd;
-        ui32 DomainLevelBegin;
-        ui32 DomainLevelEnd;
+        TBlobStorageGroupType Type;
+        ui32 NumFailRealms = 0;
+        ui32 NumFailDomainsPerFailRealm = 0;
+        ui32 NumVDisksPerFailDomain = 0;
+        ui32 RealmLevelBegin = 0;
+        ui32 RealmLevelEnd = 0;
+        ui32 DomainLevelBegin = 0;
+        ui32 DomainLevelEnd = 0;
 
     public:
+        explicit TGroupGeometryInfo() = default;
+
         TGroupGeometryInfo(TBlobStorageGroupType type, NKikimrBlobStorage::TGroupGeometry g)
             : Type(type)
             , NumFailRealms(g.GetNumFailRealms())
@@ -84,13 +88,16 @@ namespace NKikimr::NBsController {
         void AllocateGroup(TGroupMapper &mapper, TGroupId groupId, TGroupMapper::TGroupDefinition &group, TGroupMapper::TGroupConstraintsDefinition& constrainsts,
                 const THashMap<TVDiskIdShort, TPDiskId>& replacedDisks, TGroupMapper::TForbiddenPDisks forbid,
                 i64 requiredSpace) const {
-            TString error;
+            TGroupMapperError error;
             for (const bool requireOperational : {true, false}) {
                 if (mapper.AllocateGroup(groupId.GetRawId(), group, constrainsts, replacedDisks, forbid, requiredSpace, requireOperational, error)) {
                     return;
                 }
-            }
-            throw TExFitGroupError() << "failed to allocate group: " << error;
+            };
+            TExFitGroupError errorException;
+            errorException << "failed to allocate group: " << error.ErrorMessage;
+            errorException.GroupMapperError = std::move(error);
+            throw errorException;
         }
 
         // returns pair of previous VDisk and PDisk id's

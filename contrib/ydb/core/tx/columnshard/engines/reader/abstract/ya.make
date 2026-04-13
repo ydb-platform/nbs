@@ -8,13 +8,15 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/core/tx/columnshard/engines/scheme/versions
-    contrib/ydb/core/tx/columnshard/engines/insert_table
-    contrib/ydb/core/tx/program
     contrib/ydb/core/protos
+    contrib/ydb/core/resource_pools
+    contrib/ydb/core/tx/columnshard/engines/scheme/versions
     contrib/ydb/core/tx/columnshard/data_sharing/protos
+    contrib/ydb/core/tx/conveyor/usage
+    contrib/ydb/core/tx/program
 )
 
 GENERATE_ENUM_SERIALIZATION(read_metadata.h)
+YQL_LAST_ABI_VERSION()
 
 END()

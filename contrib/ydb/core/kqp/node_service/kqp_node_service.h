@@ -11,7 +11,7 @@
 
 #include <contrib/ydb/library/yql/dq/runtime/dq_tasks_runner.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>

@@ -186,7 +186,7 @@
             "Base": "TKqlLookupTableBase",
             "Match": {"Type": "Callable", "Name": "KqlStreamLookupTable"},
             "Children": [
-                {"Index": 3, "Name": "LookupStrategy", "Type": "TCoAtom"}
+                {"Index": 3, "Name": "Settings", "Type": "TCoNameValueTupleList"}
             ]
         },
         {
@@ -211,7 +211,7 @@
             "Base": "TKqlLookupIndexBase",
             "Match": {"Type": "Callable", "Name": "KqlStreamLookupIndex"},
             "Children": [
-                {"Index": 4, "Name": "LookupStrategy", "Type": "TCoAtom"}
+                {"Index": 4, "Name": "Settings", "Type": "TCoNameValueTupleList"}
             ]
         },
         {
@@ -240,6 +240,17 @@
             ]
         },
         {
+            "Name": "TKqlFillTable",
+            "Base": "TExprBase",
+            "Match": {"Type": "Callable", "Name": "KqlFillTable"},
+            "Children": [
+                {"Index": 0, "Name": "Input", "Type": "TExprBase"},
+                {"Index": 1, "Name": "Table", "Type": "TCoAtom"},
+                {"Index": 2, "Name": "Cluster", "Type": "TCoAtom"},
+                {"Index": 3, "Name": "OriginalPath", "Type": "TCoAtom"}
+            ]
+        },
+        {
             "Name": "TKqlUpsertRowsBase",
             "Base": "TKqlTableEffect",
             "Match": {"Type": "CallableBase"},
@@ -254,7 +265,8 @@
             "Match": {"Type": "Callable", "Name": "KqlUpsertRows"},
             "Children": [
                 {"Index": 3, "Name": "ReturningColumns", "Type": "TCoAtomList"},
-                {"Index": 4, "Name": "Settings", "Type": "TCoNameValueTupleList", "Optional": true}
+                {"Index": 4, "Name": "IsBatch", "Type": "TCoAtom"},
+                {"Index": 5, "Name": "Settings", "Type": "TCoNameValueTupleList", "Optional": true}
             ]
         },
         {
@@ -467,7 +479,7 @@
                 {"Index": 1, "Name": "Table", "Type": "TKqpTable"},
                 {"Index": 2, "Name": "Columns", "Type": "TCoAtomList"},
                 {"Index": 3, "Name": "InputType", "Type": "TExprBase"},
-                {"Index": 4, "Name": "LookupStrategy", "Type": "TCoAtom"}
+                {"Index": 4, "Name": "Settings", "Type": "TCoNameValueTupleList"}
             ]
         },
         {
@@ -524,7 +536,9 @@
             "Base": "TKqlDeleteRowsBase",
             "Match": {"Type": "Callable", "Name": "KqlDeleteRows"},
             "Children": [
-                {"Index": 2, "Name": "ReturningColumns", "Type": "TCoAtomList"}
+                {"Index": 2, "Name": "ReturningColumns", "Type": "TCoAtomList"},
+                {"Index": 3, "Name": "IsBatch", "Type": "TCoAtom"},
+                {"Index": 4, "Name": "Settings", "Type": "TCoNameValueTupleList", "Optional": true}
             ]
         },
         {
@@ -532,7 +546,8 @@
             "Base": "TKqlDeleteRowsBase",
             "Match": {"Type": "Callable", "Name": "KqlDeleteRowsIndex"},
             "Children": [
-                {"Index": 2, "Name": "ReturningColumns", "Type": "TCoAtomList"}
+                {"Index": 2, "Name": "ReturningColumns", "Type": "TCoAtomList"},
+                {"Index": 3, "Name": "Settings", "Type": "TCoNameValueTupleList", "Optional": true}
             ]
         },
         {
@@ -548,7 +563,11 @@
                 {"Index": 0, "Name": "Table", "Type": "TKqpTable"},
                 {"Index": 1, "Name": "InconsistentWrite", "Type": "TCoAtom"},
                 {"Index": 2, "Name": "Mode", "Type": "TCoAtom"},
-                {"Index": 3, "Name": "Settings", "Type": "TCoNameValueTupleList", "Optional": true}
+                {"Index": 3, "Name": "Priority", "Type": "TCoAtom"},
+                {"Index": 4, "Name": "StreamWrite", "Type": "TCoAtom"},
+                {"Index": 5, "Name": "IsBatch", "Type": "TCoAtom"},
+                {"Index": 6, "Name": "IsIndexImplTable", "Type": "TCoAtom"},
+                {"Index": 7, "Name": "Settings", "Type": "TCoNameValueTupleList", "Optional": true}
             ]
         },
         {
@@ -567,6 +586,15 @@
             "Children": [
                 {"Index": 0, "Name": "Stage", "Type": "TExprBase"},
                 {"Index": 1, "Name": "SinkIndex", "Type": "TCoAtom"}
+            ]
+        },
+        {
+            "Name": "TKqpOlapPredicateClosure",
+            "Base": "TCallable",
+            "Match": {"Type": "Callable", "Name": "TKqpOlapPredicateClosure"},
+            "Children": [
+                {"Index": 0, "Name": "Lambda", "Type": "TCoLambda"},
+                {"Index": 1, "Name": "ArgsType", "Type": "TExprBase"}
             ]
         },
         {
@@ -665,13 +693,22 @@
             ]
         },
         {
+            "Name": "TKqpOlapApplyColumnArg",
+            "Base": "TExprBase",
+            "Match": {"Type": "Callable", "Name": "KqpOlapApplyColumnArg"},
+            "Children": [
+                {"Index": 0, "Name": "TableRowType", "Type": "TExprBase"},
+                {"Index": 1, "Name": "ColumnName", "Type": "TCoAtom"}
+            ]
+        },
+        {
             "Name": "TKqpOlapApply",
             "Base": "TExprBase",
             "Match": {"Type": "Callable", "Name": "KqpOlapApply"},
             "Children": [
-                {"Index": 0, "Name": "Type", "Type": "TExprBase"},
-                {"Index": 1, "Name": "Columns", "Type": "TCoAtomList"},
-                {"Index": 2, "Name": "Lambda", "Type": "TCoLambda"}
+                {"Index": 0, "Name": "Lambda", "Type": "TCoLambda"},
+                {"Index": 1, "Name": "Args", "Type": "TExprList"},
+                {"Index": 2, "Name": "KernelName", "Type": "TCoAtom"}
             ]
         },
         {

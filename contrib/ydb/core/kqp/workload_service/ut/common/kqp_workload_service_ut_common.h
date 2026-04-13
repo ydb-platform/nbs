@@ -8,8 +8,10 @@
 
 #include <contrib/ydb/public/lib/yson_value/ydb_yson_value.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_query/client.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_scheme/scheme.h>
+#include <ydb-cpp-sdk/client/query/client.h>
+#include <ydb-cpp-sdk/client/scheme/scheme.h>
+
+#include <contrib/ydb/core/protos/workload_manager_config.pb.h>
 
 
 namespace NKikimr::NKqp::NWorkload {
@@ -73,6 +75,8 @@ struct TYdbSetupSettings {
     FLUENT_SETTING_DEFAULT(bool, EnableResourcePoolsOnServerless, false);
     FLUENT_SETTING_DEFAULT(bool, EnableMetadataObjectsOnServerless, true);
     FLUENT_SETTING_DEFAULT(bool, EnableExternalDataSourcesOnServerless, true);
+    FLUENT_SETTING(NKikimrConfig::TWorkloadManagerConfig, WorkloadManagerConfig);
+    
 
     // Default pool settings
     FLUENT_SETTING_DEFAULT(TString, PoolId, "sample_pool_id");
@@ -104,6 +108,7 @@ public:
     // Generic query helpers
     virtual TQueryRunnerResult ExecuteQuery(const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings()) const = 0;
     virtual TQueryRunnerResultAsync ExecuteQueryAsync(const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings()) const = 0;
+    virtual void ExecuteQueryRetry(const TString& retryMessage, const TString& query, TQueryRunnerSettings settings = TQueryRunnerSettings(), TDuration timeout = FUTURE_WAIT_TIMEOUT) const = 0;
 
     // Async query execution actions
     virtual void WaitQueryExecution(const TQueryRunnerResultAsync& query, TDuration timeout = FUTURE_WAIT_TIMEOUT) const = 0;
@@ -135,7 +140,7 @@ struct TSampleQueries {
     template <typename TResult>
     static void CheckCancelled(const TResult& result) {
         UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), NYdb::EStatus::CANCELLED, result.GetIssues().ToString());
-        UNIT_ASSERT_STRING_CONTAINS(result.GetIssues().ToString(), "Request timeout exceeded, cancelling after");
+        UNIT_ASSERT_STRING_CONTAINS(result.GetIssues().ToString(), "Request was canceled");
     }
 
     template <typename TResult>

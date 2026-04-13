@@ -117,7 +117,7 @@ actor_system_config:
     name: "IC"
     time_per_mailbox_micro_secs: 100
   scheduler:
-    resolution: 256
+    resolution: 1024
     spin_threshold: 0
     progress_threshold: 10000
   sys_executor: 0
@@ -134,6 +134,7 @@ grpc_config:
   host: "{ydb_grpc_host}"
   services:
   - "legacy"
+  - "tablet_service"
   - "yql"
   - "discovery"
   - "cms"
@@ -155,6 +156,7 @@ grpc_config:
   - "monitoring"
   - "auth"
   - "query_service"
+  - "view"
 feature_flags:
   enable_persistent_query_stats: true
   enable_scheme_transactions_at_scheme_shard: true
@@ -167,8 +169,6 @@ kqpconfig:
     value: "{ydb_yql_syntax_version}"
   - name: "_KqpAllowNewEngine"
     value: "true"
-  - name: "_KqpForceNewEngine"
-    value: "{ydb_force_new_engine}"
 interconnect_config:
   start_tcp: true
 sqs_config:
@@ -194,6 +194,11 @@ pqconfig:
     enable_quoting: false
 pqcluster_discovery_config:
   enabled: false
+table_service_config:
+  resource_manager:
+    mkql_light_program_memory_limit: 65536
+    mkql_heavy_program_memory_limit: 1048576
+    channel_buffer_size: 262144
 net_classifier_config:
   updater_config:
     retry_interval_seconds: 30
@@ -256,3 +261,16 @@ federated_query_config:
       uri: ""
   pinger:
     ping_period: "30s"
+query_service_config:
+  available_external_data_sources:
+    - ObjectStorage
+    - ClickHouse
+    - PostgreSQL
+    - MySQL
+    - Ydb
+    - YT
+    - Greenplum
+    - MsSQLServer
+    - Oracle
+    - Logging
+    - Solomon
