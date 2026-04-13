@@ -264,7 +264,11 @@ func (f *FileSystemModel) CreateAllNodesRecursively() {
 	}
 }
 
-func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
+func (f *FileSystemModel) ListAllNodes(
+	parentNodeID uint64,
+	unsafe bool,
+) []nfs.Node {
+
 	var (
 		nodes  []nfs.Node
 		cookie string
@@ -275,8 +279,8 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 			f.ctx,
 			parentNodeID,
 			cookie,
-			0,     // maxBytes
-			false, // unsafe
+			0, // maxBytes
+			unsafe,
 		)
 		require.NoError(f.t, err)
 		for index := range batch {
@@ -307,8 +311,12 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 	return nodes
 }
 
-func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
-	nodes := f.ListAllNodes(parentNodeID)
+func (f *FileSystemModel) ListNodesRecursively(
+	parentNodeID uint64,
+	unsafe bool,
+) []nfs.Node {
+
+	nodes := f.ListAllNodes(parentNodeID, unsafe)
 	// Sort nodes by name to have a deterministic order
 	slices.SortFunc(
 		nodes,
@@ -323,15 +331,35 @@ func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
 			continue
 		}
 
-		children := f.ListNodesRecursively(node.NodeID)
+		children := f.ListNodesRecursively(node.NodeID, unsafe)
 		result = append(result, children...)
 	}
 
 	return result
 }
 
-func (f *FileSystemModel) ListAllNodesRecursively() []nfs.Node {
-	return f.ListNodesRecursively(nfs.RootNodeID)
+func (f *FileSystemModel) ListAllNodesRecursively(unsafe bool) []nfs.Node {
+	return f.ListNodesRecursively(nfs.RootNodeID, unsafe)
+}
+
+func (f *FileSystemModel) RequireNodesEqual(
+	nodes []nfs.Node,
+) {
+
+	require.Equal(f.t, len(f.ExpectedNodes), len(nodes))
+	for index, node := range nodes {
+		expectedNode := f.ExpectedNodes[index]
+		require.Equal(f.t, expectedNode.ParentID, node.ParentID)
+		require.Equal(f.t, expectedNode.Name, node.Name)
+		require.Equal(f.t, expectedNode.Type, node.Type)
+		if !expectedNode.Type.IsSymlink() {
+			require.Equal(f.t, expectedNode.Mode, node.Mode)
+		}
+
+		require.Equal(f.t, expectedNode.UID, node.UID)
+		require.Equal(f.t, expectedNode.GID, node.GID)
+		require.Equal(f.t, expectedNode.LinkTarget, node.LinkTarget)
+	}
 }
 
 func (f *FileSystemModel) SetSession(session nfs.Session) {
