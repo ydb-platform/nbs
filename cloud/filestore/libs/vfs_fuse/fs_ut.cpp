@@ -2974,11 +2974,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
 
-        std::atomic<int> writeDataCalled = 0;
+        TPromise<void> writeDataCalled = NewPromise();
 
         bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-            writeDataCalled++;
+            writeDataCalled.SetValue();
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
         };
@@ -2998,16 +2998,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
 
-        while (true) {
-            bootstrap.Timer->Sleep(TDuration::MilliSeconds(1));
+        UNIT_ASSERT(writeDataCalled.GetFuture().Wait(WaitTimeout));
 
-            if (writeDataCalled.load() == 0) {
-                continue;
-            }
-
-            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
-            break;
-        }
+        // The test will hang if we stop while WriteBackCache is handling
+        // WriteData response in the scheduler thread.
+        // We explicitly wait for the completion by calling flush.
+        auto flush =
+            bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
     }
 
     // We want to ensure that the same file cannot be reused for FileRingBuffers
