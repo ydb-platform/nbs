@@ -87,11 +87,16 @@ type Node struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 func headersForSession(session Session) *protos.THeaders {
-	return &protos.THeaders{
+	headers := &protos.THeaders{
 		SessionSeqNo: session.SessionSeqNo,
 		SessionId:    []byte(session.SessionID),
-		ClientId:     []byte(session.ClientID),
 	}
+
+	if session.ClientID != "" {
+		headers.ClientId = []byte(session.ClientID)
+	}
+
+	return headers
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -299,9 +304,11 @@ func (client *Client) CreateSession(
 		ReadOnly:             readonly,
 		CheckpointId:         checkpointId,
 		RestoreClientSession: true,
-		Headers: &protos.THeaders{
+	}
+	if clientID != "" {
+		req.Headers = &protos.THeaders{
 			ClientId: []byte(clientID),
-		},
+		}
 	}
 	resp, err := client.Impl.CreateSession(ctx, req)
 	if err != nil {

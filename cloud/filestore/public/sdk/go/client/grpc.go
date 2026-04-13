@@ -35,7 +35,7 @@ type grpcClient struct {
 
 func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers := req.GetHeaders()
-	if headers.GetClientId() == nil {
+	if len(headers.GetClientId()) == 0 {
 		headers.ClientId = []byte(client.clientID)
 	}
 
