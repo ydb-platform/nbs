@@ -490,6 +490,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.CheckpointReplica = config.GetCheckpointReplica();
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
+        disk.VolumeHealth = config.GetVolumeHealth();
 
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
@@ -5263,6 +5264,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.MutableCheckpointReplica()->CopyFrom(diskState.CheckpointReplica);
     config.SetStorageMediaKind(diskState.MediaKind);
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
+    config.SetVolumeHealth(diskState.VolumeHealth);
 
     for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
@@ -6027,7 +6029,10 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
         return NProto::DISK_STATE_ONLINE;
     }
 
-    NProto::EDiskState state = NProto::DISK_STATE_ONLINE;
+    NProto::EDiskState state =
+        disk.VolumeHealth != NProto::VOLUME_HEALTH_HEALTHY
+            ? NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE
+            : NProto::DISK_STATE_ONLINE;
 
     for (const auto& uuid: disk.Devices) {
         const auto* device = DeviceList.FindDevice(uuid);
@@ -8665,6 +8670,29 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
     }
 
     return pathsToAttach;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TDiskRegistryState::UpdateVolumeHealth(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    TInstant now,
+    NProto::EVolumeHealth volumeHealth)
+{
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "disk " << diskId.Quote() << " not found");
+    }
+    if (disk->VolumeHealth == volumeHealth) {
+        return MakeError(S_ALREADY);
+    }
+    disk->VolumeHealth = volumeHealth;
+    db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+    TryUpdateDiskStateImpl(db, diskId, *disk, now);
+    return {};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

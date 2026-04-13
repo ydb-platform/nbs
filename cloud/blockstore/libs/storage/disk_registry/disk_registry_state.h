@@ -275,6 +275,8 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
+
+        NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
     };
 
     struct TVolumeDeviceOverrides
@@ -788,6 +790,12 @@ public:
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
+
+    [[nodiscard]] NProto::TError UpdateVolumeHealth(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TInstant now,
+        NProto::EVolumeHealth volumeHealth);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 

@@ -1212,6 +1212,17 @@ public:
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityRequest>();
     }
 
+    auto CreateUpdateVolumeHealthRequest(
+        const TString& diskId,
+        NProto::EVolumeHealth volumeHealth)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvUpdateVolumeHealthRequest>();
+        request->Record.SetDiskId(diskId);
+        request->Record.SetVolumeHealth(volumeHealth);
+        return request;
+    }
+
     auto CreateQueryAgentsInfoRequest(
         const NProto::TQueryAgentsInfoRequest::TAgentFilter& filter)
     {

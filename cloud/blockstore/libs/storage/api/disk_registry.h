@@ -56,6 +56,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
     xxx(GetClusterCapacity,                 __VA_ARGS__)                       \
     xxx(EnsureDiskRegistryStateIntegrity,   __VA_ARGS__)                       \
+    xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -223,6 +224,9 @@ struct TEvDiskRegistry
 
         EvEnsureDiskRegistryStateIntegrityRequest = EvBegin + 81,
         EvEnsureDiskRegistryStateIntegrityResponse = EvBegin + 82,
+
+        EvUpdateVolumeHealthRequest = EvBegin + 83,
+        EvUpdateVolumeHealthResponse = EvBegin + 84,
 
         EvEnd
     };
