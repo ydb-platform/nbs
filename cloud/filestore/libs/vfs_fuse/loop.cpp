@@ -28,6 +28,8 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <cloud/contrib/virtiofsd/fuse_common.h>
+
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/bitops.h>
