@@ -12,6 +12,7 @@ SRCS(
     request.cpp
     threadpool.cpp
     time_point_specialization.cpp
+    tls_certificate_provider.cpp
     utils.cpp
 )
 

@@ -937,6 +937,7 @@ private:
     NProto::TBlockStoreDataService::AsyncService DataService;
 
     TVector<std::unique_ptr<TExecutor>> Executors;
+    std::shared_ptr<grpc::experimental::CertificateProviderInterface> CertificateProvider;
 
     std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
 
@@ -964,6 +965,7 @@ private:
     void StartRequest(TService& service);
     void StartRequests();
 
+    std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials();
     grpc::SslServerCredentialsOptions CreateSslOptions();
 
     void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog);
@@ -1062,8 +1064,7 @@ void TServer::Start()
         auto address = Join(":", host, port);
         STORAGE_INFO("Listen on (secure control) " << address);
 
-        auto sslOptions = CreateSslOptions();
-        auto credentials = grpc::SslServerCredentials(sslOptions);
+        auto credentials = CreateSecureServerCredentials();
         credentials->SetAuthMetadataProcessor(
             std::make_shared<TAuthMetadataProcessor>(
                 RequestSourceKinds,
@@ -1150,6 +1151,50 @@ grpc::SslServerCredentialsOptions TServer::CreateSslOptions()
     }
 
     return sslOptions;
+}
+
+std::shared_ptr<grpc::ServerCredentials> TServer::CreateSecureServerCredentials()
+{
+    if (Config->GetRefreshCertsPeriod() == 0) {
+        auto sslOptions = CreateSslOptions();
+        return grpc::SslServerCredentials(sslOptions);
+    }
+
+    TVector<NCloud::TCertificateFiles> certPathList;
+    if (Config->GetCerts().empty()) {
+        Y_ENSURE(Config->GetCertFile(), "Empty CertFile");
+        Y_ENSURE(Config->GetCertPrivateKeyFile(), "Empty CertPrivateKeyFile");
+
+        NCloud::TCertificateFiles certPaths;
+        certPaths.PrivateKeyPath = Config->GetCertPrivateKeyFile();
+        certPaths.CertChainPath = Config->GetCertFile();
+        certPathList.push_back(std::move(certPaths));
+    } else {
+        for (const auto& cert: Config->GetCerts()) {
+            Y_ENSURE(cert.CertFile, "Empty CertFile");
+            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
+
+            NCloud::TCertificateFiles certPaths;
+            certPaths.PrivateKeyPath = cert.CertPrivateKeyFile;
+            certPaths.CertChainPath = cert.CertFile;
+            certPathList.push_back(std::move(certPaths));
+        }
+    }
+
+    CertificateProvider = NCloud::CreatePeriodicCertificateProvider(
+        Config->GetRootCertsFile(),
+        std::move(certPathList),
+        Config->GetRefreshCertsPeriod());
+
+    grpc::experimental::TlsServerCredentialsOptions tlsOptions(CertificateProvider);
+    tlsOptions.set_cert_request_type(GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
+    tlsOptions.watch_identity_key_cert_pairs();
+
+    if (Config->GetRootCertsFile()) {
+        tlsOptions.watch_root_certs();
+    }
+
+    return grpc::experimental::TlsServerCredentials(tlsOptions);
 }
 
 void TServer::StartListenUnixSocket(

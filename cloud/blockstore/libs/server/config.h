@@ -148,6 +148,7 @@ public:
     bool GetAutomaticNbdDeviceManagement() const;
     bool GetEnableOverlappingRequestsGuard() const;
     bool GetEnableRequestSplitter() const;
+    ui32 GetRefreshCertsPeriod() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

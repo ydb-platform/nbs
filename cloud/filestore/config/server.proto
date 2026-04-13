@@ -67,6 +67,10 @@ message TServerConfig
     // Regions that have not been pinged within this timeout will be
     // invalidated and unmapped.
     optional uint32 SharedMemoryRegionTimeout = 23;
+
+    // Certificate refresh period in seconds for automatic TLS certificate
+    // reloading. Zero disables periodic certificate reloading.
+    optional uint32 RefreshCertsPeriod = 24;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
