@@ -294,7 +294,7 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
     ctx.Schedule(BackpressureReportSendInterval,
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
-    if (!Executor()->GetStats().IsFollower) {
+    if (!Executor()->GetStats().IsFollower()) {
         ExecuteTx<TInitSchema>(ctx);
     }
 }
