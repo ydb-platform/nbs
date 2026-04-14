@@ -218,9 +218,6 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
         StartTime,
         RequestCookie);
 
-    // Explicitly clear ChecksumCalcInfo after move to release any remaining memory
-    ChecksumCalcInfo = TChecksumCalcInfo{};
-
     InitProfileLogRequestInfo(
         MainInFlightRequest->AccessProfileLogRequest(),
         ReadRequest);
