@@ -417,6 +417,33 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             b.Metrics.WriteDataRequestDroppedCount->Get());
     }
 
+    Y_UNIT_TEST(FlushAllShouldNotFailOnNewerWriteDataRequests)
+    {
+        TBootstrap b;
+
+        UNIT_ASSERT(b.Add(1, 101, 1, "a").GetValue());
+        UNIT_ASSERT(b.Add(2, 102, 2, "b").GetValue());
+
+        auto f1 = b.State->AddFlushAllRequest();
+
+        UNIT_ASSERT(b.Add(3, 103, 3, "c").GetValue());
+
+        auto f2 = b.State->AddFlushAllRequest();
+
+        auto error = MakeError(E_FAIL, "Flush failed");
+
+        b.State->FlushFailed(3, error);
+
+        UNIT_ASSERT(!f1.HasValue());
+        UNIT_ASSERT(f2.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, f2.GetValue());
+
+        b.State->FlushFailed(1, error);
+
+        UNIT_ASSERT(f1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(error, f1.GetValue());
+    }
+
     Y_UNIT_TEST(HandleReleaseFailures)
     {
         TBootstrap b;
