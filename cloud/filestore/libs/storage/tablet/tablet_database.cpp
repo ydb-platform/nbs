@@ -2395,7 +2395,8 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
         name,
         childNode,
         shardId,
-        shardNodeName);
+        shardNodeName,
+        false);
     NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
         .NodeRefsKey = {nodeId, name},
         .NodeRefsRow = {

@@ -135,14 +135,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             db.WriteNode(nodeId, commitId, attrs);
             db.WriteNode(childNodeId1, commitId, attrs);
             db.WriteNode(childNodeId2, commitId, attrs);
-            db.WriteNodeRef(nodeId, commitId, "child1", childNodeId1, "", "");
+            db.WriteNodeRef(nodeId, commitId, "child1", childNodeId1, "", "", false);
             db.WriteNodeRef(
                 nodeId,
                 commitId,
                 "child2",
                 childNodeId2,
                 "shard",
-                "name");
+                "name",
+                false);
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
@@ -575,14 +576,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     "child1",
                     childNodeId1,
                     "",
-                    "");
+                    "",
+                    false);
                 db.WriteNodeRef(
                     nodeId,
                     commitId,
                     "child2",
                     childNodeId2,
                     "",
-                    "");
+                    "",
+                    false);
             });
 
         executor.ReadTx(
