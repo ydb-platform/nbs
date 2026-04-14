@@ -5274,8 +5274,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
     Y_UNIT_TEST(ShouldKillMountActorIfTabletIsChangedDuringTabletStart)
     {
+        constexpr TDuration InactiveClientsTimeout = TDuration::Seconds(5);
+
         TTestEnv env(1, 1);
-        ui32 nodeIdx = SetupTestEnv(env);
+        NProto::TStorageServiceConfig config;
+        config.SetInactiveClientsTimeout(InactiveClientsTimeout.MilliSeconds());
+
+        ui32 nodeIdx = SetupTestEnv(env, config);
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
@@ -5320,7 +5325,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         UNIT_ASSERT(volumeTabletId);
 
-        RebootTablet(env.GetRuntime(), volumeTabletId, service.GetSender(), nodeIdx);
+        service.UnmountVolume(DefaultDiskId, sessionId);
+
+        RebootTablet(
+            env.GetRuntime(),
+            volumeTabletId,
+            service.GetSender(),
+            nodeIdx);
 
         service.SendMountVolumeRequest(
             DefaultDiskId,
