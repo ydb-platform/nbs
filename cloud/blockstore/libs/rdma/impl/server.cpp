@@ -748,7 +748,7 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
 
         default:
             RDMA_TRACE(
-                "HandleCompletionEvent: unhandeled opcode "
+                "HandleCompletionEvent: unhandled opcode "
                 << NVerbs::GetOpcodeName(wc->opcode));
             break;
     }
@@ -823,7 +823,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
                 INVALID_REQUEST_ID)
-            << " incompatible protocol version " << version << ", expected "
+            << "incompatible protocol version " << version << ", expected "
             << static_cast<int>(RDMA_PROTO_VERSION));
 
         Counters->RecvRequestCompleted();
@@ -872,7 +872,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
                 msg->ReqId)
-            << " response exceeds maximum supported size " << req->Out.Length
+            << "response exceeds maximum supported size " << req->Out.Length
             << " > " << Config->MaxBufferSize);
 
         Counters->Error();
@@ -1065,13 +1065,13 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
     try {
         Verbs->PostSend(Connection->qp, &wr);
         RDMA_TRACE(
-            "WRITE [" << TWorkRequestId(wr.wr_id) << "][" << req->ReqId
-                      << "] posted");
+            GetLogTitle("WRITE", TWorkRequestId(wr.wr_id), req->ReqId)
+            << "posted");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(
-            "WRITE [" << TWorkRequestId(wr.wr_id) << "][" << req->ReqId << "] "
-                      << e.what());
+            GetLogTitle("WRITE", TWorkRequestId(wr.wr_id), req->ReqId)
+            << e.what());
         Counters->Error();
         Counters->RequestAborted();
         FreeRequest(std::move(req), send);
@@ -1128,7 +1128,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
         Verbs->PostSend(Connection->qp, &send->wr);
         RDMA_TRACE(
             GetLogTitle("SEND", TWorkRequestId(send->wr.wr_id), req->ReqId)
-            << " posted");
+            << "posted");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(
@@ -1136,7 +1136,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
                 "SEND",
                 TWorkRequestId(send->wr.wr_id),
                 INVALID_REQUEST_ID)
-            << " " << e.what());
+            << e.what());
         Counters->Error();
         Counters->RequestAborted();
         FreeRequest(std::move(req), send);
@@ -1159,8 +1159,11 @@ void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
 
     if (req == nullptr) {
         RDMA_WARN(
-            GetLogTitle("SEND", TWorkRequestId(send->wr.wr_id), req->ReqId)
-            << " request is empty");
+            GetLogTitle(
+                "SEND",
+                TWorkRequestId(send->wr.wr_id),
+                INVALID_REQUEST_ID)
+            << "request is empty");
         return;
     }
 

@@ -1165,7 +1165,7 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
 
         default:
             RDMA_TRACE(
-                "HandleCompletionEvent: unhandeled opcode "
+                "HandleCompletionEvent: unhandled opcode "
                 << NVerbs::GetOpcodeName(wc->opcode));
             break;
     }
