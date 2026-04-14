@@ -364,6 +364,7 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
     WriteAndZeroRequestsInProgress -= requestCount;
 
     SharedState->FinishFreshWrite(
+        ctx,
         commitId,
         blocksCount,
         HasError(msg->GetError()));

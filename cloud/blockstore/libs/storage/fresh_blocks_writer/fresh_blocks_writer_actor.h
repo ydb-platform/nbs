@@ -51,9 +51,7 @@ private:
     TPoisonPillHelper PoisonPillHelper;
 
     std::unique_ptr<TPartitionChannelsState> ChannelsState;
-    std::unique_ptr<TCommitIdsState> CommitIdsState;
     std::unique_ptr<TPartitionFlushState> FlushState;
-    std::unique_ptr<TPartitionTrimFreshLogState> TrimFreshLogState;
 
     ui64 TabletGeneration = 0;
 

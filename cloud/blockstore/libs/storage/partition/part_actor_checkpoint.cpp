@@ -18,31 +18,14 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TPartitionActor::ProcessCheckpointQueue(const TActorContext& ctx)
 {
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
-    std::unique_ptr<ITransactionBase> tx;
-    while (tx = State->AccessCheckpointsInFlight()->GetTx(minCommitId)) {
-        ExecuteTx(ctx, std::move(tx));
-    }
+    SharedState->ProcessCheckpointQueue(ctx);
 }
 
 bool TPartitionActor::ProcessNextCheckpointRequest(
     const TActorContext& ctx,
     const TString& checkpointId)
 {
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
-    State->AccessCheckpointsInFlight()->PopTx(checkpointId);
-
-    auto tx = State->AccessCheckpointsInFlight()->GetTx(
-        checkpointId,
-        minCommitId);
-    if (tx) {
-        ExecuteTx(ctx, std::move(tx));
-        return true;
-    }
-
-    return false;
+    return SharedState->ProcessNextCheckpointRequest(ctx, checkpointId);
 }
 
 void TPartitionActor::HandleCreateCheckpoint(
@@ -94,8 +77,6 @@ void TPartitionActor::HandleCreateCheckpoint(
         msg->Record.GetCheckpointType()
             == NProto::ECheckpointType::WITHOUT_DATA);
 
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
     //
     // In-flight checkpoint CommitIds are used to determine whether block
     // CommitIds are garbage or not alongside the CommitIds of the created
@@ -110,17 +91,8 @@ void TPartitionActor::HandleCreateCheckpoint(
     //  reading some blocks when we don't have to.
     //
 
-    State->AccessCheckpointsInFlight()->AddTx(
-        checkpointId,
-        std::move(tx),
-        commitId);
-
-    auto nextTx = State->AccessCheckpointsInFlight()->GetTx(
-        checkpointId,
-        minCommitId);
-    if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx));
-    }
+    SharedState
+        ->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, commitId);
 }
 
 bool TPartitionActor::PrepareCreateCheckpoint(
@@ -258,16 +230,12 @@ void TPartitionActor::DeleteCheckpoint(
         reply,
         deleteOnlyData);
 
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-
-    State->AccessCheckpointsInFlight()->AddTx(checkpointId, std::move(tx));
-
-    auto nextTx = State->AccessCheckpointsInFlight()->GetTx(
+    SharedState->WaitCommitForCheckpoint(
+        ctx,
+        std::move(tx),
         checkpointId,
-        minCommitId);
-    if (nextTx) {
-        ExecuteTx(ctx, std::move(nextTx));
-    }
+        0 /* commitId */
+    );
 }
 
 bool TPartitionActor::PrepareDeleteCheckpoint(

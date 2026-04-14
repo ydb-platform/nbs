@@ -63,18 +63,6 @@ void TPartitionFlushState::DecrementUnflushedFreshBlobByteCount(ui64 value)
         SafeDecrement(UnflushedFreshBlobByteCount, value);
 }
 
-ui32 TPartitionFlushState::IncrementFreshBlocksInFlight(size_t value)
-{
-    FreshBlocksInFlight = SafeIncrement(FreshBlocksInFlight, value);
-    return FreshBlocksInFlight;
-}
-
-ui32 TPartitionFlushState::DecrementFreshBlocksInFlight(size_t value)
-{
-    FreshBlocksInFlight = SafeDecrement(FreshBlocksInFlight, value);
-    return FreshBlocksInFlight;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionFreshBlobState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)

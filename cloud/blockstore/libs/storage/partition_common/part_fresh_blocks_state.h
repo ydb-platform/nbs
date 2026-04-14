@@ -24,7 +24,6 @@ class TPartitionFlushState
 private:
     NPartition::TOperationState FlushState;
     TRequestBuffer<TWriteBufferRequestData> WriteBuffer;
-    ui32 FreshBlocksInFlight = 0;
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
 
@@ -57,11 +56,6 @@ public:
         return WriteBuffer.GetWeight();
     }
 
-    [[nodiscard]] ui32 GetFreshBlocksInFlight() const
-    {
-        return FreshBlocksInFlight;
-    }
-
     [[nodiscard]] ui32 GetUnflushedFreshBlobCount() const
     {
         return UnflushedFreshBlobCount;
@@ -76,9 +70,6 @@ public:
     void DecrementUnflushedFreshBlobCount(ui32 value);
     void IncrementUnflushedFreshBlobByteCount(ui64 value);
     void DecrementUnflushedFreshBlobByteCount(ui64 value);
-
-    ui32 IncrementFreshBlocksInFlight(size_t value);
-    ui32 DecrementFreshBlocksInFlight(size_t value);
 
     [[nodiscard]] THashSet<ui64>& AccessFlushedCommitIdsInProgress()
     {
