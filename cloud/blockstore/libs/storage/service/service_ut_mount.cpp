@@ -5274,13 +5274,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
     Y_UNIT_TEST(ShouldKillMountActorIfTabletIsChangedDuringTabletStart)
     {
-        constexpr TDuration InactiveClientsTimeout = TDuration::Seconds(5);
-
         TTestEnv env(1, 1);
-        NProto::TStorageServiceConfig config;
-        config.SetInactiveClientsTimeout(InactiveClientsTimeout.MilliSeconds());
-
-        ui32 nodeIdx = SetupTestEnv(env, config);
+        ui32 nodeIdx = SetupTestEnv(env);
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
