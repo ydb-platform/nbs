@@ -758,6 +758,7 @@ protected:
             secureEndpoint ? config->GetSecurePort() : config->GetPort());
 
         auto credentials = CreateTcpClientChannelCredentials(
+            Log,
             secureEndpoint,
             *config);
 

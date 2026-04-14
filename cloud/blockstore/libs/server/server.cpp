@@ -1182,6 +1182,7 @@ std::shared_ptr<grpc::ServerCredentials> TServer::CreateSecureServerCredentials(
     }
 
     CertificateProvider = NCloud::CreatePeriodicCertificateProvider(
+        Log,
         Config->GetRootCertsFile(),
         std::move(certPathList),
         Config->GetRefreshCertsPeriod());
