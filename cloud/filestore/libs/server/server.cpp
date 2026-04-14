@@ -1585,6 +1585,7 @@ private:
         Y_ENSURE(!certPathList.empty(), "Empty Certs");
 
         CertificateProvider = NCloud::CreatePeriodicCertificateProvider(
+            Logging,
             Config->GetRootCertsFile(),
             std::move(certPathList),
             Config->GetRefreshCertsPeriod());

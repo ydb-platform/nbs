@@ -6,6 +6,8 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
 
+#include <library/cpp/logger/log.h>
+
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
 #include <util/system/yassert.h>
@@ -26,6 +28,7 @@ inline TString ReadFile(const TString& fileName)
 
 template <typename TConfig>
 std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
+    TLog log,
     bool secureEndpoint,
     const TConfig& config)
 {
@@ -61,6 +64,7 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
                 certPaths.CertChainPath = certFile;
 
                 auto provider = CreatePeriodicCertificateProvider(
+                    std::move(log),
                     rootCertsFile,
                     TVector<TCertificateFiles>{certPaths},
                     TDuration::Seconds(refreshCertsPeriod));

@@ -37,8 +37,6 @@ using grpc_core::RefCountedPtr;
 
 using TCertificateFiles = NCloud::TCertificateFiles;
 
-TLog Log;
-
 template <typename TDerived>
 class TPeriodicCertificateProviderBase
 {
@@ -49,11 +47,15 @@ public:
         y_absl::optional<PemKeyCertPairList> IdentityKeyCertPairs;
     };
 
+    TLog Log;
+
     TPeriodicCertificateProviderBase(
+        TLog log,
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
         TDuration refreshIntervalSec)
-        : RootCertPath(std::move(rootCertPath))
+        : Log(std::move(log))
+        , RootCertPath(std::move(rootCertPath))
         , RefreshIntervalSec(refreshIntervalSec)
     {
         Y_ENSURE(!certificates.empty(), "Certificates list should not be empty");
@@ -168,7 +170,7 @@ protected:
 private:
     using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
 
-    static y_absl::optional<TString> TryReadFile(const TString& path)
+    y_absl::optional<TString> TryReadFile(const TString& path)
     {
         try {
             TFileInput in(path);
@@ -179,7 +181,7 @@ private:
         }
     }
 
-    static bool IsValidPemCertificate(y_absl::string_view pem)
+    bool IsValidPemCertificate(y_absl::string_view pem)
     {
         if (pem.empty()) {
             return false;
@@ -199,7 +201,7 @@ private:
         return ok;
     }
 
-    static bool PrivateKeyAndCertificateMatch(
+    bool PrivateKeyAndCertificateMatch(
         y_absl::string_view privateKey,
         y_absl::string_view certChain)
     {
@@ -234,7 +236,7 @@ private:
         return matches;
     }
 
-    static std::vector<TX509Ptr> ParsePemCertificates(y_absl::string_view pem)
+    std::vector<TX509Ptr> ParsePemCertificates(y_absl::string_view pem)
     {
         std::vector<TX509Ptr> certs;
         BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
@@ -266,7 +268,7 @@ private:
         return certs;
     }
 
-    static bool ValidateIdentityCertificateWithRoot(
+    bool ValidateIdentityCertificateWithRoot(
         y_absl::string_view rootCertPem,
         y_absl::string_view certChainPem)
     {
@@ -341,7 +343,7 @@ private:
         return verifyOk;
     }
 
-    static y_absl::optional<TString> ReadAndValidateRootCertificate(
+    y_absl::optional<TString> ReadAndValidateRootCertificate(
         const TString& rootCertPath)
     {
         if (!rootCertPath) {
@@ -358,7 +360,7 @@ private:
         return pem;
     }
 
-    static y_absl::optional<PemKeyCertPairList> ReadAndValidateIdentityPair(
+    y_absl::optional<PemKeyCertPairList> ReadAndValidateIdentityPair(
         const TCertificateFiles& files)
     {
         auto privateKey = TryReadFile(files.PrivateKeyPath);
@@ -470,10 +472,12 @@ public:
     friend class TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>;
 
     TPeriodicCertificateProvider(
+        TLog log,
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
         TDuration refreshIntervalSec)
         : TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>(
+            std::move(log),
             std::move(rootCertPath),
             std::move(certificates),
             refreshIntervalSec)
@@ -589,12 +593,14 @@ class TPeriodicCertificateProviderWrapper final
 {
 public:
     TPeriodicCertificateProviderWrapper(
+        TLog log,
         TString rootCertPath,
         TVector<TCertificateFiles> certificates,
         TDuration refreshIntervalSec)
     {
         Provider = grpc_core::RefCountedPtr<TPeriodicCertificateProvider>(
             new TPeriodicCertificateProvider(
+                std::move(log),
                 std::move(rootCertPath),
                 std::move(certificates),
                 refreshIntervalSec));
@@ -617,11 +623,13 @@ private:
 }   // namespace
 
 std::shared_ptr<ICertificateProvider> CreatePeriodicCertificateProvider(
+    TLog log,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
     TDuration refreshIntervalSec)
 {
     return std::make_shared<TPeriodicCertificateProviderWrapper>(
+        std::move(log),
         std::move(rootCertPath),
         std::move(certificates),
         refreshIntervalSec);
