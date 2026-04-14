@@ -133,17 +133,19 @@ class TCheckpointsInFlight
     using TTxQueue = TDeque<std::pair<TTxPtr, ui64>>;
 
 private:
-    THashMap<TString, TTxQueue> PendingTransactions;
+    THashMap<TString, std::pair<TTxPtr, ui64>> PendingTransactions;
     TCheckpointQueue CommitIdQueue;
 
 public:
-    void AddTx(const TString& checkpointId, TTxPtr transaction);
-    void AddTx(const TString& checkpointId, TTxPtr transaction, ui64 commitId);
+    bool AddTx(const TString& checkpointId, TTxPtr transaction);
+    bool AddTx(const TString& checkpointId, TTxPtr transaction, ui64 commitId);
 
     TTxPtr GetTx(const TString& checkpointId, ui64 commitId);
     TTxPtr GetTx(ui64 commitId);
 
     void PopTx(const TString& checkpointId);
+
+    [[nodiscard]] bool HasCheckpoint(const TString& checkpointId) const;
 
     void GetCommitIds(TVector<ui64>& commitIds) const;
 };

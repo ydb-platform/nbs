@@ -121,6 +121,29 @@ Y_UNIT_TEST_SUITE(TCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(true, store.DeleteCheckpointMapping("cp2"));
         UNIT_ASSERT_VALUES_EQUAL(0, store.GetCommitId("cp2", true));
     }
+
+    Y_UNIT_TEST(ShouldTrackInFlightCheckpoints)
+    {
+        TCheckpointsInFlight inFlight;
+
+        UNIT_ASSERT(!inFlight.HasCheckpoint("cp1"));
+        UNIT_ASSERT(!inFlight.HasCheckpoint("cp2"));
+
+        inFlight.AddTx("cp1", nullptr, 10);
+        UNIT_ASSERT(inFlight.HasCheckpoint("cp1"));
+        UNIT_ASSERT(!inFlight.HasCheckpoint("cp2"));
+
+        inFlight.AddTx("cp2", nullptr);
+        UNIT_ASSERT(inFlight.HasCheckpoint("cp1"));
+        UNIT_ASSERT(inFlight.HasCheckpoint("cp2"));
+
+        inFlight.PopTx("cp1");
+        UNIT_ASSERT(!inFlight.HasCheckpoint("cp1"));
+        UNIT_ASSERT(inFlight.HasCheckpoint("cp2"));
+
+        inFlight.PopTx("cp2");
+        UNIT_ASSERT(!inFlight.HasCheckpoint("cp2"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
