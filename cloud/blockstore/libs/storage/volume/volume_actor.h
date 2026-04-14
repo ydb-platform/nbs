@@ -1315,10 +1315,6 @@ private:
         const TEvDiskRegistry::TEvUpdateVolumeHealthResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void NotifyDiskRegistryVolumeHealth(
-        const NActors::TActorContext& ctx,
-        bool broken);
-
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId,

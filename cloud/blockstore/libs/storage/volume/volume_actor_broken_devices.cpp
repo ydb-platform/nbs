@@ -1,7 +1,7 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
-#include <cloud/blockstore/libs/storage/core/disk_registry_proxy.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -60,23 +60,14 @@ void TVolumeBrokenNotificationSerializer::OnResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::NotifyDiskRegistryVolumeHealth(
-    const TActorContext& ctx,
-    bool broken)
-{
-    if (!Config->GetVolumeHealthNotificationEnabled()) {
-        return;
-    }
-    VolumeBrokenNotificationSerializer
-        .Notify(ctx, State->GetDiskId(), LogTitle.GetWithTime(), broken);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void TVolumeActor::HandleBrokenDeviceNotification(
     const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (!Config->GetVolumeHealthNotificationEnabled()) {
+        return;
+    }
+
     auto* msg = ev->Get();
     const auto& uuid = msg->DeviceUUID;
     const auto& ts = msg->BrokenTs;
@@ -98,7 +89,11 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, ts, /*add=*/true);
 
     if (wasEmpty) {
-        NotifyDiskRegistryVolumeHealth(ctx, /*broken=*/true);
+        VolumeBrokenNotificationSerializer.Notify(
+            ctx,
+            State->GetDiskId(),
+            LogTitle.GetWithTime(),
+            /*broken=*/true);
     }
 }
 
@@ -106,6 +101,10 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
     const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (!Config->GetVolumeHealthNotificationEnabled()) {
+        return;
+    }
+
     auto* msg = ev->Get();
     const auto& uuid = msg->DeviceUUID;
 
@@ -124,7 +123,11 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
     ExecuteTx<TUpdateBrokenDevice>(ctx, uuid, TInstant::Zero(), /*add=*/false);
 
     if (DeviceUUIDToBrokenAt.empty()) {
-        NotifyDiskRegistryVolumeHealth(ctx, /*broken=*/false);
+        VolumeBrokenNotificationSerializer.Notify(
+            ctx,
+            State->GetDiskId(),
+            LogTitle.GetWithTime(),
+            /*broken=*/false);
     }
 }
 
