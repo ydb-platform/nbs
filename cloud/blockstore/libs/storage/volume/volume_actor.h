@@ -152,6 +152,8 @@ class TVolumeActor final
         const TCallContextPtr CallContext;
         const TCallContextPtr ForkedContext;
         const ui64 ReceiveTime;
+        const ui64 ExecutionStartTime;
+        TThrottlingRequestInfo ThrottlingRequestInfo;
         TCancelRoutine* const CancelRoutine;
         const bool IsMultipartitionWriteOrZero;
 
@@ -161,6 +163,8 @@ class TVolumeActor final
                 TCallContextPtr callContext,
                 TCallContextPtr forkedContext,
                 ui64 receiveTime,
+                ui64 executionStartTime,
+                TThrottlingRequestInfo throttlingRequestInfo,
                 TCancelRoutine cancelRoutine,
                 bool isMultipartitionWriteOrZero)
             : Caller(caller)
@@ -168,6 +172,8 @@ class TVolumeActor final
             , CallContext(std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
+            , ExecutionStartTime(executionStartTime)
+            , ThrottlingRequestInfo(std::move(throttlingRequestInfo))
             , CancelRoutine(cancelRoutine)
             , IsMultipartitionWriteOrZero(isMultipartitionWriteOrZero)
         {}
@@ -1129,6 +1135,7 @@ private:
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
         ui64 traceTime,
+        TThrottlingRequestInfo throttlingRequestInfo,
         bool forkTraces,
         bool isMultipartition);
 
@@ -1138,7 +1145,8 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
-        ui64 traceTs);
+        ui64 traceTs,
+        TThrottlingRequestInfo throttlingRequestInfo);
 
     template <typename TMethod>
     NProto::TError ProcessAndValidateReadFromCheckpoint(
@@ -1167,7 +1175,8 @@ private:
     NProto::TError Throttle(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        bool throttlingDisabled);
+        bool throttlingDisabled,
+        TThrottlingRequestInfo* throttlingRequestInfo);
 
     template <typename TMethod>
     void ForwardResponse(
@@ -1259,6 +1268,15 @@ private:
 
     void HandleUpdateLaggingAgentMigrationState(
         const TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleBrokenDeviceNotification(
+        const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeviceRecoveredNotification(
+        const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleCheckRangeResponse(

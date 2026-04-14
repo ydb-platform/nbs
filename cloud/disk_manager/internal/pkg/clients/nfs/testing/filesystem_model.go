@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
@@ -34,7 +35,7 @@ func NewContext() context.Context {
 func GetEndpoint() string {
 	return fmt.Sprintf(
 		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+		os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 	)
 }
 
@@ -131,7 +132,13 @@ func generateDirectoryRecursive(
 		children = append(
 			children,
 			generateDirectoryRecursive(
-				fmt.Sprintf("dir_%d_%d_parent_%d", i, maxDepth, parentNumber),
+				fmt.Sprintf(
+					"dir_%d_%d_parent_%d_%s",
+					i,
+					maxDepth,
+					parentNumber,
+					uuid.Must(uuid.NewV4()).String(),
+				),
 				maxDepth-1,
 				countFunc,
 				i,
@@ -144,10 +151,11 @@ func generateDirectoryRecursive(
 			children,
 			File(
 				fmt.Sprintf(
-					"file_%d_%d_parent_%d",
+					"file_%d_%d_parent_%d_%s",
 					i,
 					maxDepth,
 					parentNumber,
+					uuid.Must(uuid.NewV4()).String(),
 				),
 			),
 		)
@@ -226,6 +234,7 @@ func (f *FileSystemModel) CreateNodesRecursively(
 	}
 	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
+	expectedNode.NodeID = id
 	f.ExpectedNodes = append(f.ExpectedNodes, expectedNode)
 	if !nodeToCreate.FileType.IsDirectory() {
 		return

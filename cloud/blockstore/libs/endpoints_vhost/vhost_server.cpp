@@ -20,6 +20,7 @@ private:
     const NVhost::IServerPtr Server;
     const NProto::TChecksumFlags ChecksumFlags;
     const bool VhostDiscardEnabled;
+    const bool VhostWriteZeroesEnabled;
     const ui32 MaxZeroBlocksSubRequestSize;
     const ui32 OptimalIoSize;
 
@@ -28,11 +29,13 @@ public:
             NVhost::IServerPtr server,
             NProto::TChecksumFlags checksumFlags,
             bool vhostDiscardEnabled,
+            bool vhostWriteZeroesEnabled,
             ui32 maxZeroBlocksSubRequestSize,
             ui32 optimalIoSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
         , VhostDiscardEnabled(vhostDiscardEnabled)
+        , VhostWriteZeroesEnabled(vhostWriteZeroesEnabled)
         , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
         , OptimalIoSize(optimalIoSize)
     {}
@@ -53,6 +56,8 @@ public:
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.DiscardEnabled =
             ShouldEnableVhostDiscardForVolume(VhostDiscardEnabled, volume);
+        options.WriteZeroesEnabled =
+            VhostWriteZeroesEnabled && !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
         options.OptimalIoSize = OptimalIoSize;
 
@@ -113,6 +118,7 @@ IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
     bool vhostDiscardEnabled,
+    bool vhostWriteZeroesEnabled,
     ui32 maxZeroBlocksSubRequestSize,
     ui32 optimalIoSize)
 {
@@ -120,6 +126,7 @@ IEndpointListenerPtr CreateVhostEndpointListener(
         std::move(server),
         checksumFlags,
         vhostDiscardEnabled,
+        vhostWriteZeroesEnabled,
         maxZeroBlocksSubRequestSize,
         optimalIoSize);
 }

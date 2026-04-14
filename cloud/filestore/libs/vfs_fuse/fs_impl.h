@@ -376,6 +376,7 @@ private:
     {
         request.SetUid(ctx->uid);
         request.SetGid(ctx->gid);
+        request.SetUmask(ctx->umask);
     }
 
     template<typename T>

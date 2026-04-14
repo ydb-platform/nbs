@@ -185,6 +185,9 @@ message TCreateNodeRequest
 
     // If set, the node will be created in the shard FS.
     string ShardFileSystemId = 12;
+
+    // Umask of the calling process
+    uint32 Umask = 16;
 }
 
 message TCreateNodeResponse

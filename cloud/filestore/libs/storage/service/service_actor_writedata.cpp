@@ -429,6 +429,15 @@ private:
         const auto* msg = ev->Get();
         RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
 
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s TEvPutResult response received: %s",
+            LogTag.c_str(),
+            msg->ToString().c_str());
+
+        ui64 blobIdx = msg->Id.Cookie();
+
         if (msg->Status != NKikimrProto::OK) {
             const auto error =
                 MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason);
@@ -436,9 +445,12 @@ private:
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "%s WriteData error: %s",
+                "%s WriteData error: %s, group: %lu",
                 LogTag.c_str(),
-                msg->ErrorReason.Quote().c_str());
+                msg->ErrorReason.Quote().c_str(),
+                blobIdx < GenerateBlobIdsResponse.BlobsSize()
+                    ? GenerateBlobIdsResponse.GetBlobs(blobIdx).GetBSGroupId()
+                    : 0);
             // We still may receive some responses, but we do not want to
             // process them
             for (auto& inFlight: InFlightBSRequests) {
@@ -454,14 +466,6 @@ private:
             return WriteData(ctx, error);
         }
 
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s TEvPutResult response received: %s",
-            LogTag.c_str(),
-            msg->ToString().c_str());
-
-        ui64 blobIdx = msg->Id.Cookie();
         // It is implicitly expected that cookies are generated in increasing
         // order starting from 0.
         // TODO: replace this TABLET_VERIFY with a critical event + WriteData

@@ -40,8 +40,12 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         ? request.GetMode() : Config->GetDefaultPermissions();
 
     NLowLevel::UnixCredentialsGuard credGuard(
+        Log,
         request.GetUid(),
         request.GetGid(),
+        session->GuestPosixAclEnabled
+            ? std::optional<mode_t>(request.GetUmask())
+            : std::nullopt,
         Config->GetGuestOnlyPermissionsCheckEnabled());
     TFileHandle handle;
     NLowLevel::TFileStatEx stat;

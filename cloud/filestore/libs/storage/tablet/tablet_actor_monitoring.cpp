@@ -1057,6 +1057,10 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     HTML(out) {
         DumpDefaultHeader(out, TabletID(), SelfId().NodeId());
 
+        if (GetFileSystem().GetFrozen()) {
+            TAG(TH3) { out << "This tablet is frozen"; }
+        }
+
         TAG(TH3) { out << "Info"; }
         DIV() { out << "Filesystem Id: " << GetFileSystemId(); }
         DIV() { out << "Block size: " << GetBlockSize(); }
@@ -1084,6 +1088,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         TABLEH() { out << "ShardNo"; }
                         TABLEH() { out << "FileSystemId"; }
                         TABLEH() { out << "UsedBytesCount"; }
+                        TABLEH() { out << "UsedNodesCount"; }
                         TABLEH() { out << "FreeBytesCount"; }
                         TABLEH() { out << "CurrentLoad"; }
                         TABLEH() { out << "Suffer"; }
@@ -1105,6 +1110,9 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         }
                         TABLED() {
                             out << ss.UsedBlocksCount * GetBlockSize();
+                        }
+                        TABLED() {
+                            out << ss.UsedNodesCount;
                         }
                         TABLED() {
                             out << (ss.TotalBlocksCount - ss.UsedBlocksCount)

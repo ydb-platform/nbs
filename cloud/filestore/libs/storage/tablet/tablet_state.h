@@ -298,6 +298,8 @@ public:
         const NProto::TFileSystem& fileSystem,
         const TThrottlerConfig& throttlerConfig);
 
+    void SetFrozen(TIndexTabletDatabase& db, bool frozen);
+
     //
     // FileSystem
     //

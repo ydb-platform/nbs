@@ -4,12 +4,27 @@
 
 #include <library/cpp/containers/ring_buffer/ring_buffer.h>
 
+#include <util/generic/string.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDeviceStat
+class IDeviceStatObserver
 {
+public:
+    virtual void OnDeviceBroken(
+        const TString& deviceUUID,
+        TInstant brokenTs) = 0;
+    virtual void OnDeviceRecovered(const TString& deviceUUID) = 0;
+    virtual ~IDeviceStatObserver() = default;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeviceStat
+{
+public:
     enum class EDeviceStatus
     {
         Ok,
@@ -18,6 +33,7 @@ struct TDeviceStat
         Broken,
     };
 
+private:
     // The start time of the first timed out request.
     TInstant FirstTimedOutRequestStartTs;
 
@@ -32,6 +48,25 @@ struct TDeviceStat
 
     // When the device was considered broken.
     TInstant BrokenTransitionTs;
+
+    TString DeviceUUID;
+    IDeviceStatObserver* Observer = nullptr;
+
+public:
+    TDeviceStat(TString deviceUUID, IDeviceStatObserver* observer);
+
+    [[nodiscard]] EDeviceStatus GetDeviceStatus() const;
+
+    void MarkOk(TInstant requestStartTs, TDuration executionTime);
+    void MarkBroken(TInstant now);
+    void MarkUnavailable();
+    void MarkBackOnline();
+
+    void HandleTimeout(
+        TInstant requestStartTs,
+        TInstant now,
+        TDuration maxTimedOutStateDuration,
+        TDuration agentMaxTimeout);
 
     // Returns the maximum request execution time among the latest.
     [[nodiscard]] TDuration WorstRequestTime() const;

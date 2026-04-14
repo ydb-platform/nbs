@@ -213,6 +213,7 @@ public:
         ui64 blocksCount,
         ui32 queuesCount,
         bool discardEnabled,
+        bool writeZeroesEnabled,
         ui32 optimalIoSize,
         void* cookie,
         const TVhostCallbacks& callbacks) override
@@ -222,6 +223,7 @@ public:
         Y_UNUSED(blocksCount);
         Y_UNUSED(queuesCount);
         Y_UNUSED(discardEnabled);
+        Y_UNUSED(writeZeroesEnabled);
         Y_UNUSED(callbacks);
 
         auto vhostDevice = std::make_shared<TTestVhostDevice>(

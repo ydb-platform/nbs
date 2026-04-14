@@ -1,1 +1,1 @@
-UsePermanentActor: true
+PermanentActorCount: 4

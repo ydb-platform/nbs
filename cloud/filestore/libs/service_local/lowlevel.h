@@ -2,11 +2,16 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/system/file.h>
 #include <util/system/fstat.h>
+#include <util/system/tls.h>
+
+#include <optional>
 
 namespace NCloud::NFileStore {
 namespace NLowLevel {
@@ -17,10 +22,19 @@ class UnixCredentialsGuard {
 private:
     uid_t OriginalUid = -1;
     gid_t OriginalGid = -1;
-    bool IsRestoreNeeded = false;
+    mode_t OriginalUmask = 0;
+    bool IsUmaskRestoreNeeded = false;
+    bool IsIdRestoreNeeded = false;
+    Y_POD_STATIC_THREAD(bool) IsThreadOwnsUmask;
+    TLog& Log;
 
 public:
-    UnixCredentialsGuard(uid_t uid, gid_t gid, bool trustUserCredentials);
+    UnixCredentialsGuard(
+        TLog& log,
+        uid_t uid,
+        gid_t gid,
+        std::optional<mode_t> umaskMode,
+        bool trustUserCredentials);
     ~UnixCredentialsGuard();
 };
 

@@ -101,6 +101,14 @@ public:
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,
+        IBlobsVisitor& blobsVisitor,
+        const TBlockRange32& readRange,
+        bool precharge,
+        ui32 maxBlocksInBlob,
+        ui64 maxCommitId = Max());
+
+    bool FindMergedBlocks(
+        IBlocksIndexVisitor& visitor,
         const TBlockRange32& readRange,
         bool precharge,
         ui32 maxBlocksInBlob,

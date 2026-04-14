@@ -47,7 +47,6 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
 
 TPartitionState::TPartitionState(
         NProto::TPartitionMeta meta,
-        ui32 generation,
         ICompactionPolicyPtr compactionPolicy,
         ui32 compactionScoreHistorySize,
         ui32 cleanupScoreHistorySize,
@@ -58,13 +57,13 @@ TPartitionState::TPartitionState(
         ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
         bool reassignSystemChannelsImmediately,
-        ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
-        ui32 compactionRangeCountPerRun)
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeStatePtr threadSafeState)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -74,13 +73,14 @@ TPartitionState::TPartitionState(
           reassignMixedChannelsPercentageThreshold,
           reassignSystemChannelsImmediately,
           channelCount)
-    , TCommitIdsState(generation, lastCommitId)
-    , TPartitionTrimFreshLogState(static_cast<TCommitIdsState&>(*this))
-    , TPartitionFreshBlocksState(*this, *this, *this)
+    , TCommitIdsState()
+    , TPartitionTrimFreshLogState()
+    , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
+    , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
@@ -191,7 +191,7 @@ void TPartitionState::InitUnconfirmedBlobs(
 
     for (const auto& [commitId, blobs]: UnconfirmedBlobs) {
         UnconfirmedBlobCount += blobs.size();
-        AccessCommitQueue().AcquireBarrier(commitId);
+        AccessCommitQueue()->AcquireBarrier(commitId);
         GarbageQueue.AcquireBarrier(commitId);
     }
 }
@@ -248,7 +248,7 @@ void TPartitionState::ConfirmedBlobsAdded(
     ConfirmedBlobCount -= blobCount;
 
     GarbageQueue.ReleaseBarrier(commitId);
-    AccessCommitQueue().ReleaseBarrier(commitId);
+    AccessCommitQueue()->ReleaseBarrier(commitId);
 }
 
 void TPartitionState::BlobsConfirmed(
@@ -311,7 +311,7 @@ void TPartitionState::ConfirmBlobs(
         UnconfirmedBlobs.erase(it);
 
         GarbageQueue.ReleaseBarrier(commitId);
-        AccessCommitQueue().ReleaseBarrier(commitId);
+        AccessCommitQueue()->ReleaseBarrier(commitId);
     }
 
     ConfirmedBlobs = std::move(UnconfirmedBlobs);

@@ -93,6 +93,10 @@ void FillFeatures(
     features->SetGuestHandleKillPrivV2Enabled(
         config.GetGuestHandleKillPrivV2Enabled());
 
+    // TODO(#5670) posix acl is not yet fully supported in tablet based
+    // filestore
+    features->SetGuestPosixAclEnabled(false);
+
     features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 
     features->SetBlockChecksumsInProfileLogEnabled(

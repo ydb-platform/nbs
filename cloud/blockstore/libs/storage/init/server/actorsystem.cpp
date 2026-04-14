@@ -391,6 +391,7 @@ private:
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const bool IsDiskRegistrySpareNode;
+    const bool IsHiveLocalServiceEnabled;
 
 public:
     TCustomLocalServiceInitializer(
@@ -406,7 +407,8 @@ public:
             NRdma::IClientPtr rdmaClient,
             NServer::IEndpointEventHandlerPtr endpointEventHandler,
             TPartitionBudgetManagerPtr partitionBudgetManager,
-            bool isDiskRegistrySpareNode)
+            bool isDiskRegistrySpareNode,
+            bool isHiveLocalServiceEnabled)
         : AppConfig(appConfig)
         , Logging(std::move(logging))
         , StorageConfig(std::move(storageConfig))
@@ -420,6 +422,7 @@ public:
         , EndpointEventHandler(std::move(endpointEventHandler))
         , PartitionBudgetManager(std::move(partitionBudgetManager))
         , IsDiskRegistrySpareNode(isDiskRegistrySpareNode)
+        , IsHiveLocalServiceEnabled(isHiveLocalServiceEnabled)
     {}
 
     void InitializeServices(
@@ -472,12 +475,10 @@ public:
             return tablet.release();
         };
 
-        const bool enableLocal = !StorageConfig->GetDisableLocalService();
-
-        if (enableLocal || IsDiskRegistrySpareNode) {
+        if (IsHiveLocalServiceEnabled || IsDiskRegistrySpareNode) {
             auto localConfig = MakeIntrusive<TLocalConfig>();
 
-            if (enableLocal) {
+            if (IsHiveLocalServiceEnabled) {
                 localConfig->TabletClassInfo[TTabletTypes::BlockStoreVolume] =
                     TLocalConfig::TTabletClassInfo(
                         MakeIntrusive<TTabletSetupInfo>(
@@ -586,7 +587,8 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.RdmaClient,
             sArgs.EndpointEventHandler,
             sArgs.PartitionBudgetManager,
-            sArgs.IsDiskRegistrySpareNode));
+            sArgs.IsDiskRegistrySpareNode,
+            sArgs.IsHiveLocalServiceEnabled));
     };
 
     auto storageConfig = sArgs.StorageConfig;
@@ -618,7 +620,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 
     auto nodeId = sArgs.NodeId;
     auto onStart = [=] (IActorSystem& actorSystem) {
-        if (storageConfig->GetDisableLocalService()) {
+        if (!sArgs.IsHiveLocalServiceEnabled) {
             using namespace NNodeWhiteboard;
             const TActorId wb(MakeNodeWhiteboardServiceId(nodeId));
             actorSystem.Send(

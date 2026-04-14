@@ -3332,6 +3332,104 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
         UNIT_ASSERT(!result->Record.HasError());
     }
+
+    Y_UNIT_TEST(ShouldDestroyVolumeInSyncModeWhenChangingDeviceStateToError)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        auto ensureNoResponseFromDeallocate = [&](auto& runtime)
+        {
+            auto evList = runtime.CaptureEvents();
+            for (auto& ev: evList) {
+                UNIT_ASSERT(
+                    ev->GetTypeRewrite() !=
+                    TEvDiskRegistry::EvDeallocateDiskResponse);
+            }
+            runtime.PushEventsFront(evList);
+        };
+
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
+        config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
+
+        auto runtime =
+            TTestRuntimeBuilder().With(config).WithAgents({agent1}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAndWaitForAgents(*runtime, {agent1});
+
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("vol");
+        diskRegistry.AllocateDisk("vol", 20_GB);
+
+        runtime->DispatchEvents({}, 10ms);
+        TString deviceUuid;
+        TActorId recipient, sender;
+        ui32 cookie;
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvSecureEraseDeviceRequest)
+                {
+                    Y_UNUSED(runtime);
+                    auto& msg =
+                        *event
+                             ->Get<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
+
+                    if (deviceUuid.empty()) {
+                        recipient = event->Recipient;
+                        sender = event->Sender;
+                        cookie = event->Cookie;
+                        deviceUuid = msg.Record.GetDeviceUUID();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        diskRegistry.MarkDiskForCleanup("vol");
+        diskRegistry.SendDeallocateDiskRequest("vol", true);
+
+        runtime->DispatchEvents({[&]
+                                 {
+                                     TDispatchOptions options;
+                                     options.CustomFinalCondition = [&]
+                                     {
+                                         return !deviceUuid.empty();
+                                     };
+                                     return options;
+                                 }()});
+
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
+                MakeError(E_REJECTED));
+
+        ensureNoResponseFromDeallocate(*runtime);
+
+        diskRegistry.ChangeDeviceState(deviceUuid, NProto::DEVICE_STATE_ERROR);
+
+        runtime->Send(new IEventHandle(
+            sender,
+            sender,
+            response.release(),
+            0,   // flags
+            cookie));
+
+        runtime->DispatchEvents({}, 100ms);
+
+        diskRegistry.DeallocateDisk("vol", true);
+        diskRegistry.RecvDeallocateDiskResponse();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

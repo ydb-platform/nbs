@@ -1030,8 +1030,7 @@ private:
                         {.Session = Session,
                          .Scheduler = Scheduler,
                          .Timer = Timer,
-                         .Stats =
-                             NWriteBackCache::CreateDummyWriteBackCacheStats(),
+                         .Stats = NWriteBackCache::CreateWriteBackCacheStats(),
                          .Log = Log,
                          .FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
@@ -1052,6 +1051,14 @@ private:
                                  ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
+
+                    ModuleStatsRegistry->Register(
+                        {.FileSystemId = Config->GetFileSystemId(),
+                         .ClientId = Config->GetClientId(),
+                         .CloudId = response.GetFileStore().GetCloudId(),
+                         .FolderId = response.GetFileStore().GetFolderId(),
+                         .SessionId = SessionId,
+                         .ModuleStats = WriteBackCache.CreateModuleStats()});
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1235,6 +1242,7 @@ private:
 
         config.SetGuestHandleKillPrivV2Enabled(
             features.GetGuestHandleKillPrivV2Enabled());
+        config.SetGuestPosixAclEnabled(features.GetGuestPosixAclEnabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1275,6 +1283,11 @@ private:
 
         if (FileSystemConfig->GetGuestHandleKillPrivV2Enabled()) {
             conn->want |= FUSE_CAP_HANDLE_KILLPRIV_V2;
+        }
+
+        if (FileSystemConfig->GetGuestPosixAclEnabled()) {
+            conn->want |= FUSE_CAP_POSIX_ACL;
+            conn->want |= FUSE_CAP_DONT_MASK;
         }
 
         FileSystem->Init();

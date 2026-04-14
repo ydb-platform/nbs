@@ -2170,3 +2170,17 @@ func (s *storageYDB) resumeTask(
 
 	return tx.Commit(ctx)
 }
+
+func (s *storageYDB) isTaskEnded(
+	ctx context.Context,
+	session *persistence.Session,
+	taskID string,
+) (bool, error) {
+
+	state, err := s.getTask(ctx, session, taskID)
+	if err != nil {
+		return false, err
+	}
+
+	return IsEnded(state.Status), nil
+}

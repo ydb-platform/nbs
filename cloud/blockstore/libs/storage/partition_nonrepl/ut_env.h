@@ -166,6 +166,8 @@ private:
 
             IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);
             IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
+            IgnoreFunc(TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification);
+            IgnoreFunc(TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification);
 
             default:
                 Y_ABORT(

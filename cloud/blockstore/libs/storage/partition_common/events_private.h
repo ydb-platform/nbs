@@ -12,8 +12,8 @@
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/commit_id_generator.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
@@ -23,36 +23,6 @@
 #include <contrib/ydb/core/base/logoblob.h>
 
 namespace NCloud::NBlockStore::NStorage {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPartitionSharedState
-    : std::enable_shared_from_this<TPartitionSharedState>
-{
-    NPartition::TResourceMetricsQueue ResourceMetricsQueue;
-    NPartition::TThreadSafePartCounters PartCounters;
-    NPartition::TThreadSafePartStats PartStats;
-    NPartition::TGroupDowntimes GroupDowntimes;
-
-    std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
-
-    NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
-    {
-        return {shared_from_this(), &ResourceMetricsQueue};
-    }
-
-    NPartition::TThreadSafePartCountersPtr GetPartCounters()
-    {
-        return {shared_from_this(), &PartCounters};
-    }
-
-    NPartition::TGroupDowntimesPtr GetGroupDowntimes()
-    {
-        return {shared_from_this(), &GroupDowntimes};
-    }
-};
-
-using TPartitionSharedStatePtr = std::shared_ptr<TPartitionSharedState>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -422,9 +392,7 @@ struct TEvPartitionCommonPrivate
 
         TVector<EChannelPermissions> ChannelPermissions;
 
-        TPartitionSharedStatePtr SharedState;
-
-        TCommitIdGeneratorPtr CommitIdGenerator;
+        TPartitionThreadSafeStatePtr SharedState;
     };
 
 
@@ -454,7 +422,6 @@ struct TEvPartitionCommonPrivate
     struct TAddFreshBlocksResponse
     {
     };
-
 
     // Events declaration
     //

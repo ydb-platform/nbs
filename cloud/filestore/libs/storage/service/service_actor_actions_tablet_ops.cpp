@@ -163,6 +163,21 @@ NActors::IActorPtr TStorageServiceActor::CreateUnsafeCreateHandleActor(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// UnsafeChangeTabletState
+
+NActors::IActorPtr TStorageServiceActor::CreateUnsafeChangeTabletStateActor(
+        TRequestInfoPtr requestInfo,
+        TString input)
+{
+    using TUnsafeChangeTabletStateActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeChangeTabletStateRequest,
+        TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>;
+    return std::make_unique<TUnsafeChangeTabletStateActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // RestartTablet
 
 IActorPtr TStorageServiceActor::CreateRestartTabletActionActor(

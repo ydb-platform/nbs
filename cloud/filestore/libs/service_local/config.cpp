@@ -48,6 +48,7 @@ namespace {
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,      ui64,       100'000                   )\
     xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
+    xxx(GuestPosixAclEnabled,           bool,       false                     )\
     xxx(SnapshotsDirEnabled,            bool,       false                     )\
     xxx(SnapshotsDirRefreshInterval,    TDuration,  TDuration::Seconds(5)     )\
 // FILESTORE_SERVICE_CONFIG
@@ -142,6 +143,7 @@ FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_GETTER)
     xxx(ExtendedAttributesDisabled)                                            \
     xxx(SnapshotsDirEnabled)                                                   \
     xxx(GuestHandleKillPrivV2Enabled)                                          \
+    xxx(GuestPosixAclEnabled)                                                  \
 
 // FILESTORE_BINARY_FEATURES
 

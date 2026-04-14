@@ -382,6 +382,7 @@ private:
     const NMonitoring::TDynamicCountersPtr RootGroup;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
+    const IThrottlerMetricsPtr ThrottlerMetrics;
 
     TMutex ThrottlerLock;
     THashMap<TString, TThrottlerInfo> Throttlers;
@@ -402,6 +403,7 @@ public:
         , RootGroup(std::move(rootGroup))
         , RequestStats(std::move(requestStats))
         , VolumeStats(std::move(volumeStats))
+        , ThrottlerMetrics(CreateThrottlerMetrics(Timer, RootGroup, "server"))
     {}
 
     IThrottlerPtr GetThrottler(
@@ -499,15 +501,11 @@ private:
         auto throttlerLogger = CreateClientThrottlerLogger(
             RequestStats,
             Logging);
-        auto throttlerMetrics = CreateThrottlerMetrics(
-            Timer,
-            RootGroup,
-            "server");
         auto throttlerTracker = CreateClientThrottlerTracker();
 
         return CreateThrottler(
             std::move(throttlerLogger),
-            std::move(throttlerMetrics),
+            ThrottlerMetrics,
             std::move(throttlerPolicy),
             std::move(throttlerTracker),
             Timer,

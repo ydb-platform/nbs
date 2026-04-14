@@ -12,6 +12,6 @@ VhostServiceConfig {
   WriteBackCachePath: "/run/qemu/filestore-vhost"
   DirectoryHandlesStoragePath: "/run/qemu/filestore-vhost"
   DirectoryHandlesInitialDataSize: 10485760
-  UsePermanentActor: true
+  PermanentActorCount: 4
 }
 

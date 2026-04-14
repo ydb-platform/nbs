@@ -357,7 +357,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 					),
 				},
 			},
@@ -365,7 +365,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 					),
 				},
 			},
@@ -373,7 +373,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS2_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS2_SECURE_PORT"),
 					),
 				},
 			},
@@ -381,7 +381,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS3_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS3_SECURE_PORT"),
 					),
 				},
 			},
@@ -753,6 +753,19 @@ func WaitOperationEnded(
 	require.NoError(t, err)
 
 	err = scheduler.WaitTaskEndedWithTimeout(ctx, operationID, timeout)
+	require.NoError(t, err)
+}
+
+func RequireTaskHasNoError(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	err = scheduler.GetTaskError(ctx, taskID)
 	require.NoError(t, err)
 }
 

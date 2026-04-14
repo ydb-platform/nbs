@@ -31,6 +31,7 @@ public:
     const TFsPath StatePath;
     const TString ClientId;
     TString SessionId;
+    bool GuestPosixAclEnabled = false;
 
 private:
     struct THandle

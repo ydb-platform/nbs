@@ -183,7 +183,7 @@ private:
 
     NActors::TActorId FreshBlocksWriter;
 
-    TPartitionSharedStatePtr SharedState;
+    TPartitionThreadSafeStatePtr SharedState;
 
     TRequestInfoPtr Poisoner;
 
@@ -365,7 +365,7 @@ private:
     void ClearWriteQueue(const NActors::TActorContext& ctx);
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
     void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
-    void ProcessNextCheckpointRequest(
+    bool ProcessNextCheckpointRequest(
         const NActors::TActorContext& ctx,
         const TString& checkpointId);
 
@@ -512,7 +512,8 @@ private:
 
     void CreateIOCompanionClient();
 
-    bool IsFreshBlocksWriterEnabled() const;
+    [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
 
 private:
     STFUNC(StateBoot);

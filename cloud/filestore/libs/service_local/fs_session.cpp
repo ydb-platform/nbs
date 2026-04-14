@@ -23,6 +23,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     const auto& cloudId = Store.GetCloudId();
     const auto& folderId = Store.GetFolderId();
     const auto& fsId = Store.GetFileSystemId();
+    const bool guestPosixAclEnabled =
+        Config->GetGuestPosixAclEnabled(cloudId, folderId, fsId);
 
     const auto makeResponse = [&sessionSeqNo, &cloudId, &folderId, &fsId, this](
                                   const TSessionPtr& session)
@@ -71,6 +73,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         }
         features->SetGuestHandleKillPrivV2Enabled(
             Config->GetGuestHandleKillPrivV2Enabled(cloudId, folderId, fsId));
+        features->SetGuestPosixAclEnabled(session->GuestPosixAclEnabled);
         return response;
     };
 
@@ -113,6 +116,9 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetSnapshotsDirRefreshInterval(),
         Logging);
 
+    // For local service, features are fixed for the lifetime of the process,
+    // so it is enough to cache the resolved value when the session is created.
+    session->GuestPosixAclEnabled = guestPosixAclEnabled;
     session->Init(request.GetRestoreClientSession());
     session->AddSubSession(sessionSeqNo, readOnly);
 

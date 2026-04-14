@@ -128,6 +128,7 @@ class TIndexTabletActor final
 
 private:
     TTabletMetrics Metrics;
+    TCPUUsageTimer CPUUsageTimer{Metrics.CPUUsageMicros};
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
     TVector<TShardStats> CachedShardStats;
@@ -363,6 +364,8 @@ private:
         const NActors::TActorContext& ctx,
         TArgs&&... args)
     {
+        TCPUUsageTimerGuard t(CPUUsageTimer);
+
         typename TTx::TArgs tx(std::forward<TArgs>(args)...);
 
         // if we can execute the transaction using the in-memory index state,
@@ -722,7 +725,10 @@ private:
 
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
+    TCPUUsageTimer& AccessCPUUsageTimer();
+
     bool HandleRequests(STFUNC_SIG);
+    bool HandleRequestsByFrozenTablet(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
     bool RejectRequestsByBrokenTablet(STFUNC_SIG);
 

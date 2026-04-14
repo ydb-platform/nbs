@@ -1,8 +1,9 @@
 #include "read_response_builder.h"
+
 #include "write_back_cache_state.h"
+#include "write_back_cache_stats.h"
 
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/timer_test.h>
 
@@ -25,7 +26,7 @@ struct TTestData
 class TBootstrap: private IQueuedOperationsProcessor
 {
 private:
-    std::shared_ptr<TTestWriteBackCacheStats> Stats;
+    IWriteBackCacheStatsPtr Stats;
     TWriteBackCacheState State;
 
     const TString Flushed = TString("\0\0ABCD\0\0\0\0IJKL", 14);
@@ -33,10 +34,16 @@ private:
 
 public:
     TBootstrap()
-        : Stats(std::make_shared<TTestWriteBackCacheStats>())
-        , State(*this, std::make_shared<TTestTimer>(), Stats, "[tag]")
+        : Stats(CreateWriteBackCacheStats())
+        , State(
+              *this,
+              std::make_shared<TTestTimer>(),
+              Stats->GetWriteBackCacheStateStats(),
+              Stats->GetWriteDataRequestManagerStats(),
+              Stats->GetNodeStateHolderStats(),
+              "[tag]")
     {
-        State.Init(std::make_shared<TTestStorage>(Stats));
+        State.Init(CreateTestStorage(Stats));
 
         Write(2, "ABCD");
         Write(10, "IJKL");

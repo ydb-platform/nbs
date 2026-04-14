@@ -177,7 +177,8 @@ template <typename TMethod>
 NProto::TError TVolumeActor::Throttle(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
-    bool throttlingDisabled)
+    bool throttlingDisabled,
+    TThrottlingRequestInfo* throttlingRequestInfo)
 {
     static const auto ok = MakeError(S_OK);
     static const auto err = MakeError(E_BS_THROTTLED, "Throttled");
@@ -192,15 +193,15 @@ NProto::TError TVolumeActor::Throttle(
     auto* msg = ev->Get();
 
     const auto& tp = State->GetThrottlingPolicy();
-    const auto requestInfo = BuildThrottlingRequestInfo(
+    *throttlingRequestInfo = BuildThrottlingRequestInfo(
         State->GetConfig().GetBlockSize(),
         *msg,
         tp.GetVersion()
     );
 
-    if (static_cast<EVolumeThrottlingOpType>(requestInfo.OpType) ==
+    if (static_cast<EVolumeThrottlingOpType>(throttlingRequestInfo->OpType) ==
             EVolumeThrottlingOpType::Describe &&
-        requestInfo.ByteCount == 0)
+        throttlingRequestInfo->ByteCount == 0)
     {
         // DescribeBlocks with zero weight should not be affected by
         // throttling limits.
@@ -210,7 +211,7 @@ NProto::TError TVolumeActor::Throttle(
     const auto status = Throttler->Throttle(
         ctx,
         msg->CallContext,
-        requestInfo,
+        *throttlingRequestInfo,
         [&ev]() { return NActors::IEventHandlePtr(ev.Release()); },
         TMethod::Name);
 
@@ -237,7 +238,8 @@ template NProto::TError TVolumeActor::Throttle<                                \
     ns::T##name##Method>(                                                      \
         const TActorContext& ctx,                                              \
         const ns::TEv##name##Request::TPtr& ev,                                \
-        bool throttlingDisabled);                                              \
+        bool throttlingDisabled,                                               \
+        TThrottlingRequestInfo* throttlingRequestInfo);                        \
 // GENERATE_IMPL
 
 GENERATE_IMPL(ReadBlocks,            TEvService)

@@ -25,8 +25,6 @@ struct TShardedFileSystemConfig
     const ui64 ShardBlockCount = 1'000;
     const ui64 MainFsBlockCount = ShardBlockCount * 2;
 
-    bool DirectoryCreationInShardsEnabled = false;
-
     TVector<TString> ShardIds() const
     {
         return {Shard1Id, Shard2Id};

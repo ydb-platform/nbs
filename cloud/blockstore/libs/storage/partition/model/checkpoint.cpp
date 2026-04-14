@@ -187,6 +187,13 @@ bool TCheckpointQueue::Empty() const
     return Queue.empty();
 }
 
+void TCheckpointQueue::GetCommitIds(TVector<ui64>& commitIds) const
+{
+    for (const auto& [commitId, _]: Queue) {
+        commitIds.push_back(commitId);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCheckpointsInFlight::AddTx(
@@ -258,6 +265,11 @@ void TCheckpointsInFlight::PopTx(const TString& checkpointId)
             PendingTransactions.erase(it);
         }
     }
+}
+
+void TCheckpointsInFlight::GetCommitIds(TVector<ui64>& commitIds) const
+{
+    CommitIdQueue.GetCommitIds(commitIds);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

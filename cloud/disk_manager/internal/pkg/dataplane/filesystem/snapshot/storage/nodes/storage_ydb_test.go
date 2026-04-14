@@ -216,13 +216,15 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.NoError(t, err)
 
 	srcNodeIds := []uint64{100, 101}
-	dstNodeIds := []uint64{1000, 1001}
+	nodeIDMapping := map[uint64]uint64{
+		100: 1000,
+		101: 1001,
+	}
 	err = f.storage.UpdateRestorationNodeIDMapping(
 		f.ctx,
 		snapshotID,
 		dstFilesystemID,
-		srcNodeIds,
-		dstNodeIds,
+		nodeIDMapping,
 	)
 	require.NoError(t, err)
 
@@ -302,13 +304,17 @@ func TestGetDestinationNodeIDs(t *testing.T) {
 
 	srcNodeIds := []uint64{100, 200, 300}
 	dstNodeIds := []uint64{1000, 2000, 3000}
+	nodeIDMapping := map[uint64]uint64{
+		100: 1000,
+		200: 2000,
+		300: 3000,
+	}
 
 	err = f.storage.UpdateRestorationNodeIDMapping(
 		f.ctx,
 		srcSnapshotID,
 		dstFilesystemID,
-		srcNodeIds,
-		dstNodeIds,
+		nodeIDMapping,
 	)
 	require.NoError(t, err)
 
@@ -435,4 +441,57 @@ func TestListHardLinks(t *testing.T) {
 	}
 
 	compareNodes(t, expected, collected)
+}
+
+func TestLister(t *testing.T) {
+	const totalNodes = 10000
+	const nodesPerListing = 2000
+
+	f := createFixture(t, 100)
+	defer f.teardown()
+
+	snapshotID := "snapshot-lister"
+	parentNodeID := uint64(1)
+
+	var nodes []nfs.Node
+	for nodeID := uint64(0); nodeID < totalNodes; nodeID++ {
+		node := makeNode(
+			parentNodeID,
+			nodeID,
+			fmt.Sprintf("node-%05d", nodeID),
+			nfs_client.NODE_KIND_FILE,
+		)
+		nodes = append(nodes, node)
+	}
+
+	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
+	require.NoError(t, err)
+
+	factory := NewNodeStorageListerFactory(f.storage, nodesPerListing)
+
+	lister, err := factory.CreateLister(f.ctx, "", snapshotID)
+	require.NoError(t, err)
+
+	var collected []nfs.Node
+	cookie := ""
+	iterations := 0
+	for {
+		nodes, nextCookie, err := lister.ListNodes(f.ctx, parentNodeID, cookie)
+		require.NoError(t, err)
+		collected = append(collected, nodes...)
+		iterations++
+
+		if len(nextCookie) == 0 {
+			break
+		}
+		cookie = nextCookie
+	}
+
+	require.Equal(t, totalNodes/nodesPerListing, iterations)
+	require.Len(t, collected, totalNodes)
+	for i, node := range collected {
+		expectedNodeID := uint64(i)
+		require.Equal(t, expectedNodeID, node.NodeID)
+		require.Equal(t, fmt.Sprintf("node-%05d", expectedNodeID), node.Name)
+	}
 }

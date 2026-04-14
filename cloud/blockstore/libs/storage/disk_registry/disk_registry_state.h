@@ -275,6 +275,8 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
+
+        NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
     };
 
     struct TVolumeDeviceOverrides
@@ -789,6 +791,12 @@ public:
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
 
+    [[nodiscard]] NProto::TError UpdateVolumeHealth(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TInstant now,
+        NProto::EVolumeHealth volumeHealth);
+
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
     void SuspendDeviceIfNeeded(
@@ -1248,6 +1256,10 @@ private:
     NProto::TError AddDevicesToPendingCleanup(
         const TString& diskId,
         TVector<TDeviceId> uuids);
+
+    void RemoveDeviceFromPendingCleanup(
+        TDiskRegistryDatabase& db,
+        const TDeviceId& deviceId);
 
     /// Try to update configuration of selected device and its agent
     /// in the disk registry database

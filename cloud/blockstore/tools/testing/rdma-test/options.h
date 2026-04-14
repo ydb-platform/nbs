@@ -2,6 +2,8 @@
 
 #include "private.h"
 
+#include <cloud/blockstore/libs/rdma/iface/buffer.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
@@ -73,6 +75,8 @@ struct TOptions
     // request tracing
     TString TracePath;
     ui32 TraceRate = 1;
+
+    NRdma::TBufferPoolConfig BufferPool;
 
     void Parse(int argc, char** argv);
 };

@@ -1,12 +1,14 @@
 LIBRARY()
 
 SRCS(
+    buffer.cpp
     client.cpp
     config.cpp
     probes.cpp
     protobuf.cpp
     protocol.cpp
     server.cpp
+    log.cpp
 )
 
 PEERDIR(

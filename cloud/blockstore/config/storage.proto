@@ -108,6 +108,20 @@ enum EOverlappingRequestsPolicy
     ORP_DISABLE = 2;
 }
 
+enum ERequestSplitterPolicy
+{
+    // Read/write/zero requests are split by TVolumeActor as usual.
+    RSP_ENABLE = 0;
+
+    // Read/write/zero requests are split by TVolumeActor as usual, but when a
+    // cross-partition request appears, the CritEvent raised.
+    RSP_ENABLE_WITH_CRIT_EVENT = 1;
+
+    // Splitting of read/write/zero requests in TVolumeActor is disabled. It is
+    // assumed that the splitting is implemented on couple layers above volume.
+    RSP_DISABLE = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 message TPoolKindToMediaKindMapping
@@ -1528,4 +1542,13 @@ message TStorageServiceConfig
 
     // Shaping throttler configuration.
     optional TShapingThrottlerConfig ShapingThrottlerConfig = 490;
+
+    // Don't read block masks on compaction if blob is entirely contained
+    // in one compaction range.
+    optional bool ReadBlockMaskOnCompactionOptimizationEnabled = 491;
+
+    // Policy for splitting read/write/zero requests in TVolumeActor.
+    // It is preferable to enable splitting via EnableRequestSplitter in the
+    // Server config.
+    optional ERequestSplitterPolicy RequestSplitterPolicy = 492;
 }

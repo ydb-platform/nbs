@@ -406,6 +406,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -796,10 +801,15 @@ public:
     [[nodiscard]] NProto::EOverlappingRequestsPolicy
     GetOverlappingRequestsPolicy() const;
 
+    [[nodiscard]] NProto::ERequestSplitterPolicy
+    GetRequestSplitterPolicy() const;
+
     [[nodiscard]] TPoolKindToMediaKindMapping
     GetPoolKindToMediaKindMapping() const;
 
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
+
+    [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
 };
 
 ui64 GetAllocationUnit(

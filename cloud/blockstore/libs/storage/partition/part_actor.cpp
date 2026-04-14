@@ -85,7 +85,7 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    SharedState = std::make_shared<TPartitionSharedState>();
+    SharedState = std::make_shared<TPartitionThreadSafeState>();
 }
 
 TPartitionActor::~TPartitionActor()
@@ -1001,6 +1001,15 @@ bool TPartitionActor::IsFreshBlocksWriterEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsReadBlockMaskOnCompactionOptimizationEnabled() const
+{
+    return Config->GetReadBlockMaskOnCompactionOptimizationEnabled() ||
+           Config->IsReadBlockMaskOnCompactionOptimizationFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -1356,8 +1365,6 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
         response->ChannelPermissions.emplace_back(
             State->GetChannelPermissions(i));
     }
-
-    response->CommitIdGenerator = State->GetCommitIdGenerator();
 
     FreshBlocksWriter = ev->Sender;
 

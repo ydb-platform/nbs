@@ -698,8 +698,9 @@ void TVolumeActor::HandleUpdateThrottlerState(
                 .BoostBudget = State->GetThrottlingPolicy()
                                    .GetCurrentBoostBudget()
                                    .MilliSeconds(),
-                // TODO(#5095): Fill this field.
-                .SpentShapingBudgetShare = 0.0});
+                .SpentShapingBudgetShare =
+                    State->GetShapingThrottler()
+                        .CalculateCurrentSpentBudgetShare(ctx.Now())});
     }
 }
 
@@ -1174,6 +1175,12 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvDeviceTimedOutRequest,
             HandleDeviceTimedOut);
         HFunc(
+            TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification,
+            HandleBrokenDeviceNotification);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification,
+            HandleDeviceRecoveredNotification);
+        HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
         HFunc(
@@ -1264,6 +1271,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);

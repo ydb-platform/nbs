@@ -302,15 +302,20 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         NClient::THostPerformanceProfile expected = {
             .CpuCount = 60,
             .NetworkMbitThroughput = 20'000,
+            .IsTightServiceMemoryPlatform = true,
         };
 
         TTempDir dir;
 
-        auto throttlingConfigStr = Sprintf(R"(
-            {"interfaces": [{"eth0": {"speed": "%d"}}], "compute_cores_num": %d}
-            )",
+        auto throttlingConfigStr = Sprintf(
+            R"({
+              "interfaces": [{"eth0": {"speed": "%d"}}],
+              "compute_cores_num": %d,
+              "is_tight_service_memory_platform": %s
+            })",
             expected.NetworkMbitThroughput,
-            expected.CpuCount);
+            expected.CpuCount,
+            expected.IsTightServiceMemoryPlatform ? "true" : "false");
 
         auto throttlingConfigPath = dir.Path() / "nbs-throttling.txt";
         TOFStream(throttlingConfigPath.GetPath()).Write(throttlingConfigStr);
@@ -338,6 +343,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             expected.CpuCount, actual.CpuCount);
         UNIT_ASSERT_VALUES_EQUAL(
             expected.NetworkMbitThroughput, actual.NetworkMbitThroughput);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.IsTightServiceMemoryPlatform,
+            actual.IsTightServiceMemoryPlatform);
     }
 
     Y_UNIT_TEST(ShouldInitHostPerformanceProfileWithoutThrottlingConfigFile)
@@ -367,13 +375,14 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         auto& actual = ci.HostPerformanceProfile;
         UNIT_ASSERT_VALUES_EQUAL(42, actual.CpuCount);
         UNIT_ASSERT_VALUES_EQUAL(325, actual.NetworkMbitThroughput);
+        UNIT_ASSERT_VALUES_EQUAL(false, actual.IsTightServiceMemoryPlatform);
     }
 
     Y_UNIT_TEST(ShouldInitHostPerformanceProfileWithInvalidThrottlingConfigFile)
     {
         TTempDir dir;
         auto throttlingConfigStr = R"(
-            {"interfaces": [{"eth0": {"speed": "-1"}}], "compute_cores_num": -42}
+            {"interfaces": [{"eth0": {"speed": "-1"}}], "compute_cores_num": -42, "is_tight_service_memory_platform": 11}
         )";
 
         auto throttlingConfigPath = dir.Path() / "nbs-throttling.txt";
@@ -402,6 +411,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         auto& actual = ci.HostPerformanceProfile;
         UNIT_ASSERT_VALUES_EQUAL(42, actual.CpuCount);
         UNIT_ASSERT_VALUES_EQUAL(325, actual.NetworkMbitThroughput);
+        UNIT_ASSERT_VALUES_EQUAL(false, actual.IsTightServiceMemoryPlatform);
     }
 
     Y_UNIT_TEST(ShouldInitKikimrFeatures)

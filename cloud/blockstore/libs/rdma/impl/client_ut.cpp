@@ -248,8 +248,8 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
-        clientConfig->MaxResponseDelay = TDuration::Seconds(1);
+        clientConfig->MaxReconnectDelay = TDuration::Seconds(4);
+        clientConfig->MaxResponseDelay = TDuration::Seconds(4);
 
         auto logging = CreateLoggingService(
             "console",
@@ -266,9 +266,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             client->Stop();
         };
 
-        auto clientEndpoint = client->StartEndpoint("::", 10020);
-
-        auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
+        auto ep = client->StartEndpoint("::", 10020).GetValue(5s);
 
         testContext->PostSend = [&](auto* qp, auto* wr) {
             Y_UNUSED(qp);
@@ -329,62 +327,40 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         };
 
         for (size_t i = 0; i < RequestCount; ++i) {
-            {   // Successful request
-                TManualEvent ev;
-                TResponse response;
+            TManualEvent ev;
+            TResponse response;
 
-                auto r = ep->AllocateRequest(
-                    std::make_shared<TClientHandler>(),
-                    makeContext(&ev, &response),
-                    RequestBytes,
-                    ResponseBytes);
-                UNIT_ASSERT_VALUES_EQUAL(false, HasError(r.GetError()));
+            auto request = ep->AllocateRequest(
+                std::make_shared<TClientHandler>(),
+                makeContext(&ev, &response),
+                RequestBytes,
+                ResponseBytes);
+            UNIT_ASSERT_VALUES_EQUAL(false, HasError(request.GetError()));
 
-                auto request = r.ExtractResult();
-                auto callContext = MakeIntrusive<TCallContext>();
+            ep->SendRequest(
+                request.ExtractResult(),
+                MakeIntrusive<TCallContext>());
 
-                // make sure that time spent on request processing before
-                // SendRequest won't be counted towards rdma timeout
-                auto retryDelay =
-                    DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
-
-                callContext->SetRequestStartedCycles(
-                    GetCycleCount() - retryDelay);
-                ep->SendRequest(std::move(request), callContext);
-
+            if (i != 0 && i != RDMA_MAX_REQID - 3) {
+                // complete request right away
                 handleRequest(*testContext);
 
-                ev.WaitT(TDuration::Seconds(5));
+                ev.WaitT(5s);
                 UNIT_ASSERT(response.Received);
+
+                // request duration is measured against the wall clock, so it
+                // can legitimately time out if the process stalls for some
+                // reason
+                if (response.Status != RDMA_PROTO_OK) {
+                    NProto::TError error =
+                        ParseError(response.Buffer.Head(response.Bytes));
+                    UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
+                }
                 UNIT_ASSERT_VALUES_EQUAL(
                     static_cast<ui32>(RDMA_PROTO_OK),
                     response.Status);
-            }
-
-            // Timed out request
-            if (i == 0 || i == RDMA_MAX_REQID - 3) {
-                TManualEvent ev;
-                TResponse response;
-
-                auto r = ep->AllocateRequest(
-                    std::make_shared<TClientHandler>(),
-                    makeContext(&ev, &response),
-                    RequestBytes,
-                    ResponseBytes);
-                UNIT_ASSERT_VALUES_EQUAL(false, HasError(r.GetError()));
-
-                auto request = r.ExtractResult();
-                auto callContext = MakeIntrusive<TCallContext>();
-
-                // make sure that time spent on request processing before
-                // SendRequest won't be counted towards rdma timeout
-                auto retryDelay =
-                    DurationToCyclesSafe(clientConfig->MaxResponseDelay) + 1;
-                callContext->SetRequestStartedCycles(
-                    GetCycleCount() - retryDelay);
-                ep->SendRequest(std::move(request), callContext);
-
-                // we didn't handle the request in time
+            } else {
+                // do not complete request to emulate a timeout
                 ev.WaitT(TDuration::Seconds(5));
                 UNIT_ASSERT(response.Received);
                 UNIT_ASSERT_VALUES_EQUAL(
@@ -393,10 +369,9 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
                 NProto::TError error =
                     ParseError(response.Buffer.Head(response.Bytes));
-
                 UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
 
-                // handle the request after timeout
+                // complete request
                 handleRequest(*testContext);
             }
 
@@ -408,6 +383,102 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             UNIT_ASSERT_EQUAL(aborted->Val(), 1);
         }
     }
+
+    Y_UNIT_TEST(ShouldReuseChunks)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->BufferPool.ChunkSize = 80_MB;
+        clientConfig->BufferPool.MaxChunkAlloc = 4_MB;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<size_t> registered;
+        testContext->RegisterMemoryRegion = [&](auto...)
+        {
+            registered++;
+        };
+
+        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+
+        TVector<TClientRequestPtr> requests;
+        int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
+                                    clientConfig->BufferPool.MaxChunkAlloc;
+
+        for (int i = 0; i < maxRequestsInOneChunk; i++) {
+            auto [req, err] = endpoint->AllocateRequest(
+                std::make_shared<TClientHandler>(),
+                std::make_unique<TNullContext>(),
+                4_MB,
+                4_MB);
+            UNIT_ASSERT_VALUES_EQUAL(false, HasError(err));
+            requests.push_back(std::move(req));
+        }
+
+        // 2 for recv/send buffers
+        // 2 for input/output buffers
+        UNIT_ASSERT_VALUES_EQUAL(registered.load(), 2 + 2);
+    }
+
+    Y_UNIT_TEST(ShouldAdjustMaxChunkAlloc)
+    {
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->BufferPool.ChunkSize = 4_MB;
+        clientConfig->BufferPool.MaxChunkAlloc = 8_MB;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<size_t> registered;
+        testContext->RegisterMemoryRegion = [&](auto...)
+        {
+            registered++;
+        };
+
+        auto endpoint = client->StartEndpoint("localhost", 10020).GetValue(5s);
+
+        TVector<TClientRequestPtr> requests;
+        int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
+                                    clientConfig->BufferPool.MaxChunkAlloc;
+        constexpr int chunks = 10;
+
+        for (int i = 0; i < maxRequestsInOneChunk * chunks; i++) {
+            auto [req, err] = endpoint->AllocateRequest(
+                std::make_shared<TClientHandler>(),
+                std::make_unique<TNullContext>(),
+                4_MB,
+                4_MB);
+            UNIT_ASSERT_VALUES_EQUAL(false, HasError(err));
+            requests.push_back(std::move(req));
+        }
+
+        // 2 for recv/send buffers
+        // 2 * chunks for input/output buffers
+        UNIT_ASSERT_VALUES_EQUAL(registered.load(), 2 + 2 * chunks);
+    }
+
 
     Y_UNIT_TEST(ShouldAbortRequests)
     {

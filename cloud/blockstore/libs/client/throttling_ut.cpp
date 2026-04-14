@@ -1081,6 +1081,142 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         UNIT_ASSERT(throttler3 != throttler1);
     }
 
+    Y_UNIT_TEST(ShouldShareThrottlerMetricsAcrossProviderThrottlers)
+    {
+        auto volumeStats = std::make_shared<
+            TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>();
+        scheduler->Start();
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto totalCounters = monitoring->GetCounters();
+
+        auto throttlerProvider = CreateThrottlerProvider(
+            THostPerformanceProfile{},
+            CreateLoggingService("console"),
+            timer,
+            scheduler,
+            totalCounters,
+            CreateRequestStatsStub(),
+            volumeStats);
+
+        NProto::TClientConfig clientConfig;
+        clientConfig.MutableThrottlingConfig()->SetIopsPerCpuUnit(1);
+        clientConfig.MutableThrottlingConfig()->SetBandwidthPerCpuUnit(10);
+
+        NProto::TClientProfile clientProfile;
+        clientProfile.SetCpuUnitCount(100);
+
+        NProto::TClientPerformanceProfile performanceProfile;
+
+        clientConfig.SetClientId("shared-metrics-client-a");
+        auto throttlerA = throttlerProvider->GetThrottler(
+            clientConfig,
+            clientProfile,
+            performanceProfile);
+        UNIT_ASSERT(throttlerA);
+
+        clientConfig.SetClientId("shared-metrics-client-b");
+        auto throttlerB = throttlerProvider->GetThrottler(
+            clientConfig,
+            clientProfile,
+            performanceProfile);
+        UNIT_ASSERT(throttlerB);
+        UNIT_ASSERT(throttlerA != throttlerB);
+
+        auto client = std::make_shared<TTestService>();
+
+#define SET_HANDLER(name)                                                      \
+        client->name##Handler =                                                \
+            [&] (std::shared_ptr<NProto::T##name##Request> request) {          \
+                Y_UNUSED(request);                                             \
+                return MakeFuture(NProto::T##name##Response());                \
+            };                                                                 \
+// SET_HANDLER
+
+        SET_HANDLER(UnmountVolume);
+
+#undef SET_HANDLER
+
+        client->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                NProto::TMountVolumeResponse r;
+                r.MutableVolume()->SetDiskId(request->GetDiskId());
+                r.MutableVolume()->SetBlockSize(4096);
+                return MakeFuture(std::move(r));
+            };
+
+        const TString instanceId = "test_instance";
+
+        auto mountA = std::make_shared<NProto::TMountVolumeRequest>();
+        mountA->SetInstanceId(instanceId);
+        mountA->SetDiskId("disk-a");
+
+        auto mountB = std::make_shared<NProto::TMountVolumeRequest>();
+        mountB->SetInstanceId(instanceId);
+        mountB->SetDiskId("disk-b");
+
+        throttlerA->MountVolume(
+            client,
+            MakeIntrusive<TCallContext>(),
+            mountA);
+        throttlerB->MountVolume(
+            client,
+            MakeIntrusive<TCallContext>(),
+            mountB);
+
+        scheduler->RunAllScheduledTasks();
+
+        auto findVolumeSubgroup = [&] (const TString& diskId) {
+            return totalCounters
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->FindSubgroup("volume", diskId);
+        };
+
+        UNIT_ASSERT_C(
+            totalCounters->FindSubgroup("component", "server"),
+            "Shared ThrottlerMetrics should expose aggregate counters once");
+        UNIT_ASSERT_C(
+            findVolumeSubgroup("disk-a"),
+            "First throttler registers volume metrics under the shared tree");
+        UNIT_ASSERT_C(
+            findVolumeSubgroup("disk-b"),
+            "Second throttler registers under the same metrics tree");
+
+        auto unmountA = std::make_shared<NProto::TUnmountVolumeRequest>();
+        unmountA->SetInstanceId(instanceId);
+        unmountA->SetDiskId("disk-a");
+
+        auto unmountB = std::make_shared<NProto::TUnmountVolumeRequest>();
+        unmountB->SetInstanceId(instanceId);
+        unmountB->SetDiskId("disk-b");
+
+        throttlerA->UnmountVolume(
+            client,
+            MakeIntrusive<TCallContext>(),
+            unmountA);
+        throttlerB->UnmountVolume(
+            client,
+            MakeIntrusive<TCallContext>(),
+            unmountB);
+
+        scheduler->RunAllScheduledTasks();
+
+        const TString usedQuota = "UsedQuota";
+        totalCounters->GetSubgroup("component", "server")->ReadSnapshot();
+
+        auto usedQuotaCounter = totalCounters
+            ->GetSubgroup("component", "server")
+            ->FindCounter(usedQuota);
+
+        UNIT_ASSERT_C(
+            !usedQuotaCounter,
+            "Aggregate quota counters should unregister when no mounts remain");
+    }
+
     Y_UNIT_TEST(ShouldRegisterCountersOnlyAfterFirstNonZeroQuotaValue)
     {
         const TString instanceId = "test_instance";

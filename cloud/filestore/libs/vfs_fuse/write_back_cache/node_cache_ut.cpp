@@ -1,9 +1,9 @@
 #include "node_cache.h"
 
+#include "write_back_cache_stats.h"
 #include "write_data_request_manager.h"
 
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_persistent_storage.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/libs/common/timer.h>
@@ -104,7 +104,7 @@ IOutputStream& operator<<(
 struct TBootstrap
 {
     ITimerPtr Timer;
-    std::shared_ptr<TTestWriteBackCacheStats> Stats;
+    IWriteBackCacheStatsPtr Stats;
     std::shared_ptr<TTestStorage> Storage;
     TWriteDataRequestManager RequestManager;
     TVector<std::unique_ptr<TCachedWriteDataRequest>> Requests;
@@ -112,8 +112,8 @@ struct TBootstrap
 
     TBootstrap()
         : Timer(CreateWallClockTimer())
-        , Stats(std::make_shared<TTestWriteBackCacheStats>())
-        , Storage(std::make_shared<TTestStorage>(Stats))
+        , Stats(CreateWriteBackCacheStats())
+        , Storage(CreateTestStorage(Stats))
         , RequestManager(
               std::make_shared<TSequenceIdGenerator>(),
               Storage,

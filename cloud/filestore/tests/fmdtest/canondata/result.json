@@ -1,5 +1,8 @@
 {
-    "test.test": {
-        "uri": "file://test.test/results.txt"
+    "test.test_create_list": {
+        "uri": "file://test.test_create_list/create_list_results.txt"
+    },
+    "test.test_create_unlink_steal": {
+        "uri": "file://test.test_create_unlink_steal/create_unlink_steal_results.txt"
     }
 }

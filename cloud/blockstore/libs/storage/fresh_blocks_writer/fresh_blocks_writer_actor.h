@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 
@@ -72,7 +73,7 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
-    TPartitionSharedStatePtr SharedState;
+    TPartitionThreadSafeStatePtr SharedState;
 
 public:
     TFreshBlocksWriterActor(
@@ -141,8 +142,7 @@ private:
     void ZeroFreshBlocks(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TBlockRange32 writeRange,
-        ui64 commitId);
+        TBlockRange32 writeRange);
 
     void RebootOnCommitIdOverflow(
         const NActors::TActorContext& ctx,

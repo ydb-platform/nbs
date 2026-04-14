@@ -65,6 +65,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
     xxx(ReplaceBrokenDevicesAfterRestart,   __VA_ARGS__)                       \
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
+    xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1520,6 +1521,36 @@ struct TTxDiskRegistry
             , AgentId(std::move(agentId))
             , Path(std::move(path))
             , NewState(newState)
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+    //
+    // UpdateVolumeHealth
+    //
+
+    struct TUpdateVolumeHealth
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString DiskId;
+        const TInstant Now;
+        const NProto::EVolumeHealth VolumeHealth;
+
+        NProto::TError Error;
+
+        TUpdateVolumeHealth(
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TInstant now,
+            NProto::EVolumeHealth volumeHealth)
+            : RequestInfo(std::move(requestInfo))
+            , DiskId(std::move(diskId))
+            , Now(now)
+            , VolumeHealth(volumeHealth)
         {}
 
         void Clear()

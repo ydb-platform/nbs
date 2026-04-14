@@ -196,6 +196,7 @@ func TestFilesystemScrubbingTraversesFilesystem(t *testing.T) {
 	)
 
 	testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
+	testcommon.RequireTaskHasNoError(t, ctx, taskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -246,16 +247,33 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 	}
 
 	// Second iteration: ensure tasks are rescheduled.
-	secondTaskIDs := getRegularScrubTaskIDs(t, ctx, taskStorage)
+	firstTaskIDsSet := tasks_common.NewStringSet(firstTaskIDs...)
+	var secondTaskIDs []string
+	for {
+		secondTaskIDs = getRegularScrubTaskIDs(t, ctx, taskStorage)
+		secondTaskIDsSet := tasks_common.NewStringSet(secondTaskIDs...)
+		intersection := secondTaskIDsSet.Intersection(firstTaskIDsSet)
+		allTasksScheduled := secondTaskIDsSet.Size() == len(regularScrubFilesystemIDs)
+		if intersection.Size() == 0 && allTasksScheduled {
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	scrubbedFilesystems := resolveScrubbedFilesystemIDs(t, ctx, taskStorage, secondTaskIDs)
 	require.True(
 		t,
 		expectedFilesystems.Equals(
-			resolveScrubbedFilesystemIDs(t, ctx, taskStorage, secondTaskIDs),
+			scrubbedFilesystems,
 		),
-		"second round: scrub tasks must reference all configured filesystems",
+		"second round: scrub tasks must reference all configured filesystems %v, %v",
+		expectedFilesystems.List(),
+		scrubbedFilesystems.List(),
 	)
 
 	for _, taskID := range secondTaskIDs {
 		testcommon.WaitOperationEnded(t, ctx, taskID, 200*time.Second)
+		testcommon.RequireTaskHasNoError(t, ctx, taskID)
 	}
 }

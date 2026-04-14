@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "buffer.h"
+
 #include <cloud/blockstore/config/rdma.pb.h>
 
 #include <cloud/blockstore/libs/service/public.h>
@@ -39,11 +41,12 @@ struct TClientConfig
     ui8 IpTypeOfService = 0;
     TString SourceInterface;
     bool VerbsQP = false;
+    TBufferPoolConfig BufferPool;
 
     TClientConfig() = default;
-
     TClientConfig(const NProto::TRdmaClient& config);
 
+    void Validate(TLog& log);
     void DumpHtml(IOutputStream& out) const;
 };
 

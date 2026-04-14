@@ -136,7 +136,9 @@ struct TTestVerbs
         size_t length,
         int flags) override
     {
-        Y_UNUSED(flags);
+        if (TestContext->RegisterMemoryRegion) {
+            TestContext->RegisterMemoryRegion(pd, addr, length, flags);
+        }
 
         return {
             static_cast<ibv_mr*>(new TMemoryRegion(pd, addr, length)),
@@ -527,12 +529,18 @@ struct TTestVerbs
             TestContext->CreateQP(id, attr);
         }
 
+        id->qp = new ibv_qp();
+        id->pd = new ibv_pd();
+
         auto g = Guard(TestContext->CompletionLock);
         TestContext->HandleCompletionEvent = nullptr;
     }
 
     void RdmaDestroyQP(rdma_cm_id* id) override
     {
+        delete id->qp;
+        delete id->pd;
+
         if (TestContext->DestroyQP) {
             TestContext->DestroyQP(id);
         }
