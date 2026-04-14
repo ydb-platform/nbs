@@ -21,7 +21,10 @@ def test_fio(name):
 
     fio.run_test(file_name, TESTS[name], fail_on_errors=True)
 
-    time.sleep(15)  # Waiting for profile logs to be written
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
+    time.sleep(2)
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool")
