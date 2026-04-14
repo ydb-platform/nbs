@@ -118,6 +118,19 @@ public:
             device.SetIOMMUGroup(std::stoul(value));
         }
 
+        const TFsPath vfioDevDir = path / "vfio-dev";
+        if (vfioDevDir.Exists()) {
+            TVector<TString> children;
+
+            vfioDevDir.ListNames(children);
+            for (const auto& child: children) {
+                if (child.StartsWith("vfio")) {
+                    device.SetVfioDevName(child);
+                    break;
+                }
+            }
+        }
+
         return device;
     }
 };
