@@ -429,7 +429,7 @@ void TServerSession::CreateQP()
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
-        wr.sg_list[0].lkey = SendBuffer.Key;
+        wr.sg_list[0].lkey = SendBuffer.LKey;
         wr.sg_list[0].addr = responseMsg;
         wr.sg_list[0].length = sizeof(TResponseMessage);
 
@@ -444,7 +444,7 @@ void TServerSession::CreateQP()
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
-        wr.sg_list[0].lkey = RecvBuffer.Key;
+        wr.sg_list[0].lkey = RecvBuffer.LKey;
         wr.sg_list[0].addr = requestMsg;
         wr.sg_list[0].length = sizeof(TRequestMessage);
 
@@ -885,7 +885,7 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
     ibv_sge sg_list = {
         .addr = req->InBuffer.Address,
         .length = req->In.Length,
-        .lkey = req->InBuffer.Key,
+        .lkey = req->InBuffer.LKey,
     };
 
     ibv_send_wr wr = {
@@ -895,7 +895,7 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
         .opcode = IBV_WR_RDMA_READ,
     };
 
-    wr.wr.rdma.rkey = req->In.Key;
+    wr.wr.rdma.rkey = req->In.RKey;
     wr.wr.rdma.remote_addr = req->In.Address;
 
     try {
@@ -975,7 +975,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
     ibv_sge sg_list = {
         .addr = req->OutBuffer.Address,
         .length = req->ResponseBytes,
-        .lkey = req->OutBuffer.Key,
+        .lkey = req->OutBuffer.LKey,
     };
 
     ibv_send_wr wr = {
@@ -985,7 +985,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
         .opcode = IBV_WR_RDMA_WRITE,
     };
 
-    wr.wr.rdma.rkey = req->Out.Key;
+    wr.wr.rdma.rkey = req->Out.RKey;
     wr.wr.rdma.remote_addr = req->Out.Address;
 
     try {

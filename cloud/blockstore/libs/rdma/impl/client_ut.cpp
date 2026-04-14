@@ -10,8 +10,9 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
-#include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/testing/gtest/gtest.h>
 
+#include <util/generic/scope.h>
 #include <util/stream/printf.h>
 
 #include <thread>
@@ -55,10 +56,8 @@ struct TClientHandler
 
 // TODO: use custom timer
 
-Y_UNIT_TEST_SUITE(TRdmaClientTest)
+TEST(TRdmaClientTest, ShouldStartEndpoint)
 {
-    Y_UNIT_TEST(ShouldStartEndpoint)
-    {
         auto verbs =
             NVerbs::CreateTestVerbs(MakeIntrusive<NVerbs::TTestContext>());
         auto monitoring = CreateMonitoringServiceStub();
@@ -82,17 +81,17 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         auto clientEndpoint = client->StartEndpoint("::", 10020);
 
         Y_UNUSED(clientEndpoint);
-    }
+}
 
-    Y_UNIT_TEST(ShouldStartEndpointWithToS)
-    {
+TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         auto verbs =
             NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
         clientConfig->IpTypeOfService = 42;
-        UNIT_ASSERT_VALUES_UNEQUAL(42, testContext->ToS);
+        ASSERT_NE(42, testContext->ToS);
 
         auto logging = CreateLoggingService(
             "console",
@@ -111,11 +110,11 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         auto clientEndpoint = client->StartEndpoint("::", 10020);
         Y_UNUSED(clientEndpoint);
-        UNIT_ASSERT_VALUES_EQUAL(42, testContext->ToS);
+        ASSERT_EQ(42, testContext->ToS);
     }
 
-    Y_UNIT_TEST(ShouldDetachFromPoller)
-    {
+TEST(TRdmaClientTest, ShouldDetachFromPoller)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -139,18 +138,18 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         };
 
         auto shared = client->StartEndpoint("::", 10020).ExtractValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(2, shared.use_count());
+        ASSERT_EQ(2u, shared.use_count());
 
         shared->Stop().Wait();
         auto deadline = GetCycleCount() + DurationToCycles(TDuration::Seconds(10));
         while (deadline > GetCycleCount() && shared.use_count() > 1) {
             SpinLockPause();
         }
-        UNIT_ASSERT_VALUES_EQUAL(1, shared.use_count());
+        ASSERT_EQ(1u, shared.use_count());
     }
 
-    Y_UNIT_TEST(ShouldReturnErrorUponStartEndpointTimeout)
-    {
+TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
+{
         auto verbs =
             NVerbs::CreateTestVerbs(MakeIntrusive<NVerbs::TTestContext>());
         auto monitoring = CreateMonitoringServiceStub();
@@ -178,17 +177,14 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         try {
             clientEndpoint.GetValue(TDuration::Seconds(10));
-            UNIT_ASSERT(false);
+            FAIL() << "expected exception";
         } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_RDMA_UNAVAILABLE,
-                e.GetCode(),
-                e.GetMessage());
+            ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
         }
-    }
+}
 
-    Y_UNIT_TEST(ShouldHandleGetAddressInfoError)
-    {
+TEST(TRdmaClientTest, ShouldHandleGetAddressInfoError)
+{
         auto context = MakeIntrusive<NVerbs::TTestContext>();
         auto verbs = NVerbs::CreateTestVerbs(context);
         auto monitoring = CreateMonitoringServiceStub();
@@ -224,17 +220,14 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         try {
             auto clientEndpoint = client->StartEndpoint("::", 10020);
             clientEndpoint.GetValue(TDuration::Seconds(10));
-            UNIT_ASSERT(false);
+            FAIL() << "expected exception";
         } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_RDMA_UNAVAILABLE,
-                e.GetCode(),
-                e.GetMessage());
+            ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
         }
-    }
+}
 
-    Y_UNIT_TEST(ShouldProcessRequests)
-    {
+TEST(TRdmaClientTest, ShouldProcessRequests)
+{
         // TODO(drbasic) reset to (RDMA_MAX_REQID - 1) or extract
         // TActiveRequests and make simple unit-test for requestId overflow
         constexpr size_t RequestCount = 10;
@@ -335,7 +328,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 makeContext(&ev, &response),
                 RequestBytes,
                 ResponseBytes);
-            UNIT_ASSERT_VALUES_EQUAL(false, HasError(request.GetError()));
+            ASSERT_FALSE(HasError(request.GetError()));
 
             ep->SendRequest(
                 request.ExtractResult(),
@@ -346,7 +339,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 handleRequest(*testContext);
 
                 ev.WaitT(5s);
-                UNIT_ASSERT(response.Received);
+                ASSERT_TRUE(response.Received);
 
                 // request duration is measured against the wall clock, so it
                 // can legitimately time out if the process stalls for some
@@ -354,22 +347,18 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 if (response.Status != RDMA_PROTO_OK) {
                     NProto::TError error =
                         ParseError(response.Buffer.Head(response.Bytes));
-                    UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
+                    ASSERT_EQ(E_TIMEOUT, error.GetCode());
                 }
-                UNIT_ASSERT_VALUES_EQUAL(
-                    static_cast<ui32>(RDMA_PROTO_OK),
-                    response.Status);
+                ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_OK), response.Status);
             } else {
                 // do not complete request to emulate a timeout
                 ev.WaitT(TDuration::Seconds(5));
-                UNIT_ASSERT(response.Received);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    static_cast<ui32>(RDMA_PROTO_FAIL),
-                    response.Status);
+                ASSERT_TRUE(response.Received);
+                ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response.Status);
 
                 NProto::TError error =
                     ParseError(response.Buffer.Head(response.Bytes));
-                UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, error.GetCode());
+                ASSERT_EQ(E_TIMEOUT, error.GetCode());
 
                 // complete request
                 handleRequest(*testContext);
@@ -380,12 +369,12 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 ->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "rdma_client");
             auto aborted = counters->GetCounter("AbortedRequests");
-            UNIT_ASSERT_EQUAL(aborted->Val(), 1);
+            ASSERT_EQ(aborted->Val(), 1);
         }
-    }
+}
 
-    Y_UNIT_TEST(ShouldReuseChunks)
-    {
+TEST(TRdmaClientTest, ShouldReuseChunks)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -422,17 +411,17 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 std::make_unique<TNullContext>(),
                 4_MB,
                 4_MB);
-            UNIT_ASSERT_VALUES_EQUAL(false, HasError(err));
+            ASSERT_FALSE(HasError(err));
             requests.push_back(std::move(req));
         }
 
         // 2 for recv/send buffers
         // 2 for input/output buffers
-        UNIT_ASSERT_VALUES_EQUAL(registered.load(), 2 + 2);
+        ASSERT_EQ(registered.load(), 2u + 2u);
     }
 
-    Y_UNIT_TEST(ShouldAdjustMaxChunkAlloc)
-    {
+TEST(TRdmaClientTest, ShouldAdjustMaxChunkAlloc)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -470,18 +459,18 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 std::make_unique<TNullContext>(),
                 4_MB,
                 4_MB);
-            UNIT_ASSERT_VALUES_EQUAL(false, HasError(err));
+            ASSERT_FALSE(HasError(err));
             requests.push_back(std::move(req));
         }
 
         // 2 for recv/send buffers
         // 2 * chunks for input/output buffers
-        UNIT_ASSERT_VALUES_EQUAL(registered.load(), 2 + 2 * chunks);
+        ASSERT_EQ(registered.load(), 2u + 2u * static_cast<unsigned>(chunks));
     }
 
 
-    Y_UNIT_TEST(ShouldAbortRequests)
-    {
+TEST(TRdmaClientTest, ShouldAbortRequests)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -524,9 +513,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 Y_UNUSED(req);
                 Y_UNUSED(responseBytes);
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    static_cast<ui32>(RDMA_PROTO_FAIL),
-                    status);
+                ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), status);
 
                 Done.Signal();
             }
@@ -542,14 +529,14 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         endpoint->SendRequest(
             request.ExtractResult(),
             MakeIntrusive<TCallContext>());
-        UNIT_ASSERT(sent.WaitT(5s));
+        ASSERT_TRUE(sent.WaitT(5s));
 
         Disconnect(testContext);
-        UNIT_ASSERT(handler->Done.WaitT(5s));
+        ASSERT_TRUE(handler->Done.WaitT(5s));
     }
 
-    Y_UNIT_TEST(ShouldCancelRequests)
-    {
+TEST(TRdmaClientTest, ShouldCancelRequests)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -635,31 +622,31 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         ep->CancelRequest(reqId2);
 
         ev2.WaitT(5s);
-        UNIT_ASSERT(response2.Received);
-        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_FAIL, response2.Status);
+        ASSERT_TRUE(response2.Received);
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2.Status);
 
         NProto::TError error;
         bool parsed = error.ParseFromArray(
             response2.Buffer.Head(response2.Bytes).data(),
             response2.Bytes);
 
-        UNIT_ASSERT(parsed);
-        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
+        ASSERT_TRUE(parsed);
+        ASSERT_EQ(E_CANCELLED, error.GetCode());
 
-        UNIT_ASSERT(!response1.Received);
+        ASSERT_FALSE(response1.Received);
 
         ep->CancelRequest(reqId1);
 
         ev1.WaitT(5s);
-        UNIT_ASSERT(response1.Received);
-        UNIT_ASSERT_VALUES_EQUAL((ui32)RDMA_PROTO_FAIL, response1.Status);
+        ASSERT_TRUE(response1.Received);
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response1.Status);
 
         parsed = error.ParseFromArray(
             response1.Buffer.Head(response1.Bytes).data(),
             response1.Bytes);
 
-        UNIT_ASSERT(parsed);
-        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, error.GetCode());
+        ASSERT_TRUE(parsed);
+        ASSERT_EQ(E_CANCELLED, error.GetCode());
 
         auto counters = monitoring
             ->GetCounters()
@@ -667,12 +654,12 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             ->GetSubgroup("component", "rdma_client");
         auto aborted = counters->GetCounter("AbortedRequests");
         auto queued = counters->GetCounter("QueuedRequests");
-        UNIT_ASSERT_EQUAL(queued->Val(), 0);
-        UNIT_ASSERT_EQUAL(aborted->Val(), 2);
+        ASSERT_EQ(queued->Val(), 0);
+        ASSERT_EQ(aborted->Val(), 2);
     }
 
-    Y_UNIT_TEST(ShouldReconnect)
-    {
+TEST(TRdmaClientTest, ShouldReconnect)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -792,12 +779,12 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         }
 
         ev.WaitT(TDuration::Seconds(5));
-        UNIT_ASSERT(response.Received);
-        UNIT_ASSERT_VALUES_EQUAL(0, response.Status);
+        ASSERT_TRUE(response.Received);
+        ASSERT_EQ(0u, response.Status);
     }
 
-    Y_UNIT_TEST(ShouldForceReconnect)
-    {
+TEST(TRdmaClientTest, ShouldForceReconnect)
+{
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
 
@@ -837,11 +824,11 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         // Force reconnect should be less than "MaxReconnectDelay".
         const auto elapsed = now - TInstant::Now();
-        UNIT_ASSERT_LT(elapsed, clientConfig->MaxReconnectDelay);
+        ASSERT_LT(elapsed, clientConfig->MaxReconnectDelay);
     }
 
-    Y_UNIT_TEST(ShouldHandleErrors)
-    {
+TEST(TRdmaClientTest, ShouldHandleErrors)
+{
         auto context = MakeIntrusive<NVerbs::TTestContext>();
         context->AllowConnect = true;
 
@@ -887,7 +874,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             context->ModifyQP = [&](auto* qp, auto* attr, int mask) {
                 Y_UNUSED(qp);
                 Y_UNUSED(mask);
-                UNIT_ASSERT_EQUAL(attr->qp_state, IBV_QPS_ERR);
+                ASSERT_EQ(attr->qp_state, IBV_QPS_ERR);
             };
             for (size_t i = 0; i < 5; i++) {
                 auto* wr = context->RecvEvents.back();
@@ -927,7 +914,7 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             while (counter->Val() != value) {
                 auto now = GetCycleCount();
                 if (CyclesToDurationSafe(now - start) > TDuration::Seconds(5)) {
-                    UNIT_FAIL("timed out waiting for counter");
+                    FAIL() << "timed out waiting for counter";
                 }
                 SpinLockPause();
             }
@@ -935,7 +922,6 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
 
         wait(errors, 7);
         wait(active, 6);
-    }
-};
+}
 
 }   // namespace NCloud::NBlockStore::NRdma
