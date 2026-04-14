@@ -239,6 +239,12 @@ void TPartitionActor::HandleAddFreshBlocks(
     NCloud::Reply(ctx, *ev, std::move(response));
 
     if (FreshBlocksWriter) {
+        // If we have only fresh requests, then the partition will receive only
+        // AddFreshBlocks requests. So Flush will not be triggered (it is
+        // usually triggered on Write Blocks Completed responses), we will soon
+        // reach the hard limit on the unflushed blob byte count, and FBW will
+        // start to reject all requests. Therefore, we should trigger Flush on
+        // the AddFreshBlock request.
         EnqueueFlushIfNeeded(ctx);
     }
 }
