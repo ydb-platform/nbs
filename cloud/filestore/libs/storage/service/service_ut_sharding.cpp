@@ -818,9 +818,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT_VALUES_UNEQUAL("", expectedShardId);
         UNIT_ASSERT_VALUES_UNEQUAL("", expectedShardNodeName);
-        UNIT_ASSERT(
-            expectedShardId == fsConfig.Shard1Id
-            || expectedShardId == fsConfig.Shard2Id);
+        UNIT_ASSERT(expectedShardId == fsConfig.Shard1Id);
 
         auto listNodesResponse = service.ListNodes(
             headers,
