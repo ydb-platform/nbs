@@ -26,13 +26,13 @@ void AddNode(
 void AddExternalNode(
     NProto::TListNodesResponse& record,
     TString name,
-    const TString& shardId,
-    const TString& shardNodeName)
+    TString shardId,
+    TString shardNodeName)
 {
     record.AddNames(std::move(name));
     auto* node = record.AddNodes();
-    node->SetShardFileSystemId(shardId);
-    node->SetShardNodeName(shardNodeName);
+    node->SetShardFileSystemId(std::move(shardId));
+    node->SetShardNodeName(std::move(shardNodeName));
 }
 
 NProto::TError ValidateRequest(const NProto::TListNodesRequest& request)
@@ -195,7 +195,8 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto& record = response->Record;
         record.MutableNames()->Reserve(args.ChildRefs.size());
@@ -205,16 +206,15 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 
         size_t j = 0;
         for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
-            const auto& ref = args.ChildRefs[i];
+            auto& ref = args.ChildRefs[i];
             requestBytes += ref.Name.size();
             if (ref.ShardId) {
                 if (!HasPendingNodeCreateInShard(ref.ShardNodeName)) {
                     AddExternalNode(
                         record,
-                        ref.Name,
-                        ref.ShardId,
-                        ref.ShardNodeName);
-
+                        std::move(ref.Name),
+                        std::move(ref.ShardId),
+                        std::move(ref.ShardNodeName));
                 }
 
                 continue;
@@ -222,7 +222,7 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 
             AddNode(
                 record,
-                ref.Name,
+                std::move(ref.Name),
                 ref.ChildNodeId,
                 args.ChildNodes[j].Attrs);
             ++j;
