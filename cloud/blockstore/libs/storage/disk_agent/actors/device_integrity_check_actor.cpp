@@ -143,38 +143,28 @@ void TDeviceIntegrityCheckActor::CheckPartlabels(const TActorContext& ctx)
         return;
     }
 
-    THashSet<TString> checkedPaths;
+    THashSet<TString> checkedSerials;
 
     for (const auto& device: Devices) {
         if (device.GetSerialNumber().empty()) {
             continue;
         }
 
-        if (!checkedPaths.insert(device.GetDeviceName()).second) {
+        if (!checkedSerials.insert(device.GetSerialNumber()).second) {
             continue;
         }
 
         auto [currentSerial, error] =
             NvmeManager->GetSerialNumber(device.GetDeviceName());
 
-        if (HasError(error)) {
-            LOG_WARN_S(
-                ctx,
-                TBlockStoreComponents::DISK_AGENT_WORKER,
-                "Failed to read serial number for device "
-                    << device.GetDeviceUUID().Quote() << " at "
-                    << device.GetDeviceName().Quote() << ": "
-                    << FormatError(error));
-            continue;
-        }
-
-        if (currentSerial != device.GetSerialNumber()) {
+        if (HasError(error) || currentSerial != device.GetSerialNumber()) {
             ReportDiskAgentDevicePartlabelMismatch(
                 "The partlabel may point to a different physical disk.",
                 {{"deviceId", device.GetDeviceUUID()},
                  {"path", device.GetDeviceName()},
                  {"expectedSerial", device.GetSerialNumber()},
-                 {"actualSerial", currentSerial}});
+                 {"actualSerial", currentSerial},
+                 {"error", FormatError(error)}});
         }
     }
 }
