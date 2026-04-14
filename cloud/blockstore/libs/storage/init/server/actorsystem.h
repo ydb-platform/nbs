@@ -78,6 +78,8 @@ struct TServerActorSystemArgs
 
     bool IsDiskRegistrySpareNode = false;
     bool TemporaryServer = false;
+
+    bool IsHiveLocalServiceEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

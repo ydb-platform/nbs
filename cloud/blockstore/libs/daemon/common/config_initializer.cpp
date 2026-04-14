@@ -183,6 +183,7 @@ void TConfigInitializerCommon::InitHostPerformanceProfile()
     const auto& tc = EndpointConfig->GetClientConfig().GetThrottlingConfig();
     ui32 networkThroughput = tc.GetDefaultNetworkMbitThroughput();
     ui32 hostCpuCount = tc.GetDefaultHostCpuCount();
+    bool isTightServiceMemoryPlatform = false;
 
     if (auto json = ReadJsonFile(tc.GetInfraThrottlingConfigPath())) {
         try {
@@ -202,11 +203,24 @@ void TConfigInitializerCommon::InitHostPerformanceProfile()
             STORAGE_ERROR("Failed to read HostCpuCount. Error: "
                 << CurrentExceptionMessage().c_str());
         }
+
+        try {
+            if (auto* value =
+                    json->GetValueByPath("is_tight_service_memory_platform"))
+            {
+                isTightServiceMemoryPlatform = value->GetBooleanSafe();
+            }
+        } catch (...) {
+            STORAGE_ERROR(
+                "Failed to read IsTightServiceMemoryPlatform. Error: "
+                << CurrentExceptionMessage().c_str());
+        }
     }
 
     HostPerformanceProfile = {
         .CpuCount = hostCpuCount,
         .NetworkMbitThroughput = networkThroughput,
+        .IsTightServiceMemoryPlatform = isTightServiceMemoryPlatform
     };
 }
 
