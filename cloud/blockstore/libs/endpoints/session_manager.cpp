@@ -27,6 +27,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/threading/hot_swap/hot_swap.h>
+
 #include <util/generic/hash.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
@@ -209,21 +211,25 @@ private:
     const IStoragePtr Storage;
     const IBlockStorePtr Service;
     const IServerStatsPtr ServerStats;
+    const IVolumeStatsPtr VolumeStats;
     const TString ClientId;
     const TDuration RequestTimeout;
     const ui32 BlockSize;
+    THotSwap<IVolumeInfoPin> VolumeInfoPin;
 
 public:
     TStorageDataClient(
-            IStoragePtr storage,
-            IBlockStorePtr service,
-            IServerStatsPtr serverStats,
-            TString clientId,
-            TDuration requestTimeout,
-            ui32 blockSize)
+        IStoragePtr storage,
+        IBlockStorePtr service,
+        IServerStatsPtr serverStats,
+        IVolumeStatsPtr volumeStats,
+        TString clientId,
+        TDuration requestTimeout,
+        ui32 blockSize)
         : Storage(std::move(storage))
         , Service(std::move(service))
         , ServerStats(std::move(serverStats))
+        , VolumeStats(std::move(volumeStats))
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
         , BlockSize(blockSize)
@@ -233,7 +239,26 @@ public:
     {}
 
     void Stop() override
-    {}
+    {
+        UnpinVolumeInfo();
+    }
+
+    void PinVolumeInfo(const TString& diskId, const TString& clientId)
+    {
+        // One-time pinning of the VolumeInfo object until the disk is unmounted
+        // or the object is destroyed
+        if (VolumeInfoPin.AtomicLoad() != nullptr) {
+            return;
+        }
+        auto pin = VolumeStats->PinVolumeInfo(diskId, clientId);
+
+        VolumeInfoPin.AtomicStore(pin);
+    }
+
+    void UnpinVolumeInfo()
+    {
+        VolumeInfoPin.AtomicStore(nullptr);
+    }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -271,6 +296,13 @@ public:
         return future.Apply(
             [=, weakSelf = weak_from_this()](const auto& f)
             {
+                // Notes:
+                //  - mount responce and unmount responce can be processed in
+                //    any order within different threads
+                //  - there is no guaranties that no mount responce shall arrive
+                //    and be processed after unmounting or even during or after
+                //    TStorageDataClient destroyed
+
                 auto self = weakSelf.lock();
                 if (!self) {
                     return f;
@@ -283,6 +315,10 @@ public:
                         response.GetVolume(),
                         self->ClientId,
                         instanceId);
+
+                    self->PinVolumeInfo(
+                        response.GetVolume().GetDiskId(),
+                        self->ClientId);
                 }
                 return f;
             });
@@ -302,14 +338,22 @@ public:
         return future.Apply(
             [=, weakSelf = weak_from_this()](const auto& f)
             {
+                // See Notes in MountVolume()
+
                 auto self = weakSelf.lock();
                 if (!self) {
+                    // Corresponding VolumeInfo was unpinned when
+                    // TStorageDataClient was destroyed
                     return f;
                 }
 
                 const auto& response = f.GetValue();
 
+                // Note: top-level endpoint and session deletion performed
+                // despite HasError(response)
                 if (!HasError(response)) {
+                    // Happy-path unmount and VolumeInfo unpin
+                    self->UnpinVolumeInfo();
                     self->ServerStats->UnmountVolume(
                         diskId,
                         self->ClientId);
@@ -823,15 +867,14 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
         storage = Executor->ResultOrError(future).GetResult();
     }
 
-    return {
-        std::make_shared<TStorageDataClient>(
-            std::move(storage),
-            std::move(service),
-            ServerStats,
-            clientId,
-            clientConfig->GetRequestTimeout(),
-            volume.GetBlockSize())
-    };
+    return {std::make_shared<TStorageDataClient>(
+        std::move(storage),
+        std::move(service),
+        ServerStats,
+        VolumeStats,
+        clientId,
+        clientConfig->GetRequestTimeout(),
+        volume.GetBlockSize())};
 }
 
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
