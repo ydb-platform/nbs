@@ -1419,7 +1419,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         config.SetInMemoryIndexCacheEnabled(true);
         config.SetInMemoryIndexCacheNodesCapacity(10);
         config.SetInMemoryIndexCacheNodeRefsCapacity(10);
-        config.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(5);
+        config.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(1);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -1438,7 +1438,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 ->GetAtomic();
         };
 
-        // Create a directory
+        // Create a directory with children. Both refs and exhaustiveness are
+        // cached on creation.
         const ui64 dirId =
             service
                 .CreateNode(
@@ -1446,24 +1447,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                     TCreateNodeArgs::Directory(RootNodeId, "testdir"))
                 ->Record.GetNode()
                 .GetId();
-
-        // Create some children
         service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file1"));
         service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file2"));
 
-        // Listing the directory should be a cache miss
-        auto listResponse = service.ListNodes(headers, dirId);
-        UNIT_ASSERT_VALUES_EQUAL(2, listResponse->Record.GetNodes().size());
-        UNIT_ASSERT_VALUES_EQUAL(0, getCacheHit());
+        // Creating a second directory evicts dirId from the exhaustiveness LRU
+        // (capacity=1). Refs remain in cache; only exhaustiveness is lost.
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "other"));
 
-        // Mark the directory as exhaustive using the action
+        // The action restores exhaustiveness for dirId without a listing.
         auto response = ExecuteMarkNodeRefsExhaustive(service, fsId, dirId);
         UNIT_ASSERT_C(!HasError(response.GetError()), response.GetError());
 
-        // List the directory to verify the nodes are there
-        listResponse = service.ListNodes(headers, dirId);
+        // Cache hit: refs were in cache and exhaustiveness was restored by the action.
+        auto listResponse = service.ListNodes(headers, dirId);
         UNIT_ASSERT_VALUES_EQUAL(2, listResponse->Record.GetNodes().size());
-
         UNIT_ASSERT_VALUES_EQUAL(1, getCacheHit());
     }
 

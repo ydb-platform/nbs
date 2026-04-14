@@ -643,7 +643,8 @@ public:
         const TString& childName,
         ui64 childNodeId,
         const TString& shardId,
-        const TString& shardNodeName);
+        const TString& shardNodeName,
+        bool markExhaustive = false);
 
     void RemoveNodeRef(
         TIndexTabletDatabase& db,

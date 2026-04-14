@@ -427,7 +427,8 @@ void TIndexTabletState::CreateNodeRef(
     const TString& childName,
     ui64 childNodeId,
     const TString& shardId,
-    const TString& shardNodeName)
+    const TString& shardNodeName,
+    bool markExhaustive)
 {
     db.WriteNodeRef(
         nodeId,
@@ -435,7 +436,8 @@ void TIndexTabletState::CreateNodeRef(
         childName,
         childNodeId,
         shardId,
-        shardNodeName);
+        shardNodeName,
+        markExhaustive);
 }
 
 void TIndexTabletState::RemoveNodeRef(
