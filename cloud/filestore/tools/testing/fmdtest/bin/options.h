@@ -1,5 +1,6 @@
 #pragma once
 
+#include <util/datetime/base.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore {
@@ -9,11 +10,20 @@ namespace NCloud::NFileStore {
 struct TOptions
 {
     TString TestDir;
-    ui32 ProducerThreads = 4;
-    ui32 StealerThreads = 2;
-    ui32 FilesPerProducer = 1000;
-    ui32 TestDurationSec = 60;
-    ui32 FileSize = 4096;
+
+    ui32 ProducerThreads{};
+    ui32 FilesPerProducer{};
+    ui32 UnlinkPercentage{};
+    TDuration ProducerSleepDuration;
+    ui32 FileSize{};
+
+    ui32 StealerThreads{};
+    TDuration StealerSleepDuration;
+
+    ui32 ListerThreads{};
+    TDuration ListerSleepDuration;
+
+    TDuration TestDuration;
     TString ReportPath;
 
     void Parse(int argc, char** argv);

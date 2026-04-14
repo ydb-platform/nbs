@@ -39,39 +39,65 @@ struct TRequestStats
 {
     TString Name;
     std::atomic<ui64> Requests{0};
+    std::atomic<ui64> Weight{0};
     std::atomic<ui64> TimeUs{0};
 
     explicit TRequestStats(TString name)
         : Name(std::move(name))
     {}
 
-    void Register(double seconds)
+    void Register(double weight, double seconds)
     {
         Requests.fetch_add(1, std::memory_order_relaxed);
+        Weight.fetch_add(weight, std::memory_order_relaxed);
         TimeUs.fetch_add(seconds * 1'000'000, std::memory_order_relaxed);
     }
+
+    struct TLoadStat
+    {
+        ui64 Cnt;
+        ui64 Lat;
+        ui64 Weight;
+        ui64 WLat;
+    };
 
     auto Load() const
     {
         const ui64 cnt = Requests.load(std::memory_order_relaxed);
+        const ui64 w = Weight.load(std::memory_order_relaxed);
         const ui64 timeUs = TimeUs.load(std::memory_order_relaxed);
         const ui64 lat = cnt ? timeUs / cnt : 0;
-        return std::make_pair(cnt, lat);
+        const ui64 wlat = w ? timeUs / w : 0;
+        return TLoadStat{.Cnt = cnt, .Lat = lat, .Weight = w, .WLat = wlat};
     }
 
     void Report(TLog& Log) const
     {
-        const auto [cnt, lat] = Load();
-        STORAGE_INFO(Name << ": count=" << cnt << ", lat-us=" << lat);
+        const auto loadStat = Load();
+        TStringBuilder sb;
+        sb << Name << ": count=" << loadStat.Cnt;
+        sb << ", lat-us=" << loadStat.Lat;
+        if (loadStat.Weight) {
+            sb << ", weight=" << loadStat.Weight;
+            sb << ", wlat-us=" << loadStat.WLat;
+        }
+
+        STORAGE_INFO(sb);
     }
 
     void Report(NJsonWriter::TBuf& buf) const
     {
-        const auto [cnt, lat] = Load();
+        const auto loadStat = Load();
         buf.WriteKey(Name);
-        buf.WriteULongLong(cnt);
+        buf.WriteULongLong(loadStat.Cnt);
         buf.WriteKey(Name + "-lat-us");
-        buf.WriteULongLong(lat);
+        buf.WriteULongLong(loadStat.Lat);
+        if (loadStat.Weight) {
+            buf.WriteKey(Name + "-w");
+            buf.WriteULongLong(loadStat.Weight);
+            buf.WriteKey(Name + "-wlat-us");
+            buf.WriteULongLong(loadStat.WLat);
+        }
     }
 };
 
@@ -144,12 +170,14 @@ public:
             }
 
             // Randomly delete some files
-            if (!Files.empty() && RandomNumber<ui32>(100) < 20) {
+            if (!Files.empty()
+                    && RandomNumber<ui32>(100) < Options.UnlinkPercentage)
+            {
                 DeleteRandomFile();
             }
 
             // Small sleep to avoid busy loop
-            Sleep(TDuration::MilliSeconds(1));
+            Sleep(Options.ProducerSleepDuration);
         }
 
         return nullptr;
@@ -246,7 +274,7 @@ private:
         static constexpr EOpenMode OpenMode = CreateAlways | WrOnly | Seq;
         THPTimer timer;
         TFile f(filePath, OpenMode);
-        Stats.Create.Register(timer.Passed());
+        Stats.Create.Register(0 /* weight */, timer.Passed());
 
         TOFStream os(f);
         os.Write(content);
@@ -254,7 +282,7 @@ private:
 
         timer.Reset();
         TFileStat stat(filePath);
-        Stats.Stat.Register(timer.Passed());
+        Stats.Stat.Register(0 /* weight */, timer.Passed());
 
         Files.push_back({
             fileName,
@@ -277,7 +305,7 @@ private:
         THPTimer timer;
         const bool removed = NFs::Remove(filePath);
         if (removed) {
-            Stats.Unlink.Register(timer.Passed());
+            Stats.Unlink.Register(0 /* weight */, timer.Passed());
             UnlinkedFiles.push_back(file.Name);
         } else {
             FailedToUnlinkFiles.push_back(file.Name);
@@ -332,7 +360,7 @@ public:
     {
         while (!ShouldStop.load()) {
             StealRandomFile();
-            Sleep(TDuration::MilliSeconds(10));
+            Sleep(Options.StealerSleepDuration);
         }
 
         return nullptr;
@@ -407,7 +435,7 @@ private:
         TVector<TString> files;
         THPTimer timer;
         producerDir.ListNames(files);
-        Stats.List.Register(timer.Passed());
+        Stats.List.Register(files.size() /* weight */, timer.Passed());
 
         if (files.empty()) {
             return;
@@ -427,7 +455,7 @@ private:
         timer.Reset();
         bool renamed = NFs::Rename(srcPath, dstPath);
         if (renamed) {
-            Stats.Rename.Register(timer.Passed());
+            Stats.Rename.Register(0 /* weight */, timer.Passed());
 
             //
             // Stat and file info after moving
@@ -435,7 +463,7 @@ private:
 
             timer.Reset();
             TFileStat stat(dstPath);
-            Stats.Stat.Register(timer.Passed());
+            Stats.Stat.Register(0 /* weight */, timer.Passed());
 
             TString content = TFileInput(dstPath).ReadAll();
 
@@ -455,6 +483,61 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TListerThread: public ISimpleThread
+{
+private:
+    TLog Log;
+    const TOptions& Options;
+    TStats& Stats;
+    std::atomic<bool>& ShouldStop;
+    const TVector<TProducerThread*>& Producers;
+
+public:
+    TListerThread(
+            TLog log,
+            const TOptions& options,
+            TStats& stats,
+            std::atomic<bool>& shouldStop,
+            const TVector<TProducerThread*>& producers)
+        : Log(std::move(log))
+        , Options(options)
+        , Stats(stats)
+        , ShouldStop(shouldStop)
+        , Producers(producers)
+    {
+    }
+
+    void* ThreadProc() override
+    {
+        while (!ShouldStop.load()) {
+            ListRandomDir();
+            Sleep(Options.ListerSleepDuration);
+        }
+
+        return nullptr;
+    }
+
+private:
+    void ListRandomDir()
+    {
+        if (Producers.empty()) {
+            return;
+        }
+
+        // Pick random producer
+        ui32 producerIdx = RandomNumber<ui32>(Producers.size());
+        const auto& producerDir = Producers[producerIdx]->GetDirPath();
+
+        // List files in producer directory
+        TVector<TString> files;
+        THPTimer timer;
+        producerDir.ListNames(files);
+        Stats.List.Register(files.size() /* weight */, timer.Passed());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TApp
 {
 private:
@@ -462,6 +545,7 @@ private:
     TStats Stats;
     TVector<THolder<TProducerThread>> ProducerThreads;
     TVector<THolder<TStealerThread>> StealerThreads;
+    TVector<THolder<TListerThread>> ListerThreads;
     TInstant StartTime;
 
 public:
@@ -501,6 +585,13 @@ public:
             StealerThreads.push_back(std::move(s));
         }
 
+        // Create lister threads
+        for (ui32 i = 0; i < options.ListerThreads; ++i) {
+            auto s = MakeHolder<TListerThread>(
+                Log, options, Stats, ShouldStop, producerPtrs);
+            ListerThreads.push_back(std::move(s));
+        }
+
         // Run all threads
         for (auto& p: ProducerThreads) {
             p->Start();
@@ -510,12 +601,16 @@ public:
             s->Start();
         }
 
+        for (auto& l: ListerThreads) {
+            l->Start();
+        }
+
         // Wait for test duration
         while (!ShouldStop.load()) {
             Sleep(TDuration::Seconds(1));
 
             auto elapsed = TInstant::Now() - StartTime;
-            if (elapsed.Seconds() >= options.TestDurationSec) {
+            if (elapsed >= options.TestDuration) {
                 break;
             }
 
@@ -533,8 +628,13 @@ public:
         for (auto& p: ProducerThreads) {
             p->Join();
         }
+
         for (auto& s: StealerThreads) {
             s->Join();
+        }
+
+        for (auto& l: ListerThreads) {
+            l->Join();
         }
 
         TInstant endTime = TInstant::Now();
