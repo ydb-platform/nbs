@@ -1149,7 +1149,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.SendAsync(stolenPutRequest.release());
 
         auto response = fbwClient.RecvWriteBlocksResponse();
-        UNIT_ASSERT(!HasError(response->GetError()));
+        UNIT_ASSERT_C(
+            !HasError(response->GetError()),
+            FormatError(response->GetError()));
 
         partition.KillTablet();
         partition.ReconnectPipe();
@@ -1222,7 +1224,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.Send(stolenAddFreshBlocksRequest.release());
 
         auto resp = partition.RecvCompactionResponse();
-        UNIT_ASSERT(!HasError(resp->GetError()));
+        UNIT_ASSERT_C(
+            !HasError(resp->GetError()),
+            FormatError(resp->GetError()));
 
         UNIT_ASSERT(executeTransactionEventObserved);
 
@@ -1298,7 +1302,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.Send(stolenAddFreshBlocksRequest.release());
 
         auto resp = partition.RecvCreateCheckpointResponse();
-        UNIT_ASSERT(!HasError(resp->GetError()));
+        UNIT_ASSERT_C(
+            !HasError(resp->GetError()),
+            FormatError(resp->GetError()));
         UNIT_ASSERT(executeTransactionEventObserved);
 
         auto actualContent = GetBlocksContent(

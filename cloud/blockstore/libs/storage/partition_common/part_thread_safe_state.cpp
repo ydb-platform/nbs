@@ -64,9 +64,7 @@ void TPartitionThreadSafeState::FinishFreshWrite(
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
 
-    {
-        TGuard guard(StateLock);
-
+    with_lock(StateLock) {
         CommitQueue.ReleaseBarrier(commitId);
         if (isError) {
             TrimFreshLogBarriers.ReleaseBarrierN(commitId, blockCount);
@@ -93,8 +91,7 @@ void TPartitionThreadSafeState::WaitCommitForCompaction(
     std::unique_ptr<ITransactionBase> tx,
     ui64 commitId)
 {
-    {
-        TGuard guard(StateLock);
+    with_lock (StateLock) {
         ui64 minCommitId = CommitQueue.GetMinCommitId();
         Y_ABORT_UNLESS(minCommitId <= commitId);
 
@@ -118,8 +115,7 @@ void TPartitionThreadSafeState::WaitCommitForCheckpoint(
     ui64 commitId)
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
-    {
-        TGuard guard(StateLock);
+    with_lock (StateLock) {
         ui64 minCommitId = CommitQueue.GetMinCommitId();
 
         CheckpointsInFlight.AddTx(checkpointId, std::move(tx), commitId);
@@ -138,9 +134,7 @@ void TPartitionThreadSafeState::ProcessCommitQueue(
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
 
-    {
-        TGuard guard(StateLock);
-
+    with_lock (StateLock) {
         ProcessCommitQueueImpl(txs);
     }
 
@@ -151,10 +145,8 @@ void TPartitionThreadSafeState::ProcessCheckpointQueue(const NActors::TActorCont
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
 
-    {
-        TGuard guard(StateLock);
-
-        ProcessCheckpointQueueImpl(txs);
+    with_lock (StateLock) {
+        CollectCheckpointQueueTransactions(txs);
     }
 
     ExecuteTxs(ctx, std::move(txs));
@@ -167,12 +159,9 @@ bool TPartitionThreadSafeState::ProcessNextCheckpointRequest(
     TVector<std::unique_ptr<ITransactionBase>> txs;
 
     bool res = false;
-    {
-        TGuard guard(StateLock);
-
-        res = ProcessNextCheckpointRequestImpl(checkpointId, txs);
+    with_lock (StateLock) {
+        res = CollectNextCheckpointTx(checkpointId, txs);
     }
-
     ExecuteTxs(ctx, std::move(txs));
 
     return res;
@@ -245,10 +234,10 @@ void TPartitionThreadSafeState::ProcessCommitQueueImpl(
     // Since create checkpoint operation waits for the last commit to
     // complete here we force checkpoints queue to try to proceed to the
     // next create checkpoint request
-    ProcessCheckpointQueueImpl(txs);
+    CollectCheckpointQueueTransactions(txs);
 }
 
-void TPartitionThreadSafeState::ProcessCheckpointQueueImpl(
+void TPartitionThreadSafeState::CollectCheckpointQueueTransactions(
     TVector<std::unique_ptr<ITransactionBase>>& txs)
 {
     ui64 minCommitId = CommitQueue.GetMinCommitId();
@@ -258,7 +247,7 @@ void TPartitionThreadSafeState::ProcessCheckpointQueueImpl(
     }
 }
 
-bool TPartitionThreadSafeState::ProcessNextCheckpointRequestImpl(
+bool TPartitionThreadSafeState::CollectNextCheckpointTx(
     const TString& checkpointId,
     TVector<std::unique_ptr<ITransactionBase>>& txs)
 {

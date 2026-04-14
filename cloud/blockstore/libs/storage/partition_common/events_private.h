@@ -454,6 +454,7 @@ struct TEvPartitionCommonPrivate
         EvWriteFreshBlocksCompleted,
         EvZeroFreshBlocksCompleted,
         EvExecuteTransactions,
+
         EvEnd
     };
 

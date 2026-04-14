@@ -211,6 +211,7 @@ void TCheckpointsInFlight::AddTx(
     auto& queue = PendingTransactions[checkpointId];
     queue.emplace_back(std::move(transaction), commitId);
 
+    // CommitId can be 0 if it is a DeleteCheckpoint transaction.
     if (queue.size() == 1 && commitId != 0) {
         CommitIdQueue.Enqueue(checkpointId, commitId);
     }

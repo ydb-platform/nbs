@@ -211,10 +211,10 @@ private:
     void ProcessCommitQueueImpl(
         TVector<std::unique_ptr<ITransactionBase>>& txs);
 
-    void ProcessCheckpointQueueImpl(
+    void CollectCheckpointQueueTransactions(
         TVector<std::unique_ptr<ITransactionBase>>& txs);
 
-    bool ProcessNextCheckpointRequestImpl(
+    bool CollectNextCheckpointTx(
         const TString& checkpointId,
         TVector<std::unique_ptr<ITransactionBase>>& txs);
 };
