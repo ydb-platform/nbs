@@ -172,8 +172,6 @@ private:
     bool FirstGarbageCollectionCompleted = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
-    TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
-    ui64 BSGroupOperationId = 0;
 
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;

@@ -700,10 +700,9 @@ void TPartitionActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID("tab-pane", "BSGroupLatency"){
-                    DumpGroupLatencyTab(
-                        out,
-                        Info()->TabletID,
-                        BSGroupOperationTimeTracker);
+                    auto timeTracker =
+                        SharedState->GetBSGroupOperationTimeTracker();
+                    DumpGroupLatencyTab(out, Info()->TabletID, *timeTracker);
                 }
             }
         }

@@ -49,9 +49,7 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const EStorageAccessMode StorageAccessMode;
 
-    TBSGroupOperationTimeTracker& BSGroupOperationTimeTracker;
-
-    ui64& BSGroupOperationId;
+    TPartitionThreadSafeStatePtr SharedState;
 
     IIOCompanionClient& Client;
 
@@ -65,10 +63,6 @@ private:
 
     TRunningActors Actors;
 
-    std::shared_ptr<NPartition::TResourceMetricsQueue> ResourceMetricsQueue;
-    std::shared_ptr<NPartition::TGroupDowntimes> GroupDowntimes;
-    std::shared_ptr<NPartition::TThreadSafePartCounters> PartCounters;
-
 public:
     TIOCompanion(
         TStorageConfigPtr config,
@@ -79,14 +73,10 @@ public:
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigPtr diagnosticsConfig,
         EStorageAccessMode storageAccessMode,
-        TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
-        ui64& bsGroupOperationId,
+        TPartitionThreadSafeStatePtr sharedState,
         IIOCompanionClient& client,
         TPartitionChannelsState& channelsState,
-        TLogTitle& logTitle,
-        std::shared_ptr<NPartition::TResourceMetricsQueue> resourceMetricsQueue,
-        std::shared_ptr<NPartition::TGroupDowntimes> groupDowntimes,
-        std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters);
+        TLogTitle& logTitle);
 
     void HandleWriteBlobCompleted(
         const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,

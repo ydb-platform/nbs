@@ -311,14 +311,10 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         VolumeActorId,
         DiagnosticsConfig,
         StorageAccessMode,
-        BSGroupOperationTimeTracker,
-        BSGroupOperationId,
+        SharedState,
         *IOCompanionClient,
         *ChannelsState,
-        LogTitle,
-        SharedState->GetResourceMetricsQueue(),
-        SharedState->GetGroupDowntimes(),
-        SharedState->GetPartCounters());
+        LogTitle);
     Become(&TThis::StateWork);
 
     StateLoaded = true;

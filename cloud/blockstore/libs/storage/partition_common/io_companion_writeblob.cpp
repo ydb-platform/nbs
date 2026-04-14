@@ -396,10 +396,13 @@ void TIOCompanion::HandleWriteBlob(
             TString out;
             out.ReserveAndResize(BlobCodec->MaxCompressedLength(blobContent));
             const size_t sz = BlobCodec->Compress(blobContent, out.begin());
-            PartCounters->Access([&](auto& counters) {
-                counters->Cumulative.UncompressedBytesWritten.Increment(blobContent.size());
-                counters->Cumulative.CompressedBytesWritten.Increment(sz);
-            });
+            SharedState->PartCounters.Access(
+                [&](auto& counters)
+                {
+                    counters->Cumulative.UncompressedBytesWritten.Increment(
+                        blobContent.size());
+                    counters->Cumulative.CompressedBytesWritten.Increment(sz);
+                });
         }
     }
 
@@ -419,7 +422,7 @@ void TIOCompanion::HandleWriteBlob(
     ui32 channel = msg->BlobId.Channel();
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    ui64 bsGroupOperationId = BSGroupOperationId++;
+    ui64 bsGroupOperationId = SharedState->BSGroupOperationId.fetch_add(1);
 
     ChannelsState.EnqueueIORequest(
         channel,
@@ -452,7 +455,7 @@ void TIOCompanion::HandleWriteBlobCompleted(
 {
     const auto* msg = ev->Get();
 
-    BSGroupOperationTimeTracker.OnFinished(
+    SharedState->AccessBSGroupOperationTimeTracker()->OnFinished(
         msg->BSGroupOperationId,
         GetCycleCount());
 
@@ -460,14 +463,14 @@ void TIOCompanion::HandleWriteBlobCompleted(
 
     ui32 channel = msg->BlobId.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
-    ResourceMetricsQueue->Push(
+    SharedState->ResourceMetricsQueue.Push(
         NPartition::TUpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize()));
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleWriteBlobCompleted: invalid blob id received");
     } else {
-        ResourceMetricsQueue->Push(
+        SharedState->ResourceMetricsQueue.Push(
             NPartition::TUpdateWriteThroughput(
                 ctx.Now(),
                 channel,
@@ -475,13 +478,15 @@ void TIOCompanion::HandleWriteBlobCompleted(
                 msg->BlobId.BlobSize()));
     }
 
-    PartCounters->Access([&](auto& counters) {
-        counters->RequestCounters.WriteBlob.AddRequest(
-            msg->RequestTime.MicroSeconds(),
-            msg->BlobId.BlobSize(),
-            1,
-            ChannelsState.GetChannelDataKind(channel));
-    });
+    SharedState->PartCounters.Access(
+        [&](auto& counters)
+        {
+            counters->RequestCounters.WriteBlob.AddRequest(
+                msg->RequestTime.MicroSeconds(),
+                msg->BlobId.BlobSize(),
+                1,
+                ChannelsState.GetChannelDataKind(channel));
+        });
 
     ChannelsState.CompleteIORequest(channel);
 
@@ -546,7 +551,7 @@ void TIOCompanion::HandleWriteBlobCompleted(
             return;
         }
     } else {
-        GroupDowntimes->RegisterSuccess(ctx.Now(), groupId);
+        SharedState->GroupDowntimes.RegisterSuccess(ctx.Now(), groupId);
     }
 
     ProcessIOQueue(ctx, channel);
@@ -564,7 +569,7 @@ void TIOCompanion::HandleLongRunningBlobOperation(
     if (msg.Reason == TEvLongRunningOperation::EReason::LongRunningDetected &&
         msg.FirstNotify)
     {
-        GroupDowntimes->RegisterDowntime(ctx.Now(), msg.GroupId);
+        SharedState->GroupDowntimes.RegisterDowntime(ctx.Now(), msg.GroupId);
         Actors.MarkLongRunning(ev->Sender, msg.Operation);
     }
 }

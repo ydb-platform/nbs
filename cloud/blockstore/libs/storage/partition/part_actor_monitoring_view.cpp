@@ -341,7 +341,8 @@ void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
         ctx,
         *requestInfo,
         std::make_unique<NMon::TEvRemoteJsonInfoRes>(
-            BSGroupOperationTimeTracker.GetStatJson(GetCycleCount())));
+            SharedState->GetBSGroupOperationTimeTracker()->GetStatJson(
+                GetCycleCount())));
 }
 
 void TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats(
@@ -360,7 +361,7 @@ void TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats(
     TRequestInfoPtr requestInfo)
 {
     Y_UNUSED(params);
-    BSGroupOperationTimeTracker.ResetStats();
+    SharedState->AccessBSGroupOperationTimeTracker()->ResetStats();
     SendHttpResponse(ctx, *requestInfo, "");
 }
 
@@ -392,7 +393,8 @@ void TPartitionActor::HandleHttpInfo_GetBSGroupOperationsInflight(
         *requestInfo,
         std::make_unique<NMon::TEvRemoteHttpInfoRes>(
             FormatBSGroupOperationsInflight(
-                BSGroupOperationTimeTracker.GetInflightOperations(),
+                SharedState->GetBSGroupOperationTimeTracker()
+                    ->GetInflightOperations(),
                 GetCycleCount(),
                 TInstant::Now())));
 }

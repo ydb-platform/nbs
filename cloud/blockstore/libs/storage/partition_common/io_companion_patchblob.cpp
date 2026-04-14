@@ -338,7 +338,7 @@ void TIOCompanion::HandlePatchBlob(
     ui32 channel = msg->PatchedBlobId.Channel();
     msg->Proxy =
         Info()->BSProxyIDForChannel(channel, msg->PatchedBlobId.Generation());
-    ui64 bsGroupOperationId = BSGroupOperationId++;
+    ui64 bsGroupOperationId = SharedState->BSGroupOperationId.fetch_add(1);
 
     ChannelsState.EnqueueIORequest(
         channel,
@@ -366,7 +366,7 @@ void TIOCompanion::HandlePatchBlobCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    BSGroupOperationTimeTracker.OnFinished(
+    SharedState->AccessBSGroupOperationTimeTracker()->OnFinished(
         msg->BSGroupOperationId,
         GetCycleCount());
 
@@ -417,19 +417,19 @@ void TIOCompanion::HandlePatchBlobCompleted(
             0,
             "HandlePatchBlobCompleted: invalid blob id received");
     } else {
-        ResourceMetricsQueue->Push(
+        SharedState->ResourceMetricsQueue.Push(
             NPartition::TUpdateWriteThroughput(
                 ctx.Now(),
                 patchedChannel,
                 patchedGroup,
                 msg->PatchedBlobId.BlobSize()));
     }
-    ResourceMetricsQueue->Push(
+    SharedState->ResourceMetricsQueue.Push(
         NPartition::TUpdateNetworkStat(
             ctx.Now(),
             msg->PatchedBlobId.BlobSize()));
 
-    PartCounters->Access(
+    SharedState->PartCounters.Access(
         [&](auto& counters)
         {
             counters->RequestCounters.PatchBlob.AddRequest(
