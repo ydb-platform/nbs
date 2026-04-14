@@ -14,10 +14,15 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const defaultUpsertBatchSize = 1000
+
+////////////////////////////////////////////////////////////////////////////////
+
 type storageYDB struct {
-	db          *persistence.YDBClient
-	tablesPath  string
-	deleteLimit int
+	db              *persistence.YDBClient
+	tablesPath      string
+	deleteLimit     int
+	upsertBatchSize int
 }
 
 func NewStorage(
@@ -27,9 +32,10 @@ func NewStorage(
 ) Storage {
 
 	return &storageYDB{
-		db:          db,
-		tablesPath:  db.AbsolutePath(tablesPath),
-		deleteLimit: deleteLimit,
+		db:              db,
+		tablesPath:      db.AbsolutePath(tablesPath),
+		deleteLimit:     deleteLimit,
+		upsertBatchSize: defaultUpsertBatchSize,
 	}
 }
 
@@ -224,6 +230,25 @@ func scanNodes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *storageYDB) upsertInBatches(
+	values []persistence.Value,
+	upsert func(batch []persistence.Value) error,
+) error {
+
+	for i := 0; i < len(values); i += s.upsertBatchSize {
+		end := i + s.upsertBatchSize
+		if end > len(values) {
+			end = len(values)
+		}
+
+		if err := upsert(values[i:end]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *storageYDB) saveNodeRefs(
 	ctx context.Context,
 	session *persistence.Session,
@@ -236,18 +261,20 @@ func (s *storageYDB) saveNodeRefs(
 		values = append(values, nodeRefStructValue(snapshotID, node))
 	}
 
-	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $node_refs as List<%v>;
+	return s.upsertInBatches(values, func(batch []persistence.Value) error {
+		_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $node_refs as List<%v>;
 
-		upsert into node_refs
-		select *
-		from AS_TABLE($node_refs)
-	`, s.tablesPath, nodeRefStructTypeString()),
-		persistence.ValueParam("$node_refs", persistence.ListValue(values...)),
-	)
-	return err
+			upsert into node_refs
+			select *
+			from AS_TABLE($node_refs)
+		`, s.tablesPath, nodeRefStructTypeString()),
+			persistence.ValueParam("$node_refs", persistence.ListValue(batch...)),
+		)
+		return err
+	})
 }
 
 func (s *storageYDB) saveNodes(
@@ -262,18 +289,20 @@ func (s *storageYDB) saveNodes(
 		values = append(values, nodeStructValue(snapshotID, node))
 	}
 
-	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $nodes as List<%v>;
+	return s.upsertInBatches(values, func(batch []persistence.Value) error {
+		_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $nodes as List<%v>;
 
-		upsert into nodes
-		select *
-		from AS_TABLE($nodes)
-	`, s.tablesPath, nodeStructTypeString()),
-		persistence.ValueParam("$nodes", persistence.ListValue(values...)),
-	)
-	return err
+			upsert into nodes
+			select *
+			from AS_TABLE($nodes)
+		`, s.tablesPath, nodeStructTypeString()),
+			persistence.ValueParam("$nodes", persistence.ListValue(batch...)),
+		)
+		return err
+	})
 }
 
 func (s *storageYDB) saveHardlinks(
@@ -290,22 +319,20 @@ func (s *storageYDB) saveHardlinks(
 		}
 	}
 
-	if len(values) == 0 {
-		return nil
-	}
+	return s.upsertInBatches(values, func(batch []persistence.Value) error {
+		_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $hardlinks as List<%v>;
 
-	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $hardlinks as List<%v>;
-
-		upsert into hardlinks
-		select *
-		from AS_TABLE($hardlinks)
-	`, s.tablesPath, hardlinkStructTypeString()),
-		persistence.ValueParam("$hardlinks", persistence.ListValue(values...)),
-	)
-	return err
+			upsert into hardlinks
+			select *
+			from AS_TABLE($hardlinks)
+		`, s.tablesPath, hardlinkStructTypeString()),
+			persistence.ValueParam("$hardlinks", persistence.ListValue(batch...)),
+		)
+		return err
+	})
 }
 
 func (s *storageYDB) listNodeRefs(
@@ -322,7 +349,7 @@ func (s *storageYDB) listNodeRefs(
 		lastChildName = cookie
 	}
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
@@ -382,7 +409,7 @@ func (s *storageYDB) fetchNodeAttrs(
 		nodeIDValues = append(nodeIDValues, persistence.Uint64Value(id))
 	}
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
@@ -569,18 +596,20 @@ func (s *storageYDB) updateRestorationNodeIDMapping(
 		))
 	}
 
-	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $mappings as List<%v>;
+	return s.upsertInBatches(values, func(batch []persistence.Value) error {
+		_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $mappings as List<%v>;
 
-		upsert into restoration_node_ids_mapping
-		select *
-		from AS_TABLE($mappings)
-	`, s.tablesPath, restoreMappingStructTypeString()),
-		persistence.ValueParam("$mappings", persistence.ListValue(values...)),
-	)
-	return err
+			upsert into restoration_node_ids_mapping
+			select *
+			from AS_TABLE($mappings)
+		`, s.tablesPath, restoreMappingStructTypeString()),
+			persistence.ValueParam("$mappings", persistence.ListValue(batch...)),
+		)
+		return err
+	})
 }
 
 func (s *storageYDB) getDestinationNodeIDs(
