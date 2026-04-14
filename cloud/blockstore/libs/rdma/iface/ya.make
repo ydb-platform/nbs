@@ -12,6 +12,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/config
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
 

@@ -467,7 +467,8 @@ struct TTestVerbs
         // emulate internal server error
         TRejectMessage reject = {
             .Status = SafeCast<ui16>(status),
-            .QueueSize = connect->QueueSize,
+            .QueueSize =
+                SafeCast<ui16>(connect->SendQueueSize + connect->RecvQueueSize),
             .MaxBufferSize = connect->MaxBufferSize,
         };
         InitMessageHeader(&reject, RDMA_PROTO_VERSION);

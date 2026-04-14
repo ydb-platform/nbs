@@ -35,8 +35,10 @@ struct TServerConfig
     TString SourceInterface;
     bool VerbsQP = false;
     TBufferPoolConfig BufferPool;
+    ui32 SendQueueSize = 0;
+    ui32 RecvQueueSize = 0;
 
-    TServerConfig() = default;
+    TServerConfig();
     explicit TServerConfig(const NProto::TRdmaServer& config);
 
     void Validate(TLog& log);
