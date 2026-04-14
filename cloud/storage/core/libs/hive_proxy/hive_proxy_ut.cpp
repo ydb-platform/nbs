@@ -854,6 +854,26 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         env.SendLockRequest(sender, FakeTablet2, E_REJECTED);
     }
 
+    Y_UNIT_TEST(UnlockSameTabletTwice)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        env.SendLockRequest(sender, FakeTablet2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.HiveState->LockedTablets[FakeTablet2],
+            env.HiveProxyActorId);
+
+        env.SendUnlockRequest(sender, FakeTablet2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.HiveState->LockedTablets[FakeTablet2],
+            TActorId());
+
+        env.SendUnlockRequest(sender, FakeTablet2, S_ALREADY);
+    }
+
     Y_UNIT_TEST(LockMissingTablet) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
