@@ -264,7 +264,6 @@ void TVolumeSessionActor::HandleGentlyReleaseVolumeRequest(
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    Y_UNUSED(ctx);
 
     // Request unlock
     CurrentRequest = GENTLY_RELEASE_REQUEST;
@@ -292,7 +291,7 @@ void TVolumeSessionActor::HandleUnlockTabletResponse(
                 FormatError(error).c_str());
 
             ctx.Schedule(
-                Config->GetGentleBalancerPreemptionRetryDelay(),
+                Config->GetVolumeBalancerGentlePreemptionRetryDelay(),
                 new TEvServicePrivate::TEvGentlyReleaseVolumeRequest());
             return;
         }

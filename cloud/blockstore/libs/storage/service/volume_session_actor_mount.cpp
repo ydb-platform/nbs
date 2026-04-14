@@ -294,7 +294,7 @@ TMountRequestActor::TMountRequestActor(
     //} else if (Params.BindingType == TVolumeInfo::LOCAL) {
     //    MountMode = NProto::VOLUME_MOUNT_LOCAL;
     }
-    UseGentlePreemption = Config->GetGentleBalancerPreemptionEnabled() &&
+    UseGentlePreemption = Config->GetVolumeBalancerGentlePreemptionEnabled() &&
                           Params.PreemptionSource == NProto::SOURCE_BALANCER;
 }
 
@@ -644,13 +644,12 @@ void TMountRequestActor::GentlyReleaseVolume(const TActorContext& ctx)
         ctx,
         Params.SessionActorId);
 
-    // Now we consider preemption failed
-    // if we didn't get GentlyReleaseVolumeResponse
-    // in GentlePreemptionTimeout,
-    // which means locally mounted volume hasn't been
-    // demoted by new hive-booted tablet
+    // Now we treat preemption as failed if we do not receive
+    // GentlyReleaseVolumeResponse within GentlePreemptionTimeout,
+    // which means the locally mounted volume wasn't demoted by the
+    // new Hive-booted tablet
     ctx.Schedule(
-        Config->GetGentleBalancerPreemptionTimeout(),
+        Config->GetVolumeBalancerGentlePreemptionTimeout(),
         new TEvents::TEvWakeup());
 }
 
@@ -664,12 +663,11 @@ void TMountRequestActor::GentlyPullVolume(const TActorContext& ctx)
 
     RequestVolumeStart(ctx);
 
-    // Now we consider preemption failed
-    // if we didn't get successful StartVolumeResponse
-    // in GentlePreemptionTimeout,
-    // which means volume hasn't been started locally
+    // Now we treat volume pull as failed if we do not receive
+    // StartVolumeResponse within GentlePreemptionTimeout,
+    // which means the volume tablet didn't successfully start locally
     ctx.Schedule(
-        Config->GetGentleBalancerPreemptionTimeout(),
+        Config->GetVolumeBalancerGentlePreemptionTimeout(),
         new TEvents::TEvWakeup());
 
     GentlePullInProgress = true;
@@ -865,11 +863,12 @@ void TMountRequestActor::HandleStartVolumeResponse(
         if (mountMode == NProto::VOLUME_MOUNT_LOCAL) {
             if (GentlePullInProgress) {
                 ctx.Schedule(
-                    Config->GetGentleBalancerPreemptionRetryDelay(),
+                    Config->GetVolumeBalancerGentlePreemptionRetryDelay(),
                     std::make_unique<IEventHandle>(
                         Params.SessionActorId,
                         ctx.SelfID,
-                        new TEvServicePrivate::TEvStartVolumeRequest{VolumeTabletId}));
+                        new TEvServicePrivate::TEvStartVolumeRequest{
+                            VolumeTabletId}));
                 return;
             }
             VolumeSessionRestartRequired = true;

@@ -811,11 +811,11 @@ public:
 
     [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
 
-    [[nodiscard]] bool GetGentleBalancerPreemptionEnabled() const;
+    [[nodiscard]] bool GetVolumeBalancerGentlePreemptionEnabled() const;
 
-    [[nodiscard]] TDuration GetGentleBalancerPreemptionTimeout() const;
+    [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
 
-    [[nodiscard]] TDuration GetGentleBalancerPreemptionRetryDelay() const;
+    [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionRetryDelay() const;
 };
 
 ui64 GetAllocationUnit(

@@ -82,10 +82,10 @@ void TVolumeSessionActor::HandleStartVolumeActorStopped(
                     TEvServicePrivate::TEvGentlyReleaseVolumeResponse>();
                 break;
             default:
-                LOG_DEBUG(
+                LOG_ERROR(
                     ctx,
                     TBlockStoreComponents::SERVICE,
-                    "%s TEvStartVolumeActorStopped unhandled",
+                    "%s StartVolumeActor stopped without explicit request",
                     LogTitle.GetWithTime().c_str());
                 break;
         }

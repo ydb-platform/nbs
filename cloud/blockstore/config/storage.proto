@@ -1553,12 +1553,12 @@ message TStorageServiceConfig
     optional ERequestSplitterPolicy RequestSplitterPolicy = 492;
 
     // If true, preemption with source == balancer will
-    // use gentle remount mechanism (avoids directly killing tablet)
-    optional bool GentleBalancerPreemptionEnabled = 493;
+    // use gentle remount mechanism, avoiding direct tablet killing.
+    optional bool VolumeBalancerGentlePreemptionEnabled = 493;
 
-    // Timeout for gentle preemption (ms)
-    optional uint32 GentleBalancerPreemptionTimeout = 494;
+    // Timeout for gentle preemption (ms).
+    optional uint32 VolumeBalancerGentlePreemptionTimeout = 494;
 
-    // Retry delay for gentle preemption (ms)
-    optional uint32 GentleBalancerPreemptionRetryDelay = 495;
+    // Retry delay for gentle preemption (ms).
+    optional uint32 VolumeBalancerGentlePreemptionRetryDelay = 495;
 }
