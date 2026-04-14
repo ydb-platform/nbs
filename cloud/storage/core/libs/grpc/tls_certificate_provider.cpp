@@ -49,6 +49,18 @@ public:
 
     TLog Log;
 
+private:
+    const TString RootCertPath;
+    const TDuration RefreshIntervalSec;
+    mutable std::mutex Mutex;
+    y_absl::optional<TString> RootCertificate;
+    TVector<TCertificateState> Certificates;
+    std::atomic<bool> Stopping = false;
+    bool Started = false;
+    std::condition_variable Wakeup;
+    std::thread RefreshThread;
+
+public:
     TPeriodicCertificateProviderBase(
         TLog log,
         TString rootCertPath,
@@ -451,23 +463,15 @@ private:
         }
         return NProto::TError{};
     }
-
-private:
-    const TString RootCertPath;
-    const TDuration RefreshIntervalSec;
-    mutable std::mutex Mutex;
-    y_absl::optional<TString> RootCertificate;
-    TVector<TCertificateState> Certificates;
-    std::atomic<bool> Stopping = false;
-    bool Started = false;
-    std::condition_variable Wakeup;
-    std::thread RefreshThread;
 };
 
 class TPeriodicCertificateProvider final
     : public grpc_tls_certificate_provider
     , public TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>
 {
+private:
+    RefCountedPtr<grpc_tls_certificate_distributor> Distributor;
+
 public:
     friend class TPeriodicCertificateProviderBase<TPeriodicCertificateProvider>;
 
@@ -583,14 +587,14 @@ private:
     {
         return QsortCompare(static_cast<const grpc_tls_certificate_provider*>(this), other);
     }
-
-private:
-    RefCountedPtr<grpc_tls_certificate_distributor> Distributor;
 };
 
 class TPeriodicCertificateProviderWrapper final
     : public ICertificateProvider
 {
+private:
+    grpc_core::RefCountedPtr<TPeriodicCertificateProvider> Provider;
+
 public:
     TPeriodicCertificateProviderWrapper(
         TLog log,
@@ -615,9 +619,6 @@ public:
     {
         return NThreading::MakeFuture(Provider->UpdateNow());
     }
-
-private:
-    grpc_core::RefCountedPtr<TPeriodicCertificateProvider> Provider;
 };
 
 }   // namespace
