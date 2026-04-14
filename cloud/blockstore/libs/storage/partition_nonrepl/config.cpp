@@ -47,11 +47,11 @@ TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfig(
     , UseSimpleMigrationBandwidthLimiter(
           params.UseSimpleMigrationBandwidthLimiter)
     , BlockIndices(MakeBlockIndices(Devices))
-    , BrokenDevices(std::move(params.BrokenDevices))
     , CanReadFromAllDevices(AllOf(
           Devices,
           [this](const NProto::TDeviceConfig& device)
           { return IsDeviceReadyForReading(device); }))
+    , BrokenDevices(std::move(params.BrokenDevices))
 
 {
     Y_ABORT_UNLESS(Devices.size());

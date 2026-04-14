@@ -730,14 +730,18 @@ void TVolumeActor::CompleteUpdateDevices(
                     it->first,
                     TInstant::Zero(),
                     /*add=*/false);
-                it = DeviceUUIDToBrokenAt.erase(it);
+                DeviceUUIDToBrokenAt.erase(it++);
             } else {
                 ++it;
             }
         }
 
         if (DeviceUUIDToBrokenAt.empty()) {
-            NotifyDiskRegistryVolumeHealth(ctx, /*broken=*/false);
+            VolumeBrokenNotificationSerializer.Notify(
+                ctx,
+                State->GetDiskId(),
+                LogTitle.GetWithTime(),
+                /*broken=*/false);
         }
     }
 

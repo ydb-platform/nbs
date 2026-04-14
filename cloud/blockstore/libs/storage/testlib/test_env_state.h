@@ -58,6 +58,8 @@ struct TDiskRegistryState: TAtomicRefCount<TDiskRegistryState>
     EMigrationMode MigrationMode = EMigrationMode::Disabled;
     ui32 ReplicaCount = 0;
     ui32 FinishMigrationRequests = 0;
+    ui32 UpdateVolumeHealthRequests = 0;
+    NProto::EVolumeHealth LastVolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
     THashSet<TString> DeviceReplacementUUIDs;
 
     TVector<TString> UnavailableDeviceUUIDs;
