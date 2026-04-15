@@ -8,6 +8,7 @@
 #include "src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h"
 
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/system/yassert.h>
 
 #include <openssl/bio.h>
@@ -36,6 +37,218 @@ using grpc_core::PemKeyCertPairList;
 using grpc_core::RefCountedPtr;
 
 using TCertificateFiles = NCloud::TCertificateFiles;
+
+using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+using TEvpPkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
+using TX509StorePtr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
+using TX509StoreCtxPtr = std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)>;
+using TX509StackPtr = std::unique_ptr<STACK_OF(X509), decltype(&sk_X509_free)>;
+
+TResultOrError<TString> TryReadFile(const TString& path)
+{
+    try {
+        TFileInput in(path);
+        return in.ReadAll();
+    } catch (const std::exception& e) {
+        const auto message = TStringBuilder()
+            << "Reading certificate file " << path.Quote()
+            << " failed: " << e.what();
+        return TErrorResponse(E_FAIL, message);
+    }
+}
+
+TResultOrError<std::vector<TX509Ptr>> ParsePemCertificates(y_absl::string_view pem)
+{
+    std::vector<TX509Ptr> certificates;
+    TBioPtr bio(BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())), BIO_free);
+    if (!bio) {
+        return certificates;
+    }
+
+    while (true) {
+        X509* cert = PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr);
+        if (cert != nullptr) {
+            certificates.emplace_back(cert, X509_free);
+            continue;
+        }
+
+        const auto error = ERR_peek_last_error();
+        if (error == 0) {
+            break;
+        }
+
+        if (ERR_GET_LIB(error) == ERR_LIB_PEM &&
+            ERR_GET_REASON(error) == PEM_R_NO_START_LINE)
+        {
+            ERR_clear_error();
+            break;
+        }
+
+        ERR_clear_error();
+        return TErrorResponse(E_FAIL, "Failed to parse PEM certificates");
+    }
+
+    return certificates;
+}
+
+bool IsValidPemCertificate(y_absl::string_view pem)
+{
+    if (pem.empty()) {
+        return false;
+    }
+
+    auto parseResult = ParsePemCertificates(pem);
+    return !HasError(parseResult.GetError()) && !parseResult.GetResult().empty();
+}
+
+bool PrivateKeyAndCertificateMatch(
+    y_absl::string_view privateKey,
+    y_absl::string_view certChain)
+{
+    TBioPtr certBio(
+        BIO_new_mem_buf(certChain.data(), static_cast<int>(certChain.size())),
+        BIO_free);
+    if (!certBio) {
+        return false;
+    }
+    TX509Ptr cert(PEM_read_bio_X509(certBio.get(), nullptr, nullptr, nullptr), X509_free);
+    if (!cert) {
+        return false;
+    }
+    TEvpPkeyPtr publicKey(X509_get_pubkey(cert.get()), EVP_PKEY_free);
+    if (!publicKey) {
+        return false;
+    }
+    TBioPtr keyBio(
+        BIO_new_mem_buf(privateKey.data(), static_cast<int>(privateKey.size())),
+        BIO_free);
+    if (!keyBio) {
+        return false;
+    }
+    TEvpPkeyPtr privateKeyObj(
+        PEM_read_bio_PrivateKey(keyBio.get(), nullptr, nullptr, nullptr),
+        EVP_PKEY_free);
+    if (!privateKeyObj) {
+        return false;
+    }
+    return EVP_PKEY_cmp(privateKeyObj.get(), publicKey.get()) == 1;
+}
+
+bool ValidateIdentityCertificateWithRoot(
+    y_absl::string_view rootCertPem,
+    y_absl::string_view certChainPem)
+{
+    auto rootsResult = ParsePemCertificates(rootCertPem);
+    auto identityChainResult = ParsePemCertificates(certChainPem);
+    if (HasError(rootsResult.GetError()) || HasError(identityChainResult.GetError())) {
+        return false;
+    }
+
+    auto roots = rootsResult.ExtractResult();
+    auto identityChain = identityChainResult.ExtractResult();
+    if (roots.empty() || identityChain.empty()) {
+        return false;
+    }
+
+    const X509* leaf = identityChain.front().get();
+    if (X509_cmp_current_time(X509_get0_notBefore(leaf)) > 0 ||
+        X509_cmp_current_time(X509_get0_notAfter(leaf)) < 0)
+    {
+        return false;
+    }
+
+    TX509StorePtr store(X509_STORE_new(), X509_STORE_free);
+    if (!store) {
+        return false;
+    }
+
+    bool storeOk = true;
+    for (const auto& root: roots) {
+        if (X509_STORE_add_cert(store.get(), root.get()) != 1) {
+            const auto error = ERR_peek_last_error();
+            if (ERR_GET_LIB(error) != ERR_LIB_X509 ||
+                ERR_GET_REASON(error) != X509_R_CERT_ALREADY_IN_HASH_TABLE)
+            {
+                storeOk = false;
+                ERR_clear_error();
+                break;
+            }
+            ERR_clear_error();
+        }
+    }
+
+    if (!storeOk) {
+        return false;
+    }
+
+    TX509StackPtr untrusted(sk_X509_new_null(), sk_X509_free);
+    if (!untrusted) {
+        return false;
+    }
+    bool chainOk = true;
+    for (size_t i = 1; i < identityChain.size(); ++i) {
+        if (sk_X509_push(untrusted.get(), identityChain[i].get()) == 0) {
+            chainOk = false;
+            break;
+        }
+    }
+    if (!chainOk) {
+        return false;
+    }
+
+    TX509StoreCtxPtr ctx(X509_STORE_CTX_new(), X509_STORE_CTX_free);
+    if (!ctx) {
+        return false;
+    }
+    const bool initOk =
+        X509_STORE_CTX_init(
+            ctx.get(),
+            store.get(),
+            identityChain.front().get(),
+            untrusted.get()) == 1;
+    return initOk && (X509_verify_cert(ctx.get()) == 1);
+}
+
+TResultOrError<TString> ReadAndValidateRootCertificate(
+    const TString& rootCertPath)
+{
+    auto pem = TryReadFile(rootCertPath);
+    if (HasError(pem.GetError())) {
+        return pem.GetError();
+    }
+    if (!IsValidPemCertificate(pem.GetResult())) {
+        const auto message = TStringBuilder()
+            << "Root certificate " << rootCertPath.Quote()
+            << " is invalid PEM X509";
+        return TErrorResponse(E_FAIL, message);
+    }
+    return pem.ExtractResult();
+}
+
+TResultOrError<PemKeyCertPairList> ReadAndValidateIdentityPair(
+    const TCertificateFiles& files)
+{
+    auto privateKey = TryReadFile(files.PrivateKeyPath);
+    if (HasError(privateKey.GetError())) {
+        return privateKey.GetError();
+    }
+    auto certChain = TryReadFile(files.CertChainPath);
+    if (HasError(certChain.GetError())) {
+        return certChain.GetError();
+    }
+    if (!PrivateKeyAndCertificateMatch(privateKey.GetResult(), certChain.GetResult())) {
+        const auto message = TStringBuilder()
+            << "Certificate/key mismatch for cert="
+            << files.CertChainPath.Quote()
+            << " key=" << files.PrivateKeyPath.Quote();
+        return TErrorResponse(E_FAIL, message);
+    }
+
+    PemKeyCertPairList result;
+    result.emplace_back(privateKey.ExtractResult(), certChain.ExtractResult());
+    return result;
+}
 
 template <typename TDerived>
 class TPeriodicCertificateProviderBase
@@ -180,222 +393,6 @@ protected:
     }
 
 private:
-    using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
-
-    y_absl::optional<TString> TryReadFile(const TString& path)
-    {
-        try {
-            TFileInput in(path);
-            return in.ReadAll();
-        } catch (const std::exception& e) {
-            STORAGE_ERROR("Reading certificate file " << path.Quote() << " failed: " << e.what());
-            return y_absl::nullopt;
-        }
-    }
-
-    bool IsValidPemCertificate(y_absl::string_view pem)
-    {
-        if (pem.empty()) {
-            return false;
-        }
-
-        BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
-        if (!bio) {
-            return false;
-        }
-
-        X509* cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
-        const bool ok = cert != nullptr;
-        if (cert) {
-            X509_free(cert);
-        }
-        BIO_free(bio);
-        return ok;
-    }
-
-    bool PrivateKeyAndCertificateMatch(
-        y_absl::string_view privateKey,
-        y_absl::string_view certChain)
-    {
-        BIO* certBio = BIO_new_mem_buf(certChain.data(), static_cast<int>(certChain.size()));
-        if (!certBio) {
-            return false;
-        }
-        X509* cert = PEM_read_bio_X509(certBio, nullptr, nullptr, nullptr);
-        BIO_free(certBio);
-        if (!cert) {
-            return false;
-        }
-        EVP_PKEY* publicKey = X509_get_pubkey(cert);
-        X509_free(cert);
-        if (!publicKey) {
-            return false;
-        }
-        BIO* keyBio = BIO_new_mem_buf(privateKey.data(), static_cast<int>(privateKey.size()));
-        if (!keyBio) {
-            EVP_PKEY_free(publicKey);
-            return false;
-        }
-        EVP_PKEY* privateKeyObj = PEM_read_bio_PrivateKey(keyBio, nullptr, nullptr, nullptr);
-        BIO_free(keyBio);
-        if (!privateKeyObj) {
-            EVP_PKEY_free(publicKey);
-            return false;
-        }
-        const bool matches = EVP_PKEY_cmp(privateKeyObj, publicKey) == 1;
-        EVP_PKEY_free(privateKeyObj);
-        EVP_PKEY_free(publicKey);
-        return matches;
-    }
-
-    std::vector<TX509Ptr> ParsePemCertificates(y_absl::string_view pem)
-    {
-        std::vector<TX509Ptr> certs;
-        BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
-        if (!bio) {
-            return {};
-        }
-
-        while (true) {
-            X509* cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
-            if (cert == nullptr) {
-                const auto error = ERR_peek_last_error();
-                if (error == 0) {
-                    break;
-                }
-                if (ERR_GET_LIB(error) == ERR_LIB_PEM &&
-                    ERR_GET_REASON(error) == PEM_R_NO_START_LINE)
-                {
-                    ERR_clear_error();
-                    break;
-                }
-                ERR_clear_error();
-                certs.clear();
-                break;
-            }
-            certs.emplace_back(cert, X509_free);
-        }
-
-        BIO_free(bio);
-        return certs;
-    }
-
-    bool ValidateIdentityCertificateWithRoot(
-        y_absl::string_view rootCertPem,
-        y_absl::string_view certChainPem)
-    {
-        auto roots = ParsePemCertificates(rootCertPem);
-        auto identityChain = ParsePemCertificates(certChainPem);
-        if (roots.empty() || identityChain.empty()) {
-            return false;
-        }
-
-        const X509* leaf = identityChain.front().get();
-        if (X509_cmp_current_time(X509_get0_notBefore(leaf)) > 0 ||
-            X509_cmp_current_time(X509_get0_notAfter(leaf)) < 0)
-        {
-            return false;
-        }
-
-        X509_STORE* store = X509_STORE_new();
-        if (!store) {
-            return false;
-        }
-
-        bool storeOk = true;
-        for (const auto& root: roots) {
-            if (X509_STORE_add_cert(store, root.get()) != 1) {
-                const auto error = ERR_peek_last_error();
-                if (ERR_GET_LIB(error) != ERR_LIB_X509 ||
-                    ERR_GET_REASON(error) != X509_R_CERT_ALREADY_IN_HASH_TABLE)
-                {
-                    storeOk = false;
-                    ERR_clear_error();
-                    break;
-                }
-                ERR_clear_error();
-            }
-        }
-
-        if (!storeOk) {
-            X509_STORE_free(store);
-            return false;
-        }
-
-        STACK_OF(X509)* untrusted = sk_X509_new_null();
-        if (!untrusted) {
-            X509_STORE_free(store);
-            return false;
-        }
-        bool chainOk = true;
-        for (size_t i = 1; i < identityChain.size(); ++i) {
-            if (sk_X509_push(untrusted, identityChain[i].get()) == 0) {
-                chainOk = false;
-                break;
-            }
-        }
-        if (!chainOk) {
-            sk_X509_free(untrusted);
-            X509_STORE_free(store);
-            return false;
-        }
-
-        X509_STORE_CTX* ctx = X509_STORE_CTX_new();
-        if (!ctx) {
-            sk_X509_free(untrusted);
-            X509_STORE_free(store);
-            return false;
-        }
-        const bool initOk =
-            X509_STORE_CTX_init(ctx, store, identityChain.front().get(), untrusted) == 1;
-        const bool verifyOk = initOk && (X509_verify_cert(ctx) == 1);
-        X509_STORE_CTX_free(ctx);
-        sk_X509_free(untrusted);
-        X509_STORE_free(store);
-        return verifyOk;
-    }
-
-    y_absl::optional<TString> ReadAndValidateRootCertificate(
-        const TString& rootCertPath)
-    {
-        if (!rootCertPath) {
-            return y_absl::nullopt;
-        }
-        auto pem = TryReadFile(rootCertPath);
-        if (!pem.has_value()) {
-            return y_absl::nullopt;
-        }
-        if (!IsValidPemCertificate(*pem)) {
-            STORAGE_ERROR("Root certificate " << rootCertPath.Quote() << " is invalid PEM X509");
-            return y_absl::nullopt;
-        }
-        return pem;
-    }
-
-    y_absl::optional<PemKeyCertPairList> ReadAndValidateIdentityPair(
-        const TCertificateFiles& files)
-    {
-        auto privateKey = TryReadFile(files.PrivateKeyPath);
-        if (!privateKey.has_value()) {
-            return y_absl::nullopt;
-        }
-        auto certChain = TryReadFile(files.CertChainPath);
-        if (!certChain.has_value()) {
-            return y_absl::nullopt;
-        }
-        if (!PrivateKeyAndCertificateMatch(*privateKey, *certChain)) {
-            STORAGE_ERROR(
-                "Certificate/key mismatch for cert="
-                << files.CertChainPath.Quote()
-                << " key=" << files.PrivateKeyPath.Quote());
-            return y_absl::nullopt;
-        }
-
-        PemKeyCertPairList result;
-        result.emplace_back(*privateKey, *certChain);
-        return result;
-    }
-
     NProto::TError ForceUpdate()
     {
         TVector<y_absl::optional<PemKeyCertPairList>> identities(Certificates.size());
@@ -406,12 +403,28 @@ private:
         TVector<std::tuple<size_t, bool, bool>> errors;
 
         const bool needsRoot = !!GetRootCertPath();
-        auto root = ReadAndValidateRootCertificate(RootCertPath);
-        const bool hasRoot = root.has_value();
+        TResultOrError<TString> rootResult = TString{};
+        if (needsRoot) {
+            rootResult = ReadAndValidateRootCertificate(RootCertPath);
+            if (HasError(rootResult.GetError())) {
+                STORAGE_ERROR(rootResult.GetError().GetMessage());
+            }
+        }
+
+        y_absl::optional<TString> root;
+        const bool hasRoot = !needsRoot || !HasError(rootResult.GetError());
+        if (needsRoot && !HasError(rootResult.GetError())) {
+            root = rootResult.ExtractResult();
+        }
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
             const auto& files = Certificates[i].Files;
-            identities[i] = ReadAndValidateIdentityPair(files);
+            auto identityResult = ReadAndValidateIdentityPair(files);
+            if (!HasError(identityResult.GetError())) {
+                identities[i] = identityResult.ExtractResult();
+            } else {
+                STORAGE_ERROR(identityResult.GetError().GetMessage());
+            }
 
             if (needsRoot && hasRoot && identities[i].has_value()) {
                 const auto& pair = identities[i]->front();
@@ -425,8 +438,8 @@ private:
                 }
             }
 
-            validSnapshots[i] = (!needsRoot || hasRoot) && identities[i].has_value();
-            rootInvalid[i] = needsRoot && !hasRoot;
+            validSnapshots[i] = hasRoot && identities[i].has_value();
+            rootInvalid[i] = !hasRoot;
             identityInvalid[i] = !identities[i].has_value();
         }
 

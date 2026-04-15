@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/logger/log.h>
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -74,6 +75,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             TestDataPath("server1.crt"));
 
         auto provider = CreatePeriodicCertificateProvider(
+            TLog{},
             "",
             TVector<TCertificateFiles>{pair},
             TDuration::Seconds(1));
@@ -96,6 +98,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         WriteTextFile(rootPath, "not a certificate");
 
         auto provider = CreatePeriodicCertificateProvider(
+            TLog{},
             rootPath,
             TVector<TCertificateFiles>{pair},
             TDuration::Seconds(1));
@@ -125,6 +128,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             TestDataPath("server2.crt"));
 
         auto provider = CreatePeriodicCertificateProvider(
+            TLog{},
             rootPath,
             TVector<TCertificateFiles>{
                 serverPair,
