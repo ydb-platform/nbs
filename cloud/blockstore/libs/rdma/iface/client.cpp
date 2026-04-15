@@ -2,8 +2,6 @@
 
 #include <cloud/blockstore/config/rdma.pb.h>
 
-#include <cloud/storage/core/libs/common/proto_helpers.h>
-
 #include <library/cpp/monlib/service/pages/templates.h>
 
 namespace NCloud::NBlockStore::NRdma {
@@ -44,15 +42,14 @@ TClientConfig::TClientConfig()
     }
 }
 
-#define SET(param, ...)                                                        \
-    if (NCloud::HasField(config, #param)) {                                    \
-        param = __VA_ARGS__(config.Get##param());                              \
+#define SET(param, ...) \
+    if (const auto& value = config.Get##param()) { \
+        param = __VA_ARGS__(value); \
     }
 
-#define SET_NESTED(param1, param2, ...)                                        \
-    if (NCloud::HasField(config, #param1) &&                                   \
-        NCloud::HasField(config.Get##param1(), #param2)) {                     \
-        param1.param2 = __VA_ARGS__(config.Get##param1().Get##param2());       \
+#define SET_NESTED(param1, param2, ...) \
+    if (const auto& value = config.Get##param1().Get##param2()) { \
+        param1.param2 = __VA_ARGS__(value); \
     }
 
 TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
