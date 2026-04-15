@@ -813,7 +813,15 @@ void TIndexTabletActor::HandleGetStorageConfig(
 {
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
-    *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    const auto* msg = ev->Get();
+
+    if (msg->Record.GetOnlyOverride()) {
+        *response->Record.MutableStorageConfig() = StorageConfigOverride;
+    } else {
+        *response->Record.MutableStorageConfig() =
+            Config->GetStorageConfigProto();
+    }
 
     NCloud::Reply(
         ctx,

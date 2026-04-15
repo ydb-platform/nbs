@@ -724,6 +724,9 @@ message TGetStorageConfigRequest
     // FileSystem identifier to query its storage config. Or empty to
     // query server storage config.
     string FileSystemId = 2;
+
+    // If set, only tablet-level overrides will be reported
+    bool OnlyOverride = 3;
 }
 
 message TGetStorageConfigResponse
