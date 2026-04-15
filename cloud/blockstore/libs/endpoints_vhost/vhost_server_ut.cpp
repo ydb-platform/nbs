@@ -1,5 +1,6 @@
 #include "vhost_server.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -64,6 +65,47 @@ Y_UNIT_TEST_SUITE(TVhostEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 false,
                 ShouldEnableVhostDiscardForVolume(false, volume));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDropDiscardRequestsCorrectly)
+    {
+        {
+            NProto::TVolume volume;
+            volume.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                ShouldDropDiscardRequestsForVolume(true, volume));
+        }
+
+        {
+            NProto::TVolume volume;
+            volume.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                ShouldDropDiscardRequestsForVolume(false, volume));
+        }
+
+        {
+            NProto::TVolume volume;
+            volume.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
+            (*volume.MutableTags())[TString(DropDiscardRequestsTagName)] = "";
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                ShouldDropDiscardRequestsForVolume(false, volume));
+        }
+
+        {
+            NProto::TVolume volume;
+            volume.SetStorageMediaKind(
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                ShouldDropDiscardRequestsForVolume(false, volume));
         }
     }
 }

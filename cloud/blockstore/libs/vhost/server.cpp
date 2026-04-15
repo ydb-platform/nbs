@@ -329,6 +329,11 @@ private:
             request->MetricRequest,
             *request->CallContext);
 
+        if (Options.DropDiscardRequests && vhostRequest->IsDiscardRequest) {
+            CompleteRequest(*request, NProto::TError{});
+            return nullptr;
+        }
+
         with_lock (RequestsLock) {
             if (!Stopped.test()) {
                 RequestsInFlight.PushBack(request.Get());
