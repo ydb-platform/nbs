@@ -292,7 +292,15 @@ struct TBootstrap
     {
         auto stop = StopAsync();
         StopTriggered.TrySetValue();
-        stop.Wait();
+        UNIT_ASSERT(stop.Wait(WaitTimeout));
+
+        if (Scheduler) {
+            // It is not allowed to stop Scheduler in the subscriber of
+            // Loop->StopAsync() because the callback may be called from
+            // a Scheduler thread
+            Scheduler->Stop();
+        }
+
         Fuse->DeInit();
         Loop = nullptr;
         std::remove(SocketPath.c_str());
@@ -300,22 +308,7 @@ struct TBootstrap
 
     TFuture<void> StopAsync()
     {
-        auto f = MakeFuture();
-        if (Loop) {
-            f = Loop->StopAsync();
-        }
-
-        if (!Scheduler) {
-            return f;
-        }
-
-        auto p = NewPromise<void>();
-        f.Subscribe([=] (auto f) mutable {
-            f.GetValue();
-            Scheduler->Stop();
-            p.SetValue();
-        });
-        return p;
+        return Loop ? Loop->StopAsync() : MakeFuture();
     }
 
     void InterruptNextRequest()
@@ -4703,6 +4696,77 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(!bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("module", "WriteBackCache"));
+    }
+
+    Y_UNIT_TEST(ShouldNotDeadlockWhenFlushCompletionFiredInScheduler)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        ui32 automaticFlushPeriodMs = 1;
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            0,
+            automaticFlushPeriodMs);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        auto writeDataCalled = NewPromise();
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            // The callback is expected to be called in the scheduler thread
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            writeDataCalled.SetValue();
+
+            auto counter = bootstrap.Counters
+                ->FindSubgroup("component", "fs_ut_fs")
+                ->FindSubgroup("host", "cluster")
+                ->FindSubgroup("filesystem", FileSystemId)
+                ->FindSubgroup("client", "")
+                ->FindSubgroup("cloud", "")
+                ->FindSubgroup("folder", "")
+                ->FindSubgroup("module", "WriteBackCache")
+                ->GetCounter("FlushAllRequests_InProgressCount");
+
+            // Automatic flush does not create a request internally
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+            // Wait until Stop is called and FlushAll is triggered
+            // because of cache non-emptiness at session destroy
+            UNIT_ASSERT(WaitForCondition(
+                WaitTimeout,
+                [&]
+                {
+                    // We block scheduler thread so counters will not be updated
+                    // automatically - need to call UpdateStats manually
+                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                    return counter->GetAtomic() > 0;
+                }));
+
+            return MakeFuture<NProto::TWriteDataResponse>({});
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        // write request without O_DIRECT should go to write cache
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        // Wait until automatic flush is called
+        UNIT_ASSERT_NO_EXCEPTION(
+            writeDataCalled.GetFuture().GetValue(WaitTimeout));
     }
 }
 
