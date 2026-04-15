@@ -912,7 +912,8 @@ void TMountRequestActor::HandleWakeup(
         // Hive didn't boot new tablet in time, consider fail
         Error = MakeError(
             E_TIMEOUT,
-            "Gentle Release timeout waiting for volume release to hive");
+            "Gentle release timed out while waiting for the volume to be "
+            "released to Hive");
         NotifyAndDie(ctx);
         return;
     }
@@ -920,7 +921,7 @@ void TMountRequestActor::HandleWakeup(
         // Tablet didn't start locally in time, consider fail
         Error = MakeError(
             E_TIMEOUT,
-            "Gentle Pull timeout waiting for volume start");
+            "Gentle pull timed out while waiting for the volume to start");
         NotifyAndDie(ctx);
         return;
     }
@@ -935,13 +936,13 @@ void TMountRequestActor::HandleGentlyReleaseVolumeResponse(
     }
     auto msg = ev->Get();
     auto error = msg->GetError();
-    if (SUCCEEDED(error.GetCode())) {
-        GentleReleaseInProgress = false;
-        WaitForVolume(ctx, Config->GetLocalStartAddClientTimeout());
+    if (HasError(error)) {
+        Error = error;
+        NotifyAndDie(ctx);
         return;
     }
-    Error = error;
-    NotifyAndDie(ctx);
+    GentleReleaseInProgress = false;
+    WaitForVolume(ctx, Config->GetLocalStartAddClientTimeout());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
