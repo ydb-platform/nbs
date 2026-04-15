@@ -8,6 +8,7 @@ import yatest.common as common
 from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
 
 import sys
+import time
 
 
 TESTS = fio.generate_tests(iodepths=[32], duration=30)
@@ -19,6 +20,11 @@ def test_fio(name):
     file_name = fio.get_file_name(mount_dir, name)
 
     fio.run_test(file_name, TESTS[name], fail_on_errors=True)
+
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
+    time.sleep(2)
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool")
