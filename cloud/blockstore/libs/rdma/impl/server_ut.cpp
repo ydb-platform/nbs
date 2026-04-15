@@ -380,20 +380,20 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
 
     NVerbs::CreateConnection(
         context,
-        static_cast<ui16>(serverConfig->RecvQueueSize + 1),
-        static_cast<ui16>(serverConfig->SendQueueSize),
-        serverConfig->MaxBufferSize);
-
-    NVerbs::CreateConnection(
-        context,
-        static_cast<ui16>(serverConfig->RecvQueueSize),
         static_cast<ui16>(serverConfig->SendQueueSize + 1),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize);
 
     NVerbs::CreateConnection(
         context,
-        static_cast<ui16>(serverConfig->RecvQueueSize),
         static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize - 1),
+        serverConfig->MaxBufferSize);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
         serverConfig->MaxBufferSize + 1);
 
     ASSERT_TRUE(done.GetFuture().Wait(TDuration::Seconds(5)));

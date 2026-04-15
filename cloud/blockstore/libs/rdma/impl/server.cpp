@@ -1914,11 +1914,11 @@ void TServer::HandleConnectRequest(
                 << Config->RecvQueueSize);
             return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
         }
-        if (connectMsg->RecvQueueSize > Config->SendQueueSize) {
+        if (Config->SendQueueSize > connectMsg->RecvQueueSize) {
             RDMA_ERROR(
                 "Failed to validate connect message. Client's recv queue size "
                 << connectMsg->RecvQueueSize
-                << " is greater than server's send queue size "
+                << " is less than server's send queue size "
                 << Config->SendQueueSize);
             return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
         }
