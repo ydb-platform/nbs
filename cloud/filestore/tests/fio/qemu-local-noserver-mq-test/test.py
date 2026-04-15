@@ -6,6 +6,7 @@ import cloud.storage.core.tools.testing.fio.lib as fio
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
+from cloud.filestore.tests.python.lib.common import flush_logs
 
 import sys
 
@@ -19,6 +20,8 @@ def test_fio(name):
     file_name = fio.get_file_name(mount_dir, name)
 
     fio.run_test(file_name, TESTS[name], fail_on_errors=True)
+
+    flush_logs()
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool")

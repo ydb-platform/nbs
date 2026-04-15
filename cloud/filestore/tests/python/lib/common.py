@@ -115,3 +115,15 @@ def get_restart_flag(flag, name):
         return None
 
     return os.path.join(common.work_path(), name)
+
+
+def flush_logs():
+    #
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
+    # TODO(#568) - here and in other similar places - introduce and use a
+    # private api method which would force profile-log flush
+    #
+
+    time.sleep(2)
