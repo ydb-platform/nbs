@@ -789,6 +789,55 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             listNodesResponse.GetNodes(0).GetShardNodeName());
     }
 
+    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldReturnShardInfoFromUnsafeListNodes)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"));
+
+        auto noForwardHeaders = headers;
+        noForwardHeaders.DisableMultiTabletForwarding = true;
+
+        auto getAttrResponse = service.GetNodeAttr(
+            noForwardHeaders,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1")->Record;
+
+        const auto expectedShardId =
+            getAttrResponse.GetNode().GetShardFileSystemId();
+        const auto expectedShardNodeName =
+            getAttrResponse.GetNode().GetShardNodeName();
+
+        UNIT_ASSERT_VALUES_UNEQUAL("", expectedShardId);
+        UNIT_ASSERT_VALUES_UNEQUAL("", expectedShardNodeName);
+        UNIT_ASSERT(expectedShardId == fsConfig.Shard1Id);
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            true)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedShardId,
+            listNodesResponse.GetNodes(0).GetShardFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedShardNodeName,
+            listNodesResponse.GetNodes(0).GetShardNodeName());
+    }
+
     SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldForwardRequestsToShard)
     {
         config.SetLazyXAttrsEnabled(false);
@@ -7170,7 +7219,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());
     }
 
-    SERVICE_TEST_SIMPLE(ShouldListNodesMissingFromShardsWithUnsafeFlag)
+    SERVICE_TEST_SIMPLE(ShouldReturnListNodesMissingFromShardsWithUnsafeFlag)
     {
         config.SetMultiTabletForwardingEnabled(true);
 

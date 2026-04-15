@@ -323,7 +323,13 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
         }
 
         auto* node = Response.MutableNodes(i);
+        auto shardFileSystemId = node->GetShardFileSystemId();
+        auto shardNodeName = node->GetShardNodeName();
         *node = std::move(*responseIter->MutableNode());
+        if (Unsafe) {
+            node->SetShardFileSystemId(std::move(shardFileSystemId));
+            node->SetShardNodeName(std::move(shardNodeName));
+        }
 
         ++responseIter;
     }

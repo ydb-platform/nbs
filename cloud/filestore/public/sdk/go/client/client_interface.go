@@ -33,6 +33,14 @@ type ClientInterface interface {
 		configVersion uint32,
 	) error
 
+	EnableDirectoryCreationInShards(
+		ctx context.Context,
+		filesystemID string,
+		blocksCount uint64,
+		configVersion uint32,
+		shardCount uint32,
+	) error
+
 	DestroyFileStore(
 		ctx context.Context,
 		fileSystemID string,

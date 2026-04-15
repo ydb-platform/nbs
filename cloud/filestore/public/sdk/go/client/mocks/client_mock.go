@@ -58,6 +58,18 @@ func (m *ClientInterfaceMock) ResizeFileStore(
 	return args.Error(0)
 }
 
+func (m *ClientInterfaceMock) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+	blocksCount uint64,
+	configVersion uint32,
+	shardCount uint32,
+) error {
+
+	args := m.Called(ctx, filesystemID, blocksCount, configVersion, shardCount)
+	return args.Error(0)
+}
+
 func (m *ClientInterfaceMock) DestroyFileStore(
 	ctx context.Context,
 	fileSystemID string,
