@@ -278,7 +278,7 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
 		for _, node := range nodes {
 			node.NodeID = dstNodeID
 			node.Type = nfs.NODE_KIND_LINK
-			_, err = session.CreateNode(ctx, node)
+			_, err = session.CreateNodeIdempotent(ctx, node)
 			if err != nil {
 				return false, err
 			}
@@ -306,7 +306,9 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinks(
 	session nfs.Session,
 ) error {
 
-	for offset := int(t.state.GetHardlinksRestoreOffset()); ; offset++ {
+	batchSize := int(t.config.GetRestoreHardlinksBatchSize())
+	offset := int(t.state.GetHardlinksRestoreOffset())
+	for {
 		remains, err := t.restoreHardlinksBatch(
 			ctx,
 			session,
@@ -316,7 +318,7 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinks(
 			return err
 		}
 
-		t.state.HardlinksRestoreOffset = int64(offset + 1)
+		t.state.HardlinksRestoreOffset = int64(offset + batchSize)
 		err = execCtx.SaveState(ctx)
 		if err != nil {
 			return err
@@ -325,6 +327,8 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinks(
 		if !remains {
 			return nil
 		}
+
+		offset += batchSize
 	}
 }
 

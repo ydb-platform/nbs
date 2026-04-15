@@ -864,6 +864,7 @@ func (s *storageYDB) listHardLinks(
 			node.Ctime = a.Ctime
 			node.Size = a.Size
 			node.Links = a.Links
+			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
 			nodes[i] = nfs.Node(node)
 		}

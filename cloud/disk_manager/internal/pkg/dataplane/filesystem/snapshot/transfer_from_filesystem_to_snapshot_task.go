@@ -61,7 +61,7 @@ func (t *transferFromFilesystemToSnapshotTask) Run(
 		client,
 		t.config.GetListNodesMaxBytes(),
 		true,  // readOnly
-		false, // unsafe
+		true, // unsafe
 		false, // ignoreNotFound
 	)
 
