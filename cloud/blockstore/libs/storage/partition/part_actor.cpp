@@ -1481,7 +1481,7 @@ void TPartitionActor::HandleProcessStorageStatusFlags(
         ev->Get()->Channel,
         ev->Get()->Generation,
         ev->Get()->ApproximateFreeSpaceShare,
-        false);   // without notifying PartitionActor
+        false);   // without notifying FreshBlocksWriter
 }
 
 void TPartitionActor::HandleReassignChannels(
