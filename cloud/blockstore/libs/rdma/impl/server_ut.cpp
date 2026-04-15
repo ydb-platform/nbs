@@ -2,18 +2,19 @@
 #include "server.h"
 #include "test_verbs.h"
 
-#include <cstring>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/gtest/gtest.h>
 
 #include <util/generic/scope.h>
 #include <util/stream/printf.h>
+
+#include <atomic>
+#include <cstring>
 
 namespace NCloud::NBlockStore::NRdma {
 
@@ -320,6 +321,84 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
     wait(activeRecv, 8);
     wait(abortedRequests, 1);
     wait(activeRequests, 0);
+}
+
+TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
+{
+    NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+    std::atomic<int> rejectCount = 0;
+    std::atomic<bool> createQpCalled = false;
+
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    context->CreateQP = [&](rdma_cm_id* id, ibv_qp_init_attr* attr)
+    {
+        Y_UNUSED(id);
+        Y_UNUSED(attr);
+        createQpCalled.store(true);
+    };
+
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->StrictValidation = true;
+
+    context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size)
+    {
+        Y_UNUSED(id);
+
+        EXPECT_EQ(sizeof(TRejectMessage), size);
+
+        const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
+        EXPECT_EQ(RDMA_PROTO_VERSION, ParseMessageHeader(rejectMsg));
+        EXPECT_EQ(RDMA_PROTO_CONFIG_MISMATCH, rejectMsg->Status);
+        EXPECT_EQ(
+            serverConfig->SendQueueSize + serverConfig->RecvQueueSize,
+            rejectMsg->QueueSize);
+        EXPECT_EQ(serverConfig->MaxBufferSize, rejectMsg->MaxBufferSize);
+
+        if (++rejectCount == 3) {
+            done.TrySetValue();
+        }
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateServer(verbs, logging, monitoring, serverConfig);
+
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto serverEndpoint =
+        server->StartEndpoint("::", 10020, std::make_shared<TServerHandler>());
+    Y_UNUSED(serverEndpoint);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->RecvQueueSize + 1),
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        serverConfig->MaxBufferSize);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        static_cast<ui16>(serverConfig->SendQueueSize + 1),
+        serverConfig->MaxBufferSize);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        serverConfig->MaxBufferSize + 1);
+
+    ASSERT_TRUE(done.GetFuture().Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(3, rejectCount.load());
+    EXPECT_FALSE(createQpCalled.load());
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)

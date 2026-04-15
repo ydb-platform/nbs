@@ -50,8 +50,8 @@ TClientConfig::TClientConfig()
     }
 
 #define SET_NESTED(param1, param2, ...)                                        \
-    if (HasField(config, #param1) &&                                           \
-        HasField(config.Get##param1(), #param2)) {                             \
+    if (NCloud::HasField(config, #param1) &&                                   \
+        NCloud::HasField(config.Get##param1(), #param2)) {                     \
         param1.param2 = __VA_ARGS__(config.Get##param1().Get##param2());       \
     }
 

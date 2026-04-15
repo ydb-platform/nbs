@@ -53,6 +53,11 @@ using TTestContextPtr = TIntrusivePtr<TTestContext>;
 IVerbsPtr CreateTestVerbs(TTestContextPtr context);
 
 void CreateConnection(TTestContextPtr context);
+void CreateConnection(
+    TTestContextPtr context,
+    ui16 sendQueueSize,
+    ui16 recvQueueSize,
+    ui32 maxBufferSize);
 void Disconnect(TTestContextPtr context);
 
 }   // namespace NCloud::NBlockStore::NRdma::NVerbs
