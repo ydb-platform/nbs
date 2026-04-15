@@ -15,4 +15,7 @@ message FilesystemSnapshotConfig {
     optional string NodesStorageFolder = 3 [default = "filesystem/snapshot/nodes"];
     optional uint32 RestoreHardlinksBatchSize = 4 [default = 1000];
     optional uint64 TraversalQueueDeletionLimit = 5 [default = 1000];
+    // Number of nodes to fetch from the storage per batch.
+    optional uint32 FetchNodesFromStorageLimit = 6 [default = 1000];
+    optional uint64 SnapshotDataDeletionLimit = 7 [default = 1000];
 }

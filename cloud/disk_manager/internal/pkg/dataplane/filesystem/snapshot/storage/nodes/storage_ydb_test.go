@@ -392,11 +392,7 @@ func compareNodes(
 	require.Equal(t, len(expected), len(actual))
 	for i := range expected {
 		e := expected[i]
-		// nodeType is not stored in the hardlinks table, it is deduced by
-		// order of creation, so we won't check it in this test.
-		e.Type = 0
 		a := actual[i]
-		a.Type = 0
 		require.Equal(t, e, a)
 	}
 }

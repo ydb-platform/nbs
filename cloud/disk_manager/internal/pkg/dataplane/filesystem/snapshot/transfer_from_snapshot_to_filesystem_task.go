@@ -137,9 +137,11 @@ func (t *transferFromSnapshotToFilesystemTask) Run(
 		}
 	}()
 
+	// Number of nodes to fetch from the storage per batch (not the same
+	// as fetching from the traversal queue).
 	filesystemListerFactory := nodes_storage.NewNodeStorageListerFactory(
 		t.nodesStorage,
-		int(t.config.GetTraversalConfig().GetSelectNodesToListLimit()),
+		int(t.config.GetFetchNodesFromStorageLimit()),
 	)
 
 	traverser := traversal.NewFilesystemTraverser(
