@@ -124,7 +124,6 @@ func TestFilesystemTraversalLargeDirectoryTree(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	time.Sleep(time.Second * 1000)
 	compareFindResults(t, filestoreClient, srcFilesystemID, dstFilesystemID)
 }
 
