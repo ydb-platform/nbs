@@ -4,11 +4,25 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool ShouldSkipVolumeHealthNotification(const NProto::TVolumeMeta& meta)
+{
+    return IsReliableDiskRegistryMediaKind(
+        meta.GetConfig().GetStorageMediaKind());
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,7 +78,7 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!Config->GetVolumeHealthNotificationEnabled()) {
+    if (ShouldSkipVolumeHealthNotification(State->GetMeta())) {
         return;
     }
 
@@ -101,7 +115,7 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
     const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!Config->GetVolumeHealthNotificationEnabled()) {
+    if (ShouldSkipVolumeHealthNotification(State->GetMeta())) {
         return;
     }
 
