@@ -5320,14 +5320,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         UNIT_ASSERT(volumeTabletId);
 
-        service.UnmountVolume(DefaultDiskId, sessionId);
-
-        RebootTablet(
-            env.GetRuntime(),
-            volumeTabletId,
-            service.GetSender(),
-            nodeIdx);
-
         service.SendMountVolumeRequest(
             DefaultDiskId,
             TString(),
@@ -5346,6 +5338,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         const_cast<NProto::TError&>(msg->Error) = MakeKikimrError(
                             NKikimrProto::ERROR,
                             "Could not connect");
+                        break;
+                    }
+                    case TEvVolume::EvAddClientResponse: {
+                        auto* msg =
+                            event->Get<TEvVolume::TEvAddClientResponse>();
+                        msg->Record.SetForceTabletRestart(true);
                         break;
                     }
                     case TEvServicePrivate::EvSessionActorDied: {
