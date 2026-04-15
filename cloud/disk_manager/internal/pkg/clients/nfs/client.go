@@ -6,6 +6,7 @@ import (
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -126,6 +127,49 @@ func NewClient(
 	}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *client) updateFilestore(
+	ctx context.Context,
+	filesystemID string,
+	updateFunc func(
+		filestore *protos.TFileStore,
+	) error,
+) error {
+
+	retries := 0
+	for {
+		filestore, err := c.nfs.GetFileStoreInfo(ctx, filesystemID)
+		if err != nil {
+			return wrapError(err)
+		}
+
+		if filestore.BlockSize == 0 {
+			return errors.NewNonRetriableErrorf(
+				"invalid filestore config %v",
+				filestore,
+			)
+		}
+
+		err = updateFunc(filestore)
+
+		if err != nil {
+			if !isAbortedError(err) {
+				return wrapError(err)
+			}
+
+			if retries == maxConsecutiveRetries {
+				return errors.NewRetriableError(err)
+			}
+
+			retries++
+			continue
+		}
+
+		return nil
+	}
+}
+
 func (c *client) ZoneID() string {
 	return c.zoneID
 }
@@ -183,20 +227,7 @@ func (c *client) Resize(
 
 	defer c.metrics.StatRequest("ResizeFileStore")(&err)
 
-	retries := 0
-	for {
-		filestore, err := c.nfs.GetFileStoreInfo(ctx, filesystemID)
-		if err != nil {
-			return wrapError(err)
-		}
-
-		if filestore.BlockSize == 0 {
-			return errors.NewNonRetriableErrorf(
-				"invalid filestore config %v",
-				filestore,
-			)
-		}
-
+	updateFunc := func(filestore *protos.TFileStore) error {
 		if size%uint64(filestore.BlockSize) != 0 {
 			return errors.NewNonRetriableErrorf(
 				"size %v should be divisible by filestore.BlockSize %v",
@@ -208,28 +239,35 @@ func (c *client) Resize(
 		newBlocksCount := size / uint64(filestore.BlockSize)
 
 		// so far no need in checkpoint; resize is race safe as we cannot reduce space
-		err = c.nfs.ResizeFileStore(
+		return c.nfs.ResizeFileStore(
 			ctx,
 			filesystemID,
 			newBlocksCount,
 			filestore.ConfigVersion,
 		)
-
-		if err != nil {
-			if !isAbortedError(err) {
-				return wrapError(err)
-			}
-
-			if retries == maxConsecutiveRetries {
-				return errors.NewRetriableError(err)
-			}
-
-			retries++
-			continue
-		}
-
-		return nil
 	}
+
+	return c.updateFilestore(ctx, filesystemID, updateFunc)
+}
+
+func (c *client) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+	shardCount uint32,
+) (err error) {
+
+	defer c.metrics.StatRequest("EnableDirectoryCreationInShards")(&err)
+	updateFunc := func(filestore *protos.TFileStore) error {
+		return c.nfs.EnableDirectoryCreationInShards(
+			ctx,
+			filesystemID,
+			filestore.BlocksCount,
+			filestore.ConfigVersion,
+			shardCount,
+		)
+	}
+
+	return c.updateFilestore(ctx, filesystemID, updateFunc)
 }
 
 func (c *client) DescribeModel(
@@ -285,51 +323,6 @@ func (c *client) DestroyCheckpoint(
 			checkpointID,
 		),
 	)
-}
-
-func (c *client) EnableDirectoryCreationInShards(
-	ctx context.Context,
-	filesystemID string,
-	shardCount uint32,
-) (err error) {
-	defer c.metrics.StatRequest("EnableDirectoryCreationInShards")(&err)
-
-	retries := 0
-	for {
-		filestore, err := c.nfs.GetFileStoreInfo(ctx, filesystemID)
-		if err != nil {
-			return wrapError(err)
-		}
-
-		if filestore.BlockSize == 0 {
-			return errors.NewNonRetriableErrorf(
-				"invalid filestore config %v",
-				filestore,
-			)
-		}
-
-		err = c.nfs.EnableDirectoryCreationInShards(
-			ctx,
-			filesystemID,
-			filestore.BlocksCount,
-			filestore.ConfigVersion,
-			shardCount,
-		)
-		if err != nil {
-			if !isAbortedError(err) {
-				return wrapError(err)
-			}
-
-			if retries == maxConsecutiveRetries {
-				return errors.NewRetriableError(err)
-			}
-
-			retries++
-			continue
-		}
-
-		return nil
-	}
 }
 
 func (c *client) CreateSession(
