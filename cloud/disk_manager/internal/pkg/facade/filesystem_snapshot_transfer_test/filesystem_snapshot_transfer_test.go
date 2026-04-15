@@ -60,7 +60,7 @@ func copyFilesystemThroughSnapshot(
 		t, ctx, "zone-a", srcFilesystemID, "", snapshotID,
 	)
 	testcommon.WaitOperationEnded(t, ctx, taskID, time.Second*200)
-	testcommon.GetTaskError(t, ctx, taskID)
+	testcommon.RequireTaskHasNoError(t, ctx, taskID)
 
 	createFilesystem(t, ctx, client, dstFilesystemID)
 
@@ -68,7 +68,7 @@ func copyFilesystemThroughSnapshot(
 		t, ctx, "zone-a", dstFilesystemID, snapshotID,
 	)
 	testcommon.WaitOperationEnded(t, ctx, taskID, time.Second*200)
-	testcommon.GetTaskError(t, ctx, taskID)
+	testcommon.RequireTaskHasNoError(t, ctx, taskID)
 }
 
 func compareFindResults(
