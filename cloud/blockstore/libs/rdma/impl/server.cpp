@@ -854,7 +854,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             GetLogTitle(
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
-                msg->ReqId)
+                req->ReqId)
             << " request exceeds maximum supported size " << req->In.Length
             << " > " << Config->MaxBufferSize);
 
@@ -871,7 +871,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             GetLogTitle(
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
-                msg->ReqId)
+                req->ReqId)
             << "response exceeds maximum supported size " << req->Out.Length
             << " > " << Config->MaxBufferSize);
 
@@ -890,7 +890,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             GetLogTitle(
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
-                msg->ReqId)
+                req->ReqId)
                 << "reached inflight limit, " << MaxInflightBytes << "/"
                 << Config->MaxInflightBytes << " bytes available");
 
@@ -913,7 +913,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
         } else {
             // no more WRs available
             RDMA_TRACE(
-                GetLogTitle("RECV", TWorkRequestId(recv->wr.wr_id), msg->ReqId)
+                GetLogTitle("RECV", TWorkRequestId(recv->wr.wr_id), req->ReqId)
                 << "no more send WRs available");
             Counters->RequestEnqueued();
             QueuedRequests.Enqueue(std::move(req));
