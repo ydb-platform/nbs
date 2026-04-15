@@ -427,10 +427,8 @@ func (f *FileSystemModel) RequireNodesEqual(
 		expectedNode := f.ExpectedNodes[index]
 		require.Equal(f.t, expectedNode.ParentID, node.ParentID)
 		require.Equal(f.t, expectedNode.Name, node.Name)
-		if expectedNode.Type.IsSymlink() {
-			require.Equal(f.t, nfs.NODE_KIND_LINK, node.Type)
-		} else {
-			require.Equal(f.t, expectedNode.Type, node.Type)
+		require.Equal(f.t, expectedNode.Type, node.Type)
+		if !expectedNode.Type.IsSymlink() {
 			require.Equal(f.t, expectedNode.Mode, node.Mode)
 		}
 
