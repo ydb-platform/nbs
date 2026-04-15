@@ -81,6 +81,7 @@ type Node struct {
 	Children []Node
 	FileType nfs_client.NodeType
 	Target   string
+	DevID    uint64
 }
 
 func Dir(name string, children ...Node) Node {
@@ -98,12 +99,41 @@ func File(name string) Node {
 	}
 }
 
-// TODO (jkuradobery): support sockets, devices, etc.
 func Symlink(name string, target string) Node {
 	return Node{
 		Name:     name,
 		FileType: nfs_client.NODE_KIND_SYMLINK,
 		Target:   target,
+	}
+}
+
+func Sock(name string) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_SOCK,
+	}
+}
+
+func Fifo(name string) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_FIFO,
+	}
+}
+
+func CharDev(name string, devID uint64) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_CHARDEV,
+		DevID:    devID,
+	}
+}
+
+func BlockDev(name string, devID uint64) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_BLOCKDEV,
+		DevID:    devID,
 	}
 }
 
@@ -201,6 +231,51 @@ func HomogeneousDirectoryTree(layers []FilesystemLayerConfig) Node {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+var StandardFilesystem = Root(
+	Dir("etc",
+		File("passwd"),
+		File("hosts"),
+	),
+	Dir(
+		"var",
+		Dir(
+			"log",
+		),
+	),
+	Symlink("bin", "/usr/bin"),
+	Dir("usr",
+		Dir("bin", File("bash"), File("ls")),
+		Dir("lib", File("libc.so")),
+	),
+	Dir("empty"),
+	Sock("test.sock"),
+	Fifo("test.fifo"),
+	CharDev("test.chardev", 1),
+	BlockDev("test.blockdev", 2),
+)
+
+var StandardFilesystemExpectedNames = []string{
+	"bin",
+	"empty",
+	"etc",
+	"hosts",
+	"passwd",
+	"test.blockdev",
+	"test.chardev",
+	"test.fifo",
+	"test.sock",
+	"usr",
+	"bin",
+	"bash",
+	"ls",
+	"lib",
+	"libc.so",
+	"var",
+	"log",
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type FileSystemModel struct {
 	root          Node
 	t             *testing.T
@@ -231,6 +306,7 @@ func (f *FileSystemModel) CreateNodesRecursively(
 		UID:        1,
 		GID:        1,
 		LinkTarget: nodeToCreate.Target,
+		DevID:      nodeToCreate.DevID,
 	}
 	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
@@ -351,8 +427,10 @@ func (f *FileSystemModel) RequireNodesEqual(
 		expectedNode := f.ExpectedNodes[index]
 		require.Equal(f.t, expectedNode.ParentID, node.ParentID)
 		require.Equal(f.t, expectedNode.Name, node.Name)
-		require.Equal(f.t, expectedNode.Type, node.Type)
-		if !expectedNode.Type.IsSymlink() {
+		if expectedNode.Type.IsSymlink() {
+			require.Equal(f.t, nfs.NODE_KIND_LINK, node.Type)
+		} else {
+			require.Equal(f.t, expectedNode.Type, node.Type)
 			require.Equal(f.t, expectedNode.Mode, node.Mode)
 		}
 

@@ -12,41 +12,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-var listNodesRootDir = nfs_testing.Root(
-	nfs_testing.Dir("etc",
-		nfs_testing.File("passwd"),
-		nfs_testing.File("hosts"),
-	),
-	nfs_testing.Dir(
-		"var",
-		nfs_testing.Dir(
-			"log",
-		),
-	),
-	nfs_testing.Symlink("bin", "/usr/bin"),
-	nfs_testing.Dir("usr",
-		nfs_testing.Dir("bin", nfs_testing.File("bash"), nfs_testing.File("ls")),
-		nfs_testing.Dir("lib", nfs_testing.File("libc.so")),
-	),
-)
-
-var listNodesExpectedNames = []string{
-	"bin",
-	"etc",
-	"hosts",
-	"passwd",
-	"usr",
-	"bin",
-	"bash",
-	"ls",
-	"lib",
-	"libc.so",
-	"var",
-	"log",
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestCreateFilesystem(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 	client := nfs_testing.NewClient(t, ctx)
@@ -154,12 +119,12 @@ func TestListNodesFileSystem(t *testing.T) {
 	require.NoError(t, err)
 	defer session.Close(ctx)
 
-	model := nfs_testing.NewFileSystemModel(t, ctx, session, listNodesRootDir)
+	model := nfs_testing.NewFileSystemModel(t, ctx, session, nfs_testing.StandardFilesystem)
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(false)
 	model.RequireNodesEqual(nodes)
-	require.Equal(t, listNodesExpectedNames, nfs_testing.NodeNames(nodes))
+	require.Equal(t, nfs_testing.StandardFilesystemExpectedNames, nfs_testing.NodeNames(nodes))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -188,12 +153,12 @@ func TestListNodesFileSystemUnsafe(t *testing.T) {
 	require.NoError(t, err)
 	defer session.Close(ctx)
 
-	model := nfs_testing.NewFileSystemModel(t, ctx, session, listNodesRootDir)
+	model := nfs_testing.NewFileSystemModel(t, ctx, session, nfs_testing.StandardFilesystem)
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(true)
 	model.RequireNodesEqual(nodes)
-	require.Equal(t, listNodesExpectedNames, nfs_testing.NodeNames(nodes))
+	require.Equal(t, nfs_testing.StandardFilesystemExpectedNames, nfs_testing.NodeNames(nodes))
 
 	// Open sessions to shard filesystems for GetNodeAttr verification.
 	shardSessions := make(map[string]nfs.Session, shardCount)
@@ -420,6 +385,7 @@ func TestCreateNodeIdempotent(t *testing.T) {
 		Mode:     0644,
 		UID:      1,
 		GID:      1,
+		Type:     nfs.NODE_KIND_FILE,
 	}
 
 	createdID, err := session.CreateNode(ctx, node)

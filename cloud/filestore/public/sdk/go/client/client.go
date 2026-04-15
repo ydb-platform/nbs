@@ -54,12 +54,15 @@ func (t NodeType) IsSymlink() bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	NODE_KIND_INVALID NodeType = iota
-	NODE_KIND_FILE
-	NODE_KIND_DIR
-	NODE_KIND_SYMLINK
-	NODE_KIND_LINK
-	NODE_KIND_SOCK
+	NODE_KIND_INVALID  NodeType = NodeType(protos.ENodeType_E_INVALID_NODE)
+	NODE_KIND_FILE     NodeType = NodeType(protos.ENodeType_E_REGULAR_NODE)
+	NODE_KIND_DIR      NodeType = NodeType(protos.ENodeType_E_DIRECTORY_NODE)
+	NODE_KIND_LINK     NodeType = NodeType(protos.ENodeType_E_LINK_NODE)
+	NODE_KIND_SOCK     NodeType = NodeType(protos.ENodeType_E_SOCK_NODE)
+	NODE_KIND_SYMLINK  NodeType = NodeType(protos.ENodeType_E_SYMLINK_NODE)
+	NODE_KIND_FIFO     NodeType = NodeType(protos.ENodeType_E_FIFO_NODE)
+	NODE_KIND_CHARDEV  NodeType = NodeType(protos.ENodeType_E_CHARDEV_NODE)
+	NODE_KIND_BLOCKDEV NodeType = NodeType(protos.ENodeType_E_BLOCKDEV_NODE)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -357,6 +360,13 @@ func (client *Client) ListNodes(
 	nodes := resp.GetNodes()
 	result := make([]Node, len(nodes))
 	for idx, name := range resp.GetNames() {
+		// On the filestore side, symlinks are represented as links
+		// and links are regular files with Links >= 2.
+		nodeType := NodeType(nodes[idx].GetType())
+		if nodeType == NODE_KIND_LINK {
+			nodeType = NODE_KIND_SYMLINK
+		}
+
 		result[idx] = Node{
 			ParentID:          nodeID,
 			NodeID:            nodes[idx].GetId(),
@@ -369,7 +379,7 @@ func (client *Client) ListNodes(
 			UID:               uint64(nodes[idx].GetUid()),
 			GID:               uint64(nodes[idx].GetGid()),
 			Links:             nodes[idx].GetLinks(),
-			Type:              NodeType(nodes[idx].GetType()),
+			Type:              nodeType,
 			ShardFileSystemID: nodes[idx].GetShardFileSystemId(),
 			ShardNodeName:     nodes[idx].GetShardNodeName(),
 			DevID:             nodes[idx].GetDevId(),
@@ -428,6 +438,33 @@ func (client *Client) CreateNode(
 				TargetNode: node.NodeID,
 			},
 		}
+	case NODE_KIND_FIFO:
+		req.Params = &protos.TCreateNodeRequest_Fifo{
+			Fifo: &protos.TCreateNodeRequest_TFifo{
+				Mode: node.Mode,
+			},
+		}
+	case NODE_KIND_CHARDEV:
+		req.Params = &protos.TCreateNodeRequest_CharDevice{
+			CharDevice: &protos.TCreateNodeRequest_TCharDevice{
+				Mode:   node.Mode,
+				Device: node.DevID,
+			},
+		}
+	case NODE_KIND_BLOCKDEV:
+		req.Params = &protos.TCreateNodeRequest_BlockDevice{
+			BlockDevice: &protos.TCreateNodeRequest_TBlockDevice{
+				Mode:   node.Mode,
+				Device: node.DevID,
+			},
+		}
+	case NODE_KIND_INVALID:
+		return 0, errors.NewNonRetriableErrorf("CreateNode: invalid node type")
+	default:
+		return 0, errors.NewNonRetriableErrorf(
+			"CreateNode: unknown node type %v",
+			node.Type,
+		)
 	}
 
 	resp, err := client.Impl.CreateNode(ctx, req)
@@ -497,6 +534,7 @@ func (client *Client) GetNodeAttr(
 		GID:      uint64(attr.GetGid()),
 		Links:    attr.GetLinks(),
 		Type:     NodeType(attr.GetType()),
+		DevID:    attr.GetDevId(),
 	}, nil
 }
 
