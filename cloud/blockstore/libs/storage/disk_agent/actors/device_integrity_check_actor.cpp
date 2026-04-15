@@ -85,7 +85,7 @@ public:
 
 private:
     void CheckDevicesHealth(const TActorContext& ctx);
-    void CheckPartlabels(const TActorContext& ctx);
+    void CheckPartlabels();
 
 private:
     STFUNC(StateWork);
@@ -137,7 +137,7 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
         "Device Integrity Check Actor started. Devices: " << Devices.size());
 }
 
-void TDeviceIntegrityCheckActor::CheckPartlabels(const TActorContext& ctx)
+void TDeviceIntegrityCheckActor::CheckPartlabels()
 {
     if (!NvmeManager) {
         return;
@@ -211,7 +211,7 @@ void TDeviceIntegrityCheckActor::HandleWakeup(
             CheckDevicesHealth(ctx);
             break;
         case EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK:
-            CheckPartlabels(ctx);
+            CheckPartlabels();
             ctx.Schedule(
                 PartlabelCheckInterval,
                 new TEvents::TEvWakeup(EWakeupTag::WAKEUP_TAG_PARTLABEL_CHECK));
