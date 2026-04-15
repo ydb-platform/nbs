@@ -16,6 +16,8 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError CheckCheckpointRequest(
     const TPartitionState& state,
     const TString& checkpointId)

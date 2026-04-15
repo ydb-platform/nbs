@@ -3,6 +3,7 @@
 #include "events_private.h"
 
 #include <cloud/storage/core/libs/actors/helpers.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -15,10 +16,12 @@ using namespace NPartition;
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionThreadSafeState::TPartitionThreadSafeState(
-    NActors::TActorId partitionActorId,
-    ui32 generation,
-    ui32 lastCommitId)
-    : PartitionActorId(partitionActorId)
+        ui64 tabletId,
+        NActors::TActorId partitionActorId,
+        ui32 generation,
+        ui32 lastCommitId)
+    : TabletId(tabletId)
+    , PartitionActorId(partitionActorId)
 {
     Init(partitionActorId, generation, lastCommitId);
 }
@@ -118,7 +121,9 @@ void TPartitionThreadSafeState::WaitCommitForCheckpoint(
     with_lock (StateLock) {
         ui64 minCommitId = CommitQueue.GetMinCommitId();
 
-        CheckpointsInFlight.AddTx(checkpointId, std::move(tx), commitId);
+        auto added =
+            CheckpointsInFlight.AddTx(checkpointId, std::move(tx), commitId);
+        STORAGE_VERIFY(added, TWellKnownEntityTypes::TABLET, TabletId);
 
         auto nextTx = CheckpointsInFlight.GetTx(checkpointId, minCommitId);
         if (nextTx) {

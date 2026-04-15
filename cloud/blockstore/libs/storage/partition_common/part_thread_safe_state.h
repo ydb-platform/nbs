@@ -75,6 +75,8 @@ public:
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
 
 private:
+    const ui64 TabletId = 0;
+
     TAdaptiveLock StateLock;
 
     NActors::TActorId PartitionActorId;
@@ -90,9 +92,12 @@ private:
     std::atomic<ui64> FreshBlocksInFlight = 0;
 
 public:
-    TPartitionThreadSafeState() = default;
+    explicit TPartitionThreadSafeState(ui64 tabletId)
+        : TabletId(tabletId)
+    {}
 
     TPartitionThreadSafeState(
+        ui64 tabletId,
         NActors::TActorId partitionActorId,
         ui32 generation,
         ui32 lastCommitId);
