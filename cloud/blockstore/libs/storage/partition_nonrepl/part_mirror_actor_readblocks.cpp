@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/kikimr/actor_system_adapter.h>
 
 #include <util/string/join.h>
 
@@ -70,18 +71,19 @@ ui32 CalculateChecksum(
 
 template <typename TMethod>
 class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<TMethod>>
+    : public IPooledActor<TRequestActor<TMethod>>
 {
 private:
-    const TRequestInfoPtr RequestInfo;
-    const TVector<TActorId> Partitions;
+    TRequestInfoPtr RequestInfo;
+    TVector<TActorId> Partitions;
     typename TMethod::TRequest::ProtoRecordType Request;
-    const TBlockRange64 Range;
-    const TString DiskId;
-    const NActors::TActorId ParentActorId;
-    const ui64 RequestIdentityKey;
-    const bool ShouldReportBlockRangeOnFailure;
+    TBlockRange64 Range;
+    TString DiskId;
+    NActors::TActorId ParentActorId;
+    ui64 RequestIdentityKey;
+    bool ShouldReportBlockRangeOnFailure;
 
+    using TThis = TRequestActor<TMethod>;
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
     using TBase = TActorBootstrapped<TRequestActor<TMethod>>;
 
@@ -91,7 +93,10 @@ private:
     bool ChecksumMismatchObserved = false;
 
 public:
-    TRequestActor(
+    TRequestActor();
+    ~TRequestActor() override = default;
+
+    void SendRequests(
         TRequestInfoPtr requestInfo,
         const TVector<TActorId>& partitions,
         typename TMethod::TRequest::ProtoRecordType request,
@@ -101,16 +106,17 @@ public:
         ui64 requestIdentityKey,
         bool shouldReportBlockRangeOnFailure);
 
-    void Bootstrap(const TActorContext& ctx);
-
 private:
-    void SendRequests(const TActorContext& ctx);
     bool HandleError(const TActorContext& ctx, NProto::TError error);
     void CompareChecksums(const TActorContext& ctx);
     void Done(const TActorContext& ctx);
 
+    // IPooledActor overrides:
+    void Reset() override;
+
 private:
     STFUNC(StateWork);
+    STFUNC(StateSleep);
 
     void HandleChecksumUndelivery(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
@@ -136,78 +142,85 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-TRequestActor<TMethod>::TRequestActor(
-        TRequestInfoPtr requestInfo,
-        const TVector<TActorId>& partitions,
-        typename TMethod::TRequest::ProtoRecordType request,
-        const TBlockRange64 range,
-        TString diskId,
-        TActorId parentActorId,
-        ui64 requestIdentityKey,
-        bool shouldReportBlockRangeOnFailure)
-    : RequestInfo(std::move(requestInfo))
-    , Partitions(partitions)
-    , Request(std::move(request))
-    , Range(range)
-    , DiskId(std::move(diskId))
-    , ParentActorId(parentActorId)
-    , RequestIdentityKey(requestIdentityKey)
-    , ShouldReportBlockRangeOnFailure(shouldReportBlockRangeOnFailure)
-    , ResponseChecksums(Partitions.size(), 0)
+TPooledActorHolder<TRequestActor<TMethod>> GetRequestActor()
+{
+    static auto actorPool = MakeIntrusive<TActorPool<TRequestActor<TMethod>>>(
+        MakeIntrusive<TActorSystemAdapter>(TActivationContext::ActorSystem()),
+        1000u);
+    return actorPool->GetPooledActor();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
+TRequestActor<TMethod>::TRequestActor()
+    : IPooledActor<TThis>(&TThis::StateSleep)
 {}
 
 template <typename TMethod>
-void TRequestActor<TMethod>::Bootstrap(const TActorContext& ctx)
+void TRequestActor<TMethod>::SendRequests(
+    TRequestInfoPtr requestInfo,
+    const TVector<TActorId>& partitions,
+    typename TMethod::TRequest::ProtoRecordType request,
+    const TBlockRange64 range,
+    TString diskId,
+    TActorId parentActorId,
+    ui64 requestIdentityKey,
+    bool shouldReportBlockRangeOnFailure)
 {
-    TRequestScope timer(*RequestInfo);
+    TRequestScope timer(*requestInfo);
+    this->UnsafeBecome(&TThis::StateWork);
 
-    TBase::Become(&TBase::TThis::StateWork);
+    RequestInfo = std::move(requestInfo);
+    Partitions = partitions;
+    Request = std::move(request);
+    Range = range;
+    DiskId = std::move(diskId);
+    ParentActorId = parentActorId;
+    RequestIdentityKey = requestIdentityKey;
+    ShouldReportBlockRangeOnFailure = shouldReportBlockRangeOnFailure;
 
-    SendRequests(ctx);
-}
+    ResponseChecksums.resize(Partitions.size(), 0);
 
-template <typename TMethod>
-void TRequestActor<TMethod>::SendRequests(const TActorContext& ctx)
-{
-    using TChecksumRequest =
-        TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest;
+    const auto selfId = this->GetSelfId();
     for (ui32 i = 1; i < Partitions.size(); ++i) {
-        auto request = std::make_unique<TChecksumRequest>();
+        auto request = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
         request->Record.SetStartIndex(Request.GetStartIndex());
         request->Record.SetBlocksCount(GetBlocksCount(Request));
         *request->Record.MutableHeaders() = Request.GetHeaders();
 
         auto event = std::make_unique<IEventHandle>(
             Partitions[i],
-            ctx.SelfID,
+            selfId,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
             RequestInfo->Cookie + i,
-            &ctx.SelfID   // forwardOnNondelivery
+            &selfId   // forwardOnNondelivery
         );
 
-        ctx.Send(event.release());
+        this->GetActorSystem()->Send(event.release());
     }
 
-    auto request = std::make_unique<typename TMethod::TRequest>();
-    request->CallContext = RequestInfo->CallContext;
+    auto readRequest = std::make_unique<typename TMethod::TRequest>();
+    readRequest->CallContext = RequestInfo->CallContext;
     if (Partitions.size() > 1) {
         // Request will be used during checksum calculation
-        request->Record = Request;
+        readRequest->Record = Request;
     } else {
-        request->Record = std::move(Request);
+        readRequest->Record = std::move(Request);
     }
 
     auto event = std::make_unique<IEventHandle>(
         Partitions[0],
-        ctx.SelfID,
-        request.release(),
+        selfId,
+        readRequest.release(),
         IEventHandle::FlagForwardOnNondelivery,
         RequestInfo->Cookie,
-        &ctx.SelfID   // forwardOnNondelivery
+        &selfId   // forwardOnNondelivery
     );
 
-    ctx.Send(event.release());
+    this->GetActorSystem()->Send(event.release());
 }
 
 template <typename TMethod>
@@ -282,7 +295,27 @@ void TRequestActor<TMethod>::Done(const TActorContext& ctx)
             ChecksumMismatchObserved);
     NCloud::Send(ctx, ParentActorId, std::move(completion));
 
-    TBase::Die(ctx);
+    this->WorkFinished(ctx);
+}
+
+template <typename TMethod>
+void TRequestActor<TMethod>::Reset()
+{
+    this->UnsafeBecome(&TThis::StateSleep);
+
+    RequestInfo.Reset();
+    Partitions.clear();
+    Request = {};
+    Range = {};
+    DiskId.clear();
+    ParentActorId = {};
+    RequestIdentityKey = 0;
+    ShouldReportBlockRangeOnFailure = false;
+
+    ResponseChecksums.clear();
+    ResponseCount = 0;
+    Response = {};
+    ChecksumMismatchObserved = false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -428,6 +461,26 @@ STFUNC(TRequestActor<TMethod>::StateWork)
             HandleChecksumResponse);
         HFunc(TMethod::TRequest, HandleUndelivery);
         HFunc(TMethod::TResponse, HandleResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+template <typename TMethod>
+STFUNC(TRequestActor<TMethod>::StateSleep)
+{
+    switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvents::TEvPoisonPill);
+
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse);
+        IgnoreFunc(TMethod::TRequest);
+        IgnoreFunc(TMethod::TResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -632,8 +685,16 @@ void TMirrorPartitionActor::ReadBlocks(
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
-    NCloud::Register<TRequestActor<TMethod>>(
-        ctx,
+    auto actorHolder = GetRequestActor<TMethod>();
+    if (!actorHolder) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TResponse>(
+                MakeError(E_REJECTED, "Failed to get actor from pool")));
+        return;
+    }
+    actorHolder->SendRequests(
         std::move(requestInfo),
         std::move(replicaActorIds),
         std::move(record),

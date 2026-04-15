@@ -84,6 +84,8 @@ public:
     NMonitoring::TDynamicCountersPtr GetCounters() override;
 
     TProgramShouldContinue& GetProgramShouldContinue() override;
+
+    void DeferPreStop(std::function<void()> fn) override;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

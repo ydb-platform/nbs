@@ -111,7 +111,7 @@ public:
 
     void Reset() override
     {
-        this->Become(&TThis::StateSleep);
+        this->UnsafeBecome(&TThis::StateSleep);
         SeqNumber++;
         Request.reset();
         Response = {};
@@ -126,7 +126,7 @@ public:
         TCallContextPtr callContext,
         TDuration requestTimeout)
     {
-        this->Become(&TThis::StateWork);
+        this->UnsafeBecome(&TThis::StateWork);
 
         Response = std::move(response);
         CallContext = std::move(callContext);
@@ -184,7 +184,7 @@ private:
                 << " exception in callback: " << CurrentExceptionMessage());
         }
 
-        this->Become(&TThis::StateSleep);
+        this->UnsafeBecome(&TThis::StateSleep);
     }
 
 private:
@@ -193,7 +193,6 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(TResponse, HandleResponse);
             HFunc(TEvents::TEvWakeup, HandleTimeout);
-            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
                 HandleUnexpectedEvent(
@@ -208,7 +207,6 @@ private:
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvents::TEvWakeup, HandleTimeout);
-            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
             IgnoreFunc(TResponse);
 
             default:
@@ -282,14 +280,6 @@ private:
         CompleteRequest(ctx, std::move(response));
 
         this->WorkFinished(ctx);
-    }
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        Y_UNUSED(ev);
-        TThis::Die(ctx);
     }
 };
 

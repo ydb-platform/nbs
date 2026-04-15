@@ -23,7 +23,6 @@ namespace NCloud {
 // destroyed or moved-from.
 template <typename TActor>
 class TPooledActorHolder
-
 {
 private:
     template <typename>
@@ -70,11 +69,6 @@ public:
     }
 
     TActor* operator->() const
-    {
-        return Actor;
-    }
-
-    TActor* Get() const
     {
         return Actor;
     }

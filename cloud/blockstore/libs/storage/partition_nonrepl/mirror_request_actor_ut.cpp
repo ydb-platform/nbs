@@ -53,13 +53,18 @@ public:
         const TEvService::TEvWriteBlocksRequest::TPtr& ev,
         const TActorContext& ctx)
     {
+        Y_UNUSED(ctx);
+
         auto* msg = ev->Get();
 
         auto requestInfo =
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-        NCloud::Register<TMirrorRequestActor<TEvService::TWriteBlocksMethod>>(
-            ctx,
+        auto actorHolder =
+            GetMirrorRequestActor<TEvService::TWriteBlocksMethod>();
+        UNIT_ASSERT(actorHolder);
+
+        actorHolder->SendRequests(
             std::move(requestInfo),
             Partitions,
             msg->Record,

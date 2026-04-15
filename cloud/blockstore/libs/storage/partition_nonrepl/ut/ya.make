@@ -2,6 +2,8 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/partition_nonrepl)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+TIMEOUT(50)
+
 SRCS(
     lagging_agents_replica_proxy_ut.cpp
     migration_timeout_calculator_ut.cpp

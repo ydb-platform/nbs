@@ -188,4 +188,9 @@ TProgramShouldContinue& TActorSystem::GetProgramShouldContinue()
     return TKikimrRunner::KikimrShouldContinue;
 }
 
+void TActorSystem::DeferPreStop(std::function<void()> fn)
+{
+    ActorSystem->DeferPreStop(std::move(fn));
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

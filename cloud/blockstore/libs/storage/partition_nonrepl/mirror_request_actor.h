@@ -9,6 +9,8 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <cloud/storage/core/libs/actors/actor_pool.h>
+#include <cloud/storage/core/libs/actors/pooled_actor.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -30,25 +32,31 @@ void ProcessMirrorActorError(NProto::TError& error);
 
 template <typename TMethod>
 class TMirrorRequestActor final
-    : public NActors::TActorBootstrapped<TMirrorRequestActor<TMethod>>
+    : public IPooledActor<TMirrorRequestActor<TMethod>>
 {
 private:
-    using TBase = NActors::TActorBootstrapped<TMirrorRequestActor<TMethod>>;
+    using TThis = TMirrorRequestActor<TMethod>;
     using TResponseProto = typename TMethod::TResponse::ProtoRecordType;
 
-    const TRequestInfoPtr RequestInfo;
-    const TVector<NActors::TActorId> Replicas;
-    const typename TMethod::TRequest::ProtoRecordType Request;
-    const TString DiskId;
-    const NActors::TActorId ParentActorId;
-    const ui64 NonreplicatedRequestCounter;
+    TRequestInfoPtr RequestInfo;
+    TVector<NActors::TActorId> Replicas;
+    typename TMethod::TRequest::ProtoRecordType Request;
+    TString DiskId;
+    NActors::TActorId ParentActorId;
+    ui64 NonreplicatedRequestCounter = 0;
 
     TVector<TCallContextPtr> ForkedCallContexts;
     ui32 Responses = 0;
     TResponseProto ReplicasCollectiveResponse;
 
 public:
-    TMirrorRequestActor(
+    TMirrorRequestActor()
+        : IPooledActor<TThis>(&TThis::StateSleep)
+    {}
+
+    ~TMirrorRequestActor() override = default;
+
+    void SendRequests(
         TRequestInfoPtr requestInfo,
         TVector<NActors::TActorId> replicas,
         typename TMethod::TRequest::ProtoRecordType request,
@@ -56,15 +64,16 @@ public:
         NActors::TActorId parentActorId,
         ui64 nonreplicatedRequestCounter);
 
-    void Bootstrap(const NActors::TActorContext& ctx);
-
 private:
-    void SendRequests(const NActors::TActorContext& ctx);
     void Done(const NActors::TActorContext& ctx);
     void UpdateResponse(TResponseProto&& response);
 
+    // IPooledActor overrides:
+    void Reset() override;
+
 private:
     STFUNC(StateWork);
+    STFUNC(StateSleep);
 
     void HandleResponse(
         const typename TMethod::TResponse::TPtr& ev,
@@ -82,29 +91,23 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-TMirrorRequestActor<TMethod>::TMirrorRequestActor(
-        TRequestInfoPtr requestInfo,
-        TVector<NActors::TActorId> replicas,
-        typename TMethod::TRequest::ProtoRecordType request,
-        TString diskId,
-        NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter)
-    : RequestInfo(std::move(requestInfo))
-    , Replicas(std::move(replicas))
-    , Request(std::move(request))
-    , DiskId(std::move(diskId))
-    , ParentActorId(parentActorId)
-    , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
+void TMirrorRequestActor<TMethod>::SendRequests(
+    TRequestInfoPtr requestInfo,
+    TVector<NActors::TActorId> replicas,
+    typename TMethod::TRequest::ProtoRecordType request,
+    TString diskId,
+    NActors::TActorId parentActorId,
+    ui64 nonreplicatedRequestCounter)
 {
-    Y_DEBUG_ABORT_UNLESS(!Replicas.empty());
-}
+    TRequestScope timer(*requestInfo);
+    this->UnsafeBecome(&TThis::StateWork);
 
-template <typename TMethod>
-void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
-{
-    TRequestScope timer(*RequestInfo);
-
-    TBase::Become(&TBase::TThis::StateWork);
+    RequestInfo = std::move(requestInfo);
+    Replicas = std::move(replicas);
+    Request = std::move(request);
+    DiskId = std::move(diskId);
+    ParentActorId = parentActorId;
+    NonreplicatedRequestCounter = nonreplicatedRequestCounter;
 
     LWTRACK(
         RequestReceived_PartitionWorker,
@@ -112,12 +115,6 @@ void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
         TMethod::Name,
         RequestInfo->CallContext->RequestId);
 
-    SendRequests(ctx);
-}
-
-template <typename TMethod>
-void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ctx)
-{
     for (const auto& actorId: Replicas) {
         auto request = std::make_unique<typename TMethod::TRequest>();
         auto& callContext = *RequestInfo->CallContext;
@@ -131,16 +128,17 @@ void TMirrorRequestActor<TMethod>::SendRequests(const NActors::TActorContext& ct
         ForkedCallContexts.push_back(request->CallContext);
         request->Record = CopyRequest(Request);
 
+        const NActors::TActorId selfId = this->GetSelfId();
         auto event = std::make_unique<NActors::IEventHandle>(
             actorId,
-            ctx.SelfID,
+            selfId,
             request.release(),
             NActors::IEventHandle::FlagForwardOnNondelivery,
             RequestInfo->Cookie,   // cookie
-            &ctx.SelfID            // forwardOnNondelivery
+            &selfId                // forwardOnNondelivery
         );
 
-        ctx.Send(std::move(event));
+        this->GetActorSystem()->Send(std::move(event));
     }
 }
 
@@ -171,7 +169,7 @@ void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
         );
     NCloud::Send(ctx, ParentActorId, std::move(completion));
 
-    TBase::Die(ctx);
+    this->WorkFinished(ctx);
 }
 
 template <typename TMethod>
@@ -182,6 +180,23 @@ void TMirrorRequestActor<TMethod>::UpdateResponse(TResponseProto&& response)
     if (!HasError(ReplicasCollectiveResponse)) {
         ReplicasCollectiveResponse = std::move(response);
     }
+}
+
+template <typename TMethod>
+void TMirrorRequestActor<TMethod>::Reset()
+{
+    this->UnsafeBecome(&TThis::StateSleep);
+
+    RequestInfo.Reset();
+    Replicas.clear();
+    Request = {};
+    DiskId.clear();
+    ParentActorId = {};
+    NonreplicatedRequestCounter = 0;
+
+    ForkedCallContexts.clear();
+    Responses = 0;
+    ReplicasCollectiveResponse = {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -265,5 +280,37 @@ STFUNC(TMirrorRequestActor<TMethod>::StateWork)
             break;
     }
 }
+
+template <typename TMethod>
+STFUNC(TMirrorRequestActor<TMethod>::StateSleep)
+{
+    switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(NActors::TEvents::TEvPoisonPill);
+        IgnoreFunc(TMethod::TResponse);
+        IgnoreFunc(TMethod::TRequest);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+template <typename TMethod>
+TPooledActorHolder<TMirrorRequestActor<TMethod>> GetMirrorRequestActor();
+
+template <>
+TPooledActorHolder<TMirrorRequestActor<TEvService::TWriteBlocksMethod>>
+GetMirrorRequestActor();
+
+template <>
+TPooledActorHolder<TMirrorRequestActor<TEvService::TWriteBlocksLocalMethod>>
+GetMirrorRequestActor();
+
+template <>
+TPooledActorHolder<TMirrorRequestActor<TEvService::TZeroBlocksMethod>>
+GetMirrorRequestActor();
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -47,9 +47,12 @@ struct IActorSystem
 
     virtual TProgramShouldContinue& GetProgramShouldContinue() = 0;
 
+    virtual void DeferPreStop(std::function<void()> fn) = 0;
+
     // For LOG macros
     virtual NActors::NLog::TSettings* LoggerSettings() const = 0;
     virtual bool Send(TAutoPtr<NActors::IEventHandle> ev) = 0;
+
 };
 
 }   // namespace NCloud

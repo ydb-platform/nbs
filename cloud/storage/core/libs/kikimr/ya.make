@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     actorsystem.cpp
+    actor_system_adapter.cpp
     components.cpp
     components_start.cpp
     config_dispatcher_helpers.cpp

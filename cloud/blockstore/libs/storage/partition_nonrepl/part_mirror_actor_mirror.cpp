@@ -1,7 +1,5 @@
 #include "part_mirror_actor.h"
 
-#include "mirror_request_actor.h"
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
@@ -141,11 +139,6 @@ void TMirrorPartitionActor::MirrorRequest(
             DirtyReadRequestIds.insert(requestId);
         });
 
-    RequestsInProgress.AddWriteRequest(
-        requestIdentityKey,
-        range,
-        msg->Record.GetHeaders().GetVolumeRequestId());
-
     if constexpr (IsExactlyWriteMethod<TMethod>) {
         if (SuggestWriteRequestType(ctx, range) ==
             EWriteRequestType::MultiAgentWrite)
@@ -164,8 +157,23 @@ void TMirrorPartitionActor::MirrorRequest(
         }
     }
 
-    NCloud::Register<TMirrorRequestActor<TMethod>>(
-        ctx,
+    auto actorHolder = GetMirrorRequestActor<TMethod>();
+    Y_ABORT_UNLESS(actorHolder);
+    if (!actorHolder) {
+        Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "Actor pool is stopped")));
+        return;
+    }
+
+    RequestsInProgress.AddWriteRequest(
+        requestIdentityKey,
+        range,
+        msg->Record.GetHeaders().GetVolumeRequestId());
+
+    actorHolder->SendRequests(
         std::move(requestInfo),
         State.GetReplicaActors(),
         std::move(msg->Record),

@@ -318,8 +318,17 @@ void TMultiAgentWriteActor<TMethod>::Fallback(const NActors::TActorContext& ctx)
     for (const auto& replica: ReplicasDiscovery) {
         replicas.push_back(replica.ActorId);
     }
-    NCloud::Register<TMirrorRequestActor<TMethod>>(
-        ctx,
+
+    auto actorHolder = GetMirrorRequestActor<TMethod>();
+    Y_ABORT_UNLESS(actorHolder);
+    if (!actorHolder) {
+        ReplicasCollectiveResponse =
+            MakeError(E_REJECTED, "Actor pool is stopped");
+        Done(ctx);
+        return;
+    }
+
+    actorHolder->SendRequests(
         std::move(RequestInfo),
         std::move(replicas),
         std::move(Request),

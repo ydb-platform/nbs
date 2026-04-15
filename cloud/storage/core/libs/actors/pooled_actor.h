@@ -52,6 +52,9 @@ protected:
 
     virtual void Reset() = 0;
 
+    // using TBase::UnsafeBecome;
+    // using TBase::ActorContext;
+
 public:
     ~IPooledActor() override = default;
 
@@ -90,6 +93,11 @@ private:
     void SetReturnQueue(TIntrusivePtr<IActorReturnQueue<TDerived>> returnQueue)
     {
         ReturnQueue = std::move(returnQueue);
+    }
+
+    void Die(const NActors::TActorContext& ctx) override
+    {
+        TBase::Die(ctx);
     }
 };
 
