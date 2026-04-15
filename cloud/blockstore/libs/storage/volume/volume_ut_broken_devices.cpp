@@ -14,26 +14,28 @@ namespace {
 const ui64 DefaultBlockCount =
     DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
 
-NProto::TStorageServiceConfig MakeConfig(bool enableVolumeHealth)
+NProto::TStorageServiceConfig MakeConfig()
 {
     NProto::TStorageServiceConfig config;
     config.SetAcquireNonReplicatedDevices(true);
-    config.SetVolumeHealthNotificationEnabled(enableVolumeHealth);
     return config;
+}
+
+void SetupVolume(
+    TVolumeClient& volume,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui64 blockCount = DefaultBlockCount)
+{
+    volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, blockCount);
+    volume.WaitReady();
 }
 
 void SetupNrdVolume(TVolumeClient& volume, ui64 blockCount = DefaultBlockCount)
 {
-    volume.UpdateVolumeConfig(
-        0,
-        0,
-        0,
-        0,
-        false,
-        1,
+    SetupVolume(
+        volume,
         NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
         blockCount);
-    volume.WaitReady();
 }
 
 void SendBrokenDeviceNotification(
@@ -66,9 +68,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
     Y_UNIT_TEST(ShouldSendUnhealthyOnFirstBrokenDevice)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
+        auto runtime = PrepareTestActorRuntime(MakeConfig(), state);
 
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);
@@ -85,9 +85,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
     Y_UNIT_TEST(ShouldNotSendDuplicateUnhealthy)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
+        auto runtime = PrepareTestActorRuntime(MakeConfig(), state);
 
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);
@@ -107,9 +105,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
     Y_UNIT_TEST(ShouldSendHealthyWhenAllDevicesRecover)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
+        auto runtime = PrepareTestActorRuntime(MakeConfig(), state);
 
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);
@@ -135,9 +131,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
     Y_UNIT_TEST(ShouldPersistAndRestoreBrokenDevicesAfterReboot)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
+        auto runtime = PrepareTestActorRuntime(MakeConfig(), state);
 
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);
@@ -162,15 +156,13 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
             state->LastVolumeHealth);
     }
 
-    Y_UNIT_TEST(ShouldSkipAllWorkWhenFlagDisabled)
+    Y_UNIT_TEST(ShouldSkipNotificationsForMirrorVolume)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/false),
-            state);
+        auto runtime = PrepareTestActorRuntime(MakeConfig(), state);
 
         TVolumeClient volume(*runtime);
-        SetupNrdVolume(volume);
+        SetupVolume(volume, NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
 
         SendBrokenDeviceNotification(volume, "uuid-1");
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -187,9 +179,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
     Y_UNIT_TEST(ShouldSerializeNotifications)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
+        auto runtime = PrepareTestActorRuntime(MakeConfig(), state);
 
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);
@@ -209,9 +199,7 @@ Y_UNIT_TEST_SUITE(TVolumeBrokenDevicesTest)
     Y_UNIT_TEST(ShouldCleanupStaleDevicesOnUpdateDevices)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
-        auto runtime = PrepareTestActorRuntime(
-            MakeConfig(/*enableVolumeHealth=*/true),
-            state);
+        auto runtime = PrepareTestActorRuntime(MakeConfig(), state);
 
         TVolumeClient volume(*runtime);
         SetupNrdVolume(volume);

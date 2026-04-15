@@ -718,8 +718,8 @@ void TVolumeActor::CompleteUpdateDevices(
 
     if (!DeviceUUIDToBrokenAt.empty()) {
         THashSet<TString> currentUUIDs;
-        for (const auto& dev: State->GetMeta().GetDevices()) {
-            currentUUIDs.insert(dev.GetDeviceUUID());
+        for (const auto* dev: GetAllDevices(State->GetMeta())) {
+            currentUUIDs.insert(dev->GetDeviceUUID());
         }
         for (auto it = DeviceUUIDToBrokenAt.begin();
              it != DeviceUUIDToBrokenAt.end();)
