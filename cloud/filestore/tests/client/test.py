@@ -2,12 +2,12 @@ import json
 import logging
 import os
 import re
-import time
 
 import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.common import flush_logs
 
 BLOCK_SIZE = 4 * 1024
 BLOCKS_COUNT = 1000
@@ -785,15 +785,7 @@ def test_io_telemetry():
 
     client.destroy(fs_id)
 
-    #
-    # Sleep for a while to ensure that the profile log is flushed
-    # before we start analyzing it
-    # The default value of ProfileLogTimeThreshold for tests is 100ms
-    # TODO(#568) - here and in other similar places - introduce and use a
-    # private api method which would force profile-log flush
-    #
-
-    time.sleep(2)
+    flush_logs()
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
