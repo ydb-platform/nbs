@@ -225,7 +225,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
-    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInLogConfigAndNbsConfigs)
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsAndComponentsInStaticLogConfig)
     {
         auto logConfigStr = R"(
             Entry {
@@ -242,44 +242,20 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             SysLogService: "NBS_SERVER"
         )";
 
-        auto nbsComponentConfigStr = R"(
-            NoSuchField: "x"
-        )";
-
         TTempDir dir;
         auto logConfigPath = dir.Path() / "nbs-log.txt";
-        auto nbsComponentConfigPath = dir.Path() / "nbs-component.txt";
 
         TOFStream(logConfigPath.GetPath()).Write(logConfigStr);
-        TOFStream(nbsComponentConfigPath.GetPath()).Write(nbsComponentConfigStr);
 
         auto options = CreateOptions();
+
+        // - TConfigInitializerYdbBase
         options->LogConfig = logConfigPath.GetPath();
-        options->StatsUploadConfig = nbsComponentConfigPath.GetPath();
-        options->DiscoveryConfig = nbsComponentConfigPath.GetPath();
-        options->DiagnosticsConfig = nbsComponentConfigPath.GetPath();
-        options->StorageConfig = nbsComponentConfigPath.GetPath();
-        options->DiskRegistryProxyConfig = nbsComponentConfigPath.GetPath();
-        options->DiskAgentConfig = nbsComponentConfigPath.GetPath();
-        options->ServerConfig = nbsComponentConfigPath.GetPath();
-        options->EndpointConfig = nbsComponentConfigPath.GetPath();
-        options->FeaturesConfig = nbsComponentConfigPath.GetPath();
-        options->LogbrokerConfig = nbsComponentConfigPath.GetPath();
-        options->NotifyConfig = nbsComponentConfigPath.GetPath();
 
         auto ci = TConfigInitializerYdb(std::move(options));
-        ci.InitKikimrConfig();
-        ci.InitStatsUploadConfig();
-        ci.InitServerConfig();
-        ci.InitDiscoveryConfig();
-        ci.InitDiagnosticsConfig();
-        ci.InitStorageConfig();
-        ci.InitDiskRegistryProxyConfig();
-        ci.InitDiskAgentConfig();
-        ci.InitEndpointConfig();
-        ci.InitFeaturesConfig();
-        ci.InitLogbrokerConfig();
-        ci.InitNotifyConfig();
+
+        // - TConfigInitializerYdbBase
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitKikimrConfig());
 
         const auto& logConfig = ci.KikimrConfig->GetLogConfig();
         UNIT_ASSERT(logConfig.GetSysLog());
@@ -295,6 +271,156 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             "UNKNOWN_COMPONENT",
             logConfig.GetEntry(1).GetComponent());
         UNIT_ASSERT_VALUES_EQUAL(6, logConfig.GetEntry(1).GetLevel());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInStaticNbsConfigs)
+    {
+        auto nbsComponentConfigStr = R"(
+            NoSuchField: "x"
+        )";
+
+        TTempDir dir;
+        auto nbsComponentConfigPath = dir.Path() / "nbs-component.txt";
+
+        TOFStream(nbsComponentConfigPath.GetPath()).Write(nbsComponentConfigStr);
+
+        auto options = CreateOptions();
+
+        // clang-format off
+        // - TConfigInitializerCommon: TOptionsBase, TOptionsCommon
+        options->DiagnosticsConfig       =
+        options->DiscoveryConfig         =
+        options->DiskAgentConfig         =
+        options->DiskRegistryProxyConfig =
+        options->EndpointConfig          =
+        options->ServerConfig            =
+        options->RdmaConfig              =
+        options->CellsConfig             = nbsComponentConfigPath.GetPath();
+        // - TConfigInitializerYdb: TOptionsYdb
+        options->FeaturesConfig     =
+        options->LogbrokerConfig    =
+        options->NotifyConfig       =
+        options->StatsUploadConfig  =
+        options->StorageConfig      =
+        options->IamConfig          =
+        options->KmsConfig          =
+        options->RootKmsConfig      =
+        options->ComputeConfig      =
+        options->LocalNVMeConfig    = nbsComponentConfigPath.GetPath();
+        // clang-format on
+
+        auto ci = TConfigInitializerYdb(std::move(options));
+
+        // - TConfigInitializerCommon
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitServerConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiagnosticsConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiscoveryConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiskAgentConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitDiskRegistryProxyConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitEndpointConfig());
+        // InitHostPerformanceProfile() - not loaded from file
+        // InitSpdkEnvConfig()          - not loaded from file
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitRdmaConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitCellsConfig());
+        // - TConfigInitializerYdb
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitFeaturesConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitLogbrokerConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitNotifyConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitStatsUploadConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitStorageConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitIamClientConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitKmsClientConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitRootKmsConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitComputeClientConfig());
+        UNIT_ASSERT_NO_EXCEPTION(ci.InitLocalNVMeConfig());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnknownFieldsInDynamicConfigs)
+    {
+        auto nbsComponentConfigStr = R"(
+             NoSuchField: "x"
+        )";
+
+        // clang-format off
+        // Elements ordered as in TConfigInitializerYdb::ApplyNamedConfigs()
+        const TVector<TString> configNames {
+            "ActorSystemConfig",
+            "AuthConfig",
+            "DiagnosticsConfig",
+            "DiscoveryServiceConfig",
+            "DiskAgentConfig",
+            "DiskRegistryProxyConfig",
+            "FeaturesConfig",
+            "InterconnectConfig",
+            "LogbrokerConfig",
+            "LogConfig",
+            "MonitoringConfig",
+            "NotifyConfig",
+            "ServerAppConfig",
+            "SpdkEnvConfig",
+            "StorageServiceConfig",
+            "YdbStatsConfig",
+            "IamClientConfig",
+            "KmsClientConfig",
+            "RootKmsConfig",
+            "ComputeClientConfig",
+            "LocalNVMeConfig",
+        };
+        // clang-format on
+
+        auto ci = TConfigInitializerYdb(CreateOptions());
+
+        // To detect mutual dependencies:
+        //  - one at time
+        //  - all at once, direct and reverse order
+
+        // 1. One at time
+        for (const auto& configName: configNames) {
+            ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+            NKikimrConfig::TAppConfig singleAppCfg;
+            auto& singleNamedConfigs = *singleAppCfg.MutableNamedConfigs();
+
+            auto* singleNamedConfig = singleNamedConfigs.Add();
+            singleNamedConfig->SetName("Cloud.NBS." + configName);
+            singleNamedConfig->SetConfig(nbsComponentConfigStr);
+
+            Cerr << Endl << "Apply NamedConfigs['"
+                 << singleNamedConfig->GetName() << "'] = '"
+                 << singleNamedConfig->GetConfig() << "'" << Endl;
+            UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(singleAppCfg));
+        }
+
+        // 2. All at once, direct order
+        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+        NKikimrConfig::TAppConfig directFullAppCfg;
+        auto& directFullNamedConfigs = *directFullAppCfg.MutableNamedConfigs();
+
+        for (const auto& configName: configNames) {
+            auto* directFullNamedConfig = directFullNamedConfigs.Add();
+            directFullNamedConfig->SetName("Cloud.NBS." + configName);
+            directFullNamedConfig->SetConfig(nbsComponentConfigStr);
+        }
+
+        Cerr << Endl << "Apply all NamedConfigs[] in direct order" << Endl;
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(directFullAppCfg));
+
+        // 3. All at once, reverse order
+        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+        NKikimrConfig::TAppConfig reverseFullAppCfg;
+        auto& reverseFullNamedConfigs =
+            *reverseFullAppCfg.MutableNamedConfigs();
+
+        for (auto configName = configNames.rbegin();
+             configName != configNames.rend();
+             configName++)
+        {
+            auto* reverseFullNamedConfig = reverseFullNamedConfigs.Add();
+            reverseFullNamedConfig->SetName("Cloud.NBS." + *configName);
+            reverseFullNamedConfig->SetConfig(nbsComponentConfigStr);
+        }
+
+        Cerr << Endl << "Apply all NamedConfigs[] in reverse order" << Endl;
+        UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(reverseFullAppCfg));
     }
 
     Y_UNIT_TEST(ShouldInitHostPerformanceProfile)

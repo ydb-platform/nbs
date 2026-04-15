@@ -133,7 +133,7 @@ void TConfigInitializerYdb::InitIamClientConfig()
     NProto::TIamClientConfig config;
 
     if (Options->IamConfig) {
-        ParseProtoTextFromFile(Options->IamConfig, config);
+        ParseProtoTextFromFileRobust(Options->IamConfig, config);
     }
 
     IamClientConfig = std::make_shared<NIamClient::TIamClientConfig>(
@@ -145,7 +145,7 @@ void TConfigInitializerYdb::InitKmsClientConfig()
     NProto::TGrpcClientConfig config;
 
     if (Options->KmsConfig) {
-        ParseProtoTextFromFile(Options->KmsConfig, config);
+        ParseProtoTextFromFileRobust(Options->KmsConfig, config);
     }
 
     KmsClientConfig = std::move(config);
@@ -156,7 +156,7 @@ void TConfigInitializerYdb::InitRootKmsConfig()
     NProto::TRootKmsConfig config;
 
     if (Options->RootKmsConfig) {
-        ParseProtoTextFromFile(Options->RootKmsConfig, config);
+        ParseProtoTextFromFileRobust(Options->RootKmsConfig, config);
     }
 
     if (!config.GetRootCertsFile()) {
@@ -171,7 +171,7 @@ void TConfigInitializerYdb::InitComputeClientConfig()
     NProto::TGrpcClientConfig config;
 
     if (Options->ComputeConfig) {
-        ParseProtoTextFromFile(Options->ComputeConfig, config);
+        ParseProtoTextFromFileRobust(Options->ComputeConfig, config);
     }
 
     ComputeClientConfig = std::move(config);
@@ -182,7 +182,7 @@ void TConfigInitializerYdb::InitLocalNVMeConfig()
     NProto::TLocalNVMeConfig proto;
 
     if (Options->LocalNVMeConfig) {
-        ParseProtoTextFromFile(Options->LocalNVMeConfig, proto);
+        ParseProtoTextFromFileRobust(Options->LocalNVMeConfig, proto);
     }
 
     LocalNVMeConfig = std::make_shared<TLocalNVMeConfig>(std::move(proto));
@@ -237,6 +237,11 @@ void TConfigInitializerYdb::ApplyFeaturesConfig(const TString& text)
         std::make_shared<NFeatures::TFeaturesConfig>(config);
 
     // features config has changed, update storage config
+    if (!StorageConfig) {
+        StorageConfig = std::make_shared<NStorage::TStorageConfig>(
+            NProto::TStorageServiceConfig(),
+            nullptr);
+    }
     StorageConfig->SetFeaturesConfig(FeaturesConfig);
 }
 
@@ -245,7 +250,7 @@ void TConfigInitializerYdb::ApplyLogbrokerConfig(const TString& text)
     NProto::TLogbrokerConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    if (!config.GetCaCertFilename()) {
+    if (ServerConfig && !config.GetCaCertFilename()) {
         config.SetCaCertFilename(ServerConfig->GetRootCertsFile());
     }
 
@@ -257,7 +262,7 @@ void TConfigInitializerYdb::ApplyNotifyConfig(const TString& text)
     NProto::TNotifyConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    if (!config.GetCaCertFilename()) {
+    if (ServerConfig && !config.GetCaCertFilename()) {
         config.SetCaCertFilename(ServerConfig->GetRootCertsFile());
     }
 
@@ -281,6 +286,18 @@ void TConfigInitializerYdb::ApplyServerAppConfig(const TString& text)
 
     ServerConfig = std::make_shared<TServerAppConfig>(appConfig);
     SetGrpcThreadsLimit(ServerConfig->GetGrpcThreadsLimit());
+
+    // Update dependent configs
+    if (DiscoveryConfig) {
+        ApplyDiscoveryServiceConfig(ProtoToText(*DiscoveryConfig->GetConfig()));
+    }
+    if (NotifyConfig) {
+        ApplyNotifyConfig(ProtoToText(*NotifyConfig->GetConfig()));
+    }
+    if (LogbrokerConfig) {
+        ApplyLogbrokerConfig(ProtoToText(*LogbrokerConfig->GetConfig()));
+    }
+    ApplyRootKmsConfig(ProtoToText(RootKmsConfig));
 }
 
 void TConfigInitializerYdb::ApplyDiagnosticsConfig(const TString& text)
@@ -326,7 +343,9 @@ void TConfigInitializerYdb::ApplyDiscoveryServiceConfig(const TString& text)
     NProto::TDiscoveryServiceConfig discoveryConfig;
     ParseProtoTextFromStringRobust(text, discoveryConfig);
 
-    SetupDiscoveryPorts(discoveryConfig);
+    if (ServerConfig) {
+        SetupDiscoveryPorts(discoveryConfig);
+    }
 
     DiscoveryConfig = std::make_shared<TDiscoveryConfig>(discoveryConfig);
 }
@@ -358,7 +377,7 @@ void TConfigInitializerYdb::ApplyDiskRegistryProxyConfig(const TString& text)
 void TConfigInitializerYdb::ApplyIamClientConfig(const TString& text)
 {
     NProto::TIamClientConfig config;
-    ParseProtoTextFromString(text, config);
+    ParseProtoTextFromStringRobust(text, config);
 
     IamClientConfig = std::make_shared<NIamClient::TIamClientConfig>(
         std::move(config));
@@ -367,7 +386,7 @@ void TConfigInitializerYdb::ApplyIamClientConfig(const TString& text)
 void TConfigInitializerYdb::ApplyKmsClientConfig(const TString& text)
 {
     NProto::TGrpcClientConfig config;
-    ParseProtoTextFromString(text, config);
+    ParseProtoTextFromStringRobust(text, config);
 
     KmsClientConfig = std::move(config);
 }
@@ -375,7 +394,11 @@ void TConfigInitializerYdb::ApplyKmsClientConfig(const TString& text)
 void TConfigInitializerYdb::ApplyRootKmsConfig(const TString& text)
 {
     NProto::TRootKmsConfig config;
-    ParseProtoTextFromString(text, config);
+    ParseProtoTextFromStringRobust(text, config);
+
+    if (ServerConfig && !config.GetRootCertsFile()) {
+        config.SetRootCertsFile(ServerConfig->GetRootCertsFile());
+    }
 
     RootKmsConfig = std::move(config);
 }
@@ -383,7 +406,7 @@ void TConfigInitializerYdb::ApplyRootKmsConfig(const TString& text)
 void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
 {
     NProto::TGrpcClientConfig config;
-    ParseProtoTextFromString(text, config);
+    ParseProtoTextFromStringRobust(text, config);
 
     ComputeClientConfig = std::move(config);
 }
@@ -391,7 +414,7 @@ void TConfigInitializerYdb::ApplyComputeClientConfig(const TString& text)
 void TConfigInitializerYdb::ApplyLocalNVMeConfig(const TString& text)
 {
     NProto::TLocalNVMeConfig proto;
-    ParseProtoTextFromString(text, proto);
+    ParseProtoTextFromStringRobust(text, proto);
 
     LocalNVMeConfig = std::make_shared<TLocalNVMeConfig>(std::move(proto));
 }

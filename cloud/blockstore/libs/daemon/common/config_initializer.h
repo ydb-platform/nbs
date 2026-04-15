@@ -28,8 +28,8 @@ struct TConfigInitializerCommon
 {
     const TOptionsCommonPtr Options;
 
-    NDiscovery::TDiscoveryConfigPtr DiscoveryConfig;
     TServerAppConfigPtr ServerConfig;
+    NDiscovery::TDiscoveryConfigPtr DiscoveryConfig;
     NClient::TClientAppConfigPtr EndpointConfig;
     NStorage::TDiskAgentConfigPtr DiskAgentConfig;
     NStorage::TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
@@ -45,13 +45,13 @@ struct TConfigInitializerCommon
     TConfigInitializerCommon(TOptionsCommonPtr options);
     virtual ~TConfigInitializerCommon();
 
+    void InitServerConfig();
     void InitDiagnosticsConfig();
-    void InitDiscoveryConfig();
+    void InitDiscoveryConfig();   // requires ServerConfig
     void InitDiskAgentConfig();
     void InitDiskRegistryProxyConfig();
     void InitEndpointConfig();
     void InitHostPerformanceProfile();
-    void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitRdmaConfig();
     void InitCellsConfig();

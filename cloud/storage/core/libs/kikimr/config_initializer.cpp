@@ -105,7 +105,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     auto& sysConfig = *KikimrConfig->MutableActorSystemConfig();
     if (Options->SysConfig) {
-        ParseProtoTextFromFile(Options->SysConfig, sysConfig);
+        ParseProtoTextFromFileRobust(Options->SysConfig, sysConfig);
     }
     AdjustActorSystemThreadsAccordingToAvailableCpus(
         sysConfig,
@@ -113,7 +113,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     auto& interconnectConfig = *KikimrConfig->MutableInterconnectConfig();
     if (Options->InterconnectConfig) {
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->InterconnectConfig,
             interconnectConfig);
     }
@@ -121,12 +121,12 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     auto& domainsConfig = *KikimrConfig->MutableDomainsConfig();
     if (Options->DomainsConfig) {
-        ParseProtoTextFromFile(Options->DomainsConfig, domainsConfig);
+        ParseProtoTextFromFileRobust(Options->DomainsConfig, domainsConfig);
     }
 
     auto& monConfig = *KikimrConfig->MutableMonitoringConfig();
     if (Options->MonitoringConfig) {
-        ParseProtoTextFromFile(Options->MonitoringConfig, monConfig);
+        ParseProtoTextFromFileRobust(Options->MonitoringConfig, monConfig);
     }
     SetupMonitoringConfig(monConfig);
 
@@ -137,10 +137,9 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     auto& nameServiceConfig = *KikimrConfig->MutableNameserviceConfig();
     if (Options->NameServiceConfig) {
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->NameServiceConfig,
-            nameServiceConfig
-        );
+            nameServiceConfig);
     }
 
     if (Options->SuppressVersionCheck) {
@@ -150,15 +149,14 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
     auto& dynamicNameServiceConfig =
         *KikimrConfig->MutableDynamicNameserviceConfig();
     if (Options->DynamicNameServiceConfig) {
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->DynamicNameServiceConfig,
-            dynamicNameServiceConfig
-        );
+            dynamicNameServiceConfig);
     }
 
     if (Options->AuthConfig) {
         auto& authConfig = *KikimrConfig->MutableAuthConfig();
-        ParseProtoTextFromFile(Options->AuthConfig, authConfig);
+        ParseProtoTextFromFileRobust(Options->AuthConfig, authConfig);
     }
 
     auto& bsConfig = *KikimrConfig->MutableBlobStorageConfig();
@@ -166,10 +164,9 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     auto& kikimrFeaturesConfig = *KikimrConfig->MutableFeatureFlags();
     if (Options->KikimrFeaturesConfig) {
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->KikimrFeaturesConfig,
-            kikimrFeaturesConfig
-        );
+            kikimrFeaturesConfig);
     } else {
         // we want to use VPatch by default for EvPatch
         kikimrFeaturesConfig.SetEnableVPatch(true);
@@ -177,7 +174,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     if (Options->SharedCacheConfig) {
         auto& sharedCacheConfig = *KikimrConfig->MutableSharedCacheConfig();
-        ParseProtoTextFromFile(
+        ParseProtoTextFromFileRobust(
             Options->SharedCacheConfig,
             sharedCacheConfig);
     }
@@ -207,7 +204,7 @@ NKikimrConfig::TMonitoringConfig TConfigInitializerYdbBase::GetMonitoringConfig(
 {
     NKikimrConfig::TMonitoringConfig monConfig;
     if (Options->MonitoringConfig) {
-        ParseProtoTextFromFile(Options->MonitoringConfig, monConfig);
+        ParseProtoTextFromFileRobust(Options->MonitoringConfig, monConfig);
     }
 
     SetupMonitoringConfig(monConfig);
@@ -248,20 +245,22 @@ TString TConfigInitializerYdbBase::GetFullSchemeShardDir() const
 void TConfigInitializerYdbBase::ApplyMonitoringConfig(const TString& text)
 {
     auto& monConfig = *KikimrConfig->MutableMonitoringConfig();
-    ParseProtoTextFromString(text, monConfig);
+    ParseProtoTextFromStringRobust(text, monConfig);
 
     SetupMonitoringConfig(monConfig);
 }
 
 void TConfigInitializerYdbBase::ApplyActorSystemConfig(const TString& text)
 {
-    ParseProtoTextFromString(text, *KikimrConfig->MutableActorSystemConfig());
+    ParseProtoTextFromStringRobust(
+        text,
+        *KikimrConfig->MutableActorSystemConfig());
 }
 
 void TConfigInitializerYdbBase::ApplyInterconnectConfig(const TString& text)
 {
     auto& interconnectConfig = *KikimrConfig->MutableInterconnectConfig();
-    ParseProtoTextFromString(text, interconnectConfig);
+    ParseProtoTextFromStringRobust(text, interconnectConfig);
 
     interconnectConfig.SetStartTcp(true);
 }
@@ -277,7 +276,7 @@ void TConfigInitializerYdbBase::ApplyLogConfig(const TString& text)
 
 void TConfigInitializerYdbBase::ApplyAuthConfig(const TString& text)
 {
-    ParseProtoTextFromString(text, *KikimrConfig->MutableAuthConfig());
+    ParseProtoTextFromStringRobust(text, *KikimrConfig->MutableAuthConfig());
 }
 
 ui32 TConfigInitializerYdbBase::GetLogDefaultLevel() const
