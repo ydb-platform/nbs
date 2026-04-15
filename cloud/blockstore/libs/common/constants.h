@@ -29,6 +29,6 @@ constexpr TStringBuf SourceDiskIdTagName = "source-disk-id";
 
 constexpr TStringBuf UseFastPathTagName = "use-fastpath";
 
-constexpr TStringBuf DropDiscardRequestsTagName = "drop-discards-requests";
+constexpr TStringBuf DropDiscardRequestsTagName = "drop-discard-requests";
 
 }   // namespace NCloud::NBlockStore
