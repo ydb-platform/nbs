@@ -707,16 +707,14 @@ private:
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
 
-    void SendStatisticRequests(const NActors::TActorContext& ctx);
+    void SendStatisticRequestsForYDBBasedPartitions(const NActors::TActorContext& ctx);
 
     void SendStatisticRequestForDiskRegistryBasedPartition(
         const NActors::TActorContext& ctx);
 
     void CleanupHistory(
         const NActors::TActorContext& ctx,
-        const NActors::TActorId& sender,
-        ui64 cookie,
-        TCallContextPtr callContext);
+        TRequestInfoPtr requestInfo);
 
     void UpdateDiskRegistryBasedPartCounters(
         const NActors::TActorContext& ctx,
@@ -737,7 +735,7 @@ private:
     TEvStatsService::TVolumeSelfCounters GetVolumeSelfCounters(
         const NActors::TActorContext& ctx);
 
-    void SendStatsToServiceStatisticsCollectorActor(
+    void ReplyToServiceStatisticsCollectorActor(
         const NActors::TActorContext& ctx);
 
     bool IsFreshBlocksWriterEnabled() const;
@@ -876,7 +874,7 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
+    std::optional<TVolumeDatabase::TPartStats> UpdatePartCounters(
         const NActors::TActorContext& ctx,
         TPartCountersData& partCountersData);
 

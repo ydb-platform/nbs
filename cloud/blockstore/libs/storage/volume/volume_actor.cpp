@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
@@ -217,8 +218,11 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
 
 void TVolumeActor::ScheduleRegularUpdates(const TActorContext& ctx)
 {
-    if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+    if (!UpdateCountersScheduled &&
+        !Config->GetUsePullSchemeForVolumeStatistics())
+    {
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvVolumePrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
@@ -280,14 +284,12 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
 
 void TVolumeActor::UpdateCounters(const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     if (!State) {
         return;
     }
 
     if (Config->GetUsePullSchemeForVolumeStatistics()) {
-        SendStatsToServiceStatisticsCollectorActor(ctx);
+        ReplyToServiceStatisticsCollectorActor(ctx);
         return;
     }
 
@@ -710,23 +712,24 @@ void TVolumeActor::HandleUpdateCounters(
 {
     UpdateCountersScheduled = false;
 
-    // Under these conditions, the counters are updated at the request of the
-    // service.
-    if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
-        GetVolumeStatus() != EStatus::STATUS_INACTIVE)
-    {
+    if (Config->GetUsePullSchemeForVolumeStatistics()) {
+        // The counters are updated at the request of the service.
         return;
     }
 
     UpdateCounters(ctx);
     ScheduleRegularUpdates(ctx);
-    CleanupHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
+    CleanupHistory(
+        ctx,
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
 }
 
 void TVolumeActor::HandleGetServiceStatistics(
     const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(Config->GetUsePullSchemeForVolumeStatistics());
+
     if (StatisticRequestInfo) {
         NCloud::Reply(
             ctx,
@@ -761,7 +764,7 @@ void TVolumeActor::HandleGetServiceStatistics(
 
     State->IsDiskRegistryMediaKind()
         ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
-        : SendStatisticRequests(ctx);
+        : SendStatisticRequestsForYDBBasedPartitions(ctx);
 }
 
 void TVolumeActor::RejectGetServiceStatistics(
