@@ -29,10 +29,12 @@ namespace {
 
 NProto::TStorageConfig ExecuteGetStorageConfig(
     const TString& fsId,
-    TServiceClient& service)
+    TServiceClient& service,
+    bool onlyOverride = false)
 {
     NProtoPrivate::TGetStorageConfigRequest request;
     request.SetFileSystemId(fsId);
+    request.SetOnlyOverride(onlyOverride);
 
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
@@ -246,6 +248,47 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 response.GetMultiTabletForwardingEnabled(),
                 true);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageConfigOnlyOverride)
+    {
+        NProto::TStorageConfig config;
+        config.SetReadAheadCacheMaxNodes(42);
+
+        TTestEnv env{{}, config};
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateFileStore("fs0", 1'000);
+
+        {
+            auto response = ExecuteGetStorageConfig("fs0", service, true);
+            UNIT_ASSERT(!response.HasReadAheadCacheMaxNodes());
+        }
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetMultiTabletForwardingEnabled(true);
+            ExecuteChangeStorageConfig("fs0", std::move(newConfig), service);
+        }
+
+        {
+            auto response = ExecuteGetStorageConfig("fs0", service, false);
+            UNIT_ASSERT_VALUES_EQUAL(42, response.GetReadAheadCacheMaxNodes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetMultiTabletForwardingEnabled());
+        }
+
+        {
+            auto response = ExecuteGetStorageConfig("fs0", service, true);
+            UNIT_ASSERT(!response.HasReadAheadCacheMaxNodes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetMultiTabletForwardingEnabled());
         }
     }
 
