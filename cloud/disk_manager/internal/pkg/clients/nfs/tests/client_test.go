@@ -119,12 +119,21 @@ func TestListNodesFileSystem(t *testing.T) {
 	require.NoError(t, err)
 	defer session.Close(ctx)
 
-	model := nfs_testing.NewFileSystemModel(t, ctx, session, nfs_testing.StandardFilesystem)
+	model := nfs_testing.NewFileSystemModel(
+		t,
+		ctx,
+		session,
+		nfs_testing.StandardFilesystem,
+	)
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(false)
 	model.RequireNodesEqual(nodes)
-	require.Equal(t, nfs_testing.StandardFilesystemExpectedNames, nfs_testing.NodeNames(nodes))
+	require.Equal(
+		t,
+		nfs_testing.StandardFilesystemExpectedNames,
+		nfs_testing.NodeNames(nodes),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,12 +162,21 @@ func TestListNodesFileSystemUnsafe(t *testing.T) {
 	require.NoError(t, err)
 	defer session.Close(ctx)
 
-	model := nfs_testing.NewFileSystemModel(t, ctx, session, nfs_testing.StandardFilesystem)
+	model := nfs_testing.NewFileSystemModel(
+		t,
+		ctx,
+		session,
+		nfs_testing.StandardFilesystem,
+	)
 	model.CreateAllNodesRecursively()
 
 	nodes := model.ListAllNodesRecursively(true)
 	model.RequireNodesEqual(nodes)
-	require.Equal(t, nfs_testing.StandardFilesystemExpectedNames, nfs_testing.NodeNames(nodes))
+	require.Equal(
+		t,
+		nfs_testing.StandardFilesystemExpectedNames,
+		nfs_testing.NodeNames(nodes),
+	)
 
 	// Open sessions to shard filesystems for GetNodeAttr verification.
 	shardSessions := make(map[string]nfs.Session, shardCount)
