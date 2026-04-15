@@ -66,7 +66,10 @@ jobs:
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
-          [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
+          if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
+            echo "Removing stale rebase state left on runner checkout"
+            rm -rf .git/rebase-merge .git/rebase-apply
+          fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
