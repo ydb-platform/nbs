@@ -169,6 +169,7 @@ bool TCheckpointStore::RemoveCommitId(ui64 commitId)
 
 void TCheckpointQueue::Enqueue(const TString& checkpointId, ui64 commitId)
 {
+    Y_ABORT_UNLESS(Queue.empty() || commitId >= Queue.back().first);
     Queue.emplace_back(commitId, checkpointId);
 }
 
@@ -202,10 +203,7 @@ ui64 TCheckpointQueue::GetMinCommitId() const
     if (Queue.empty()) {
         return Max();
     }
-    return std::ranges::min_element(
-               Queue,
-               [](const auto& a, const auto& b) { return a.first < b.first; })
-        ->first;
+    return Queue.front().first;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -284,26 +282,17 @@ bool TCheckpointsInFlight::HasCheckpoint(const TString& checkpointId) const
 void TCheckpointsInFlight::GetCommitIds(TVector<ui64>& commitIds) const
 {
     CommitIdQueue.GetCommitIds(commitIds);
-    for (const auto& [_, queue]: PendingTransactions) {
-        for (const auto& [_, commitId]: queue) {
-            if (!commitId) {
-                continue;
-            }
-            commitIds.push_back(commitId);
-        }
-    }
 }
 
 ui64 TCheckpointsInFlight::GetMinCommitId() const
 {
-    ui64 minCommitId = CommitIdQueue.GetMinCommitId();
-    for (const auto& [_, queue]: PendingTransactions) {
-        for (const auto& [_, commitId]: queue) {
-            if (!commitId) {
-                continue;
-            }
-            minCommitId = Min(minCommitId, commitId);
+    auto minCommitId = CommitIdQueue.GetMinCommitId();
+    for (const auto& [_, txPair]: PendingTransactions) {
+        auto& txCommitId = txPair.second;
+        if (!txCommitId) {
+            continue;
         }
+        minCommitId = Min(minCommitId, txCommitId);
     }
     return minCommitId;
 }

@@ -13457,7 +13457,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotLoseAnyBlocksWithMultipleCheckpointsCreationAndDelete)
+    Y_UNIT_TEST(ShouldNotLoseAnyMixedMergedBlocksWhileWaitingForCheckpointCreation)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
@@ -13467,97 +13467,40 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        bool interceptEvent = false;
-        bool skipFirstIntercept = false;
-
-        std::unique_ptr<IEventHandle> putEvent;
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
-                    auto* msg = event->Get<TEvBlobStorage::TEvPut>();
-
-                    if (msg->Id.Channel() == 0 && interceptEvent &&
-                        !skipFirstIntercept)
-                    {
-                        putEvent.reset(event.Release());
-                        interceptEvent = false;
-                        return TTestActorRuntime::EEventAction::DROP;
-                    } else if (msg->Id.Channel() == 0 && interceptEvent) {
-                        skipFirstIntercept = false;
-                    }
-                }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
         partition.WriteBlocks(0, '1');
         partition.Flush();
 
         partition.SendCreateCheckpointRequest("c1");
-        partition.SendDeleteCheckpointRequest("c1");
-        partition.SendCreateCheckpointRequest("c1");
-        partition.SendDeleteCheckpointRequest("c1");
-        partition.SendCreateCheckpointRequest("c1");
         partition.SendCompactionRequest();
 
-        interceptEvent = true;
+        bool interceptTransactions = true;
 
-        runtime->DispatchEvents({}, 10ms);
-        UNIT_ASSERT(putEvent);
+        std::unique_ptr<IEventHandle> executeTransactionsEvent;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvPartitionCommonPrivate::EvExecuteTransactions && interceptTransactions) {
+                    executeTransactionsEvent.reset(event.Release());
+                    interceptTransactions = false;
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
 
-        skipFirstIntercept = true;
-        interceptEvent = true;
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-        // create checkpoint  and compaction transactions executed not completed
-        runtime->SendAsync(putEvent.release());
+        partition.Cleanup();
 
-        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT(executeTransactionsEvent);
 
-        // delete checkpoint  and addblobs transactions executed not completed
-        UNIT_ASSERT(putEvent);
-        runtime->SendAsync(putEvent.release());
+        runtime->SendAsync(executeTransactionsEvent.release());
 
-        skipFirstIntercept = true;
-        interceptEvent = true;
+        partition.RecvCreateCheckpointResponse();
 
-        runtime->DispatchEvents({}, 10ms);
-
-        // create checkpoint transaction executed not completed, compaction
-        // operation completed, old blob in cleanup queue
-
-        UNIT_ASSERT(putEvent);
-        runtime->SendAsync(putEvent.release());
-
-        skipFirstIntercept = true;
-        interceptEvent = true;
-
-        partition.RecvCompactionResponse();
-
-        runtime->DispatchEvents({}, 10ms);
-
-        // The delete checkpoint transaction was executed, but it was not
-        // completed, so there are no checkpoints anymore, but there is an old
-        // blob in the cleanup queue. The next checkpoint transaction will start
-        // execution after the delete checkpoint transaction is completed.
-
-        partition.SendCleanupRequest();
-        runtime->DispatchEvents({}, 10ms);
-
-        UNIT_ASSERT(putEvent);
-        runtime->SendAsync(putEvent.release());
-
-        runtime->DispatchEvents({}, 10ms);
-
-        for (size_t i = 0; i < 3; i++) {
-            partition.RecvCreateCheckpointResponse();
-        }
-
-        partition.ReadBlocks(TBlockRange32::WithLength(0, 1));
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent('1'),
-            GetBlockContent(
-                partition.ReadBlocks(TBlockRange32::WithLength(0, 1), "c1")));
+            GetBlockContent(partition.ReadBlocks(0, "c1")));
     }
 }
 
