@@ -31,7 +31,7 @@ TIndexNodePtr TryCreateChildNode(const TIndexNode& parent, const TString& name)
 NProto::TResolvePathResponse TLocalFileSystem::ResolvePath(
     const NProto::TResolvePathRequest& request)
 {
-    STORAGE_TRACE("ResolvePath " << DumpMessage(request));
+    STORAGE_TRACE("ResolvePath " << ProtoMessagePrinter.ToString(request));
 
     // TODO
 
@@ -41,7 +41,7 @@ NProto::TResolvePathResponse TLocalFileSystem::ResolvePath(
 NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
     const NProto::TCreateNodeRequest& request)
 {
-    STORAGE_TRACE("CreateNode " << DumpMessage(request));
+    STORAGE_TRACE("CreateNode " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
@@ -138,7 +138,7 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
 NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
     const NProto::TUnlinkNodeRequest& request)
 {
-    STORAGE_TRACE("UnlinkNode " << DumpMessage(request));
+    STORAGE_TRACE("UnlinkNode " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
@@ -159,7 +159,8 @@ NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
 NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
     const NProto::TRenameNodeRequest& request)
 {
-    STORAGE_TRACE("RenameNode " << DumpMessage(request)
+    STORAGE_TRACE("RenameNode "
+        << ProtoMessagePrinter.ToString(request)
         << " flags: " << RenameFlagsToString(request.GetFlags()));
 
     auto session = GetSession(request);
@@ -196,7 +197,7 @@ NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
 NProto::TAccessNodeResponse TLocalFileSystem::AccessNode(
     const NProto::TAccessNodeRequest& request)
 {
-    STORAGE_TRACE("AccessNode " << DumpMessage(request));
+    STORAGE_TRACE("AccessNode " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -212,7 +213,7 @@ NProto::TAccessNodeResponse TLocalFileSystem::AccessNode(
 NProto::TListNodesResponse TLocalFileSystem::ListNodes(
     const NProto::TListNodesRequest& request)
 {
-    STORAGE_TRACE("ListNodes " << DumpMessage(request));
+    STORAGE_TRACE("ListNodes " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());
@@ -289,7 +290,7 @@ NProto::TListNodesResponse TLocalFileSystem::ListNodes(
 NProto::TReadLinkResponse TLocalFileSystem::ReadLink(
     const NProto::TReadLinkRequest& request)
 {
-    STORAGE_TRACE("ReadLink " << DumpMessage(request));
+    STORAGE_TRACE("ReadLink " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());

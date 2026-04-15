@@ -171,6 +171,8 @@ private:
     };
     TAtomic RequestState = WaitingForRequest;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TRequestHandler(
             TAppContext& appCtx,
@@ -293,7 +295,7 @@ private:
 
         STORAGE_TRACE(TMethod::RequestName
             << " #" << RequestId
-            << " send request: " << DumpMessage(*Request));
+            << " send request: " << ProtoMessagePrinter.ToString(*Request));
 
         FILESTORE_TRACK(
             SendRequest,
@@ -322,7 +324,8 @@ private:
 
         STORAGE_TRACE(TMethod::RequestName
             << " #" << RequestId
-            << " response received: " << DumpMessage(Response));
+            << " response received: "
+            << ProtoMessagePrinter.ToString(Response));
 
         FILESTORE_TRACK(
             ResponseReceived,
@@ -390,6 +393,8 @@ private:
         RequestCompleted = 4,
     };
     TAtomic RequestState = WaitingForRequest;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TStreamRequestHandler(
@@ -498,7 +503,7 @@ private:
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
-            << " send request: " << DumpMessage(*Request));
+            << " send request: " << ProtoMessagePrinter.ToString(*Request));
 
         Reader = TMethod::Execute(
             *AppCtx.Service,
@@ -534,7 +539,8 @@ private:
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
-            << " response received: " << DumpMessage(Response));
+            << " response received: "
+            << ProtoMessagePrinter.ToString(Response));
 
         try {
             ResponseHandler->HandleResponse(Response);

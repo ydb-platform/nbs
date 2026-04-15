@@ -109,6 +109,8 @@ private:
 
     std::atomic<ui64> XattrVersion = 0;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TLocalFileSystem(
         TLocalFileStoreConfigPtr config,

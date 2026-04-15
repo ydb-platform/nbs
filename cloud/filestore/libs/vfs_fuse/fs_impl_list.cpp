@@ -258,7 +258,8 @@ void TFileSystem::ReadDir(
                             TStringBuilder() << "#" << fuse_req_unique(req)
                                              << " listed invalid entry: parent "
                                              << ino << ", name " << name.Quote()
-                                             << ", stat " << DumpMessage(attr));
+                                             << ", stat "
+                                             << ProtoMessagePrinter.ToString(attr));
 
                         STORAGE_ERROR(error.GetMessage());
                         self->ReplyError(*callContext, error, req, EIO);

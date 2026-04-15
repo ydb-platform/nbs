@@ -22,7 +22,8 @@ using namespace NThreading;
 NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     const NProto::TCreateHandleRequest& request)
 {
-    STORAGE_TRACE("CreateHandle " << DumpMessage(request)
+    STORAGE_TRACE("CreateHandle "
+        << ProtoMessagePrinter.ToString(request)
         << " flags: " << HandleFlagsToString(request.GetFlags())
         << " mode: " << request.GetMode());
 
@@ -91,7 +92,7 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
 NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
     const NProto::TDestroyHandleRequest& request)
 {
-    STORAGE_TRACE("DestroyHandle " << DumpMessage(request));
+    STORAGE_TRACE("DestroyHandle " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     session->DeleteHandle(request.GetHandle());
@@ -103,7 +104,7 @@ TFuture<NProto::TReadDataLocalResponse> TLocalFileSystem::ReadDataLocalAsync(
     NProto::TReadDataLocalRequest& request,
     NProto::TProfileLogRequestInfo& logRequest)
 {
-    STORAGE_TRACE("ReadDataLocal " << DumpMessage(request));
+    STORAGE_TRACE("ReadDataLocal " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto* handle = session->LookupHandle(request.GetHandle());
@@ -140,7 +141,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     NProto::TReadDataRequest& request,
     NProto::TProfileLogRequestInfo& logRequest)
 {
-    STORAGE_TRACE("ReadData " << DumpMessage(request));
+    STORAGE_TRACE("ReadData " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto* handle = session->LookupHandle(request.GetHandle());
@@ -182,7 +183,7 @@ TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
     NProto::TWriteDataLocalRequest& request,
     NProto::TProfileLogRequestInfo& logRequest)
 {
-    STORAGE_TRACE("WriteDataLocal " << DumpMessage(request));
+    STORAGE_TRACE("WriteDataLocal " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto* handle = session->LookupHandle(request.GetHandle());
@@ -233,7 +234,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     NProto::TWriteDataRequest& request,
     NProto::TProfileLogRequestInfo& logRequest)
 {
-    STORAGE_TRACE("WriteData " << DumpMessage(request));
+    STORAGE_TRACE("WriteData " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto* handle = session->LookupHandle(request.GetHandle());
@@ -277,7 +278,8 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
 NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
     const NProto::TAllocateDataRequest& request)
 {
-    STORAGE_TRACE("AllocateData " << DumpMessage(request)
+    STORAGE_TRACE("AllocateData "
+        << ProtoMessagePrinter.ToString(request)
         << " flags: " << FallocateFlagsToString(request.GetFlags()));
 
     auto session = GetSession(request);
@@ -301,7 +303,7 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
 NProto::TFsyncResponse TLocalFileSystem::Fsync(
     const NProto::TFsyncRequest& request)
 {
-    STORAGE_TRACE("Fsync " << DumpMessage(request));
+    STORAGE_TRACE("Fsync " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto* handle = session->LookupHandle(request.GetHandle());
@@ -317,7 +319,7 @@ NProto::TFsyncResponse TLocalFileSystem::Fsync(
 NProto::TFsyncDirResponse TLocalFileSystem::FsyncDir(
     const NProto::TFsyncDirRequest& request)
 {
-    STORAGE_TRACE("FsyncDir " << DumpMessage(request));
+    STORAGE_TRACE("FsyncDir " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());

@@ -114,6 +114,8 @@ private:
 
     std::atomic<ui64> GlobalAttrVersion = 1;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TFileSystem(
         ILoggingServicePtr logging,

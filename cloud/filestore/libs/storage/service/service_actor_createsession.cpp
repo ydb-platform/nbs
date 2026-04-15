@@ -72,6 +72,8 @@ private:
 
     TActorId Owner;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TCreateSessionActor(
         TStorageConfigPtr config,
@@ -380,7 +382,7 @@ void TCreateSessionActor::CreateSession(const TActorContext& ctx)
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
         "%s do creating session: %s",
         LogTag().c_str(),
-        DumpMessage(request->Record).c_str());
+        ProtoMessagePrinter.ToString(request->Record).c_str());
 
     NTabletPipe::SendData(ctx, PipeClient, request.release());
 }

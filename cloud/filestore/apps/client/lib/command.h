@@ -73,6 +73,8 @@ protected:
     TString IamConfigFile;
     NCloud::NIamClient::IIamTokenClientPtr IamClient;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TCommand();
 

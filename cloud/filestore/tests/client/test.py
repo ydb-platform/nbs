@@ -2,12 +2,19 @@ import json
 import logging
 import os
 import re
+import time
+import uuid
 
-import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
-from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.harness.daemon import Daemon
+
+from cloud.storage.core.tests.common import process_recipe_err_files
+
+from cloud.filestore.tests.python.lib.client import FilestoreCliClient, daemon_log_files
 from cloud.filestore.tests.python.lib.common import flush_logs
+import cloud.filestore.tools.testing.profile_log.common as profile
 
 BLOCK_SIZE = 4 * 1024
 BLOCKS_COUNT = 1000
@@ -884,3 +891,48 @@ def test_symlink_non_utf8_path():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_client_should_not_crash_on_shutdown_while_listing_endpoints():
+    port_manager = yatest_common.PortManager()
+    # We need a free port with no listener so the request gets stuck
+    free_port = port_manager.get_port()
+
+    binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
+
+    cmd = [
+        binary_path, "listendpoints",
+        "--verbose", "trace",
+        "--server-address", "localhost",
+        "--server-port", str(free_port),
+    ]
+
+    cwd = common.output_path()
+    log_files = daemon_log_files(
+        prefix="filestore-client-%s" % uuid.uuid4(),
+        cwd=cwd,
+    )
+
+    daemon = Daemon(
+        cmd,
+        cwd=cwd,
+        timeout=60,
+        **log_files,
+    )
+    daemon.start()
+
+    time.sleep(10)
+
+    # Stop filestore-client to cancel the in-flight request and potentially
+    # trigger a crash
+    try:
+        daemon.stop()
+    except Exception as e:
+        pass
+
+    assert 1 == daemon.daemon.exit_code
+
+    # Check that there are no sanitizer errors
+    errors = process_recipe_err_files(log_files["stderr_file"])
+    if errors:
+        raise RuntimeError("Recipe found errors in the log files: " + "\n".join(errors))
