@@ -2992,13 +2992,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
 
         UNIT_ASSERT(writeDataCalled.GetFuture().Wait(WaitTimeout));
-
-        // The test will hang if we stop while WriteBackCache is handling
-        // WriteData response in the scheduler thread.
-        // We explicitly wait for the completion by calling flush.
-        auto flush =
-            bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
-        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
     }
 
     // We want to ensure that the same file cannot be reused for FileRingBuffers
