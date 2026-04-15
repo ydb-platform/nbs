@@ -15,6 +15,7 @@ RECURSE_FOR_TESTS(
     close_to_open_consistency
     config_dispatcher
     directory_handles
+    dirtree
     endpoints
     fio
     fio_index

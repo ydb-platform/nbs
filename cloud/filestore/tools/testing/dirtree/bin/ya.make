@@ -1,4 +1,4 @@
-PROGRAM(fmdtest)
+PROGRAM(dirtree)
 
 SRCS(
     app.cpp
@@ -10,7 +10,6 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     library/cpp/getopt
-    library/cpp/json
 )
 
 END()
