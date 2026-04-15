@@ -27,6 +27,7 @@ func NewFilestoreClient(t *testing.T) *FilestoreClient {
 	require.NoError(t, err)
 
 	port := os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT")
+	require.NotEmpty(t, port, "DISK_MANAGER_RECIPE_NFS_PORT env var is not set")
 
 	return &FilestoreClient{
 		binaryPath: binaryPath,
