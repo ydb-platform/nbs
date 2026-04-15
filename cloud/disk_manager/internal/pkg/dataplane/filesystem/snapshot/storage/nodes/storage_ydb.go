@@ -46,8 +46,7 @@ func nodeRefStructTypeString() string {
 		filesystem_snapshot_id: Utf8,
 		parent_node_id: Uint64,
 		name: Utf8,
-		child_node_id: Uint64,
-		node_type: Uint32>`
+		child_node_id: Uint64>`
 }
 
 func nodeRefStructValue(
@@ -60,7 +59,6 @@ func nodeRefStructValue(
 		persistence.StructFieldValue("parent_node_id", persistence.Uint64Value(node.ParentID)),
 		persistence.StructFieldValue("name", persistence.UTF8Value(node.Name)),
 		persistence.StructFieldValue("child_node_id", persistence.Uint64Value(node.NodeID)),
-		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 	)
 }
 
@@ -76,6 +74,7 @@ func nodeStructTypeString() string {
 		ctime: Uint64,
 		size: Uint64,
 		links: Uint32,
+		node_type: Uint32,
 		symlink_target: Utf8>`
 }
 
@@ -95,6 +94,7 @@ func nodeStructValue(
 		persistence.StructFieldValue("ctime", persistence.Uint64Value(node.Ctime)),
 		persistence.StructFieldValue("size", persistence.Uint64Value(node.Size)),
 		persistence.StructFieldValue("links", persistence.Uint32Value(node.Links)),
+		persistence.StructFieldValue("node_type", persistence.Uint32Value(uint32(node.Type))),
 		persistence.StructFieldValue("symlink_target", persistence.UTF8Value(node.LinkTarget)),
 	)
 }
@@ -148,13 +148,11 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 		parentID    uint64
 		name        string
 		childNodeID uint64
-		nodeType    uint32
 	)
 	err := result.ScanNamed(
 		persistence.OptionalWithDefault("parent_node_id", &parentID),
 		persistence.OptionalWithDefault("name", &name),
 		persistence.OptionalWithDefault("child_node_id", &childNodeID),
-		persistence.OptionalWithDefault("node_type", &nodeType),
 	)
 	if err != nil {
 		return nfs.Node{}, err
@@ -164,7 +162,6 @@ func scanNodeRef(result persistence.Result) (nfs.Node, error) {
 		ParentID: parentID,
 		NodeID:   childNodeID,
 		Name:     name,
-		Type:     nfs_client.NodeType(nodeType),
 	}, nil
 }
 
@@ -188,7 +185,10 @@ func scanNodeRefs(
 }
 
 func scanNode(result persistence.Result) (nfs.Node, error) {
-	var node nfs.Node
+	var (
+		node     nfs.Node
+		nodeType uint32
+	)
 	err := result.ScanNamed(
 		persistence.OptionalWithDefault("node_id", &node.NodeID),
 		persistence.OptionalWithDefault("mode", &node.Mode),
@@ -199,12 +199,14 @@ func scanNode(result persistence.Result) (nfs.Node, error) {
 		persistence.OptionalWithDefault("ctime", &node.Ctime),
 		persistence.OptionalWithDefault("size", &node.Size),
 		persistence.OptionalWithDefault("links", &node.Links),
+		persistence.OptionalWithDefault("node_type", &nodeType),
 		persistence.OptionalWithDefault("symlink_target", &node.LinkTarget),
 	)
 	if err != nil {
 		return nfs.Node{}, err
 	}
 
+	node.Type = nfs_client.NodeType(nodeType)
 	return node, nil
 }
 
@@ -475,6 +477,7 @@ func (s *storageYDB) listNodes(
 			node.Ctime = a.Ctime
 			node.Size = a.Size
 			node.Links = a.Links
+			node.Type = a.Type
 			node.LinkTarget = a.LinkTarget
 			nodes[i] = node
 		}

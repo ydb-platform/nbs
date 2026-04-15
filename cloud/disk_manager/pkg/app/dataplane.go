@@ -189,7 +189,7 @@ func initFilesystemSnapshot(
 	nodesStorage := nodes_storage.NewStorage(
 		filesystemDB,
 		snapshotConfig.GetNodesStorageFolder(),
-		0, // deleteLimit, not used during creation.
+		int(snapshotConfig.GetSnapshotDataDeletionLimit()),
 	)
 
 	return filesystem_snapshot.RegisterForExecution(
