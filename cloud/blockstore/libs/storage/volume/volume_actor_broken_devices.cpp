@@ -20,11 +20,9 @@ bool ShouldSkipVolumeHealthNotification(
     const TStorageConfig& config,
     const NProto::TVolumeMeta& meta)
 {
-    if (IsReliableDiskRegistryMediaKind(meta.GetConfig().GetStorageMediaKind()))
-    {
-        return true;
-    }
-    return !config.GetVolumeHealthNotificationEnabled();
+    return IsReliableDiskRegistryMediaKind(
+               meta.GetConfig().GetStorageMediaKind()) ||
+           !config.GetVolumeHealthNotificationEnabled();
 }
 
 }   // namespace
