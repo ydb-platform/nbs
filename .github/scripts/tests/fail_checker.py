@@ -1,72 +1,72 @@
 #!/usr/bin/env python3
-import os
+from __future__ import annotations
+
 import argparse
-from typing import List
-from junit_utils import iter_xml_files
+import logging
+import os
+from typing import TypeAlias
+
+from ..helpers import write_to_file_from_env
+from .junit_utils import iter_xml_files
+
+LOGGER = logging.getLogger(__name__)
+FailureRecord: TypeAlias = tuple[str, str]
+FailureLists: TypeAlias = tuple[
+    list[FailureRecord], list[FailureRecord], list[FailureRecord]
+]
 
 
-def write_to_file_from_env(key: str, value: str, env_var: str, is_secret: bool = False):
-    filename = os.environ.get(env_var)
-    if filename:
-        with open(filename, "a") as fp:
-            fp.write(f"{key}={value}\n")
-
-        print_with_secret_masked(
-            'echo "%s=%s" >> $%s (%s)', key, value, env_var, filename, is_secret
-        )
+def write_to_env(key: str, value: str, is_secret: bool = False) -> None:
+    write_to_file_from_env(LOGGER, key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
 
 
-def print_with_secret_masked(
-    msg: str, key: str, value: str, filename: str, is_secret: bool = False
-):
-    if is_secret:
-        value = "******"
-    print(f"{msg}: {key}={value} ({filename})")
+def collect_failures(paths: list[str]) -> FailureLists:
+    failed_list: list[FailureRecord] = []
+    build_failed_list: list[FailureRecord] = []
+    error_list: list[FailureRecord] = []
 
-
-# we are writing to FAIL_CHECKER_TEMP_FILE to get variable out of subshell
-# and then in test action we are reading it and writing to GITHUB_ENV because
-# writing to GITHUB_ENV requires root privileges
-def write_to_env(key: str, value: str, is_secret: bool = False):
-    write_to_file_from_env(key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
-
-
-def check_for_fail(paths: List[str]):
-    failed_list = []
-    build_failed_list = []
-    error_list = []
     for path in paths:
-        for fn, suite, case in iter_xml_files(path):
+        for fn, _suite, case in iter_xml_files(path):
             is_failure = case.find("failure") is not None
             is_error = case.find("error") is not None
             test_name = f"{case.get('classname')}/{case.get('name')}"
 
             if is_failure:
                 failed_list.append((test_name, fn))
-                if "skipped due to a failed build" in case.find("failure").text:
+                failure_text = case.find("failure").text or ""
+                if "skipped due to a failed build" in failure_text:
                     build_failed_list.append((test_name, fn))
             elif is_error:
                 error_list.append((test_name, fn))
 
+    return failed_list, build_failed_list, error_list
+
+
+def check_for_fail(paths: list[str]) -> None:
+    failed_list, build_failed_list, error_list = collect_failures(paths)
+
     if failed_list or error_list:
         print("::error::You have failed tests")
-        for t, fn in failed_list:
-            print(f"failure: {t} ({fn})")
-        for t, fn in error_list:
-            print(f"error: {t} ({fn})")
-        if len(build_failed_list) > 0:
-            os.environ["BUILD_FAILED_COUNT"] = str(len(build_failed_list))
-            write_to_env("BUILD_FAILED_COUNT", str(len(build_failed_list)))
+        for test_name, fn in failed_list:
+            print(f"failure: {test_name} ({fn})")
+        for test_name, fn in error_list:
+            print(f"error: {test_name} ({fn})")
+
+        if build_failed_list:
+            count = str(len(build_failed_list))
+            os.environ["BUILD_FAILED_COUNT"] = count
+            write_to_env("BUILD_FAILED_COUNT", count)
             raise SystemExit(237)
 
         raise SystemExit(1)
 
 
-def get_fail_dirs(paths: List[str]):
-    failed_list = set()
-    error_list = set()
+def get_fail_dirs(paths: list[str]) -> None:
+    failed_list: set[str] = set()
+    error_list: set[str] = set()
+
     for path in paths:
-        for fn, suite, case in iter_xml_files(path):
+        for _fn, _suite, case in iter_xml_files(path):
             is_failure = case.find("failure") is not None
             is_error = case.find("error") is not None
             test_name = f"{case.get('classname')}"
@@ -76,17 +76,21 @@ def get_fail_dirs(paths: List[str]):
                 error_list.add(test_name)
 
     if failed_list or error_list:
-        for t in failed_list:
-            print(t)
-        for t in error_list:
-            print(t)
+        for test_name in sorted(failed_list | error_list):
+            print(test_name)
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("path", nargs="+", help="jsuite xml reports directories")
     parser.add_argument("--paths-only", default=False, action="store_true")
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
+
     if args.paths_only:
         get_fail_dirs(args.path)
     else:
