@@ -11,6 +11,7 @@ import (
 	nfs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/mocks"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	nfs_client_mocks "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -28,6 +29,7 @@ var reEstablishedSession = nfs_client.Session{
 	SessionSeqNo: 2,
 	FileSystemID: "fs-1",
 	CheckpointId: "cp-1",
+	ClientID:     "client-1",
 }
 
 func newTestCtx() context.Context {
@@ -293,6 +295,90 @@ func TestSessionWithReEstablishGetNodeAttr(t *testing.T) {
 
 	_, err = s.GetNodeAttr(ctx, 1, "testfile")
 	require.ErrorIs(t, err, otherError)
+
+	sessionMock.AssertExpectations(t)
+	nfsMock.AssertExpectations(t)
+}
+
+func TestSessionWithReEstablishMaxRetriesExceeded(t *testing.T) {
+	ctx := newTestCtx()
+
+	sessionMock := nfs_mocks.NewSessionMock()
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+
+	testNode := nfs.Node{Name: "test"}
+
+	// All calls return invalid session error, exhausting retries.
+	sessionMock.On("CreateNode", mock.Anything, testNode).
+		Return(uint64(0), invalidSessionError).
+		Times(nfs.SessionReEstablishMaxRetries + 1)
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).
+		Times(nfs.SessionReEstablishMaxRetries)
+	sessionMock.On("SetSession", reEstablishedSession).
+		Times(nfs.SessionReEstablishMaxRetries)
+
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
+
+	_, err := s.CreateNode(ctx, testNode)
+	require.Error(t, err)
+
+	var retriableErr *errors.RetriableError
+	require.ErrorAs(t, err, &retriableErr)
+	require.ErrorIs(t, retriableErr.Err, invalidSessionError)
+
+	sessionMock.AssertExpectations(t)
+	nfsMock.AssertExpectations(t)
+}
+
+func TestSessionWithReEstablishSucceedsAfterTwoRetries(t *testing.T) {
+	ctx := newTestCtx()
+
+	sessionMock := nfs_mocks.NewSessionMock()
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+
+	testNode := nfs.Node{Name: "test"}
+
+	// First two calls return invalid session, third succeeds.
+	sessionMock.On("CreateNode", mock.Anything, testNode).
+		Return(uint64(0), invalidSessionError).Twice()
+	nfsMock.On(
+		"CreateSession",
+		mock.Anything,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	).Return(reEstablishedSession, nil).Twice()
+	sessionMock.On("SetSession", reEstablishedSession).Twice()
+	sessionMock.On("CreateNode", mock.Anything, testNode).
+		Return(uint64(42), nil).Once()
+
+	s := nfs.NewSessionWithReEstablish(
+		sessionMock,
+		nfsMock,
+		"fs-1",
+		"client-1",
+		"cp-1",
+		true,
+	)
+
+	nodeID, err := s.CreateNode(ctx, testNode)
+	require.NoError(t, err)
+	require.Equal(t, uint64(42), nodeID)
 
 	sessionMock.AssertExpectations(t)
 	nfsMock.AssertExpectations(t)

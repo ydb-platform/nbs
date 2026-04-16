@@ -6,6 +6,7 @@ import (
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nfs_protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -16,8 +17,9 @@ type Node nfs_client.Node
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	InvalidNodeID = uint64(nfs_protos.ENodeConstants_E_INVALID_NODE_ID)
-	RootNodeID    = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
+	InvalidNodeID                = uint64(nfs_protos.ENodeConstants_E_INVALID_NODE_ID)
+	RootNodeID                   = uint64(nfs_protos.ENodeConstants_E_ROOT_NODE_ID)
+	SessionReEstablishMaxRetries = 5
 )
 
 const (
@@ -210,17 +212,26 @@ func requestWithReEstablishSession[T any](
 	callback func() (T, error),
 ) (T, error) {
 
-	for {
-		result, err := callback()
+	var result T
+	var err error
+
+	for i := 0; i < SessionReEstablishMaxRetries+1; i++ {
+		result, err = callback()
 		if !isSessionInvalidError(err) {
 			return result, err
 		}
 
+		if i == SessionReEstablishMaxRetries {
+			continue
+		}
+
 		logging.Warn(
 			ctx,
-			"re-establishing invalid session for filesystem %v, checkpoint %v",
+			"re-establishing invalid session for filesystem %v, checkpoint %v, attempt %d/%d",
 			s.filesystemID,
 			s.checkpointID,
+			i+1,
+			SessionReEstablishMaxRetries,
 		)
 
 		newSession, err := s.nfs.CreateSession(
@@ -237,6 +248,8 @@ func requestWithReEstablishSession[T any](
 
 		s.impl.SetSession(newSession)
 	}
+
+	return result, errors.NewRetriableError(err)
 }
 
 func (s *sessionWithReEstablish) SetSession(
