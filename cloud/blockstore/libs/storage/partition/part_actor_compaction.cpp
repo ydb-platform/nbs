@@ -1106,6 +1106,25 @@ public:
         ECompactionTriggerKind TriggerKind;
         bool ThrottlingAllowed;
         bool FullCompaction;
+
+        TTriggerInfo(
+            ui64 rangeCount,
+            ui64 rangeThreshold,
+            ui64 diskCount,
+            ui64 diskThreshold,
+            TEvPartitionPrivate::ECompactionMode mode,
+            ECompactionTriggerKind triggerKind,
+            bool throttlingAllowed,
+            bool fullCompaction)
+            : RangeCount(rangeCount)
+            , RangeThreshold(rangeThreshold)
+            , DiskCount(diskCount)
+            , DiskThreshold(diskThreshold)
+            , Mode(mode)
+            , TriggerKind(triggerKind)
+            , ThrottlingAllowed(throttlingAllowed)
+            , FullCompaction(fullCompaction)
+        {}
     };
 
 public:
@@ -1151,7 +1170,7 @@ private:
                State.GetCleanupQueue().GetQueueBlocks();
     }
 
-    [[nodiscard]] ui64 GetDiskGarbage() const
+    [[nodiscard]] ui64 GetGarbagePercentage() const
     {
         return GetPercentage(State.GetUsedBlocksCount(), GetBlockCount());
     }
@@ -1196,9 +1215,9 @@ private:
         // Needed because compaction by blob count has priority over compaction
         // by garbage.
         bool fullCompaction =
-            GetDiskGarbage() >= Config->GetCompactionGarbageThreshold();
+            GetGarbagePercentage() >= Config->GetCompactionGarbageThreshold();
 
-        return TTriggerInfo{
+        return TTriggerInfo(
             TopRangeStat.BlobCount,
             State.GetMaxBlobsPerRange(),
             blobCount,
@@ -1206,7 +1225,7 @@ private:
             TEvPartitionPrivate::RangeCompaction,
             triggerKind,
             throttlingAllowed,
-            fullCompaction};
+            fullCompaction);
     }
 
     [[nodiscard]] std::optional<TTriggerInfo>
@@ -1239,7 +1258,7 @@ private:
 
         ECompactionTriggerKind triggerKind;
 
-        ui64 diskGarbage = GetDiskGarbage();
+        ui64 diskGarbage = GetGarbagePercentage();
         ui64 rangeGarbage = GetPercentage(
             TopGarbageRangeStat.UsedBlockCount,
             TopGarbageRangeStat.BlockCount);
@@ -1264,7 +1283,7 @@ private:
             triggerKind = ECompactionTriggerKind::ByGarbageBlocksPerRange;
         }
 
-        return TTriggerInfo{
+        return TTriggerInfo(
             rangeGarbage,
             Config->GetCompactionRangeGarbageThreshold(),
             diskGarbage,
@@ -1272,11 +1291,40 @@ private:
             TEvPartitionPrivate::GarbageCompaction,
             triggerKind,
             true /* throttlingAllowed */,
-            true /* fullCompaction */};
+            true /* fullCompaction */);
     }
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void IncrementCompactionCounterByTriggerKind(
+    TPartitionDiskCountersPtr& partCounters,
+    TCompactionTriggerer::ECompactionTriggerKind triggerKind)
+{
+    switch (triggerKind) {
+        case TCompactionTriggerer::ECompactionTriggerKind::ByBlobCountPerDisk:
+            partCounters->Cumulative.CompactionByBlobCountPerDisk.Increment(1);
+            break;
+        case TCompactionTriggerer::ECompactionTriggerKind::ByBlobCountPerRange:
+            partCounters->Cumulative.CompactionByBlobCountPerRange.Increment(1);
+            break;
+        case TCompactionTriggerer::ECompactionTriggerKind::ByReadStats:
+            partCounters->Cumulative.CompactionByReadStats.Increment(1);
+            break;
+        case TCompactionTriggerer::ECompactionTriggerKind::
+            ByGarbageBlocksPerDisk:
+            partCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(
+                1);
+            break;
+        case TCompactionTriggerer::ECompactionTriggerKind::
+            ByGarbageBlocksPerRange:
+            partCounters->Cumulative.CompactionByGarbageBlocksPerRange
+                .Increment(1);
+            break;
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1349,27 +1397,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    switch (info->TriggerKind) {
-        case TCompactionTriggerer::ECompactionTriggerKind::ByBlobCountPerDisk:
-            PartCounters->Cumulative.CompactionByBlobCountPerDisk.Increment(1);
-            break;
-        case TCompactionTriggerer::ECompactionTriggerKind::ByBlobCountPerRange:
-            PartCounters->Cumulative.CompactionByBlobCountPerRange.Increment(1);
-            break;
-        case TCompactionTriggerer::ECompactionTriggerKind::ByReadStats:
-            PartCounters->Cumulative.CompactionByReadStats.Increment(1);
-            break;
-        case TCompactionTriggerer::ECompactionTriggerKind::
-            ByGarbageBlocksPerDisk:
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(
-                1);
-            break;
-        case TCompactionTriggerer::ECompactionTriggerKind::
-            ByGarbageBlocksPerRange:
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerRange
-                .Increment(1);
-            break;
-    }
+    IncrementCompactionCounterByTriggerKind(PartCounters, info->TriggerKind);
 
     State->GetCompactionState(ECompactionType::Tablet)
         .SetStatus(EOperationStatus::Enqueued);
