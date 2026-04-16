@@ -49,7 +49,7 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         TActorId statActorId)
-    : Config(config)
+    : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
