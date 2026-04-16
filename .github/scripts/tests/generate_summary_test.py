@@ -320,7 +320,7 @@ def test_update_pr_comment_workload_status_only_preserves_existing_body() -> Non
         def get_issue_comments(self) -> list[FakeComment]:
             return [self._comment]
 
-        def create_issue_comment(self, body: str) -> None:
+        def create_issue_comment(self, body: str) -> None:  # noqa: U100
             raise AssertionError("should not create a new comment")
 
     existing = FakeComment(
@@ -352,7 +352,9 @@ def test_update_pr_comment_workload_status_only_preserves_existing_body() -> Non
     assert len(existing.edits) == 1
     assert "Workload for **linux** is not finished yet" not in existing.body
     assert "All workloads for **linux** have completed." in existing.body
-    assert ":green_circle: **linux**: all tests PASSED for commit abc123." in existing.body
+    assert (
+        ":green_circle: **linux**: all tests PASSED for commit abc123." in existing.body
+    )
 
 
 def test_initialize_pr_comment_creates_workload_checks_block() -> None:
@@ -415,7 +417,7 @@ def test_update_pr_comment_workload_check_preserves_existing_job_url() -> None:
         def get_issue_comments(self) -> list[FakeComment]:
             return [self._comment]
 
-        def create_issue_comment(self, body: str) -> None:
+        def create_issue_comment(self, body: str) -> None:  # noqa: U100
             raise AssertionError("should not create a new comment")
 
     existing = FakeComment(
