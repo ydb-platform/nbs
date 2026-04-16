@@ -353,3 +353,96 @@ def test_update_pr_comment_workload_status_only_preserves_existing_body() -> Non
     assert "Workload for **linux** is not finished yet" not in existing.body
     assert "All workloads for **linux** have completed." in existing.body
     assert ":green_circle: **linux**: all tests PASSED for commit abc123." in existing.body
+
+
+def test_initialize_pr_comment_creates_workload_checks_block() -> None:
+    class FakeHead:
+        sha = "abc123"
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self) -> None:
+            self.created = []
+
+        def get_issue_comments(self) -> list[object]:
+            return []
+
+        def create_issue_comment(self, body: str) -> None:
+            self.created.append(body)
+
+    pr = FakePR()
+    gs.initialize_pr_comment(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        is_dry_run=False,
+        workload_status="in_progress",
+        workload_components=["blockstore", "tasks_storage"],
+    )
+
+    assert len(pr.created) == 1
+    body = pr.created[0]
+    assert gs.WORKLOAD_CHECKS_START in body
+    assert "Planned checks for **linux**." in body
+    assert "blockstore" in body
+    assert "tasks + storage" in body
+
+
+def test_update_pr_comment_workload_check_preserves_existing_job_url() -> None:
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        id = 1001
+
+        def __init__(self, body: str) -> None:
+            self.body = body
+            self.edits = []
+
+        def edit(self, body: str) -> None:
+            self.body = body
+            self.edits.append(body)
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self, comment: FakeComment) -> None:
+            self._comment = comment
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return [self._comment]
+
+        def create_issue_comment(self, body: str) -> None:
+            raise AssertionError("should not create a new comment")
+
+    existing = FakeComment(
+        "\n".join(
+            [
+                "<!-- status pr=77, run=12, build_preset=linux, dry_run=False -->",
+                gs.WORKLOAD_CHECKS_START,
+                gs.get_workload_check_line(
+                    "blockstore",
+                    "running",
+                    "https://github.example/job/123",
+                ),
+                gs.WORKLOAD_CHECKS_END,
+            ]
+        )
+    )
+    pr = FakePR(existing)
+
+    gs.update_pr_comment_workload_check(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        component="blockstore",
+        is_dry_run=False,
+        workload_check_status="completed",
+    )
+
+    assert len(existing.edits) == 1
+    assert ":white_check_mark:" in existing.body
+    assert "https://github.example/job/123" in existing.body

@@ -249,7 +249,7 @@ jobs:
         run: git config core.sparseCheckout false
         continue-on-error: true
       - name: set up dependencies
-        run: pip install -r .github/scripts/requirements_dev.txt
+        run: pip install -r .github/scripts/requirements.txt
       - name: finalize workload comments
         env:
           GITHUB_TOKEN: ${{ github.token }}
