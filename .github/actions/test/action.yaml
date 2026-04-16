@@ -448,6 +448,7 @@ runs:
             --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
             --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/" \
             --build-preset "${platform_name}-${BUILD_PRESET}" \
+            --workload-status in_progress \
             --test-target "${TEST_TARGET//\"/}" \
             --test-time $((TEST_END_TIME - TEST_START_TIME)) \
             "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"

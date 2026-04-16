@@ -105,7 +105,7 @@ jobs:
     runs-on: [ self-hosted, "${{ inputs.runner_kind }}", "${{ inputs.runner_label }}" ]
     outputs:
         sleep_after_tests: ${{ steps.failure.outputs.sleep_after_tests }}
-    timeout-minutes: 1440
+    timeout-minutes: 480
     steps:
     - name: Checkout PR
       uses: actions/checkout@v6

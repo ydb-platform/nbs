@@ -209,12 +209,15 @@ def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
         test_target="",
         test_time="0",
         is_dry_run=True,
+        workload_status="in_progress",
     )
 
     assert len(pr.created) == 1
     body = pr.created[0]
     assert "<!-- status pr=77, run=12, build_preset=linux, dry_run=True -->" in body
     assert "This is a simulation, not a real result" in body
+    assert "<!-- workload-status -->" in body
+    assert "Workload for **linux** is not finished yet" in body
     assert "all tests PASSED for commit deadbeef." in body
 
 
@@ -248,7 +251,22 @@ def test_update_pr_comment_updates_existing_comment() -> None:
             self.created.append(body)
 
     header = "<!-- status pr=77, run=12, build_preset=linux, dry_run=False -->"
-    existing = FakeComment(header + "\nold text")
+    existing = FakeComment(
+        "\n".join(
+            [
+                header,
+                "> [!NOTE]",
+                "> This is an automated comment that will be appended during run.",
+                "",
+                gs.WORKLOAD_STATUS_START,
+                "> [!NOTE]",
+                "> All workloads for **linux** have completed.",
+                gs.WORKLOAD_STATUS_END,
+                "",
+                "old text",
+            ]
+        )
+    )
     pr = FakePR(existing)
 
     summary = gs.TestSummary()
@@ -266,8 +284,72 @@ def test_update_pr_comment_updates_existing_comment() -> None:
         test_target="",
         test_time="0",
         is_dry_run=False,
+        workload_status="in_progress",
     )
 
     assert len(pr.created) == 0
     assert len(existing.edits) == 1
+    assert "All workloads for **linux** have completed." not in existing.body
+    assert "Workload for **linux** is not finished yet" in existing.body
+    assert "old text" in existing.body
     assert "some tests FAILED for commit abc123." in existing.body
+
+
+def test_update_pr_comment_workload_status_only_preserves_existing_body() -> None:
+    class FakeHead:
+        sha = "abc123"
+
+    class FakeComment:
+        id = 1001
+
+        def __init__(self, body: str) -> None:
+            self.body = body
+            self.edits = []
+
+        def edit(self, body: str) -> None:
+            self.body = body
+            self.edits.append(body)
+
+    class FakePR:
+        number = 77
+        head = FakeHead()
+
+        def __init__(self, comment: FakeComment) -> None:
+            self._comment = comment
+
+        def get_issue_comments(self) -> list[FakeComment]:
+            return [self._comment]
+
+        def create_issue_comment(self, body: str) -> None:
+            raise AssertionError("should not create a new comment")
+
+    existing = FakeComment(
+        "\n".join(
+            [
+                "<!-- status pr=77, run=12, build_preset=linux, dry_run=False -->",
+                "> [!NOTE]",
+                "> This is an automated comment that will be appended during run.",
+                "",
+                gs.WORKLOAD_STATUS_START,
+                "> [!IMPORTANT]",
+                "> Workload for **linux** is not finished yet. This comment will be updated after all workloads complete.",
+                gs.WORKLOAD_STATUS_END,
+                "",
+                ":green_circle: **linux**: all tests PASSED for commit abc123.",
+            ]
+        )
+    )
+    pr = FakePR(existing)
+
+    gs.update_pr_comment_workload_status(
+        run_number=12,
+        pr=pr,
+        build_preset="linux",
+        is_dry_run=False,
+        workload_status="completed",
+    )
+
+    assert len(existing.edits) == 1
+    assert "Workload for **linux** is not finished yet" not in existing.body
+    assert "All workloads for **linux** have completed." in existing.body
+    assert ":green_circle: **linux**: all tests PASSED for commit abc123." in existing.body

@@ -6,6 +6,7 @@ import dataclasses
 import json
 import logging
 import os
+import re
 import sys
 from contextlib import contextmanager
 from enum import Enum
@@ -23,6 +24,8 @@ LOGGER = logging.getLogger(__name__)
 TitlePathTriplet: TypeAlias = tuple[str, str, str]
 TitlePathPair: TypeAlias = tuple[str, str]
 LogUrls: TypeAlias = dict[str, str]
+WORKLOAD_STATUS_START = "<!-- workload-status -->"
+WORKLOAD_STATUS_END = "<!-- /workload-status -->"
 
 
 class IssueCommentLike(Protocol):
@@ -504,6 +507,66 @@ def get_comment_text(
     return body
 
 
+def get_workload_status_text(
+    build_preset: str,
+    workload_status: str,
+) -> list[str]:
+    if workload_status == "in_progress":
+        status_note = [
+            "> [!IMPORTANT]",
+            f"> Workload for **{build_preset}** is not finished yet. This comment will be updated after all workloads complete.",
+        ]
+    else:
+        status_note = [
+            "> [!NOTE]",
+            f"> All workloads for **{build_preset}** have completed.",
+        ]
+
+    return [WORKLOAD_STATUS_START, *status_note, WORKLOAD_STATUS_END]
+
+
+def get_comment_header(
+    pr_number: int,
+    run_number: int,
+    build_preset: str,
+    is_dry_run: bool,
+) -> str:
+    return (
+        f"<!-- status pr={pr_number}, run={run_number}, "
+        f"build_preset={build_preset}, dry_run={is_dry_run} -->"
+    )
+
+
+def replace_workload_status_block(
+    body: str,
+    build_preset: str,
+    workload_status: str,
+) -> str:
+    status_block = "\n".join(get_workload_status_text(build_preset, workload_status))
+    pattern = re.compile(
+        rf"{re.escape(WORKLOAD_STATUS_START)}.*?{re.escape(WORKLOAD_STATUS_END)}",
+        re.DOTALL,
+    )
+
+    if pattern.search(body):
+        return pattern.sub(status_block, body, count=1)
+
+    lines = body.splitlines()
+    insert_at = len(lines)
+    for idx, line in enumerate(lines):
+        if line.startswith("> [!NOTE]") or line.startswith("> [!IMPORTANT]"):
+            continue
+        if line.startswith("> This is "):
+            continue
+        if line == "":
+            continue
+        insert_at = idx
+        break
+
+    updated_lines = lines[:insert_at] + [status_block, ""] + lines[insert_at:]
+    return "\n".join(updated_lines)
+
+
 def update_pr_comment(
     run_number: int,
     pr: PullRequestLike,
@@ -513,8 +576,9 @@ def update_pr_comment(
     test_target: str,
     test_time: str,
     is_dry_run: bool,
+    workload_status: str,
 ) -> None:
-    header = f"<!-- status pr={pr.number}, run={run_number}, build_preset={build_preset}, dry_run={is_dry_run} -->"
+    header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
 
     body: list[str] | None = None
     comment: IssueCommentLike | None = None
@@ -544,8 +608,18 @@ def update_pr_comment(
                 "",
             ]
         )
+        body.extend(get_workload_status_text(build_preset, workload_status))
+        body.append("")
     else:
-        body.extend(["", ""])
+        body = [
+            replace_workload_status_block(
+                body[0],
+                build_preset,
+                workload_status,
+            ),
+            "",
+            "",
+        ]
 
     body.extend(
         get_comment_text(
@@ -566,6 +640,32 @@ def update_pr_comment(
     else:
         LOGGER.info("Updating existing comment")
         comment.edit(body)
+
+
+def update_pr_comment_workload_status(
+    run_number: int,
+    pr: PullRequestLike,
+    build_preset: str,
+    is_dry_run: bool,
+    workload_status: str,
+) -> None:
+    header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+
+    for comment in pr.get_issue_comments():
+        if not comment.body.startswith(header):
+            continue
+
+        LOGGER.info("Updating workload status for comment id=%s", comment.id)
+        comment.edit(
+            replace_workload_status_block(
+                comment.body,
+                build_preset,
+                workload_status,
+            )
+        )
+        return
+
+    LOGGER.info("No existing comment found for workload status update")
 
 
 def parse_title_html_path_args(args: list[str]) -> list[TitlePathTriplet]:
@@ -598,17 +698,34 @@ def main() -> None:
         help="Add mark in comments that this is simulation, not real result",
     )
     parser.add_argument("--test-time", default="0", required=False)
-    parser.add_argument("args", nargs="+", metavar="TITLE html_out path")
+    parser.add_argument(
+        "--workload-status",
+        choices=("in_progress", "completed"),
+        default="completed",
+        help="Update the PR comment workload state",
+    )
+    parser.add_argument(
+        "--update-workload-status-only",
+        default=False,
+        action="store_true",
+        help="Only update the workload status block in an existing PR comment",
+    )
+    parser.add_argument("args", nargs="*", metavar="TITLE html_out path")
     args = parser.parse_args()
 
-    try:
-        title_path = parse_title_html_path_args(args.args)
-    except ValueError as error:
-        LOGGER.error(str(error))
-        raise SystemExit(-1) from error
+    summary: TestSummary | None = None
+    if args.args:
+        try:
+            title_path = parse_title_html_path_args(args.args)
+        except ValueError as error:
+            LOGGER.error(str(error))
+            raise SystemExit(-1) from error
 
-    summary = gen_summary(args.summary_url_prefix, args.summary_out_path, title_path)
-    write_summary(summary, args.summary_out_env_path)
+        summary = gen_summary(args.summary_url_prefix, args.summary_out_path, title_path)
+        write_summary(summary, args.summary_out_env_path)
+    elif not args.update_workload_status_only:
+        LOGGER.error("No summary inputs provided")
+        raise SystemExit(-1)
 
     if os.environ.get("GITHUB_EVENT_NAME") not in (
         "pull_request",
@@ -626,16 +743,27 @@ def main() -> None:
 
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
     pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
-    update_pr_comment(
-        run_number,
-        pr,
-        summary,
-        args.build_preset,
-        args.test_history_url,
-        args.test_target,
-        args.test_time,
-        args.is_dry_run,
-    )
+    if args.update_workload_status_only:
+        update_pr_comment_workload_status(
+            run_number,
+            pr,
+            args.build_preset,
+            args.is_dry_run,
+            args.workload_status,
+        )
+    else:
+        assert summary is not None
+        update_pr_comment(
+            run_number,
+            pr,
+            summary,
+            args.build_preset,
+            args.test_history_url,
+            args.test_target,
+            args.test_time,
+            args.is_dry_run,
+            args.workload_status,
+        )
 
 
 if __name__ == "__main__":

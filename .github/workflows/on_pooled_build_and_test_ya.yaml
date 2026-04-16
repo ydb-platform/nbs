@@ -105,7 +105,7 @@ jobs:
   build-and-test:
     name: Build and test ${{ inputs.build_preset }}
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
-    timeout-minutes: 420
+    timeout-minutes: 480
     needs: calculate-runs-on
     outputs:
       # outcome failure and test_failed is null -> vm is broken
