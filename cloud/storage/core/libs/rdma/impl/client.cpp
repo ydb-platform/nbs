@@ -55,8 +55,6 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
-constexpr ui32 INVALID_REQUEST_ID = Max<ui32>();
-static_assert(RDMA_MAX_REQID < INVALID_REQUEST_ID);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -262,22 +260,28 @@ inline IOutputStream& operator<<(
     return out << GetEndpointStateName(state);
 }
 
-ui32 GetRequestId(const TSendWr& send) {
-    if (send.context == nullptr) {
-        return INVALID_REQUEST_ID;
-    }
-    return SafeCast<ui32>(reinterpret_cast<uintptr_t>(send.context));
-}
+////////////////////////////////////////////////////////////////////////////////
 
-ui32 GetRequestId(const TRecvWr& recv) {
-    return recv.Message<TResponseMessage>()->ReqId;
-}
-
-TString GetLogTitle(TStringBuf opcode, const TWorkRequestId& id, ui32 reqId)
+inline TString ToString(TSendWr* send)
 {
-    auto req = (reqId == INVALID_REQUEST_ID) ? "null" : ToString(reqId);
-    return TStringBuilder()
-           << opcode << " [wr=" << id << " reqId=" << req << "]: ";
+    auto out = TStringBuilder() << "SEND " << TWorkRequestId(send->wr.wr_id);
+    if (auto msg = send->Message<TRequestMessage>()) {
+        if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
+            out << " [request=" << msg->ReqId << "]";
+        }
+    }
+    return out;
+}
+
+inline TString ToString(TRecvWr* recv)
+{
+    auto out = TStringBuilder() << "RECV " << TWorkRequestId(recv->wr.wr_id);
+    if (auto msg = recv->Message<TResponseMessage>()) {
+        if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
+            out << " [request=" << msg->ReqId << "]";
+        }
+    }
+    return out;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -973,7 +977,7 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     auto cancelled = requests.DequeueIf(wasCancelled);
     cancelled.Append(QueuedRequests.DequeueIf(wasCancelled));
     while (auto req = cancelled.Dequeue()) {
-        RDMA_TRACE("cancel request " << req->ReqId);
+        RDMA_TRACE("request " << req->ReqId << " cancelled");
         Counters->RequestDequeued();
         AbortRequest(std::move(req), E_CANCELLED, "request was cancelled");
     }
@@ -981,7 +985,7 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
     // cancel active requests
     cancelled.Append(ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
     while (auto req = cancelled.Dequeue()) {
-        RDMA_TRACE("cancel request " << req->ReqId);
+        RDMA_TRACE("request " << req->ReqId << " cancelled");
         Counters->RequestAborted();
         AbortRequest(std::move(req), E_CANCELLED, "request was cancelled");
     }
@@ -1019,7 +1023,7 @@ void TClientEndpoint::AbortRequests() noexcept
     }
 
     while (auto req = ActiveRequests.Pop()) {
-        RDMA_DEBUG("abort request " << req->ReqId);
+        RDMA_DEBUG("request " << req->ReqId << " aborted");
         Counters->RequestAborted();
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
@@ -1149,24 +1153,20 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc) noexcept
     switch (wc->opcode) {
         case IBV_WC_SEND: {
             TSendWr* send = &SendWrs[id.Index];
-            RDMA_TRACE(
-                GetLogTitle("SEND", id, GetRequestId(*send)) << "completed");
+            RDMA_TRACE(ToString(send) << " completed");
             SendRequestCompleted(send);
             break;
         }
 
         case IBV_WC_RECV: {
             TRecvWr* recv = &RecvWrs[id.Index];
-            RDMA_TRACE(
-                GetLogTitle("RECV", id, GetRequestId(*recv)) << "completed");
+            RDMA_TRACE(ToString(recv) << " completed");
             RecvResponseCompleted(recv);
             break;
         }
 
         default:
-            RDMA_TRACE(
-                "HandleCompletionEvent: unhandled opcode "
-                << NVerbs::GetOpcodeName(wc->opcode));
+            RDMA_WARN("unhandled completion " << NVerbs::PrintCompletion(wc));
             break;
     }
 }
@@ -1175,7 +1175,6 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 {
     req->ReqId = ActiveRequests.CreateId();
 
-    auto id = TWorkRequestId(send->wr.wr_id);
     auto* requestMsg = send->Message<TRequestMessage>();
     Zero(*requestMsg);
 
@@ -1187,10 +1186,10 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
-        RDMA_TRACE(GetLogTitle("SEND", id, req->ReqId) << "posted");
+        RDMA_TRACE(ToString(send) << " posted");
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(GetLogTitle("SEND", id, req->ReqId) << e.what());
+        RDMA_ERROR(ToString(send) << " " << e.what());
         SendQueue.Push(send);
         Counters->Error();
         Counters->RequestEnqueued();
@@ -1212,7 +1211,8 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send) noexcept
 
 void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
 {
-    const ui32 reqId = GetRequestId(*send);
+    const ui32 reqId =
+        SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
 
     Counters->SendRequestCompleted();
     SendQueue.Push(send);
@@ -1228,16 +1228,15 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
 {
-    auto id = TWorkRequestId(recv->wr.wr_id);
     auto* responseMsg = recv->Message<TResponseMessage>();
     Zero(*responseMsg);
 
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
-        RDMA_TRACE(GetLogTitle("RECV", id, INVALID_REQUEST_ID) << "posted");
+        RDMA_TRACE(ToString(recv) << " posted");
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(GetLogTitle("RECV", id, INVALID_REQUEST_ID) << e.what());
+        RDMA_ERROR(ToString(recv) << " " << e.what());
         Counters->Error();
         RecvQueue.Push(recv);
         Disconnect();
@@ -1249,15 +1248,14 @@ void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
 
 void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
 {
-    const auto wrId = TWorkRequestId(recv->wr.wr_id);
     auto* msg = recv->Message<TResponseMessage>();
 
     int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR(
-            GetLogTitle("RECV", wrId, INVALID_REQUEST_ID)
-            << "incompatible protocol version " << version << ", expected "
-            << static_cast<int>(RDMA_PROTO_VERSION));
+            ToString(recv) << " incompatible protocol version " << version
+                           << ", expected "
+                           << static_cast<int>(RDMA_PROTO_VERSION));
         Counters->RecvResponseCompleted();
         Counters->Error();
         RecvResponse(recv);
@@ -1270,20 +1268,20 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
     const ui32 responseBytes = msg->ResponseBytes;
 
     Counters->RecvResponseCompleted();
-    RecvResponse(recv);
 
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
         RDMA_WARN(
-            GetLogTitle("RECV", wrId, reqId)
-            << "request not found, last active request id "
-            << ActiveRequests.GetCurrentId());
+            ToString(recv) << " request not found, last reqId="
+                           << ActiveRequests.GetCurrentId());
         Counters->Error();
+        RecvResponse(recv);
         return;
     }
-    Counters->RequestCompleted();
+    RDMA_TRACE("request " << reqId << " completed");
 
-    RDMA_TRACE("complete request " << reqId);
+    RecvResponse(recv);
+    Counters->RequestCompleted();
 
     LWTRACK(
         RecvResponseCompleted,
@@ -1762,7 +1760,7 @@ private:
                 DurationToCyclesSafe(Config->MaxResponseDelay));
 
             for (auto& request: requests) {
-                RDMA_DEBUG(endpoint->Log, "timeout request " << request->ReqId);
+                RDMA_DEBUG(endpoint->Log, "request " << request->ReqId << " timed out");
                 endpoint->Counters->RequestAborted();
                 endpoint->AbortRequest(
                     std::move(request),

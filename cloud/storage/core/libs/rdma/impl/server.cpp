@@ -42,7 +42,6 @@ namespace {
 
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Minutes(20);
 constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
-constexpr ui32 INVALID_REQUEST_ID = Max<ui32>();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -115,30 +114,41 @@ TRequestPtr ExtractRequest(TSendWr* send)
     return req;
 }
 
-ui32 GetRequestId(const TSendWr& send)
+TString GetOpcode(TSendWr* send)
 {
-    if (send.context == nullptr) {
-        return INVALID_REQUEST_ID;
+    auto opcode = "SEND";
+    if (auto* req = send->Context<TRequest*>()) {
+        if (req->State == ERequestState::ReadRequestData) {
+            opcode = "READ";
+        }
+        if (req->State == ERequestState::WriteResponseData) {
+            opcode = "WRITE";
+        }
     }
-    return static_cast<TRequest*>(send.context)->ReqId;
+    return opcode;
 }
 
-ui32 GetRequestId(const TRecvWr& recv)
+////////////////////////////////////////////////////////////////////////////////
+
+inline TString ToString(TSendWr* send)
 {
-    const auto* msg = recv.Message<TRequestMessage>();
-    const int version = ParseMessageHeader(msg);
-    if (version != RDMA_PROTO_VERSION) {
-        return INVALID_REQUEST_ID;
+    auto out = TStringBuilder();
+    out << GetOpcode(send) << " " << TWorkRequestId(send->wr.wr_id);
+    if (auto req = send->Context<TRequest*>()) {
+        out << " [request=" << req->ReqId << "]";
     }
-    return recv.Message<TRequestMessage>()->ReqId;
+    return out;
 }
 
-TString
-GetLogTitle(TStringBuf opcode, const TWorkRequestId& id, ui32 reqId)
+inline TString ToString(TRecvWr* recv)
 {
-    auto req = (reqId == INVALID_REQUEST_ID) ? "null" : ToString(reqId);
-    return TStringBuilder()
-           << opcode << " [wr=" << id << " reqId=" << req << "]: ";
+    auto out = TStringBuilder() << "RECV " << TWorkRequestId(recv->wr.wr_id);
+    if (auto msg = recv->Message<TRequestMessage>()) {
+        if (auto ver = ParseMessageHeader(msg); ver == RDMA_PROTO_VERSION) {
+            out << " [request=" << msg->ReqId << "]";
+        }
+    }
+    return out;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -355,7 +365,7 @@ private:
         ui32 status,
         TStringBuf message) noexcept;
     int ValidateCompletion(ibv_wc* wc) noexcept;
-    TString HandleSendError(TSendWr* send) noexcept;
+    void HandleSendError(TSendWr* send) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -580,7 +590,7 @@ void TServerSession::HandleQueuedRequests() noexcept
                 break;
 
             default:
-                Y_ABORT("unexpected state: %d", (int)req->State);
+                Y_ABORT("unexpected state %d", (int)req->State);
         }
     }
 }
@@ -637,19 +647,19 @@ int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
     auto id = TWorkRequestId(wc->wr_id);
 
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
+        auto* send = &SendWrs[id.Index];
+
         if (wc->status == IBV_WC_WR_FLUSH_ERR) {
-            auto opcode = HandleSendError(&SendWrs[id.Index]);
             RDMA_TRACE(
-                opcode << " " << id << " "
-                       << NVerbs::GetStatusString(wc->status));
+                ToString(send) << " " << NVerbs::GetStatusString(wc->status));
+            HandleSendError(send);
             return -1;
         }
 
         if (wc->status != IBV_WC_SUCCESS) {
-            auto opcode = HandleSendError(&SendWrs[id.Index]);
             RDMA_ERROR(
-                opcode << " " << id << " "
-                       << NVerbs::GetStatusString(wc->status));
+                ToString(send) << " " << NVerbs::GetStatusString(wc->status));
+            HandleSendError(send);
             Counters->Error();
             return -1;
         }
@@ -657,10 +667,10 @@ int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
         if (wc->opcode != IBV_WC_SEND && wc->opcode != IBV_WC_RDMA_READ &&
             wc->opcode != IBV_WC_RDMA_WRITE)
         {
-            auto opcode = HandleSendError(&SendWrs[id.Index]);
             RDMA_ERROR(
-                opcode << " " << id << " unexpected opcode "
-                       << NVerbs::GetOpcodeName(wc->opcode));
+                ToString(send)
+                << " unexpected opcode " << NVerbs::GetOpcodeName(wc->opcode));
+            HandleSendError(send);
             Counters->Error();
             return -1;
         }
@@ -669,30 +679,32 @@ int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
     }
 
     if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
+        auto* recv = &RecvWrs[id.Index];
+
         if (wc->status == IBV_WC_WR_FLUSH_ERR) {
             RDMA_TRACE(
-                "RECV " << id << " " << NVerbs::GetStatusString(wc->status));
+                ToString(recv) << " " << NVerbs::GetStatusString(wc->status));
             Counters->RecvRequestCompleted();
-            RecvQueue.Push(&RecvWrs[id.Index]);
+            RecvQueue.Push(recv);
             return -1;
         }
 
         if (wc->status != IBV_WC_SUCCESS) {
             RDMA_ERROR(
-                "RECV " << id << " " << NVerbs::GetStatusString(wc->status));
+                ToString(recv) << " " << NVerbs::GetStatusString(wc->status));
             Counters->Error();
             Counters->RecvRequestCompleted();
-            RecvQueue.Push(&RecvWrs[id.Index]);
+            RecvQueue.Push(recv);
             return -1;
         }
 
         if (wc->opcode != IBV_WC_RECV) {
             RDMA_ERROR(
-                "RECV " << id << " unexpected opcode "
-                        << NVerbs::GetOpcodeName(wc->opcode));
+                ToString(recv)
+                << " unexpected opcode " << NVerbs::GetOpcodeName(wc->opcode));
             Counters->Error();
             Counters->RecvRequestCompleted();
-            RecvQueue.Push(&RecvWrs[id.Index]);
+            RecvQueue.Push(recv);
             return -1;
         }
 
@@ -716,40 +728,34 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
     switch (wc->opcode) {
         case IBV_WC_RECV: {
             TRecvWr* recv = &RecvWrs[id.Index];
-            RDMA_TRACE(
-                GetLogTitle("RECV", id, GetRequestId(*recv)) << "completed");
+            RDMA_TRACE(ToString(recv) << " completed");
             RecvRequestCompleted(recv);
             break;
         }
 
         case IBV_WC_RDMA_READ: {
             TSendWr* send = &SendWrs[id.Index];
-            RDMA_TRACE(
-                GetLogTitle("READ", id, GetRequestId(*send)) << "completed");
+            RDMA_TRACE(ToString(send) << " completed");
             ReadRequestDataCompleted(send);
             break;
         }
 
         case IBV_WC_RDMA_WRITE: {
             TSendWr* send = &SendWrs[id.Index];
-            RDMA_TRACE(
-                GetLogTitle("WRITE", id, GetRequestId(*send)) << "completed");
+            RDMA_TRACE(ToString(send) << " completed");
             WriteResponseDataCompleted(send);
             break;
         }
 
         case IBV_WC_SEND: {
             TSendWr* send = &SendWrs[id.Index];
-            RDMA_TRACE(
-                GetLogTitle("SEND", id, GetRequestId(*send)) << "completed");
+            RDMA_TRACE(ToString(send) << " completed");
             SendResponseCompleted(send);
             break;
         }
 
         default:
-            RDMA_TRACE(
-                "HandleCompletionEvent: unhandled opcode "
-                << NVerbs::GetOpcodeName(wc->opcode));
+            RDMA_WARN("unhandled completion " << NVerbs::PrintCompletion(wc));
             break;
     }
 }
@@ -761,20 +767,10 @@ void TServerSession::RecvRequest(TRecvWr* recv) noexcept
 
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
-        RDMA_TRACE(
-            GetLogTitle(
-                "RECV",
-                TWorkRequestId(recv->wr.wr_id),
-                INVALID_REQUEST_ID)
-            << "posted");
+        RDMA_TRACE(ToString(recv) << " posted");
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            GetLogTitle(
-                "RECV",
-                TWorkRequestId(recv->wr.wr_id),
-                GetRequestId(*recv))
-            << e.what());
+        RDMA_ERROR(ToString(recv) << " " << e.what());
         Counters->Error();
         return;
     }
@@ -782,23 +778,22 @@ void TServerSession::RecvRequest(TRecvWr* recv) noexcept
     Counters->RecvRequestStarted();
 }
 
-TString TServerSession::HandleSendError(TSendWr* send) noexcept
+void TServerSession::HandleSendError(TSendWr* send) noexcept
 {
-    auto opcode = "SEND";
     auto req = ExtractRequest(send);
     if (req) {
         if (req->State == ERequestState::ReadRequestData) {
             Counters->ReadRequestCompleted();
-            opcode = "READ";
         }
         if (req->State == ERequestState::WriteResponseData) {
             Counters->WriteResponseCompleted();
-            opcode = "WRITE";
+        }
+        if (req->State == ERequestState::SendResponse) {
+            Counters->SendResponseCompleted();
         }
     }
     Counters->RequestAborted();
     FreeRequest(std::move(req), send);
-    return opcode;
 }
 
 void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
@@ -819,12 +814,9 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
 
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR(
-            GetLogTitle(
-                "RECV",
-                TWorkRequestId(recv->wr.wr_id),
-                INVALID_REQUEST_ID)
-            << "incompatible protocol version " << version << ", expected "
-            << static_cast<int>(RDMA_PROTO_VERSION));
+            ToString(recv) << " incompatible protocol version " << version
+                           << ", expected "
+                           << static_cast<int>(RDMA_PROTO_VERSION));
 
         Counters->RecvRequestCompleted();
         Counters->Error();
@@ -858,6 +850,8 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
                 req->ReqId)
             << " request exceeds maximum supported size " << req->In.Length
             << " > " << Config->MaxBufferSize);
+            ToString(recv) << " request exceeds maximum supported size "
+                           << req->In.Length << " > " << Config->MaxBufferSize);
 
         Counters->Error();
         RejectRequest(
@@ -869,12 +863,9 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
 
     if (req->Out.Length > Config->MaxBufferSize) {
         RDMA_ERROR(
-            GetLogTitle(
-                "RECV",
-                TWorkRequestId(recv->wr.wr_id),
-                req->ReqId)
-            << "response exceeds maximum supported size " << req->Out.Length
-            << " > " << Config->MaxBufferSize);
+            ToString(recv) << "response exceeds maximum supported size "
+                           << req->Out.Length << " > "
+                           << Config->MaxBufferSize);
 
         Counters->Error();
         RejectRequest(
@@ -888,12 +879,9 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
         RDMA_INFO(
             LogThrottler.Inflight,
             Log,
-            GetLogTitle(
-                "RECV",
-                TWorkRequestId(recv->wr.wr_id),
-                req->ReqId)
-                << "reached inflight limit, " << MaxInflightBytes << "/"
-                << Config->MaxInflightBytes << " bytes available");
+            ToString(recv) << "reached inflight limit, " << MaxInflightBytes
+                           << "/" << Config->MaxInflightBytes
+                           << " bytes available");
 
         Counters->RequestThrottled();
         RejectRequest(std::move(req), RDMA_PROTO_THROTTLED, "throttled");
@@ -913,9 +901,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             ReadRequestData(std::move(req), send);
         } else {
             // no more WRs available
-            RDMA_TRACE(
-                GetLogTitle("RECV", TWorkRequestId(recv->wr.wr_id), req->ReqId)
-                << "no more send WRs available");
+            RDMA_TRACE(ToString(recv) << "no more send WRs available");
             Counters->RequestEnqueued();
             QueuedRequests.Enqueue(std::move(req));
         }
@@ -971,28 +957,21 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
     wr.wr.rdma.remote_addr = req->In.Address;
 
     try {
+        auto& cc = req->CallContext;
+
+        StoreRequest(send, std::move(req));
         Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE(
-            GetLogTitle("READ", TWorkRequestId(wr.wr_id), req->ReqId)
-            << "posted");
+        RDMA_TRACE(ToString(send) << " posted");
+
+        LWTRACK(ReadRequestDataStarted, cc->LWOrbit, cc->RequestId);
+        Counters->ReadRequestStarted();
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            GetLogTitle("READ", TWorkRequestId(wr.wr_id), req->ReqId)
-            << e.what());
+        RDMA_ERROR(ToString(send) << " " << e.what());
         Counters->Error();
-        FreeRequest(std::move(req), send);
+        HandleSendError(send);
         return;
     }
-
-    Counters->ReadRequestStarted();
-
-    LWTRACK(
-        ReadRequestDataStarted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
-
-    StoreRequest(send, std::move(req));
 }
 
 void TServerSession::ReadRequestDataCompleted(TSendWr* send) noexcept
@@ -1064,29 +1043,21 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
     wr.wr.rdma.remote_addr = req->Out.Address;
 
     try {
+        auto& cc = req->CallContext;
+
+        StoreRequest(send, std::move(req));
         Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE(
-            GetLogTitle("WRITE", TWorkRequestId(wr.wr_id), req->ReqId)
-            << "posted");
+        RDMA_TRACE(ToString(send) << "posted");
+
+        LWTRACK(WriteResponseDataStarted, cc->LWOrbit, cc->RequestId);
+        Counters->WriteResponseStarted();
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            GetLogTitle("WRITE", TWorkRequestId(wr.wr_id), req->ReqId)
-            << e.what());
+        RDMA_ERROR(ToString(send) << " " << e.what());
         Counters->Error();
-        Counters->RequestAborted();
-        FreeRequest(std::move(req), send);
+        HandleSendError(send);
         return;
     }
-
-    Counters->WriteResponseStarted();
-
-    LWTRACK(
-        WriteResponseDataStarted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
-
-    StoreRequest(send, std::move(req));
 }
 
 void TServerSession::WriteResponseDataCompleted(TSendWr* send) noexcept
@@ -1126,32 +1097,21 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
     responseMsg->ResponseBytes = req->ResponseBytes;
 
     try {
+        auto& cc = req->CallContext;
+
+        StoreRequest(send, std::move(req));
         Verbs->PostSend(Connection->qp, &send->wr);
-        RDMA_TRACE(
-            GetLogTitle("SEND", TWorkRequestId(send->wr.wr_id), req->ReqId)
-            << "posted");
+        RDMA_TRACE(ToString(send) << "posted");
+
+        LWTRACK(SendResponseStarted, cc->LWOrbit, cc->RequestId);
+        Counters->SendResponseStarted();
 
     } catch (const TServiceError& e) {
-        RDMA_ERROR(
-            GetLogTitle(
-                "SEND",
-                TWorkRequestId(send->wr.wr_id),
-                INVALID_REQUEST_ID)
-            << e.what());
+        RDMA_ERROR(ToString(send) << " " << e.what());
         Counters->Error();
-        Counters->RequestAborted();
-        FreeRequest(std::move(req), send);
+        HandleSendError(send);
         return;
     }
-
-    Counters->SendResponseStarted();
-
-    LWTRACK(
-        SendResponseStarted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
-
-    StoreRequest(send, std::move(req));
 }
 
 void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
@@ -1159,12 +1119,7 @@ void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        RDMA_WARN(
-            GetLogTitle(
-                "SEND",
-                TWorkRequestId(send->wr.wr_id),
-                INVALID_REQUEST_ID)
-            << "request is empty");
+        RDMA_WARN(ToString(send) << " request is empty");
         return;
     }
 

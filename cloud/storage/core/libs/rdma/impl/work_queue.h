@@ -67,9 +67,9 @@ struct TSendWr
     }
 
     template <typename T>
-    const T* Message() const
+    T Context()
     {
-        return const_cast<const T*>(const_cast<TSendWr*>(this)->Message<T>());
+        return reinterpret_cast<T>(context);
     }
 };
 
