@@ -258,7 +258,7 @@ private:
     TLog Log;
     IFileStoreServicePtr Client;
     IShmControlPtr ShmControl_;
-    IFileStoreServicePtr ShmClient_;
+    IShmDataClientPtr ShmClient_;
     ISessionPtr Session;
 
     TString FileSystemId;
@@ -570,7 +570,6 @@ private:
                         std::max(
                             (ui64)spec.GetReadBytes(),
                             (ui64)spec.GetWriteBytes()),
-                        Client,
                         ShmControl_,
                         Session,
                         Scheduler,

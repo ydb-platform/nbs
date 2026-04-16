@@ -54,7 +54,7 @@ private:
     ISessionPtr Session;
     // When set, data IO (ReadData/WriteData) is routed through this client
     // instead of Session (used for SHM transport).
-    IFileStoreServicePtr DataClient;
+    IShmDataClientPtr DataClient;
 
     TVector<std::pair<ui64, NProto::EAction>> Actions;
     ui64 TotalRate = 0;
@@ -73,7 +73,7 @@ public:
             NProto::TDatashardLikeLoadSpec spec,
             ILoggingServicePtr logging,
             ISessionPtr session,
-            IFileStoreServicePtr dataClient,
+            IShmDataClientPtr dataClient,
             TString filesystemId,
             NProto::THeaders headers)
         : Spec(std::move(spec))

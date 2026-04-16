@@ -6,7 +6,10 @@
 #include <cloud/filestore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
+#include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+
+#include <library/cpp/threading/future/future.h>
 
 #include <memory>
 #include <util/generic/string.h>
@@ -15,23 +18,37 @@ namespace NCloud::NFileStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Creates a wrapper around `inner` that:
-// - On Start(): creates/truncates the file at `fullFilePath`, mmaps it locally,
-//   calls Mmap RPC on `shmControl` with the same path to register the region
-//   with the server, and schedules periodic PingMmapRegion calls to keep it alive.
-// - On WriteData(): copies data from the request buffer into the shared memory
-//   region, replaces the buffer with an iovec pointing into the region, and
-//   forwards the request to `dataOps` (session-aware transport for headers).
-// - On ReadData(): adds an iovec pointing into the shared memory region and
-//   forwards the request to `dataOps`; on response, copies data from the region
-//   into the response buffer.
-// - On Stop(): unmaps the local memory and calls Munmap RPC on `shmControl`.
+// Minimal interface for SHM-backed data I/O.
+struct IShmDataClient
+    : public IStartable
+{
+    virtual NThreading::TFuture<NProto::TReadDataResponse> ReadData(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request) = 0;
 
-IFileStoreServicePtr CreateSharedMemoryClient(
+    virtual NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request) = 0;
+};
+
+using IShmDataClientPtr = std::shared_ptr<IShmDataClient>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Creates a shared-memory data client that:
+// - On Start(): creates/truncates the file at `fullFilePath`, mmaps it locally,
+//   calls Mmap RPC on `shmControl` to register the region with the server, and
+//   schedules periodic PingMmapRegion calls to keep it alive.
+// - On WriteData(): copies data into the shared memory region and forwards the
+//   request (with an iovec) to `dataOps`.
+// - On ReadData(): adds an iovec into the shared memory region, forwards to
+//   `dataOps`, and copies the response data out of the region.
+// - On Stop(): calls Munmap RPC on `shmControl` and unmaps local memory.
+
+IShmDataClientPtr CreateSharedMemoryClient(
     TString fullFilePath,
     ui64 shmSize,
     ui64 slotSize,
-    IFileStoreServicePtr inner,
     IShmControlPtr shmControl,
     std::shared_ptr<IFileStore> dataOps,
     ISchedulerPtr scheduler,

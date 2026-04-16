@@ -2,10 +2,10 @@ import json
 import logging
 import os
 import pathlib
+import requests
 import tempfile
 
 import google.protobuf.text_format as text_format
-import requests
 
 import yatest.common as common
 

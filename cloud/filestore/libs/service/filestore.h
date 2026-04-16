@@ -127,9 +127,6 @@ struct IFileStoreService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Narrow interface for shared-memory transport control RPCs.
-// Implemented by a dedicated gRPC client; not part of IFileStoreService so
-// that implementations that don't support SHM need not stub these out.
 struct IShmControl
     : public IStartable
 {
