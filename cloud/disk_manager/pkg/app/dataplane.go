@@ -115,6 +115,7 @@ func initFilesystemDataplane(
 	traversalStorage := traversal_storage.NewStorage(
 		filesystemDB,
 		traversalConfig.GetStorageFolder(),
+		traversalConfig.GetTraversalQueueDeletionLimit(),
 	)
 
 	err := scrubbing.RegisterForExecution(
