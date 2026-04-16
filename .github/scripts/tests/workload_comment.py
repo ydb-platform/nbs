@@ -53,19 +53,39 @@ def get_run_url() -> str:
     return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
 
 
+def job_name_matches(expected_name: str, actual_name: str) -> bool:
+    if actual_name == expected_name:
+        return True
+
+    reusable_prefix = f"/ {expected_name}"
+    if actual_name.endswith(reusable_prefix):
+        return True
+
+    return False
+
+
 def find_current_job_url(current_job_name: str, runner_name: str) -> str:
     try:
         jobs = fetch_jobs()
     except HTTPError:
         return get_run_url()
 
-    for job in jobs:
-        if job.get("name") != current_job_name:
-            continue
-        if runner_name and job.get("runner_name") != runner_name:
-            continue
-        if job.get("status") not in ("queued", "in_progress", "completed"):
-            continue
+    matching_jobs = [
+        job
+        for job in jobs
+        if job_name_matches(current_job_name, job.get("name", ""))
+        and job.get("status") in ("queued", "in_progress", "completed")
+    ]
+
+    if runner_name:
+        for job in matching_jobs:
+            if job.get("runner_name") != runner_name:
+                continue
+            html_url = job.get("html_url")
+            if html_url:
+                return html_url
+
+    for job in matching_jobs:
         html_url = job.get("html_url")
         if html_url:
             return html_url
