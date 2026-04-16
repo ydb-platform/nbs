@@ -671,10 +671,10 @@ void TClientEndpoint::CreateQP()
 
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        Config.SendQueueSize +  Config.RecvQueueSize,     // send + recv
+        Config.SendQueueSize + Config.RecvQueueSize,   // send + recv
         this,
         CompletionChannel.get(),
-        0);                       // comp_vector
+        0);   // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,

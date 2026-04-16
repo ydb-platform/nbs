@@ -33,7 +33,7 @@ NRdma::EWaitMode Convert(NProto::EWaitMode mode)
 
 TClientConfig::TClientConfig()
 {
-    // Compatibility with old config.
+    // Compatibility with the old config.
     if (SendQueueSize == 0 && QueueSize > 0) {
         SendQueueSize = QueueSize;
     }
@@ -73,7 +73,7 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
     SET_NESTED(BufferPool, MaxChunkAlloc);
     SET_NESTED(BufferPool, MaxFreeChunks);
 
-    // Compatibility with old config.
+    // Compatibility with the old config.
     if (SendQueueSize == 0 && QueueSize > 0) {
         SendQueueSize = QueueSize;
     }
