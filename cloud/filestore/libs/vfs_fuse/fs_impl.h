@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include "config.h"
-#include "directory_handles_storage.h"
+#include "directory_handles_manager.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
@@ -30,10 +30,6 @@
 #include <util/system/mutex.h>
 
 namespace NCloud::NFileStore::NFuse {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TDirectoryHandle;
 
 struct TRangeLock
 {
@@ -95,17 +91,13 @@ private:
 
     TNodeCache NodeCache;
 
-    THashMap<ui64, std::shared_ptr<TDirectoryHandle>> DirectoryHandles;
-    TMutex DirectoryHandlesLock;
-    TDirectoryHandlesStatsPtr DirectoryHandlesStats;
+    std::unique_ptr<TDirectoryHandlesManager> DirectoryHandlesManager;
 
     TXAttrCache XAttrCache;
     TMutex XAttrCacheLock;
 
     THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
-
-    TDirectoryHandlesStoragePtr DirectoryHandlesStorage;
 
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;

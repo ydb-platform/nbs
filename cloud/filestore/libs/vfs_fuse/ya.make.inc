@@ -1,5 +1,6 @@
 SRCS(
     config.cpp
+    directory_handles_manager.cpp
     directory_handles_stats.cpp
     directory_handles_storage.cpp
     fs.cpp
