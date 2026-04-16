@@ -26,6 +26,8 @@ TitlePathPair: TypeAlias = tuple[str, str]
 LogUrls: TypeAlias = dict[str, str]
 WORKLOAD_STATUS_START = "<!-- workload-status -->"
 WORKLOAD_STATUS_END = "<!-- /workload-status -->"
+WORKLOAD_CHECKS_START = "<!-- workload-checks -->"
+WORKLOAD_CHECKS_END = "<!-- /workload-checks -->"
 
 
 class IssueCommentLike(Protocol):
@@ -537,6 +539,62 @@ def get_comment_header(
     )
 
 
+def get_workload_label(component: str) -> str:
+    if component == "all":
+        return "all"
+    if component == "none":
+        return "sanitized"
+    return component.replace("_", " + ")
+
+
+def get_workload_check_marker(component: str) -> str:
+    return f"<!-- workload-check component={component} -->"
+
+
+def get_workload_check_line(
+    component: str,
+    status: str,
+    job_url: str = "",
+) -> str:
+    icons = {
+        "pending": ":white_circle:",
+        "running": ":hourglass_flowing_sand:",
+        "completed": ":white_check_mark:",
+    }
+    label = get_workload_label(component)
+    if job_url:
+        label = f"[{label}]({job_url})"
+    return f"- {icons[status]} {label} {get_workload_check_marker(component)}"
+
+
+def get_workload_checks_text(
+    build_preset: str,
+    components: list[str],
+) -> list[str]:
+    return [
+        WORKLOAD_CHECKS_START,
+        "> [!TIP]",
+        f"> Planned checks for **{build_preset}**.",
+        "",
+        *[get_workload_check_line(component, "pending") for component in components],
+        WORKLOAD_CHECKS_END,
+    ]
+
+
+def _insert_managed_block(
+    body: str,
+    block: str,
+    *,
+    after_marker: str,
+) -> str:
+    if after_marker in body:
+        return body.replace(after_marker, f"{after_marker}\n\n{block}", 1)
+
+    lines = body.splitlines()
+    lines.extend(["", block])
+    return "\n".join(lines)
+
+
 def replace_workload_status_block(
     body: str,
     build_preset: str,
@@ -567,6 +625,105 @@ def replace_workload_status_block(
     return "\n".join(updated_lines)
 
 
+def replace_workload_checks_block(
+    body: str,
+    build_preset: str,
+    components: list[str],
+) -> str:
+    checks_block = "\n".join(get_workload_checks_text(build_preset, components))
+    pattern = re.compile(
+        rf"{re.escape(WORKLOAD_CHECKS_START)}.*?{re.escape(WORKLOAD_CHECKS_END)}",
+        re.DOTALL,
+    )
+    if pattern.search(body):
+        return pattern.sub(checks_block, body, count=1)
+
+    return _insert_managed_block(
+        body,
+        checks_block,
+        after_marker=WORKLOAD_STATUS_END,
+    )
+
+
+def update_workload_check_block(
+    body: str,
+    component: str,
+    status: str,
+    job_url: str = "",
+) -> str:
+    marker = get_workload_check_marker(component)
+    pattern = re.compile(rf"^.*{re.escape(marker)}$", re.MULTILINE)
+    match = pattern.search(body)
+    if match is None:
+        return body
+    if not job_url:
+        job_url_match = re.search(r"\]\((?P<url>[^)]+)\)", match.group(0))
+        job_url = job_url_match.group("url") if job_url_match else ""
+    return pattern.sub(
+        get_workload_check_line(component, status, job_url),
+        body,
+        count=1,
+    )
+
+
+def complete_workload_checks_block(body: str) -> str:
+    pattern = re.compile(
+        r"^.*<!-- workload-check component=(?P<component>[^ ]+) -->$",
+        re.MULTILINE,
+    )
+
+    def _replace(match: re.Match[str]) -> str:
+        component = match.group("component")
+        job_url_match = re.search(r"\]\((?P<url>[^)]+)\)", match.group(0))
+        job_url = job_url_match.group("url") if job_url_match else ""
+        return get_workload_check_line(component, "completed", job_url)
+
+    return pattern.sub(_replace, body)
+
+
+def find_pr_comment(
+    pr: PullRequestLike,
+    header: str,
+) -> IssueCommentLike | None:
+    for comment in pr.get_issue_comments():
+        if comment.body.startswith(header):
+            LOGGER.info("Found comment with id=%s", comment.id)
+            return comment
+    return None
+
+
+def get_base_comment_body(
+    header: str,
+    build_preset: str,
+    is_dry_run: bool,
+    workload_status: str,
+    workload_components: list[str] | None = None,
+) -> list[str]:
+    body = [header]
+
+    if is_dry_run:
+        body.extend(
+            [
+                "> [!NOTE]",
+                "> This is a simulation, not a real result. If you see this, everything is as it should be.",
+                "",
+            ]
+        )
+    body.extend(
+        [
+            "> [!NOTE]",
+            "> This is an automated comment that will be appended during run.",
+            "",
+        ]
+    )
+    body.extend(get_workload_status_text(build_preset, workload_status))
+    body.append("")
+    if workload_components is not None:
+        body.extend(get_workload_checks_text(build_preset, workload_components))
+        body.append("")
+    return body
+
+
 def update_pr_comment(
     run_number: int,
     pr: PullRequestLike,
@@ -579,41 +736,19 @@ def update_pr_comment(
     workload_status: str,
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+    comment = find_pr_comment(pr, header)
 
-    body: list[str] | None = None
-    comment: IssueCommentLike | None = None
-
-    for c in pr.get_issue_comments():
-        if c.body.startswith(header):
-            LOGGER.info("Found comment with id=%s", c.id)
-            comment = c
-            body = [c.body]
-            break
-
-    if body is None:
-        body = [header]
-
-        if is_dry_run:
-            body.extend(
-                [
-                    "> [!NOTE]",
-                    "> This is a simulation, not a real result. If you see this, everything is as it should be.",
-                    "",
-                ]
-            )
-        body.extend(
-            [
-                "> [!NOTE]",
-                "> This is an automated comment that will be appended during run.",
-                "",
-            ]
+    if comment is None:
+        body = get_base_comment_body(
+            header,
+            build_preset,
+            is_dry_run,
+            workload_status,
         )
-        body.extend(get_workload_status_text(build_preset, workload_status))
-        body.append("")
     else:
         body = [
             replace_workload_status_block(
-                body[0],
+                comment.body,
                 build_preset,
                 workload_status,
             ),
@@ -650,22 +785,95 @@ def update_pr_comment_workload_status(
     workload_status: str,
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+    comment = find_pr_comment(pr, header)
 
-    for comment in pr.get_issue_comments():
-        if not comment.body.startswith(header):
-            continue
+    if comment is None:
+        LOGGER.info("No existing comment found for workload status update")
+        return
 
-        LOGGER.info("Updating workload status for comment id=%s", comment.id)
-        comment.edit(
-            replace_workload_status_block(
-                comment.body,
-                build_preset,
-                workload_status,
+    LOGGER.info("Updating workload status for comment id=%s", comment.id)
+    comment.edit(
+        replace_workload_status_block(
+            comment.body,
+            build_preset,
+            workload_status,
+        )
+    )
+
+def initialize_pr_comment(
+    run_number: int,
+    pr: PullRequestLike,
+    build_preset: str,
+    is_dry_run: bool,
+    workload_status: str,
+    workload_components: list[str],
+) -> None:
+    header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+    comment = find_pr_comment(pr, header)
+
+    if comment is None:
+        LOGGER.info("Creating new pre-run comment")
+        pr.create_issue_comment(
+            "\n".join(
+                get_base_comment_body(
+                    header,
+                    build_preset,
+                    is_dry_run,
+                    workload_status,
+                    workload_components,
+                )
             )
         )
         return
 
-    LOGGER.info("No existing comment found for workload status update")
+    LOGGER.info("Refreshing existing pre-run comment id=%s", comment.id)
+    body = replace_workload_status_block(comment.body, build_preset, workload_status)
+    body = replace_workload_checks_block(body, build_preset, workload_components)
+    comment.edit(body)
+
+
+def update_pr_comment_workload_check(
+    run_number: int,
+    pr: PullRequestLike,
+    build_preset: str,
+    component: str,
+    is_dry_run: bool,
+    workload_check_status: str,
+    job_url: str = "",
+) -> None:
+    header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+    comment = find_pr_comment(pr, header)
+
+    if comment is None:
+        LOGGER.info("No existing comment found for workload check update")
+        return
+
+    LOGGER.info("Updating workload check for comment id=%s", comment.id)
+    comment.edit(
+        update_workload_check_block(
+            comment.body,
+            component,
+            workload_check_status,
+            job_url,
+        )
+    )
+
+
+def complete_pr_comment_workload_checks(
+    run_number: int,
+    pr: PullRequestLike,
+    build_preset: str,
+    is_dry_run: bool,
+) -> None:
+    header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
+    comment = find_pr_comment(pr, header)
+
+    if comment is None:
+        LOGGER.info("No existing comment found for workload checks completion")
+        return
+
+    LOGGER.info("Completing workload checks for comment id=%s", comment.id)
+    comment.edit(complete_workload_checks_block(comment.body))
 
 
 def parse_title_html_path_args(args: list[str]) -> list[TitlePathTriplet]:

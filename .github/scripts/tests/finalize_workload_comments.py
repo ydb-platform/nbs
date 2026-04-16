@@ -58,10 +58,17 @@ def main() -> None:
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
 
     for build_preset in iter_build_presets(args.matrix_include):
+        full_build_preset = f"{args.platform_name}-{build_preset}"
+        gs.complete_pr_comment_workload_checks(
+            run_number=run_number,
+            pr=pr,
+            build_preset=full_build_preset,
+            is_dry_run=args.is_dry_run,
+        )
         gs.update_pr_comment_workload_status(
             run_number=run_number,
             pr=pr,
-            build_preset=f"{args.platform_name}-{build_preset}",
+            build_preset=full_build_preset,
             is_dry_run=args.is_dry_run,
             workload_status=args.workload_status,
         )

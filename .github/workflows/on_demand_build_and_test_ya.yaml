@@ -135,6 +135,19 @@ jobs:
         submodules: true
         clean: true
 
+    - name: mark workload as running
+      id: workload-comment
+      if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: running
+        current_job_name: Build and test ${{ inputs.build_preset }} [id=${{ inputs.runner_instance_id }} ip=${{ inputs.runner_ipv4 }}]
+        runner_name: ${{ runner.name }}
+        add_summary_link: yes
+
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:
@@ -207,3 +220,12 @@ jobs:
       uses: ./.github/actions/sleep
       with:
         sleep_after_tests: ${{ inputs.sleep_after_tests != '0' && inputs.sleep_after_tests || '7200' }}
+
+    - name: mark workload as completed
+      if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: completed

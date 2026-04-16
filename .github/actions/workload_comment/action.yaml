@@ -1,0 +1,100 @@
+name: Workload comment
+description: Initialize or update PR workload comments for split checks
+
+inputs:
+  command:
+    required: true
+    description: "init or update"
+  build_preset:
+    required: true
+    description: "Build preset suffix, for example relwithdebinfo"
+  matrix_include:
+    required: false
+    default: ""
+    description: "Matrix include JSON used by init"
+  workload_status:
+    required: false
+    default: "in_progress"
+    description: "Overall workload status for init"
+  component:
+    required: false
+    default: ""
+    description: "Matrix component for update"
+  workload_check_status:
+    required: false
+    default: ""
+    description: "running or completed"
+  current_job_name:
+    required: false
+    default: ""
+    description: "Current GitHub Actions job name for live link lookup"
+  runner_name:
+    required: false
+    default: ""
+    description: "Runner name for narrowing the current job lookup"
+  add_summary_link:
+    required: false
+    default: "no"
+    description: "Append resolved job link to GITHUB_STEP_SUMMARY"
+
+outputs:
+  job_url:
+    description: "Resolved GitHub Actions job URL"
+    value: ${{ steps.update.outputs.job_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: install dependencies
+      shell: bash
+      run: pip install -r .github/scripts/requirements.txt
+
+    - name: resolve build preset
+      id: build-preset
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "full_build_preset=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)-${{ inputs.build_preset }}" >> "$GITHUB_OUTPUT"
+
+    - name: initialize workload comment
+      if: ${{ inputs.command == 'init' }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+        python3 -m scripts.tests.workload_comment init \
+          --matrix-include '${{ inputs.matrix_include }}' \
+          --build-preset '${{ steps.build-preset.outputs.full_build_preset }}' \
+          --workload-status '${{ inputs.workload_status }}'
+
+    - name: update workload comment
+      if: ${{ inputs.command == 'update' }}
+      id: update
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+        JOB_URL_OUT=$(mktemp)
+        python3 -m scripts.tests.workload_comment update \
+          --build-preset '${{ steps.build-preset.outputs.full_build_preset }}' \
+          --component '${{ inputs.component }}' \
+          --workload-check-status '${{ inputs.workload_check_status }}' \
+          --current-job-name '${{ inputs.current_job_name }}' \
+          --runner-name '${{ inputs.runner_name }}' \
+          --job-url-out "$JOB_URL_OUT"
+        echo "job_url=$(cat "$JOB_URL_OUT")" >> "$GITHUB_OUTPUT"
+
+    - name: add job link to summary
+      if: ${{ inputs.command == 'update' && inputs.add_summary_link == 'yes' && steps.update.outputs.job_url != '' }}
+      shell: bash
+      run: |
+        {
+          echo "### GitHub job"
+          echo
+          echo "- [Build and test job](${{ steps.update.outputs.job_url }})"
+          echo
+        } >> "$GITHUB_STEP_SUMMARY"
