@@ -181,6 +181,10 @@ func scanNodeRefs(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	return nodes, nil
 }
 
@@ -225,6 +229,10 @@ func scanNodes(
 
 			attrs[node.NodeID] = node
 		}
+	}
+
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
 	}
 
 	return attrs, nil
@@ -673,6 +681,10 @@ func (s *storageYDB) getDestinationNodeIDs(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+
 	return result, nil
 }
 
@@ -847,6 +859,10 @@ func (s *storageYDB) listHardLinks(
 		}
 	}
 
+	if res.Err() != nil {
+		return nil, errors.NewRetriableError(res.Err())
+	}
+	
 	nodeIDs := make([]uint64, 0, len(nodes))
 	for _, node := range nodes {
 		nodeIDs = append(nodeIDs, node.NodeID)
