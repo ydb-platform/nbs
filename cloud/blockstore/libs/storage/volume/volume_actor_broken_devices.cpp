@@ -16,10 +16,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool ShouldSkipVolumeHealthNotification(const NProto::TVolumeMeta& meta)
+bool ShouldSkipVolumeHealthNotification(
+    const TStorageConfig& config,
+    const NProto::TVolumeMeta& meta)
 {
-    return IsReliableDiskRegistryMediaKind(
-        meta.GetConfig().GetStorageMediaKind());
+    if (IsReliableDiskRegistryMediaKind(meta.GetConfig().GetStorageMediaKind()))
+    {
+        return true;
+    }
+    return !config.GetVolumeHealthNotificationEnabled();
 }
 
 }   // namespace
@@ -78,7 +83,7 @@ void TVolumeActor::HandleBrokenDeviceNotification(
     const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ShouldSkipVolumeHealthNotification(State->GetMeta())) {
+    if (ShouldSkipVolumeHealthNotification(*Config, State->GetMeta())) {
         return;
     }
 
@@ -115,7 +120,7 @@ void TVolumeActor::HandleDeviceRecoveredNotification(
     const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ShouldSkipVolumeHealthNotification(State->GetMeta())) {
+    if (ShouldSkipVolumeHealthNotification(*Config, State->GetMeta())) {
         return;
     }
 
