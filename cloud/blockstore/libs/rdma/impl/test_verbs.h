@@ -5,6 +5,8 @@
 
 #include <library/cpp/deprecated/atomic/atomic.h>
 
+#include <optional>
+
 #include <util/generic/deque.h>
 #include <util/generic/vector.h>
 #include <util/system/spinlock.h>
@@ -12,6 +14,13 @@
 namespace NCloud::NBlockStore::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+struct TConnectRejectOverride
+{
+    ui16 Status = 0;
+    ui16 QueueSize = 0;
+    ui32 MaxBufferSize = 0;
+};
 
 struct TTestContext: TAtomicRefCount<TTestContext>
 {
@@ -37,6 +46,9 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     std::function<void(ibv_wc* wc)> HandleCompletionEvent;
     std::function<void(rdma_cm_id* id, ibv_qp_init_attr* attr)> CreateQP;
     std::function<void(rdma_cm_id* id, const void* data, ui8 size)> Reject;
+    std::function<void(const void* data, ui8 size)> OnConnect;
+
+    std::optional<TConnectRejectOverride> ConnectRejectOverride;
     std::function<
         TAddressInfoPtr(const TString& host, ui32 port, rdma_addrinfo* hints)>
         GetAddressInfo;

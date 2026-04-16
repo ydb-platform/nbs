@@ -136,4 +136,20 @@ TYPED_TEST(
     EXPECT_EQ(TTraits::DefaultQueueSize, config.RecvQueueSize);
 }
 
+TYPED_TEST(TQueueSizeCompatibilityTest, ShouldUseExplicitSendAndRecvQueueSize)
+{
+    using TTraits = TypeParam;
+    using TProto = typename TTraits::TProto;
+
+    TProto proto;
+    proto.SetQueueSize(0);
+    proto.SetSendQueueSize(32);
+    proto.SetRecvQueueSize(64);
+    const auto config = TTraits::Make(proto);
+
+    EXPECT_EQ(TTraits::DefaultQueueSize, config.QueueSize);
+    EXPECT_EQ(32u, config.SendQueueSize);
+    EXPECT_EQ(64u, config.RecvQueueSize);
+}
+
 }   // namespace NCloud::NBlockStore::NRdma

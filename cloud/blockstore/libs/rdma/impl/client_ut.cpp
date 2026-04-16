@@ -183,6 +183,169 @@ TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
         }
 }
 
+TEST(TRdmaClientTest, ShouldClampQueueSizesOnConfigMismatchWithStrictValidation)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    clientConfig->QueueSize = 4;
+    clientConfig->SendQueueSize = 1;
+    clientConfig->RecvQueueSize = 2;
+    clientConfig->MaxReconnectDelay = TDuration::Seconds(1);
+    clientConfig->MaxResponseDelay = TDuration::Seconds(1);
+    clientConfig->MaxBufferSize = 4_MB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    struct TQpCaps
+    {
+        ui32 Send = 0;
+        ui32 Recv = 0;
+    };
+
+    TSpinLock qpLock;
+    TVector<TQpCaps> createQPCaps;
+
+    TSpinLock connectLock;
+
+    struct TConnectSnapshot
+    {
+        ui16 SendQueueSize = 0;
+        ui16 RecvQueueSize = 0;
+        ui32 MaxBufferSize = 0;
+    };
+
+    TVector<TConnectSnapshot> connectSnapshots;
+
+    testContext->CreateQP = [&](rdma_cm_id* id, ibv_qp_init_attr* attr)
+    {
+        Y_UNUSED(id);
+        with_lock (qpLock) {
+            createQPCaps.push_back({
+                static_cast<ui32>(attr->cap.max_send_wr),
+                static_cast<ui32>(attr->cap.max_recv_wr),
+            });
+        }
+    };
+
+    testContext->OnConnect = [&](const void* data, ui8 size)
+    {
+        if (data == nullptr || size < sizeof(TConnectMessage)) {
+            return;
+        }
+
+        const auto* msg = static_cast<const TConnectMessage*>(data);
+        if (ParseMessageHeader(msg) != RDMA_PROTO_VERSION) {
+            return;
+        }
+
+        with_lock (connectLock) {
+            connectSnapshots.push_back({
+                static_cast<ui16>(msg->SendQueueSize),
+                static_cast<ui16>(msg->RecvQueueSize),
+                static_cast<ui32>(msg->MaxBufferSize),
+            });
+        }
+    };
+
+    auto client = CreateClient(verbs, logging, monitoring, clientConfig);
+
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    // Start endpoint and wait for successful initial connection so that
+    // subsequent reconnect attempts won't stop the endpoint on timeout.
+    auto clientEndpoint = client->StartEndpoint("::", 10020);
+    auto ep = clientEndpoint.GetValue(TDuration::Seconds(5));
+
+    // Wait until the initial connect attempt creates a QP with initial
+    // caps.
+    auto deadline = GetCycleCount() + DurationToCycles(TDuration::Seconds(10));
+    while (true) {
+        with_lock (qpLock) {
+            if (createQPCaps.size() >= 1) {
+                break;
+            }
+        }
+        SpinLockPause();
+        if (deadline < GetCycleCount()) {
+            FAIL() << "timeout waiting for initial QP caps";
+        }
+    }
+
+    with_lock (qpLock) {
+        ASSERT_GE(createQPCaps.size(), 1u);
+        ASSERT_EQ(1u, createQPCaps[0].Send);
+        ASSERT_EQ(2u, createQPCaps[0].Recv);
+    }
+
+    // Force reconnect attempt and reject it with CONFIG_MISMATCH.
+    testContext->AllowConnect = false;
+    Disconnect(testContext);
+
+    const ui16 serverQueueSize = 3;
+    const ui32 serverMaxBufferSize = 1_MB;
+
+    testContext->ConnectRejectOverride = NVerbs::TConnectRejectOverride{
+        .Status = RDMA_PROTO_CONFIG_MISMATCH,
+        .QueueSize = serverQueueSize,
+        .MaxBufferSize = serverMaxBufferSize,
+    };
+
+    deadline = GetCycleCount() + DurationToCycles(TDuration::Seconds(10));
+    bool sawClampedQpCaps = false;
+    while (!sawClampedQpCaps) {
+        if (deadline < GetCycleCount()) {
+            FAIL() << "timeout waiting for clamped QP caps";
+        }
+        with_lock (qpLock) {
+            for (const auto& caps: createQPCaps) {
+                if (caps.Send == 1 && caps.Recv == serverQueueSize) {
+                    sawClampedQpCaps = true;
+                    break;
+                }
+            }
+        }
+        SpinLockPause();
+    }
+
+    ASSERT_TRUE(sawClampedQpCaps);
+
+    // After config mismatch handling, the next connect attempts should use
+    // the updated (clamped) values in the outgoing connect message.
+    bool sawUpdatedConnectMessage = false;
+    deadline = GetCycleCount() + DurationToCycles(TDuration::Seconds(10));
+    while (!sawUpdatedConnectMessage) {
+        if (deadline < GetCycleCount()) {
+            FAIL() << "timeout waiting for updated connect message";
+        }
+        with_lock (connectLock) {
+            for (const auto& msg: connectSnapshots) {
+                if (msg.SendQueueSize == 1 &&
+                    msg.RecvQueueSize == serverQueueSize)
+                {
+                    ASSERT_EQ(serverMaxBufferSize, msg.MaxBufferSize);
+                    sawUpdatedConnectMessage = true;
+                    break;
+                }
+            }
+        }
+        SpinLockPause();
+    }
+
+    ASSERT_TRUE(sawUpdatedConnectMessage);
+
+    ep->Stop().Wait();
+}
+
 TEST(TRdmaClientTest, ShouldHandleGetAddressInfoError)
 {
         auto context = MakeIntrusive<NVerbs::TTestContext>();
