@@ -77,6 +77,7 @@ func (c *FilestoreClient) FindAll(filesystemID string) []FilestoreEntry {
 		if cmp := strings.Compare(a.DirPath, b.DirPath); cmp != 0 {
 			return cmp
 		}
+
 		return strings.Compare(a.Name, b.Name)
 	})
 
@@ -89,5 +90,6 @@ func (c *FilestoreClient) FindAllPaths(filesystemID string) []string {
 	for i, e := range entries {
 		paths[i] = fmt.Sprintf("%s%s", e.DirPath, e.Name)
 	}
+
 	return paths
 }
