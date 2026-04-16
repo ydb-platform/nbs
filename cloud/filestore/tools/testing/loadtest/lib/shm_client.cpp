@@ -95,7 +95,12 @@ public:
         }
 
         const ui64 len = buffer.size();
-        const ui64 shmOffset = AllocateShmSlot(len);
+        Y_ABORT_UNLESS(
+            len <= SlotSize,
+            "buffer size %lu exceeds slot size %lu",
+            len,
+            SlotSize);
+        const ui64 shmOffset = AllocateShmSlot();
 
         memcpy(static_cast<char*>(LocalAddr) + shmOffset, buffer.data(), len);
         request.ClearBuffer();
@@ -113,7 +118,12 @@ public:
         }
 
         const ui64 len = request.GetLength();
-        const ui64 shmOffset = AllocateShmSlot(len);
+        Y_ABORT_UNLESS(
+            len <= SlotSize,
+            "request length %lu exceeds slot size %lu",
+            len,
+            SlotSize);
+        const ui64 shmOffset = AllocateShmSlot();
 
         auto* iovec = request.AddIovecs();
         iovec->SetBase(shmOffset);
@@ -201,7 +211,7 @@ private:
             });
     }
 
-    ui64 AllocateShmSlot(ui64 /*size*/)
+    ui64 AllocateShmSlot()
     {
         if (NumSlots == 0) {
             return 0;

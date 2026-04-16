@@ -18,8 +18,11 @@ namespace NCloud::NFileStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Minimal interface for SHM mechanics: slot allocation and iovec injection.
-// Callers are responsible for forwarding the (modified) request to the session.
+// Manages a shared memory region and prepares read/write requests to use it.
+// On Start(), registers the region with the server via IShmControl (Mmap RPC)
+// and keeps it alive with periodic pings. PrepareWrite/PrepareRead inject an
+// iovec descriptor into the request so the server reads/writes through the
+// shared region instead of copying over gRPC.
 struct IShmDataClient
     : public IStartable
 {
@@ -36,16 +39,6 @@ struct IShmDataClient
 using IShmDataClientPtr = std::shared_ptr<IShmDataClient>;
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// Creates a shared-memory data client that:
-// - On Start(): starts the gRPC control transport, creates/truncates the file
-//   at `fullFilePath`, mmaps it locally, calls Mmap RPC on `shmControl` to
-//   register the region with the server, and schedules periodic PingMmapRegion
-//   calls to keep it alive.
-// - PrepareWrite(): copies the buffer into a SHM slot and sets the iovec descriptor.
-// - PrepareRead(): allocates a SHM slot, sets the iovec descriptor, returns local ptr.
-// - On Stop(): calls Munmap RPC on `shmControl`, unmaps local memory, and
-//   stops the gRPC control transport.
 
 IShmDataClientPtr CreateSharedMemoryClient(
     TString fullFilePath,
