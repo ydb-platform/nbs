@@ -297,7 +297,7 @@ void TVolumeSessionActor::HandleUnlockTabletResponse(
         }
         if (error.GetCode() == S_ALREADY) {
             auto response =
-                std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
+                std::make_unique<TEvServicePrivate::TEvGentlyReleaseVolumeResponse>(
                     msg->Error);
             NCloud::Send(ctx, MountRequestActor, std::move(response));
         }
