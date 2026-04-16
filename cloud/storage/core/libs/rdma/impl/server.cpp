@@ -838,22 +838,16 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
 
-    RecvRequest(recv);  // should always be posted
     Counters->RecvRequestCompleted();
     Counters->RequestStarted();
 
     if (req->In.Length > Config->MaxBufferSize) {
         RDMA_ERROR(
-            GetLogTitle(
-                "RECV",
-                TWorkRequestId(recv->wr.wr_id),
-                req->ReqId)
-            << " request exceeds maximum supported size " << req->In.Length
-            << " > " << Config->MaxBufferSize);
             ToString(recv) << " request exceeds maximum supported size "
                            << req->In.Length << " > " << Config->MaxBufferSize);
 
         Counters->Error();
+        RecvRequest(recv);  // should always be posted
         RejectRequest(
             std::move(req),
             RDMA_PROTO_INVALID_REQUEST,
@@ -868,6 +862,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
                            << Config->MaxBufferSize);
 
         Counters->Error();
+        RecvRequest(recv);  // should always be posted
         RejectRequest(
             std::move(req),
             RDMA_PROTO_INVALID_REQUEST,
@@ -884,9 +879,11 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
                            << " bytes available");
 
         Counters->RequestThrottled();
+        RecvRequest(recv);  // should always be posted
         RejectRequest(std::move(req), RDMA_PROTO_THROTTLED, "throttled");
         return;
     }
+    RecvRequest(recv);  // should always be posted
 
     MaxInflightBytes -= req->In.Length + req->Out.Length;
 
