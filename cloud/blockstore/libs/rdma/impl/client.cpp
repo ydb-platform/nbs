@@ -671,18 +671,18 @@ void TClientEndpoint::CreateQP()
 
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        2 * Config.QueueSize,     // send + recv
+        Config.SendQueueSize + Config.RecvQueueSize,   // send + recv
         this,
         CompletionChannel.get(),
-        0);                       // comp_vector
+        0);   // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
         .send_cq = CompletionQueue.get(),
         .recv_cq = CompletionQueue.get(),
         .cap = {
-            .max_send_wr = Config.QueueSize,
-            .max_recv_wr = Config.QueueSize,
+            .max_send_wr = Config.SendQueueSize,
+            .max_recv_wr = Config.RecvQueueSize,
             .max_send_sge = RDMA_MAX_SEND_SGE,
             .max_recv_sge = RDMA_MAX_RECV_SGE,
             .max_inline_data = 16,
@@ -708,13 +708,13 @@ void TClientEndpoint::CreateQP()
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     SendBuffer = SendBuffers.AcquireBuffer(
-        Config.QueueSize * sizeof(TRequestMessage), true);
+        Config.SendQueueSize * sizeof(TRequestMessage), true);
 
     RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config.QueueSize * sizeof(TResponseMessage), true);
+        Config.RecvQueueSize * sizeof(TResponseMessage), true);
 
-    SendWrs.resize(Config.QueueSize);
-    RecvWrs.resize(Config.QueueSize);
+    SendWrs.resize(Config.SendQueueSize);
+    RecvWrs.resize(Config.RecvQueueSize);
 
     Generation++;
 
@@ -1370,8 +1370,8 @@ void TClientEndpoint::Disconnect() noexcept
 
 bool TClientEndpoint::Flushed() const
 {
-    return SendQueue.Size() == Config.QueueSize
-        && RecvQueue.Size() == Config.QueueSize
+    return SendQueue.Size() == Config.SendQueueSize
+        && RecvQueue.Size() == Config.RecvQueueSize
         && ActiveRequests.Empty()
         && !InputRequests
         && !QueuedRequests
@@ -2234,7 +2234,8 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
         endpoint->Reconnect.Schedule(MIN_CONNECT_TIMEOUT);
 
         TConnectMessage message = {
-            .QueueSize = SafeCast<ui16>(endpoint->Config.QueueSize),
+            .SendQueueSize = SafeCast<ui16>(endpoint->Config.SendQueueSize),
+            .RecvQueueSize = SafeCast<ui16>(endpoint->Config.RecvQueueSize),
             .MaxBufferSize = SafeCast<ui32>(endpoint->Config.MaxBufferSize),
         };
         InitMessageHeader(&message, RDMA_PROTO_VERSION);

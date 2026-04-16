@@ -32,6 +32,7 @@ message TBufferPool
 message TRdmaServer
 {
     uint32 Backlog = 1;
+    // Deprecated, use SendQueueSize and RecvQueueSize instead.
     uint32 QueueSize = 2;
     uint32 MaxBufferSize = 3;
     uint64 KeepAliveTimeout = 4;            // in milliseconds
@@ -50,10 +51,14 @@ message TRdmaServer
     bool VerbsQP = 13;
 
     TBufferPool BufferPool = 14;
+
+    uint32 SendQueueSize = 15;
+    uint32 RecvQueueSize = 16;
 }
 
 message TRdmaClient
 {
+    // Deprecated, use SendQueueSize and RecvQueueSize instead.
     uint32 QueueSize = 1;
     uint32 MaxBufferSize = 2;
     uint32 PollerThreads = 3;
@@ -73,6 +78,9 @@ message TRdmaClient
     uint64 MaxResponseDelay = 12;   // in milliseconds
 
     TBufferPool BufferPool = 13;
+
+    uint32 SendQueueSize = 14;
+    uint32 RecvQueueSize = 15;
 }
 
 message TRdmaTarget

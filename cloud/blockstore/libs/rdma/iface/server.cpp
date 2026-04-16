@@ -29,6 +29,17 @@ NRdma::EWaitMode Convert(NProto::EWaitMode mode)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TServerConfig::TServerConfig()
+{
+    // Compatibility with old config.
+    if (SendQueueSize == 0 && QueueSize > 0) {
+        SendQueueSize = QueueSize;
+    }
+    if (RecvQueueSize == 0 && QueueSize > 0) {
+        RecvQueueSize = QueueSize;
+    }
+}
+
 #define SET(param, ...) \
     if (const auto& value = config.Get##param()) { \
         param = __VA_ARGS__(value); \
@@ -53,10 +64,20 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(IpTypeOfService);
     SET(SourceInterface);
     SET(VerbsQP);
+    SET(SendQueueSize);
+    SET(RecvQueueSize);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);
     SET_NESTED(BufferPool, MaxFreeChunks);
+
+    // Compatibility with old config.
+    if (SendQueueSize == 0 && QueueSize > 0) {
+        SendQueueSize = QueueSize;
+    }
+    if (RecvQueueSize == 0 && QueueSize > 0) {
+        RecvQueueSize = QueueSize;
+    }
 }
 
 #undef SET_NESTED
@@ -90,6 +111,8 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(IpTypeOfService, IpTypeOfService);
                 ENTRY(SourceInterface, SourceInterface);
                 ENTRY(VerbsQP, VerbsQP);
+                ENTRY(SendQueueSize, SendQueueSize);
+                ENTRY(RecvQueueSize, RecvQueueSize);
                 ENTRY(BufferPool.ChunkSize, BufferPool.ChunkSize);
                 ENTRY(BufferPool.MaxChunkAlloc, BufferPool.MaxChunkAlloc);
                 ENTRY(BufferPool.MaxFreeChunks, BufferPool.MaxFreeChunks);

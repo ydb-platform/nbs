@@ -400,18 +400,18 @@ void TServerSession::CreateQP()
 
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        2 * Config->QueueSize,   // send + recv
+        Config->SendQueueSize + Config->RecvQueueSize,
         this,
         CompletionChannel.get(),
-        0);                      // comp_vector
+        0);   // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
         .send_cq = CompletionQueue.get(),
         .recv_cq = CompletionQueue.get(),
         .cap = {
-            .max_send_wr = Config->QueueSize,
-            .max_recv_wr = Config->QueueSize,
+            .max_send_wr = Config->SendQueueSize,
+            .max_recv_wr = Config->RecvQueueSize,
             .max_send_sge = RDMA_MAX_SEND_SGE,
             .max_recv_sge = RDMA_MAX_RECV_SGE,
             .max_inline_data = 16,
@@ -437,15 +437,15 @@ void TServerSession::CreateQP()
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     SendBuffer = SendBuffers.AcquireBuffer(
-        Config->QueueSize * sizeof(TResponseMessage),
+        Config->SendQueueSize * sizeof(TResponseMessage),
         true);
 
     RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config->QueueSize * sizeof(TRequestMessage),
+        Config->RecvQueueSize * sizeof(TRequestMessage),
         true);
 
-    SendWrs.resize(Config->QueueSize);
-    RecvWrs.resize(Config->QueueSize);
+    SendWrs.resize(Config->SendQueueSize);
+    RecvWrs.resize(Config->RecvQueueSize);
 
     ui32 i = 0;
     ui64 responseMsg = SendBuffer.Address;
@@ -628,8 +628,8 @@ void TServerSession::Flush() noexcept
 bool TServerSession::IsFlushed() const
 {
     return FlushStarted
-        && SendQueue.Size() == Config->QueueSize
-        && RecvQueue.Size() == Config->QueueSize;
+        && SendQueue.Size() == Config->SendQueueSize
+        && RecvQueue.Size() == Config->RecvQueueSize;
 }
 
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
@@ -854,7 +854,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             GetLogTitle(
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
-                msg->ReqId)
+                req->ReqId)
             << " request exceeds maximum supported size " << req->In.Length
             << " > " << Config->MaxBufferSize);
 
@@ -871,7 +871,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             GetLogTitle(
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
-                msg->ReqId)
+                req->ReqId)
             << "response exceeds maximum supported size " << req->Out.Length
             << " > " << Config->MaxBufferSize);
 
@@ -890,7 +890,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             GetLogTitle(
                 "RECV",
                 TWorkRequestId(recv->wr.wr_id),
-                msg->ReqId)
+                req->ReqId)
                 << "reached inflight limit, " << MaxInflightBytes << "/"
                 << Config->MaxInflightBytes << " bytes available");
 
@@ -913,7 +913,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
         } else {
             // no more WRs available
             RDMA_TRACE(
-                GetLogTitle("RECV", TWorkRequestId(recv->wr.wr_id), msg->ReqId)
+                GetLogTitle("RECV", TWorkRequestId(recv->wr.wr_id), req->ReqId)
                 << "no more send WRs available");
             Counters->RequestEnqueued();
             QueuedRequests.Enqueue(std::move(req));
@@ -1906,9 +1906,28 @@ void TServer::HandleConnectRequest(
         connectParams->private_data);
 
     if (Config->StrictValidation) {
-        if (connectMsg->QueueSize > Config->QueueSize ||
-            connectMsg->MaxBufferSize > Config->MaxBufferSize)
-        {
+        if (connectMsg->SendQueueSize > Config->RecvQueueSize) {
+            RDMA_ERROR(
+                "Failed to validate connect message. Client's send queue size "
+                << connectMsg->SendQueueSize
+                << " is greater than server's recv queue size "
+                << Config->RecvQueueSize);
+            return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
+        }
+        if (Config->SendQueueSize > connectMsg->RecvQueueSize) {
+            RDMA_ERROR(
+                "Failed to validate connect message. Client's recv queue size "
+                << connectMsg->RecvQueueSize
+                << " is less than server's send queue size "
+                << Config->SendQueueSize);
+            return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
+        }
+        if (connectMsg->MaxBufferSize > Config->MaxBufferSize) {
+            RDMA_ERROR(
+                "Failed to validate connect message. Client's max buffer size "
+                << connectMsg->MaxBufferSize
+                << " is greater than server's max buffer size "
+                << Config->MaxBufferSize);
             return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
         }
     }
@@ -1986,7 +2005,8 @@ void TServer::Reject(rdma_cm_id* id, int status) noexcept
 
     TRejectMessage rejectMsg = {
         .Status = SafeCast<ui16>(status),
-        .QueueSize = SafeCast<ui16>(Config->QueueSize),
+        .QueueSize =
+            SafeCast<ui16>(Config->SendQueueSize + Config->RecvQueueSize),
         .MaxBufferSize = SafeCast<ui32>(Config->MaxBufferSize),
     };
     InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);
