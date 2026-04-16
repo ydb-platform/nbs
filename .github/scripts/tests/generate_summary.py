@@ -516,7 +516,10 @@ def get_workload_status_text(
     if workload_status == "in_progress":
         status_note = [
             "> [!IMPORTANT]",
-            f"> Workload for **{build_preset}** is not finished yet. This comment will be updated after all workloads complete.",
+            (
+                f"> Workload for **{build_preset}** is not finished yet. "
+                "This comment will be updated after all workloads complete."
+            ),
         ]
     else:
         status_note = [
@@ -800,6 +803,7 @@ def update_pr_comment_workload_status(
         )
     )
 
+
 def initialize_pr_comment(
     run_number: int,
     pr: PullRequestLike,
@@ -929,7 +933,9 @@ def main() -> None:
             LOGGER.error(str(error))
             raise SystemExit(-1) from error
 
-        summary = gen_summary(args.summary_url_prefix, args.summary_out_path, title_path)
+        summary = gen_summary(
+            args.summary_url_prefix, args.summary_out_path, title_path
+        )
         write_summary(summary, args.summary_out_env_path)
     elif not args.update_workload_status_only:
         LOGGER.error("No summary inputs provided")
