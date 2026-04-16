@@ -5,6 +5,7 @@
 #include "config.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -58,6 +59,7 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
+    const NProto::ERequestSplitterPolicy SplitterPolicy;
 
     TVector<TDeviceStat> DeviceStats;
 
@@ -149,6 +151,7 @@ private:
     bool InitRequests(
         const char* methodName,
         const bool isWriteMethod,
+        const bool isReadOrWriteMethod,
         const TRequest& msg,
         const NActors::TActorContext& ctx,
         const TRequestInfo& requestInfo,

@@ -2,6 +2,7 @@
 
 #include "part_nonrepl_common.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -48,11 +49,12 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         TActorId statActorId)
-    : Config(std::move(config))
+    : Config(config)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
+    , SplitterPolicy(config->GetRequestSplitterPolicy())
     , DeviceStats(CreateDeviceStats(*PartConfig, this))
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
@@ -249,6 +251,7 @@ bool TNonreplicatedPartitionActor::InitRequests(
         typename TMethod::TResponse>(
         TMethod::Name,
         IsWriteMethod<TMethod>,
+        IsReadOrWriteMethod<TMethod>,
         msg,
         ctx,
         requestInfo,
@@ -262,6 +265,7 @@ template <typename TRequest, typename TResponse>
 bool TNonreplicatedPartitionActor::InitRequests(
     const char* methodName,
     const bool isWriteMethod,
+    const bool isReadOrWriteMethod,
     const TRequest& msg,
     const NActors::TActorContext& ctx,
     const TRequestInfo& requestInfo,
@@ -313,6 +317,19 @@ bool TNonreplicatedPartitionActor::InitRequests(
     }
 
     *deviceRequests = PartConfig->ToDeviceRequests(blockRange);
+
+    if (isReadOrWriteMethod && deviceRequests->size() > 1) {
+        if (SplitterPolicy ==
+            NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT)
+        {
+            ReportCrossPartitionRequestDetected(
+                {{"disk", PartConfig->GetName()}, {"range", blockRange}});
+        } else if (
+            SplitterPolicy == NProto::ERequestSplitterPolicy::RSP_DISABLE)
+        {
+            deviceRequests->resize(1);
+        }
+    }
 
     if (deviceRequests->empty()) {
         // block range contains only dummy devices
