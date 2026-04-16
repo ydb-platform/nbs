@@ -324,12 +324,6 @@ bool TNonreplicatedPartitionActor::InitRequests(
         {
             ReportCrossPartitionRequestDetected(
                 {{"disk", PartConfig->GetName()}, {"range", blockRange}});
-        } else if (
-            SplitterPolicy == NProto::ERequestSplitterPolicy::RSP_DISABLE)
-        {
-            deviceRequests->erase(
-                deviceRequests->begin() + 1,
-                deviceRequests->end());
         }
     }
 
