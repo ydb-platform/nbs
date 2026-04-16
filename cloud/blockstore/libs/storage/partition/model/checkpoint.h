@@ -132,8 +132,14 @@ class TCheckpointsInFlight
     using TTxPtr = std::unique_ptr<ITransactionBase>;
     using TTxQueue = TDeque<std::pair<TTxPtr, ui64>>;
 
+    struct TCheckpointTransactionToCommitId
+    {
+        TTxPtr Transaction;
+        ui64 CommitId;
+    };
+
 private:
-    THashMap<TString, std::pair<TTxPtr, ui64>> PendingTransactions;
+    THashMap<TString, TCheckpointTransactionToCommitId> PendingTransactions;
     TCheckpointQueue CommitIdQueue;
 
 public:

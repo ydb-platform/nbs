@@ -129,13 +129,22 @@ Y_UNIT_TEST_SUITE(TCheckpointTest)
         UNIT_ASSERT(!inFlight.HasCheckpoint("cp1"));
         UNIT_ASSERT(!inFlight.HasCheckpoint("cp2"));
 
-        inFlight.AddTx("cp1", nullptr, 10);
+        bool added = inFlight.AddTx("cp1", nullptr, 10);
+        UNIT_ASSERT(added);
         UNIT_ASSERT(inFlight.HasCheckpoint("cp1"));
         UNIT_ASSERT(!inFlight.HasCheckpoint("cp2"));
 
-        inFlight.AddTx("cp2", nullptr);
+
+        added = inFlight.AddTx("cp2", nullptr);
+        UNIT_ASSERT(added);
         UNIT_ASSERT(inFlight.HasCheckpoint("cp1"));
         UNIT_ASSERT(inFlight.HasCheckpoint("cp2"));
+
+        added = inFlight.AddTx("cp1", nullptr, 13);
+        UNIT_ASSERT(!added);
+
+        added = inFlight.AddTx("cp2", nullptr, 14);
+        UNIT_ASSERT(!added);
 
         inFlight.PopTx("cp1");
         UNIT_ASSERT(!inFlight.HasCheckpoint("cp1"));

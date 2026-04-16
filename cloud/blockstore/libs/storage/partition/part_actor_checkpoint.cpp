@@ -244,7 +244,12 @@ void TPartitionActor::DeleteCheckpoint(
         reply,
         deleteOnlyData);
 
-    SharedState->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, 0);
+    SharedState->WaitCommitForCheckpoint(
+        ctx,
+        std::move(tx),
+        checkpointId,
+        0 /* commitId */
+    );
 }
 
 bool TPartitionActor::PrepareDeleteCheckpoint(
@@ -268,6 +273,7 @@ void TPartitionActor::ExecuteDeleteCheckpoint(
 
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
+
     bool deleted = State->AccessCheckpoints().Delete(args.CheckpointId);
     if (!args.DeleteOnlyData) {
         deleted |= State->AccessCheckpoints().DeleteCheckpointMapping(

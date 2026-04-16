@@ -211,7 +211,9 @@ bool TCheckpointsInFlight::AddTx(
     auto inserted = PendingTransactions
                         .emplace(
                             checkpointId,
-                            std::make_pair(std::move(transaction), commitId))
+                            TCheckpointTransactionToCommitId{
+                                .Transaction = std::move(transaction),
+                                .CommitId = commitId})
                         .second;
     if (!inserted) {
         return false;
