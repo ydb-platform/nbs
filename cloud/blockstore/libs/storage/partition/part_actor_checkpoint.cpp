@@ -244,9 +244,7 @@ void TPartitionActor::DeleteCheckpoint(
         reply,
         deleteOnlyData);
 
-    SharedState->WaitCommitForCheckpoint(
-        ctx,
-        std::move(tx),
+    SharedState->WaitCommitForCheckpoint(ctx, std::move(tx), checkpointId, 0);
 }
 
 bool TPartitionActor::PrepareDeleteCheckpoint(
