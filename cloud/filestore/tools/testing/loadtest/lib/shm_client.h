@@ -17,8 +17,8 @@ namespace NCloud::NFileStore::NLoadTest {
 
 // Creates a wrapper around `inner` that:
 // - On Start(): creates/truncates the file at `fullFilePath`, mmaps it locally,
-//   calls Mmap RPC on `shmControl` to register the region with the server, and
-//   schedules periodic PingMmapRegion calls to keep the region alive.
+//   calls Mmap RPC on `shmControl` with the same path to register the region
+//   with the server, and schedules periodic PingMmapRegion calls to keep it alive.
 // - On WriteData(): copies data from the request buffer into the shared memory
 //   region, replaces the buffer with an iovec pointing into the region, and
 //   forwards the request to `dataOps` (session-aware transport for headers).
@@ -29,7 +29,6 @@ namespace NCloud::NFileStore::NLoadTest {
 
 IFileStoreServicePtr CreateSharedMemoryClient(
     TString fullFilePath,
-    TString fileName,
     ui64 shmSize,
     ui64 slotSize,
     IFileStoreServicePtr inner,

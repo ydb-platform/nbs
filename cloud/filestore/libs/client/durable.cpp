@@ -262,7 +262,6 @@ class TDurableFileStoreClient final
             std::move(request),
             std::move(responseHandler));
     }
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -42,6 +42,7 @@ private:
     const NClient::TClientConfigPtr ClientConfig;
 
     TVector<IFileStoreServicePtr> Clients;
+    TVector<IShmControlPtr> ShmControls;
 
 public:
     TClientFactory(
@@ -60,10 +61,16 @@ public:
         for (auto& client: Clients) {
             client->Start();
         }
+        for (auto& control: ShmControls) {
+            control->Start();
+        }
     }
 
     void Stop() override
     {
+        for (auto& control: ShmControls) {
+            control->Stop();
+        }
         for (auto& client: Clients) {
             client->Stop();
         }
@@ -84,6 +91,15 @@ public:
 
         Clients.push_back(client);
         return client;
+    }
+
+    IShmControlPtr CreateShmControl() override
+    {
+        auto control = NClient::CreateShmControlClient(
+            ClientConfig,
+            Logging);
+        ShmControls.push_back(control);
+        return control;
     }
 };
 

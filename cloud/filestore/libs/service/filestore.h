@@ -128,11 +128,11 @@ struct IFileStoreService
 ////////////////////////////////////////////////////////////////////////////////
 
 // Narrow interface for shared-memory transport control RPCs.
-// Implemented by the gRPC client; not part of IFileStoreService so that
-// implementations that don't support SHM need not stub these out.
+// Implemented by a dedicated gRPC client; not part of IFileStoreService so
+// that implementations that don't support SHM need not stub these out.
 struct IShmControl
+    : public IStartable
 {
-    virtual ~IShmControl() = default;
 
 #define FILESTORE_DECLARE_SHM_METHOD(name, ...)                                \
     virtual NThreading::TFuture<NProto::T##name##Response> name(               \
@@ -144,8 +144,6 @@ struct IShmControl
 
 #undef FILESTORE_DECLARE_SHM_METHOD
 };
-
-using IShmControlPtr = std::shared_ptr<IShmControl>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

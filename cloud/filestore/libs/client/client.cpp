@@ -798,7 +798,6 @@ using TUdsFileStoreClientBase = TUdsClient<
 template <typename TBase>
 class TFileStoreClient final
     : public TBase
-    , public IShmControl
 {
 public:
     using TBase::TBase;
@@ -820,7 +819,6 @@ public:
 // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
-    FILESTORE_SHAREDMEM_METHODS(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -859,6 +857,43 @@ public:
 
 using TUdsFileStoreClient = TFileStoreClient<TUdsFileStoreClientBase>;
 using TTcpFileStoreClient = TFileStoreClient<TClientBase<TFileStoreContext, IFileStoreService>>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TBase>
+class TShmControlClient final
+    : public TBase
+{
+public:
+    using TBase::TBase;
+
+    void InitService(std::shared_ptr<::grpc::Channel> channel) override
+    {
+        TBase::AppCtx.Service = NProto::TFileStoreService::NewStub(std::move(channel));
+    }
+
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        return TBase::template ExecuteRequest<T##name##Fs##Method>(            \
+            std::move(callContext),                                            \
+            std::move(request));                                               \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_METHOD
+
+    FILESTORE_SHAREDMEM_METHODS(FILESTORE_IMPLEMENT_METHOD)
+
+#undef FILESTORE_IMPLEMENT_METHOD
+};
+
+using TUdsShmControlClientBase = TUdsClient<
+    TClientBase<TFileStoreContext, IShmControl>
+    >;
+
+using TUdsShmControlClient = TShmControlClient<TUdsShmControlClientBase>;
+using TTcpShmControlClient = TShmControlClient<TClientBase<TFileStoreContext, IShmControl>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -924,6 +959,24 @@ IFileStoreServicePtr CreateFileStoreClient(
         return client;
     } else {
         return std::make_shared<TTcpFileStoreClient>(
+            std::move(config),
+            std::move(logging));
+    }
+}
+
+IShmControlPtr CreateShmControlClient(
+    TClientConfigPtr config,
+    ILoggingServicePtr logging)
+{
+    if (config->GetUnixSocketPath()) {
+        auto client = std::make_shared<TUdsShmControlClient>(
+            config->GetUnixSocketPath(),
+            std::move(config),
+            std::move(logging));
+        client->Connect();
+        return client;
+    } else {
+        return std::make_shared<TTcpShmControlClient>(
             std::move(config),
             std::move(logging));
     }

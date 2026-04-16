@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/folder/path.h>
 #include <util/generic/string.h>
 #include <util/system/file.h>
 
@@ -106,7 +107,6 @@ class TSharedMemoryClient final
 {
 private:
     const TString FullPath_;
-    const TString FileName_;
     const ui64 ShmSize_;
     const ui64 SlotSize_;
     const ui64 NumSlots_;
@@ -131,7 +131,6 @@ private:
 public:
     TSharedMemoryClient(
             TString fullPath,
-            TString fileName,
             ui64 shmSize,
             ui64 slotSize,
             IFileStoreServicePtr inner,
@@ -142,7 +141,6 @@ public:
             ILoggingServicePtr logging)
         : TSharedMemoryClientBase(std::move(inner))
         , FullPath_(std::move(fullPath))
-        , FileName_(std::move(fileName))
         , ShmSize_(shmSize)
         , SlotSize_(slotSize)
         , NumSlots_(slotSize ? shmSize / slotSize : 1)
@@ -241,7 +239,7 @@ private:
         // Register region with the server
         auto ctx = MakeIntrusive<TCallContext>();
         auto req = std::make_shared<NProto::TMmapRequest>();
-        req->SetFilePath(FileName_);
+        req->SetFilePath(TFsPath(FullPath_).GetName());
         req->SetSize(ShmSize_);
 
         auto response = ShmControl_->Mmap(std::move(ctx), std::move(req)).GetValueSync();
@@ -253,7 +251,7 @@ private:
 
         STORAGE_INFO(
             "Shared memory region registered: id=" << RegionId_
-            << ", file=" << FileName_
+            << ", file=" << FullPath_
             << ", size=" << ShmSize_);
     }
 
@@ -320,7 +318,6 @@ private:
 
 IFileStoreServicePtr CreateSharedMemoryClient(
     TString fullFilePath,
-    TString fileName,
     ui64 shmSize,
     ui64 slotSize,
     IFileStoreServicePtr inner,
@@ -332,7 +329,6 @@ IFileStoreServicePtr CreateSharedMemoryClient(
 {
     return std::make_shared<TSharedMemoryClient>(
         std::move(fullFilePath),
-        std::move(fileName),
         shmSize,
         slotSize,
         std::move(inner),

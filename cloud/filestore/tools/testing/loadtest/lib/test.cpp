@@ -22,7 +22,6 @@
 #include <library/cpp/protobuf/json/proto2json.h>
 
 #include <util/datetime/base.h>
-#include <util/folder/path.h>
 #include <util/generic/deque.h>
 #include <util/generic/guid.h>
 #include <util/generic/map.h>
@@ -254,9 +253,11 @@ private:
     const TString TestTag;
 
     TLoadTestControllerCommandChannel& Controller;
+    const IClientFactoryPtr ClientFactory;
 
     TLog Log;
     IFileStoreServicePtr Client;
+    IShmControlPtr ShmControl_;
     IFileStoreServicePtr ShmClient_;
     ISessionPtr Session;
 
@@ -307,6 +308,7 @@ public:
         , TestInstanceId(std::move(testInstanceId))
         , TestTag(NLoadTest::MakeTestTag(Config.GetName()))
         , Controller(controller)
+        , ClientFactory(clientFactory)
         , Client(clientFactory->CreateClient())
         , ClientId(Config.GetClientId() ? Config.GetClientId() : "test-client")
     {
@@ -560,27 +562,16 @@ private:
             case NProto::TLoadTest::kDatashardLikeLoadSpec: {
                 const auto& spec = Config.GetDatashardLikeLoadSpec();
                 if (!spec.GetSharedMemoryFilePath().empty()) {
-                    TFsPath fullPath(spec.GetSharedMemoryFilePath());
-                    TString shmFileName = fullPath.GetName();
-                    TString shmFullPath = fullPath.GetPath();
-                    if (const char* basePath = getenv("NFS_SHM_BASE_PATH")) {
-                        shmFullPath = TFsPath(basePath) / shmFileName;
-                    }
-                    auto shmControl =
-                        std::dynamic_pointer_cast<IShmControl>(Client);
-                    Y_ABORT_UNLESS(
-                        shmControl,
-                        "SharedMemoryFilePath requires a gRPC client that "
-                        "implements IShmControl");
+                    ShmControl_ = ClientFactory->CreateShmControl();
+                    ShmControl_->Start();
                     ShmClient_ = CreateSharedMemoryClient(
-                        shmFullPath,
-                        shmFileName,
+                        spec.GetSharedMemoryFilePath(),
                         spec.GetSharedMemorySizeBytes(),
                         std::max(
                             (ui64)spec.GetReadBytes(),
                             (ui64)spec.GetWriteBytes()),
                         Client,
-                        std::move(shmControl),
+                        ShmControl_,
                         Session,
                         Scheduler,
                         Timer,
@@ -779,6 +770,11 @@ private:
         if (ShmClient_) {
             ShmClient_->Stop();
             ShmClient_.reset();
+        }
+
+        if (ShmControl_) {
+            ShmControl_->Stop();
+            ShmControl_.reset();
         }
 
         if (Client) {
