@@ -548,8 +548,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
 void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
 {
     if (!UpdateCountersScheduled) {
-        //ctx.Schedule(UpdateCountersInterval,
-        ctx.Schedule(TDuration::Seconds(1),
+        ctx.Schedule(UpdateCountersInterval,
             new TEvIndexTabletPrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
