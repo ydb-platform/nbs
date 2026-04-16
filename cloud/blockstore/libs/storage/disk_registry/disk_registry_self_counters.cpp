@@ -43,6 +43,7 @@ void TDiskRegistrySelfCounters::Init(
     DevicesInMigrationState = counters->GetCounter("DevicesInMigrationState");
     DisksInTemporarilyUnavailableState = counters->GetCounter("DisksInTemporarilyUnavailableState");
     DisksInErrorState = counters->GetCounter("DisksInErrorState");
+    DisksToCleanup = counters->GetCounter("DisksToCleanup");
     PlacementGroups = counters->GetCounter("PlacementGroups");
     FullPlacementGroups = counters->GetCounter("FullPlacementGroups");
     AllocatedDisksInGroups = counters->GetCounter("AllocatedDisksInGroups");

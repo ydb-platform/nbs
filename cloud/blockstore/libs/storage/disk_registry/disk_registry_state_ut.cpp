@@ -1457,6 +1457,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto disksInTemporarilyUnavailableState =
             diskRegistryGroup->GetCounter("DisksInTemporarilyUnavailableState");
         auto disksInErrorState = diskRegistryGroup->GetCounter("DisksInErrorState");
+        auto disksToCleanup = diskRegistryGroup->GetCounter("DisksToCleanup");
         auto placementGroups = diskRegistryGroup->GetCounter("PlacementGroups");
         auto fullPlacementGroups = diskRegistryGroup->GetCounter("FullPlacementGroups");
         auto allocatedDisksInGroups = diskRegistryGroup->GetCounter("AllocatedDisksInGroups");
@@ -1609,6 +1610,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, disksToCleanup->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, placementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, allocatedDisksInGroups->Val());
@@ -1806,9 +1808,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             disableFullGroupsCountCalculation ? 0 : 1,
             fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, disksToCleanup->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT(state.MarkDeviceAsDirty(db, "uuid-5"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
         });
 
         state.PublishCounters(Now());
@@ -1851,6 +1855,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.BrokenBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.DecommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.DirtyBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, disksToCleanup->Val());
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+        });
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisks->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, disksToCleanup->Val());
     }
 
     Y_UNIT_TEST(ShouldUpdateCounters)

@@ -4670,6 +4670,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.DisksInTemporarilyUnavailableState->Set(
         disksInTemporarilyUnavailableState);
     SelfCounters.DisksInErrorState->Set(disksInErrorState);
+    SelfCounters.DisksToCleanup->Set(DisksToCleanup.size());
     SelfCounters.PlacementGroups->Set(placementGroups);
     SelfCounters.FullPlacementGroups->Set(fullPlacementGroups);
     SelfCounters.AllocatedDisksInGroups->Set(allocatedDisksInGroups);

@@ -74,6 +74,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr DevicesInMigrationState;
     TCounterPtr DisksInTemporarilyUnavailableState;
     TCounterPtr DisksInErrorState;
+    TCounterPtr DisksToCleanup;
     TCounterPtr PlacementGroups;
     TCounterPtr FullPlacementGroups;
     TCounterPtr AllocatedDisksInGroups;
