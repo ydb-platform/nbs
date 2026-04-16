@@ -4833,6 +4833,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardBalancerMinFreeSpaceReserve(4_KB);
         config.SetShardBalancerDesiredFreeSpaceReserve(1_MB);
         config.SetMultiTabletForwardingEnabled(true);
+        config.SetShardBalancerPrecisionBytes(4_KB);
 
         TTestEnv env({}, config);
 

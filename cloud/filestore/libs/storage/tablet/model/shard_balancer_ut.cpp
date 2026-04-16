@@ -32,12 +32,14 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 // ASSERT_ERROR
 
 constexpr ui32 BlockSize = 4_KB;
+constexpr ui64 PrecisionBytes = 1_GB;
 constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
     Y_UNIT_TEST(ShouldBalanceShardsRoundRobin)
     {
         TShardBalancerRoundRobin balancer(
             BlockSize,
+            PrecisionBytes,
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             1_GB /* minFreeSpaceReserve */,
@@ -188,6 +190,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
         // desiredFreeSpaceReserve, minFreeSpaceReserve are zero
         TShardBalancerRoundRobin balancer(
             BlockSize,
+            PrecisionBytes,
             MaxFileBlocks,
             0 /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
@@ -206,6 +209,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
     {
         TShardBalancerRandom balancer(
             BlockSize,
+            PrecisionBytes,
             MaxFileBlocks,
             0 /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
@@ -226,6 +230,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
     {
         TShardBalancerWeightedRandom balancer(
             BlockSize,
+            PrecisionBytes,
             MaxFileBlocks,
             0 /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
@@ -246,6 +251,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
     {
         TShardBalancerRoundRobin balancer(
             BlockSize,
+            PrecisionBytes,
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             1_GB /* minFreeSpaceReserve */,
@@ -254,8 +260,8 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
         balancer.Update({
             {5_TB / 4_KB, 512_GB / 4_KB, 0, 0},
             {5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
-            {5_TB / 4_KB, 1_TB / 4_KB + 1, 0, 0},
-            {5_TB / 4_KB, 1_TB / 4_KB + 1, 0, 0},
+            {5_TB / 4_KB, (1_TB + 1_GB) / 4_KB, 0, 0},
+            {5_TB / 4_KB, (1_TB + 1_GB) / 4_KB, 0, 0},
             {5_TB / 4_KB, 3_TB / 4_KB, 0, 0},
         });
 
@@ -295,6 +301,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
     {
         TShardBalancerRandom balancer(
             BlockSize,
+            PrecisionBytes,
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             1_MB /* minFreeSpaceReserve */,
@@ -363,6 +370,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
     {
         TShardBalancerWeightedRandom balancer(
             BlockSize,
+            PrecisionBytes,
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
