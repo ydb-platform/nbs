@@ -251,6 +251,11 @@ void TIndexTabletActor::HandleCancelAddData(
 
     if (!DeletionQueue.contains(commitId)) {
         DeletionQueue.emplace(commitId);
+        // We reply to CancelAddData immediately, so from this point forward we
+        // rely on DeleteUnconfirmedData  being executed ahead of any later
+        // AddBlob TX. Keep this execute before the reply path,
+        // and keep TDeleteUnconfirmedData page-fault-free, or a later execute
+        // may reorder and revive data that was already cancelled.
         ExecuteTx<TDeleteUnconfirmedData>(
             ctx,
             CreateRequestInfo(
@@ -411,6 +416,10 @@ void TIndexTabletActor::DeleteUnconfirmedDataForSession(
     }
 
     if (!commitIdsToDeleteNow.empty()) {
+        // Session cleanup has the same ordering requirement as CancelAddData:
+        // once commitIds are placed into DeletionQueue, DeleteUnconfirmedData
+        // must be executed before any later AddBlob execute. For that reason it
+        // should be also page-fault-free.
         ExecuteTx<TDeleteUnconfirmedData>(
             ctx,
             CreateRequestInfo(
