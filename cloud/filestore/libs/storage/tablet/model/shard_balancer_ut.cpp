@@ -40,7 +40,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
             BlockSize,
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
-            1_MB /* minFreeSpaceReserve */,
+            1_GB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
         ASSERT_NO_SB_ERROR(0, "s1");
         ASSERT_NO_SB_ERROR(0, "s2");
@@ -248,7 +248,7 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
             BlockSize,
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
-            1_MB /* minFreeSpaceReserve */,
+            1_GB /* minFreeSpaceReserve */,
             {"s1", "s2", "s3", "s4", "s5"});
 
         balancer.Update({

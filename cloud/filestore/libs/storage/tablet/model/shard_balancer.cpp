@@ -18,18 +18,34 @@ ui64 FreeSpace(const TShardStats& s)
 
 struct TShardMetaComp
 {
+    const ui64 Unit;
+
+    explicit TShardMetaComp(ui32 blockSize)
+        : Unit(1_GB / blockSize)
+    {}
+
+    ui64 Score(const TShardBalancerBase::TShardMeta& m) const
+    {
+        return Score(FreeSpace(m.Stats));
+    }
+
+    ui64 Score(ui64 s) const
+    {
+        return static_cast<ui64>(round(s / static_cast<double>(Unit)));
+    }
+
     bool operator()(
         const TShardBalancerBase::TShardMeta& lhs,
         const TShardBalancerBase::TShardMeta& rhs)
     {
-        return FreeSpace(lhs.Stats) == FreeSpace(rhs.Stats)
+        return Score(lhs) == Score(rhs)
             ? lhs.ShardIdx < rhs.ShardIdx
-            : FreeSpace(lhs.Stats) > FreeSpace(rhs.Stats);
+            : Score(lhs) > Score(rhs);
     }
 
     bool operator()(ui64 lhs, const TShardBalancerBase::TShardMeta& rhs)
     {
-        return lhs > FreeSpace(rhs.Stats);
+        return Score(lhs) > Score(rhs);
     }
 };
 
@@ -77,7 +93,7 @@ void TShardBalancerBase::Update(
     for (ui32 i = 0; i < stats.size(); ++i) {
         Metas[i] = TShardMeta(i, stats[i]);
     }
-    Sort(Metas.begin(), Metas.end(), TShardMetaComp());
+    Sort(Metas.begin(), Metas.end(), TShardMetaComp(BlockSize));
 }
 
 size_t TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
@@ -87,16 +103,27 @@ size_t TShardBalancerBase::FindUpperBoundAmongAllShardsToFitFile(
         Metas.begin(),
         Metas.end(),
         (fileSize + DesiredFreeSpaceReserve) / BlockSize,
-        TShardMetaComp());
+        TShardMetaComp(BlockSize));
     if (e == Metas.begin()) {
         e = UpperBound(
             Metas.begin(),
             Metas.end(),
             (fileSize + MinFreeSpaceReserve) / BlockSize,
-            TShardMetaComp());
+            TShardMetaComp(BlockSize));
     }
 
     return std::distance(Metas.begin(), e);
+}
+
+TVector<IShardBalancer::TShardDescr>
+TShardBalancerBase::MakeOrderedShardList() const
+{
+    TVector<TShardDescr> shardDescrs;
+    shardDescrs.reserve(Metas.size());
+    for (const auto& meta: Metas) {
+        shardDescrs.emplace_back(Ids[meta.ShardIdx], meta.Stats);
+    }
+    return shardDescrs;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

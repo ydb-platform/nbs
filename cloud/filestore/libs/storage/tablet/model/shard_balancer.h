@@ -27,20 +27,6 @@ struct TShardStats
 class IShardBalancer
 {
 public:
-    virtual ~IShardBalancer() = default;
-
-    virtual void Update(
-        const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve,
-        std::optional<ui64> minFreeSpaceReserve) = 0;
-    virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TShardBalancerBase: public IShardBalancer
-{
-public:
     struct TShardMeta
     {
         ui32 ShardIdx;
@@ -52,6 +38,42 @@ public:
         {}
     };
 
+    struct TShardDescr
+    {
+        TString ShardId;
+        TShardStats Stats;
+
+        TShardDescr(TString shardId, TShardStats stats)
+            : ShardId(std::move(shardId))
+            , Stats(stats)
+        {}
+    };
+
+    virtual ~IShardBalancer() = default;
+
+    virtual void Update(
+        const TVector<TShardStats>& stats,
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) = 0;
+    virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
+
+    /**
+     * @brief Builds and returns the shard list ordered from best to worst.
+     *
+     * This method builds a new vector with shard descrs so it's not supposed to
+     * be used often because it's expensive. The main intended use case is
+     * introspection - log this info with debug loglevel or show it on monpages.
+     *
+     * @return The list of shard descrs.
+     */
+    [[nodiscard]] virtual TVector<TShardDescr> MakeOrderedShardList() const = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TShardBalancerBase: public IShardBalancer
+{
+public:
     TShardBalancerBase(
         ui32 blockSize,
         ui32 maxFileBlocks,
@@ -89,6 +111,8 @@ public:
         const TVector<TShardStats>& stats,
         std::optional<ui64> desiredFreeSpaceReserve = {},
         std::optional<ui64> minFreeSpaceReserve = {}) override;
+
+    [[nodiscard]] TVector<TShardDescr> MakeOrderedShardList() const override;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
