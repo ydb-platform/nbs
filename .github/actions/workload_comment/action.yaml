@@ -23,7 +23,7 @@ inputs:
   workload_check_status:
     required: false
     default: ""
-    description: "running or completed"
+    description: "running, completed, or failed_build"
   current_job_name:
     required: false
     default: ""

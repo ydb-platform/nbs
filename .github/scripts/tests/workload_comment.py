@@ -104,7 +104,7 @@ def main() -> None:
     update_parser.add_argument("--component", required=True)
     update_parser.add_argument(
         "--workload-check-status",
-        choices=("running", "completed"),
+        choices=("running", "completed", "failed_build"),
         required=True,
     )
     update_parser.add_argument("--current-job-name", default="")

@@ -448,3 +448,30 @@ def test_update_pr_comment_workload_check_preserves_existing_job_url() -> None:
     assert len(existing.edits) == 1
     assert ":white_check_mark:" in existing.body
     assert "https://github.example/job/123" in existing.body
+
+
+def test_complete_workload_checks_block_preserves_failed_build_rows() -> None:
+    body = "\n".join(
+        [
+            gs.WORKLOAD_CHECKS_START,
+            gs.get_workload_check_line(
+                "blockstore",
+                "failed_build",
+                "https://github.example/job/123",
+            ),
+            gs.get_workload_check_line(
+                "filestore",
+                "running",
+                "https://github.example/job/456",
+            ),
+            gs.WORKLOAD_CHECKS_END,
+        ]
+    )
+
+    updated = gs.complete_workload_checks_block(body)
+
+    assert ":red_circle:" in updated
+    assert "build failed" in updated
+    assert ":white_check_mark:" in updated
+    assert "https://github.example/job/123" in updated
+    assert "https://github.example/job/456" in updated
