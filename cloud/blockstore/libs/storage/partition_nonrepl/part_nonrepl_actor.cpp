@@ -54,7 +54,7 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
-    , SplitterPolicy(config->GetRequestSplitterPolicy())
+    , SplitterPolicy(Config->GetRequestSplitterPolicy())
     , DeviceStats(CreateDeviceStats(*PartConfig, this))
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
@@ -327,7 +327,9 @@ bool TNonreplicatedPartitionActor::InitRequests(
         } else if (
             SplitterPolicy == NProto::ERequestSplitterPolicy::RSP_DISABLE)
         {
-            deviceRequests->resize(1);
+            deviceRequests->erase(
+                deviceRequests->begin() + 1,
+                deviceRequests->end());
         }
     }
 
@@ -458,6 +460,7 @@ template bool TNonreplicatedPartitionActor::InitRequests<
     TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
     const char* methodName,
     const bool isWriteRequest,
+    const bool isReadOrWriteRequest,
     const TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest& msg,
     const TActorContext& ctx,
     const TRequestInfo& requestInfo,
