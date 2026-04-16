@@ -272,16 +272,17 @@ private:
         request->SetOffset(byteOffset);
         request->SetLength(ReadBytes);
 
+        char* shmLocalPtr = DataClient
+            ? DataClient->PrepareRead(*request)
+            : nullptr;
+
         auto self = weak_from_this();
-        auto future = DataClient
-            ? DataClient->ReadData(CreateCallContext(), std::move(request))
-            : Session->ReadData(CreateCallContext(), std::move(request));
-        return future
+        return Session->ReadData(CreateCallContext(), std::move(request))
             .Apply(
                 [=](const TFuture<NProto::TReadDataResponse>& future)
                 {
                     if (auto ptr = self.lock()) {
-                        return ptr->HandleRead(future, nodeInfo, started);
+                        return ptr->HandleRead(future, nodeInfo, started, shmLocalPtr);
                     }
 
                     return TCompletedRequest{
@@ -294,11 +295,16 @@ private:
     TCompletedRequest HandleRead(
         const TFuture<NProto::TReadDataResponse>& future,
         TNodeInfo nodeInfo,
-        TInstant started)
+        TInstant started,
+        char* shmLocalPtr)
     {
         try {
-            const auto& response = future.GetValue();
+            auto response = future.GetValue();
             CheckResponse(response);
+
+            if (shmLocalPtr && response.GetBuffer().empty() && response.GetLength() > 0) {
+                response.SetBuffer(TString(shmLocalPtr, response.GetLength()));
+            }
 
             with_lock (StateLock) {
                 NodeInfos.push_back(std::move(nodeInfo));
@@ -339,11 +345,12 @@ private:
         request->SetOffset(byteOffset);
         *request->MutableBuffer() = std::move(buffer);
 
+        if (DataClient) {
+            DataClient->PrepareWrite(*request);
+        }
+
         auto self = weak_from_this();
-        auto future = DataClient
-            ? DataClient->WriteData(CreateCallContext(), std::move(request))
-            : Session->WriteData(CreateCallContext(), std::move(request));
-        return future
+        return Session->WriteData(CreateCallContext(), std::move(request))
             .Apply(
                 [=](const TFuture<NProto::TWriteDataResponse>& future)
                 {
@@ -427,7 +434,7 @@ IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
-    IFileStoreServicePtr dataClient,
+    IShmDataClientPtr dataClient,
     TString filesystemId,
     NProto::THeaders headers)
 {

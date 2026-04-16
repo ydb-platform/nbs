@@ -36,27 +36,23 @@ class TSharedMemoryClient final
     , public std::enable_shared_from_this<TSharedMemoryClient>
 {
 private:
-    const TString FullPath_;
-    const ui64 ShmSize_;
-    const ui64 SlotSize_;
-    const ui64 NumSlots_;
+    const TString FullPath;
+    const ui64 ShmSize;
+    const ui64 SlotSize;
+    const ui64 NumSlots;
 
-    const ISchedulerPtr Scheduler_;
-    const ITimerPtr Timer_;
+    const ISchedulerPtr Scheduler;
+    const ITimerPtr Timer;
 
     // Control transport for SHM RPCs (Mmap / Munmap / PingMmapRegion).
-    const IShmControlPtr ShmControl_;
-
-    // Session-aware data transport: WriteData/ReadData go through this so that
-    // session headers (sessionId, seqNo) are properly filled in.
-    const std::shared_ptr<IFileStore> DataOps_;
+    const IShmControlPtr ShmControl;
 
     TLog Log;
 
-    void* LocalAddr_ = MAP_FAILED;
-    ui64 RegionId_ = 0;
+    void* LocalAddr = MAP_FAILED;
+    ui64 RegionId = 0;
 
-    std::atomic<ui64> SlotCounter_{0};
+    std::atomic<ui64> SlotCounter{0};
 
 public:
     TSharedMemoryClient(
@@ -64,24 +60,23 @@ public:
             ui64 shmSize,
             ui64 slotSize,
             IShmControlPtr shmControl,
-            std::shared_ptr<IFileStore> dataOps,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             ILoggingServicePtr logging)
-        : FullPath_(std::move(fullPath))
-        , ShmSize_(shmSize)
-        , SlotSize_(slotSize)
-        , NumSlots_(slotSize ? shmSize / slotSize : 1)
-        , Scheduler_(std::move(scheduler))
-        , Timer_(std::move(timer))
-        , ShmControl_(std::move(shmControl))
-        , DataOps_(std::move(dataOps))
+        : FullPath(std::move(fullPath))
+        , ShmSize(shmSize)
+        , SlotSize(slotSize)
+        , NumSlots(slotSize ? shmSize / slotSize : 1)
+        , Scheduler(std::move(scheduler))
+        , Timer(std::move(timer))
+        , ShmControl(std::move(shmControl))
     {
         Log = logging->CreateLog("NFS_SHM_CLIENT");
     }
 
     void Start() override
     {
+        ShmControl->Start();
         SetupSharedMemory();
         SchedulePing();
     }
@@ -89,113 +84,97 @@ public:
     void Stop() override
     {
         TeardownSharedMemory();
+        ShmControl->Stop();
     }
 
-    TFuture<NProto::TWriteDataResponse> WriteData(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request) override
+    void PrepareWrite(NProto::TWriteDataRequest& request) override
     {
-        const auto& buffer = request->GetBuffer();
-        if (buffer.empty() || LocalAddr_ == MAP_FAILED) {
-            return DataOps_->WriteData(std::move(callContext), std::move(request));
+        const auto& buffer = request.GetBuffer();
+        if (buffer.empty() || LocalAddr == MAP_FAILED) {
+            return;
         }
 
         const ui64 len = buffer.size();
         const ui64 shmOffset = AllocateShmSlot(len);
 
-        memcpy(static_cast<char*>(LocalAddr_) + shmOffset, buffer.data(), len);
-        request->ClearBuffer();
+        memcpy(static_cast<char*>(LocalAddr) + shmOffset, buffer.data(), len);
+        request.ClearBuffer();
 
-        auto* iovec = request->AddIovecs();
+        auto* iovec = request.AddIovecs();
         iovec->SetBase(shmOffset);
         iovec->SetLength(len);
-        request->SetRegionId(RegionId_);
-
-        return DataOps_->WriteData(std::move(callContext), std::move(request));
+        request.SetRegionId(RegionId);
     }
 
-    TFuture<NProto::TReadDataResponse> ReadData(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request) override
+    char* PrepareRead(NProto::TReadDataRequest& request) override
     {
-        if (LocalAddr_ == MAP_FAILED) {
-            return DataOps_->ReadData(std::move(callContext), std::move(request));
+        if (LocalAddr == MAP_FAILED) {
+            return nullptr;
         }
 
-        const ui64 len = request->GetLength();
+        const ui64 len = request.GetLength();
         const ui64 shmOffset = AllocateShmSlot(len);
 
-        auto* iovec = request->AddIovecs();
+        auto* iovec = request.AddIovecs();
         iovec->SetBase(shmOffset);
         iovec->SetLength(len);
-        request->SetRegionId(RegionId_);
+        request.SetRegionId(RegionId);
 
-        char* localBase = static_cast<char*>(LocalAddr_);
-
-        return DataOps_->ReadData(std::move(callContext), std::move(request))
-            .Apply([localBase, shmOffset](
-                       const TFuture<NProto::TReadDataResponse>& f) {
-                auto response = f.GetValue();
-                if (response.GetBuffer().empty() && response.GetLength() > 0) {
-                    const ui64 dataLen = response.GetLength();
-                    response.SetBuffer(TString(localBase + shmOffset, dataLen));
-                }
-                return response;
-            });
+        return static_cast<char*>(LocalAddr) + shmOffset;
     }
 
 private:
     void SetupSharedMemory()
     {
-        TFile file(FullPath_, CreateAlways | RdWr);
-        file.Resize(ShmSize_);
+        TFile file(FullPath, CreateAlways | RdWr);
+        file.Resize(ShmSize);
         int fd = file.GetHandle();
 
-        LocalAddr_ =
-            ::mmap(nullptr, ShmSize_, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-        if (LocalAddr_ == MAP_FAILED) {
-            ythrow TSystemError() << "mmap failed for " << FullPath_;
+        LocalAddr =
+            ::mmap(nullptr, ShmSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (LocalAddr == MAP_FAILED) {
+            ythrow TSystemError() << "mmap failed for " << FullPath;
         }
         file.Close();
 
         auto ctx = MakeIntrusive<TCallContext>();
         auto req = std::make_shared<NProto::TMmapRequest>();
-        req->SetFilePath(TFsPath(FullPath_).GetName());
-        req->SetSize(ShmSize_);
+        req->SetFilePath(TFsPath(FullPath).GetName());
+        req->SetSize(ShmSize);
 
-        auto response = ShmControl_->Mmap(std::move(ctx), std::move(req)).GetValueSync();
+        auto response = ShmControl->Mmap(std::move(ctx), std::move(req)).GetValueSync();
         if (HasError(response)) {
             ythrow TServiceError(response.GetError()) << "Mmap RPC failed";
         }
 
-        RegionId_ = response.GetId();
+        RegionId = response.GetId();
 
         STORAGE_INFO(
-            "Shared memory region registered: id=" << RegionId_
-            << ", file=" << FullPath_
-            << ", size=" << ShmSize_);
+            "Shared memory region registered: id=" << RegionId
+            << ", file=" << FullPath
+            << ", size=" << ShmSize);
     }
 
     void TeardownSharedMemory()
     {
-        if (RegionId_ != 0) {
+        if (RegionId != 0) {
             auto ctx = MakeIntrusive<TCallContext>();
             auto req = std::make_shared<NProto::TMunmapRequest>();
-            req->SetId(RegionId_);
-            ShmControl_->Munmap(std::move(ctx), std::move(req)).Wait();
-            RegionId_ = 0;
+            req->SetId(RegionId);
+            ShmControl->Munmap(std::move(ctx), std::move(req)).Wait();
+            RegionId = 0;
         }
 
-        if (LocalAddr_ != MAP_FAILED) {
-            ::munmap(LocalAddr_, ShmSize_);
-            LocalAddr_ = MAP_FAILED;
+        if (LocalAddr != MAP_FAILED) {
+            ::munmap(LocalAddr, ShmSize);
+            LocalAddr = MAP_FAILED;
         }
     }
 
     void SchedulePing()
     {
-        Scheduler_->Schedule(
-            Timer_->Now() + PingInterval,
+        Scheduler->Schedule(
+            Timer->Now() + PingInterval,
             [weakSelf = weak_from_this()] {
                 if (auto self = weakSelf.lock()) {
                     self->PingRegion();
@@ -205,15 +184,15 @@ private:
 
     void PingRegion()
     {
-        if (RegionId_ == 0) {
+        if (RegionId == 0) {
             return;
         }
 
         auto ctx = MakeIntrusive<TCallContext>();
         auto req = std::make_shared<NProto::TPingMmapRegionRequest>();
-        req->SetId(RegionId_);
+        req->SetId(RegionId);
 
-        ShmControl_->PingMmapRegion(std::move(ctx), std::move(req))
+        ShmControl->PingMmapRegion(std::move(ctx), std::move(req))
             .Subscribe([weakSelf = weak_from_this()](
                            const TFuture<NProto::TPingMmapRegionResponse>&) {
                 if (auto self = weakSelf.lock()) {
@@ -224,12 +203,12 @@ private:
 
     ui64 AllocateShmSlot(ui64 /*size*/)
     {
-        if (NumSlots_ == 0) {
+        if (NumSlots == 0) {
             return 0;
         }
         ui64 slot =
-            SlotCounter_.fetch_add(1, std::memory_order_relaxed) % NumSlots_;
-        return slot * SlotSize_;
+            SlotCounter.fetch_add(1, std::memory_order_relaxed) % NumSlots;
+        return slot * SlotSize;
     }
 };
 
@@ -242,7 +221,6 @@ IShmDataClientPtr CreateSharedMemoryClient(
     ui64 shmSize,
     ui64 slotSize,
     IShmControlPtr shmControl,
-    std::shared_ptr<IFileStore> dataOps,
     ISchedulerPtr scheduler,
     ITimerPtr timer,
     ILoggingServicePtr logging)
@@ -252,7 +230,6 @@ IShmDataClientPtr CreateSharedMemoryClient(
         shmSize,
         slotSize,
         std::move(shmControl),
-        std::move(dataOps),
         std::move(scheduler),
         std::move(timer),
         std::move(logging));

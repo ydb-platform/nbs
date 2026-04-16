@@ -257,8 +257,7 @@ private:
 
     TLog Log;
     IFileStoreServicePtr Client;
-    IShmControlPtr ShmControl_;
-    IShmDataClientPtr ShmClient_;
+    IShmDataClientPtr ShmClient;
     ISessionPtr Session;
 
     TString FileSystemId;
@@ -562,26 +561,23 @@ private:
             case NProto::TLoadTest::kDatashardLikeLoadSpec: {
                 const auto& spec = Config.GetDatashardLikeLoadSpec();
                 if (!spec.GetSharedMemoryFilePath().empty()) {
-                    ShmControl_ = ClientFactory->CreateShmControl();
-                    ShmControl_->Start();
-                    ShmClient_ = CreateSharedMemoryClient(
+                    ShmClient = CreateSharedMemoryClient(
                         spec.GetSharedMemoryFilePath(),
                         spec.GetSharedMemorySizeBytes(),
                         std::max(
                             (ui64)spec.GetReadBytes(),
                             (ui64)spec.GetWriteBytes()),
-                        ShmControl_,
-                        Session,
+                        ClientFactory->CreateShmControl(),
                         Scheduler,
                         Timer,
                         Logging);
-                    ShmClient_->Start();
+                    ShmClient->Start();
                 }
                 RequestGenerator = CreateDatashardLikeRequestGenerator(
                     spec,
                     Logging,
                     Session,
-                    ShmClient_,
+                    ShmClient,
                     FileSystemId,
                     headers);
                 break;
@@ -766,14 +762,14 @@ private:
             }
         }
 
-        if (ShmClient_) {
-            ShmClient_->Stop();
-            ShmClient_.reset();
+        if (ShmClient) {
+            ShmClient->Stop();
+            ShmClient.reset();
         }
 
-        if (ShmControl_) {
-            ShmControl_->Stop();
-            ShmControl_.reset();
+        if (ShmClient) {
+            ShmClient->Stop();
+            ShmClient.reset();
         }
 
         if (Client) {
