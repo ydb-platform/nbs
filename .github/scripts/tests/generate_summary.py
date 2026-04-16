@@ -563,11 +563,21 @@ def get_workload_check_line(
         "pending": ":white_circle:",
         "running": ":hourglass_flowing_sand:",
         "completed": ":white_check_mark:",
+        "failed_build": ":red_circle:",
+    }
+    suffixes = {
+        "pending": "",
+        "running": "",
+        "completed": "",
+        "failed_build": " (build failed)",
     }
     label = get_workload_label(component)
     if job_url:
         label = f"[{label}]({job_url})"
-    return f"- {icons[status]} {label} {get_workload_check_marker(component)}"
+    return (
+        f"- {icons[status]} {label}{suffixes[status]} "
+        f"{get_workload_check_marker(component)}"
+    )
 
 
 def get_workload_checks_text(
@@ -676,6 +686,8 @@ def complete_workload_checks_block(body: str) -> str:
     )
 
     def _replace(match: re.Match[str]) -> str:
+        if "build failed" in match.group(0):
+            return match.group(0)
         component = match.group("component")
         job_url_match = re.search(r"\]\((?P<url>[^)]+)\)", match.group(0))
         job_url = job_url_match.group("url") if job_url_match else ""

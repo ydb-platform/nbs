@@ -178,6 +178,7 @@ jobs:
         done &
 
     - name: Build
+      id: build
       uses: ./.github/actions/build
       if: inputs.run_build
       with:
@@ -214,6 +215,16 @@ jobs:
         use_network_cache: ${{ inputs.use_network_cache }}
         number_of_retries: ${{ inputs.number_of_retries }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
+
+    - name: mark workload build failed
+      if: ${{ failure() && steps.build.outcome == 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: failed_build
+
     - id: failure
       name: set sleep_after_tests in case of failure
       if: failure()
@@ -222,7 +233,7 @@ jobs:
         sleep_after_tests: ${{ inputs.sleep_after_tests != '0' && inputs.sleep_after_tests || '7200' }}
 
     - name: mark workload as completed
-      if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      if: ${{ always() && steps.build.outcome != 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
       uses: ./.github/actions/workload_comment
       with:
         command: update
