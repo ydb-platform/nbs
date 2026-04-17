@@ -1,10 +1,6 @@
 UNITTEST_FOR(cloud/storage/core/libs/auth)
 
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
-ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
-ENDIF()
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     authorizer_ut.cpp
