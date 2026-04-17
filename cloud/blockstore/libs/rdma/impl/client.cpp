@@ -14,9 +14,9 @@
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
-#include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+#include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/history.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -43,7 +43,7 @@ namespace NCloud::NBlockStore::NRdma {
 using namespace NMonitoring;
 using namespace NThreading;
 
-LWTRACE_USING(BLOCKSTORE_RDMA_PROVIDER);
+LWTRACE_USING(STORAGE_RDMA_PROVIDER);
 
 namespace {
 
@@ -85,7 +85,7 @@ struct TRequest
 
     std::weak_ptr<TClientEndpoint> Endpoint;
 
-    TCallContextPtr CallContext;
+    TCallContextBasePtr CallContext;
     ui32 ReqId = 0;   // 16-bit RDMA request id
     ui64 ClientReqId = 0;
 
@@ -554,7 +554,7 @@ public:
         size_t responseBytes) noexcept override;
     ui64 SendRequest(
         TClientRequestPtr creq,
-        TCallContextPtr callContext) noexcept override;
+        TCallContextBasePtr callContext) noexcept override;
     void CancelRequest(ui64 reqId) noexcept override;
     void TryForceReconnect() noexcept override;
     TFuture<void> Stop() noexcept override;
@@ -844,7 +844,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
 // implements IClientEndpoint
 ui64 TClientEndpoint::SendRequest(
     TClientRequestPtr creq,
-    TCallContextPtr callContext) noexcept
+    TCallContextBasePtr callContext) noexcept
 {
     TRequestPtr req(static_cast<TRequest*>(creq.release()));
     req->CallContext = std::move(callContext);

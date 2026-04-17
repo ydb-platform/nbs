@@ -36,7 +36,7 @@ class TDummyClientEndpoint: public NRdma::IClientEndpoint
 
     ui64 SendRequest(
         NRdma::TClientRequestPtr req,
-        TCallContextPtr callContext) override
+        TCallContextBasePtr callContext) override
     {
         Y_UNUSED(req);
         Y_UNUSED(callContext);

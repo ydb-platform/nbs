@@ -176,38 +176,48 @@ public:
         Log = std::move(log);
     }
 
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return NCloud::NBlockStore::CreateCallContext();
+    }
+
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
     {
-        auto doHandleRequest = [self = shared_from_this(),
-                                context = context,
-                                callContext = std::move(callContext),
-                                in = in,
-                                out = out]() mutable -> NProto::TError
-        {
-            return self
-                ->DoHandleRequest(context, std::move(callContext), in, out);
-        };
-
-        auto safeHandleRequest =
-            [endpoint = Endpoint,
+        TaskQueue->ExecuteSimple(
+            [self = shared_from_this(),
+             endpoint = Endpoint,
              context = context,
-             doHandleRequest = std::move(doHandleRequest)]() mutable
-        {
-            auto error =
-                SafeExecute<NProto::TError>(std::move(doHandleRequest));
+             callContext = ToBlockStoreCallContext(std::move(callContext)),
+             in = in,
+             out = out]() mutable
+            {
+                auto error = SafeExecute<NProto::TError>(
+                    [self,
+                     context,
+                     callContext = std::move(callContext),
+                     in,
+                     out]() mutable
+                    {
+                        return self->DoHandleRequest(
+                            context,
+                            std::move(callContext),
+                            in,
+                            out);
+                    });
 
-            if (error.GetCode()) {
-                if (auto ep = endpoint.lock()) {
-                    ep->SendError(context, error.GetCode(), error.GetMessage());
+                if (error.GetCode()) {
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            error.GetCode(),
+                            error.GetMessage());
+                    }
                 }
-            }
-        };
-
-        TaskQueue->ExecuteSimple(std::move(safeHandleRequest));
+            });
     }
 
     NProto::TError DeviceSecureEraseStart(const TString& deviceUUID)

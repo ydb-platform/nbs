@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
+#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -65,7 +66,7 @@ struct TEvFakeRdmaClient
         TClientRequestId ClientReqId = 0;
         TEndpointId EndpointId = 0;
         NRdma::TClientRequestPtr Request;
-        TCallContextPtr CallContext;
+        TCallContextBasePtr RdmaCallContext;
     };
 
     struct TUpdateNodeId
@@ -175,7 +176,7 @@ public:
 
     ui64 SendRequest(
         NRdma::TClientRequestPtr req,
-        TCallContextPtr callContext) override;
+        TCallContextBasePtr callContext) override;
 
     void CancelRequest(ui64 reqId) override;
 
@@ -218,7 +219,7 @@ auto TClientEndpoint::AllocateRequest(
 
 ui64 TClientEndpoint::SendRequest(
     NRdma::TClientRequestPtr req,
-    TCallContextPtr callContext)
+    TCallContextBasePtr callContext)
 {
     auto request = std::make_unique<TEvFakeRdmaClient::TEvSendRequest>();
 
@@ -227,7 +228,7 @@ ui64 TClientEndpoint::SendRequest(
     request->ClientReqId = clientReqId;
     request->EndpointId = EndpointId;
     request->Request = std::move(req);
-    request->CallContext = std::move(callContext);
+    request->RdmaCallContext = std::move(callContext);
 
     ActorSystem->Send(RdmaActorId, std::move(request));
     return clientReqId;
@@ -985,7 +986,7 @@ private:
                 SelfId(),
                 ep->NodeId,
                 std::move(msg->Request),
-                std::move(msg->CallContext)));
+                ToBlockStoreCallContext(std::move(msg->RdmaCallContext))));
         Y_ABORT_UNLESS(inserted);
     }
 

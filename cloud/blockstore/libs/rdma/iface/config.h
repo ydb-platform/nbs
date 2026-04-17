@@ -1,60 +1,141 @@
 #pragma once
 
-#include "public.h"
+#include "client.h"
+#include "server.h"
 
-#include <cloud/blockstore/config/rdma.pb.h>
+#include <cloud/blockstore/config/rdma_common.pb.h>
+
+#include <util/system/yassert.h>
+
+#include <memory>
 
 namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaConfig
+inline EWaitMode ConvertRdmaWaitMode(NProto::EWaitMode mode)
 {
-private:
-    const NProto::TRdmaConfig Config;
+    switch (mode) {
+        case NProto::WAIT_MODE_POLL:
+            return EWaitMode::Poll;
 
-public:
-    explicit TRdmaConfig(NProto::TRdmaConfig config = {});
+        case NProto::WAIT_MODE_BUSY_WAIT:
+            return EWaitMode::BusyWait;
 
-    auto GetClientEnabled() const
-    {
-        return Config.GetClientEnabled();
+        case NProto::WAIT_MODE_ADAPTIVE_WAIT:
+            return EWaitMode::AdaptiveWait;
+
+        default:
+            Y_ABORT("unsupported wait mode %d", mode);
+    }
+}
+
+inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
+{
+    TClientConfig result;
+    result.SendQueueSize = 0;
+    result.RecvQueueSize = 0;
+
+#define SET(param, ...)                            \
+    if (const auto& value = config.Get##param()) { \
+        result.param = __VA_ARGS__(value);         \
     }
 
-    const auto& GetClient() const
-    {
-        return Config.GetClient();
+#define SET_NESTED(param1, param2, ...)                           \
+    if (const auto& value = config.Get##param1().Get##param2()) { \
+        result.param1.param2 = __VA_ARGS__(value);                \
     }
 
-    auto GetServerEnabled() const
-    {
-        return Config.GetServerEnabled();
+    SET(QueueSize);
+    SET(MaxBufferSize);
+    SET(WaitMode, ConvertRdmaWaitMode);
+    SET(PollerThreads);
+    SET(MaxReconnectDelay, TDuration::MilliSeconds);
+    SET(MaxResponseDelay, TDuration::MilliSeconds);
+    SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
+    SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
+    SET(AlignedDataEnabled);
+    SET(IpTypeOfService);
+    SET(SourceInterface);
+    SET(VerbsQP);
+    SET(SendQueueSize);
+    SET(RecvQueueSize);
+
+    SET_NESTED(BufferPool, ChunkSize);
+    SET_NESTED(BufferPool, MaxChunkAlloc);
+    SET_NESTED(BufferPool, MaxFreeChunks);
+
+    // Compatibility with the old config.
+    if (result.SendQueueSize == 0 && result.QueueSize > 0) {
+        result.SendQueueSize = result.QueueSize;
+    }
+    if (result.RecvQueueSize == 0 && result.QueueSize > 0) {
+        result.RecvQueueSize = result.QueueSize;
     }
 
-    const auto& GetServer() const
-    {
-        return Config.GetServer();
+#undef SET_NESTED
+#undef SET
+
+    return result;
+}
+
+inline TClientConfigPtr CreateClientConfigPtr(const NProto::TRdmaClient& config)
+{
+    return std::make_shared<TClientConfig>(CreateClientConfig(config));
+}
+
+inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
+{
+    TServerConfig result;
+    result.SendQueueSize = 0;
+    result.RecvQueueSize = 0;
+
+#define SET(param, ...)                            \
+    if (const auto& value = config.Get##param()) { \
+        result.param = __VA_ARGS__(value);         \
     }
 
-    bool GetDiskAgentTargetEnabled() const
-    {
-        return Config.GetDiskAgentTargetEnabled();
+#define SET_NESTED(param1, param2, ...)                           \
+    if (const auto& value = config.Get##param1().Get##param2()) { \
+        result.param1.param2 = __VA_ARGS__(value);                \
     }
 
-    const auto& GetDiskAgentTarget() const
-    {
-        return Config.GetDiskAgentTarget();
+    SET(Backlog);
+    SET(QueueSize);
+    SET(MaxBufferSize);
+    SET(KeepAliveTimeout, TDuration::MilliSeconds);
+    SET(WaitMode, ConvertRdmaWaitMode);
+    SET(PollerThreads);
+    SET(MaxInflightBytes);
+    SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
+    SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
+    SET(IpTypeOfService);
+    SET(SourceInterface);
+    SET(VerbsQP);
+    SET(SendQueueSize);
+    SET(RecvQueueSize);
+
+    SET_NESTED(BufferPool, ChunkSize);
+    SET_NESTED(BufferPool, MaxChunkAlloc);
+    SET_NESTED(BufferPool, MaxFreeChunks);
+
+    // Compatibility with old config.
+    if (result.SendQueueSize == 0 && result.QueueSize > 0) {
+        result.SendQueueSize = result.QueueSize;
+    }
+    if (result.RecvQueueSize == 0 && result.QueueSize > 0) {
+        result.RecvQueueSize = result.QueueSize;
     }
 
-    bool GetBlockstoreServerTargetEnabled() const
-    {
-        return Config.GetBlockstoreServerTargetEnabled();
-    }
+#undef SET_NESTED
+#undef SET
 
-    const auto& GetBlockstoreServerTarget() const
-    {
-        return Config.GetBlockstoreServerTarget();
-    }
-};
+    return result;
+}
+
+inline TServerConfigPtr CreateServerConfigPtr(const NProto::TRdmaServer& config)
+{
+    return std::make_shared<TServerConfig>(CreateServerConfig(config));
+}
 
 }   // namespace NCloud::NBlockStore::NRdma

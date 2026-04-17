@@ -16,6 +16,8 @@ namespace NCloud {
     xxx(MlockFailed)                                                           \
     xxx(ConfigDispatcherItemParseError)                                        \
     xxx(GetConfigsFromCmsYamlParseError)                                       \
+    xxx(FailedToParseRdmaError)                                                \
+    xxx(FailedToSerializeRdmaError)                                            \
 // STORAGE_CRITICAL_EVENTS
 
 #define STORAGE_IMPOSSIBLE_EVENTS(xxx)                                         \

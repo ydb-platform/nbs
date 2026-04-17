@@ -114,7 +114,7 @@ void TBootstrap::InitLogging()
 void TBootstrap::InitTracing()
 {
     auto& probes = NLwTraceMonPage::ProbeRegistry();
-    probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
+    probes.AddProbesList(LWTRACE_GET_PROBES(STORAGE_RDMA_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_TEST_PROVIDER));
 
     auto& traceManager = NLwTraceMonPage::TraceManager(false);

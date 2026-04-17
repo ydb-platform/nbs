@@ -88,7 +88,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 
     ui64 SendRequest(
         NRdma::TClientRequestPtr req,
-        TCallContextPtr callContext) override
+        TCallContextBasePtr callContext) override
     {
         Y_UNUSED(callContext);
 

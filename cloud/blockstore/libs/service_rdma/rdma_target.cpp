@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 
@@ -23,7 +24,7 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NThreading;
 using namespace NMonitoring;
 
-LWTRACE_USING(BLOCKSTORE_RDMA_PROVIDER);
+LWTRACE_USING(STORAGE_RDMA_PROVIDER);
 
 namespace {
 
@@ -107,6 +108,11 @@ public:
         Log = std::move(log);
     }
 
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return NCloud::NBlockStore::CreateCallContext();
+    }
+
 private:
 #define BLOCKSTORE_HANDLE_REQUEST(name, ...)                                   \
     case TBlockStoreServerProtocol::Ev##name##Request:                         \
@@ -154,24 +160,29 @@ private:
 
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
     {
-        TaskQueue->ExecuteSimple([=, endpoint = Endpoint] {
-            auto error = SafeExecute<NProto::TError>([=] {
-                return DoHandleRequest(context, callContext, in, out);
-            });
+        TaskQueue->ExecuteSimple(
+            [=,
+             endpoint = Endpoint,
+             callContext =
+                 ToBlockStoreCallContext(std::move(callContext))]() mutable
+            {
+                auto error = SafeExecute<NProto::TError>(
+                    [=]()
+                    { return DoHandleRequest(context, callContext, in, out); });
 
-            if (HasError(error)) {
-                if (auto ep = endpoint.lock()) {
-                    ep->SendError(
-                        context,
-                        error.GetCode(),
-                        error.GetMessage());
+                if (HasError(error)) {
+                    if (auto ep = endpoint.lock()) {
+                        ep->SendError(
+                            context,
+                            error.GetCode(),
+                            error.GetMessage());
+                    }
                 }
-            }
-        });
+            });
     }
 
     NProto::TError HandleReadBlocksRequest(
@@ -553,8 +564,10 @@ public:
 
     void Start() override
     {
-        auto endpoint =
-            Server->StartEndpoint(Config->Host, Config->Port, Handler);
+        auto endpoint = Server->StartEndpoint(
+            Config->Host,
+            Config->Port,
+            Handler);
 
         Log = Logging->CreateLog("BLOCKSTORE_SERVER");
         if (endpoint == nullptr) {

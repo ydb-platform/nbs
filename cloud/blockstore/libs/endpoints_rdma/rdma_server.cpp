@@ -73,9 +73,14 @@ public:
         Endpoint = std::move(endpoint);
     }
 
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return NCloud::NBlockStore::CreateCallContext();
+    }
+
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override;
 
@@ -114,14 +119,14 @@ using TRdmaEndpointPtr = std::shared_ptr<TRdmaEndpoint>;
 
 void TRdmaEndpoint::HandleRequest(
     void* context,
-    TCallContextPtr callContext,
+    TCallContextBasePtr callContext,
     TStringBuf in,
     TStringBuf out)
 {
     TaskQueue->ExecuteSimple(
         [self = weak_from_this(),
          context,
-         callContext = std::move(callContext),
+         callContext = ToBlockStoreCallContext(std::move(callContext)),
          in,
          out]() mutable
         {

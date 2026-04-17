@@ -1,9 +1,11 @@
-#include "client.h"
 #include "server.h"
+
+#include "client.h"
 #include "test_verbs.h"
 
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 
+#include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -37,9 +39,14 @@ struct TClientHandler
 struct TServerHandler
     : IServerHandler
 {
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return MakeIntrusive<TCallContextBase>(ui64{0});
+    }
+
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
     {
@@ -242,7 +249,10 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
     };
 
     auto endpoint = server
-        ->StartEndpoint("::", 10020, std::make_shared<TServerHandler>());
+        ->StartEndpoint(
+            "::",
+            10020,
+            std::make_shared<TServerHandler>());
 
     // emulate client connection
 

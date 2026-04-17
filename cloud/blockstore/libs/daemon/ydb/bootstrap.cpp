@@ -30,9 +30,9 @@
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/notify/iface/notify.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/rdma/fake/client.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/rdma/impl/client.h>
@@ -108,7 +108,7 @@ namespace {
 NRdma::TClientConfigPtr CreateRdmaClientConfig(
     const NRdma::TRdmaConfig& config)
 {
-    return std::make_shared<NRdma::TClientConfig>(config.GetClient());
+    return NRdma::CreateClientConfigPtr(config.GetClient());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -935,7 +935,7 @@ void TBootstrapYdb::InitKikimrService()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_STORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
-    probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
+    probes.AddProbesList(LWTRACE_GET_PROBES(STORAGE_RDMA_PROVIDER));
     InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
                     .GetServiceName());
 
@@ -985,7 +985,7 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 
 void TBootstrapYdb::InitRdmaRequestServer()
 {
-    auto rdmaConfig = std::make_shared<NRdma::TServerConfig>(
+    auto rdmaConfig = NRdma::CreateServerConfigPtr(
         Configs->RdmaConfig->GetServer());
 
     RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(
