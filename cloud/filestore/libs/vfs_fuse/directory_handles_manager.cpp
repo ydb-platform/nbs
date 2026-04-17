@@ -92,9 +92,10 @@ bool TDirectoryHandlesManager::RemoveHandle(ui64 handleId, fuse_ino_t ino)
     return isConsistent;
 }
 
-void TDirectoryHandlesManager::ResetHandle(ui64 handleId)
+void TDirectoryHandlesManager::ResetHandle(
+    ui64 handleId,
+    const std::shared_ptr<TDirectoryHandle>& handle)
 {
-    auto handle = FindHandle(handleId);
     if (!handle) {
         return;
     }

@@ -5,6 +5,8 @@
 
 #include <memory>
 
+#include <util/system/spinlock.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,7 +16,7 @@ class TDirectoryHandlesManager
 private:
     TLog Log;
 
-    TMutex Lock;
+    TAdaptiveLock Lock;
     TDirectoryHandleMap Handles;
     TDirectoryHandlesStoragePtr Storage;
 
@@ -32,7 +34,9 @@ public:
 
     void RemoveHandle(ui64 handleId);
     bool RemoveHandle(ui64 handleId, fuse_ino_t ino);
-    void ResetHandle(ui64 handleId);
+    void ResetHandle(
+        ui64 handleId,
+        const std::shared_ptr<TDirectoryHandle>& handle);
     void AppendChunk(ui64 handleId, const TDirectoryHandleChunk& handleChunk);
 
     void ClearCache();
