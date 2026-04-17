@@ -143,7 +143,7 @@ TFuture<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
     for (auto& cell: Cells) {
         ui32 hostIndex = 0;
         for (auto& host: cell.Hosts) {
-            if (cell.CellId != LocalDescribeLabel) {
+            if (!cell.CellId.empty()) {
                 STORAGE_DEBUG(
                     TStringBuilder()
                     << "Send remote Describe Request to " << host.Fqdn
