@@ -159,7 +159,7 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
         args.ChildRefs,
         args.MaxBytes,
         Config->GetShardIdCompressionMode(),
-        GetFileSystemId(),
+        GetMainFileSystemId(),
         &args.Next,
         Config->GetNodeRefsNoAutoPrecharge(),
         args.Request.GetListNodesSizeMode()))

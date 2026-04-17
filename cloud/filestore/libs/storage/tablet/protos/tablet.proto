@@ -64,7 +64,6 @@ message TFileSystemStats
     uint64 LastCollectCommitId = 3;
     uint64 LastXAttr = 4;
     uint64 HasXAttrs = 5;
-    uint64 ShardIdCompressionState = 6;
 
     // index stats
     uint64 UsedNodesCount = 100;

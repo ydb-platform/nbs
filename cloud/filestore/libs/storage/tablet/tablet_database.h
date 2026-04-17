@@ -32,7 +32,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
     xxx(LastXAttr,              __VA_ARGS__)                                   \
     xxx(HasXAttrs,              __VA_ARGS__)                                   \
-    xxx(ShardIdCompressionState, __VA_ARGS__)                                  \
                                                                                \
     xxx(UsedNodesCount,         __VA_ARGS__)                                   \
     xxx(UsedSessionsCount,      __VA_ARGS__)                                   \
@@ -208,7 +207,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& name,
         TMaybe<TNodeRef>& ref,
         NProto::EShardIdCompressionMode shardIdMode,
-        const TString& fsId) override;
+        const TString& mainFsId) override;
 
     virtual bool ReadNodeRefs(
         ui64 nodeId,
@@ -217,7 +216,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         TVector<TNodeRef>& refs,
         ui32 maxBytes,
         NProto::EShardIdCompressionMode,
-        const TString& fsId,
+        const TString& mainFsId,
         TString* next,
         ui32* skippedRefs,
         bool noAutoPrecharge,
@@ -684,7 +683,7 @@ public:
         const TString& name,
         TMaybe<TNodeRef>& ref,
         NProto::EShardIdCompressionMode,
-        const TString& fsId) override;
+        const TString& mainFsId) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,

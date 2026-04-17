@@ -986,8 +986,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
 
-        executor.WriteTx([&](TIndexTabletDatabase db)
-                         { db.InitSchema(); });
+        executor.WriteTx([&](TIndexTabletDatabase db) { db.InitSchema(); });
 
         constexpr ui64 commitId = 1;
         constexpr ui64 nodeId = 1;
@@ -997,18 +996,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         const TString fnamePrefix = "file_";
         const TString mainFsId = "computefilesystem-e00dabc99a5fjdpt7s";
         const TVector<TString> shardId = {
+            mainFsId,
             mainFsId + "_s1",
             mainFsId + "_s32",
             mainFsId + "_s475"};
 
-        for (int writeModeNum =
-                 NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION;
-             writeModeNum <=
-             NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT;
+        // ShardId compression modes are ordered so that any ShardId written
+        // using a given mode can be read using the same or further mode.
+        TVector<NProto::EShardIdCompressionMode> compressionModes = {
+            NProto::EShardIdCompressionMode::SICM_NO_COMPRESSION,
+            NProto::EShardIdCompressionMode::SICM_READ,
+            NProto::EShardIdCompressionMode::SICM_READ_WRITE,
+            NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT};
+
+        for (size_t writeModeNum = 0; writeModeNum < compressionModes.size();
              ++writeModeNum)
         {
             const NProto::EShardIdCompressionMode writeMode =
-                static_cast<NProto::EShardIdCompressionMode>(writeModeNum);
+                compressionModes[writeModeNum];
             // Create refs that refernce nodes in shards
             TVector<IIndexTabletDatabase::TNodeRef> nodeRefs;
             for (ui32 i = 0; i < count; ++i) {
@@ -1019,8 +1024,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     .ShardId = shardId[fileNum % shardId.size()],
                     .ShardNodeName = CreateGuidAsString(),
                     .MinCommitId = commitId,
-                    .MaxCommitId = commitId
-                };
+                    .MaxCommitId = commitId};
                 nodeRefs.push_back(nodeRef);
                 fileNum++;
             }
@@ -1032,8 +1036,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     .ChildNodeId = fileNum,
                     .ShardId = "",
                     .MinCommitId = commitId,
-                    .MaxCommitId = commitId
-                };
+                    .MaxCommitId = commitId};
                 nodeRefs.push_back(nodeRef);
                 fileNum++;
             }
@@ -1055,13 +1058,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     });
             }
 
-            for (int readModeNum = writeModeNum;
-                 readModeNum <=
-                 NProto::EShardIdCompressionMode::SICM_READ_WRITE_CONVERT;
+            for (size_t readModeNum = writeModeNum;
+                 readModeNum < compressionModes.size();
                  ++readModeNum)
             {
                 const NProto::EShardIdCompressionMode readMode =
-                    static_cast<NProto::EShardIdCompressionMode>(readModeNum);
+                    compressionModes[readModeNum];
 
                 for (const auto& nodeRef: nodeRefs) {
                     executor.ReadTx(

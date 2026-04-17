@@ -46,7 +46,7 @@ bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
         args.NextNodeId,
         args.NextCookie,
         Config->GetShardIdCompressionMode(),
-        GetFileSystemId());
+        GetMainFileSystemId());
 
     LOG_DEBUG(
         ctx,

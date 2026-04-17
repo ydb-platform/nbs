@@ -89,6 +89,7 @@ SRCS(
     tablet_database.cpp
     tablet_schema.cpp
     tablet_state.cpp
+    tablet_state_iface.cpp
     tablet_state_cache.cpp
     tablet_state_channels.cpp
     tablet_state_checkpoints.cpp
