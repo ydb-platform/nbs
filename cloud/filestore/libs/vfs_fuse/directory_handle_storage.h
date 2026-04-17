@@ -25,7 +25,7 @@ using TDirectoryHandleChunkPair =
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDirectoryHandlesStorage
+class TDirectoryHandleStorage
 {
 private:
     struct TDirectoryHandleTableHeader
@@ -43,7 +43,7 @@ private:
     THashMap<ui64, std::vector<ui64>> HandleIdToIndices;
 
 public:
-    explicit TDirectoryHandlesStorage(
+    explicit TDirectoryHandleStorage(
         TLog& log,
         const TString& filePath,
         ui64 recordsCount,
@@ -71,7 +71,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesStoragePtr CreateDirectoryHandlesStorage(
+TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     TLog& log,
     const TString& filePath,
     ui64 recordsCount,

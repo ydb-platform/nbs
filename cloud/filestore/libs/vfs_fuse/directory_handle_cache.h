@@ -1,6 +1,6 @@
 #pragma once
 
-#include "directory_handles_storage.h"
+#include "directory_handle_storage.h"
 #include "fs.h"
 
 #include <memory>
@@ -11,22 +11,22 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDirectoryHandlesCache
+class TDirectoryHandleCache
 {
 private:
     TLog Log;
 
     TAdaptiveLock Lock;
     TDirectoryHandleMap Handles;
-    TDirectoryHandlesStoragePtr Storage;
+    TDirectoryHandleStoragePtr Storage;
 
-    TDirectoryHandlesStatsPtr Stats;
+    TDirectoryHandleStatsPtr Stats;
 
 public:
-    TDirectoryHandlesCache(
+    TDirectoryHandleCache(
         TLog log,
-        TDirectoryHandlesStatsPtr stats,
-        TDirectoryHandlesStoragePtr storage);
+        TDirectoryHandleStatsPtr stats,
+        TDirectoryHandleStoragePtr storage);
 
     ui64 CreateHandle(fuse_ino_t ino);
 

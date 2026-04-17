@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include "config.h"
-#include "directory_handles_cache.h"
+#include "directory_handle_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
@@ -91,7 +91,7 @@ private:
 
     TNodeCache NodeCache;
 
-    std::unique_ptr<TDirectoryHandlesCache> DirectoryHandlesCache;
+    std::unique_ptr<TDirectoryHandleCache> DirectoryHandleCache;
 
     TXAttrCache XAttrCache;
     TMutex XAttrCacheLock;
@@ -115,10 +115,10 @@ public:
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        TDirectoryHandlesStatsPtr directoryHandlesStats,
+        TDirectoryHandleStatsPtr directoryHandleStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        TDirectoryHandlesStoragePtr directoryHandlesStorage,
+        TDirectoryHandleStoragePtr directoryHandleStorage,
         TWriteBackCache writeBackCache);
 
     ~TFileSystem();

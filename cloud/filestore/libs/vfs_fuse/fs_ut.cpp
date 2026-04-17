@@ -126,7 +126,7 @@ struct TBootstrap
 
     TPromise<void> StopTriggered = NewPromise<void>();
 
-    TString DirectoryHandlesStoragePath;
+    TString DirectoryHandleStoragePath;
 
     TBootstrap(
             ITimerPtr timer = CreateWallClockTimer(),
@@ -211,7 +211,7 @@ struct TBootstrap
 
         if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
             proto.SetDirectoryHandlesStoragePath(TempDir.Path() / "DirectoryHandles");
-            DirectoryHandlesStoragePath = proto.GetDirectoryHandlesStoragePath();
+            DirectoryHandleStoragePath = proto.GetDirectoryHandlesStoragePath();
         }
 
         // WriteBackCache should be configured even if it is disabled
@@ -234,7 +234,7 @@ struct TBootstrap
             Session);
     }
 
-    NMonitoring::TDynamicCountersPtr GetDirectoryHandlesCounters() const
+    NMonitoring::TDynamicCountersPtr GetDirectoryHandleCounters() const
     {
         return Counters
             ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
@@ -317,7 +317,7 @@ struct TBootstrap
         UNIT_ASSERT_NO_EXCEPTION(interrupt.GetValueSync());
     };
 
-    static TBootstrap CreateWithHandlesStorage() {
+    static TBootstrap CreateWithHandleStorage() {
         NProto::TFileStoreFeatures features;
         features.SetDirectoryHandlesStorageEnabled(true);
         return TBootstrap(CreateWallClockTimer(), CreateScheduler(), features);
@@ -935,7 +935,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldHandleReadDirLargeDataWithHandlesStoragePaging)
     {
-        auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+        auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
         std::atomic<ui32> numCalls = 0;
         bootstrap.Service->ListNodesHandler =
@@ -1028,7 +1028,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
 
-        auto moduleCounters = bootstrap.GetDirectoryHandlesCounters();
+        auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
 
         auto maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
         UNIT_ASSERT(maxCacheSize);
@@ -1214,7 +1214,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
 
-        auto moduleCounters = bootstrap.GetDirectoryHandlesCounters();
+        auto moduleCounters = bootstrap.GetDirectoryHandleCounters();
         UNIT_ASSERT(moduleCounters);
 
         auto maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
@@ -1241,7 +1241,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(maxChunkCount);
         UNIT_ASSERT_VALUES_EQUAL(peakChunkCount, maxChunkCount->Val());
 
-        for (size_t i = 0; i < DirectoryHandlesMaxBucketCount; ++i) {
+        for (size_t i = 0; i < DirectoryHandleMaxBucketCount; ++i) {
             timer->AdvanceTime(TDuration::Seconds(1));
             bootstrap.ModuleStatsRegistry->UpdateStats(true);
         }
@@ -1279,7 +1279,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TString pathToCache;
 
         {
-            auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
             bootstrap.Service->CreateSessionHandler = createSessionHandler;
 
@@ -1325,7 +1325,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Stop();
             };
 
-            pathToCache = TFsPath(bootstrap.DirectoryHandlesStoragePath) /
+            pathToCache = TFsPath(bootstrap.DirectoryHandleStoragePath) /
                           FileSystemId / sessionId /
                           "directory_handles_storage";
 
@@ -1354,7 +1354,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
 
         {
-            auto bootstrap = TBootstrap::CreateWithHandlesStorage();
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
 
             tmpPathForCache.CopyTo(pathToCache, true);
 

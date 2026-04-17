@@ -36,10 +36,10 @@ TFileSystem::TFileSystem(
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        TDirectoryHandlesStatsPtr directoryHandlesStats,
+        TDirectoryHandleStatsPtr directoryHandleStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        TDirectoryHandlesStoragePtr directoryHandlesStorage,
+        TDirectoryHandleStoragePtr directoryHandleStorage,
         TWriteBackCache writeBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
@@ -51,10 +51,10 @@ TFileSystem::TFileSystem(
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), NODE_CACHE_SHARD_COUNT)
-    , DirectoryHandlesCache(std::make_unique<TDirectoryHandlesCache>(
+    , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
           Log,
-          std::move(directoryHandlesStats),
-          std::move(directoryHandlesStorage)))
+          std::move(directoryHandleStats),
+          std::move(directoryHandleStorage)))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
@@ -84,7 +84,7 @@ void TFileSystem::Init()
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
-    DirectoryHandlesCache->Reset();
+    DirectoryHandleCache->Reset();
 }
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
