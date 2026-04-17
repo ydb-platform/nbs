@@ -31,7 +31,8 @@ public:
         if (JsonOutput) {
             response.PrintJSON(Cout);
         } else {
-            Cout << "Filestore: " << DumpMessage(response.GetFileStore())
+            Cout << "Filestore: "
+                 << ProtoMessagePrinter.ToString(response.GetFileStore())
                  << Endl;
         }
 

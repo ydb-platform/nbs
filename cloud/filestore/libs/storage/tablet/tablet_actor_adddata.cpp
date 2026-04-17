@@ -311,7 +311,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         "%s %s: %s",
         LogTag.c_str(),
         "GenerateBlobIds",
-        DumpMessage(msg->Record).c_str());
+        ProtoMessagePrinter.ToString(msg->Record).c_str());
 
     const ui32 blockSize = GetBlockSize();
     const TByteRange range(

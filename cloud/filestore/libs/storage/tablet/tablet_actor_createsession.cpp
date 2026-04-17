@@ -197,7 +197,7 @@ void TIndexTabletActor::HandleCreateSession(
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession: %s",
         LogTag.c_str(),
-        DumpMessage(msg->Record).c_str());
+        ProtoMessagePrinter.ToString(msg->Record).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

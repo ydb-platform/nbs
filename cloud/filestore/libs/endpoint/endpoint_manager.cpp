@@ -112,6 +112,8 @@ private:
     bool DrainingStarted = false;
     TMap<TString, TEndpointInfo> Endpoints;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TEndpointManager(
             ILoggingServicePtr logging,
@@ -337,7 +339,7 @@ private:
 NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
     const NProto::TStartEndpointRequest& request)
 {
-    STORAGE_INFO("StartEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StartEndpoint " << ProtoMessagePrinter.ToString(request));
 
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
@@ -432,7 +434,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     const NProto::TStopEndpointRequest& request)
 {
-    STORAGE_INFO("StopEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StopEndpoint " << ProtoMessagePrinter.ToString(request));
 
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
@@ -487,7 +489,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
     const NProto::TListEndpointsRequest& request)
 {
-    STORAGE_TRACE("ListEndpoints " << DumpMessage(request));
+    STORAGE_TRACE("ListEndpoints " << ProtoMessagePrinter.ToString(request));
 
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
@@ -504,7 +506,7 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
 NProto::TKickEndpointResponse TEndpointManager::DoKickEndpoint(
     const NProto::TKickEndpointRequest& request)
 {
-    STORAGE_TRACE("KickEndpoint " << DumpMessage(request));
+    STORAGE_TRACE("KickEndpoint " << ProtoMessagePrinter.ToString(request));
 
     auto requestOrError = Storage->GetEndpoint(
         ToString(request.GetKeyringId()));
@@ -526,7 +528,7 @@ NProto::TKickEndpointResponse TEndpointManager::DoKickEndpoint(
 NProto::TPingResponse TEndpointManager::DoPing(
     const NProto::TPingRequest& request)
 {
-    STORAGE_TRACE("Ping " << DumpMessage(request));
+    STORAGE_TRACE("Ping " << ProtoMessagePrinter.ToString(request));
 
     return {};
 }

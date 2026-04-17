@@ -76,7 +76,7 @@ bool TIndexTabletActor::AcceptRequestNoSession(
         "%s %s: %s",
         LogTag.c_str(),
         TMethod::Name,
-        DumpMessage(request).c_str());
+        ProtoMessagePrinter.ToString(request).c_str());
 
     NProto::TError error;
     if (validator) {

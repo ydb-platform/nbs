@@ -155,7 +155,8 @@ bool TFileSystem::UpdateNodeAttrsInCache(
     fuse_entry_param& entry,
     ui64 version)
 {
-    STORAGE_TRACE("updating node attrs: " << DumpMessage(attrs)
+    STORAGE_TRACE("updating node attrs: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     entry.ino = attrs.GetId();
@@ -217,7 +218,8 @@ void TFileSystem::ReplyCreateWithCache(
     const NProto::TNodeAttr& attrs,
     ui64 version)
 {
-    STORAGE_TRACE("inserting node: " << DumpMessage(attrs)
+    STORAGE_TRACE("inserting node: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     if (attrs.GetId() == InvalidNodeId) {
@@ -245,7 +247,8 @@ void TFileSystem::ReplyEntryWithCache(
     const NProto::TNodeAttr& attrs,
     ui64 version)
 {
-    STORAGE_TRACE("inserting node: " << DumpMessage(attrs)
+    STORAGE_TRACE("inserting node: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     if (attrs.GetId() == InvalidNodeId) {
@@ -290,7 +293,8 @@ void TFileSystem::ReplyAttrWithCache(
     const NProto::TNodeAttr& attrs,
     ui64 version)
 {
-    STORAGE_TRACE("returning node: " << DumpMessage(attrs)
+    STORAGE_TRACE("returning node: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     if (attrs.GetId() == InvalidNodeId) {

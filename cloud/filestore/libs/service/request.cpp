@@ -3,12 +3,12 @@
 #include "endpoint.h"
 #include "filestore.h"
 
+#include <google/protobuf/message.h>
+#include <google/protobuf/text_format.h>
+
 #include <util/generic/singleton.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
-
-#include <google/protobuf/message.h>
-#include <google/protobuf/text_format.h>
 
 namespace NCloud::NFileStore {
 
@@ -31,27 +31,6 @@ struct TSizePrinter
         google::protobuf::TextFormat::BaseTextGenerator* generator) const override
     {
         generator->PrintString(TStringBuilder() << val.size() << " bytes");
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TTextPrinter
-    : google::protobuf::TextFormat::Printer
-{
-    TTextPrinter()
-    {
-        SetSingleLineMode(true);
-        SetExpandAny(true);
-        SetTruncateStringFieldLongerThan(256);
-
-        RegisterFieldValuePrinter(
-            NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName("buffer"),
-            new TSizePrinter());
-
-        RegisterFieldValuePrinter(
-            NProto::TReadDataResponse::descriptor()->FindFieldByLowercaseName("buffer"),
-            new TSizePrinter());
     }
 };
 
@@ -84,21 +63,6 @@ IOutputStream& operator <<(IOutputStream& out, const TRequestInfo& info)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString DumpMessage(const google::protobuf::Message& message)
-{
-    TString result;
-    Singleton<TTextPrinter>()->PrintToString(message, &result);
-
-    // single line mode currently might have an extra space at the end
-    if (result.size() > 0 && result.back() == ' ') {
-        result.pop_back();
-    }
-
-    return result;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 ui64 CreateRequestId()
 {
     ui64 requestId = 0;
@@ -107,6 +71,37 @@ ui64 CreateRequestId()
     }
 
     return requestId;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TProtoMessagePrinter::TProtoMessagePrinter()
+{
+    Printer.SetSingleLineMode(true);
+    Printer.SetExpandAny(true);
+    Printer.SetTruncateStringFieldLongerThan(256);
+
+    Printer.RegisterFieldValuePrinter(
+        NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName("buffer"),
+        new TSizePrinter());
+
+    Printer.RegisterFieldValuePrinter(
+        NProto::TReadDataResponse::descriptor()->FindFieldByLowercaseName("buffer"),
+        new TSizePrinter());
+}
+
+TString TProtoMessagePrinter::ToString(
+    const google::protobuf::Message& message)
+{
+    TString result;
+    Printer.PrintToString(message, &result);
+
+    // single line mode currently might have an extra space at the end
+    if (result.size() > 0 && result.back() == ' ') {
+        result.pop_back();
+    }
+
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

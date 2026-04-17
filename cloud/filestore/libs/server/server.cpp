@@ -178,6 +178,8 @@ protected:
     std::atomic<bool> Started = false;
     NCloud::NProto::TError Error;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TMaybe<TIncompleteRequest> ToIncompleteRequest(ui64 nowCycles) const
     {
@@ -683,7 +685,7 @@ private:
         STORAGE_LOG(GetRequestLogPriority<TRequest>(),
             TMethod::RequestName
             << " #" << RequestId
-            << " execute request: " << DumpMessage(*Request));
+            << " execute request: " << ProtoMessagePrinter.ToString(*Request));
 
         FILESTORE_TRACK(
             ExecuteRequest,
@@ -771,7 +773,7 @@ private:
         STORAGE_LOG(GetRequestLogPriority<TRequest>(),
             TMethod::RequestName
             << " #" << RequestId
-            << " send response: " << DumpMessage(response));
+            << " send response: " << ProtoMessagePrinter.ToString(response));
 
         FILESTORE_TRACK(
             SendResponse,
@@ -1112,7 +1114,7 @@ private:
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
-            << " send response: " << DumpMessage(response));
+            << " send response: " << ProtoMessagePrinter.ToString(response));
 
         Writer.Write(response, AcquireCompletionTag());
     }
