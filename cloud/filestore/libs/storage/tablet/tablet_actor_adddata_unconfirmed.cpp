@@ -121,6 +121,11 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
         UnconfirmedDataInProgress.erase(inProgressIt);
 
         if (deleteOnTxComplete) {
+            // Ordering is critical here. Once AddDataUnconfirmed moved the
+            // entry into UnconfirmedData, a cancelled commitId must execute
+            // DeleteUnconfirmedData before any AddBlob. The delete tx itself
+            // must remain page-fault-free, otherwise we can reorder TXes and
+            // crash and that will lead to data corruption.
             ExecuteTx<TDeleteUnconfirmedData>(
                 ctx,
                 CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
