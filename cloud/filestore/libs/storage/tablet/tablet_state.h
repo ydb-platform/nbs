@@ -417,6 +417,8 @@ public:
 
     void UpdateShardBalancer(const TVector<TShardStats>& stats);
 
+    TVector<IShardBalancer::TShardDescr> MakeOrderedShardList() const;
+
     //
     // FileSystem Stats
     //

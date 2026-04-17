@@ -1563,4 +1563,10 @@ void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
         minFreeSpaceReserve);
 }
 
+TVector<IShardBalancer::TShardDescr>
+TIndexTabletState::MakeOrderedShardList() const
+{
+    return Impl->ShardBalancer->MakeOrderedShardList();
+}
+
 }   // namespace NCloud::NFileStore::NStorage

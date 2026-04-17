@@ -178,6 +178,7 @@ void TIndexTabletState::LoadState(
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
         GetBlockSize(),
+        config.GetShardBalancerPrecisionBytes(),
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
@@ -202,6 +203,7 @@ void TIndexTabletState::UpdateConfig(
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
         GetBlockSize(),
+        config.GetShardBalancerPrecisionBytes(),
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),

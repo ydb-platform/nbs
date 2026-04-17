@@ -325,6 +325,7 @@ public:
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
     NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
+    ui64 GetShardBalancerPrecisionBytes() const;
 
     bool GetDirectoryCreationInShardsEnabled() const;
 
