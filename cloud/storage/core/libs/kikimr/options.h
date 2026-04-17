@@ -21,6 +21,7 @@ struct TOptionsYdbBase
     TString AuthConfig;
     TString KikimrFeaturesConfig;
     TString SharedCacheConfig;
+    TString ImmediateControlsConfig;
 
     TString InterconnectConfig;
     ui32 InterconnectPort = 0;

@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/tools/common/go/configurator/kikimr-proto";
+
+message TImmediateControlsConfig {
+    message TDSProxyControls {
+        optional uint64 PredictedDelayMultiplier = 2;
+        optional uint64 PredictedDelayMultiplierHDD = 7;
+        optional uint64 PredictedDelayMultiplierSSD = 10;
+    }
+
+    optional TDSProxyControls DSProxyControls = 9;
+}
