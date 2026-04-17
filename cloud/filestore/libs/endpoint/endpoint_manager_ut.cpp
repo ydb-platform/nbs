@@ -467,7 +467,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
         auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
         NProto::TError startError;
-        startError.SetCode(MAKE_SCHEMESHARD_ERROR(ENOENT));
+        startError.SetCode(E_NOT_FOUND);
         endpoint->Start.SetValue(startError);
         endpointStorage->AddEndpoint(unixSocket, endpointData);
 

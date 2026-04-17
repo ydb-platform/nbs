@@ -288,9 +288,7 @@ void TPartitionActor::HandleZeroBlocks(
         PartitionConfig.GetStorageMediaKind(),
         requestSize);
 
-    if (!Config->GetFreshBlocksWriterEnabled() &&
-        isFreshRequest)
-    {
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         // small writes will be accumulated in FreshBlocks table
         ZeroFreshBlocks(
             ctx,
@@ -313,7 +311,7 @@ void TPartitionActor::HandleZeroBlocks(
         commitId,
         DescribeRange(writeRange).c_str());
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
 
     // large writes could skip FreshBlocks table completely
     TVector<TAddMergedBlob> requests(
@@ -403,10 +401,10 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
     auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->AccessCommitQueue().ReleaseBarrier(commitId);
+    State->AccessCommitQueue()->ReleaseBarrier(commitId);
 
     if (freshBlocksRequest && HasError(error)) {
-        State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
+        State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
             commitId,
             blocksCount);
     }
@@ -503,7 +501,7 @@ void TPartitionActor::CompleteZeroBlocks(
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
+    State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);
 
     Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
     --WriteAndZeroRequestsInProgress;

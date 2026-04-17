@@ -109,6 +109,14 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateUnsafeGetNodeRefActionActor
         },
         {
+            "unsafecreatehandle",
+            &TStorageServiceActor::CreateUnsafeCreateHandleActor
+        },
+        {
+            "unsafechangetabletstate",
+            &TStorageServiceActor::CreateUnsafeChangeTabletStateActor
+        },
+        {
             "getstoragestats",
             &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
@@ -137,9 +145,17 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor
         },
         {
-            "unsafecreatehandle",
-            &TStorageServiceActor::CreateUnsafeCreateHandleActor
-        }
+            "writeresponselogentry",
+            &TStorageServiceActor::CreateWriteResponseLogEntryActor
+        },
+        {
+            "deleteresponselogentry",
+            &TStorageServiceActor::CreateDeleteResponseLogEntryActor
+        },
+        {
+            "getresponselogentry",
+            &TStorageServiceActor::CreateGetResponseLogEntryActor
+        },
     };
 
     using TInstantAction = void (TStorageServiceActor::*)(

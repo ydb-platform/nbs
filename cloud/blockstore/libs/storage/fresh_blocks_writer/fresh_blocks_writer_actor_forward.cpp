@@ -16,7 +16,6 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 // BLOCKSTORE_FORWARD_TO_PARTITION
 
     BLOCKSTORE_FORWARD_TO_PARTITION(ReadBlocks,               TEvService)
-    BLOCKSTORE_FORWARD_TO_PARTITION(ZeroBlocks,               TEvService)
     BLOCKSTORE_FORWARD_TO_PARTITION(CreateCheckpoint,         TEvService)
     BLOCKSTORE_FORWARD_TO_PARTITION(DeleteCheckpoint,         TEvService)
     BLOCKSTORE_FORWARD_TO_PARTITION(GetChangedBlocks,         TEvService)

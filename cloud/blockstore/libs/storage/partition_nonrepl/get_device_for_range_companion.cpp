@@ -94,7 +94,7 @@ void TGetDeviceForRangeCompanion::HandleGetDeviceForRange(
         Y_DEBUG_ABORT_UNLESS(requests[0].DeviceIdx < DeviceStats->size());
 
         const auto& deviceStat = (*DeviceStats)[requests[0].DeviceIdx];
-        if (deviceStat.DeviceStatus != TDeviceStat::EDeviceStatus::Ok) {
+        if (deviceStat.GetDeviceStatus() != TDeviceStat::EDeviceStatus::Ok) {
             ReplyCanNotUseDirectCopy(ev, ctx);
             return;
         }

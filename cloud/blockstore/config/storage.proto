@@ -5,6 +5,7 @@ package NCloud.NBlockStore.NProto;
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/config_dispatcher_settings.proto";
+import "cloud/storage/core/protos/diagnostics.proto";
 import "cloud/storage/core/protos/media.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
@@ -107,6 +108,20 @@ enum EOverlappingRequestsPolicy
     ORP_DISABLE = 2;
 }
 
+enum ERequestSplitterPolicy
+{
+    // Read/write/zero requests are split by TVolumeActor as usual.
+    RSP_ENABLE = 0;
+
+    // Read/write/zero requests are split by TVolumeActor as usual, but when a
+    // cross-partition request appears, the CritEvent raised.
+    RSP_ENABLE_WITH_CRIT_EVENT = 1;
+
+    // Splitting of read/write/zero requests in TVolumeActor is disabled. It is
+    // assumed that the splitting is implemented on couple layers above volume.
+    RSP_DISABLE = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 message TPoolKindToMediaKindMapping
@@ -116,6 +131,52 @@ message TPoolKindToMediaKindMapping
 
     // Corresponding NBS storage media kind
     optional NCloud.NProto.EStorageMediaKind MediaKind = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TShapingThrottlerQuota
+{
+    // Performance profile for write requests.
+    optional NCloud.NProto.TPerformanceProfile Write = 1;
+
+    // Performance profile for read requests.
+    optional NCloud.NProto.TPerformanceProfile Read = 2;
+
+    // Number of IOs that are expected to be processed in parallel.
+    optional uint32 ExpectedIoParallelism = 3;
+
+    // The maximum amount of "budget" that can accumulate in the bucket
+    // (in milliseconds).
+    optional uint32 MaxBudget = 4;
+
+    // The time it takes to fully refill the bucket from empty
+    // (in milliseconds).
+    optional uint32 BudgetRefillTime = 5;
+
+    // The speed of budget consumption. All unspent budget will become shaping
+    // wait time (1.0 - no budget consumption, 2.0 - consume budget at 2x rate).
+    optional double BudgetSpendRate = 6;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TShapingThrottlerConfig
+{
+    // Performance measurements coefficients for SSD.
+    optional TShapingThrottlerQuota SsdQuota = 1;
+
+    // Performance measurements coefficients for HDD.
+    optional TShapingThrottlerQuota HddQuota = 2;
+
+    // Performance measurements coefficients for NRD.
+    optional TShapingThrottlerQuota NonreplQuota = 3;
+
+    // Performance measurements coefficients for mirror2 disks.
+    optional TShapingThrottlerQuota Mirror2Quota = 4;
+
+    // Performance measurements coefficients for mirror3 disks.
+    optional TShapingThrottlerQuota Mirror3Quota = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1474,4 +1535,20 @@ message TStorageServiceConfig
     // Maximum number of inflight attach/detach path requests.
     // VolumeBalancerMaxInProgress == 0 means no limit
     optional uint64 VolumeBalancerMaxInProgress = 488;
+
+    // If true, the VhostDiscardEnabled flag is enabled on volume restart.
+    // Applies to network-ssd and network-hdd disks.
+    optional bool EnableVhostDiscardOnVolumeRestart = 489;
+
+    // Shaping throttler configuration.
+    optional TShapingThrottlerConfig ShapingThrottlerConfig = 490;
+
+    // Don't read block masks on compaction if blob is entirely contained
+    // in one compaction range.
+    optional bool ReadBlockMaskOnCompactionOptimizationEnabled = 491;
+
+    // Policy for splitting read/write/zero requests in TVolumeActor.
+    // It is preferable to enable splitting via EnableRequestSplitter in the
+    // Server config.
+    optional ERequestSplitterPolicy RequestSplitterPolicy = 492;
 }

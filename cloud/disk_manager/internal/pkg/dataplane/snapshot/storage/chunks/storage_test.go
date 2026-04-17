@@ -317,3 +317,15 @@ func TestLastUnrefShouldDeleteDataEvenIfMetadataIsAbsent(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, chunkDataExists(t, ctx, s3, db, config, chunkID, true))
 }
+
+func TestS3BucketExists(t *testing.T) {
+	ctx, _, s3, config := setupEnvironment(t)
+
+	exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	exists, err = s3.BucketExists(ctx, "nonexistent-bucket")
+	require.NoError(t, err)
+	require.False(t, exists)
+}

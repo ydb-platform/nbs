@@ -3490,6 +3490,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
         service.CreateFileStore(fs, 1000);
+        ui64 tabletId = service.GetFileStoreInfo(fs)
+            ->Record.GetFileStore()
+            .GetMainTabletId();
 
         {
             NProto::TStorageConfig newConfig;
@@ -3523,6 +3526,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     case TEvBlobStorage::EvPutResult: {
                         auto* msg =
                             event->template Get<TEvBlobStorage::TEvPutResult>();
+                        if (msg->Id.TabletID() != tabletId || msg->Id.Channel() < 3) {
+                            // skip if not a data channel or not fs tablet
+                            break;
+                        }
                         const_cast<TFlags&>(msg->StatusFlags).Raw |=
                             ui32(yellowFlag);
                         const_cast<float&>(msg->ApproximateFreeSpaceShare) =

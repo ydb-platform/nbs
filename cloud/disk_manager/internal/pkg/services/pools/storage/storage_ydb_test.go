@@ -162,8 +162,18 @@ func TestStorageYDBReleaseNonExistent(t *testing.T) {
 		},
 	}
 
+	// Must add a tombstone slot to the database.
 	baseDisk, err := storage.ReleaseBaseDiskSlot(ctx, slot.OverlayDisk)
 	require.NoError(t, err)
+	require.Empty(t, baseDisk)
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisk))
+
+	// Must see the tombstone slot => must not acquire a slot.
+	baseDisk, err = storage.AcquireBaseDiskSlot(ctx, "image", slot)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.True(t, errors.IsSilent(err))
+	require.ErrorContains(t, err, "already released")
 	require.Empty(t, baseDisk)
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisk))
 

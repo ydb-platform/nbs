@@ -58,6 +58,18 @@ func (m *ClientInterfaceMock) ResizeFileStore(
 	return args.Error(0)
 }
 
+func (m *ClientInterfaceMock) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+	blocksCount uint64,
+	configVersion uint32,
+	shardCount uint32,
+) error {
+
+	args := m.Called(ctx, filesystemID, blocksCount, configVersion, shardCount)
+	return args.Error(0)
+}
+
 func (m *ClientInterfaceMock) DestroyFileStore(
 	ctx context.Context,
 	fileSystemID string,
@@ -177,6 +189,18 @@ func (m *ClientInterfaceMock) GetNodeAttr(
 	args := m.Called(ctx, session, parentNodeID, name)
 	res, _ := args.Get(0).(nfs_client.Node)
 	return res, args.Error(1)
+}
+
+func (m *ClientInterfaceMock) UnlinkNode(
+	ctx context.Context,
+	session nfs_client.Session,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) error {
+
+	args := m.Called(ctx, session, parentNodeID, name, unlinkDirectory)
+	return args.Error(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

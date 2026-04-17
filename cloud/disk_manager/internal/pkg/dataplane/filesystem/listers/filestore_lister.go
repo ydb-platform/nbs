@@ -12,6 +12,7 @@ type filestoreLister struct {
 	session           nfs.Session
 	listNodesMaxBytes uint32
 	unsafe            bool
+	ignoreNotFound    bool
 }
 
 func (l *filestoreLister) ListNodes(
@@ -20,13 +21,26 @@ func (l *filestoreLister) ListNodes(
 	cookie string,
 ) ([]nfs.Node, string, error) {
 
-	return l.session.ListNodes(
+	nodes, cookcookie, err := l.session.ListNodes(
 		ctx,
 		nodeID,
 		cookie,
 		l.listNodesMaxBytes,
 		l.unsafe,
 	)
+	if err == nil {
+		return nodes, cookcookie, nil
+	}
+
+	if !l.ignoreNotFound {
+		return nil, "", err
+	}
+
+	if nfs.IsEnoEntError(err) {
+		return []nfs.Node{}, "", nil
+	}
+
+	return nil, "", err
 }
 
 func (l *filestoreLister) Close(ctx context.Context) error {
@@ -40,6 +54,7 @@ type filestoreListerFactory struct {
 	listNodesMaxBytes uint32
 	readOnly          bool
 	unsafe            bool
+	ignoreNotFound    bool
 }
 
 func NewFilestoreListerFactory(
@@ -47,6 +62,7 @@ func NewFilestoreListerFactory(
 	listNodesMaxBytes uint32,
 	readOnly bool,
 	unsafe bool,
+	ignoreNotFound bool,
 ) FilesystemListerFactory {
 
 	return &filestoreListerFactory{
@@ -54,6 +70,7 @@ func NewFilestoreListerFactory(
 		listNodesMaxBytes: listNodesMaxBytes,
 		readOnly:          readOnly,
 		unsafe:            unsafe,
+		ignoreNotFound:    ignoreNotFound,
 	}
 }
 
@@ -77,5 +94,6 @@ func (o *filestoreListerFactory) CreateLister(
 		session:           session,
 		listNodesMaxBytes: o.listNodesMaxBytes,
 		unsafe:            o.unsafe,
+		ignoreNotFound:    o.ignoreNotFound,
 	}, nil
 }

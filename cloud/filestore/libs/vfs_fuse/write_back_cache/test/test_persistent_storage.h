@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/persistent_storage.h>
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_back_cache_stats.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
@@ -32,12 +33,15 @@ public:
     TResultOrError<char*> Alloc(size_t size) override;
     bool Commit() override;
     void Free(const void* ptr) override;
-    TPersistentStorageStats GetStats() const override;
+    void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);
 
 private:
-    void UpdateStats();
+    void SetStats();
 };
+
+std::shared_ptr<TTestStorage> CreateTestStorage(
+    const IWriteBackCacheStatsPtr& stats);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -153,6 +153,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 childNodeId2,
                 "shard",
                 "name",
+                false,
                 defaultShardMode);
         });
 

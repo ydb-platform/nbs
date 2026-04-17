@@ -1,11 +1,16 @@
 #include "node_state_holder.h"
 
+#include <cloud/storage/core/libs/common/timer.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeStateHolder::TNodeStateHolder(IWriteBackCacheStatsPtr stats)
-    : Stats(std::move(stats))
+TNodeStateHolder::TNodeStateHolder(
+    ITimerPtr timer,
+    INodeStateHolderStatsPtr stats)
+    : Timer(std::move(timer))
+    , Stats(std::move(stats))
 {}
 
 TNodeState& TNodeStateHolder::GetOrCreateNodeState(ui64 nodeId)
@@ -17,13 +22,16 @@ TNodeState& TNodeStateHolder::GetOrCreateNodeState(ui64 nodeId)
 
     TItem& nodeState = it->second;
     if (nodeState.DeletionSequenceId != 0) {
+        // Resurrect previously deleted node state
+        auto erased = Deletions.erase(nodeState.DeletionSequenceId);
         Y_ABORT_UNLESS(
-            Deletions.erase(nodeState.DeletionSequenceId),
+            erased,
             "Node %lu with DeletionSequenceId %lu is not found in Deletions",
             nodeId,
             nodeState.DeletionSequenceId);
 
         nodeState.DeletionSequenceId = 0;
+        Stats->DecrementDeletedNodeCount();
     }
     return nodeState;
 }
@@ -70,32 +78,48 @@ void TNodeStateHolder::DeleteNodeState(ui64 nodeId)
     const ui64 deletionSequenceId = ++SequenceId;
     it->second.DeletionSequenceId = deletionSequenceId;
     Deletions[deletionSequenceId] = nodeId;
+    Stats->IncrementDeletedNodeCount();
 }
 
 ui64 TNodeStateHolder::Pin()
 {
     const ui64 pinId = ++SequenceId;
-    Pins.insert(pinId);
+    Pins[pinId] = Timer->Now();
+    Stats->Pinned();
     return pinId;
 }
 
 void TNodeStateHolder::Unpin(ui64 pinId)
 {
-    Y_ABORT_UNLESS(Pins.erase(pinId), "Pin %lu is not found", pinId);
+    auto pinIt = Pins.find(pinId);
+    Y_ABORT_UNLESS(pinIt != Pins.end(), "Pin %lu is not found", pinId);
+    Stats->Unpinned(Timer->Now() - pinIt->second);
+    Pins.erase(pinIt);
 
-    const ui64 minPinId = Pins.empty() ? Max<ui64>() : *Pins.begin();
+    // Erase deleted nodes that are no more pinned
+    const ui64 minPinId = Pins.empty() ? Max<ui64>() : Pins.begin()->first;
 
     auto it = Deletions.begin();
     while (it != Deletions.end() && it->first < minPinId) {
+        auto erased = NodeStates.erase(it->second);
         Y_ABORT_UNLESS(
-            NodeStates.erase(it->second),
+            erased,
             "Node %lu with DeletionSequenceId %lu is not found in NodeStates",
             it->second,
             it->first);
 
         it = Deletions.erase(it);
         Stats->DecrementNodeCount();
+        Stats->DecrementDeletedNodeCount();
     }
+}
+
+void TNodeStateHolder::UpdateStats() const
+{
+    const auto maxActivePinDuration =
+        Pins.empty() ? TDuration::Zero() : Timer->Now() - Pins.begin()->second;
+
+    Stats->UpdateStats(maxActivePinDuration);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

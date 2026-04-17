@@ -159,9 +159,6 @@ private:
 
     TPartitionDiskCountersPtr PartCounters;
 
-    std::shared_ptr<TThreadSafePartCounters> IoCompanionCounters =
-        std::make_shared<TThreadSafePartCounters>();
-
     ui64 SysCPUConsumption = 0;
     ui64 UserCPUConsumption = 0;
 
@@ -178,12 +175,6 @@ private:
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
 
-    std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue =
-        std::make_shared<TResourceMetricsQueue>();
-
-    std::shared_ptr<TGroupDowntimes> GroupDowntimes =
-        std::make_shared<TGroupDowntimes>();
-
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
@@ -191,6 +182,8 @@ private:
     std::unique_ptr<TIOCompanion> IOCompanion;
 
     NActors::TActorId FreshBlocksWriter;
+
+    TPartitionThreadSafeStatePtr SharedState;
 
     TRequestInfoPtr Poisoner;
 
@@ -372,7 +365,7 @@ private:
     void ClearWriteQueue(const NActors::TActorContext& ctx);
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
     void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
-    void ProcessNextCheckpointRequest(
+    bool ProcessNextCheckpointRequest(
         const NActors::TActorContext& ctx,
         const TString& checkpointId);
 
@@ -518,6 +511,9 @@ private:
     void CreateFreshBlocksCompanionClient();
 
     void CreateIOCompanionClient();
+
+    [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
 
 private:
     STFUNC(StateBoot);
@@ -810,6 +806,10 @@ private:
 
     void HandleUpdateResourceMetrics(
         const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleExecuteTransactions(
+        const TEvPartitionCommonPrivate::TEvExecuteTransactions::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

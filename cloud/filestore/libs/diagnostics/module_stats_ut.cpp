@@ -2,6 +2,8 @@
 
 #include "filesystem_counters.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
@@ -9,6 +11,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <atomic>
 #include <memory>
 
 namespace NCloud::NFileStore {
@@ -16,6 +19,7 @@ namespace NCloud::NFileStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 using namespace NMonitoring;
+using namespace NMetrics;
 
 namespace {
 
@@ -29,10 +33,9 @@ class TTestModuleStats final: public IModuleStats
 {
 private:
     TString Name;
-    TAtomic Value = 0;
     std::unique_ptr<TMaxCalculator<TestMaxBucketCount>> MaxCalc;
-    TDynamicCountersPtr Counters;
-    TDynamicCounters::TCounterPtr MaxCounter;
+    std::atomic<i64> MaxValue{0};
+    std::atomic<i64> SumValue{0};
 
 public:
     TTestModuleStats(TString name, ITimerPtr timer)
@@ -40,8 +43,6 @@ public:
         , MaxCalc(
               std::make_unique<TMaxCalculator<TestMaxBucketCount>>(
                   std::move(timer)))
-        , Counters(MakeIntrusive<TDynamicCounters>())
-        , MaxCounter(Counters->GetCounter("MaxValue", false))
     {}
 
     TStringBuf GetName() const override
@@ -49,20 +50,29 @@ public:
         return Name;
     }
 
-    TDynamicCountersPtr GetCounters() override
+    void RegisterCounters(
+        IMetricsRegistry& localMetricsRegistry,
+        IMetricsRegistry& aggregatableMetricsRegistry) override
     {
-        return Counters;
+        localMetricsRegistry.Register({CreateSensor("MaxValue")}, MaxValue);
+        aggregatableMetricsRegistry.Register(
+            {CreateSensor("SumValue")},
+            SumValue,
+            EAggregationType::AT_SUM,
+            EMetricType::MT_ABSOLUTE);
     }
 
     void Add(ui64 value)
     {
-        AtomicSet(Value, value);
         MaxCalc->Add(value);
+        SumValue.fetch_add(static_cast<i64>(value));
     }
 
-    void UpdateStats() override
+    void UpdateStats(TInstant now) override
     {
-        MaxCounter->Set(MaxCalc->NextValue());
+        Y_UNUSED(now);
+
+        MaxValue.store(static_cast<i64>(MaxCalc->NextValue()));
     }
 };
 
@@ -75,28 +85,42 @@ struct TBootstrap
     const TString ClientId = "test_client";
     const TString CloudId = "test_cloud";
     const TString FolderId = "test_folder";
+    const TString SessionId = "test_session";
 
     ITimerPtr Timer = CreateWallClockTimer();
     TDynamicCountersPtr Counters = MakeIntrusive<TDynamicCounters>();
     IFsCountersProviderPtr FsCountersProvider =
         CreateFsCountersProvider(Component, Counters);
-    IModuleStatsRegistryPtr Registry =
-        CreateModuleStatsRegistry(FsCountersProvider);
+    IModuleStatsRegistryPtr Registry = CreateModuleStatsRegistry(
+        Timer,
+        FsCountersProvider,
+        Counters->GetSubgroup("component", Component));
 
     std::shared_ptr<TTestModuleStats> CreateAndRegisterStats(
         const TString& moduleName,
         const TString& fsId,
-        const TString& clientId)
+        const TString& clientId,
+        const TString& sessionId)
     {
         auto stats = std::make_shared<TTestModuleStats>(moduleName, Timer);
-        Registry->Register(fsId, clientId, CloudId, FolderId, stats);
+        Registry->Register(
+            {.FileSystemId = fsId,
+             .ClientId = clientId,
+             .CloudId = CloudId,
+             .FolderId = FolderId,
+             .SessionId = sessionId,
+             .ModuleStats = stats});
         return stats;
     }
 
     std::shared_ptr<TTestModuleStats> CreateAndRegisterStats(
         const TString& moduleName)
     {
-        return CreateAndRegisterStats(moduleName, FileSystemId, ClientId);
+        return CreateAndRegisterStats(
+            moduleName,
+            FileSystemId,
+            ClientId,
+            SessionId);
     }
 
     TDynamicCountersPtr GetModuleCounters(
@@ -117,6 +141,13 @@ struct TBootstrap
     {
         return GetModuleCounters(moduleName, FileSystemId, ClientId);
     }
+
+    TDynamicCountersPtr GetAggregateModuleCounters(
+        const TString& moduleName) const
+    {
+        return Counters->GetSubgroup("component", Component)
+            ->GetSubgroup("module", moduleName);
+    }
 };
 
 }   // namespace
@@ -131,7 +162,6 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
 
         // Register stats to create the counter hierarchy
         auto stats = b.CreateAndRegisterStats("TestModule");
-        UNIT_ASSERT(stats->GetCounters());
 
         auto fsCounters =
             b.Counters->FindSubgroup("component", b.Component + "_fs");
@@ -197,7 +227,11 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
         const TString clientId2 = "test_client_2";
 
         auto stats1 = b.CreateAndRegisterStats("TestModule");
-        auto stats2 = b.CreateAndRegisterStats("TestModule", fsId2, clientId2);
+        auto stats2 = b.CreateAndRegisterStats(
+            "TestModule",
+            fsId2,
+            clientId2,
+            "session2");
 
         stats1->Add(100);
         stats2->Add(200);
@@ -227,12 +261,168 @@ Y_UNIT_TEST_SUITE(TModuleStatsRegistryTest)
         UNIT_ASSERT(fsCounters->FindSubgroup("filesystem", b.FileSystemId));
 
         // Registry->Unregister calls FsCountersRegistry->Unregister internally
-        b.Registry->Unregister(b.FileSystemId, b.ClientId);
+        b.Registry->Unregister(b.SessionId);
 
         auto fsSubgroup =
             fsCounters->FindSubgroup("filesystem", b.FileSystemId);
         UNIT_ASSERT(fsSubgroup);
         UNIT_ASSERT(!fsSubgroup->FindSubgroup("client", b.ClientId));
+    }
+
+    Y_UNIT_TEST(ShouldAggregateStats)
+    {
+        TBootstrap b;
+
+        auto stats1 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client1",
+            "session1");
+
+        auto stats2 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs2",
+            "client2",
+            "session2");
+
+        stats1->Add(100);
+        stats2->Add(200);
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            b.GetModuleCounters("TestModule", "fs1", "client1")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            b.GetModuleCounters("TestModule", "fs2", "client2")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        auto stats3 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs3",
+            "client3",
+            "session3");
+
+        stats3->Add(300);
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            b.GetModuleCounters("TestModule", "fs3", "client3")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            600,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        b.Registry->Unregister("session1");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        b.Registry->Unregister("session2");
+        b.Registry->Unregister("session3");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT(!b.GetAggregateModuleCounters("TestModule")
+                         ->FindCounter("SumValue"));
+    }
+
+    Y_UNIT_TEST(ShouldAllowRegisteringSameModuleMultipleTimesForSameFilesystem)
+    {
+        TBootstrap b;
+
+        auto stats1 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client1",
+            "session1");
+
+        // Same fs, same session
+        // (should not happen in production but we should not crash)
+        auto stats2 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client1",
+            "session1");
+
+        // Same fs, different session
+        auto stats3 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs1",
+            "client1",
+            "session2");
+
+        // Different fs
+        auto stats4 = b.CreateAndRegisterStats(
+            "TestModule",
+            "fs2",
+            "client2",
+            "session2");
+
+        stats1->Add(100);
+        stats2->Add(200);
+        stats3->Add(400);
+        stats4->Add(800);
+
+        b.Registry->UpdateStats(true);
+
+        // Local metrics are aggregated too
+        UNIT_ASSERT_VALUES_EQUAL(
+            700,
+            b.GetModuleCounters("TestModule", "fs1", "client1")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            800,
+            b.GetModuleCounters("TestModule", "fs2", "client2")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1500,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        b.Registry->Unregister("session1");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            400,
+            b.GetModuleCounters("TestModule", "fs1", "client1")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1200,
+            b.GetAggregateModuleCounters("TestModule")
+                ->FindCounter("SumValue")
+                ->Val());
+
+        b.Registry->Unregister("session2");
+        b.Registry->UpdateStats(true);
+
+        UNIT_ASSERT(!b.GetAggregateModuleCounters("TestModule")
+                         ->FindCounter("SumValue"));
     }
 }
 

@@ -1,33 +1,15 @@
 #pragma once
 
+#include "persistent_storage_stats.h"
+
 #include <cloud/storage/core/libs/common/error.h>
+
+#include <library/cpp/logger/log.h>
 
 #include <util/generic/function_ref.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPersistentStorageStats
-{
-    ui64 RawCapacityByteCount = 0;
-    ui64 RawUsedByteCount = 0;
-    ui64 EntryCount = 0;
-    bool IsCorrupted = false;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct IPersistentStorageStats
-{
-    virtual ~IPersistentStorageStats() = default;
-
-    virtual void UpdatePersistentStorageStats(
-        const TPersistentStorageStats& stats) = 0;
-};
-
-using IPersistentStorageStatsPtr = std::shared_ptr<IPersistentStorageStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -77,7 +59,7 @@ struct IPersistentStorage
     // Frees a previously allocated buffer.
     virtual void Free(const void* ptr) = 0;
 
-    virtual TPersistentStorageStats GetStats() const = 0;
+    virtual void UpdateStats() const = 0;
 };
 
 using IPersistentStoragePtr = std::shared_ptr<IPersistentStorage>;
@@ -96,6 +78,8 @@ struct TPersistentStorageConfig
 
 TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
     IPersistentStorageStatsPtr stats,
-    TPersistentStorageConfig config);
+    TPersistentStorageConfig config,
+    TLog log,
+    TString logTag);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -2604,6 +2604,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             8 * DefaultBlockSize / block);
         storageConfig.SetCleanupThresholdForBackpressure(20);
         storageConfig.SetFlushBytesThresholdForBackpressure(block / 2);
+        storageConfig.SetFlushBytesItemCountThresholdForBackpressure(10);
 
         TTestEnv env({}, std::move(storageConfig));
 
@@ -2693,6 +2694,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         };
 
+        auto checkFlushBytesItemCountBackpressureValues =
+            [&](i64 value, i64 threshold)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "FlushBytesItemCountBackpressureValue"},
+                  {"filesystem", "test"}},
+                 value},
+                {{{"sensor", "FlushBytesItemCountBackpressureThreshold"},
+                  {"filesystem", "test"}},
+                 threshold},
+            });
+        };
+
         checkIsWriteAllowed(true);
         checkFlushBackpressureValues(0, 2 * block);
 
@@ -2767,6 +2785,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.FlushBytes(); // 2 blobs
+
+        for (ui32 i = 0; i < 10; i++) {
+            tablet.WriteData(handle, i * 2, 1, '0');
+        }
+
+        // backpressure due to FlushBytesItemCountThresholdForBackpressure
+        tablet.SendWriteDataRequest(handle, 100, 1, '0');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+            checkFlushBytesItemCountBackpressureValues(10, 10);
+        }
+
+        tablet.FlushBytes();
 
         // no backpressure after FlushBytes
         tablet.WriteData(handle, 0, block / 4, '0'); // 2 blobs, block / 4 fresh bytes
@@ -8000,8 +8033,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldReturnBackendInfoForIOForOverloadedTabletActor)
     {
+        const ui64 wbt = 64 * tabletConfig.BlockSize;
+        const ui64 overloadThreshold = 1;
+        const i64 overloadThresholdMicros = 1'000'000 * overloadThreshold / 100;
+
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetWriteBlobThreshold(2 * tabletConfig.BlockSize);
+        storageConfig.SetWriteBlobThreshold(wbt);
         // setting a tiny value to make sure that we're always "overloaded"
         storageConfig.SetTabletActorCpuUsageOverloadThreshold(1);
 
@@ -8032,12 +8069,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.SendRequest(tablet.CreateUpdateCounters());
 
+        ui64 overloadedCount = 0;
+
         //
-        // Making sure that IndexTabletActor uses some CPU.
+        // Making sure that IndexTabletActor uses some CPU via multiple large
+        // writes.
         //
 
-        for (ui32 i = 0; i < 10; ++i) {
-            tablet.GetNodeAttr(id);
+        for (ui32 i = 0; i < 100; ++i) {
+            const auto r =
+                tablet.WriteData(handle, 0, wbt - tabletConfig.BlockSize, 'a');
+            overloadedCount +=
+                r->Record.GetHeaders().GetBackendInfo().GetIsOverloaded();
         }
 
         //
@@ -8063,7 +8106,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             });
         }
 
-        UNIT_ASSERT_GT(cpuUsageMicros, 0);
+        UNIT_ASSERT_GT(cpuUsageMicros, overloadThresholdMicros);
 
         {
             //
@@ -8120,8 +8163,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             TTestRegistryVisitor visitor;
             registry->Visit(TInstant::Zero(), visitor);
+            const ui32 expected = overloadedCount + 4;
             visitor.ValidateExpectedCounters({
-                {{{"sensor", "OverloadedCount"}, {"filesystem", "test"}}, 4},
+                {
+                    {{"sensor", "OverloadedCount"}, {"filesystem", "test"}},
+                    expected
+                },
             });
         }
 

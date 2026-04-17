@@ -253,6 +253,12 @@ void TTabletMetrics::Register(
     REGISTER_LOCAL(FlushBackpressureThreshold, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(FlushBytesBackpressureValue, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(FlushBytesBackpressureThreshold, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(
+        FlushBytesItemCountBackpressureValue,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(
+        FlushBytesItemCountBackpressureThreshold,
+        EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CompactionBackpressureValue, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CompactionBackpressureThreshold, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(CleanupBackpressureValue, EMetricType::MT_ABSOLUTE);
@@ -263,6 +269,7 @@ void TTabletMetrics::Register(
 
     REGISTER_LOCAL(TabletStartTimestamp, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(TabletId, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(TabletGeneration, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);

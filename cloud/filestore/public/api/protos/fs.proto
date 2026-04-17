@@ -52,6 +52,7 @@ message TFileStoreFeatures
     bool WriteBlobDisabled = 37;
     bool FakeDescribeDataEnabled = 38;
     bool UnconfirmedFlowEnabled = 39;
+    bool GuestPosixAclEnabled = 40;
 }
 
 message TFileStore
@@ -273,6 +274,10 @@ message TResizeFileStoreRequest
 
     // Turn on directory creation in shards for the whole filesystem.
     bool EnableDirectoryCreationInShards = 9;
+
+    // Force directory creation in shards for the whole filesystem. Overrides
+    // the LastNodeId check in the main tablet.
+    bool ForceDirectoryCreationInShards = 10;
 }
 
 message TResizeFileStoreResponse

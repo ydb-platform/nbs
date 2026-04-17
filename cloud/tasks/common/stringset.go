@@ -79,6 +79,18 @@ func (s *StringSet) Subtract(other StringSet) StringSet {
 	return result
 }
 
+func (s *StringSet) Intersection(other StringSet) StringSet {
+	result := NewStringSet()
+
+	for v := range s.vals {
+		if other.Has(v) {
+			result.Add(v)
+		}
+	}
+
+	return result
+}
+
 func NewStringSet(vals ...string) StringSet {
 	if len(vals) == 0 {
 		return StringSet{}

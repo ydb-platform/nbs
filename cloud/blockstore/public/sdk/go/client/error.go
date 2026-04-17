@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -139,4 +140,27 @@ func GetClientError(err error) ClientError {
 	}
 
 	return ClientError{E_FAIL, err.Error()}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func IsDiskNotFoundError(e error) bool {
+	var clientErr *ClientError
+	if errors.As(e, &clientErr) {
+		if clientErr.Facility() == FACILITY_SCHEMESHARD {
+			// TODO(svartmetal): remove support for PathDoesNotExist (see #2718)
+			if clientErr.Status() == 2 {
+				return true
+			}
+
+			// Hack for NBS-3162.
+			if strings.Contains(clientErr.Error(), "Another drop in progress") {
+				return true
+			}
+		}
+
+		return clientErr.Code == E_NOT_FOUND
+	}
+
+	return false
 }

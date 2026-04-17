@@ -6,7 +6,7 @@
 #include "persistent_storage.h"
 #include "queued_operations.h"
 #include "sequence_id_generator.h"
-#include "write_back_cache_stats.h"
+#include "write_back_cache_state_stats.h"
 #include "write_data_request.h"
 #include "write_data_request_manager.h"
 
@@ -19,6 +19,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/function_ref.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/intrlist.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -45,7 +46,8 @@ class TWriteBackCacheState
 private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
-    const IWriteBackCacheStatsPtr Stats;
+    const IWriteBackCacheStateStatsPtr Stats;
+    const IWriteDataRequestManagerStatsPtr RequestManagerStats;
     const TString LogTag;
 
     TNodeStateHolder Nodes;
@@ -62,6 +64,13 @@ private:
     TWriteDataRequestManager RequestManager;
     TQueuedOperations QueuedOperations;
 
+    // The following lists hold references to objects owned by TNodeState for
+    // all nodes. They are used to track and report MaxTime.
+    TIntrusiveList<TBarrier> ActiveBarriers;
+    TIntrusiveList<TBarrier> PendingBarriers;
+    TIntrusiveList<TFlushRequest> FlushRequests;
+    TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
+
 public:
     using TEntryVisitor = TFunctionRef<bool(const TCachedWriteDataRequest*)>;
     using TPin = ui64;
@@ -69,7 +78,9 @@ public:
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats,
+        IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
+        IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
+        INodeStateHolderStatsPtr nodeStateHolderStats,
         TString logTag);
 
     // Read state from the persistent storage
@@ -137,6 +148,9 @@ public:
 
     // The barrier should be valid and previously acquired via AcquireBarrier
     void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
+
+    // UpdateStats under lock
+    void UpdateStats() const;
 
 private:
     // Combines acquiring mutex and executing queued operations on mutex release

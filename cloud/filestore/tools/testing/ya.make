@@ -1,5 +1,6 @@
 RECURSE(
     directory_handles_test
+    dirtree
     fmdtest
     fs_posix_compliance
     loadtest

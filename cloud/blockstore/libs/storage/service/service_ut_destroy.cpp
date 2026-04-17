@@ -480,9 +480,8 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             );
 
             auto response = service.RecvDestroyVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                response->GetStatus(),
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
                 response->GetError());
         }
     }

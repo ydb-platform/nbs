@@ -75,6 +75,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ShardBalancerPolicy,                                                   \
             NProto::EShardBalancerPolicy,                                      \
             NProto::SBP_ROUND_ROBIN                                           )\
+    xxx(ShardBalancerPrecisionBytes,                            ui64,   1_GB  )\
                                                                                \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
                                                                                \
@@ -96,6 +97,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
     xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
+    xxx(FlushBytesItemCountThresholdForBackpressure,   ui64,    500'000       )\
     xxx(BackpressureThresholdPercentageForBackgroundOpsPriority,  ui32,   90  )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
@@ -299,6 +301,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
     xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
     xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
+    xxx(GuestPosixAclEnabled,              bool,      false                   )\
     xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
                                                                                \
     xxx(ZeroCopyReadEnabled,               bool,      false                   )\
@@ -332,6 +335,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
+                                                                               \
+    xxx(HideFileNamesInTabletDirectoryViewer,   bool,   false                 )\
                                                                                \
     xxx(ShardIdCompressionMode,                                                \
         NProto::EShardIdCompressionMode,                                       \

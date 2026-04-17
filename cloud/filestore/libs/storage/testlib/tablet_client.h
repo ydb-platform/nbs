@@ -333,25 +333,34 @@ public:
         return requestToTablet;
     }
 
-    auto CreateConfigureShardsRequest(bool directoryCreationInShardsEnabled)
+    auto CreateConfigureShardsRequest(
+        bool directoryCreationInShardsEnabled,
+        TVector<TString> shardIds = {})
     {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
         request->Record.SetDirectoryCreationInShardsEnabled(
             directoryCreationInShardsEnabled);
+        for (auto& shardId: shardIds) {
+            request->Record.AddShardFileSystemIds(std::move(shardId));
+        }
 
         return request;
     }
 
     auto CreateConfigureAsShardRequest(
         ui32 shardNo,
-        bool directoryCreationInShardsEnabled = false)
+        bool directoryCreationInShardsEnabled = false,
+        TVector<TString> shardIds = {})
     {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
         request->Record.SetShardNo(shardNo);
         request->Record.SetDirectoryCreationInShardsEnabled(
             directoryCreationInShardsEnabled);
+        for (auto& shardId: shardIds) {
+            request->Record.AddShardFileSystemIds(std::move(shardId));
+        }
 
         return request;
     }
@@ -446,6 +455,9 @@ public:
         auto* node = request->Record.MutableNode();
         node->SetId(nodeId);
         node->SetSize(sz);
+        node->SetType(NProto::E_REGULAR_NODE);
+        node->SetMTime(Now().MicroSeconds());
+        node->SetLinks(1);
         return request;
     }
 
@@ -457,6 +469,9 @@ public:
         auto* node = request->Record.MutableNode();
         node->SetId(nodeId);
         node->SetSize(newSize);
+        node->SetType(NProto::E_REGULAR_NODE);
+        node->SetMTime(Now().MicroSeconds());
+        node->SetLinks(1);
         return request;
     }
 
@@ -658,6 +673,12 @@ public:
     {
         using TRequestEvent = TEvIndexTabletPrivate::TEvGetOpLogEntryRequest;
         return std::make_unique<TRequestEvent>(entryId);
+    }
+
+    auto CreateWriteOpLogEntryRequest(NProto::TOpLogEntry entry)
+    {
+        using TRequestEvent = TEvIndexTabletPrivate::TEvWriteOpLogEntryRequest;
+        return std::make_unique<TRequestEvent>(std::move(entry));
     }
 
     //

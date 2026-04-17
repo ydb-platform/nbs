@@ -1,14 +1,15 @@
 #include "service_actor.h"
 
+#include "verify.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
-#include <cloud/filestore/libs/storage/tablet/model/verify.h>
-
-#include <util/string/join.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -236,9 +237,9 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
 {
     auto* msg = ev->Get();
 
-    TABLET_VERIFY(ev->Cookie < Cookie2NodeIndices.size());
+    SERVICE_VERIFY(ev->Cookie < Cookie2NodeIndices.size());
     const auto& nodeIndices = Cookie2NodeIndices[ev->Cookie];
-    TABLET_VERIFY(ev->Cookie < Cookie2ShardId.size());
+    SERVICE_VERIFY(ev->Cookie < Cookie2ShardId.size());
     const auto& shardId = Cookie2ShardId[ev->Cookie];
 
     if (HasError(msg->GetError())) {
@@ -323,7 +324,13 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
         }
 
         auto* node = Response.MutableNodes(i);
+        auto shardFileSystemId = node->GetShardFileSystemId();
+        auto shardNodeName = node->GetShardNodeName();
         *node = std::move(*responseIter->MutableNode());
+        if (Unsafe) {
+            node->SetShardFileSystemId(std::move(shardFileSystemId));
+            node->SetShardNodeName(std::move(shardNodeName));
+        }
 
         ++responseIter;
     }

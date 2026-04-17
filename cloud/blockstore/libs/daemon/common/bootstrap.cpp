@@ -289,7 +289,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("TraceProcessor initialized");
     }
 
-    auto clientInactivityTimeout = Configs->GetInactiveClientsTimeout();
+    auto inactiveClientsTimeout = Configs->GetInactiveClientsTimeout();
 
     auto rootGroup = Monitoring->GetCounters()
         ->GetSubgroup("counters", "blockstore");
@@ -322,7 +322,7 @@ void TBootstrapBase::Init()
         VolumeStats = CreateVolumeStats(
             Monitoring,
             Configs->DiagnosticsConfig,
-            clientInactivityTimeout,
+            inactiveClientsTimeout,
             EVolumeStatsType::EServerStats,
             Timer);
     }
@@ -476,7 +476,10 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             checksumFlags,
-            Configs->ServerConfig->GetVhostDiscardEnabled(),
+            Configs->ServerConfig->GetVhostDiscardEnabled() ||
+                Configs->ServerConfig->GetVhostDiscardOnlyEnabled(),
+            Configs->ServerConfig->GetVhostDiscardEnabled() ||
+                Configs->ServerConfig->GetVhostWriteZeroesEnabled(),
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             Configs->ServerConfig->GetVhostOptimalIoSize());
 
@@ -679,7 +682,7 @@ void TBootstrapBase::Init()
             Monitoring,
             std::move(Service),
             CreateCrcDigestCalculator(),
-            clientInactivityTimeout);
+            inactiveClientsTimeout);
 
         STORAGE_INFO("ValidationService initialized");
     }
@@ -802,7 +805,8 @@ void TBootstrapBase::InitLocalService()
 
     NvmeManager = CreateNvmeManager(
         Logging,
-        Configs->DiskAgentConfig->GetSecureEraseTimeout());
+        Configs->DiskAgentConfig->GetSecureEraseTimeout(),
+        Configs->DiskAgentConfig->GetNVMeAdminCmdTimeout());
 
     Service = CreateLocalService(
         config,

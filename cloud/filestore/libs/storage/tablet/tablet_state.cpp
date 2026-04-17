@@ -180,6 +180,7 @@ void TIndexTabletState::LoadState(
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
         GetBlockSize(),
+        config.GetShardBalancerPrecisionBytes(),
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
@@ -206,10 +207,17 @@ void TIndexTabletState::UpdateConfig(
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
         GetBlockSize(),
+        config.GetShardBalancerPrecisionBytes(),
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
         TVector<TString>(shardIds.begin(), shardIds.end()));
+}
+
+void TIndexTabletState::SetFrozen(TIndexTabletDatabase& db, bool frozen)
+{
+    FileSystem.SetFrozen(frozen);
+    db.WriteFileSystem(FileSystem);
 }
 
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const

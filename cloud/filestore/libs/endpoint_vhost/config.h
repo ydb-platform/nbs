@@ -45,6 +45,8 @@ public:
     TString GetDirectoryHandlesStoragePath() const;
     ui64 GetDirectoryHandlesInitialDataSize() const;
 
+    ui32 GetPermanentActorCount() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

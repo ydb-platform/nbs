@@ -296,9 +296,9 @@ message TFinishFillDiskResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// SetVhostDiscardEnabledFlag request/response.
+// SetVhostDiscardFlagAction request/response.
 
-message TSetVhostDiscardEnabledFlagRequest
+message TSetVhostDiscardFlagActionRequest
 {
     // Label of volume to turn on/off discards for.
     string DiskId = 1;
@@ -310,6 +310,6 @@ message TSetVhostDiscardEnabledFlagRequest
     bool VhostDiscardEnabled = 3;
 }
 
-message TSetVhostDiscardEnabledFlagResponse
+message TSetVhostDiscardFlagActionResponse
 {
 }

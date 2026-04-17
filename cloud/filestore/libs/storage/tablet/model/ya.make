@@ -34,6 +34,7 @@ SRCS(
     read_ahead.cpp
     request_metrics.cpp
     shard_balancer.cpp
+    simple_template.cpp
     sparse_segment.cpp
     split_range.cpp
     throttler_logger.cpp

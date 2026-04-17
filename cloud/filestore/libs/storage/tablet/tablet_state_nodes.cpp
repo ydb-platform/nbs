@@ -427,7 +427,8 @@ void TIndexTabletState::CreateNodeRef(
     const TString& childName,
     ui64 childNodeId,
     const TString& shardId,
-    const TString& shardNodeName)
+    const TString& shardNodeName,
+    bool markExhaustive)
 {
     db.WriteNodeRef(
         nodeId,
@@ -436,6 +437,7 @@ void TIndexTabletState::CreateNodeRef(
         childNodeId,
         shardId,
         shardNodeName,
+        markExhaustive,
         ShardIdCompressionMode);
 }
 
@@ -613,6 +615,14 @@ void TIndexTabletState::UnlockNodeRef(const TNodeRefKey& key)
 bool TIndexTabletState::IsNodeRefLocked(const TNodeRefKey& key) const
 {
     return Impl->LockedNodeRefs.contains(key);
+}
+
+void TIndexTabletState::VisitNodeRefLocks(
+    const TNodeRefLockVisitor& visitor) const
+{
+    for (const auto& x: Impl->LockedNodeRefs) {
+        visitor(x);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/volume/actors/multi_partition_requests.h>
@@ -25,6 +26,8 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const ui32 BlockSize = 0;
     const ui32 BlocksPerStripe = 0;
+    const NProto::ERequestSplitterPolicy SplitterPolicy =
+        NProto::ERequestSplitterPolicy::RSP_ENABLE;
     const TBriefPartitionInfoList Partitions;
 
 public:
@@ -34,6 +37,7 @@ public:
         const TString& diskId,
         ui32 blockSize,
         ui32 blocksPerStripe,
+        NProto::ERequestSplitterPolicy splitterPolicy,
         const TVector<NActors::TActorId>& partitionActors);
 
     void Bootstrap(const NActors::TActorContext& ctx);

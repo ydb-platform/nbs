@@ -62,6 +62,11 @@ struct TDiskRegistrySelfCounters
     TCounterPtr AgentsInUnavailableState;
     TCounterPtr DisksInOnlineState;
 
+    TCounterPtr PathsInAttachedState;
+    TCounterPtr PathsInAttachingState;
+    TCounterPtr PathsInDetachedState;
+    TCounterPtr DetachedDevicesInOnlineState;
+
     TCounterPtr DisksInWarningState;
     TCounterPtr MaxWarningTime;
     TCounterPtr MaxMigrationTime;
@@ -69,6 +74,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr DevicesInMigrationState;
     TCounterPtr DisksInTemporarilyUnavailableState;
     TCounterPtr DisksInErrorState;
+    TCounterPtr DisksToCleanup;
     TCounterPtr PlacementGroups;
     TCounterPtr FullPlacementGroups;
     TCounterPtr AllocatedDisksInGroups;

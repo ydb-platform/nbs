@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"os/user"
@@ -40,6 +41,7 @@ const (
 	defaultDiskId                      = "test-disk-id-42"
 	defaultInstanceId                  = "testInstanceId"
 	defaultNfsVhostReplicaCount        = uint(1)
+	defaultNbsServerReplicaCount       = uint(1)
 )
 
 type LocalFsOverride int
@@ -53,7 +55,7 @@ const (
 ////////////////////////////////////////////////////////////////////////////////
 
 type testContext struct {
-	nbsClient               *mocks.NbsClientMock
+	nbsClients              []*mocks.NbsClientMock
 	nfsClients              []*mocks.NfsEndpointClientMock
 	nfsLocalClient          *mocks.NfsEndpointClientMock
 	nfsLocalFilestoreClient *mocks.NfsClientMock
@@ -72,6 +74,7 @@ type testContext struct {
 	targetPathBlockMode     string
 	localFsOverrides        ExternalFsOverrideMap
 	nfsVhostReplicaCount    uint
+	nbsServerReplicaCount   uint
 }
 
 func getSourcePath(socketsDir string, vmMode bool, legacyMode bool) string {
@@ -112,6 +115,7 @@ func CreateTestContext(
 	legacyMode bool,
 	perInstanceVolumes bool,
 	nfsVhostReplicaCount uint,
+	nbsServerReplicaCount uint,
 ) testContext {
 	tempDir := t.TempDir()
 	socketsDir := filepath.Join(tempDir, "sockets")
@@ -122,7 +126,13 @@ func CreateTestContext(
 		nfsClients = append(nfsClients, mocks.NewNfsEndpointClientMock())
 	}
 
-	return testContext{nbsClient: mocks.NewNbsClientMock(),
+	nbsClients := []*mocks.NbsClientMock{}
+	for i := 0; i < int(nbsServerReplicaCount); i++ {
+		nbsClients = append(nbsClients, mocks.NewNbsClientMock())
+	}
+
+	return testContext{
+		nbsClients:              nbsClients,
 		nfsClients:              nfsClients,
 		nfsLocalClient:          mocks.NewNfsEndpointClientMock(),
 		nfsLocalFilestoreClient: mocks.NewNfsClientMock(),
@@ -141,6 +151,7 @@ func CreateTestContext(
 		targetPathBlockMode:     filepath.Join(tempDir, "volumeDevices", "publish", defaultDiskId, defaultPodId),
 		localFsOverrides:        make(ExternalFsOverrideMap),
 		nfsVhostReplicaCount:    nfsVhostReplicaCount,
+		nbsServerReplicaCount:   nbsServerReplicaCount,
 	}
 }
 
@@ -153,15 +164,79 @@ func getNfsClients(mockNfsClients []*mocks.NfsEndpointClientMock) []nfsclient.En
 	return nfsClients
 }
 
-func getNfsClient(
-	mockNfsClients []*mocks.NfsEndpointClientMock,
-	instanceId string,
-	nfsVhostReplicaCount uint) *mocks.NfsEndpointClientMock {
-	if instanceId == "" {
-		return mockNfsClients[0]
+func getNbsClients(mockNbsClients []*mocks.NbsClientMock) []nbsclient.ClientIface {
+	nbsClients := []nbsclient.ClientIface{}
+	for _, mockNbsClient := range mockNbsClients {
+		nbsClients = append(nbsClients, nbsclient.ClientIface(mockNbsClient))
 	}
 
-	return mockNfsClients[getNfsClientIndex(instanceId, nfsVhostReplicaCount)]
+	return nbsClients
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getNbsClient(
+	mockNbsClients []*mocks.NbsClientMock,
+	listEndpointsResponses []nbs.TListEndpointsResponse,
+) *mocks.NbsClientMock {
+
+	clientIndex := 0
+	for index, listEndpointsResponse := range listEndpointsResponses {
+		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+			clientIndex = index
+		}
+	}
+
+	return mockNbsClients[clientIndex]
+}
+
+func getNfsClient(
+	mockNfsClients []*mocks.NfsEndpointClientMock,
+	listEndpointsResponses []nfs.TListEndpointsResponse,
+) *mocks.NfsEndpointClientMock {
+
+	clientIndex := 0
+	for index, listEndpointsResponse := range listEndpointsResponses {
+		if len(listEndpointsResponse.Endpoints) < len(listEndpointsResponses[clientIndex].Endpoints) {
+			clientIndex = index
+		}
+	}
+
+	return mockNfsClients[clientIndex]
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func generateNbsListEndpointsResponses(nbsServerReplicaCount uint) []nbs.TListEndpointsResponse {
+	responses := make([]nbs.TListEndpointsResponse, nbsServerReplicaCount)
+
+	for i := uint(0); i < nbsServerReplicaCount; i++ {
+		endpointsCount := rand.Intn(10)
+		endpoints := []*nbs.TStartEndpointRequest{}
+		for j := 0; j < endpointsCount; j++ {
+			startEndpointRequest := nbs.TStartEndpointRequest{}
+			endpoints = append(endpoints, &startEndpointRequest)
+		}
+		responses[i].Endpoints = endpoints
+	}
+
+	return responses
+}
+
+func generateNfsListEndpointsResponses(nfsServerReplicaCount uint) []nfs.TListEndpointsResponse {
+	responses := make([]nfs.TListEndpointsResponse, nfsServerReplicaCount)
+
+	for i := uint(0); i < nfsServerReplicaCount; i++ {
+		endpointsCount := rand.Intn(10)
+		endpoints := []*nfs.TEndpointConfig{}
+		for j := 0; j < endpointsCount; j++ {
+			endpointConfig := nfs.TEndpointConfig{}
+			endpoints = append(endpoints, &endpointConfig)
+		}
+		responses[i].Endpoints = endpoints
+	}
+
+	return responses
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,7 +256,14 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 	requestQueuesCountOpt *uint32,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, true, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		true,
+		true,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	ctx := context.Background()
 
@@ -198,7 +280,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -207,6 +289,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		true, // enable discard
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -241,14 +324,15 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 
 	vhostQueuesCount := defaultVhostQueuesCount // explicit default value for unset behavior
+	nbsClient := testCtx.nbsClients[0]
 	if backend == "nbs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
 			vhostQueuesCount = virtioBlkVhostQueuesCount(*requestQueuesCountOpt)
 		}
-		testCtx.nbsClient.On("ListEndpoints",
+		nbsClient.On("ListEndpoints",
 			ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-		testCtx.nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			Headers:          getDefaultStartEndpointRequestHeaders(),
 			UnixSocketPath:   testCtx.nbsSocketPath,
 			DiskId:           testCtx.volumeId,
@@ -269,7 +353,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
-	nfsClient := getNfsClient(testCtx.nfsClients, "", testCtx.nfsVhostReplicaCount)
+	nfsClient := testCtx.nfsClients[0]
 	if backend == "nfs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
@@ -315,7 +399,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 
 	testCtx.mounter.On("CleanupMountPoint", testCtx.targetPathMountMode).Return(nil)
 
-	testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: testCtx.nbsSocketPath,
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
@@ -338,7 +422,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 	})
 	require.NoError(t, err)
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	nfsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
@@ -412,10 +496,17 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	perInstanceVolumes bool,
 	localFsOverride LocalFsOverride,
 	requestQueuesCountOpt *uint32,
-	nfsVhostReplicaCount uint,
+	backendReplicaCount uint,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, false, perInstanceVolumes, nfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		true,
+		false,
+		perInstanceVolumes,
+		backendReplicaCount,
+		backendReplicaCount,
+	)
 
 	ctx := context.Background()
 	deviceName := defaultDiskId
@@ -449,7 +540,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -458,6 +549,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		false, // enableDiscard is false for staged tests
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -484,14 +576,19 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 
 	vhostQueuesCount := defaultVhostQueuesCount // explicit default value for unset behavior
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+	nbsListEndpointsResponses := generateNbsListEndpointsResponses(testCtx.nbsServerReplicaCount)
+	nbsClient := getNbsClient(testCtx.nbsClients, nbsListEndpointsResponses)
 	if backend == "nbs" {
 		if requestQueuesCountOpt != nil {
 			volumeContext[requestQueuesCountVolumeContextKey] = strconv.Itoa(int(*requestQueuesCountOpt))
 			vhostQueuesCount = virtioBlkVhostQueuesCount(*requestQueuesCountOpt)
 		}
-		testCtx.nbsClient.On("ListEndpoints",
-			ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-		testCtx.nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		for index, client := range testCtx.nbsClients {
+			client.On("ListEndpoints",
+				ctx, &nbs.TListEndpointsRequest{}).Return(&nbsListEndpointsResponses[index], nil)
+		}
+
+		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			Headers:          getDefaultStartEndpointRequestHeaders(),
 			UnixSocketPath:   testCtx.nbsSocketPath,
 			DiskId:           defaultDiskId,
@@ -513,7 +610,8 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		}).Return(&nbs.TStartEndpointResponse{}, nil)
 	}
 
-	expectedNfsClient := getNfsClient(testCtx.nfsClients, defaultInstanceId, testCtx.nfsVhostReplicaCount)
+	nfsListEndpointsResponses := generateNfsListEndpointsResponses(testCtx.nfsVhostReplicaCount)
+	expectedNfsClient := getNfsClient(testCtx.nfsClients, nfsListEndpointsResponses)
 	if localFsOverride == LocalFsOverrideLegacyEnabled || localFsOverride == LocalFsOverrideEnabled {
 		expectedNfsClient = testCtx.nfsLocalClient
 	}
@@ -541,6 +639,13 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		expectedFsId := defaultDiskId
 		if localFsOverride == LocalFsOverrideEnabled {
 			expectedFsId = fmt.Sprintf("%s-%s", defaultDiskId, defaultInstanceId)
+		}
+
+		if testCtx.nfsVhostReplicaCount > 1 {
+			for index, client := range testCtx.nfsClients {
+				client.On("ListEndpoints",
+					ctx, &nfs.TListEndpointsRequest{}).Return(&nfsListEndpointsResponses[index], nil)
+			}
 		}
 
 		expectedNfsClient.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
@@ -593,7 +698,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 
 	if !perInstanceVolumes {
 		// Driver attempts to stop legacy endpoints only for legacy volumes.
-		testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(testCtx.socketsDir, defaultPodId, defaultDiskId, nbsSocketName),
 		}).Return(&nbs.TStopEndpointResponse{}, nil)
 
@@ -609,7 +714,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	require.NoError(t, err)
 
 	if backend == "nbs" {
-		testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 			UnixSocketPath: testCtx.nbsSocketPath,
 		}).Return(&nbs.TStopEndpointResponse{}, nil)
 	}
@@ -635,7 +740,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 	_, err = os.Stat(filepath.Join(testCtx.socketsDir, defaultInstanceId))
 	assert.True(t, os.IsNotExist(err))
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	expectedNfsClient.AssertExpectations(t)
 	testCtx.nfsLocalClient.AssertExpectations(t)
 	testCtx.nfsLocalFilestoreClient.AssertExpectations(t)
@@ -653,7 +758,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 		perInstanceVolumes    bool
 		localFsOverride       LocalFsOverride
 		requestQueuesCountOpt *uint32
-		nfsVhostReplicaCount  uint
+		backendReplicaCount   uint
 	}{
 		// Legacy tests (perInstanceVolumes = false, requestQueuesCountOpt = nil)
 		{
@@ -663,7 +768,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceNameLegacy",
@@ -672,7 +777,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "FilestoreForKubevirtLegacy",
@@ -681,7 +786,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirtLegacy",
@@ -690,7 +795,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideLegacyEnabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		// Per-instance volume tests (perInstanceVolumes = true, requestQueuesCountOpt = nil)
 		{
@@ -700,7 +805,16 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
+		},
+		{
+			name:                  "DiskForKubevirtMultipleNbsServer",
+			backend:               "nbs",
+			deviceNameOpt:         nil,
+			perInstanceVolumes:    true,
+			localFsOverride:       LocalFsOverrideDisabled,
+			requestQueuesCountOpt: nil,
+			backendReplicaCount:   5,
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceName",
@@ -709,7 +823,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "FilestoreForKubevirt",
@@ -718,7 +832,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirt",
@@ -727,7 +841,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideEnabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		// Multiqueue tests (perInstanceVolumes = false, requestQueuesCountOpt = &rqc32)
 		// These correspond to the original "Multiqueue" tests which were legacy style.
@@ -738,7 +852,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "DiskForKubevirtSetDeviceNameMultiqueue",
@@ -747,7 +861,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "FilestoreForKubevirtMultiqueue",
@@ -756,7 +870,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: &rqc32,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirtMultiqueueLegacy",
@@ -765,7 +879,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideLegacyEnabled,
 			requestQueuesCountOpt: &rqc32,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "LocalFilestoreForKubevirtMultiqueue",
@@ -774,7 +888,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    false,
 			localFsOverride:       LocalFsOverrideEnabled,
 			requestQueuesCountOpt: &rqc32,
-			nfsVhostReplicaCount:  1,
+			backendReplicaCount:   1,
 		},
 		{
 			name:                  "FilestoreForKubevirtMultipleNfsVhost",
@@ -783,7 +897,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 			perInstanceVolumes:    true,
 			localFsOverride:       LocalFsOverrideDisabled,
 			requestQueuesCountOpt: nil,
-			nfsVhostReplicaCount:  4,
+			backendReplicaCount:   4,
 		},
 	}
 
@@ -798,7 +912,7 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 				tc.perInstanceVolumes,
 				tc.localFsOverride,
 				tc.requestQueuesCountOpt,
-				tc.nfsVhostReplicaCount,
+				tc.backendReplicaCount,
 			)
 		})
 	}
@@ -840,7 +954,14 @@ func TestReadVhostSettings(t *testing.T) {
 }
 
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		false,
+		false,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	groupId := ""
 	currentUser, err := user.Current()
@@ -870,7 +991,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -879,6 +1000,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		true,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -895,8 +1017,9 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	volumeContext := map[string]string{}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	testCtx.nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-	testCtx.nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+	nbsClient := testCtx.nbsClients[0]
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
+	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		Headers:          getDefaultStartEndpointRequestHeaders(),
 		UnixSocketPath:   testCtx.nbsSocketPath,
 		DiskId:           defaultDiskId,
@@ -968,7 +1091,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 
 	mockCallCleanupMountPoint := testCtx.mounter.On("CleanupMountPoint", testCtx.targetPathMountMode).Return(nil)
 
-	mockCallStopEndpoint := testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+	mockCallStopEndpoint := nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: deprecatedSocketPath,
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
@@ -986,7 +1109,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 
 	testCtx.mounter.On("CleanupMountPoint", testCtx.stagingTargetPath).Return(nil)
 
-	testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: testCtx.nbsSocketPath,
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
@@ -996,12 +1119,19 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
 
 func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		false,
+		false,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(testCtx.tempDir, "dev", "nbd3")
@@ -1019,7 +1149,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1028,6 +1158,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1054,9 +1185,10 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	testCtx.nbsClient.On("ListEndpoints",
+	nbsClient := testCtx.nbsClients[0]
+	nbsClient.On("ListEndpoints",
 		ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-	testCtx.nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		Headers:          getDefaultStartEndpointRequestHeaders(),
 		UnixSocketPath:   testCtx.nbsSocketPath,
 		DiskId:           defaultDiskId,
@@ -1139,7 +1271,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	testCtx.mounter.On("IsMountPoint", stagingDevicePath).Return(true, nil)
 	testCtx.mounter.On("CleanupMountPoint", stagingDevicePath).Return(nil)
 
-	testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: testCtx.nbsSocketPath,
 	}).Run(volumeOperationInProgress).Return(&nbs.TStopEndpointResponse{}, nil)
 
@@ -1149,18 +1281,26 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
 
 func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		false,
+		false,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	info, err := os.Stat(testCtx.tempDir)
 	require.NoError(t, err)
 	err = os.MkdirAll(testCtx.targetPathMountMode, info.Mode())
 	require.NoError(t, err)
 
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1169,7 +1309,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1178,6 +1318,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	ctx := context.Background()
@@ -1215,13 +1356,21 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 	assert.NotEqual(t, 0, nodesUsage.Total)
 	assert.Equal(t, nodesUsage.Used+nodesUsage.Available, nodesUsage.Total)
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
 
 func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
-	testCtx := CreateTestContext(t, true, true, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		true,
+		true,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1230,7 +1379,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1239,6 +1388,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	ctx := context.Background()
@@ -1264,18 +1414,26 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
 
 func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		false,
+		false,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 	ctx := context.Background()
 
 	volumeContext := map[string]string{
 		backendVolumeContextKey: "nbs",
 	}
 
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1284,7 +1442,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1293,6 +1451,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
@@ -1336,12 +1495,19 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
 
 func TestExternaFs(t *testing.T) {
-	testCtx := CreateTestContext(t, true, false, true, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		true,
+		false,
+		true,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	ctx := context.Background()
 	mountFilePath := filepath.Join(testCtx.tempDir, "mountDone")
@@ -1366,6 +1532,7 @@ func TestExternaFs(t *testing.T) {
 
 	testCtx.localFsOverrides[defaultDiskId] = fsConfig
 
+	nbsClient := testCtx.nbsClients[0]
 	nodeService := newNodeService(
 		defaultNodeId,
 		defaultCientId,
@@ -1374,7 +1541,7 @@ func TestExternaFs(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1383,6 +1550,7 @@ func TestExternaFs(t *testing.T) {
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
@@ -1490,14 +1658,21 @@ func TestExternaFs(t *testing.T) {
 	_, err = os.Stat(filepath.Join(testCtx.socketsDir, defaultInstanceId))
 	assert.True(t, os.IsNotExist(err))
 
-	testCtx.nbsClient.AssertExpectations(t)
+	nbsClient.AssertExpectations(t)
 	testCtx.nfsLocalClient.AssertExpectations(t)
 	testCtx.nfsLocalFilestoreClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
 }
 
 func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
-	testCtx := CreateTestContext(t, false, false, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		false,
+		false,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(testCtx.tempDir, "dev", "nbd3")
@@ -1514,7 +1689,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1523,6 +1698,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1533,9 +1709,10 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	testCtx.nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
+	nbsClient := testCtx.nbsClients[0]
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
 		&nbs.TListEndpointsResponse{}, nil)
-	testCtx.nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		Headers:          getDefaultStartEndpointRequestHeaders(),
 		UnixSocketPath:   testCtx.nbsSocketPath,
 		DiskId:           defaultDiskId,
@@ -1560,7 +1737,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 	nbdError := fmt.Errorf("%w", nbsclient.ClientError{Code: nbsclient.E_FAIL})
 	testCtx.mounter.On("HasBlockDevice", nbdDeviceFile).Return(false, nbdError)
 
-	testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: testCtx.nbsSocketPath,
 	}).Return(&nbs.TStopEndpointResponse{}, nil)
 
@@ -1578,7 +1755,14 @@ func TestNodeStageVolumeErrorForKubevirt(
 	t *testing.T,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, false, true, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		true,
+		false,
+		true,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	ctx := context.Background()
 	backend := "nbs"
@@ -1591,7 +1775,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1600,6 +1784,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -1618,11 +1803,11 @@ func TestNodeStageVolumeErrorForKubevirt(
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-
+	nbsClient := testCtx.nbsClients[0]
 	if backend == "nbs" {
-		testCtx.nbsClient.On("ListEndpoints",
+		nbsClient.On("ListEndpoints",
 			ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-		testCtx.nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			Headers:          getDefaultStartEndpointRequestHeaders(),
 			UnixSocketPath:   testCtx.nbsSocketPath,
 			DiskId:           defaultDiskId,
@@ -1641,7 +1826,7 @@ func TestNodeStageVolumeErrorForKubevirt(
 				HostType: &hostType,
 			},
 		}).Return(&nbs.TStartEndpointResponse{}, status.Error(codes.DeadlineExceeded, ""))
-		testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 			UnixSocketPath: testCtx.nbsSocketPath,
 		}).Return(&nbs.TStopEndpointResponse{}, nil)
 	}
@@ -1661,7 +1846,14 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 	t *testing.T,
 ) {
 	t.Helper()
-	testCtx := CreateTestContext(t, true, false, false, defaultNfsVhostReplicaCount)
+	testCtx := CreateTestContext(
+		t,
+		true,
+		false,
+		false,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
 
 	ctx := context.Background()
 
@@ -1673,7 +1865,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
-		testCtx.nbsClient,
+		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
 		testCtx.nfsLocalFilestoreClient,
@@ -1682,6 +1874,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		false,
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -1700,9 +1893,10 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 	}
 
 	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	testCtx.nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
+	nbsClient := testCtx.nbsClients[0]
+	nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).Return(
 		&nbs.TListEndpointsResponse{}, nil)
-	testCtx.nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		Headers:          getDefaultStartEndpointRequestHeaders(),
 		UnixSocketPath:   testCtx.nbsSocketPath,
 		DiskId:           defaultDiskId,
@@ -1730,7 +1924,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 	})
 	require.NoError(t, err)
 
-	testCtx.nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
 		UnixSocketPath: testCtx.nbsSocketPath,
 	}).Return(&nbs.TStopEndpointResponse{},
 		&nbsclient.ClientError{Code: nbsclient.E_GRPC_DEADLINE_EXCEEDED, Message: ""})

@@ -35,7 +35,6 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
-#include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
@@ -150,7 +149,10 @@ struct TBootstrap
             Timer,
             CreateUserCounterSupplierStub(),
             FsCountersProvider)}
-        , ModuleStatsRegistry{CreateModuleStatsRegistry(FsCountersProvider)}
+        , ModuleStatsRegistry{CreateModuleStatsRegistry(
+            Timer,
+            FsCountersProvider,
+            Counters->GetSubgroup("component", TString{MetricsComponent}))}
     {
         signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
 
@@ -290,7 +292,15 @@ struct TBootstrap
     {
         auto stop = StopAsync();
         StopTriggered.TrySetValue();
-        stop.Wait();
+        UNIT_ASSERT(stop.Wait(WaitTimeout));
+
+        if (Scheduler) {
+            // It is not allowed to stop Scheduler in the subscriber of
+            // Loop->StopAsync() because the callback may be called from
+            // a Scheduler thread
+            Scheduler->Stop();
+        }
+
         Fuse->DeInit();
         Loop = nullptr;
         std::remove(SocketPath.c_str());
@@ -298,22 +308,7 @@ struct TBootstrap
 
     TFuture<void> StopAsync()
     {
-        auto f = MakeFuture();
-        if (Loop) {
-            f = Loop->StopAsync();
-        }
-
-        if (!Scheduler) {
-            return f;
-        }
-
-        auto p = NewPromise<void>();
-        f.Subscribe([=] (auto f) mutable {
-            f.GetValue();
-            Scheduler->Stop();
-            p.SetValue();
-        });
-        return p;
+        return Loop ? Loop->StopAsync() : MakeFuture();
     }
 
     void InterruptNextRequest()
@@ -823,14 +818,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
             nodeId, handleId, false /* no data sync */);
         UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
-        UNIT_ASSERT_EQUAL(0, fsyncDirCalledWithDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, fsyncDirCalledWithDataSync.load());
 
         fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
             nodeId, handleId, true /* data sync */);
         UNIT_ASSERT_NO_EXCEPTION(fsyncdir.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
-        UNIT_ASSERT_EQUAL(1, fsyncDirCalledWithDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalledWithoutDataSync.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, fsyncDirCalledWithDataSync.load());
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
@@ -1120,6 +1115,144 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto close =
             bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldRetainDirectoryHandlesMaxMetricsUntilWindowExpires)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        TBootstrap bootstrap{timer, CreateScheduler(), features};
+
+        std::atomic<ui32> numCalls = 0;
+        bootstrap.Service->ListNodesHandler =
+            [&](auto callContext, auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+
+            if (!request->GetCookie()) {
+                for (ui32 i = 1; i <= 20000; ++i) {
+                    result.AddNames()->assign(
+                        "first_chunk_file_" + ToString(i) + ".txt");
+                    auto* node = result.AddNodes();
+                    node->SetId(100 + i);
+                    node->SetType(NProto::E_REGULAR_NODE);
+                }
+                result.SetCookie("has_more_data");
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL("has_more_data", request->GetCookie());
+                for (ui32 i = 20001; i <= 25100; ++i) {
+                    result.AddNames()->assign(
+                        "second_chunk_file_" + ToString(i) + ".txt");
+                    auto* node = result.AddNodes();
+                    node->SetId(100 + i);
+                    node->SetType(NProto::E_REGULAR_NODE);
+                }
+            }
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 1);
+
+        const auto size1 = read.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(size1, 4096);
+
+        read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size1 / 2);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size1);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 2);
+
+        read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId, 0);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
+
+        const auto largeOffset = size1 + 3700000;
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            largeOffset);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(4096, read.GetValue());
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        auto moduleCounters = bootstrap.GetDirectoryHandlesCounters();
+        UNIT_ASSERT(moduleCounters);
+
+        auto maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
+        UNIT_ASSERT(maxCacheSize);
+        const auto peakCacheSize = maxCacheSize->Val();
+        UNIT_ASSERT_GT(peakCacheSize, largeOffset);
+
+        auto maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
+        UNIT_ASSERT(maxChunkCount);
+        const auto peakChunkCount = maxChunkCount->Val();
+        UNIT_ASSERT_VALUES_EQUAL(3, peakChunkCount);
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
+        UNIT_ASSERT(maxCacheSize);
+        UNIT_ASSERT_VALUES_EQUAL(peakCacheSize, maxCacheSize->Val());
+
+        maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
+        UNIT_ASSERT(maxChunkCount);
+        UNIT_ASSERT_VALUES_EQUAL(peakChunkCount, maxChunkCount->Val());
+
+        for (size_t i = 0; i < DirectoryHandlesMaxBucketCount; ++i) {
+            timer->AdvanceTime(TDuration::Seconds(1));
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        }
+
+        maxCacheSize = moduleCounters->FindCounter("MaxCacheSize");
+        UNIT_ASSERT(maxCacheSize);
+        UNIT_ASSERT_VALUES_EQUAL(0, maxCacheSize->Val());
+
+        maxChunkCount = moduleCounters->FindCounter("MaxChunkCount");
+        UNIT_ASSERT(maxChunkCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, maxChunkCount->Val());
     }
 
     Y_UNIT_TEST(ShouldLoadDirectoryHandlesStorageWithoutErrors)
@@ -1453,7 +1586,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotFailOnSuspendWithRequestsInFlight)
     {
-        NAtomic::TBool sessionDestroyed = false;
+        std::atomic<bool> sessionDestroyed = false;
 
         TBootstrap bootstrap;
         bootstrap.Service->DestroySessionHandler = [&sessionDestroyed] (auto, auto) {
@@ -1494,7 +1627,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldNotFailOnStopWithRequestsInFlight)
     {
-        NAtomic::TBool sessionDestroyed = false;
+        std::atomic<bool> sessionDestroyed = false;
 
         TBootstrap bootstrap;
         bootstrap.Service->DestroySessionHandler = [&sessionDestroyed] (auto, auto) {
@@ -1593,7 +1726,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(1, callCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, callCount.load());
         }
     }
 
@@ -1631,7 +1764,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", RootNodeId);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(0, callCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, callCount);
         }
     }
 
@@ -1668,7 +1801,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(2, callCount);
+            UNIT_ASSERT_VALUES_EQUAL(2, callCount.load());
         }
     }
 
@@ -1705,7 +1838,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
-            UNIT_ASSERT_EQUAL(2, callCount.load());
+            UNIT_ASSERT_VALUES_EQUAL(2, callCount.load());
         }
     }
 
@@ -1743,7 +1876,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 xattr.GetValue(),
                 yexception,
                 "-61"); // NODATA error code
-            UNIT_ASSERT_EQUAL(1, callCount.load());
+            UNIT_ASSERT_VALUES_EQUAL(1, callCount.load());
         }
     }
 
@@ -1852,8 +1985,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "CreateHandle");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldNotCrashWhenStoppedBeforeFileStoreResponse)
@@ -1976,7 +2109,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         auto create = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
-        UNIT_ASSERT_EQUAL(create.GetValueSync(), handleId); // no interrupted
+        UNIT_ASSERT_VALUES_EQUAL(create.GetValueSync(), handleId); // no interrupted
     }
 
     Y_UNIT_TEST(ShouldNotTriggerFatalErrorForCancelledRequests)
@@ -2009,8 +2142,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "AcquireLock");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldNotTriggerFatalErrorsForNewRequestsDuringFuseStop)
@@ -2056,8 +2189,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "CreateHandle");
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldProcessDestroyHandleRequestsAsynchronously)
@@ -2266,7 +2399,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto future =
             bootstrap.Fuse->SendRequest<TReleaseRequest>(nodeId1, handle1);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(
+        UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
@@ -2277,25 +2410,25 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(
             future.GetValue(ExceptionWaitTimeout),
             yexception);
-        UNIT_ASSERT_EQUAL(
+        UNIT_ASSERT_VALUES_EQUAL(
             1,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
         // Process first request.
         scheduler->RunAllScheduledTasks();
         responsePromise.SetValue(NProto::TDestroyHandleResponse{});
-        UNIT_ASSERT_EQUAL(1, handlerCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1u, handlerCalled.load());
 
         // After the first request is processed, the second request should be
         // completed and added to the HandleOpsQueue.
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-        UNIT_ASSERT_EQUAL(
+        UNIT_ASSERT_VALUES_EQUAL(
             0,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
         // Check that second request was added to the queue and processed later.
         scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_EQUAL(2, handlerCalled);
+        UNIT_ASSERT_VALUES_EQUAL(2u, handlerCalled.load());
     }
 
     // We want to ensure that the same file cannot be reused for FileRingBuffers
@@ -2834,11 +2967,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
 
-        std::atomic<int> writeDataCalled = 0;
+        TPromise<void> writeDataCalled = NewPromise();
 
         bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-            writeDataCalled++;
+            writeDataCalled.SetValue();
             NProto::TWriteDataResponse result;
             return MakeFuture(result);
         };
@@ -2858,16 +2991,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
         UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
 
-        while (true) {
-            bootstrap.Timer->Sleep(TDuration::MilliSeconds(1));
-
-            if (writeDataCalled.load() == 0) {
-                continue;
-            }
-
-            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
-            break;
-        }
+        UNIT_ASSERT(writeDataCalled.GetFuture().Wait(WaitTimeout));
     }
 
     // We want to ensure that the same file cannot be reused for FileRingBuffers
@@ -3017,7 +3141,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Service->WriteDataHandler = [&](auto, const auto& request)
         {
-            UNIT_ASSERT_EQUAL_C(
+            UNIT_ASSERT_VALUES_EQUAL_C(
                 zeroCopyWriteEnabled,
                 !request->GetIovecs().empty(),
                 "Requests generated by TWriteBackCache should use iovecs if "
@@ -3207,8 +3331,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
             auto& iovecs = request->GetIovecs();
-            UNIT_ASSERT_EQUAL(1, iovecs.size());
-            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_VALUES_EQUAL(request->GetLength(), iovecs[0].GetLength());
 
             NProto::TReadDataResponse result;
             memcpy(
@@ -3263,8 +3387,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
             auto& iovecs = request->GetIovecs();
-            UNIT_ASSERT_EQUAL(1, iovecs.size());
-            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_VALUES_EQUAL(request->GetLength(), iovecs[0].GetLength());
 
             NProto::TReadDataResponse result;
             result.MutableBuffer()->assign(data);
@@ -4151,8 +4275,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             ->FindSubgroup("component", "fs_ut")
             ->FindSubgroup("request", "ListNodes");
         // counters->OutputPlainText(Cerr);
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors")->GetAtomic());
-        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("Errors/Fatal")->GetAtomic());
 
         auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
             parentNodeId,
@@ -4412,6 +4540,224 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
             UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotReportEnormousMaxTimeWhenCancellingRequest)
+    {
+        NProto::TFileStoreFeatures features;
+
+        // StopAsync and GetAttrRequest are executed concurrently:
+        // - if StopAsync is completed before GetAttrRequest, it will not be
+        //   processed at all;
+        // - if GetAttrRequest is completed before StopAsync, it will not be
+        //   canceled and will return with success.
+        //
+        // We use WriteBackCache in order to prevent race and enforce strict
+        // ordering between StopAsync and GetAttrRequest execution.
+        //
+        // WriteBackCache::FlushAll is executed after CompletionQueue is stopped
+        // (new requests will be canceled) and before FUSE loop is unmounted.
+        //
+        // We catch the moment when FlushAll is called by listening to
+        // WriteData requests.
+
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        auto writeDataCalledPromise = NewPromise();
+        auto responsePromise = NewPromise<NProto::TWriteDataResponse>();
+
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+        {
+            writeDataCalledPromise.SetValue();
+            return responsePromise.GetFuture();
+        };
+
+        bootstrap.Start();
+
+        {
+            // Cached write
+            auto rq = std::make_shared<TWriteRequest>(NodeId, HandleId, 0, "a");
+            auto write = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        }
+
+        auto stopFuture = bootstrap.StopAsync();
+
+        // StopAsync triggers FlushAll
+        writeDataCalledPromise.GetFuture().GetValue(WaitTimeout);
+
+        auto future = bootstrap.Fuse->SendRequest<TGetAttrRequest>(NodeId + 1);
+        future.Wait(WaitTimeout);
+
+        // Request is cancelled
+        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+
+        bootstrap.StatsRegistry->UpdateStats(false);
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("request", "GetNodeAttr");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+
+        const auto maxTime = counters->GetCounter("MaxTime")->GetAtomic();
+        UNIT_ASSERT_LE_C(
+            maxTime,
+            1000000000000,
+            "got maxTime " << maxTime);
+
+        // Complete FlushAll so StopAsync can finish
+        responsePromise.SetValue(NProto::TWriteDataResponse());
+
+        UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(WriteBackCacheShouldReportMetrics)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        bootstrap.Service->ReadDataHandler = [&](auto, const auto&)
+        {
+            NProto::TReadDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadRequest>(NodeId, HandleId, 0, 11);
+        UNIT_ASSERT_NO_EXCEPTION(read.GetValue(WaitTimeout));
+
+
+        auto fsCounters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "WriteBackCache");
+
+        auto totalCounters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("module", "WriteBackCache");
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            fsCounters->GetCounter("ReadData_CacheMiss")->GetAtomic());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            totalCounters->GetCounter("ReadData_CacheMiss")->GetAtomic());
+
+        bootstrap.Stop();
+
+        UNIT_ASSERT(!bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
+                         ->FindSubgroup("host", "cluster")
+                         ->FindSubgroup("filesystem", FileSystemId)
+                         ->FindSubgroup("client", ""));
+
+        UNIT_ASSERT(!bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("module", "WriteBackCache"));
+    }
+
+    Y_UNIT_TEST(ShouldNotDeadlockWhenFlushCompletionFiredInScheduler)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        ui32 automaticFlushPeriodMs = 1;
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            0,
+            automaticFlushPeriodMs);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        auto writeDataCalled = NewPromise();
+
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            // The callback is expected to be called in the scheduler thread
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            writeDataCalled.SetValue();
+
+            auto counter = bootstrap.Counters
+                ->FindSubgroup("component", "fs_ut_fs")
+                ->FindSubgroup("host", "cluster")
+                ->FindSubgroup("filesystem", FileSystemId)
+                ->FindSubgroup("client", "")
+                ->FindSubgroup("cloud", "")
+                ->FindSubgroup("folder", "")
+                ->FindSubgroup("module", "WriteBackCache")
+                ->GetCounter("FlushAllRequests_InProgressCount");
+
+            // Automatic flush does not create a request internally
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+            // Wait until Stop is called and FlushAll is triggered
+            // because of cache non-emptiness at session destroy
+            UNIT_ASSERT(WaitForCondition(
+                WaitTimeout,
+                [&]
+                {
+                    // We block scheduler thread so counters will not be updated
+                    // automatically - need to call UpdateStats manually
+                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                    return counter->GetAtomic() > 0;
+                }));
+
+            return MakeFuture<NProto::TWriteDataResponse>({});
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        // write request without O_DIRECT should go to write cache
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        // Wait until automatic flush is called
+        UNIT_ASSERT_NO_EXCEPTION(
+            writeDataCalled.GetFuture().GetValue(WaitTimeout));
     }
 }
 

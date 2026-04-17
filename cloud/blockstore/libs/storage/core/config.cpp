@@ -175,6 +175,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssd", NCloud::NProto::STORAGE_MEDIA_SSD},                        \
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
+    xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -669,6 +670,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
                                                                                \
     xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
+    xxx(EnableVhostDiscardOnVolumeRestart,    bool,        false              )\
+                                                                               \
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
@@ -682,7 +685,13 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(OverlappingRequestsPolicy,                                             \
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
+    xxx(RequestSplitterPolicy,                                                 \
+        NProto::ERequestSplitterPolicy,                                        \
+        NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
     xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
+    xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
+        bool,                                                                  \
+        false                                                                 )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -718,6 +727,9 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
     xxx(EnableVhostDiscardForNewVolumes)                                       \
+    xxx(EnableVhostDiscardOnVolumeRestart)                                     \
+    xxx(FreshBlocksWriter)                                                     \
+    xxx(ReadBlockMaskOnCompactionOptimization)                                 \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -836,6 +848,13 @@ IOutputStream& operator<<(
     NProto::EOverlappingRequestsPolicy orp)
 {
     return out << NProto::EOverlappingRequestsPolicy_Name(orp);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::ERequestSplitterPolicy rsp)
+{
+    return out << NProto::ERequestSplitterPolicy_Name(rsp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

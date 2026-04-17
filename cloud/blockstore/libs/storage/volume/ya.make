@@ -8,6 +8,7 @@ SRCS(
     volume_actor_acquire.cpp
     volume_actor_addclient.cpp
     volume_actor_allocatedisk.cpp
+    volume_actor_broken_devices.cpp
     volume_actor_change_storage_config.cpp
     volume_actor_checkpoint.cpp
     volume_actor_cleanup_history.cpp

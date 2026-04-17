@@ -240,13 +240,14 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     if (record->ErrorCount > 0) {
         switch (entry.Status) {
             case NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown:
-            case NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown:
-                HandleError(
-                    ctx,
-                    MakeSchemeShardError(
-                        NKikimrScheme::StatusPathDoesNotExist,
-                        "Path doesn't exist"));
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown: {
+                auto error = MakeSchemeShardError(
+                    NKikimrScheme::StatusPathDoesNotExist,
+                    "Path doesn't exist");
+                SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
+                HandleError(ctx, error);
                 return;
+            }
             default: {
                 HandleError(
                     ctx,

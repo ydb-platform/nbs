@@ -140,6 +140,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
     ui64 traceTime,
+    TThrottlingRequestInfo throttlingRequestInfo,
     bool forkTraces,
     bool isMultipartitionWriteOrZero)
 {
@@ -183,6 +184,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             std::move(originalContext),
             forkTraces ? msg->CallContext : nullptr,
             traceTime,
+            GetCycleCount(),
+            throttlingRequestInfo,
             &RejectVolumeRequest<TMethod>,
             isMultipartitionWriteOrZero));
 
@@ -225,7 +228,8 @@ void TVolumeActor::SendRequestToPartition(
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
-    ui64 traceTime)
+    ui64 traceTime,
+    TThrottlingRequestInfo throttlingRequestInfo)
 {
     STORAGE_VERIFY_C(
         State->IsDiskRegistryMediaKind() || State->GetPartitions(),
@@ -278,6 +282,7 @@ void TVolumeActor::SendRequestToPartition(
         volumeRequestId,
         blockRange,
         traceTime,
+        throttlingRequestInfo,
         forkTraces,
         isMultipartitionWriteOrZero);
 
@@ -439,6 +444,23 @@ bool TVolumeActor::ReplyToOriginalRequest(
             volumeRequest.ForkedContext->LWOrbit);
     }
 
+    TDuration shapingDelay;
+    if (success && volumeRequest.ThrottlingRequestInfo.ByteCount > 0) {
+        const ui64 now = GetCycleCount();
+        const TDuration executionTime =
+            CyclesToDurationSafe(now - volumeRequest.ExecutionStartTime);
+        shapingDelay = State->AccessShapingThrottler().SuggestDelay(
+            ctx.Now(),
+            volumeRequest.ThrottlingRequestInfo.ByteCount,
+            static_cast<EVolumeThrottlingOpType>(
+                volumeRequest.ThrottlingRequestInfo.OpType),
+            executionTime);
+
+        volumeRequest.CallContext->AddTime(
+            EProcessingStage::Shaping,
+            shapingDelay);
+    }
+
     FillResponse<TMethod>(
         *response,
         *volumeRequest.CallContext,
@@ -451,7 +473,11 @@ bool TVolumeActor::ReplyToOriginalRequest(
         response.release(),
         flags,
         volumeRequest.CallerCookie);
-    ctx.Send(std::move(event));
+    if (shapingDelay.GetValue() > 0) {
+        ctx.Schedule(shapingDelay, std::move(event), /*cookie=*/nullptr);
+    } else {
+        ctx.Send(std::move(event));
+    }
 
     if (volumeRequest.IsMultipartitionWriteOrZero) {
         Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
@@ -580,7 +606,7 @@ void TVolumeActor::ForwardRequest(
     }
 
     auto* msg = ev->Get();
-    auto now = GetCycleCount();
+    ui64 now = GetCycleCount();
 
     // Fill block range.
     TBlockRange64 blockRange;
@@ -847,8 +873,13 @@ void TVolumeActor::ForwardRequest(
         return;
     }
 
+    TThrottlingRequestInfo throttlingRequestInfo;
     {
-        auto error = Throttle<TMethod>(ctx, ev, throttlingDisabled);
+        auto error = Throttle<TMethod>(
+            ctx,
+            ev,
+            throttlingDisabled,
+            &throttlingRequestInfo);
         if (HasError(error)) {
             replyError(std::move(error));
             return;
@@ -1013,7 +1044,13 @@ void TVolumeActor::ForwardRequest(
     // prepared by the WrapRequest<TMethod>() method, which replaces the sender
     // and receiver.
 
-    SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, blockRange, now);
+    SendRequestToPartition<TMethod>(
+        ctx,
+        ev,
+        volumeRequestId,
+        blockRange,
+        now,
+        throttlingRequestInfo);
 }
 
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \

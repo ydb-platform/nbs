@@ -36,6 +36,11 @@ public:
 
     ~TUnspentCostBucket() = default;
 
+    // https://en.wikipedia.org/wiki/Smoothstep
+    // Similar to sigmoid function but faster. Proof:
+    // cloud/storage/core/libs/throttling/bench.
+    static double Smootherstep(double x);
+
     TDuration Register(TInstant now, TDuration cost, TDuration spentCost);
 
     [[nodiscard]] double CalculateCurrentSpentBudgetShare(TInstant now) const;

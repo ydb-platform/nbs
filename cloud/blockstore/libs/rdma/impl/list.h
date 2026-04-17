@@ -177,6 +177,11 @@ public:
         DeleteList(Head);
     }
 
+    operator bool() const
+    {
+        return AtomicGet(Head);
+    }
+
     void Enqueue(std::unique_ptr<T> node)
     {
         // ABA is not a problem in our case

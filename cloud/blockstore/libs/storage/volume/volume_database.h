@@ -133,7 +133,8 @@ public:
 
     struct TThrottlerStateInfo
     {
-        ui64 Budget = 0;
+        ui64 BoostBudget = 0;
+        double SpentShapingBudgetShare = 0;
     };
 
     void WriteThrottlerState(const TThrottlerStateInfo& stateInfo);
@@ -161,6 +162,19 @@ public:
     void WriteLeader(const TLeaderDiskInfo& leader);
     void DeleteLeader(const TLeaderFollowerLink& link);
     bool ReadLeaders(TLeaderDisks& leaders);
+
+    //
+    // Broken devices
+    //
+    struct TBrokenDeviceInfo
+    {
+        TString DeviceUUID;
+        TInstant BrokenTs;
+    };
+
+    void WriteBrokenDevice(const TString& deviceUUID, TInstant brokenTs);
+    void DeleteBrokenDevice(const TString& deviceUUID);
+    bool ReadBrokenDevices(TVector<TBrokenDeviceInfo>& devices);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

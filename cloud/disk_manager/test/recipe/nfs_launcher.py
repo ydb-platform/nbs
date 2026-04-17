@@ -33,6 +33,9 @@ class NfsLauncher:
         )
         storage_config = TStorageConfig()
         storage_config.AllowFileStoreForceDestroy = allow_filestore_force_destroy
+        storage_config.MultiTabletForwardingEnabled = True
+        storage_config.AutomaticShardCreationEnabled = True
+        storage_config.ShardIdSelectionInLeaderEnabled = True
         self.__nfs_configurator = FilestoreServerConfigGenerator(
             binary_path=nfs_binary_path,
             app_config=server_config,
@@ -65,5 +68,9 @@ class NfsLauncher:
         kill_processes(SERVICE_NAME)
 
     @property
-    def port(self):
+    def secure_port(self):
         return self.__nfs_configurator.secure_port
+
+    @property
+    def insecure_port(self):
+        return self.__nfs_configurator.port

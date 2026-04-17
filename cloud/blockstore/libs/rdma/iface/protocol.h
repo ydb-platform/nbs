@@ -97,8 +97,8 @@ struct Y_PACKED TConnectMessage
     union {
         struct {
             TMessageHeader Header;
-            ui32 QueueSize : 16;
-            ui32 Unused : 16;
+            ui32 SendQueueSize : 16;
+            ui32 RecvQueueSize : 16;
             ui32 MaxBufferSize;
         };
         ui8 Padding[RDMA_PRIVATE_SIZE];
@@ -146,7 +146,7 @@ struct Y_PACKED TBufferDesc
 {
     ui64 Address = 0;
     ui32 Length = 0;
-    ui32 Key = 0;
+    ui32 RKey = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

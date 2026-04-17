@@ -988,6 +988,8 @@ void TIndexTabletActor::HandleHttpInfo(
 
     static const THttpHandlers getActions {{
         {"dumpRange",       &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange },
+        {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
+        {"locks",           &TIndexTabletActor::HandleHttpInfo_Locks },
     }};
 
     const auto* msg = ev->Get();
@@ -1055,6 +1057,10 @@ void TIndexTabletActor::HandleHttpInfo_Default(
     HTML(out) {
         DumpDefaultHeader(out, TabletID(), SelfId().NodeId());
 
+        if (GetFileSystem().GetFrozen()) {
+            TAG(TH3) { out << "This tablet is frozen"; }
+        }
+
         TAG(TH3) { out << "Info"; }
         DIV() { out << "Filesystem Id: " << GetFileSystemId(); }
         DIV() { out << "Block size: " << GetBlockSize(); }
@@ -1062,6 +1068,16 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             FormatByteSize(GetBlocksCount() * GetBlockSize()) << ")";
         }
         DIV() { out << "Tablet host: " << FQDNHostName(); }
+
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=dirViewer'>Directory Viewer</a>";
+        }
+
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=locks'>Locks</a>";
+        }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         if (shardIds.size()) {
@@ -1072,6 +1088,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         TABLEH() { out << "ShardNo"; }
                         TABLEH() { out << "FileSystemId"; }
                         TABLEH() { out << "UsedBytesCount"; }
+                        TABLEH() { out << "UsedNodesCount"; }
                         TABLEH() { out << "FreeBytesCount"; }
                         TABLEH() { out << "CurrentLoad"; }
                         TABLEH() { out << "Suffer"; }
@@ -1093,6 +1110,9 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         }
                         TABLED() {
                             out << ss.UsedBlocksCount * GetBlockSize();
+                        }
+                        TABLED() {
+                            out << ss.UsedNodesCount;
                         }
                         TABLED() {
                             out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
@@ -1166,6 +1186,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
             DUMP_BACKPRESSURE_FIELD(Flush);
             DUMP_BACKPRESSURE_FIELD(FlushBytes);
+            DUMP_BACKPRESSURE_FIELD(FlushBytesItemCount);
             DUMP_BACKPRESSURE_FIELD(CompactionScore);
             DUMP_BACKPRESSURE_FIELD(CleanupScore);
 

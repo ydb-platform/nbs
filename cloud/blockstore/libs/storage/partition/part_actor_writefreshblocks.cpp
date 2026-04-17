@@ -31,7 +31,7 @@ void TPartitionActor::WriteFreshBlocks(
     TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer)
 {
     STORAGE_VERIFY_C(
-        !Config->GetFreshBlocksWriterEnabled(),
+        !IsFreshBlocksWriterEnabled(),
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");
@@ -77,7 +77,7 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
 
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
@@ -116,7 +116,9 @@ void TPartitionActor::WriteFreshBlocks(
             writeHandlers.push_back(r.Data.Handler);
         }
 
-        State->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+        State->AccessTrimFreshLogBarriers()->AcquireBarrierN(
+            commitId,
+            blockCount);
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -133,8 +135,9 @@ void TPartitionActor::WriteFreshBlocks(
             std::move(blockRanges),
             std::move(writeHandlers),
             BlockDigestGenerator,
+            true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            true);   // waitForAddFreshBlocksResponseBeforeResponse
+            nullptr);   // sharedState
 
         Actors.Insert(actor);
     } else {
@@ -188,24 +191,12 @@ void TPartitionActor::HandleAddFreshBlocks(
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
-    if (FreshBlocksWriter) {
-        ui64 blocksCount = 0;
-        for (auto& blockRange: msg->BlockRanges) {
-            blocksCount += blockRange.Size();
-        }
-        State->AccessTrimFreshLogBarriers().AcquireBarrierN(
-            msg->CommitId,
-            blocksCount);
-    }
-
     for (size_t i = 0; i < msg->BlockRanges.size(); ++i) {
         auto& blockRange = msg->BlockRanges[i];
 
         if (!msg->WriteHandlers) {
             State->ZeroFreshBlocks(blockRange, msg->CommitId);
-            if (!FreshBlocksWriter) {
-                State->DecrementFreshBlocksInFlight(blockRange.Size());
-            }
+            State->DecrementFreshBlocksInFlight(blockRange.Size());
 
             continue;
         }
@@ -217,9 +208,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         if (auto guard = guardedSgList.Acquire()) {
             const auto& sgList = guard.Get();
             State->WriteFreshBlocks(blockRange, msg->CommitId, sgList);
-            if (!FreshBlocksWriter) {
-                State->DecrementFreshBlocksInFlight(blockRange.Size());
-            }
+            State->DecrementFreshBlocksInFlight(blockRange.Size());
         } else {
             LOG_ERROR(
                 ctx,
@@ -230,7 +219,7 @@ void TPartitionActor::HandleAddFreshBlocks(
             using TResponse =
                 TEvPartitionCommonPrivate::TEvAddFreshBlocksResponse;
             auto response = std::make_unique<TResponse>(
-                MakeError(E_ARGUMENT, "Failed to lock a guardedSgList"));
+                MakeError(E_CANCELLED, "Failed to lock a guardedSgList"));
 
             NCloud::Reply(ctx, *ev, std::move(response));
             Suicide(ctx);
@@ -248,6 +237,16 @@ void TPartitionActor::HandleAddFreshBlocks(
     auto response = std::make_unique<TResponse>();
 
     NCloud::Reply(ctx, *ev, std::move(response));
+
+    if (FreshBlocksWriter) {
+        // If we have only fresh requests, then the partition will receive only
+        // AddFreshBlocks requests. So Flush will not be triggered (it is
+        // usually triggered on Write Blocks Completed responses), we will soon
+        // reach the hard limit on the unflushed blob byte count, and FBW will
+        // start to reject all requests. Therefore, we should trigger Flush on
+        // the AddFreshBlock request.
+        EnqueueFlushIfNeeded(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -419,8 +418,9 @@ void TPartitionActor::CompleteWriteBlocks(
         ProfileLog->Write(std::move(record));
     }
 
-    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= args.Requests.size());
+    State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);
+    Y_DEBUG_ABORT_UNLESS(
+        WriteAndZeroRequestsInProgress >= args.Requests.size());
     WriteAndZeroRequestsInProgress -= args.Requests.size();
 
     EnqueueFlushIfNeeded(ctx);
@@ -437,7 +437,7 @@ void TPartitionActor::ZeroFreshBlocks(
     ui64 commitId)
 {
     STORAGE_VERIFY_C(
-        !Config->GetFreshBlocksWriterEnabled(),
+        !IsFreshBlocksWriterEnabled(),
         TWellKnownEntityTypes::TABLET,
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");
@@ -474,7 +474,7 @@ void TPartitionActor::ZeroFreshBlocks(
         commitId,
         DescribeRange(writeRange).c_str());
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
     const bool freshChannelZeroRequestsEnabled =
         Config->GetFreshChannelZeroRequestsEnabled();
 
@@ -488,7 +488,9 @@ void TPartitionActor::ZeroFreshBlocks(
         requests.emplace_back(requestInfo, EFreshRequestType::ZeroBlocks);
         blockRanges.emplace_back(writeRange);
 
-        State->AccessTrimFreshLogBarriers().AcquireBarrierN(commitId, blockCount);
+        State->AccessTrimFreshLogBarriers()->AcquireBarrierN(
+            commitId,
+            blockCount);
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -505,8 +507,9 @@ void TPartitionActor::ZeroFreshBlocks(
             std::move(blockRanges),
             TVector<IWriteBlocksHandlerPtr>{},
             BlockDigestGenerator,
+            true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
-            true);   // waitForAddFreshBlocksResponseBeforeResponse
+            nullptr);   // sharedState
 
         Actors.Insert(actor);
     } else {

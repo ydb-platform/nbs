@@ -84,9 +84,9 @@ message TVhostServiceConfig
     // Initial data area size for DirectoryHandles persistent table.
     optional uint64 DirectoryHandlesInitialDataSize = 20;
 
-    // If true, a permanent THandler actor will be used instead of one
-    // TRequestActor per each request.
-    optional bool UsePermanentActor = 21;
+    // If nonzero, multiple permanent THandler actors will be used instead of
+    // one TRequestActor per each request.
+    optional uint32 PermanentActorCount = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

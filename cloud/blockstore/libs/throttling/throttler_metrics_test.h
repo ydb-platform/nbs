@@ -16,7 +16,7 @@ struct TTestThrottlerMetrics final
     using TUnregisterHandler =
         std::function<void(const TString&, const TString&)>;
     using TTrimHandler = std::function<void(TInstant)>;
-    using TUpdateUsedQuotaHandler = std::function<void(ui64)>;
+    using TUpdateUsedQuotaHandler = std::function<void(TUsedQuota)>;
     using TUpdateMaxUsedQuotaHandler = std::function<void()>;
 
     TRegisterHandler RegisterHandler;
@@ -44,7 +44,7 @@ struct TTestThrottlerMetrics final
         TrimHandler(now);
     }
 
-    void UpdateUsedQuota(ui64 quota) override
+    void UpdateUsedQuota(TUsedQuota quota) override
     {
         UpdateUsedQuotaHandler(quota);
     }

@@ -569,6 +569,8 @@ func scheduleWaitingTaskWithSleep(
 
 // Fails exactly n times in a row.
 type unstableTask struct {
+	isNonCancellableFailure bool
+	isNonRetriableFailure   bool
 	// Represents 'number of failures until success'.
 	request *wrappers.UInt64Value
 	// Represents 'current number of failures'.
@@ -580,7 +582,6 @@ func (t *unstableTask) Save() ([]byte, error) {
 }
 
 func (t *unstableTask) Load(request, state []byte) error {
-
 	t.request = &wrappers.UInt64Value{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
@@ -603,10 +604,19 @@ func (t *unstableTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) 
 		return err
 	}
 
+	if t.isNonCancellableFailure {
+		return errors.NewNonCancellableErrorf("nonCancellableFailure")
+	}
+
+	if t.isNonRetriableFailure {
+		return errors.NewNonRetriableErrorf("nonRetriableFailure")
+	}
+
 	return errors.NewRetriableError(assert.AnError)
 }
 
 func (t *unstableTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	common.Assertf(!t.isNonCancellableFailure, "unexpected Cancel call")
 	return nil
 }
 
@@ -627,6 +637,22 @@ func registerUnstableTask(registry *tasks.Registry) error {
 	})
 }
 
+func registerUnstableTaskWithNonRetriableFailures(registry *tasks.Registry) error {
+	return registry.RegisterForExecution("unstable", func() tasks.Task {
+		return &unstableTask{
+			isNonRetriableFailure: true,
+		}
+	})
+}
+
+func registerUnstableTaskWithNonCancellableFailures(registry *tasks.Registry) error {
+	return registry.RegisterForExecution("unstable", func() tasks.Task {
+		return &unstableTask{
+			isNonCancellableFailure: true,
+		}
+	})
+}
+
 func scheduleUnstableTask(
 	ctx context.Context,
 	scheduler tasks.Scheduler,
@@ -637,6 +663,23 @@ func scheduleUnstableTask(
 		ctx,
 		"unstable",
 		"Unstable task",
+		&wrappers.UInt64Value{
+			Value: failuresUntilSuccess,
+		},
+	)
+}
+
+func scheduleUnstableNonCancellableTask(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	failuresUntilSuccess uint64,
+) (string, error) {
+
+	return scheduler.ScheduleNonCancellableTask(
+		ctx,
+		"unstable",
+		"Unstable task",
+		"", // zoneID
 		&wrappers.UInt64Value{
 			Value: failuresUntilSuccess,
 		},
@@ -2085,4 +2128,63 @@ func TestTaskWithEstimatedDurationOverride(t *testing.T) {
 	testTaskWithEstimatedDurationOverride(t, true, false)
 	testTaskWithEstimatedDurationOverride(t, false, true)
 	testTaskWithEstimatedDurationOverride(t, true, true)
+}
+
+func TestTasksNonCancellableTaskShouldRunUntilSuccess(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	err := registerUnstableTaskWithNonRetriableFailures(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleUnstableNonCancellableTask(
+		reqCtx,
+		s.scheduler,
+		10, // failuresUntilSuccess
+	)
+	require.NoError(t, err)
+
+	response, err := waitTask(ctx, s.scheduler, id)
+	require.NoError(t, err)
+	require.EqualValues(t, 10, response)
+}
+
+func TestTasksNonCancellableTaskIsAllowedToFailWithNonCancellableError(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 2)
+
+	err := registerUnstableTaskWithNonCancellableFailures(s.registry)
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	reqCtx := getRequestContext(t, ctx)
+	id, err := scheduleUnstableNonCancellableTask(
+		reqCtx,
+		s.scheduler,
+		10, // failuresUntilSuccess
+	)
+	require.NoError(t, err)
+
+	_, err = waitTask(ctx, s.scheduler, id)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "nonCancellableFailure")
 }

@@ -91,6 +91,7 @@ TVolumeState CreateVolumeState(
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}},   // metaHistory
         {},                                                 // volumeParams
         throttlerConfig,
+        0.0,   // spentShapingBudgetShare
         std::move(clientInfos),
         {},   // mountHistory
         std::move(checkpointRequests),
@@ -113,6 +114,7 @@ TVolumeState CreateVolumeState(
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}},   // metaHistory
         {},                                                 // volumeParams
         CreateThrottlerConfig(),
+        0.0,   // spentShapingBudgetShare
         std::move(clientInfos),
         TCachedVolumeMountHistory{VolumeHistoryCacheSize, {}},
         std::move(checkpointRequests),
@@ -135,6 +137,7 @@ TVolumeState CreateVolumeState(
         {},   // metaHistory
         {},   // volumeParams
         CreateThrottlerConfig(),
+        0.0,   // spentShapingBudgetShare
         {},   // clientInfos
         TCachedVolumeMountHistory{
             config.GetVolumeHistoryCacheSize(),
@@ -1995,6 +1998,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 {},     // metaHistory
                 {},     // volumeParams
                 CreateThrottlerConfig(),
+                0.0,    // spentShapingBudgetShare
                 {},     // infos
                 {},     // mountHistory
                 {},     // checkpointRequests

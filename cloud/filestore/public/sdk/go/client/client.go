@@ -18,6 +18,7 @@ type CreateFileStoreOpts struct {
 	BlockSize        uint32
 	BlocksCount      uint64
 	StorageMediaKind coreprotos.EStorageMediaKind
+	ShardCount       uint32
 }
 
 type AlterFileStoreOpts struct {
@@ -53,30 +54,36 @@ func (t NodeType) IsSymlink() bool {
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	NODE_KIND_INVALID NodeType = iota
-	NODE_KIND_FILE
-	NODE_KIND_DIR
-	NODE_KIND_SYMLINK
-	NODE_KIND_LINK
-	NODE_KIND_SOCK
+	NODE_KIND_INVALID  NodeType = NodeType(protos.ENodeType_E_INVALID_NODE)
+	NODE_KIND_FILE     NodeType = NodeType(protos.ENodeType_E_REGULAR_NODE)
+	NODE_KIND_DIR      NodeType = NodeType(protos.ENodeType_E_DIRECTORY_NODE)
+	NODE_KIND_LINK     NodeType = NodeType(protos.ENodeType_E_LINK_NODE)
+	NODE_KIND_SOCK     NodeType = NodeType(protos.ENodeType_E_SOCK_NODE)
+	NODE_KIND_SYMLINK  NodeType = NodeType(protos.ENodeType_E_SYMLINK_NODE)
+	NODE_KIND_FIFO     NodeType = NodeType(protos.ENodeType_E_FIFO_NODE)
+	NODE_KIND_CHARDEV  NodeType = NodeType(protos.ENodeType_E_CHARDEV_NODE)
+	NODE_KIND_BLOCKDEV NodeType = NodeType(protos.ENodeType_E_BLOCKDEV_NODE)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type Node struct {
-	ParentID   uint64
-	NodeID     uint64
-	Name       string
-	Atime      uint64
-	Mtime      uint64
-	Ctime      uint64
-	Size       uint64
-	Mode       uint32
-	UID        uint64
-	GID        uint64
-	Links      uint32
-	Type       NodeType
-	LinkTarget string
+	ParentID          uint64
+	NodeID            uint64
+	Name              string
+	Atime             uint64
+	Mtime             uint64
+	Ctime             uint64
+	Size              uint64
+	Mode              uint32
+	UID               uint64
+	GID               uint64
+	Links             uint32
+	Type              NodeType
+	LinkTarget        string
+	ShardFileSystemID string
+	ShardNodeName     string
+	DevID             uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,6 +120,9 @@ func (client *Client) CreateFileStore(
 		req.BlockSize = opts.BlockSize
 		req.BlocksCount = opts.BlocksCount
 		req.StorageMediaKind = opts.StorageMediaKind
+		if opts.ShardCount > 0 {
+			req.ShardCount = opts.ShardCount
+		}
 	}
 
 	resp, err := client.Impl.CreateFileStore(ctx, req)
@@ -157,6 +167,26 @@ func (client *Client) ResizeFileStore(
 		FileSystemId:  fileSystemID,
 		BlocksCount:   blocksCount,
 		ConfigVersion: configVersion,
+	}
+
+	_, err := client.Impl.ResizeFileStore(ctx, req)
+	return err
+}
+
+func (client *Client) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+	blocksCount uint64,
+	configVersion uint32,
+	shardCount uint32,
+) error {
+
+	req := &protos.TResizeFileStoreRequest{
+		FileSystemId:                    filesystemID,
+		BlocksCount:                     blocksCount,
+		ConfigVersion:                   configVersion,
+		EnableDirectoryCreationInShards: true,
+		ShardCount:                      shardCount,
 	}
 
 	_, err := client.Impl.ResizeFileStore(ctx, req)
@@ -330,19 +360,29 @@ func (client *Client) ListNodes(
 	nodes := resp.GetNodes()
 	result := make([]Node, len(nodes))
 	for idx, name := range resp.GetNames() {
+		// On the filestore side, symlinks are represented as links
+		// and links are regular files with Links >= 2.
+		nodeType := NodeType(nodes[idx].GetType())
+		if nodeType == NODE_KIND_LINK {
+			nodeType = NODE_KIND_SYMLINK
+		}
+
 		result[idx] = Node{
-			ParentID: nodeID,
-			NodeID:   nodes[idx].GetId(),
-			Name:     string(name),
-			Atime:    nodes[idx].GetATime(),
-			Mtime:    nodes[idx].GetMTime(),
-			Ctime:    nodes[idx].GetCTime(),
-			Size:     nodes[idx].GetSize(),
-			Mode:     nodes[idx].GetMode(),
-			UID:      uint64(nodes[idx].GetUid()),
-			GID:      uint64(nodes[idx].GetGid()),
-			Links:    nodes[idx].GetLinks(),
-			Type:     NodeType(nodes[idx].GetType()),
+			ParentID:          nodeID,
+			NodeID:            nodes[idx].GetId(),
+			Name:              string(name),
+			Atime:             nodes[idx].GetATime(),
+			Mtime:             nodes[idx].GetMTime(),
+			Ctime:             nodes[idx].GetCTime(),
+			Size:              nodes[idx].GetSize(),
+			Mode:              nodes[idx].GetMode(),
+			UID:               uint64(nodes[idx].GetUid()),
+			GID:               uint64(nodes[idx].GetGid()),
+			Links:             nodes[idx].GetLinks(),
+			Type:              nodeType,
+			ShardFileSystemID: nodes[idx].GetShardFileSystemId(),
+			ShardNodeName:     nodes[idx].GetShardNodeName(),
+			DevID:             nodes[idx].GetDevId(),
 		}
 	}
 
@@ -398,6 +438,33 @@ func (client *Client) CreateNode(
 				TargetNode: node.NodeID,
 			},
 		}
+	case NODE_KIND_FIFO:
+		req.Params = &protos.TCreateNodeRequest_Fifo{
+			Fifo: &protos.TCreateNodeRequest_TFifo{
+				Mode: node.Mode,
+			},
+		}
+	case NODE_KIND_CHARDEV:
+		req.Params = &protos.TCreateNodeRequest_CharDevice{
+			CharDevice: &protos.TCreateNodeRequest_TCharDevice{
+				Mode:   node.Mode,
+				Device: node.DevID,
+			},
+		}
+	case NODE_KIND_BLOCKDEV:
+		req.Params = &protos.TCreateNodeRequest_BlockDevice{
+			BlockDevice: &protos.TCreateNodeRequest_TBlockDevice{
+				Mode:   node.Mode,
+				Device: node.DevID,
+			},
+		}
+	case NODE_KIND_INVALID:
+		return 0, errors.NewNonRetriableErrorf("CreateNode: invalid node type")
+	default:
+		return 0, errors.NewNonRetriableErrorf(
+			"CreateNode: unknown node type %v",
+			node.Type,
+		)
 	}
 
 	resp, err := client.Impl.CreateNode(ctx, req)
@@ -467,7 +534,31 @@ func (client *Client) GetNodeAttr(
 		GID:      uint64(attr.GetGid()),
 		Links:    attr.GetLinks(),
 		Type:     NodeType(attr.GetType()),
+		DevID:    attr.GetDevId(),
 	}, nil
+}
+
+func (client *Client) UnlinkNode(
+	ctx context.Context,
+	session Session,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) error {
+
+	req := &protos.TUnlinkNodeRequest{
+		FileSystemId:    session.FileSystemID,
+		NodeId:          parentNodeID,
+		Name:            []byte(name),
+		UnlinkDirectory: unlinkDirectory,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
+	}
+
+	_, err := client.Impl.UnlinkNode(ctx, req)
+	return err
 }
 
 ////////////////////////////////////////////////////////////////////////////////

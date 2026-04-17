@@ -2,6 +2,7 @@ LIBRARY(filestore-libs-storage-core)
 
 SRCS(
     config.cpp
+    cpu_timer.cpp
     helpers.cpp
     model.cpp
     probes.cpp

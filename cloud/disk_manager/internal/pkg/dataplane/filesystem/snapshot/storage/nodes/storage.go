@@ -32,8 +32,7 @@ type Storage interface {
 		ctx context.Context,
 		srcID string,
 		dstID string,
-		srcNodeIds []uint64,
-		dstNodeIds []uint64,
+		nodeIDMapping map[uint64]uint64,
 	) error
 
 	GetDestinationNodeIDs(

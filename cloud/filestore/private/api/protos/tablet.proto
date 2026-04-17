@@ -104,6 +104,7 @@ message TShardStats
     uint64 TotalBlocksCount = 3;
     uint64 CurrentLoad = 4;
     uint32 Suffer = 5;
+    uint64 UsedNodesCount = 6;
 }
 
 message TStorageStats
@@ -161,7 +162,7 @@ message TStorageStats
     repeated TShardStats ShardStats = 6001;
 }
 
-enum StatsRequestMode
+enum EStatsRequestMode
 {
     // Statistics form shards is fetched for a main filesystem and not fetched
     // for shards.
@@ -193,7 +194,7 @@ message TGetStorageStatsRequest
     // Statitics fetching mode: DEFAULT/FORCE_FETCH_SHARDS/GET_ONLY_SELF.
     // By default requests to shards do not fetch other shards, requests
     // to the main tablet fetch all the shards.
-    StatsRequestMode Mode = 8;
+    EStatsRequestMode Mode = 8;
 }
 
 message TGetStorageStatsResponse
@@ -674,6 +675,10 @@ message TConfigureShardsRequest
     // Allow shards aggregate statistics from all other shards and strictly
     // enforce filesystem size.
     bool StrictFileSystemSizeEnforcementEnabled = 5;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 6;
 }
 
 message TConfigureShardsResponse
@@ -704,6 +709,10 @@ message TConfigureAsShardRequest
     // Allow shards aggregate statistics from all other shards and strictly
     // enforce filesystem size.
     bool StrictFileSystemSizeEnforcementEnabled = 6;
+
+    // If DirectoryCreationInShardsEnabled is true, forces directory creation
+    // in shards even if main tablet has already created some nodes.
+    bool ForceDirectoryCreationInShards = 7;
 }
 
 message TConfigureAsShardResponse
@@ -723,6 +732,9 @@ message TGetStorageConfigRequest
     // FileSystem identifier to query its storage config. Or empty to
     // query server storage config.
     string FileSystemId = 2;
+
+    // If set, only tablet-level overrides will be reported
+    bool OnlyOverride = 3;
 }
 
 message TGetStorageConfigResponse
@@ -908,6 +920,24 @@ message TUnsafeCreateHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// UnsafeChangeTabletState request/response.
+
+message TUnsafeChangeTabletStateRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // If set, only unsafe ops will be allowed.
+    bool Frozen = 2;
+}
+
+message TUnsafeChangeTabletStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // GetFileSystemTopology request/response.
 
 message TGetFileSystemTopologyRequest
@@ -935,6 +965,8 @@ message TGetFileSystemTopologyResponse
     bool StrictFileSystemSizeEnforcementEnabled = 5;
 
     uint32 MaxShardCount = 6;
+
+    bool ForceDirectoryCreationInShards = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1130,11 +1162,7 @@ message TWriteResponseLogEntryRequest
     // FileSystem (shard) identifier.
     string FileSystemId = 2;
 
-    // Client tablet (the tablet that issued the original request) identifier.
-    uint64 ClientTabletId = 3;
-
-    // Request id of that request.
-    uint64 RequestId = 4;
+    reserved 3, 4;
 
     // The entry.
     TResponseLogEntry Entry = 5;

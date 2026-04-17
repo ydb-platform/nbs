@@ -49,7 +49,7 @@ SRCS(
     service_actor_actions_setup_channels.cpp
     service_actor_actions_suspend_device.cpp
     service_actor_actions_suspend_disk_agent.cpp
-    service_actor_actions_switch_vhost_discard_option.cpp
+    service_actor_actions_set_vhost_discard_enabled_flag.cpp
     service_actor_actions_update_disk_block_size.cpp
     service_actor_actions_update_disk_replica_count.cpp
     service_actor_actions_update_disk_registry_params.cpp
@@ -88,6 +88,7 @@ SRCS(
     service_actor_unmount.cpp
     service_actor_update_disk_registry_config.cpp
     service_actor_update_volume_throttling_config.cpp
+    service_actor_vhost_discard_flag.cpp
     service_actor_volume_binding.cpp
     service_actor_writeblocks.cpp
     service_counters.cpp

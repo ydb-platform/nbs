@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "buffer.h"
+
 #include <cloud/blockstore/config/rdma.pb.h>
 
 #include <cloud/blockstore/libs/service/public.h>
@@ -32,11 +34,14 @@ struct TServerConfig
     ui8 IpTypeOfService = 0;
     TString SourceInterface;
     bool VerbsQP = false;
+    TBufferPoolConfig BufferPool;
+    ui32 SendQueueSize = 0;
+    ui32 RecvQueueSize = 0;
 
-    TServerConfig() = default;
-
+    TServerConfig();
     explicit TServerConfig(const NProto::TRdmaServer& config);
 
+    void Validate(TLog& log);
     void DumpHtml(IOutputStream& out) const;
 };
 

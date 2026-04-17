@@ -331,6 +331,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateUnsafeChangeTabletStateActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateGetStorageStatsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
@@ -356,6 +360,18 @@ private:
         TString input);
 
     NActors::IActorPtr CreateMarkNodeRefsExhaustiveActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateWriteResponseLogEntryActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateDeleteResponseLogEntryActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateGetResponseLogEntryActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

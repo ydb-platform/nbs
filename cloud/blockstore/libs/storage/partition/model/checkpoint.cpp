@@ -187,14 +187,20 @@ bool TCheckpointQueue::Empty() const
     return Queue.empty();
 }
 
+void TCheckpointQueue::GetCommitIds(TVector<ui64>& commitIds) const
+{
+    for (const auto& [commitId, _]: Queue) {
+        commitIds.push_back(commitId);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCheckpointsInFlight::AddTx(
     const TString& checkpointId,
     TTxPtr transaction)
 {
-    auto& queue = PendingTransactions[checkpointId];
-    queue.emplace_back(std::move(transaction), 0);
+    AddTx(checkpointId, std::move(transaction), 0);
 }
 
 void TCheckpointsInFlight::AddTx(
@@ -205,7 +211,8 @@ void TCheckpointsInFlight::AddTx(
     auto& queue = PendingTransactions[checkpointId];
     queue.emplace_back(std::move(transaction), commitId);
 
-    if (queue.size() == 1) {
+    // CommitId can be 0 if it is a DeleteCheckpoint transaction.
+    if (queue.size() == 1 && commitId != 0) {
         CommitIdQueue.Enqueue(checkpointId, commitId);
     }
 }
@@ -258,6 +265,11 @@ void TCheckpointsInFlight::PopTx(const TString& checkpointId)
             PendingTransactions.erase(it);
         }
     }
+}
+
+void TCheckpointsInFlight::GetCommitIds(TVector<ui64>& commitIds) const
+{
+    CommitIdQueue.GetCommitIds(commitIds);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

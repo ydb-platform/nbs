@@ -20,16 +20,19 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
     auto session = FindSession(clientId, sessionId, sessionSeqNo);
 
-    const auto makeResponse = [&sessionSeqNo, this](const TSessionPtr& session)
+    const auto& cloudId = Store.GetCloudId();
+    const auto& folderId = Store.GetFolderId();
+    const auto& fsId = Store.GetFileSystemId();
+    const bool guestPosixAclEnabled =
+        Config->GetGuestPosixAclEnabled(cloudId, folderId, fsId);
+
+    const auto makeResponse = [&sessionSeqNo, &cloudId, &folderId, &fsId, this](
+                                  const TSessionPtr& session)
     {
         NProto::TCreateSessionResponse response;
         session->GetInfo(*response.MutableSession(), sessionSeqNo);
 
         *response.MutableFileStore() = Store;
-
-        const auto& cloudId = Store.GetCloudId();
-        const auto& folderId = Store.GetFolderId();
-        const auto& fsId = Store.GetFileSystemId();
 
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
@@ -44,7 +47,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetGuestPageCacheDisabled(
             Config->GetGuestPageCacheDisabled());
         features->SetExtendedAttributesDisabled(
-            Config->GetExtendedAttributesDisabled());
+            Config->GetExtendedAttributesDisabled(cloudId, folderId, fsId));
         features->SetServerWriteBackCacheEnabled(
             Config->GetServerWriteBackCacheEnabled());
         features->SetMaxBackground(Config->GetMaxBackground());
@@ -69,7 +72,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
                 Config->GetDirectoryHandlesTableSize());
         }
         features->SetGuestHandleKillPrivV2Enabled(
-            Config->GetGuestHandleKillPrivV2Enabled());
+            Config->GetGuestHandleKillPrivV2Enabled(cloudId, folderId, fsId));
+        features->SetGuestPosixAclEnabled(session->GuestPosixAclEnabled);
         return response;
     };
 
@@ -108,10 +112,13 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetMaxHandlePerSessionCount(),
         Config->GetOpenNodeByHandleEnabled(),
         Config->GetNodeCleanupBatchSize(),
-        Config->GetSnapshotsDirEnabled(),
+        Config->GetSnapshotsDirEnabled(cloudId, folderId, fsId),
         Config->GetSnapshotsDirRefreshInterval(),
         Logging);
 
+    // For local service, features are fixed for the lifetime of the process,
+    // so it is enough to cache the resolved value when the session is created.
+    session->GuestPosixAclEnabled = guestPosixAclEnabled;
     session->Init(request.GetRestoreClientSession());
     session->AddSubSession(sessionSeqNo, readOnly);
 

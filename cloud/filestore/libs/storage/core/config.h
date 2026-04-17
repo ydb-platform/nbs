@@ -109,6 +109,7 @@ public:
     ui32 GetCleanupThresholdForBackpressure() const;
     ui32 GetCompactionThresholdForBackpressure() const;
     ui64 GetFlushBytesThresholdForBackpressure() const;
+    ui64 GetFlushBytesItemCountThresholdForBackpressure() const;
     ui32 GetBackpressureThresholdPercentageForBackgroundOpsPriority() const;
 
     TString GetHDDSystemChannelPoolKind() const;
@@ -324,6 +325,7 @@ public:
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
     NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
+    ui64 GetShardBalancerPrecisionBytes() const;
 
     bool GetDirectoryCreationInShardsEnabled() const;
 
@@ -364,6 +366,8 @@ public:
 
     bool GetGuestHandleKillPrivV2Enabled() const;
 
+    bool GetGuestPosixAclEnabled() const;
+
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
     bool GetZeroCopyReadEnabled() const;
@@ -394,6 +398,8 @@ public:
 
     [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
     [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
+
+    [[nodiscard]] bool GetHideFileNamesInTabletDirectoryViewer() const;
 
     NProto::EShardIdCompressionMode GetShardIdCompressionMode() const;
 };

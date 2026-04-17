@@ -1288,6 +1288,90 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             error.GetMessage());
     }
 
+    Y_UNIT_TEST(ShouldReturnSilentErrorIfDescribeSchemeFails)
+    {
+        TTestEnv env;
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+
+        bool armed = false;
+        NSchemeCache::TSchemeCacheNavigate::EStatus forcedStatus =
+            NSchemeCache::TSchemeCacheNavigate::EStatus::Unknown;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTxProxySchemeCache::EvNavigateKeySetResult: {
+                        if (!armed) {
+                            break;
+                        }
+
+                        auto* msg = event->Get<
+                            TEvTxProxySchemeCache::TEvNavigateKeySetResult>();
+                        auto* record = msg->Request.Get();
+                        if (!record || record->ResultSet.size() != 1) {
+                            break;
+                        }
+
+                        record->ErrorCount = 1;
+                        record->ResultSet.front().Status = forcedStatus;
+                        armed = false;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto expectedError = MakeSchemeShardError(
+            NKikimrScheme::StatusPathDoesNotExist,
+            "Path doesn't exist");
+
+        const TString missingPath =
+            config->GetSchemeShardDir() + "/missing-path";
+        const auto statuses = {
+            NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown,
+            NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown,
+        };
+
+        for (const auto status: statuses) {
+            forcedStatus = status;
+            armed = true;
+
+            TActorId sender = runtime.AllocateEdgeActor();
+
+            Send(
+                runtime,
+                MakeSSProxyServiceId(),
+                sender,
+                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+                    missingPath));
+
+            TAutoPtr<IEventHandle> handle;
+            auto* response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeSchemeResponse>(handle);
+
+            UNIT_ASSERT_C(!Succeeded(response), GetErrorReason(response));
+
+            const auto error = response->GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedError.GetCode(),
+                error.GetCode(),
+                error.GetMessage());
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
+                error.GetMessage());
+        }
+    }
+
     Y_UNIT_TEST(ShouldFailDecsribeVolumeIfSSTimesout)
     {
         TTestEnv env;

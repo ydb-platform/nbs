@@ -4,6 +4,7 @@
 #include "service_method.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/common/split_request_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -26,8 +27,10 @@ namespace {
 template <typename TRequest>
 TVector<std::shared_ptr<TRequest>> CreateSubRequests(
     std::shared_ptr<TRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 blockSize)
 {
+    Y_UNUSED(blockSize);
     TVector<std::shared_ptr<TRequest>> result;
     result.reserve(subRanges.size());
 
@@ -44,8 +47,10 @@ TVector<std::shared_ptr<TRequest>> CreateSubRequests(
 template <>
 TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 blockSize)
 {
+    Y_UNUSED(blockSize);
     TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> result;
 
     auto guard = request->Sglist.Acquire();
@@ -79,7 +84,8 @@ TVector<std::shared_ptr<NProto::TReadBlocksLocalRequest>> CreateSubRequests(
 template <>
 TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TWriteBlocksRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 blockSize)
 {
     TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> result;
     result.reserve(subRanges.size());
@@ -98,6 +104,11 @@ TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
             buffers.Add(
                 std::move(*srcBuffers.MutableBuffers()->Mutable(srcIndx)));
         }
+        if (request->ChecksumsSize() > 0) {
+            subRequest->MutableChecksums()->Clear();
+            subRequest->MutableChecksums()->Add(
+                CalculateChecksum(subRequest->GetBlocks(), blockSize));
+        }
         result.push_back(std::move(subRequest));
     }
 
@@ -107,8 +118,10 @@ TVector<std::shared_ptr<NProto::TWriteBlocksRequest>> CreateSubRequests(
 template <>
 TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> CreateSubRequests(
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request,
-    const TVector<TBlockRange64>& subRanges)
+    const TVector<TBlockRange64>& subRanges,
+    ui32 blockSize)
 {
+    Y_UNUSED(blockSize);
     TVector<std::shared_ptr<NProto::TWriteBlocksLocalRequest>> result;
 
     auto guard = request->Sglist.Acquire();
@@ -157,8 +170,10 @@ private:
 public:
     explicit TCompositeRequest(
         std::shared_ptr<TRequest> request,
-        const TVector<TBlockRange64>& subRanges)
-        : SubRequests(CreateSubRequests(std::move(request), subRanges))
+        const TVector<TBlockRange64>& subRanges,
+        ui32 blockSize)
+        : SubRequests(
+              CreateSubRequests(std::move(request), subRanges, blockSize))
     {
         SubResponses.resize(SubRequests.size());
     }
@@ -408,11 +423,8 @@ TSplitConfig TSplitConfig::Create(const NProto::TVolume& volume)
 
     if (IsBlobStorageMediaKind(volume.GetStorageMediaKind())) {
         if (volume.GetPartitionsCount() > 1) {
-            // Need to find a way to get the size of the stripe for
-            // multipartition YDB-based volume.
-            // Used default BytesPerStripe from
-            // cloud/blockstore/libs/storage/core/config.cpp
-            stripeSize = 16_MB;
+            stripeSize =
+                static_cast<size_t>(volume.GetBlocksPerStripe()) * blockSize;
         }
     } else if (IsDiskRegistryMediaKind(volume.GetStorageMediaKind())) {
         if (volume.GetDevices().size() > 0) {
@@ -486,7 +498,8 @@ TFuture<TResponse> TSplitRequestService::ExecuteRequestWithSplit(
     auto compositeRequest =
         std::make_shared<TCompositeRequest<TRequest, TResponse>>(
             std::move(request),
-            config->Split(range));
+            config->Split(range),
+            config->BlockSize);
 
     return compositeRequest->RunSubRequests(
         std::move(callContext),

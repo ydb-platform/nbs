@@ -4,6 +4,7 @@
 
 #include "verbs.h"
 
+#include <cloud/blockstore/libs/rdma/iface/buffer.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 
 namespace NCloud::NBlockStore::NRdma {
@@ -25,11 +26,11 @@ class TBufferPool
     class TChunk;
 
 private:
-    NVerbs::IVerbsPtr Verbs;
+    TBufferPoolConfig Config;
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TBufferPool();
+    explicit TBufferPool(TBufferPoolConfig config);
     ~TBufferPool();
 
     void Init(NVerbs::IVerbsPtr verbs, ibv_pd* pd, int flags);
@@ -37,6 +38,7 @@ public:
     struct TBuffer : TBufferDesc
     {
         TChunk* Chunk;
+        ui32 LKey;
 
         explicit operator TStringBuf() const;
     };

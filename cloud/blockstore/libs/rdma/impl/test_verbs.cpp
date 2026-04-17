@@ -136,7 +136,9 @@ struct TTestVerbs
         size_t length,
         int flags) override
     {
-        Y_UNUSED(flags);
+        if (TestContext->RegisterMemoryRegion) {
+            TestContext->RegisterMemoryRegion(pd, addr, length, flags);
+        }
 
         return {
             static_cast<ibv_mr*>(new TMemoryRegion(pd, addr, length)),
@@ -230,9 +232,9 @@ struct TTestVerbs
             TestContext->ProcessedRecvEvents.clear();
         }
 
-        auto handleEvent = [&] (ui64 wrId, ibv_wc_opcode opcode) {
+        auto handleEvent = [&] (ui64 id, ibv_wc_opcode opcode) {
             ibv_wc wc = {
-                .wr_id = wrId,
+                .wr_id = id,
                 .status = IBV_WC_SUCCESS,
                 .opcode = opcode,
             };
@@ -245,7 +247,17 @@ struct TTestVerbs
         };
 
         for (const auto& x: sends) {
-            handleEvent(x->wr_id, IBV_WC_SEND);
+            switch (x->opcode) {
+                case IBV_WR_RDMA_READ:
+                    handleEvent(x->wr_id, IBV_WC_RDMA_READ);
+                    break;
+                case IBV_WR_RDMA_WRITE:
+                    handleEvent(x->wr_id, IBV_WC_RDMA_WRITE);
+                    break;
+                default:
+                    handleEvent(x->wr_id, IBV_WC_SEND);
+            }
+            delete x;
         }
 
         for (const auto& x: recvs) {
@@ -261,11 +273,11 @@ struct TTestVerbs
 
         auto g = Guard(TestContext->CompletionLock);
 
-        const auto* msg =
-            reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
-        TestContext->ReqIds.push_back(msg->ReqId);
+        if (TestContext->PostSend) {
+            TestContext->PostSend(qp, wr);
+        }
 
-        TestContext->SendEvents.push_back(wr);
+        TestContext->SendEvents.push_back(new ibv_send_wr(*wr));
         TestContext->CompletionHandle.Set();
     }
 
@@ -277,7 +289,6 @@ struct TTestVerbs
 
         auto g = Guard(TestContext->CompletionLock);
         TestContext->RecvEvents.push_back(wr);
-
         AtomicIncrement(TestContext->PostRecvCounter);
     }
 
@@ -456,7 +467,8 @@ struct TTestVerbs
         // emulate internal server error
         TRejectMessage reject = {
             .Status = SafeCast<ui16>(status),
-            .QueueSize = connect->QueueSize,
+            .QueueSize =
+                SafeCast<ui16>(connect->SendQueueSize + connect->RecvQueueSize),
             .MaxBufferSize = connect->MaxBufferSize,
         };
         InitMessageHeader(&reject, RDMA_PROTO_VERSION);
@@ -494,8 +506,12 @@ struct TTestVerbs
 
     void Accept(rdma_cm_id* id, rdma_conn_param* param) override
     {
-        Y_UNUSED(id);
-        Y_UNUSED(param);
+        EnqueueConnectionEvent(
+            TestContext,
+            RDMA_CM_EVENT_ESTABLISHED,
+            id,
+            nullptr,    // listenId
+            param);
     }
 
     void Reject(
@@ -514,12 +530,18 @@ struct TTestVerbs
             TestContext->CreateQP(id, attr);
         }
 
+        id->qp = new ibv_qp();
+        id->pd = new ibv_pd();
+
         auto g = Guard(TestContext->CompletionLock);
         TestContext->HandleCompletionEvent = nullptr;
     }
 
     void RdmaDestroyQP(rdma_cm_id* id) override
     {
+        delete id->qp;
+        delete id->pd;
+
         if (TestContext->DestroyQP) {
             TestContext->DestroyQP(id);
         }
@@ -554,8 +576,20 @@ IVerbsPtr CreateTestVerbs(TTestContextPtr context)
 
 void CreateConnection(TTestContextPtr context)
 {
-    TConnectMessage message;
+    CreateConnection(context, 10, 10, 4_MB + 4_KB);
+}
+
+void CreateConnection(
+    TTestContextPtr context,
+    ui16 sendQueueSize,
+    ui16 recvQueueSize,
+    ui32 maxBufferSize)
+{
+    TConnectMessage message = {};
     InitMessageHeader(&message, RDMA_PROTO_VERSION);
+    message.SendQueueSize = sendQueueSize;
+    message.RecvQueueSize = recvQueueSize;
+    message.MaxBufferSize = maxBufferSize;
 
     rdma_conn_param param = {
         .private_data = &message,

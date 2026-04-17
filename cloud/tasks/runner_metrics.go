@@ -50,6 +50,7 @@ type runnerMetrics interface {
 	OnExecutionStarted(execCtx ExecutionContext)
 	OnExecutionStopped()
 	OnExecutionError(err error)
+	OnExecutionErrorIgnoreSilence(err error)
 	OnError(err error)
 }
 
@@ -138,6 +139,29 @@ func (m *runnerMetricsImpl) OnExecutionStopped() {
 }
 
 func (m *runnerMetricsImpl) OnExecutionError(err error) {
+	ignoreSilence := false
+	m.onExecutionError(err, ignoreSilence)
+}
+
+func (m *runnerMetricsImpl) OnExecutionErrorIgnoreSilence(err error) {
+	ignoreSilence := true
+	m.onExecutionError(err, ignoreSilence)
+}
+
+func (m *runnerMetricsImpl) OnError(err error) {
+	m.taskMetricsMutex.Lock()
+	defer m.taskMetricsMutex.Unlock()
+
+	if errors.Is(err, errors.NewWrongGenerationError()) {
+		if m.taskMetrics != nil {
+			m.taskMetrics.wrongGenerationErrorsCounter.Inc()
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (m *runnerMetricsImpl) onExecutionError(err error, ignoreSilence bool) {
 	m.taskMetricsMutex.Lock()
 	defer m.taskMetricsMutex.Unlock()
 
@@ -155,7 +179,7 @@ func (m *runnerMetricsImpl) OnExecutionError(err error) {
 		e := errors.NewEmptyNonRetriableError()
 		errors.As(err, &e)
 
-		if !e.Silent {
+		if ignoreSilence || !e.Silent {
 			m.taskMetrics.nonRetriableErrorsCounter.Inc()
 		}
 	} else if errors.Is(err, errors.NewEmptyRetriableError()) {
@@ -164,7 +188,7 @@ func (m *runnerMetricsImpl) OnExecutionError(err error) {
 		e := errors.NewEmptyDetailedError()
 		errors.As(err, &e)
 
-		if !e.Silent {
+		if ignoreSilence || !e.Silent {
 			m.taskMetrics.nonRetriableErrorsCounter.Inc()
 		}
 	} else {
@@ -172,19 +196,6 @@ func (m *runnerMetricsImpl) OnExecutionError(err error) {
 		m.taskMetrics.nonRetriableErrorsCounter.Inc()
 	}
 }
-
-func (m *runnerMetricsImpl) OnError(err error) {
-	m.taskMetricsMutex.Lock()
-	defer m.taskMetricsMutex.Unlock()
-
-	if errors.Is(err, errors.NewWrongGenerationError()) {
-		if m.taskMetrics != nil {
-			m.taskMetrics.wrongGenerationErrorsCounter.Inc()
-		}
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 func (m *runnerMetricsImpl) setTaskHangingImpl(value bool) {
 	prevValue := m.taskMetrics.isTaskHanging

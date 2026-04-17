@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
+#include <cloud/storage/core/libs/diagnostics/public.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -2026,6 +2028,178 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 response->GetStatus(),
                 FormatError(response->GetError()));
         }
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldNotRequireActiveSessionForGetNodeAttrToShard)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        //
+        // Setting shardNo to a non-zero value to make the tablet ignore session
+        // checks.
+        //
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            false /* directoryCreationInShardsEnabled, doesn't matter*/);
+
+        const ui64 nodeId = 111;
+        const TString name = "name";
+        tablet.UnsafeCreateNode(nodeId, 4_KB);
+        tablet.UnsafeCreateNodeRef(
+            RootNodeId,
+            name,
+            nodeId,
+            "" /* shardId */,
+            "" /* shardNodeName */);
+
+        const auto attr = tablet.GetNodeAttr(nodeId)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, attr.GetId());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, attr.GetSize());
+
+        const auto responses = tablet.GetNodeAttrBatch(
+            RootNodeId,
+            TVector<TString>{name})->Record.GetResponses();
+        UNIT_ASSERT_VALUES_EQUAL(1, responses.size());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, responses[0].GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, responses[0].GetNode().GetSize());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldSendGetNodeAttrRequestWithoutBehaveAsDirectoryTabletFlagUponCreateNode)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        auto nodeOpErrorFromShardCounter = counters->GetCounter(
+            "AppCriticalEvents/ReceivedNodeOpErrorFromShard",
+            true);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        //
+        // Need to configure shards and DirectoryCreationInShardsEnabled to
+        // trigger the right logic in the BehaveAShard func.
+        //
+
+        const TString shardId = "shard";
+        tablet.ConfigureShards(
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>{shardId});
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        //
+        // Setting shardNo to a non-zero value to make the tablet ignore session
+        // checks.
+        //
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            true /* directoryCreationInShardsEnabled - matters for this test*/,
+            TVector<TString>{shardId});
+
+        //
+        // Creating a node in shard.
+        //
+
+        const ui64 nodeId = 111;
+        const TString name = CreateGuidAsString();
+        tablet.UnsafeCreateNode(nodeId, 0 /* size */);
+        tablet.UnsafeCreateNodeRef(
+            RootNodeId,
+            name,
+            nodeId,
+            "" /* shardId */,
+            "" /* shardNodeName */);
+
+        //
+        // Writing a CreateNodeInShardRequest to OpLog to trigger a
+        // TCreateNodeRequest to shard upon tablet reboot. This will hit our
+        // pre-created node and will trigger a TGetNodeAttrRequest. Which will
+        // succeed only if the BehaveAsDirectoryTablet flag is false because
+        // otherwise a E_FS_INVALID_SESSION error will be returned.
+        //
+
+        NProto::TOpLogEntry entry;
+        const ui64 entryId = 1;
+        entry.SetEntryId(entryId);
+        auto* createNode = entry.MutableCreateNodeRequest();
+        // the original request is expected to have this flag set to true
+        createNode->MutableHeaders()->SetBehaveAsDirectoryTablet(true);
+        createNode->MutableFile();
+        createNode->SetNodeId(RootNodeId);
+        createNode->SetName(name);
+        createNode->SetFileSystemId(shardId);
+        tablet.WriteOpLogEntry(std::move(entry));
+
+        tablet.RebootTablet();
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        //
+        // OpLogEntry should have already been processed and deleted.
+        //
+
+        auto opLogEntryResponse = tablet.GetOpLogEntry(entryId);
+        UNIT_ASSERT_C(
+            !opLogEntryResponse->OpLogEntry.Defined(),
+            opLogEntryResponse->OpLogEntry->ShortUtf8DebugString());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, nodeOpErrorFromShardCounter->Val());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldUnlockNodeIdUponUnlinkForParentlessFileSystems)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        storageConfig.SetParentlessFilesOnly(true);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        const ui64 nodeId = 111;
+        tablet.UnsafeCreateNode(nodeId, 4_KB);
+
+        tablet.UnlinkNode(nodeId, "" /* name */, false /* unlinkDirectory */);
+        auto response = tablet.SendAndRecvUnlinkNode(
+            nodeId,
+            "" /* name */,
+            false /* unlinkDirectory */);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            response->GetStatus(),
+            FormatError(response->GetError()));
     }
 }
 

@@ -46,6 +46,15 @@ func (s *SessionMock) CreateNode(
 	return args.Get(0).(uint64), args.Error(1)
 }
 
+func (s *SessionMock) CreateNodeIdempotent(
+	ctx context.Context,
+	node nfs.Node,
+) (uint64, error) {
+
+	args := s.Called(ctx, node)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
 func (s *SessionMock) ReadLink(
 	ctx context.Context,
 	nodeID uint64,
@@ -65,6 +74,17 @@ func (s *SessionMock) GetNodeAttr(
 	args := s.Called(ctx, parentNodeID, name)
 	res, _ := args.Get(0).(nfs.Node)
 	return res, args.Error(1)
+}
+
+func (s *SessionMock) UnlinkNode(
+	ctx context.Context,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) error {
+
+	args := s.Called(ctx, parentNodeID, name, unlinkDirectory)
+	return args.Error(0)
 }
 
 func (s *SessionMock) Close(ctx context.Context) error {

@@ -179,12 +179,14 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET_WORKER,
-        "%s Got storage stats for filesystem %s, used: %lu, aggregate used: "
-        "%lu",
+        "%s Got storage stats for filesystem %s, used blocks: %lu, nodes: %lu"
+        ", aggregate used blocks: %lu, nodes: %lu",
         LogTag.c_str(),
         fileSystemId.c_str(),
         src.GetUsedBlocksCount(),
-        dst.GetUsedBlocksCount());
+        src.GetUsedNodesCount(),
+        dst.GetUsedBlocksCount(),
+        dst.GetUsedNodesCount());
 
     if (shardIndex < ShardIds.size()) {
         auto& ss = ShardStats[shardIndex];
@@ -192,6 +194,7 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         ss.Suffer = src.GetSuffer();
         ss.TotalBlocksCount = src.GetTotalBlocksCount();
         ss.UsedBlocksCount = src.GetUsedBlocksCount();
+        ss.UsedNodesCount = src.GetUsedNodesCount();
     }
 
     if (++Responses == requestsCount) {
@@ -226,6 +229,7 @@ void TAggregateStatsActor::ReplyAndDie(
             ss->SetShardId(ShardIds[i]);
             ss->SetTotalBlocksCount(ShardStats[i].TotalBlocksCount);
             ss->SetUsedBlocksCount(ShardStats[i].UsedBlocksCount);
+            ss->SetUsedNodesCount(ShardStats[i].UsedNodesCount);
             ss->SetCurrentLoad(ShardStats[i].CurrentLoad);
             ss->SetSuffer(ShardStats[i].Suffer);
         }
@@ -259,6 +263,27 @@ STFUNC(TAggregateStatsActor::StateWork)
                 __PRETTY_FUNCTION__);
             break;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeShardList(const TVector<IShardBalancer::TShardDescr>& shards)
+{
+    TStringBuilder sb;
+    for (ui32 i = 0; i < shards.size(); ++i) {
+        if (i) {
+            sb << ", ";
+        }
+
+        const auto& s = shards[i];
+        sb << "id=" << s.ShardId
+            << " blocks=" << s.Stats.UsedBlocksCount
+            << "/" << s.Stats.TotalBlocksCount
+            << " nodes=" << s.Stats.UsedNodesCount
+            << " load=" << s.Stats.CurrentLoad
+            << " suffer=" << s.Stats.Suffer;
+    }
+    return sb;
 }
 
 }   // namespace
@@ -336,6 +361,12 @@ void TIndexTabletActor::UpdateMetrics(
     Store(
         Metrics.FlushBytesBackpressureThreshold,
         backpressureThresholds.FlushBytes);
+    Store(
+        Metrics.FlushBytesItemCountBackpressureValue,
+        backpressureValues.FlushBytesItemCount);
+    Store(
+        Metrics.FlushBytesItemCountBackpressureThreshold,
+        backpressureThresholds.FlushBytesItemCount);
     Store(
         Metrics.CompactionBackpressureValue,
         backpressureValues.CompactionScore);
@@ -503,15 +534,13 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBackpressureValues(),
         GetHandlesStats());
 
-    // TabletStartTimestamp and TabletId are intialised once per tablet lifetime
-    // and thus it is acceptable to set it in RegisterStatCounters if it is not
-    // set yet.
+    // TabletStartTimestamp should be set only once
     i64 expected = 0;
     Metrics.TabletStartTimestamp.compare_exchange_strong(
         expected,
         now.MicroSeconds());
-    expected = 0;
-    Metrics.TabletId.compare_exchange_strong(expected, TabletID());
+    Metrics.TabletId.store(TabletID());
+    Metrics.TabletGeneration.store(GetGeneration());
 
     Metrics.Register(fsId, fs.GetCloudId(), fs.GetFolderId(), storageMediaKind);
 }
@@ -553,20 +582,19 @@ void TIndexTabletActor::CalculateActorCPUUsage(const TActorContext& ctx)
         ticks += threadStats[i].ElapsedTicksByActivity[GetActivityType()];
     }
 
-    const i64 prevUsageMicros =
-        Metrics.CPUUsageMicros.load(std::memory_order_relaxed);
     const i64 curUsageMicros = ::NHPTimer::GetSeconds(ticks) * 1'000'000;
     const TInstant ts = ctx.Now();
     if (Metrics.PrevCPUUsageMicrosTs) {
         const auto timeDiff = ts - Metrics.PrevCPUUsageMicrosTs;
         if (timeDiff) {
-            const double usageDiff = curUsageMicros - prevUsageMicros;
+            const double usageDiff =
+                curUsageMicros - Metrics.PrevCPUUsageMicros;
             Metrics.CPUUsageRate = 100 * (usageDiff / timeDiff.MicroSeconds());
         }
     }
 
     Metrics.PrevCPUUsageMicrosTs = ts;
-    Store(Metrics.CPUUsageMicros, curUsageMicros);
+    Metrics.PrevCPUUsageMicros = curUsageMicros;
 }
 
 void TIndexTabletActor::HandleUpdateCounters(
@@ -722,6 +750,7 @@ void TIndexTabletActor::HandleGetStorageStats(
             ss->SetShardId(shardIds[i]);
             ss->SetTotalBlocksCount(CachedShardStats[i].TotalBlocksCount);
             ss->SetUsedBlocksCount(CachedShardStats[i].UsedBlocksCount);
+            ss->SetUsedNodesCount(CachedShardStats[i].UsedNodesCount);
             ss->SetCurrentLoad(CachedShardStats[i].CurrentLoad);
             ss->SetSuffer(CachedShardStats[i].Suffer);
         }
@@ -806,7 +835,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         backgroundRequestDuration = ctx.Now() - CachedStatsFetchingStartTs;
         LOG_DEBUG(
             ctx,
-            TFileStoreComponents::TABLET_WORKER,
+            TFileStoreComponents::TABLET,
             "%s Background shard stats fetch completed in %s, ShardsCount: %lu",
             LogTag.c_str(),
             backgroundRequestDuration.ToString().c_str(),
@@ -825,6 +854,13 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         CachedShardStats = std::move(msg->ShardStats);
         UpdateShardBalancer(CachedShardStats);
 
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Updated shard balancer: %s",
+            LogTag.c_str(),
+            DescribeShardList(MakeOrderedShardList()).c_str());
+
         Store(
             Metrics.AggregateUsedBytesCount,
             CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
@@ -834,6 +870,13 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
     }
 
     WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TCPUUsageTimer& TIndexTabletActor::AccessCPUUsageTimer()
+{
+    return CPUUsageTimer;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

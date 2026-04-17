@@ -15,9 +15,24 @@ enum EWaitMode
     WAIT_MODE_ADAPTIVE_WAIT = 2;
 }
 
+message TBufferPool
+{
+    // Memory chunks of this size will be kept for reuse. Buffers smaller or
+    // equal to the ChunkSize will be backed by one of the available chunks
+    uint64 ChunkSize = 1;
+
+    // Maximum buffer size that will be backed by a chunk. Anything bigger will
+    // spawn a custom chunk that won't be reused
+    uint64 MaxChunkAlloc = 2;
+
+    // Number of unused chunks to be kept to speed up allocations
+    uint64 MaxFreeChunks = 3;
+}
+
 message TRdmaServer
 {
     uint32 Backlog = 1;
+    // Deprecated, use SendQueueSize and RecvQueueSize instead.
     uint32 QueueSize = 2;
     uint32 MaxBufferSize = 3;
     uint64 KeepAliveTimeout = 4;            // in milliseconds
@@ -34,10 +49,16 @@ message TRdmaServer
 
     // use ibv_create_qp instead of rdma_create_qp
     bool VerbsQP = 13;
+
+    TBufferPool BufferPool = 14;
+
+    uint32 SendQueueSize = 15;
+    uint32 RecvQueueSize = 16;
 }
 
 message TRdmaClient
 {
+    // Deprecated, use SendQueueSize and RecvQueueSize instead.
     uint32 QueueSize = 1;
     uint32 MaxBufferSize = 2;
     uint32 PollerThreads = 3;
@@ -52,6 +73,14 @@ message TRdmaClient
 
     // use ibv_create_qp instead of rdma_create_qp
     bool VerbsQP = 10;
+
+    uint64 MaxReconnectDelay = 11;  // in milliseconds
+    uint64 MaxResponseDelay = 12;   // in milliseconds
+
+    TBufferPool BufferPool = 13;
+
+    uint32 SendQueueSize = 14;
+    uint32 RecvQueueSize = 15;
 }
 
 message TRdmaTarget

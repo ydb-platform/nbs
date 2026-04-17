@@ -22,6 +22,7 @@ PEERDIR(
     cloud/filestore/config
     cloud/filestore/libs/client
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/service
     cloud/filestore/libs/vfs
     cloud/filestore/libs/vfs/protos

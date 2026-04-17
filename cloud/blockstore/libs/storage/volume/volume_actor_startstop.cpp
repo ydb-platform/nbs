@@ -160,6 +160,7 @@ void TVolumeActor::OnPartitionStateChanged(
                     GetDiskId(),
                     State->GetMeta().GetVolumeConfig().GetBlockSize(),
                     State->GetMeta().GetVolumeConfig().GetBlocksPerStripe(),
+                    Config->GetRequestSplitterPolicy(),
                     std::move(partitionActors)),
                 TActorsStack::EActorPurpose::MultiPartitionWrapper);
 
@@ -932,7 +933,7 @@ void TVolumeActor::HandleTabletStatus(
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
 
             TActorId freshBlocksWriterId;
-            if (Config->GetFreshBlocksWriterEnabled()) {
+            if (IsFreshBlocksWriterEnabled()) {
                 actorStack = WrapWithFreshBlocksWriterIfNeeded(
                     ctx,
                     std::move(actorStack),
@@ -1073,7 +1074,7 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
     TActorsStack actors,
     ui64 partTabletId)
 {
-    if (!Config->GetFreshBlocksWriterEnabled()) {
+    if (!IsFreshBlocksWriterEnabled()) {
         return actors;
     }
 
@@ -1110,6 +1111,72 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
             ProfileLog);
     actors.Push(actorId, TActorsStack::EActorPurpose::FreshBlocksWriter);
     return actors;
+}
+
+void TVolumeActor::SendEnableVhostDiscardFlagIfNeeded(const TActorContext& ctx)
+{
+    Y_ABORT_UNLESS(State);
+
+    if (State->IsDiskRegistryMediaKind()) {
+        return;
+    }
+
+    const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
+
+    if (volumeConfig.GetVhostDiscardEnabled()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s skiping SetVhostDiscardFlagRequest because the flag is "
+            "already enabled",
+            LogTitle.GetWithTime().c_str());
+        return;
+    }
+
+    bool enableDiscardOnRestart =
+        Config->GetEnableVhostDiscardOnVolumeRestart() ||
+        Config->IsEnableVhostDiscardOnVolumeRestartFeatureEnabled(
+            volumeConfig.GetCloudId(),
+            volumeConfig.GetFolderId(),
+            State->GetDiskId());
+
+    if (!enableDiscardOnRestart) {
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s sending SetVhostDiscardFlagRequest",
+        LogTitle.GetWithTime().c_str());
+
+    auto request = std::make_unique<TEvService::TEvSetVhostDiscardFlagRequest>(
+        State->GetDiskId(),
+        true /* VhostDiscardEnabled*/);
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+}
+
+void TVolumeActor::HandleSetVhostDiscardFlagResponse(
+    const TEvService::TEvSetVhostDiscardFlagResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s SetVhostDiscardFlag request failed: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+    } else {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s SetVhostDiscardFlag request completed successfully",
+            LogTitle.GetWithTime().c_str());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

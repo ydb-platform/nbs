@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/hashicorp/go-retryablehttp"
 	prometheus_client "github.com/prometheus/client_model/go"
@@ -356,7 +357,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 					),
 				},
 			},
@@ -364,7 +365,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 					),
 				},
 			},
@@ -372,7 +373,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS2_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS2_SECURE_PORT"),
 					),
 				},
 			},
@@ -380,7 +381,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS3_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS3_SECURE_PORT"),
 					),
 				},
 			},
@@ -720,6 +721,11 @@ func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
 
 func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
 	taskRegistry := tasks.NewRegistry()
+	err := filesystem_scrubbing.Register(taskRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	taskStorage, err := NewTaskStorage(ctx)
 	if err != nil {
 		return nil, err
@@ -740,13 +746,41 @@ func WaitOperationEnded(
 	t *testing.T,
 	ctx context.Context,
 	operationID string,
+	timeout time.Duration,
 ) {
 
 	scheduler, err := newScheduler(ctx)
 	require.NoError(t, err)
 
-	err = scheduler.WaitTaskEnded(ctx, operationID)
+	err = scheduler.WaitTaskEndedWithTimeout(ctx, operationID, timeout)
 	require.NoError(t, err)
+}
+
+func RequireTaskHasNoError(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	err = scheduler.GetTaskError(ctx, taskID)
+	require.NoError(t, err)
+}
+
+func GetTaskMetadata(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) proto.Message {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	metadata, err := scheduler.GetTaskMetadata(ctx, taskID)
+	require.NoError(t, err)
+	return metadata
 }
 
 func ScheduleFilesystemScrubbing(

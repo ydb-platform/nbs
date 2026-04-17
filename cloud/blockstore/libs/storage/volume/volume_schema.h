@@ -224,8 +224,13 @@ struct TVolumeSchema
         {
         };
 
+        struct SpentShapingBudgetShare
+            : public Column<3, NKikimr::NScheme::NTypeIds::Double>
+        {
+        };
+
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<Id, Budget>;
+        using TColumns = TableColumns<Id, Budget, SpentShapingBudgetShare>;
     };
 
     struct MetaHistory
@@ -386,6 +391,20 @@ struct TVolumeSchema
             ErrorMessage>;
     };
 
+    struct BrokenDevices: public TTableSchema<13>
+    {
+        struct DeviceUUID: public Column<1, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+        struct BrokenTs: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        using TKey = TableKey<DeviceUUID>;
+        using TColumns = TableColumns<DeviceUUID, BrokenTs>;
+    };
+
     using TTables = SchemaTables<
         Meta,
         Clients,
@@ -398,7 +417,8 @@ struct TVolumeSchema
         MetaHistory,
         VolumeParams,
         FollowerDisks,
-        LeaderDisks>;
+        LeaderDisks,
+        BrokenDevices>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

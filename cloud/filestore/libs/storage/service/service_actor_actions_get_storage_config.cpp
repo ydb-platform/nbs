@@ -83,6 +83,7 @@ void TGetStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 
     auto& record = requestToTablet->Record;
     record.SetFileSystemId(request.GetFileSystemId());
+    record.SetOnlyOverride(request.GetOnlyOverride());
 
     NCloud::Send(
         ctx,

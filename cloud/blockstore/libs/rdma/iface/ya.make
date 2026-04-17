@@ -1,15 +1,18 @@
 LIBRARY()
 
 SRCS(
+    buffer.cpp
     client.cpp
     config.cpp
     probes.cpp
     protobuf.cpp
     protocol.cpp
     server.cpp
+    log.cpp
 )
 
 PEERDIR(
+    cloud/blockstore/config
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
 

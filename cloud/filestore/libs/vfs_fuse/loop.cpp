@@ -28,8 +28,6 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/threading/atomic/bool.h>
-
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/bitops.h>
@@ -44,6 +42,7 @@
 #include <util/thread/factory.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <pthread.h>
 
@@ -127,7 +126,7 @@ private:
     TVector<TRequestBucket> RequestBuckets;
 
     enum fuse_cancelation_code CancelCode{};
-    NAtomic::TBool ShouldStop = false;
+    std::atomic<bool> ShouldStop = false;
 
     TPromise<void> StopPromise = NewPromise<void>();
 
@@ -847,9 +846,7 @@ public:
                 p->Config->GetFileSystemId(),
                 p->Config->GetClientId());
 
-            p->ModuleStatsRegistry->Unregister(
-                p->Config->GetFileSystemId(),
-                p->Config->GetClientId());
+            p->ModuleStatsRegistry->Unregister(p->SessionId);
 
             s.SetValue();
         };
@@ -1033,8 +1030,7 @@ private:
                         {.Session = Session,
                          .Scheduler = Scheduler,
                          .Timer = Timer,
-                         .Stats =
-                             NWriteBackCache::CreateDummyWriteBackCacheStats(),
+                         .Stats = NWriteBackCache::CreateWriteBackCacheStats(),
                          .Log = Log,
                          .FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
@@ -1055,6 +1051,14 @@ private:
                                  ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
                          .ZeroCopyWriteEnabled =
                              FileSystemConfig->GetZeroCopyWriteEnabled()});
+
+                    ModuleStatsRegistry->Register(
+                        {.FileSystemId = Config->GetFileSystemId(),
+                         .ClientId = Config->GetClientId(),
+                         .CloudId = response.GetFileStore().GetCloudId(),
+                         .FolderId = response.GetFileStore().GetFolderId(),
+                         .SessionId = SessionId,
+                         .ModuleStats = WriteBackCache.CreateModuleStats()});
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1091,13 +1095,15 @@ private:
                 DirectoryHandlesStorageInitialized = true;
             }
 
-            DirectoryHandlesStats = CreateDirectoryHandlesStats(
-                ModuleStatsRegistry,
-                Timer,
-                Config->GetFileSystemId(),
-                Config->GetClientId(),
-                response.GetFileStore().GetCloudId(),
-                response.GetFileStore().GetFolderId());
+            DirectoryHandlesStats = CreateDirectoryHandlesStats(Timer);
+
+            ModuleStatsRegistry->Register(
+                {.FileSystemId = Config->GetFileSystemId(),
+                 .ClientId = Config->GetClientId(),
+                 .CloudId = response.GetFileStore().GetCloudId(),
+                 .FolderId = response.GetFileStore().GetFolderId(),
+                 .SessionId = SessionId,
+                 .ModuleStats = DirectoryHandlesStats});
 
             FileSystem = CreateFileSystem(
                 Logging,
@@ -1236,6 +1242,7 @@ private:
 
         config.SetGuestHandleKillPrivV2Enabled(
             features.GetGuestHandleKillPrivV2Enabled());
+        config.SetGuestPosixAclEnabled(features.GetGuestPosixAclEnabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1276,6 +1283,11 @@ private:
 
         if (FileSystemConfig->GetGuestHandleKillPrivV2Enabled()) {
             conn->want |= FUSE_CAP_HANDLE_KILLPRIV_V2;
+        }
+
+        if (FileSystemConfig->GetGuestPosixAclEnabled()) {
+            conn->want |= FUSE_CAP_POSIX_ACL;
+            conn->want |= FUSE_CAP_DONT_MASK;
         }
 
         FileSystem->Init();
@@ -1376,9 +1388,7 @@ private:
             Config->GetFileSystemId(),
             Config->GetClientId());
 
-        ModuleStatsRegistry->Unregister(
-            Config->GetFileSystemId(),
-            Config->GetClientId());
+        ModuleStatsRegistry->Unregister(SessionId);
 
         // We need to cleanup HandleOpsQueue file and directories
         if (HandleOpsQueueInitialized) {
@@ -1475,6 +1485,15 @@ private:
         callContext->RequestSize = requestSize;
         callContext->LoopThreadId = TThread::CurrentThreadNumericId();
 
+        FILESTORE_TRACK(
+            RequestReceived,
+            callContext,
+            name,
+            callContext->FileSystemId,
+            pThis->StorageMediaKind,
+            callContext->RequestSize);
+        pThis->RequestStats->RequestStarted(Log, *callContext);
+
         if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext)) {
             STORAGE_DEBUG("driver is stopping, cancel request");
             callContext->CancellationCode = *cancelCode;
@@ -1485,15 +1504,6 @@ private:
                 req);
             return;
         }
-
-        FILESTORE_TRACK(
-            RequestReceived,
-            callContext,
-            name,
-            callContext->FileSystemId,
-            pThis->StorageMediaKind,
-            callContext->RequestSize);
-        pThis->RequestStats->RequestStarted(Log, *callContext);
 
         try {
             auto* fs = pThis->FileSystem.get();

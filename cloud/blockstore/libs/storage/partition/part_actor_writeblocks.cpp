@@ -285,7 +285,7 @@ void TPartitionActor::WriteBlocks(
         PartitionConfig.GetStorageMediaKind(),
         requestSize);
 
-    if (!Config->GetFreshBlocksWriterEnabled() && isFreshRequest) {
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         if (Config->GetWriteRequestBatchingEnabled()) {
             // we will try to batch small writes and, if batching fails,
             // we will accumulate these writes in FreshBlocks table
@@ -424,13 +424,13 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
             LogTitle.GetWithTime().c_str(),
             commitId);
 
-        State->AccessCommitQueue().ReleaseBarrier(commitId);
+        State->AccessCommitQueue()->ReleaseBarrier(commitId);
         if (writeBlocksCompleted.CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
         }
 
         if (writeBlocksCompleted.IsFreshBlocksRequest && HasError(error)) {
-            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
+            State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
                 commitId,
                 blocksCount);
         }

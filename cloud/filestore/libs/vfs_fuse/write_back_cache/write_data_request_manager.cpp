@@ -105,7 +105,7 @@ TWriteDataRequestManager::TWriteDataRequestManager(
     ISequenceIdGeneratorPtr sequenceIdGenerator,
     IPersistentStoragePtr persistentStorage,
     ITimerPtr timer,
-    IWriteBackCacheStatsPtr stats)
+    IWriteDataRequestManagerStatsPtr stats)
     : SequenceIdGenerator(std::move(sequenceIdGenerator))
     , PersistentStorage(std::move(persistentStorage))
     , Timer(std::move(timer))
@@ -259,132 +259,74 @@ void TWriteDataRequestManager::Evict(
     PersistentStorage->Free(request->GetAllocationPtr());
 }
 
+void TWriteDataRequestManager::UpdateStats() const
+{
+    auto now = Timer->Now();
+
+    auto maxPendingRequestDuration = PendingRequests.Empty()
+                                         ? TDuration::Zero()
+                                         : now - PendingRequests.Front()->Time;
+
+    auto maxUnflushedRequestDuration =
+        UnflushedRequests.Empty() ? TDuration::Zero()
+                                  : now - UnflushedRequests.Front()->Time;
+
+    Stats->UpdateStats(
+        maxPendingRequestDuration,
+        maxUnflushedRequestDuration);
+
+    PersistentStorage->UpdateStats();
+}
+
 // Access methods that triggers stats update
 
 void TWriteDataRequestManager::PendingRequestsPushBack(
     TPendingWriteDataRequest* request)
 {
-    if (PendingRequests.Empty()) {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Pending,
-            request->Time);
-    }
-
     PendingRequests.PushBack(request);
-    Stats->WriteDataRequestEnteredStatus(EWriteDataRequestStatus::Pending);
+    Stats->AddedPendingRequest();
 }
 
 void TWriteDataRequestManager::PendingRequestsRemove(
     TPendingWriteDataRequest* request)
 {
-    const auto prevMinTime = PendingRequests.Front()->Time;
-
-    Stats->WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus::Pending,
-        Timer->Now() - request->Time);
-
     PendingRequests.Remove(request);
-
-    const auto minTime = PendingRequests.Empty()
-                             ? TInstant::Zero()
-                             : PendingRequests.Front()->Time;
-
-    if (prevMinTime != minTime) {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Pending,
-            minTime);
-    }
+    Stats->RemovedPendingRequest(Timer->Now() - request->Time);
 }
 
 void TWriteDataRequestManager::PendingRequestsPopFront()
 {
     auto* request = PendingRequests.Front();
-
-    Stats->WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus::Pending,
-        Timer->Now() - request->Time);
-
     PendingRequests.PopFront();
-
-    if (PendingRequests.Empty()) {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Pending,
-            TInstant::Zero());
-    } else {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Pending,
-            PendingRequests.Front()->Time);
-    }
+    Stats->RemovedPendingRequest(Timer->Now() - request->Time);
 }
 
 void TWriteDataRequestManager::UnflushedRequestsPushBack(
     TCachedWriteDataRequest* request)
 {
-    if (UnflushedRequests.Empty()) {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Unflushed,
-            request->Time);
-    }
-
     UnflushedRequests.PushBack(request);
-    Stats->WriteDataRequestEnteredStatus(EWriteDataRequestStatus::Unflushed);
+    Stats->AddedUnflushedRequest();
 }
 
 void TWriteDataRequestManager::UnflushedRequestsRemove(
     TCachedWriteDataRequest* request)
 {
-    const auto prevMinTime = UnflushedRequests.Front()->Time;
-
-    Stats->WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus::Unflushed,
-        Timer->Now() - request->Time);
-
     UnflushedRequests.Remove(request);
-
-    const auto minTime = UnflushedRequests.Empty()
-                             ? TInstant::Zero()
-                             : UnflushedRequests.Front()->Time;
-
-    if (prevMinTime != minTime) {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Unflushed,
-            minTime);
-    }
+    Stats->RemovedUnflushedRequest(Timer->Now() - request->Time);
 }
 
 void TWriteDataRequestManager::FlushedRequestsPushBack(
     TCachedWriteDataRequest* request)
 {
-    if (FlushedRequests.Empty()) {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Flushed,
-            request->Time);
-    }
-
     FlushedRequests.PushBack(request);
-    Stats->WriteDataRequestEnteredStatus(EWriteDataRequestStatus::Flushed);
+    Stats->AddedFlushedRequest();
 }
 
 void TWriteDataRequestManager::FlushedRequestsRemove(
     TCachedWriteDataRequest* request)
 {
-    const auto prevMinTime = FlushedRequests.Front()->Time;
-
-    Stats->WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus::Flushed,
-        Timer->Now() - request->Time);
-
     FlushedRequests.Remove(request);
-
-    const auto minTime = FlushedRequests.Empty()
-                             ? TInstant::Zero()
-                             : FlushedRequests.Front()->Time;
-
-    if (prevMinTime != minTime) {
-        Stats->WriteDataRequestUpdateMinTime(
-            EWriteDataRequestStatus::Flushed,
-            minTime);
-    }
+    Stats->RemovedFlushedRequest();
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

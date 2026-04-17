@@ -756,7 +756,21 @@ message TStorageConfig
     // Limits unconfirmed (and confirmed but not added to the index) data count.
     optional uint32 UnconfirmedDataCountHardLimit = 489;
 
+    // Reject writes when FlushBytesItemCount >= threshold
+    optional uint64 FlushBytesItemCountThresholdForBackpressure = 490;
+
+    // Set this to see file name hashes instead of the actual names in the
+    // tablet's directory viewer.
+    optional bool HideFileNamesInTabletDirectoryViewer = 491;
+
+    // Enable FUSE_POSIX_ACL on guest (FUSE client)
+    optional bool GuestPosixAclEnabled = 492;
+
+    // Shard balancer will round free space per shard to a multiple of this
+    // number in bytes.
+    optional uint64 ShardBalancerPrecisionBytes = 493;
+
     // The way we read and write compact ShardId and ShardNodeName from/to
     // NodeRefs table.
-    optional EShardIdCompressionMode ShardIdCompressionMode = 490;
+    optional EShardIdCompressionMode ShardIdCompressionMode = 494;
 }

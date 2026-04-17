@@ -63,7 +63,7 @@ NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     TServiceClient& service,
     const TString& fsId,
     const bool allowCache = false,
-    const NProtoPrivate::StatsRequestMode mode =
+    const NProtoPrivate::EStatsRequestMode mode =
         NProtoPrivate::STATS_REQUEST_MODE_DEFAULT)
 {
     NProtoPrivate::TGetStorageStatsRequest request;
@@ -809,6 +809,55 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             listNodesResponse.GetNodes(0).GetShardFileSystemId());
         UNIT_ASSERT_VALUES_EQUAL(
             shardNodeName,
+            listNodesResponse.GetNodes(0).GetShardNodeName());
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER(ShouldReturnShardInfoFromUnsafeListNodes)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"));
+
+        auto noForwardHeaders = headers;
+        noForwardHeaders.DisableMultiTabletForwarding = true;
+
+        auto getAttrResponse = service.GetNodeAttr(
+            noForwardHeaders,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1")->Record;
+
+        const auto expectedShardId =
+            getAttrResponse.GetNode().GetShardFileSystemId();
+        const auto expectedShardNodeName =
+            getAttrResponse.GetNode().GetShardNodeName();
+
+        UNIT_ASSERT_VALUES_UNEQUAL("", expectedShardId);
+        UNIT_ASSERT_VALUES_UNEQUAL("", expectedShardNodeName);
+        UNIT_ASSERT(expectedShardId == fsConfig.Shard1Id);
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            true)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedShardId,
+            listNodesResponse.GetNodes(0).GetShardFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedShardNodeName,
             listNodesResponse.GetNodes(0).GetShardNodeName());
     }
 
@@ -2604,7 +2653,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // StrictFileSystemSizeEnforcementEnabled
         service.ResizeFileStore(
             fsConfig.FsId,
-            fsConfig.MainFsBlockCount(),
+            fsConfig.MainFsBlockCount,
             false /* force */,
             0 /* shardCount */,
             true /* enableStrictSizeMode */,
@@ -2637,16 +2686,23 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // After resizing and turning on StrictFileSystemSizeEnforcement every
         // shard should have the same TotalBytesCount equal to that of the main
         // filesystem
-        CheckShardsSize(fsConfig, service, fsConfig.MainFsBlockCount());
+        CheckShardsSize(fsConfig, service, fsConfig.MainFsBlockCount);
 
         // Downsize the filesystem by force
-        const auto newBlocksCount = fsConfig.MainFsBlockCount() / 2;
+        const auto newBlocksCount = fsConfig.MainFsBlockCount / 2;
         service.ResizeFileStore(
             fsConfig.FsId,
             newBlocksCount,
             true /* force */);
 
         CheckShardsSize(fsConfig, service, newBlocksCount);
+
+        // Explicitly restore session after tablet restart
+        headers = service.InitSession(
+            fsConfig.FsId,
+            "client",
+            {},  /* checkpoint */
+            true  /* restore */);
 
         // Attempt to write one more file should fail
         const auto file = createFile("notEnoughSpace");
@@ -2722,7 +2778,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // After we replied with error to the main filesystem resize:
         // 1. Main filesystem is actually resized.
         // 2. No shards are resized, and no configure requests were sent.
-        const ui64 newBlocksCount = fsConfig.MainFsBlockCount() * 23 / 20;
+        const ui64 newBlocksCount = fsConfig.MainFsBlockCount * 23 / 20;
         service.AssertResizeFileStoreFailed(fsConfig.FsId, newBlocksCount);
         {
             const auto response = GetStorageStats(service, fsConfig.FsId);
@@ -2730,10 +2786,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_EQUAL(2, stats.GetShardStats().size());
             UNIT_ASSERT_EQUAL(newBlocksCount, stats.GetTotalBlocksCount());
             UNIT_ASSERT_EQUAL(
-                fsConfig.MainFsBlockCount(),
+                fsConfig.MainFsBlockCount,
                 stats.GetShardStats()[0].GetTotalBlocksCount());
             UNIT_ASSERT_EQUAL(
-                fsConfig.MainFsBlockCount(),
+                fsConfig.MainFsBlockCount,
                 stats.GetShardStats()[1].GetTotalBlocksCount());
         }
 
@@ -4849,6 +4905,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetShardBalancerMinFreeSpaceReserve(4_KB);
         config.SetShardBalancerDesiredFreeSpaceReserve(1_MB);
         config.SetMultiTabletForwardingEnabled(true);
+        config.SetShardBalancerPrecisionBytes(4_KB);
 
         TTestEnv env({}, config);
 
@@ -5025,7 +5082,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -5483,7 +5540,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -5511,7 +5568,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -5628,7 +5685,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -5764,8 +5821,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{
-            .DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -5885,8 +5941,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{
-            .DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -5983,8 +6038,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{
-            .DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -6116,7 +6170,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -6246,7 +6300,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -6453,7 +6507,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -6559,7 +6613,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetMultiTabletForwardingEnabled(true);
         config.SetDirectoryCreationInShardsEnabled(true);
 
-        TShardedFileSystemConfig fsConfig{.DirectoryCreationInShardsEnabled = true};
+        TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -7186,7 +7240,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());
     }
 
-    SERVICE_TEST_SIMPLE(ShouldListNodesMissingFromShardsWithUnsafeFlag)
+    SERVICE_TEST_SIMPLE(ShouldReturnListNodesMissingFromShardsWithUnsafeFlag)
     {
         config.SetMultiTabletForwardingEnabled(true);
 
@@ -7254,7 +7308,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     void DoShouldShardedFileSystemHitNodesCountLimit(
         NProto::TStorageConfig config,
-        const bool strictFileSystemSizeEnforcementEnabled)
+        const bool strictFileSystemSizeEnforcementEnabled,
+        const bool updateMainFsCounters)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 512;
@@ -7281,18 +7336,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetSizeToNodesRatio(sizeToNodeRatio);
         config.SetDefaultNodesLimit(filesPerFs / 2);
 
-        const TString fsId = "test";
+        TShardedFileSystemConfig fsConfig = {
+            .ShardBlockCount = shardBlockCount,
+            .MainFsBlockCount = fsSize
+        };
 
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, fsSize);
 
-        WaitForTabletStart(service);
+        TFileSystemInfo fsInfo = CreateFileSystem(service, fsConfig);
 
-        THeaders headers = service.InitSession(fsId, "client");
+        THeaders headers = service.InitSession(fsConfig.FsId, "client");
 
         // Create maximum allowed number of files.
         for (ui64 i = 0; i < filesPerFs; ++i) {
@@ -7306,23 +7363,45 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // Update statistics to have correct AggregateNodesCount
         // in the main FS and all the shards.
         if (strictFileSystemSizeEnforcementEnabled) {
-            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+            auto updateCounters = [&](TActorId actorId) {
+                using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+                env.GetRuntime().Send(
+                    new IEventHandle(
+                        actorId, // recipient
+                        TActorId(), // sender
+                        new TRequest(),
+                        0, // flags
+                        0),
+                    nodeIdx);
+            };
+
+            if (updateMainFsCounters) {
+                updateCounters(fsInfo.MainTabletActorId);
+            }
+            updateCounters(fsInfo.Shard1ActorId);
+            updateCounters(fsInfo.Shard2ActorId);
+
             NActors::TDispatchOptions options;
             options.FinalEvents.emplace_back(
                 TDispatchOptions::TFinalEventCondition(
                     TEvIndexTabletPrivate::EvUpdateCounters,
-                    shardCount + 2));
+                    shardCount + updateMainFsCounters));
             env.GetRuntime().DispatchEvents(options);
         }
+
+        const ui32 response =
+            (strictFileSystemSizeEnforcementEnabled && updateMainFsCounters)
+                ? E_FS_NOSPC
+                : S_OK;
 
         service.SendCreateNodeRequest(
             headers,
             TCreateNodeArgs::File(RootNodeId, "too_many_files"));
         UNIT_ASSERT_EQUAL(
-            E_FS_NOSPC,
+            response,
             service.RecvCreateNodeResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            0,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
@@ -7330,15 +7409,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.SendCreateHandleRequest(
             headers,
-            fsId,
+            fsConfig.FsId,
             RootNodeId,
             "too_many_files",
             TCreateHandleArgs::CREATE);
         UNIT_ASSERT_EQUAL(
-            E_FS_NOSPC,
+            response,
             service.RecvCreateHandleResponse()->GetStatus());
         UNIT_ASSERT_EQUAL(
-            strictFileSystemSizeEnforcementEnabled ? 0 : 1,
+            0,
             env.GetCounters()
                 ->FindSubgroup("component", "service")
                 ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard")
@@ -7348,8 +7427,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
         ShouldShardedFileSystemHitNodesCountLimit)
     {
-        DoShouldShardedFileSystemHitNodesCountLimit(config, true);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true, true);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, false, true);
     }
 
     SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
@@ -7389,7 +7469,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 return false;
             });
 
-        service.ResizeFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount() * 2);
+        service.ResizeFileStore(fsConfig.FsId, fsConfig.MainFsBlockCount * 2);
 
         env.GetRuntime().SetEventFilter(
             &TTestActorRuntimeBase::DefaultFilterFunc);
@@ -7411,6 +7491,221 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 0,   // flags
                 0),
             nodeIdx);
+    }
+
+    SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY(
+        ShouldSwitchOnDirectoryCreationInShardsForExistingFilesystem)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetDirectoryCreationInShardsEnabled(false);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        //
+        // dir0_1 and dir0_2 - managed by the main tablet.
+        //
+
+        ui64 dir0_1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir0_1")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(dir0_1Id));
+
+        ui64 dir0_2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir0_2")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(dir0_2Id));
+
+        //
+        // file1 - managed by a shard.
+        //
+
+        auto node1Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(
+            dir0_1Id,
+            "file1"))->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(node1Id));
+
+        //
+        // Forcing directory creation in shards.
+        //
+
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount,
+            false /* force */,
+            0 /* shardCount */,
+            true /* enableStrictSizeMode */,
+            true /* directoryCreationInShards */,
+            true /* forceDirectoryCreationInShards */);
+
+        //
+        // dir2 and dir3 - managed by shards.
+        //
+
+        ui64 dir2Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir2")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir2Id));
+
+        ui64 dir3Id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir2Id, "dir3")
+        )->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dir3Id));
+
+        //
+        // Trying to move dir0_1 into dir2 - should fail because the
+        // RootNodeId/dir0_1 NodeRef is not external.
+        //
+
+        service.SendRenameNodeRequest(
+            headers,
+            RootNodeId,
+            "dir0_1",
+            dir2Id,
+            "dir0_1",
+            0 /* flags */);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        //
+        // Moving file1 to dir2 should be possible.
+        //
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir0_1Id,
+            "file1",
+            dir2Id,
+            "file1",
+            0 /* flags */);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        //
+        // Moving dir3 into dir0_1 should be possible as well.
+        //
+
+        service.SendRenameNodeRequest(
+            headers,
+            dir2Id,
+            "dir3",
+            dir0_1Id,
+            "dir3",
+            0 /* flags */);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        //
+        // Moving dir0_1 into dir0_2 should be possible as well because even
+        // though their node refs are local, both of them are managed by the
+        // main tablet.
+        //
+
+        service.SendRenameNodeRequest(
+            headers,
+            RootNodeId,
+            "dir0_1",
+            dir0_2Id,
+            "dir0_1",
+            0 /* flags */);
+
+        {
+            auto renameResponse = service.RecvRenameNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                renameResponse->GetError().GetCode(),
+                renameResponse->GetError().GetMessage());
+        }
+
+        //
+        // Verifying that the resulting directory structure is correct.
+        //
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL("dir0_2", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            dir0_2Id,
+            listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL("dir2", listNodesResponse.GetNames(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            dir2Id,
+            listNodesResponse.GetNodes(1).GetId());
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dir0_2Id)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL("dir0_1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            dir0_1Id,
+            listNodesResponse.GetNodes(0).GetId());
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dir0_1Id)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL("dir3", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            dir3Id,
+            listNodesResponse.GetNodes(0).GetId());
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dir3Id)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsConfig.FsId,
+            dir2Id)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            node1Id,
+            listNodesResponse.GetNodes(0).GetId());
     }
 
     void DoShouldReadAndWriteCompressedShardId(NProto::TStorageConfig& config, bool directoryCreationInShards)

@@ -148,7 +148,7 @@ private:
             CreateLoggingService("console", {.FiltrationLevel = logPriority});
         Log = Logging->CreateLog("NVME");
 
-        NVMe = NNvme::CreateNvmeManager(Logging, 1min);
+        NVMe = NNvme::CreateNvmeManager(Logging, 1min, 1s);
     }
 
     void AddCtrlPathOption(TString& path)

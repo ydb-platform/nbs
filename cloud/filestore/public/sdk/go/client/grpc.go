@@ -428,6 +428,29 @@ func (client *grpcClient) GetNodeAttr(
 	return resp.(*protos.TGetNodeAttrResponse), err
 }
 
+func (client *grpcClient) UnlinkNode(
+	ctx context.Context,
+	req *protos.TUnlinkNodeRequest,
+) (*protos.TUnlinkNodeResponse, error) {
+
+	if req.Headers == nil {
+		return nil, &ClientError{
+			Code:    E_FS_INVALID_SESSION,
+			Message: "UnlinkNode: headers must be not nil",
+		}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.UnlinkNode(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TUnlinkNodeResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type grpcEndpointClient struct {

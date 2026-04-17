@@ -202,6 +202,8 @@ struct TTabletMetrics
     std::atomic<i64> FlushBackpressureThreshold{0};
     std::atomic<i64> FlushBytesBackpressureValue{0};
     std::atomic<i64> FlushBytesBackpressureThreshold{0};
+    std::atomic<i64> FlushBytesItemCountBackpressureValue{0};
+    std::atomic<i64> FlushBytesItemCountBackpressureThreshold{0};
     std::atomic<i64> CompactionBackpressureValue{0};
     std::atomic<i64> CompactionBackpressureThreshold{0};
     std::atomic<i64> CleanupBackpressureValue{0};
@@ -224,6 +226,7 @@ struct TTabletMetrics
     // Tablet-specific stats
     std::atomic<i64> TabletStartTimestamp{0};
     std::atomic<i64> TabletId{0};
+    std::atomic<i64> TabletGeneration{0};
 
     // Blob compression stats
     std::atomic<i64> UncompressedBytesWritten{0};
@@ -279,6 +282,7 @@ struct TTabletMetrics
     std::atomic<i64> OverloadedCount{0};
 
     TInstant PrevCPUUsageMicrosTs;
+    i64 PrevCPUUsageMicros{0};
     std::atomic<i64> CPUUsageMicros{0};
     i64 CPUUsageRate = 0;
 

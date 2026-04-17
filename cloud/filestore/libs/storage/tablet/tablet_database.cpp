@@ -545,6 +545,7 @@ void TIndexTabletDatabase::WriteNodeRef(
     ui64 childNodeId,
     const TString& shardId,
     const TString& shardNodeName,
+    bool /*markExhaustive*/,
     NProto::EShardIdCompressionMode shardIdMode)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
@@ -2467,6 +2468,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
     ui64 childNode,
     const TString& shardId,
     const TString& shardNodeName,
+    bool markExhaustive,
     NProto::EShardIdCompressionMode shardIdMode)
 {
     TIndexTabletDatabase::WriteNodeRef(
@@ -2476,6 +2478,7 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
         childNode,
         shardId,
         shardNodeName,
+        markExhaustive,
         shardIdMode);
     NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
         .NodeRefsKey = {nodeId, name},
@@ -2484,6 +2487,12 @@ void TIndexTabletDatabaseProxy::WriteNodeRef(
             .ChildId = childNode,
             .ShardId = shardId,
             .ShardNodeName = shardNodeName}});
+    if (markExhaustive) {
+        NodeUpdates.emplace_back(
+            TInMemoryIndexState::TMarkNodeRefsAsCachedRequest{
+                .NodeId = childNode,
+                .RefsSize = 0});
+    }
 }
 
 void TIndexTabletDatabaseProxy::DeleteNodeRef(ui64 nodeId, const TString& name)

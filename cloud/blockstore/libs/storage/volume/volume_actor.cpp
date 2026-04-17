@@ -40,7 +40,31 @@ using namespace NCloud::NStorage;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 constexpr TInstant DRTabletIdRequestRetryInterval = TInstant::Seconds(3);
+
+bool ShapingThrottlerEnabled(
+    const TStorageConfigPtr& config,
+    NProto::EStorageMediaKind mediaKind)
+{
+    switch (mediaKind) {
+        case NProto::STORAGE_MEDIA_HDD:
+        case NProto::STORAGE_MEDIA_HYBRID:
+            return config->GetShapingThrottlerConfig().HasHddQuota();
+        case NProto::STORAGE_MEDIA_SSD:
+            return config->GetShapingThrottlerConfig().HasSsdQuota();
+        case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+            return config->GetShapingThrottlerConfig().HasNonreplQuota();
+        case NProto::STORAGE_MEDIA_SSD_MIRROR2:
+            return config->GetShapingThrottlerConfig().HasMirror2Quota();
+        case NProto::STORAGE_MEDIA_SSD_MIRROR3:
+            return config->GetShapingThrottlerConfig().HasMirror3Quota();
+        default:
+            return false;
+    }
+    return false;
+}
 
 }   // namespace
 
@@ -603,6 +627,15 @@ bool TVolumeActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
         .Contains(range);
 }
 
+bool TVolumeActor::IsFreshBlocksWriterEnabled() const
+{
+    return Config->GetFreshBlocksWriterEnabled() ||
+           Config->IsFreshBlocksWriterFeatureEnabled(
+               State->GetConfig().GetCloudId(),
+               State->GetConfig().GetFolderId(),
+               State->GetConfig().GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandlePoisonPill(
@@ -647,21 +680,27 @@ void TVolumeActor::HandleUpdateThrottlerState(
 
     const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
         GetNewestConfig().GetStorageMediaKind());
-    if ((mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD
-            || mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID)
-            && ctx.Now() - Config->GetThrottlerStateWriteInterval() >= LastThrottlerStateWrite)
+    const bool isHdd =
+        mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD ||
+        mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID;
+
+    if ((isHdd || ShapingThrottlerEnabled(Config, mediaKind)) &&
+        ctx.Now() - Config->GetThrottlerStateWriteInterval() >=
+            LastThrottlerStateWrite)
     {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext);
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
         ExecuteTx<TWriteThrottlerState>(
             ctx,
             std::move(requestInfo),
             TVolumeDatabase::TThrottlerStateInfo{
-                State->GetThrottlingPolicy().GetCurrentBoostBudget().MilliSeconds()
-            });
+                .BoostBudget = State->GetThrottlingPolicy()
+                                   .GetCurrentBoostBudget()
+                                   .MilliSeconds(),
+                .SpentShapingBudgetShare =
+                    State->GetShapingThrottler()
+                        .CalculateCurrentSpentBudgetShare(ctx.Now())});
     }
 }
 
@@ -1136,6 +1175,12 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvDeviceTimedOutRequest,
             HandleDeviceTimedOut);
         HFunc(
+            TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification,
+            HandleBrokenDeviceNotification);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification,
+            HandleDeviceRecoveredNotification);
+        HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
         HFunc(
@@ -1193,6 +1238,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvStatsService::TEvGetServiceStatisticsRequest,
             HandleGetServiceStatistics);
 
+        HFunc(
+            TEvService::TEvSetVhostDiscardFlagResponse,
+            HandleSetVhostDiscardFlagResponse);
+
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1222,6 +1271,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);

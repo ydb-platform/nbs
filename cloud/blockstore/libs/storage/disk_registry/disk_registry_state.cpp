@@ -490,6 +490,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.CheckpointReplica = config.GetCheckpointReplica();
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
+        disk.VolumeHealth = config.GetVolumeHealth();
 
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
@@ -4349,6 +4350,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     ui32 fullPlacementGroups = 0;
     ui32 allocatedDisksInGroups = 0;
     ui64 unknownDevices = 0;
+    ui64 pathsInAttachedState = 0;
+    ui64 pathsInAttachingState = 0;
+    ui64 pathsInDetachedState = 0;
+    ui64 detachedDevicesInOnlineState = 0;
 
     for (const auto& agent: AgentList.GetAgents()) {
         const auto agentState = agent.GetState();
@@ -4369,6 +4374,24 @@ void TDiskRegistryState::PublishCounters(TInstant now)
         }
 
         unknownDevices += agent.UnknownDevicesSize();
+
+        if (StorageConfig->GetAttachDetachPathsEnabled()) {
+            for (const auto& [path, state]: agent.GetPathAttachStates()) {
+                switch (state) {
+                    case NProto::PATH_ATTACH_STATE_ATTACHED:
+                        ++pathsInAttachedState;
+                        break;
+                    case NProto::PATH_ATTACH_STATE_ATTACHING:
+                        ++pathsInAttachingState;
+                        break;
+                    case NProto::PATH_ATTACH_STATE_DETACHED:
+                        ++pathsInDetachedState;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
 
         for (const auto& device: agent.GetDevices()) {
             const auto deviceState = device.GetState();
@@ -4394,6 +4417,21 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             switch (deviceState) {
                 case NProto::DEVICE_STATE_ONLINE: {
                     ++pool.DevicesInOnlineState;
+
+                    auto it = agent.GetPathAttachStates().find(
+                        device.GetDeviceName());
+
+                    const bool deviceShouldBeAttached =
+                        agent.GetState() == NProto::AGENT_STATE_ONLINE;
+                    const bool deviceIsAttached =
+                        it != agent.GetPathAttachStates().end() &&
+                        it->second == NProto::PATH_ATTACH_STATE_ATTACHED;
+
+                    if (StorageConfig->GetAttachDetachPathsEnabled() &&
+                        deviceShouldBeAttached && !deviceIsAttached)
+                    {
+                        ++detachedDevicesInOnlineState;
+                    }
                     break;
                 }
                 case NProto::DEVICE_STATE_WARNING: {
@@ -4612,6 +4650,12 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.AgentsInUnavailableState->Set(agentsInUnavailableState);
     SelfCounters.DisksInOnlineState->Set(disksInOnlineState);
 
+    SelfCounters.PathsInAttachedState->Set(pathsInAttachedState);
+    SelfCounters.PathsInAttachingState->Set(pathsInAttachingState);
+    SelfCounters.PathsInDetachedState->Set(pathsInDetachedState);
+    SelfCounters.DetachedDevicesInOnlineState->Set(
+        detachedDevicesInOnlineState);
+
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
     SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
@@ -4626,6 +4670,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.DisksInTemporarilyUnavailableState->Set(
         disksInTemporarilyUnavailableState);
     SelfCounters.DisksInErrorState->Set(disksInErrorState);
+    SelfCounters.DisksToCleanup->Set(DisksToCleanup.size());
     SelfCounters.PlacementGroups->Set(placementGroups);
     SelfCounters.FullPlacementGroups->Set(fullPlacementGroups);
     SelfCounters.AllocatedDisksInGroups->Set(allocatedDisksInGroups);
@@ -5220,6 +5265,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.MutableCheckpointReplica()->CopyFrom(diskState.CheckpointReplica);
     config.SetStorageMediaKind(diskState.MediaKind);
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
+    config.SetVolumeHealth(diskState.VolumeHealth);
 
     for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
@@ -5984,7 +6030,10 @@ NProto::EDiskState TDiskRegistryState::CalculateDiskState(
         return NProto::DISK_STATE_ONLINE;
     }
 
-    NProto::EDiskState state = NProto::DISK_STATE_ONLINE;
+    NProto::EDiskState state =
+        disk.VolumeHealth != NProto::VOLUME_HEALTH_HEALTHY
+            ? NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE
+            : NProto::DISK_STATE_ONLINE;
 
     for (const auto& uuid: disk.Devices) {
         const auto* device = DeviceList.FindDevice(uuid);
@@ -6078,6 +6127,10 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     devicePtr->SetStateMessage(std::move(reason));
 
     ApplyDeviceStateChange(db, *agentPtr, *devicePtr, now, affectedDisk);
+
+    if (newState == NProto::DEVICE_STATE_ERROR) {
+        RemoveDeviceFromPendingCleanup(db, deviceId);
+    }
 
     return error;
 }
@@ -7527,6 +7580,19 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
     return PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
 }
 
+void TDiskRegistryState::RemoveDeviceFromPendingCleanup(
+    TDiskRegistryDatabase& db,
+    const TDeviceId& deviceId)
+{
+    if (!IsDirtyDevice(deviceId) || PendingCleanup.FindDiskId(deviceId).empty())
+    {
+        return;
+    }
+
+    PendingCleanup.EraseDevice(deviceId);
+    db.UpdateDirtyDevice(deviceId, {});
+}
+
 NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
     TDiskRegistryDatabase& db,
     const TDiskId& masterDiskId,
@@ -8605,6 +8671,29 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
     }
 
     return pathsToAttach;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TDiskRegistryState::UpdateVolumeHealth(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    TInstant now,
+    NProto::EVolumeHealth volumeHealth)
+{
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "disk " << diskId.Quote() << " not found");
+    }
+    if (disk->VolumeHealth == volumeHealth) {
+        return MakeError(S_ALREADY);
+    }
+    disk->VolumeHealth = volumeHealth;
+    db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+    TryUpdateDiskStateImpl(db, diskId, *disk, now);
+    return {};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

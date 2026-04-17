@@ -576,8 +576,17 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                db.WriteCleanupQueue(kv.first, DeletionCommitId);
-                State.GetCleanupQueue().Add({ kv.first, DeletionCommitId });
+                bool inserted =
+                    State.GetCleanupQueue().Add({kv.first, DeletionCommitId});
+
+                STORAGE_VERIFY_DEBUG_C(
+                    inserted,
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId,
+                    "Cleanup queue: blob already in cleanup queue");
+                if (inserted) {
+                    db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                }
             }
         }
     }

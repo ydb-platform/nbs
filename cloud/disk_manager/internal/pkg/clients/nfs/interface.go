@@ -14,6 +14,7 @@ type CreateFilesystemParams struct {
 	BlockSize   uint32
 	BlocksCount uint64
 	Kind        types.FilesystemKind
+	ShardCount  uint32
 }
 
 type FilesystemPerformanceProfile struct {
@@ -54,6 +55,11 @@ type Session interface {
 		node Node,
 	) (uint64, error)
 
+	CreateNodeIdempotent(
+		ctx context.Context,
+		node Node,
+	) (uint64, error)
+
 	ReadLink(
 		ctx context.Context,
 		nodeID uint64,
@@ -64,6 +70,13 @@ type Session interface {
 		parentNodeID uint64,
 		name string,
 	) (Node, error)
+
+	UnlinkNode(
+		ctx context.Context,
+		parentNodeID uint64,
+		name string,
+		unlinkDirectory bool,
+	) error
 
 	Close(ctx context.Context) error
 }
@@ -84,6 +97,12 @@ type Client interface {
 	Delete(ctx context.Context, filesystemID string, force bool) error
 
 	Resize(ctx context.Context, filesystemID string, size uint64) error
+
+	EnableDirectoryCreationInShards(
+		ctx context.Context,
+		filesystemID string,
+		shardCount uint32,
+	) error
 
 	DescribeModel(
 		ctx context.Context,

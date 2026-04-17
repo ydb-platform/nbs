@@ -5,21 +5,27 @@ SRCS(
     node_cache.cpp
     node_flush_state.cpp
     node_state_holder.cpp
+    node_state_holder_stats.cpp
     overlapping_interval_set.cpp
     persistent_storage.cpp
+    persistent_storage_stats.cpp
     queued_operations.cpp
     read_response_builder.cpp
+    relaxed_counters.cpp
     sequence_id_generator.cpp
     utils.cpp
     write_back_cache.cpp
     write_back_cache_state.cpp
+    write_back_cache_state_stats.cpp
     write_back_cache_stats.cpp
     write_data_request_builder.cpp
     write_data_request_manager.cpp
+    write_data_request_manager_stats.cpp
 )
 
 PEERDIR(
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/service
 
     cloud/storage/core/libs/common

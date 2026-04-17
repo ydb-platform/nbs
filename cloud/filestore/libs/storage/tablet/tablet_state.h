@@ -42,6 +42,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <functional>
+
 namespace NCloud::NFileStore::NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,20 +183,9 @@ struct TBackgroundOpsBackpressureStatus
 {
     const EBackgroundOpBackpressureStatus Flush;
     const EBackgroundOpBackpressureStatus FlushBytes;
+    const EBackgroundOpBackpressureStatus FlushBytesItemCount;
     const EBackgroundOpBackpressureStatus Compaction;
     const EBackgroundOpBackpressureStatus Cleanup;
-
-    TBackgroundOpsBackpressureStatus(
-            EBackgroundOpBackpressureStatus flush,
-            EBackgroundOpBackpressureStatus flushBytes,
-            EBackgroundOpBackpressureStatus compaction,
-            EBackgroundOpBackpressureStatus cleanup)
-        : Flush(flush)
-        , FlushBytes(flushBytes)
-        , Compaction(compaction)
-        , Cleanup(cleanup)
-    {
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,6 +300,8 @@ public:
         const TStorageConfig& config,
         const NProto::TFileSystem& fileSystem,
         const TThrottlerConfig& throttlerConfig);
+
+    void SetFrozen(TIndexTabletDatabase& db, bool frozen);
 
     //
     // FileSystem
@@ -426,6 +419,8 @@ public:
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 
     void UpdateShardBalancer(const TVector<TShardStats>& stats);
+
+    TVector<IShardBalancer::TShardDescr> MakeOrderedShardList() const;
 
     //
     // FileSystem Stats
@@ -653,7 +648,8 @@ public:
         const TString& childName,
         ui64 childNodeId,
         const TString& shardId,
-        const TString& shardNodeName);
+        const TString& shardNodeName,
+        bool markExhaustive = false);
 
     void RemoveNodeRef(
         TIndexTabletDatabase& db,
@@ -716,6 +712,8 @@ public:
     bool TryLockNodeRef(TNodeRefKey key);
     void UnlockNodeRef(const TNodeRefKey& key);
     bool IsNodeRefLocked(const TNodeRefKey& key) const;
+    using TNodeRefLockVisitor = std::function<void(const TNodeRefKey&)>;
+    void VisitNodeRefLocks(const TNodeRefLockVisitor& visitor) const;
 
     //
     // Sessions
@@ -949,22 +947,11 @@ public:
 
     struct TBackpressureThresholds
     {
-        ui64 Flush;
-        ui64 FlushBytes;
-        ui64 CompactionScore;
-        ui64 CleanupScore;
-
-        TBackpressureThresholds(
-                const ui64 flush,
-                const ui64 flushBytes,
-                const ui64 compactionScore,
-                const ui64 cleanupScore)
-            : Flush(flush)
-            , FlushBytes(flushBytes)
-            , CompactionScore(compactionScore)
-            , CleanupScore(cleanupScore)
-        {
-        }
+        const ui64 Flush;
+        const ui64 FlushBytes;
+        const ui64 FlushBytesItemCount;
+        const ui64 CompactionScore;
+        const ui64 CleanupScore;
     };
 
     using TBackpressureValues = TBackpressureThresholds;

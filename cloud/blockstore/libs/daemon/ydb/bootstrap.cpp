@@ -846,6 +846,10 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("Local NVMe service initialized");
 
+    const bool isHiveLocalServiceEnabled =
+        !Configs->StorageConfig->GetDisableLocalService() &&
+        !Configs->HostPerformanceProfile.IsTightServiceMemoryPlatform;
+
     NStorage::TServerActorSystemArgs args;
     args.ModuleFactories = ModuleFactories;
     args.NodeId = nodeId;
@@ -877,7 +881,7 @@ void TBootstrapYdb::InitKikimrService()
     args.NvmeManager = NvmeManager;
     args.UserCounterProviders = {VolumeStats->GetUserCounters()};
     args.IsDiskRegistrySpareNode = [&] {
-            if (!Configs->StorageConfig->GetDisableLocalService()) {
+            if (isHiveLocalServiceEnabled) {
                 return false;
             }
 
@@ -894,6 +898,7 @@ void TBootstrapYdb::InitKikimrService()
     args.BackgroundThreadPool = BackgroundThreadPool;
     args.PartitionBudgetManager = PartitionBudgetManager;
     args.LocalNVMeService = LocalNVMeService;
+    args.IsHiveLocalServiceEnabled = isHiveLocalServiceEnabled;
 
     ActorSystem = NStorage::CreateActorSystem(args);
 

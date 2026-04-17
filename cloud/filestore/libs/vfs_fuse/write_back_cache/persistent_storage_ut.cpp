@@ -1,8 +1,11 @@
 #include "persistent_storage.h"
 
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
+#include "persistent_storage_stats.h"
+
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -19,13 +22,22 @@ constexpr ui64 DefaultCapacity = 256;
 
 struct TBootstrap
 {
+    ILoggingServicePtr Logging;
+    TLog Log;
+
     TTempFileHandle TempFile;
-    std::shared_ptr<TTestWriteBackCacheStats> Stats;
+    IPersistentStorageStatsPtr Stats;
     IPersistentStoragePtr Storage;
+    TPersistentStorageMetrics Metrics;
 
     TBootstrap()
-        : Stats(std::make_shared<TTestWriteBackCacheStats>())
-    {}
+        : Stats(CreatePersistentStorageStats())
+        , Metrics(Stats->CreateMetrics())
+    {
+        Logging = CreateLoggingService("console", TLogSettings{});
+        Logging->Start();
+        Log = Logging->CreateLog("WRITE_BACK_CACHE");
+    }
 
     NProto::TError Initialize()
     {
@@ -34,7 +46,9 @@ struct TBootstrap
             {.FilePath = TempFile.GetName(),
              .DataCapacity = DefaultCapacity,
              .MetadataCapacity = 0,
-             .EnableChecksumValidation = true});
+             .EnableChecksumValidation = true},
+            Log,
+            "[tag]");
 
         if (HasError(res)) {
             return res.GetError();
@@ -104,41 +118,41 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
     Y_UNIT_TEST(Simple)
     {
         TBootstrap b;
-        auto& stats = b.Stats->StorageStats;
+        auto& stats = b.Metrics.Storage;
 
         UNIT_ASSERT(!HasError(b.Initialize()));
         UNIT_ASSERT(b.Storage->Empty());
 
         const auto* ptr1 = b.Alloc("1234");
         UNIT_ASSERT(ptr1);
-        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
 
         const auto* ptr2 = b.Alloc("567890");
         UNIT_ASSERT(ptr2);
-        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount->Get());
 
         UNIT_ASSERT(!b.Alloc(TString(DefaultCapacity, 'x')));
-        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount->Get());
 
         const auto* ptr3 = b.Alloc("abc");
         UNIT_ASSERT(ptr3);
-        UNIT_ASSERT_VALUES_EQUAL(3, stats.EntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.EntryCount->Get());
 
         UNIT_ASSERT(!b.Storage->Empty());
         UNIT_ASSERT_STRINGS_EQUAL("1234,567890,abc", b.Dump());
 
         b.Free(ptr2);
         UNIT_ASSERT_STRINGS_EQUAL("1234,abc", b.Dump());
-        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount->Get());
 
         b.Free(ptr1);
         UNIT_ASSERT_STRINGS_EQUAL("abc", b.Dump());
-        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
 
         b.Free(ptr3);
         UNIT_ASSERT_STRINGS_EQUAL("", b.Dump());
         UNIT_ASSERT(b.Storage->Empty());
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
     }
 
     Y_UNIT_TEST(ShouldThrowOnDoubleFree)
@@ -192,7 +206,7 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
     Y_UNIT_TEST(ShouldDetectCorruption)
     {
         TBootstrap b;
-        auto& stats = b.Stats->StorageStats;
+        auto& stats = b.Metrics.Storage;
 
         UNIT_ASSERT(!HasError(b.Initialize()));
         UNIT_ASSERT(b.Storage->Empty());
@@ -218,7 +232,54 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         }
 
         UNIT_ASSERT(HasError(b.Recreate()));
-        UNIT_ASSERT(stats.IsCorrupted);
+        UNIT_ASSERT(stats.Corrupted->Get());
+    }
+
+    Y_UNIT_TEST(ShouldReportAndUpdateStats)
+    {
+        TBootstrap b;
+        auto& stats = b.Metrics.Storage;
+
+        UNIT_ASSERT(!HasError(b.Initialize()));
+        UNIT_ASSERT(b.Storage->Empty());
+
+        const auto* ptr1 = b.Alloc("1234");
+        UNIT_ASSERT(ptr1);
+
+        const auto* ptr2 = b.Alloc("567890");
+        UNIT_ASSERT(ptr2);
+
+        auto maxByteCount = stats.RawUsedByteMaxCount->Get();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryMaxCount->Get());
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(maxByteCount, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultCapacity,
+            stats.RawCapacityByteCount->Get());
+
+        b.Free(ptr1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryMaxCount->Get());
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_GT(maxByteCount, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxByteCount,
+            stats.RawUsedByteMaxCount->Get());
+
+        for (int i = 0; i <= 15; ++i) {
+            b.Storage->UpdateStats();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryMaxCount->Get());
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_GT(maxByteCount, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            stats.RawUsedByteCount->Get(),
+            stats.RawUsedByteMaxCount->Get());
     }
 }
 

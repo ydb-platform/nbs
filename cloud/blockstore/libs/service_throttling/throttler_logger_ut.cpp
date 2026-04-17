@@ -88,6 +88,11 @@ public:
 
         return PostponeTimeout.GetValue() / 1e6;
     }
+
+    TUsedQuota TakeUsedQuota() override
+    {
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

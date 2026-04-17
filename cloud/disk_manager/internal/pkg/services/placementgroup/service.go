@@ -99,10 +99,11 @@ func (s *service) DeletePlacementGroup(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
+	return s.taskScheduler.ScheduleNonCancellableTask(
 		ctx,
 		"placement_group.DeletePlacementGroup",
-		"",
+		"", // description
+		"", // zoneID
 		&protos.DeletePlacementGroupRequest{
 			ZoneId:  req.GroupId.ZoneId,
 			GroupId: req.GroupId.GroupId,

@@ -52,6 +52,8 @@ message TFileSystem
     string MainFileSystemId = 17;
     bool DirectoryCreationInShardsEnabled = 18;
     bool StrictFileSystemSizeEnforcementEnabled = 19;
+    bool Frozen = 20;
+    bool ForceDirectoryCreationInShards = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,7 +108,7 @@ message TNode
     uint64 Size = 8;
     uint32 Links = 9;
 
-    string SymLink = 10;
+    bytes SymLink = 10;
 
     uint64 DevId = 11;
 

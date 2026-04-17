@@ -27,7 +27,7 @@ namespace NCloud::NBlockStore::NStorage {
 struct TEvService
 {
     //
-    // ChangeVolumeBinding
+    // ChangeVolumeBinding request/response
     //
 
     struct TChangeVolumeBindingRequest
@@ -64,7 +64,7 @@ struct TEvService
     };
 
     //
-    // GetVolumeStats
+    // GetVolumeStats request/response
     //
 
     struct TGetVolumeStatsRequest
@@ -135,16 +135,12 @@ struct TEvService
     };
 
     //
-    // RunVolumeLivenessCheckRequest
+    // RunVolumeLivenessCheck request/response
     //
 
     struct TRunVolumesLivenessCheckRequest
     {
     };
-
-    //
-    // RunVolumeLivenessCheckResponse
-    //
 
     struct TRunVolumesLivenessCheckResponse
     {
@@ -162,7 +158,7 @@ struct TEvService
     };
 
     //
-    // AddTags
+    // AddTags request/response
     //
 
     struct TAddTagsRequest
@@ -184,7 +180,7 @@ struct TEvService
     {};
 
     //
-    // VolumeMountStateChanged
+    // VolumeMountStateChanged notification
     //
 
     struct TVolumeMountStateChanged
@@ -198,6 +194,35 @@ struct TEvService
             : DiskId(std::move(diskId))
             , HasLocalMount(value)
         {}
+    };
+
+    //
+    // SetVhostDiscardFlag request/response
+    //
+
+    struct TSetVhostDiscardFlagRequest
+    {
+        const TString DiskId;
+        const bool VhostDiscardEnabled;
+        ui32 ConfigVersion = 0;
+
+        TSetVhostDiscardFlagRequest(TString diskId, bool vhostDiscardEnabled)
+            : DiskId(std::move(diskId))
+            , VhostDiscardEnabled(vhostDiscardEnabled)
+        {}
+
+        TSetVhostDiscardFlagRequest(
+            TString diskId,
+            bool vhostDiscardEnabled,
+            ui32 configVersion)
+            : DiskId(std::move(diskId))
+            , VhostDiscardEnabled(vhostDiscardEnabled)
+            , ConfigVersion(configVersion)
+        {}
+    };
+
+    struct TSetVhostDiscardFlagResponse
+    {
     };
 
     //
@@ -349,11 +374,16 @@ struct TEvService
         EvDestroyVolumeLinkRequest = EvBegin + 97,
         EvDestroyVolumeLinkResponse = EvBegin + 98,
 
+        EvExtBegin = TBlockStoreEvents::SERVICE_EXT_START,
+
+        EvSetVhostDiscardFlagRequest = EvExtBegin + 1,
+        EvSetVhostDiscardFlagResponse = EvExtBegin + 2,
+
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::SERVICE_END,
-        "EvEnd expected to be < TBlockStoreEvents::SERVICE_END");
+    static_assert(EvEnd < (int)TBlockStoreEvents::SERVICE_EXT_END,
+        "EvEnd expected to be < TBlockStoreEvents::SERVICE_EXT_END");
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
@@ -376,6 +406,16 @@ struct TEvService
     using TEvVolumeMountStateChanged = TRequestEvent<
         TVolumeMountStateChanged,
         EvVolumeMountStateChanged
+    >;
+
+    using TEvSetVhostDiscardFlagRequest = TRequestEvent<
+        TSetVhostDiscardFlagRequest,
+        EvSetVhostDiscardFlagRequest
+    >;
+
+    using TEvSetVhostDiscardFlagResponse = TResponseEvent<
+        TSetVhostDiscardFlagResponse,
+        EvSetVhostDiscardFlagResponse
     >;
 };
 

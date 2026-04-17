@@ -213,9 +213,10 @@ void TPartitionActor::CompleteLoadState(
         Config->GetSSDMaxBlobsPerRange() :
         Config->GetHDDMaxBlobsPerRange();
 
+    SharedState->Init(SelfId(), Executor()->Generation(), 0);
+
     State = std::make_unique<TPartitionState>(
         *args.Meta,
-        Executor()->Generation(),
         BuildCompactionPolicy(partitionConfig, *Config, SiblingCount),
         Config->GetCompactionScoreHistorySize(),
         Config->GetCleanupScoreHistorySize(),
@@ -226,13 +227,13 @@ void TPartitionActor::CompleteLoadState(
         Config->GetReassignFreshChannelsPercentageThreshold(),
         Config->GetReassignMixedChannelsPercentageThreshold(),
         Config->GetReassignSystemChannelsImmediately(),
-        0,                                             // lastCommitId
         Min(tabletChannelCount, configChannelCount),   // channelCount
         mixedIndexCacheSize,
         GetAllocationUnit(*Config, mediaKind),
         maxBlobsPerUnit,
         maxBlobsPerRange,
-        Config->GetCompactionRangeCountPerRun());
+        Config->GetCompactionRangeCountPerRun(),
+        SharedState);
 
     CreateFreshBlocksCompanionClient();
 
@@ -244,7 +245,7 @@ void TPartitionActor::CompleteLoadState(
         *State,   // channelsState
         *State,   // freshBlobState
         *State,   // flushState
-        *State,   // trimFreshLogState
+        SharedState,   // threadSafeState
         *State,   // freshBlocksState
         LogTitle);
 
@@ -264,9 +265,9 @@ void TPartitionActor::CompleteLoadState(
         *IOCompanionClient,
         *State,
         LogTitle,
-        ResourceMetricsQueue,
-        GroupDowntimes,
-        IoCompanionCounters);
+        SharedState->GetResourceMetricsQueue(),
+        SharedState->GetGroupDowntimes(),
+        SharedState->GetPartCounters());
 
     MapBaseDiskIdToTabletId(ctx);
 

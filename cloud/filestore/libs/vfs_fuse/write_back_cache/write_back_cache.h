@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/vfs_fuse/public.h>
 
@@ -167,6 +168,8 @@ public:
 
     // Used to adjust node size according to cached data
     ui64 GetMaxWrittenOffset(ui64 nodeId) const;
+
+    IModuleStatsPtr CreateModuleStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

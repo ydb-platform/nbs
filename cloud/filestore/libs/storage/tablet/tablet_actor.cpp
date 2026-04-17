@@ -300,11 +300,13 @@ using TThresholds = TIndexTabletState::TBackpressureThresholds;
 TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
 {
     return {
-        Config->GetFlushThresholdForBackpressure(),
-        Config->GetFlushBytesThresholdForBackpressure(),
-        ScaleCompactionThreshold(
+        .Flush = Config->GetFlushThresholdForBackpressure(),
+        .FlushBytes = Config->GetFlushBytesThresholdForBackpressure(),
+        .FlushBytesItemCount =
+            Config->GetFlushBytesItemCountThresholdForBackpressure(),
+        .CompactionScore = ScaleCompactionThreshold(
             Config->GetCompactionThresholdForBackpressure()),
-        Config->GetCleanupThresholdForBackpressure(),
+        .CleanupScore = Config->GetCleanupThresholdForBackpressure(),
     };
 }
 
@@ -312,10 +314,11 @@ TIndexTabletState::TBackpressureValues
 TIndexTabletActor::GetBackpressureValues() const
 {
     return {
-        GetFreshBlocksCount() * GetBlockSize(),
-        GetFreshBytesCount(),
-        GetRangeToCompact().Score,
-        GetRangeToCleanup().Score,
+        .Flush = GetFreshBlocksCount() * GetBlockSize(),
+        .FlushBytes = GetFreshBytesCount(),
+        .FlushBytesItemCount = GetFreshBytesItemCount(),
+        .CompactionScore = GetRangeToCompact().Score,
+        .CleanupScore = GetRangeToCleanup().Score,
     };
 }
 
@@ -678,16 +681,19 @@ TBackgroundOpsBackpressureStatus
     const auto bpThresholds = BuildBackpressureThresholds();
     const auto bpValues = GetBackpressureValues();
     return {
-        GetBackgroundOpBackpressureStatus(
+        .Flush = GetBackgroundOpBackpressureStatus(
             bpThresholds.Flush,
             bpValues.Flush),
-        GetBackgroundOpBackpressureStatus(
+        .FlushBytes = GetBackgroundOpBackpressureStatus(
             bpThresholds.FlushBytes,
             bpValues.FlushBytes),
-        GetBackgroundOpBackpressureStatus(
+        .FlushBytesItemCount = GetBackgroundOpBackpressureStatus(
+            bpThresholds.FlushBytesItemCount,
+            bpValues.FlushBytesItemCount),
+        .Compaction = GetBackgroundOpBackpressureStatus(
             bpThresholds.CompactionScore,
             bpValues.CompactionScore),
-        GetBackgroundOpBackpressureStatus(
+        .Cleanup = GetBackgroundOpBackpressureStatus(
             bpThresholds.CleanupScore,
             bpValues.CleanupScore),
     };
@@ -807,7 +813,15 @@ void TIndexTabletActor::HandleGetStorageConfig(
 {
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
-    *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    const auto* msg = ev->Get();
+
+    if (msg->Record.GetOnlyOverride()) {
+        *response->Record.MutableStorageConfig() = StorageConfigOverride;
+    } else {
+        *response->Record.MutableStorageConfig() =
+            Config->GetStorageConfigProto();
+    }
 
     NCloud::Reply(
         ctx,
@@ -827,6 +841,8 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
     response->Record.SetDirectoryCreationInShardsEnabled(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());
+    response->Record.SetForceDirectoryCreationInShards(
+        GetFileSystem().GetForceDirectoryCreationInShards());
     response->Record.SetStrictFileSystemSizeEnforcementEnabled(
         GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled());
     response->Record.SetMaxShardCount(Config->GetMaxShardCount());
@@ -981,7 +997,36 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTabletPrivate)
+
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+bool TIndexTabletActor::HandleRequestsByFrozenTablet(STFUNC_SIG)
+{
+    switch (ev->GetTypeRewrite()) {
+        //
+        // Unsafe ops may be required to repair a broken filesystem.
+        //
+
+        FILESTORE_UNSAFE_TABLET_REQUESTS(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTablet)
+
+        //
+        // Without WaitReady and CreateSession we won't even be able to connect
+        // to the filesystem properly so they're also required.
+        //
+
+        FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
+        FILESTORE_HANDLE_REQUEST(CreateSession, TEvIndexTablet)
+
 
         default:
             return false;
@@ -993,7 +1038,9 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_HANDLE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_HANDLE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1005,7 +1052,9 @@ bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 bool TIndexTabletActor::IgnoreCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IGNORE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_IGNORE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1020,7 +1069,9 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1032,10 +1083,16 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
 bool TIndexTabletActor::RejectRequestsByBrokenTablet(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvService)
+        FILESTORE_SERVICE_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvService)
 
-        FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTablet)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1143,8 +1200,21 @@ STFUNC(TIndexTabletActor::StateInit)
 
 STFUNC(TIndexTabletActor::StateWork)
 {
-    // user related requests & events completion
-    if (HandleRequests(ev) || HandleCompletions(ev)) {
+    TCPUUsageTimerGuard t(CPUUsageTimer);
+
+    if (GetFileSystem().GetFrozen()) {
+        if (HandleRequestsByFrozenTablet(ev)) {
+            return;
+        }
+
+        if (RejectRequests(ev)) {
+            return;
+        }
+    } else if (HandleRequests(ev)) {
+        return;
+    }
+
+    if (HandleCompletions(ev)) {
         return;
     }
 

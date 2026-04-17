@@ -14,7 +14,9 @@
 
 #include <util/generic/ptr.h>
 #include <util/system/hostname.h>
-#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
+
+#include <mutex>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -214,7 +216,7 @@ private:
     const TString FsTag;
     TLog Log;
 
-    TMutex SessionLock;
+    TAdaptiveLock SessionLock;
     ESessionState SessionState = Idle;
     TPromise<NProto::TCreateSessionResponse> CreateSessionResponse;
     TPromise<NProto::TDestroySessionResponse> DestroySessionResponse;
@@ -373,8 +375,13 @@ private:
     void ExecuteRequest(
         TRequestStatePtr<TCreateSessionMethod> state)
     {
-        with_lock(SessionLock) {
+        {
+            std::unique_lock<TAdaptiveLock> sessionLock{SessionLock};
+
             if (SessionState == SessionDestroying) {
+                // Avoid calling callbacks under a lock
+                sessionLock.unlock();
+
                 state->Response.SetValue(
                     TErrorResponse(
                         E_INVALID_STATE,
@@ -383,6 +390,9 @@ private:
             }
 
             if (SessionState == SessionBroken) {
+                // Avoid calling callbacks under a lock
+                sessionLock.unlock();
+
                 state->Response.SetValue(
                     TErrorResponse(
                         E_INVALID_STATE,
@@ -405,8 +415,12 @@ private:
                             "Session is destroyed"));
                 };
 
-                CreateSessionResponse.GetFuture().Subscribe(postpone);
+                auto future = CreateSessionResponse.GetFuture();
 
+                // Avoid calling callbacks under a lock
+                sessionLock.unlock();
+
+                future.Subscribe(postpone);
                 return;
             }
 
@@ -486,17 +500,25 @@ private:
 
     void ExecuteRequest(TRequestStatePtr<TDestroySessionMethod> state)
     {
-        with_lock (SessionLock) {
+        {
+            std::unique_lock<TAdaptiveLock> sessionLock{SessionLock};
+
             if (SessionState == Idle) {
+                // Avoid calling callbacks under a lock
+                sessionLock.unlock();
+
                 state->Response.SetValue(
                     TErrorResponse(S_ALREADY, "Session is not created"));
                 return;
             }
 
             if (SessionState == SessionBroken) {
+                // Avoid calling callbacks under a lock
+                sessionLock.unlock();
+
                 state->Response.SetValue(
                     TErrorResponse(E_INVALID_STATE, "Session is not broken"));
-                    return;
+                return;
             }
 
             if (SessionState == SessionDestroying) {
@@ -521,7 +543,12 @@ private:
                             "Session is destroyed"));
                 };
 
-                CreateSessionResponse.GetFuture().Subscribe(postpone);
+                auto future = CreateSessionResponse.GetFuture();
+
+                // Avoid calling callbacks under a lock
+                sessionLock.unlock();
+
+                future.Subscribe(postpone);
                 return;
             }
 

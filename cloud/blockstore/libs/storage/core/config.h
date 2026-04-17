@@ -396,6 +396,21 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsEnableVhostDiscardOnVolumeRestartFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsFreshBlocksWriterFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -763,6 +778,8 @@ public:
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 
+    [[nodiscard]] bool GetEnableVhostDiscardOnVolumeRestart() const;
+
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 
     [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
@@ -775,6 +792,8 @@ public:
 
     [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
 
+    [[nodiscard]] NProto::TShapingThrottlerConfig GetShapingThrottlerConfig() const;
+
     [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 
     [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
@@ -782,10 +801,15 @@ public:
     [[nodiscard]] NProto::EOverlappingRequestsPolicy
     GetOverlappingRequestsPolicy() const;
 
+    [[nodiscard]] NProto::ERequestSplitterPolicy
+    GetRequestSplitterPolicy() const;
+
     [[nodiscard]] TPoolKindToMediaKindMapping
     GetPoolKindToMediaKindMapping() const;
 
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
+
+    [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
 };
 
 ui64 GetAllocationUnit(

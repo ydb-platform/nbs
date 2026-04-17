@@ -128,7 +128,8 @@ void TAlterFileStoreActor::ReplyAndDie(
             FileStoreConfig.GetFileSystemId().Quote().c_str());
     }
 
-    auto response = std::make_unique<TEvSSProxy::TEvAlterFileStoreResponse>(error);
+    auto response = std::make_unique<TEvSSProxy::TEvAlterFileStoreResponse>(
+        TranslateSchemeShardError(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -137,7 +138,9 @@ void TAlterFileStoreActor::ReplyAndDie(
 STFUNC(TAlterFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvModifySchemeResponse,
+            HandleModifySchemeResponse);
 
         default:
             HandleUnexpectedEvent(

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/filestore/libs/diagnostics/metrics/label.h>
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 
 #include <cloud/storage/core/libs/common/timer.h>
@@ -28,17 +30,22 @@ class TMaxMetric
 private:
     TAtomic Value = 0;
     std::unique_ptr<TMaxCalculator<BucketCount>> MaxCalc;
-    NMonitoring::TDynamicCounters::TCounterPtr MaxCounter;
+    TAtomic MaxCounter = 0;
 
 public:
-    TMaxMetric(
-        ITimerPtr timer,
-        NMonitoring::TDynamicCountersPtr counters,
-        TStringBuf counterName)
+    explicit TMaxMetric(ITimerPtr timer)
         : MaxCalc(
               std::make_unique<TMaxCalculator<BucketCount>>(std::move(timer)))
-        , MaxCounter(counters->GetCounter(TString{counterName}, false))
     {}
+
+    void Register(
+        NMetrics::IMetricsRegistry& metricsRegistry,
+        TStringBuf counterName)
+    {
+        metricsRegistry.Register(
+            {NMetrics::CreateSensor(TString(counterName))},
+            MaxCounter);
+    }
 
     void Change(i64 delta)
     {
@@ -49,7 +56,7 @@ public:
 
     void UpdateMax()
     {
-        MaxCounter->Set(MaxCalc->NextValue());
+        AtomicSet(MaxCounter, MaxCalc->NextValue());
     }
 };
 
@@ -58,7 +65,6 @@ public:
 class TDirectoryHandlesStats final: public IModuleStats
 {
 private:
-    NMonitoring::TDynamicCountersPtr Counters;
     TMaxMetric<DirectoryHandlesMaxBucketCount> CacheSize;
     TMaxMetric<DirectoryHandlesMaxBucketCount> ChunkCount;
 
@@ -69,26 +75,23 @@ public:
     explicit TDirectoryHandlesStats(ITimerPtr timer);
 
     TStringBuf GetName() const override;
-    NMonitoring::TDynamicCountersPtr GetCounters() override;
+
+    void RegisterCounters(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) override;
 
     void IncreaseCacheSize(size_t value);
     void DecreaseCacheSize(size_t value);
     void IncreaseChunkCount(size_t value);
     void DecreaseChunkCount(size_t value);
 
-    void UpdateStats() override;
+    void UpdateStats(TInstant now) override;
 };
 
 using TDirectoryHandlesStatsPtr = std::shared_ptr<TDirectoryHandlesStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesStatsPtr CreateDirectoryHandlesStats(
-    IModuleStatsRegistryPtr registry,
-    ITimerPtr timer,
-    const TString& fileSystemId,
-    const TString& clientId,
-    const TString& cloudId,
-    const TString& folderId);
+TDirectoryHandlesStatsPtr CreateDirectoryHandlesStats(ITimerPtr timer);
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -218,7 +218,8 @@ void TCreateFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvSSProxy::TEvCreateFileStoreResponse>(error);
+    auto response = std::make_unique<TEvSSProxy::TEvCreateFileStoreResponse>(
+        TranslateSchemeShardError(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -227,7 +228,9 @@ void TCreateFileStoreActor::ReplyAndDie(
 STFUNC(TCreateFileStoreActor::StateCreateFileStore)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateFileStoreResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvModifySchemeResponse,
+            HandleCreateFileStoreResponse);
 
         default:
             HandleUnexpectedEvent(

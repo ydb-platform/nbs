@@ -2,12 +2,12 @@ import json
 import logging
 import os
 import re
-import time
 
 import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.common import flush_logs
 
 BLOCK_SIZE = 4 * 1024
 BLOCKS_COUNT = 1000
@@ -785,15 +785,7 @@ def test_io_telemetry():
 
     client.destroy(fs_id)
 
-    #
-    # Sleep for a while to ensure that the profile log is flushed
-    # before we start analyzing it
-    # The default value of ProfileLogTimeThreshold for tests is 100ms
-    # TODO(#568) - here and in other similar places - introduce and use a
-    # private api method which would force profile-log flush
-    #
-
-    time.sleep(2)
+    flush_logs()
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
@@ -820,10 +812,20 @@ def test_io_telemetry():
     with open(common.output_path("filestore-server.err")) as err:
         for line in err.readlines():
             parts = line.rstrip().split(" ", maxsplit=4)
+            if len(parts) < 4:
+                # we expect that line has the following format
+                # <time> <component> <severity> <message>
+                continue
             component = parts[1]
             message = parts[3]
             if component == ":NFS_TRACE":
-                track = json.loads(message)
+                track = ""
+                try:
+                    track = json.loads(message)
+                except json.JSONDecodeError:
+                    logging.warning(
+                        "failed to deserialize message to JSON: %s" % message)
+                    continue
                 for probe in track:
                     if len(probe) < 3:
                         continue
@@ -858,6 +860,27 @@ def test_io_telemetry():
 
         probe_list = sorted([(k, v > 0) for k, v in probes.items()])
         results_file.write("%s\n" % probe_list)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_symlink_non_utf8_path():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    non_utf8_target = os.fsdecode(b"\xff\xfe\x80\x81")
+    client.ln("fs0", "/non_utf8_link", "--symlink", non_utf8_target)
+
+    stat = json.loads(client.stat("fs0", "/non_utf8_link"))
+    del stat["ATime"]
+    del stat["MTime"]
+    del stat["CTime"]
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        json.dump(stat, results_file, indent=4)
 
     ret = common.canonical_file(results_path, local=True)
     return ret

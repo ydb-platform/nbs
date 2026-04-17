@@ -60,6 +60,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             .WithAgents({ agent1 })
             .Build();
 
+        auto getTabletGen = [&runtime]
+        {
+            return runtime->GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "disk_registry")
+                ->GetCounter("TabletGeneration")
+                ->Val();
+        };
+
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
@@ -77,8 +86,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.MarkDiskForCleanup("disk-2");
         diskRegistry.DeallocateDisk("disk-2");
 
+        const i64 prevTabletGen = getTabletGen();
+        UNIT_ASSERT_LT(0, prevTabletGen);
+
         diskRegistry.RebootTablet();
         diskRegistry.WaitReady();
+
+        const i64 curTabletGen = getTabletGen();
+        UNIT_ASSERT_VALUES_EQUAL(prevTabletGen + 1, curTabletGen);
 
         diskRegistry.AcquireDisk("disk-1", "session-1");
         diskRegistry.AcquireDisk("disk-3", "session-2");
@@ -3275,6 +3290,160 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(stateMismatchLocalDbError->Val(), 1);
+    }
+
+    Y_UNIT_TEST(
+        ShouldIgnoreNonpersistentFieldsWhenCheckingDiskRegistryStateIntegrity)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        auto runtime = TTestRuntimeBuilder().WithAgents({agent1}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, {agent1});
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvBackupDiskRegistryStateResponse)
+                {
+                    auto& record =
+                        event
+                            ->Get<TEvDiskRegistry::
+                                      TEvBackupDiskRegistryStateResponse>()
+                            ->Record;
+                    auto& agent =
+                        record.MutableMemoryBackup()->MutableAgents()->at(0);
+                    auto* unknownDevice = agent.AddUnknownDevices();
+                    unknownDevice->SetDeviceName("dev-3");
+                    unknownDevice->SetDeviceUUID("uuid-3");
+                    record.MutableMemoryBackup()->AddOldDirtyDevices("dev-4");
+
+                    auto* dirtyDevice =
+                        record.MutableMemoryBackup()->AddDirtyDevices();
+                    dirtyDevice->SetId("uuid-1");
+                    dirtyDevice->SetDiskId("dev-1");
+
+                    dirtyDevice =
+                        record.MutableLocalDBBackup()->AddDirtyDevices();
+                    dirtyDevice->SetId("uuid-1");
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto result = diskRegistry.EnsureDiskRegistryStateIntegrity();
+        UNIT_ASSERT(!result->Record.HasError());
+    }
+
+    Y_UNIT_TEST(ShouldDestroyVolumeInSyncModeWhenChangingDeviceStateToError)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        auto ensureNoResponseFromDeallocate = [&](auto& runtime)
+        {
+            auto evList = runtime.CaptureEvents();
+            for (auto& ev: evList) {
+                UNIT_ASSERT(
+                    ev->GetTypeRewrite() !=
+                    TEvDiskRegistry::EvDeallocateDiskResponse);
+            }
+            runtime.PushEventsFront(evList);
+        };
+
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
+        config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
+
+        auto runtime =
+            TTestRuntimeBuilder().With(config).WithAgents({agent1}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAndWaitForAgents(*runtime, {agent1});
+
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("vol");
+        diskRegistry.AllocateDisk("vol", 20_GB);
+
+        runtime->DispatchEvents({}, 10ms);
+        TString deviceUuid;
+        TActorId recipient, sender;
+        ui32 cookie;
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvSecureEraseDeviceRequest)
+                {
+                    Y_UNUSED(runtime);
+                    auto& msg =
+                        *event
+                             ->Get<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
+
+                    if (deviceUuid.empty()) {
+                        recipient = event->Recipient;
+                        sender = event->Sender;
+                        cookie = event->Cookie;
+                        deviceUuid = msg.Record.GetDeviceUUID();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        diskRegistry.MarkDiskForCleanup("vol");
+        diskRegistry.SendDeallocateDiskRequest("vol", true);
+
+        runtime->DispatchEvents({[&]
+                                 {
+                                     TDispatchOptions options;
+                                     options.CustomFinalCondition = [&]
+                                     {
+                                         return !deviceUuid.empty();
+                                     };
+                                     return options;
+                                 }()});
+
+        auto response =
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
+                MakeError(E_REJECTED));
+
+        ensureNoResponseFromDeallocate(*runtime);
+
+        diskRegistry.ChangeDeviceState(deviceUuid, NProto::DEVICE_STATE_ERROR);
+
+        runtime->Send(new IEventHandle(
+            sender,
+            sender,
+            response.release(),
+            0,   // flags
+            cookie));
+
+        runtime->DispatchEvents({}, 100ms);
+
+        diskRegistry.DeallocateDisk("vol", true);
+        diskRegistry.RecvDeallocateDiskResponse();
     }
 }
 

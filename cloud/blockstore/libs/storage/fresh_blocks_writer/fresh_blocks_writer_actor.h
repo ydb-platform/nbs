@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 
@@ -50,9 +51,7 @@ private:
     TPoisonPillHelper PoisonPillHelper;
 
     std::unique_ptr<TPartitionChannelsState> ChannelsState;
-    std::unique_ptr<TCommitIdsState> CommitIdsState;
     std::unique_ptr<TPartitionFlushState> FlushState;
-    std::unique_ptr<TPartitionTrimFreshLogState> TrimFreshLogState;
 
     ui64 TabletGeneration = 0;
 
@@ -72,10 +71,7 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
-    NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-    NPartition::TThreadSafePartCountersPtr PartCounters;
-
-    NPartition::TThreadSafePartStatsPtr PartStats;
+    TPartitionThreadSafeStatePtr SharedState;
 
 public:
     TFreshBlocksWriterActor(
@@ -141,16 +137,26 @@ private:
         const NActors::TActorContext& ctx,
         TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer);
 
+    void ZeroFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 writeRange);
+
     void RebootOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TStringBuf& requestName);
 
     void UpdateStats(const NProto::TPartitionStats& update);
 
+    void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
+
+    void ClearWriteQueue(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWaitPartition);
     STFUNC(StateFreshBlobsLoading);
     STFUNC(StateWork);
+    STFUNC(StateZombie);
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
@@ -177,6 +183,10 @@ private:
 
     void HandleZeroBlocksCompleted(
         const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessWriteQueue(
+        const NPartition::TEvPartitionPrivate::TEvProcessWriteQueue::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

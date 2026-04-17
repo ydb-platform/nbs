@@ -1,6 +1,7 @@
 #include "split_request_service.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -655,6 +656,73 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
         const auto& result = future1.GetValue(TDuration::MilliSeconds(1));
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_ABORTED,
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldRecalculateChecksumOnWriteBlocksSplit)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        const TString data = "aabbccddeeffgghhjjkk";
+        auto range =
+            TBlockRange64::WithLength(1, data.size() / DefaultBlockSize);
+
+        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+        env.SetupRequest(request, range, data);
+        *request->MutableChecksums()->Add() =
+            CalculateChecksum(request->GetBlocks(), DefaultBlockSize);
+
+        auto future = env.SplitRequestService->WriteBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+        UNIT_ASSERT_VALUES_EQUAL(false, future.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, testBlockStore.WriteBlocksPromises.size());
+        auto* firstWrite = testBlockStore.WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(1, 5));
+        auto* secondWrite = testBlockStore.WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(6, 5));
+        UNIT_ASSERT(firstWrite != nullptr);
+        UNIT_ASSERT(secondWrite != nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, firstWrite->Request->ChecksumsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, secondWrite->Request->ChecksumsSize());
+
+        NProto::TIOVector firstIov;
+        for (size_t i = 0; i < 5; ++i) {
+            firstIov.AddBuffers(
+                data.substr(i * DefaultBlockSize, DefaultBlockSize));
+        }
+        NProto::TIOVector secondIov;
+        for (size_t i = 5; i < 10; ++i) {
+            secondIov.AddBuffers(
+                data.substr(i * DefaultBlockSize, DefaultBlockSize));
+        }
+        const auto expectedFirst =
+            CalculateChecksum(firstIov, DefaultBlockSize);
+        const auto expectedSecond =
+            CalculateChecksum(secondIov, DefaultBlockSize);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedFirst.GetChecksum(),
+            firstWrite->Request->GetChecksums(0).GetChecksum());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedSecond.GetChecksum(),
+            secondWrite->Request->GetChecksums(0).GetChecksum());
+
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            firstWrite->Request->GetChecksums(0).GetChecksum(),
+            secondWrite->Request->GetChecksums(0).GetChecksum());
+
+        firstWrite->Promise.SetValue(NProto::TWriteBlocksResponse());
+        secondWrite->Promise.SetValue(NProto::TWriteBlocksResponse());
+
+        const auto& result = future.GetValue(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
             result.GetError().GetCode(),
             FormatError(result.GetError()));
     }

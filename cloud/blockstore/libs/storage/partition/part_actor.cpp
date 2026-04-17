@@ -84,7 +84,9 @@ TPartitionActor::TPartitionActor(
               .PartitionIndex = partitionIndex,
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
-{}
+{
+    SharedState = std::make_shared<TPartitionThreadSafeState>();
+}
 
 TPartitionActor::~TPartitionActor()
 {
@@ -207,7 +209,7 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
         PartCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions());
-        IoCompanionCounters->Swap(CreatePartitionDiskCounters(
+        SharedState->PartCounters.Swap(CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             DiagnosticsConfig->GetHistogramCounterOptions()));
     }
@@ -228,7 +230,7 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         return;
     }
 
-    State->UpdateWithThreadSafeStats();
+    State->UpdateWithThreadSafeStats(SharedState->PartStats);
     const auto& stats = State->GetStats();
 
 #define BLOCKSTORE_PARTITION_UPDATE_COUNTER(name, category, ...)              \
@@ -990,6 +992,24 @@ void TPartitionActor::CreateIOCompanionClient()
     IOCompanionClient = std::make_unique<TIOCompanionClient>(*this);
 }
 
+bool TPartitionActor::IsFreshBlocksWriterEnabled() const
+{
+    return Config->GetFreshBlocksWriterEnabled() ||
+           Config->IsFreshBlocksWriterFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
+bool TPartitionActor::IsReadBlockMaskOnCompactionOptimizationEnabled() const
+{
+    return Config->GetReadBlockMaskOnCompactionOptimizationEnabled() ||
+           Config->IsReadBlockMaskOnCompactionOptimizationFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -1135,6 +1155,10 @@ STFUNC(TPartitionActor::StateWork)
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvExecuteTransactions,
+            HandleExecuteTransactions);
+
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
@@ -1214,6 +1238,8 @@ STFUNC(TPartitionActor::StateZombie)
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvExecuteTransactions);
+
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with
         // TPartitionActor::BootWakeupEventTag tag.
@@ -1242,7 +1268,7 @@ void TPartitionActor::HandleGetPartitionInfo(
         "%s GetPartitionInfo request",
         LogTitle.GetWithTime().c_str());
 
-    State->UpdateWithThreadSafeStats();
+    State->UpdateWithThreadSafeStats(SharedState->PartStats);
     auto json = State->AsJson();
     auto response = std::make_unique<TEvVolume::TEvGetPartitionInfoResponse>();
     response->Record.SetPayload(json.GetStringRobust());
@@ -1309,7 +1335,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    auto updates = ResourceMetricsQueue->PopAll();
+    auto updates = SharedState->ResourceMetricsQueue.PopAll();
     for (auto& update: updates) {
         std::visit([&](auto&& arg) { UpdateResourceMetrics(arg); }, update);
     }
@@ -1322,7 +1348,7 @@ void TPartitionActor::HandleUpdateResourceMetrics(
 
     // Update partition stats from FreshBlocksWriter in case that some stats are
     // stuck.
-    State->UpdateWithThreadSafeStats();
+    State->UpdateWithThreadSafeStats(SharedState->PartStats);
 }
 
 void TPartitionActor::HandleGetFreshChannelsInfo(
@@ -1336,22 +1362,29 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->ChannelsCount = State->GetChannelCount();
     response->Generation = Executor()->Generation();
 
-    response->ResourceMetricsQueue = ResourceMetricsQueue;
-    response->PartCounters = IoCompanionCounters;
-    response->GroupDowntimes = GroupDowntimes;
+    SharedState->UnflushedFreshBlobByteCount.store(
+        State->GetUnflushedFreshBlobByteCount());
 
-    response->PartStats = State->AccessThreadSafeStats();
+    response->SharedState = SharedState;
 
     for (size_t i = 0; i < State->GetChannelCount(); ++i) {
         response->ChannelPermissions.emplace_back(
             State->GetChannelPermissions(i));
     }
 
-    response->CommitIdGenerator = State->GetCommitIdGenerator();
-
     FreshBlocksWriter = ev->Sender;
 
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TPartitionActor::HandleExecuteTransactions(
+    const TEvPartitionCommonPrivate::TEvExecuteTransactions::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto& msg = *ev->Get();
+    for (auto& tx: msg.Transactions) {
+        ExecuteTx(ctx, std::move(tx));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

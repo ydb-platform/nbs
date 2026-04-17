@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
@@ -34,7 +35,7 @@ func NewContext() context.Context {
 func GetEndpoint() string {
 	return fmt.Sprintf(
 		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+		os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 	)
 }
 
@@ -80,6 +81,7 @@ type Node struct {
 	Children []Node
 	FileType nfs_client.NodeType
 	Target   string
+	DevID    uint64
 }
 
 func Dir(name string, children ...Node) Node {
@@ -97,12 +99,41 @@ func File(name string) Node {
 	}
 }
 
-// TODO (jkuradobery): support sockets, devices, etc.
 func Symlink(name string, target string) Node {
 	return Node{
 		Name:     name,
 		FileType: nfs_client.NODE_KIND_SYMLINK,
 		Target:   target,
+	}
+}
+
+func Sock(name string) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_SOCK,
+	}
+}
+
+func Fifo(name string) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_FIFO,
+	}
+}
+
+func CharDev(name string, devID uint64) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_CHARDEV,
+		DevID:    devID,
+	}
+}
+
+func BlockDev(name string, devID uint64) Node {
+	return Node{
+		Name:     name,
+		FileType: nfs_client.NODE_KIND_BLOCKDEV,
+		DevID:    devID,
 	}
 }
 
@@ -131,7 +162,13 @@ func generateDirectoryRecursive(
 		children = append(
 			children,
 			generateDirectoryRecursive(
-				fmt.Sprintf("dir_%d_%d_parent_%d", i, maxDepth, parentNumber),
+				fmt.Sprintf(
+					"dir_%d_%d_parent_%d_%s",
+					i,
+					maxDepth,
+					parentNumber,
+					uuid.Must(uuid.NewV4()).String(),
+				),
 				maxDepth-1,
 				countFunc,
 				i,
@@ -144,10 +181,11 @@ func generateDirectoryRecursive(
 			children,
 			File(
 				fmt.Sprintf(
-					"file_%d_%d_parent_%d",
+					"file_%d_%d_parent_%d_%s",
 					i,
 					maxDepth,
 					parentNumber,
+					uuid.Must(uuid.NewV4()).String(),
 				),
 			),
 		)
@@ -193,6 +231,51 @@ func HomogeneousDirectoryTree(layers []FilesystemLayerConfig) Node {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+var StandardFilesystem = Root(
+	Dir("etc",
+		File("passwd"),
+		File("hosts"),
+	),
+	Dir(
+		"var",
+		Dir(
+			"log",
+		),
+	),
+	Symlink("bin", "/usr/bin"),
+	Dir("usr",
+		Dir("bin", File("bash"), File("ls")),
+		Dir("lib", File("libc.so")),
+	),
+	Dir("empty"),
+	Sock("test.sock"),
+	Fifo("test.fifo"),
+	CharDev("test.chardev", 1),
+	BlockDev("test.blockdev", 2),
+)
+
+var StandardFilesystemExpectedNames = []string{
+	"bin",
+	"empty",
+	"etc",
+	"hosts",
+	"passwd",
+	"test.blockdev",
+	"test.chardev",
+	"test.fifo",
+	"test.sock",
+	"usr",
+	"bin",
+	"bash",
+	"ls",
+	"lib",
+	"libc.so",
+	"var",
+	"log",
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type FileSystemModel struct {
 	root          Node
 	t             *testing.T
@@ -223,9 +306,11 @@ func (f *FileSystemModel) CreateNodesRecursively(
 		UID:        1,
 		GID:        1,
 		LinkTarget: nodeToCreate.Target,
+		DevID:      nodeToCreate.DevID,
 	}
 	id, err := f.session.CreateNode(f.ctx, expectedNode)
 	require.NoError(f.t, err)
+	expectedNode.NodeID = id
 	f.ExpectedNodes = append(f.ExpectedNodes, expectedNode)
 	if !nodeToCreate.FileType.IsDirectory() {
 		return
@@ -255,7 +340,11 @@ func (f *FileSystemModel) CreateAllNodesRecursively() {
 	}
 }
 
-func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
+func (f *FileSystemModel) ListAllNodes(
+	parentNodeID uint64,
+	unsafe bool,
+) []nfs.Node {
+
 	var (
 		nodes  []nfs.Node
 		cookie string
@@ -266,8 +355,8 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 			f.ctx,
 			parentNodeID,
 			cookie,
-			0,     // maxBytes
-			false, // unsafe
+			0, // maxBytes
+			unsafe,
 		)
 		require.NoError(f.t, err)
 		for index := range batch {
@@ -298,8 +387,12 @@ func (f *FileSystemModel) ListAllNodes(parentNodeID uint64) []nfs.Node {
 	return nodes
 }
 
-func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
-	nodes := f.ListAllNodes(parentNodeID)
+func (f *FileSystemModel) ListNodesRecursively(
+	parentNodeID uint64,
+	unsafe bool,
+) []nfs.Node {
+
+	nodes := f.ListAllNodes(parentNodeID, unsafe)
 	// Sort nodes by name to have a deterministic order
 	slices.SortFunc(
 		nodes,
@@ -314,15 +407,35 @@ func (f *FileSystemModel) ListNodesRecursively(parentNodeID uint64) []nfs.Node {
 			continue
 		}
 
-		children := f.ListNodesRecursively(node.NodeID)
+		children := f.ListNodesRecursively(node.NodeID, unsafe)
 		result = append(result, children...)
 	}
 
 	return result
 }
 
-func (f *FileSystemModel) ListAllNodesRecursively() []nfs.Node {
-	return f.ListNodesRecursively(nfs.RootNodeID)
+func (f *FileSystemModel) ListAllNodesRecursively(unsafe bool) []nfs.Node {
+	return f.ListNodesRecursively(nfs.RootNodeID, unsafe)
+}
+
+func (f *FileSystemModel) RequireNodesEqual(
+	nodes []nfs.Node,
+) {
+
+	require.Equal(f.t, len(f.ExpectedNodes), len(nodes))
+	for index, node := range nodes {
+		expectedNode := f.ExpectedNodes[index]
+		require.Equal(f.t, expectedNode.ParentID, node.ParentID)
+		require.Equal(f.t, expectedNode.Name, node.Name)
+		require.Equal(f.t, expectedNode.Type, node.Type)
+		if !expectedNode.Type.IsSymlink() {
+			require.Equal(f.t, expectedNode.Mode, node.Mode)
+		}
+
+		require.Equal(f.t, expectedNode.UID, node.UID)
+		require.Equal(f.t, expectedNode.GID, node.GID)
+		require.Equal(f.t, expectedNode.LinkTarget, node.LinkTarget)
+	}
 }
 
 func (f *FileSystemModel) SetSession(session nfs.Session) {

@@ -1082,7 +1082,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
 
         executor.WriteTx([&] (TVolumeDatabase db) {
             TVolumeDatabase::TThrottlerStateInfo info;
-            info.Budget = 31415;
+            info.BoostBudget = 31415;
+            info.SpentShapingBudgetShare = 0.1;
             db.WriteThrottlerState(info);
         });
 
@@ -1090,7 +1091,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT(db.ReadThrottlerState(stateInfo));
 
             UNIT_ASSERT(stateInfo.Defined());
-            UNIT_ASSERT_VALUES_EQUAL(31415, stateInfo->Budget);
+            UNIT_ASSERT_VALUES_EQUAL(31415, stateInfo->BoostBudget);
+            UNIT_ASSERT_DOUBLES_EQUAL(0.1, stateInfo->SpentShapingBudgetShare, 1e-9);
         });
     }
 
@@ -1446,6 +1448,47 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 UNIT_ASSERT(db.ReadLeaders(readLeaders));
                 UNIT_ASSERT_VALUES_EQUAL(0, readLeaders.size());
             });
+    }
+
+    Y_UNIT_TEST(ShouldStoreBrokenDevices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TVolumeDatabase db) {
+            db.InitSchema();
+        });
+
+        executor.WriteTx([&](TVolumeDatabase db) {
+            db.WriteBrokenDevice("uuid-1", TInstant::MicroSeconds(12345));
+            db.WriteBrokenDevice("uuid-2", TInstant::MicroSeconds(67890));
+        });
+
+        executor.ReadTx([&](TVolumeDatabase db) {
+            TVector<TVolumeDatabase::TBrokenDeviceInfo> devices;
+            UNIT_ASSERT(db.ReadBrokenDevices(devices));
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].DeviceUUID);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::MicroSeconds(12345),
+                devices[0].BrokenTs);
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].DeviceUUID);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::MicroSeconds(67890),
+                devices[1].BrokenTs);
+        });
+
+        executor.WriteTx([&](TVolumeDatabase db) {
+            db.DeleteBrokenDevice("uuid-1");
+        });
+
+        executor.ReadTx([&](TVolumeDatabase db) {
+            TVector<TVolumeDatabase::TBrokenDeviceInfo> devices;
+            UNIT_ASSERT(db.ReadBrokenDevices(devices));
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[0].DeviceUUID);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::MicroSeconds(67890),
+                devices[0].BrokenTs);
+        });
     }
 }
 

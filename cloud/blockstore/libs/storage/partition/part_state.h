@@ -49,6 +49,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // There is also FreshBlocksCount proto counter. We have to split it into
@@ -292,10 +294,11 @@ private:
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
 
+    TPartitionThreadSafeStatePtr ThreadSafeState;
+
 public:
     TPartitionState(
         NProto::TPartitionMeta meta,
-        ui32 generation,
         ICompactionPolicyPtr compactionPolicy,
         ui32 compactionScoreHistorySize,
         ui32 cleanupScoreHistorySize,
@@ -306,13 +309,13 @@ public:
         ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
         bool reassignSystemChannelsImmediately,
-        ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
-        ui32 compactionRangeCountPerRun);
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeStatePtr threadSafeState);
 
 private:
     bool LoadStateFinished = false;
@@ -381,6 +384,31 @@ public:
     bool CheckBlockRange(const TBlockRange64& range) const;
 
     //
+    // Commits
+    //
+public:
+
+    ui64 GetLastCommitId() const
+    {
+        return ThreadSafeState->GetLastCommitId();
+    }
+
+    ui64 GenerateCommitId() const
+    {
+        return ThreadSafeState->GenerateCommitId();
+    }
+
+    auto GetCommitQueue()
+    {
+        return ThreadSafeState->GetCommitQueue();
+    }
+
+    auto AccessCommitQueue()
+    {
+        return ThreadSafeState->AccessCommitQueue();
+    }
+
+    //
     // Channels
     //
 
@@ -399,7 +427,6 @@ public:
     //
 
 private:
-
     void WriteFreshBlocksImpl(
         TPartitionDatabase& db,
         const TBlockRange32& writeRange,
@@ -408,6 +435,7 @@ private:
     {
         TVector<ui64> checkpoints;
         GetCheckpoints().GetCommitIds(checkpoints);
+        ThreadSafeState->GetCheckpointsInFlight()->GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -481,6 +509,42 @@ public:
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
+
+    void IncrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState->IncrementFreshBlocksInFlight(value);
+    }
+
+    void DecrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState->DecrementFreshBlocksInFlight(value);
+    }
+
+    ui64 GetFreshBlocksInFlight() const
+    {
+        return ThreadSafeState->GetFreshBlocksInFlight();
+    }
+
+    //
+    // TrimFreshLog
+    //
+
+public:
+
+    auto GetTrimFreshLogBarriers()
+    {
+        return ThreadSafeState->GetTrimFreshLogBarriers();
+    }
+
+    auto AccessTrimFreshLogBarriers()
+    {
+        return ThreadSafeState->AccessTrimFreshLogBarriers();
+    }
+
+    ui64 GetTrimFreshLogToCommitId() const
+    {
+        return ThreadSafeState->GetTrimFreshLogToCommitId();
+    }
 
     //
     // Mixed blocks
@@ -782,7 +846,6 @@ public:
 
 private:
     TOperationState CleanupState;
-    TCheckpointsInFlight CheckpointsInFlight;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
 
@@ -861,9 +924,14 @@ public:
         return CleanupDelay;
     }
 
-    TCheckpointsInFlight& GetCheckpointsInFlight()
+    auto GetCheckpointsInFlight()
     {
-        return CheckpointsInFlight;
+        return ThreadSafeState->GetCheckpointsInFlight();
+    }
+
+    auto AccessCheckpointsInFlight()
+    {
+        return ThreadSafeState->AccessCheckpointsInFlight();
     }
 
     ui64 GetCleanupCommitId() const;
@@ -1058,9 +1126,6 @@ public:
     // Stats
     //
 
-private:
-    TThreadSafePartStatsPtr Stats = std::make_shared<TThreadSafePartStats>();
-
 public:
     const NProto::TPartitionStats& GetStats() const
     {
@@ -1069,7 +1134,6 @@ public:
 
     NProto::TPartitionStats& AccessStats()
     {
-        UpdateWithThreadSafeStats();
         return *Meta.MutableStats();
     }
 
@@ -1096,14 +1160,9 @@ public:
     void DumpHtml(IOutputStream& out) const;
     NJson::TJsonValue AsJson() const;
 
-    TThreadSafePartStatsPtr AccessThreadSafeStats()
+    void UpdateWithThreadSafeStats(TThreadSafePartStats& stats)
     {
-        return Stats;
-    }
-
-    void UpdateWithThreadSafeStats()
-    {
-        auto statsToAdd = Stats->Swap({});
+        auto statsToAdd = stats.Swap({});
         UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
     }
 };

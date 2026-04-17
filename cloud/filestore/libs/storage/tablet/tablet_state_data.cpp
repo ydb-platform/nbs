@@ -295,6 +295,12 @@ bool TIndexTabletState::IsWriteAllowed(
         return false;
     }
 
+    if (values.FlushBytesItemCount >= thresholds.FlushBytesItemCount) {
+        *message = TStringBuilder()
+                   << "freshBytesItemCount: " << values.FlushBytesItemCount;
+        return false;
+    }
+
     if (values.CompactionScore >= thresholds.CompactionScore) {
         *message = TStringBuilder()
                    << "compactionScore: " << values.CompactionScore;
@@ -1555,6 +1561,12 @@ void TIndexTabletState::UpdateShardBalancer(const TVector<TShardStats>& stats)
         stats,
         desiredFreeSpaceReserve,
         minFreeSpaceReserve);
+}
+
+TVector<IShardBalancer::TShardDescr>
+TIndexTabletState::MakeOrderedShardList() const
+{
+    return Impl->ShardBalancer->MakeOrderedShardList();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

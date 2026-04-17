@@ -30,6 +30,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TBlockMask GetFullBlockMask()
+{
+    TBlockMask mask;
+    mask.Set(0, MaxBlocksCount);
+    return mask;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRangeCompactionInfo
 {
     const TBlockRange32 BlockRange;
@@ -684,17 +693,21 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         }
 
         for (auto& [blobId, blob]: rc.AffectedBlobs) {
+            if (auto* blockMask = blob.BlockMask.Get()) {
+                // could already be full
+                if (IsBlockMaskFull(*blockMask, MaxBlocksInBlob)) {
+                    continue;
+                }
+
+                // mask overwritten blocks
+                for (ui16 blobOffset: blob.Offsets) {
+                    blockMask->Set(blobOffset);
+                }
+            } else {
+                blob.BlockMask = GetFullBlockMask();
+            }
+
             auto& blockMask = blob.BlockMask.GetRef();
-
-            // could already be full
-            if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                continue;
-            }
-
-            // mask overwritten blocks
-            for (ui16 blobOffset: blob.Offsets) {
-                blockMask.Set(blobOffset);
-            }
 
             auto [blobIt, inserted] =
                 affectedBlobs.try_emplace(blobId, std::move(blob));
@@ -1022,6 +1035,7 @@ STFUNC(TCompactionActor::StateWork)
 class TCompactionBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IBlobsVisitor
 {
 private:
     TTxPartition::TRangeCompaction& Args;
@@ -1062,6 +1076,13 @@ public:
             blobId,
             blobOffset,
             KeepTrackOfAffectedBlocks);
+        return true;
+    }
+
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    {
+        auto& ab = Args.AffectedBlobs[blobId];
+        ab.BlobRangeHint = blockRange;
         return true;
     }
 };
@@ -1447,7 +1468,7 @@ void TPartitionActor::HandleCompaction(
 
     State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
@@ -1459,40 +1480,12 @@ void TPartitionActor::HandleCompaction(
         msg->CompactionOptions,
         std::move(ranges));
 
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-    Y_ABORT_UNLESS(minCommitId <= commitId);
-
-    if (minCommitId == commitId) {
-        // start execution
-        ExecuteTx(ctx, std::move(tx));
-    } else {
-        // delay execution until all previous commits completed
-        State->AccessCommitQueue().Enqueue(std::move(tx), commitId);
-    }
+    SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
-    ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
-
-    while (!State->GetCommitQueue().Empty()) {
-        ui64 commitId = State->GetCommitQueue().Peek();
-        Y_ABORT_UNLESS(minCommitId <= commitId);
-
-        if (minCommitId == commitId) {
-            // start execution
-            ExecuteTx(ctx, State->AccessCommitQueue().Dequeue());
-        } else {
-            // delay execution until all previous commits completed
-            break;
-        }
-    }
-
-    // TODO: too many different queues exist
-    // Since create checkpoint operation waits for the last commit to complete
-    // here we force checkpoints queue to try to proceed to the next
-    // create checkpoint request
-    ProcessCheckpointQueue(ctx);
+    SharedState->ProcessCommitQueue(ctx);
 }
 
 void TPartitionActor::HandleCompactionCompleted(
@@ -1521,7 +1514,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     UpdateStats(msg->Stats);
 
-    State->AccessCommitQueue().ReleaseBarrier(commitId);
+    State->AccessCommitQueue()->ReleaseBarrier(commitId);
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
@@ -1584,6 +1577,7 @@ void PrepareRangeCompaction(
     const bool fullCompaction,
     const TActorContext& ctx,
     const ui64 tabletId,
+    const bool readBlockMaskOnCompactionOptimizationEnabled,
     bool& ready,
     TPartitionDatabase& db,
     TPartitionState& state,
@@ -1596,6 +1590,7 @@ void PrepareRangeCompaction(
     ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);
     visitor.KeepTrackOfAffectedBlocks = false;
     ready &= db.FindMergedBlocks(
+        visitor,
         visitor,
         args.BlockRange,
         true,   // precharge
@@ -1701,19 +1696,36 @@ void PrepareRangeCompaction(
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
-        if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
-            Y_ABORT_UNLESS(kv.second.BlockMask.Defined(),
-                "Could not read block mask for blob: %s",
-                ToString(MakeBlobId(tabletId, kv.first)).data());
-        } else {
-            ready = false;
+        const bool compactRangeContainsBlob =
+            args.BlockRange.Contains(kv.second.BlobRangeHint);
+
+        if (!compactRangeContainsBlob ||
+            !readBlockMaskOnCompactionOptimizationEnabled)
+        {
+            if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
+                STORAGE_VERIFY_C(
+                    kv.second.BlockMask.Defined(),
+                    TWellKnownEntityTypes::TABLET,
+                    tabletId,
+                    TStringBuilder() << "Could not read block mask for blob: "
+                                     << MakeBlobId(tabletId, kv.first));
+            } else {
+                ready = false;
+            }
+        } else if (state.GetCleanupQueue().HasBlob(kv.first)) {
+            // If the blob is in the cleanup queue, we should not try to add
+            // this blob to cleanup queue again.
+            kv.second.BlockMask = GetFullBlockMask();
         }
 
         if (args.ChecksumsEnabled) {
             if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
-                Y_ABORT_UNLESS(kv.second.BlobMeta.Defined(),
-                    "Could not read blob meta for blob: %s",
-                    ToString(MakeBlobId(tabletId, kv.first)).data());
+                STORAGE_VERIFY_C(
+                    kv.second.BlobMeta.Defined(),
+                    TWellKnownEntityTypes::TABLET,
+                    tabletId,
+                    TStringBuilder() << "Could not read blob meta for blob: "
+                                     << MakeBlobId(tabletId, kv.first));
             } else {
                 ready = false;
             }
@@ -2004,6 +2016,7 @@ bool TPartitionActor::PrepareCompaction(
             fullCompaction,
             ctx,
             TabletID(),
+            IsReadBlockMaskOnCompactionOptimizationEnabled(),
             ready,
             db,
             *State,

@@ -1951,6 +1951,98 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TVector<TString>({"dev-1"}),
             response->Record.GetPathsToAttach());
     }
+
+    Y_UNIT_TEST_F(ShouldOrderAllAttachDetachRequests, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAttachDetachPathsEnabled(true);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {}));
+
+        NProto::TControlPlaneRequestNumber requestNumber;
+
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvAttachPathsRequest) {
+                    auto* ev =
+                        event->Get<TEvDiskAgent::TEvAttachPathsRequest>();
+
+                    requestNumber.CopyFrom(
+                        ev->Record.GetControlPlaneRequestNumber());
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvDetachPathsRequest)
+                {
+                    auto* ev =
+                        event->Get<TEvDiskAgent::TEvDetachPathsRequest>();
+
+                    requestNumber.CopyFrom(
+                        ev->Record.GetControlPlaneRequestNumber());
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvRegisterAgentResponse)
+                {
+                    auto* ev =
+                        event->Get<TEvDiskRegistry::TEvRegisterAgentResponse>();
+                    requestNumber.CopyFrom(
+                        ev->Record.GetControlPlaneRequestNumber());
+                }
+
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        RegisterAgents(*Runtime, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, requestNumber.GetRequestNumber());
+        UNIT_ASSERT_VALUES_EQUAL(2, requestNumber.GetDiskRegistryGeneration());
+
+        AddDevice("agent-1", "dev-2");
+
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, requestNumber.GetRequestNumber());
+        UNIT_ASSERT_VALUES_EQUAL(2, requestNumber.GetDiskRegistryGeneration());
+
+        // back dev-2 to detached state
+        RemoveDevice("agent-1", "dev-2");
+
+        UNIT_ASSERT_VALUES_EQUAL(3, requestNumber.GetRequestNumber());
+        UNIT_ASSERT_VALUES_EQUAL(2, requestNumber.GetDiskRegistryGeneration());
+
+        DiskRegistry->RebootTablet();
+
+        AddHost("agent-1");
+
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, requestNumber.GetRequestNumber());
+        UNIT_ASSERT_VALUES_EQUAL(3, requestNumber.GetDiskRegistryGeneration());
+
+        config.SetAttachDetachPathsEnabled(false);
+
+        Runtime->Configs->StorageConfig = std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig()));
+
+        DiskRegistry->RebootTablet();
+
+        RegisterAgents(*Runtime, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, requestNumber.GetRequestNumber());
+        UNIT_ASSERT_VALUES_EQUAL(4, requestNumber.GetDiskRegistryGeneration());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

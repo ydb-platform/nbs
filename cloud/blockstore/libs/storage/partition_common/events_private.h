@@ -12,8 +12,8 @@
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/commit_id_generator.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
@@ -392,12 +392,7 @@ struct TEvPartitionCommonPrivate
 
         TVector<EChannelPermissions> ChannelPermissions;
 
-        NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-        NPartition::TThreadSafePartCountersPtr PartCounters;
-        NPartition::TThreadSafePartStatsPtr PartStats;
-        NPartition::TGroupDowntimesPtr GroupDowntimes;
-
-        TCommitIdGeneratorPtr CommitIdGenerator;
+        TPartitionThreadSafeStatePtr SharedState;
     };
 
 
@@ -428,6 +423,14 @@ struct TEvPartitionCommonPrivate
     {
     };
 
+    //
+    // ExecuteTransactions
+    //
+
+    struct TExecuteTransactions
+    {
+        TVector<std::unique_ptr<ITransactionBase>> Transactions;
+    };
 
     // Events declaration
     //
@@ -450,6 +453,7 @@ struct TEvPartitionCommonPrivate
         EvWriteBlobCompleted,
         EvWriteFreshBlocksCompleted,
         EvZeroFreshBlocksCompleted,
+        EvExecuteTransactions,
 
         EvEnd
     };
@@ -481,6 +485,9 @@ struct TEvPartitionCommonPrivate
 
     using TEvZeroFreshBlocksCompleted =
         TResponseEvent<TOperationCompleted, EvZeroFreshBlocksCompleted>;
+
+    using TEvExecuteTransactions =
+        TRequestEvent<TExecuteTransactions, EvExecuteTransactions>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

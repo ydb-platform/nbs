@@ -110,6 +110,9 @@ message TVolumeModel
 
     // Number of user channels to store fresh blobs.
     uint32 FreshChannelsCount = 9;
+
+    // Number of blocks per stripe (for multipartition YDB-based volumes).
+    uint32 BlocksPerStripe = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -292,6 +295,9 @@ message TVolume
     // Enables discard (ZeroBlocks) requests for the volume.
     // If this flag is set, it should never be unset anymore!
     optional bool VhostDiscardEnabled = 39;
+
+    // Number of blocks per stripe (for multipartition YDB-based volumes).
+    uint32 BlocksPerStripe = 40;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
