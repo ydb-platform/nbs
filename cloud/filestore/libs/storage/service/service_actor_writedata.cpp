@@ -1,16 +1,16 @@
 #include "service_actor.h"
 
 #include "rope_utils.h"
+#include "verify.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
-#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -263,7 +263,7 @@ private:
         auto* msg = ev->Get();
         const auto& error = msg->GetError();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
 
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
@@ -294,7 +294,7 @@ private:
             LogTag.c_str(),
             GenerateBlobIdsResponse.DebugString().Quote().c_str());
 
-        TABLET_VERIFY(
+        SERVICE_VERIFY(
             UseUnconfirmedFlow ||
             !GenerateBlobIdsResponse.GetUnconfirmedFlowEnabled());
 
@@ -367,7 +367,7 @@ private:
                     &putData[0],
                     ropeIt,
                     blobId.BlobSize());
-                TABLET_VERIFY(bytesCopied == blobId.BlobSize());
+                SERVICE_VERIFY(bytesCopied == blobId.BlobSize());
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
                     std::move(putData),
@@ -468,9 +468,9 @@ private:
 
         // It is implicitly expected that cookies are generated in increasing
         // order starting from 0.
-        // TODO: replace this TABLET_VERIFY with a critical event + WriteData
+        // TODO: replace this SERVICE_VERIFY with a critical event + WriteData
         // fallback
-        TABLET_VERIFY(
+        SERVICE_VERIFY(
             blobIdx < InFlightBSRequests.size() &&
             InFlightBSRequests[blobIdx] &&
             !InFlightBSRequests[blobIdx]->IsCompleted());
@@ -589,7 +589,7 @@ private:
     {
         auto* msg = ev->Get();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
@@ -678,7 +678,7 @@ private:
     {
         auto* msg = ev->Get();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
@@ -713,7 +713,7 @@ private:
     {
         auto* msg = ev->Get();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
@@ -774,7 +774,7 @@ private:
         ++TabletProxyRetries;
 
         if (TabletProxyRetries % ProxyCriticalRetryThreshold == 0) {
-            TABLET_VERIFY(retryRequest != ETabletRetryRequest::None);
+            SERVICE_VERIFY(retryRequest != ETabletRetryRequest::None);
 
             const auto requestType =
                 retryRequest == ETabletRetryRequest::ConfirmAddData
@@ -912,7 +912,7 @@ private:
             } else {
                 TString buffer;
                 auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
-                TABLET_VERIFY(bytesCopied == length);
+                SERVICE_VERIFY(bytesCopied == length);
                 unalignedHead.SetContent(std::move(buffer));
             }
         }
@@ -929,7 +929,7 @@ private:
                 TString buffer;
                 auto bytesCopied =
                     CopyBufferFromRope(Rope, buffer, offset, length);
-                TABLET_VERIFY(bytesCopied == length);
+                SERVICE_VERIFY(bytesCopied == length);
                 unalignedTail.SetContent(std::move(buffer));
             }
         }
