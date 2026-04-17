@@ -194,14 +194,6 @@ void TVolumeActor::UpdateTabletMetrics(
             volumeMetrics));
 }
 
-void TVolumeActor::HandlePartStatsSaved(
-    const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-}
-
 void TVolumeActor::HandleScrubberCounters(
     const TEvVolume::TEvScrubberCounters::TPtr& ev,
     const TActorContext& ctx)

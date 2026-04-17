@@ -882,10 +882,6 @@ private:
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandlePartStatsSaved(
-        const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleScrubberCounters(
         const TEvVolume::TEvScrubberCounters::TPtr& ev,
         const NActors::TActorContext& ctx);

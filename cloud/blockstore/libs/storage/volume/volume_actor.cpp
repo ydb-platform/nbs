@@ -1121,7 +1121,6 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandleDiskRegistryBasedPartCounters);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
-        HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
         HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
         HFunc(
             TEvVolumePrivate::TEvWriteOrZeroCompleted,
@@ -1245,6 +1244,7 @@ STFUNC(TVolumeActor::StateWork)
             TEvService::TEvSetVhostDiscardFlagResponse,
             HandleSetVhostDiscardFlagResponse);
 
+        IgnoreFunc(TEvVolumePrivate::TEvPartStatsSaved);
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
