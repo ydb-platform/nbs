@@ -3774,6 +3774,59 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectCheckpointRequestWhenCheckpointIsInFlight)
+    {
+        auto runtime = PrepareTestActorRuntime(DefaultConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool interceptEvent = false;
+
+        std::unique_ptr<IEventHandle> putEvent;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+
+                    if (msg->Id.Channel() == 0 && interceptEvent) {
+                        putEvent.reset(event.Release());
+                        interceptEvent = false;
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        interceptEvent = true;
+        partition.SendCreateCheckpointRequest("cp1", "id1");
+
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT(putEvent);
+
+        {
+            partition.SendCreateCheckpointRequest("cp1", "id2");
+            auto response = partition.RecvCreateCheckpointResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        {
+            partition.SendDeleteCheckpointRequest("cp1");
+            auto response = partition.RecvDeleteCheckpointResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        runtime->SendAsync(putEvent.release());
+
+        auto response = partition.RecvCreateCheckpointResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        partition.DeleteCheckpoint("cp1");
+        partition.CreateCheckpoint("cp1", "id2");
+    }
+
     void DoTestFullCompaction(bool forced)
     {
         constexpr ui32 rangesCount = 5;

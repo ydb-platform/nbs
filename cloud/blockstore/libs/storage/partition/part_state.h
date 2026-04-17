@@ -924,7 +924,7 @@ public:
         return CleanupDelay;
     }
 
-    auto GetCheckpointsInFlight()
+    auto GetCheckpointsInFlight() const
     {
         return ThreadSafeState->GetCheckpointsInFlight();
     }
