@@ -143,7 +143,9 @@ public:
         TString* next,
         ui32* skippedRefs,
         bool noAutoPrecharge,
-        NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY) override;
+        NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY,
+        ui32 maxRows = Max<ui32>()) override;
+
 
     bool ReadNodeRefs(
         ui64 startNodeId,

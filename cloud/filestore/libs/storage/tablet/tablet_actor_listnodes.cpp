@@ -141,11 +141,16 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     // TODO: AccessCheck
     TABLET_VERIFY(args.Node);
 
+    ui32 maxRows = Max<ui32>();
+    if (args.Request.GetMaxRows() > 0) {
+        maxRows = args.Request.GetMaxRows();
+    }
+
     if (!PrechargeNodeRefs(
             db,
             args.NodeId,
             args.Cookie,
-            Max<ui64>(),
+            maxRows,
             args.BytesToPrecharge))
     {
         return false; // not ready
@@ -162,7 +167,8 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
         args.MaxBytes,
         &args.Next,
         Config->GetNodeRefsNoAutoPrecharge(),
-        args.Request.GetListNodesSizeMode()))
+        args.Request.GetListNodesSizeMode(),
+        maxRows))
     {
         ready = false;
     }

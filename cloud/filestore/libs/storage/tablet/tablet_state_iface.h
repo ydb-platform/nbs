@@ -147,7 +147,9 @@ public:
         TString* next = nullptr,
         ui32* skippedRefs = nullptr,
         bool noAutoPrecharge = false,
-        NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY) = 0;
+        NProto::EListNodesSizeMode sizeMode = NProto::LNSM_NAME_ONLY,
+        ui32 maxRows = Max<ui32>()) = 0;
+
 
     /**
      * @brief read at most maxCount node refs starting from key
