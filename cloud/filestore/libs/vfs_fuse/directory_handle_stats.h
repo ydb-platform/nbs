@@ -20,7 +20,7 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t DirectoryHandlesMaxBucketCount = 60;   // 1 minute window
+constexpr size_t DirectoryHandleMaxBucketCount = 60;   // 1 minute window
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,17 +62,17 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDirectoryHandlesStats final: public IModuleStats
+class TDirectoryHandleStats final: public IModuleStats
 {
 private:
-    TMaxMetric<DirectoryHandlesMaxBucketCount> CacheSize;
-    TMaxMetric<DirectoryHandlesMaxBucketCount> ChunkCount;
+    TMaxMetric<DirectoryHandleMaxBucketCount> CacheSize;
+    TMaxMetric<DirectoryHandleMaxBucketCount> ChunkCount;
 
     void ChangeCacheSize(i64 delta);
     void ChangeChunkCount(i64 delta);
 
 public:
-    explicit TDirectoryHandlesStats(ITimerPtr timer);
+    explicit TDirectoryHandleStats(ITimerPtr timer);
 
     TStringBuf GetName() const override;
 
@@ -88,10 +88,10 @@ public:
     void UpdateStats(TInstant now) override;
 };
 
-using TDirectoryHandlesStatsPtr = std::shared_ptr<TDirectoryHandlesStats>;
+using TDirectoryHandleStatsPtr = std::shared_ptr<TDirectoryHandleStats>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesStatsPtr CreateDirectoryHandlesStats(ITimerPtr timer);
+TDirectoryHandleStatsPtr CreateDirectoryHandleStats(ITimerPtr timer);
 
 }   // namespace NCloud::NFileStore::NFuse

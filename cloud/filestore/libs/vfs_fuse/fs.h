@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "directory_handles_stats.h"
+#include "directory_handle_stats.h"
 #include "fuse.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
@@ -475,10 +475,10 @@ IFileSystemPtr CreateFileSystem(
     TFileSystemConfigPtr config,
     IFileStorePtr session,
     IRequestStatsPtr stats,
-    TDirectoryHandlesStatsPtr directoryHandlesStats,
+    TDirectoryHandleStatsPtr directoryHandleStats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
-    TDirectoryHandlesStoragePtr directoryHandlesStorage,
+    TDirectoryHandleStoragePtr directoryHandleStorage,
     TWriteBackCache writeBackCache);
 
 }   // namespace NCloud::NFileStore::NFuse

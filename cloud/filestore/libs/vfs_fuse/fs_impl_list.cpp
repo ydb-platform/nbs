@@ -3,8 +3,6 @@
 #include "fs_directory_content_format.h"
 #include "fs_directory_handle.h"
 
-#include <util/random/random.h>
-
 #include <sys/stat.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -39,11 +37,7 @@ bool CheckDirectoryHandle(
 
 void TFileSystem::ClearDirectoryCache()
 {
-    with_lock (DirectoryHandlesLock) {
-        STORAGE_DEBUG("clear directory cache of size %lu",
-            DirectoryHandles.size());
-        DirectoryHandles.clear();
-    }
+    DirectoryHandleCache->Clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,20 +51,7 @@ void TFileSystem::OpenDir(
 {
     STORAGE_DEBUG("OpenDir #" << ino << " @" << fi->flags);
 
-    ui64 id = 0;
-    auto handle = std::make_shared<TDirectoryHandle>(ino);
-    with_lock (DirectoryHandlesLock) {
-        do {
-            id = RandomNumber<ui64>();
-        } while (!DirectoryHandles.try_emplace(id, handle).second);
-
-        if (DirectoryHandlesStorage) {
-            DirectoryHandlesStorage->StoreHandle(id, TDirectoryHandleChunk{.Index = ino});
-        }
-
-        DirectoryHandlesStats->IncreaseCacheSize(handle->GetSerializedSize());
-        DirectoryHandlesStats->IncreaseChunkCount(handle->GetChunkCount());
-    }
+    const auto id = DirectoryHandleCache->CreateHandle(ino);
 
     fuse_file_info info = {};
     info.flags = fi->flags;
@@ -79,19 +60,7 @@ void TFileSystem::OpenDir(
     const int res = ReplyOpen(*callContext, {}, req, &info);
     if (res != 0) {
         // syscall was interrupted
-        with_lock (DirectoryHandlesLock) {
-            auto it = DirectoryHandles.find(id);
-            if (it != DirectoryHandles.end()) {
-                DirectoryHandlesStats->DecreaseCacheSize(
-                    it->second->GetSerializedSize());
-                DirectoryHandlesStats->DecreaseChunkCount(
-                    it->second->GetChunkCount());
-            }
-            DirectoryHandles.erase(id);
-            if (DirectoryHandlesStorage) {
-                DirectoryHandlesStorage->RemoveHandle(id);
-            }
-        }
+        DirectoryHandleCache->RemoveHandle(id);
     }
 }
 
@@ -108,22 +77,11 @@ void TFileSystem::ReadDir(
         << " size:" << size
         << " fh:" << fi->fh);
 
-    std::shared_ptr<TDirectoryHandle> handle;
-    with_lock (DirectoryHandlesLock) {
-        auto it = DirectoryHandles.find(fi->fh);
-        if (it == DirectoryHandles.end()) {
-            ReplyError(
-                *callContext,
-                ErrorInvalidHandle(fi->fh),
-                req,
-                EBADF);
-            return;
-        }
-
-        handle = it->second;
+    auto handle = DirectoryHandleCache->FindHandle(fi->fh);
+    if (!handle) {
+        ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
+        return;
     }
-
-    Y_ABORT_UNLESS(handle);
 
     if (!CheckDirectoryHandle(req, ino, *handle, Log, __func__)) {
         ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
@@ -152,14 +110,7 @@ void TFileSystem::ReadDir(
 
     if (!offset) {
         // directory contents need to be refreshed on rewinddir()
-        DirectoryHandlesStats->DecreaseCacheSize(handle->GetSerializedSize());
-        DirectoryHandlesStats->DecreaseChunkCount(handle->GetChunkCount());
-        handle->ResetContent();
-        DirectoryHandlesStats->IncreaseCacheSize(handle->GetSerializedSize());
-        DirectoryHandlesStats->IncreaseChunkCount(handle->GetChunkCount());
-        if (DirectoryHandlesStorage) {
-            DirectoryHandlesStorage->ResetHandle(fi->fh);
-        }
+        DirectoryHandleCache->ResetHandle(fi->fh, handle);
     } else if (auto content = handle->ReadContent(size, offset, Log)) {
         reply(*this, *content);
         return;
@@ -280,13 +231,7 @@ void TFileSystem::ReadDir(
                          << " limit: " << size << " actual size "
                          << handleChunk.DirectoryContent.GetSize());
 
-                if (DirectoryHandlesStorage) {
-                    DirectoryHandlesStorage->UpdateHandle(fh, handleChunk);
-                }
-
-                DirectoryHandlesStats->IncreaseCacheSize(
-                    handleChunk.GetSerializedSize());
-                DirectoryHandlesStats->IncreaseChunkCount(1);
+                self->DirectoryHandleCache->AppendChunk(fh, handleChunk);
 
                 reply(*self, handleChunk.DirectoryContent);
             });
@@ -300,22 +245,11 @@ void TFileSystem::ReleaseDir(
 {
     STORAGE_DEBUG("ReleaseDir #" << ino);
 
-    with_lock (DirectoryHandlesLock) {
-        auto it = DirectoryHandles.find(fi->fh);
-        if (it != DirectoryHandles.end()) {
-            CheckDirectoryHandle(req, ino, *it->second, Log, __func__);
-
-            DirectoryHandlesStats->DecreaseCacheSize(
-                it->second->GetSerializedSize());
-            DirectoryHandlesStats->DecreaseChunkCount(
-                it->second->GetChunkCount());
-
-            DirectoryHandles.erase(it);
-
-            if (DirectoryHandlesStorage) {
-                DirectoryHandlesStorage->RemoveHandle(fi->fh);
-            }
-        }
+    if (!DirectoryHandleCache->RemoveHandle(fi->fh, ino)) {
+        STORAGE_ERROR(
+            "request #" << fuse_req_unique(req) << " consistency violation: "
+                        << __func__ << " (handle.Index != ino), fh: " << fi->fh
+                        << " ino: " << ino);
     }
 
     // should reply w/o lock
@@ -328,22 +262,11 @@ bool TFileSystem::ValidateDirectoryHandle(
     fuse_ino_t ino,
     uint64_t fh)
 {
-    std::shared_ptr<TDirectoryHandle> handle;
-    with_lock (DirectoryHandlesLock) {
-        auto it = DirectoryHandles.find(fh);
-        if (it == DirectoryHandles.end()) {
-            ReplyError(
-                callContext,
-                ErrorInvalidHandle(fh),
-                req,
-                EBADF);
-            return false;
-        }
-
-        handle = it->second;
+    auto handle = DirectoryHandleCache->FindHandle(fh);
+    if (!handle) {
+        ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);
+        return false;
     }
-
-    Y_ABORT_UNLESS(handle);
 
     if (!CheckDirectoryHandle(req, ino, *handle, Log, __func__)) {
         ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);

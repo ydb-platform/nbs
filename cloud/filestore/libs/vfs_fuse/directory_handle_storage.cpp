@@ -1,4 +1,4 @@
-#include "directory_handles_storage.h"
+#include "directory_handle_storage.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
@@ -8,7 +8,7 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesStorage::TDirectoryHandlesStorage(
+TDirectoryHandleStorage::TDirectoryHandleStorage(
     TLog& log,
     const TString& filePath,
     ui64 recordsCount,
@@ -24,7 +24,7 @@ TDirectoryHandlesStorage::TDirectoryHandlesStorage(
         30);
 }
 
-void TDirectoryHandlesStorage::StoreHandle(
+void TDirectoryHandleStorage::StoreHandle(
     ui64 handleId,
     const TDirectoryHandleChunk& initialHandleChunk)
 {
@@ -41,7 +41,7 @@ void TDirectoryHandlesStorage::StoreHandle(
     CreateRecord(handleId, record);
 }
 
-void TDirectoryHandlesStorage::UpdateHandle(
+void TDirectoryHandleStorage::UpdateHandle(
     ui64 handleId,
     const TDirectoryHandleChunk& handleChunk)
 {
@@ -61,7 +61,7 @@ void TDirectoryHandlesStorage::UpdateHandle(
     CreateRecord(handleId, record);
 }
 
-void TDirectoryHandlesStorage::CreateRecord(
+void TDirectoryHandleStorage::CreateRecord(
     ui64 handleId,
     const TBuffer& record)
 {
@@ -76,7 +76,7 @@ void TDirectoryHandlesStorage::CreateRecord(
     HandleIdToIndices[handleId].push_back(recordIndex);
 }
 
-void TDirectoryHandlesStorage::RemoveHandle(ui64 handleId)
+void TDirectoryHandleStorage::RemoveHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
     if (HandleIdToIndices.contains(handleId)) {
@@ -92,7 +92,7 @@ void TDirectoryHandlesStorage::RemoveHandle(ui64 handleId)
     HandleIdToIndices.erase(handleId);
 }
 
-void TDirectoryHandlesStorage::ResetHandle(ui64 handleId)
+void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
     if (HandleIdToIndices.contains(handleId)) {
@@ -113,7 +113,7 @@ void TDirectoryHandlesStorage::ResetHandle(ui64 handleId)
     }
 }
 
-void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
+void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
     // Since we store data in chunks instead of a single block, in rare cases
     // a crash during the reset or removal process can lead to inconsistent
@@ -210,7 +210,7 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
     }
 }
 
-void TDirectoryHandlesStorage::Clear()
+void TDirectoryHandleStorage::Clear()
 {
     TGuard guard(TableLock);
     Table->Clear();
@@ -219,7 +219,7 @@ void TDirectoryHandlesStorage::Clear()
 
 // TODO: We can optimize this by counting size for serialization dynamically and
 // when needed serialize it directly to the file without additional copying.
-TBuffer TDirectoryHandlesStorage::SerializeHandle(
+TBuffer TDirectoryHandleStorage::SerializeHandle(
     ui64 handleId,
     const TDirectoryHandleChunk& handleChunk) const
 {
@@ -232,7 +232,7 @@ TBuffer TDirectoryHandlesStorage::SerializeHandle(
     return buffer;
 }
 
-TDirectoryHandleChunkPair TDirectoryHandlesStorage::DeserializeHandleChunk(
+TDirectoryHandleChunkPair TDirectoryHandleStorage::DeserializeHandleChunk(
     const TStringBuf& buffer)
 {
     TMemoryInput input(buffer);
@@ -249,7 +249,7 @@ TDirectoryHandleChunkPair TDirectoryHandlesStorage::DeserializeHandleChunk(
     return {handleId, chunk};
 }
 
-ui64 TDirectoryHandlesStorage::CreateRecord(const TBuffer& record)
+ui64 TDirectoryHandleStorage::CreateRecord(const TBuffer& record)
 {
     ui64 index = Table->AllocRecord(record.Size());
     if (index == TDirectoryHandleTable::InvalidIndex) {
@@ -267,14 +267,14 @@ ui64 TDirectoryHandlesStorage::CreateRecord(const TBuffer& record)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesStoragePtr CreateDirectoryHandlesStorage(
+TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     TLog& log,
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
     ui64 initialDataCompactionBufferSize)
 {
-    return std::make_unique<TDirectoryHandlesStorage>(
+    return std::make_unique<TDirectoryHandleStorage>(
         log,
         filePath,
         recordsCount,

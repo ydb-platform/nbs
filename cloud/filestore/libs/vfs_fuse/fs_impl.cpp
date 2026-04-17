@@ -36,10 +36,10 @@ TFileSystem::TFileSystem(
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        TDirectoryHandlesStatsPtr directoryHandlesStats,
+        TDirectoryHandleStatsPtr directoryHandleStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        TDirectoryHandlesStoragePtr directoryHandlesStorage,
+        TDirectoryHandleStoragePtr directoryHandleStorage,
         TWriteBackCache writeBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
@@ -47,34 +47,26 @@ TFileSystem::TFileSystem(
     , Scheduler(std::move(scheduler))
     , Session(std::move(session))
     , Config(std::move(config))
+    , Log(Logging->CreateLog("NFS_FUSE"))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), NODE_CACHE_SHARD_COUNT)
-    , DirectoryHandlesStats(std::move(directoryHandlesStats))
+    , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
+          Log,
+          std::move(directoryHandleStats),
+          std::move(directoryHandleStorage)))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
-    , DirectoryHandlesStorage(std::move(directoryHandlesStorage))
     , WriteBackCache(std::move(writeBackCache))
 {
-    Log = Logging->CreateLog("NFS_FUSE");
     if (Config->GetFSyncQueueDisabled()) {
         FSyncQueue = std::make_unique<TFSyncQueueStub>();
     } else {
         FSyncQueue =
             std::make_unique<TFSyncQueue>(Config->GetFileSystemId(), Logging);
-    }
-
-    if (DirectoryHandlesStorage) {
-        DirectoryHandlesStorage->LoadHandles(DirectoryHandles);
-
-        for (const auto& [_, handle]: DirectoryHandles) {
-            DirectoryHandlesStats->IncreaseCacheSize(
-                handle->GetSerializedSize());
-            DirectoryHandlesStats->IncreaseChunkCount(handle->GetChunkCount());
-        }
     }
 }
 
@@ -92,15 +84,7 @@ void TFileSystem::Init()
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
-    with_lock (DirectoryHandlesLock) {
-        STORAGE_DEBUG("clear directory cache of size %lu",
-            DirectoryHandles.size());
-        DirectoryHandles.clear();
-
-        if (DirectoryHandlesStorage) {
-            DirectoryHandlesStorage->Clear();
-        }
-    }
+    DirectoryHandleCache->Reset();
 }
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
