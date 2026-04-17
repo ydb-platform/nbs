@@ -13,7 +13,7 @@ class TMaxTracker {
 
 public:
 
-    TMaxTracker(size_t slots = 15)
+    TMaxTracker(size_t slots = 15) 
         : Slots(std::max<size_t>(1, slots))
     {
         for (auto& a : Slots) {
