@@ -1098,28 +1098,28 @@ public:
 
     struct TTriggerInfo
     {
-        ui64 RangeCount;
-        ui64 RangeThreshold;
-        ui64 DiskCount;
-        ui64 DiskThreshold;
+        ui64 PerRangeCount; // Blobs count or garbage blocks count.
+        ui64 PerRangeThreshold;
+        ui64 PerDiskCount; // Blobs count or garbage blocks count.
+        ui64 PerDiskThreshold;
         TEvPartitionPrivate::ECompactionMode Mode;
         ECompactionTriggerKind TriggerKind;
         bool ThrottlingAllowed;
         bool FullCompaction;
 
         TTriggerInfo(
-            ui64 rangeCount,
-            ui64 rangeThreshold,
-            ui64 diskCount,
-            ui64 diskThreshold,
+            ui64 perRangeCount,
+            ui64 perRangeThreshold,
+            ui64 perDiskCount,
+            ui64 perDiskThreshold,
             TEvPartitionPrivate::ECompactionMode mode,
             ECompactionTriggerKind triggerKind,
             bool throttlingAllowed,
             bool fullCompaction)
-            : RangeCount(rangeCount)
-            , RangeThreshold(rangeThreshold)
-            , DiskCount(diskCount)
-            , DiskThreshold(diskThreshold)
+            : PerRangeCount(perRangeCount)
+            , PerRangeThreshold(perRangeThreshold)
+            , PerDiskCount(perDiskCount)
+            , PerDiskThreshold(perDiskThreshold)
             , Mode(mode)
             , TriggerKind(triggerKind)
             , ThrottlingAllowed(throttlingAllowed)
@@ -1406,10 +1406,10 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
             Config->GetCompactionCountPerRunChangingPeriod())
     {
         ChangeRangeCountPerRunIfNeeded(
-            info->RangeCount,
-            info->RangeThreshold,
-            info->DiskCount,
-            info->DiskThreshold,
+            info->PerRangeCount,
+            info->PerRangeThreshold,
+            info->PerDiskCount,
+            info->PerDiskThreshold,
             ctx);
     }
 
