@@ -145,6 +145,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 childNodeId1,
                 "",
                 "",
+                false,
                 defaultShardMode);
             db.WriteNodeRef(
                 nodeId,
@@ -610,6 +611,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     childNodeId1,
                     "",
                     "",
+                    false,
                     defaultShardMode);
                 db.WriteNodeRef(
                     nodeId,
@@ -618,6 +620,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     childNodeId2,
                     "",
                     "",
+                    false,
                     defaultShardMode);
             });
 
@@ -1055,6 +1058,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                             nodeRef.ChildNodeId,
                             nodeRef.ShardId,
                             nodeRef.ShardNodeName,
+                            false,
                             writeMode);
                     });
             }
