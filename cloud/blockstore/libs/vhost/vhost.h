@@ -29,7 +29,6 @@ struct TVhostRequest
     ui64 Length = 0;
     TGuardedSgList SgList;
     void* Cookie = nullptr;
-    bool IsDiscardRequest = false;
 
     virtual ~TVhostRequest() = default;
 

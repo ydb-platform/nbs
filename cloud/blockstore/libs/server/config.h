@@ -140,7 +140,6 @@ public:
     bool GetVhostDiscardEnabled() const;
     bool GetVhostDiscardOnlyEnabled() const;
     bool GetVhostWriteZeroesEnabled() const;
-    bool GetDropDiscardRequests() const;
     ui32 GetVhostOptimalIoSize() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;

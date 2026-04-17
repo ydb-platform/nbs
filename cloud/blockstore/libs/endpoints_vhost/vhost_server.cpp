@@ -1,7 +1,6 @@
 #include "vhost_server.h"
 
 #include <cloud/blockstore/libs/client/session.h>
-#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/vhost/server.h>
 #include <cloud/storage/core/libs/common/media.h>
@@ -22,7 +21,6 @@ private:
     const NProto::TChecksumFlags ChecksumFlags;
     const bool VhostDiscardEnabled;
     const bool VhostWriteZeroesEnabled;
-    const bool DropDiscardRequests;
     const ui32 MaxZeroBlocksSubRequestSize;
     const ui32 OptimalIoSize;
 
@@ -32,14 +30,12 @@ public:
             NProto::TChecksumFlags checksumFlags,
             bool vhostDiscardEnabled,
             bool vhostWriteZeroesEnabled,
-            bool dropDiscardRequests,
             ui32 maxZeroBlocksSubRequestSize,
             ui32 optimalIoSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
         , VhostDiscardEnabled(vhostDiscardEnabled)
         , VhostWriteZeroesEnabled(vhostWriteZeroesEnabled)
-        , DropDiscardRequests(dropDiscardRequests)
         , MaxZeroBlocksSubRequestSize(maxZeroBlocksSubRequestSize)
         , OptimalIoSize(optimalIoSize)
     {}
@@ -62,8 +58,6 @@ public:
             ShouldEnableVhostDiscardForVolume(VhostDiscardEnabled, volume);
         options.WriteZeroesEnabled =
             VhostWriteZeroesEnabled && !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
-        options.DropDiscardRequests =
-            ShouldDropDiscardRequestsForVolume(DropDiscardRequests, volume);
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
         options.OptimalIoSize = OptimalIoSize;
 
@@ -120,23 +114,11 @@ bool ShouldEnableVhostDiscardForVolume(
            !IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
 }
 
-bool ShouldDropDiscardRequestsForVolume(
-    bool dropDiscardRequests,
-    const NProto::TVolume& volume)
-{
-    // It is not safe to use ZeroBlocks as the implementation of discard
-    // for disk registry based disks.
-    return dropDiscardRequests ||
-           volume.GetTags().contains(DropDiscardRequestsTagName) ||
-           IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
-}
-
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
     bool vhostDiscardEnabled,
     bool vhostWriteZeroesEnabled,
-    bool dropDiscardRequests,
     ui32 maxZeroBlocksSubRequestSize,
     ui32 optimalIoSize)
 {
@@ -145,7 +127,6 @@ IEndpointListenerPtr CreateVhostEndpointListener(
         checksumFlags,
         vhostDiscardEnabled,
         vhostWriteZeroesEnabled,
-        dropDiscardRequests,
         maxZeroBlocksSubRequestSize,
         optimalIoSize);
 }
