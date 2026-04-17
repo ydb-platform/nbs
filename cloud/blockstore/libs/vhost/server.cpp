@@ -301,6 +301,8 @@ private:
 
     TRequestPtr RegisterRequest(TVhostRequestPtr vhostRequest)
     {
+        assert(false);
+
         auto startIndex = vhostRequest->From / Options.BlockSize;
         auto endIndex = (vhostRequest->From + vhostRequest->Length) / Options.BlockSize;
         if (endIndex * Options.BlockSize < vhostRequest->From + vhostRequest->Length) {
