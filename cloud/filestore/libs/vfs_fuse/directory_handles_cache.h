@@ -11,7 +11,7 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDirectoryHandlesManager
+class TDirectoryHandlesCache
 {
 private:
     TLog Log;
@@ -23,7 +23,7 @@ private:
     TDirectoryHandlesStatsPtr Stats;
 
 public:
-    TDirectoryHandlesManager(
+    TDirectoryHandlesCache(
         TLog log,
         TDirectoryHandlesStatsPtr stats,
         TDirectoryHandlesStoragePtr storage);
@@ -39,7 +39,7 @@ public:
         const std::shared_ptr<TDirectoryHandle>& handle);
     void AppendChunk(ui64 handleId, const TDirectoryHandleChunk& handleChunk);
 
-    void ClearCache();
+    void Clear();
     void Reset();
 };
 

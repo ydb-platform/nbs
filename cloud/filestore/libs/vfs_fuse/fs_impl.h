@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include "config.h"
-#include "directory_handles_manager.h"
+#include "directory_handles_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
 #include "node_cache.h"
@@ -91,7 +91,7 @@ private:
 
     TNodeCache NodeCache;
 
-    std::unique_ptr<TDirectoryHandlesManager> DirectoryHandlesManager;
+    std::unique_ptr<TDirectoryHandlesCache> DirectoryHandlesCache;
 
     TXAttrCache XAttrCache;
     TMutex XAttrCacheLock;

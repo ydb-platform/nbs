@@ -37,7 +37,7 @@ bool CheckDirectoryHandle(
 
 void TFileSystem::ClearDirectoryCache()
 {
-    DirectoryHandlesManager->ClearCache();
+    DirectoryHandlesCache->Clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,7 +51,7 @@ void TFileSystem::OpenDir(
 {
     STORAGE_DEBUG("OpenDir #" << ino << " @" << fi->flags);
 
-    const auto id = DirectoryHandlesManager->CreateHandle(ino);
+    const auto id = DirectoryHandlesCache->CreateHandle(ino);
 
     fuse_file_info info = {};
     info.flags = fi->flags;
@@ -60,7 +60,7 @@ void TFileSystem::OpenDir(
     const int res = ReplyOpen(*callContext, {}, req, &info);
     if (res != 0) {
         // syscall was interrupted
-        DirectoryHandlesManager->RemoveHandle(id);
+        DirectoryHandlesCache->RemoveHandle(id);
     }
 }
 
@@ -77,7 +77,7 @@ void TFileSystem::ReadDir(
         << " size:" << size
         << " fh:" << fi->fh);
 
-    auto handle = DirectoryHandlesManager->FindHandle(fi->fh);
+    auto handle = DirectoryHandlesCache->FindHandle(fi->fh);
     if (!handle) {
         ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
         return;
@@ -110,7 +110,7 @@ void TFileSystem::ReadDir(
 
     if (!offset) {
         // directory contents need to be refreshed on rewinddir()
-        DirectoryHandlesManager->ResetHandle(fi->fh, handle);
+        DirectoryHandlesCache->ResetHandle(fi->fh, handle);
     } else if (auto content = handle->ReadContent(size, offset, Log)) {
         reply(*this, *content);
         return;
@@ -231,7 +231,7 @@ void TFileSystem::ReadDir(
                          << " limit: " << size << " actual size "
                          << handleChunk.DirectoryContent.GetSize());
 
-                self->DirectoryHandlesManager->AppendChunk(fh, handleChunk);
+                self->DirectoryHandlesCache->AppendChunk(fh, handleChunk);
 
                 reply(*self, handleChunk.DirectoryContent);
             });
@@ -245,7 +245,7 @@ void TFileSystem::ReleaseDir(
 {
     STORAGE_DEBUG("ReleaseDir #" << ino);
 
-    if (!DirectoryHandlesManager->RemoveHandle(fi->fh, ino)) {
+    if (!DirectoryHandlesCache->RemoveHandle(fi->fh, ino)) {
         STORAGE_ERROR(
             "request #" << fuse_req_unique(req) << " consistency violation: "
                         << __func__ << " (handle.Index != ino), fh: " << fi->fh
@@ -262,7 +262,7 @@ bool TFileSystem::ValidateDirectoryHandle(
     fuse_ino_t ino,
     uint64_t fh)
 {
-    auto handle = DirectoryHandlesManager->FindHandle(fh);
+    auto handle = DirectoryHandlesCache->FindHandle(fh);
     if (!handle) {
         ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);
         return false;

@@ -1,4 +1,4 @@
-#include "directory_handles_manager.h"
+#include "directory_handles_cache.h"
 
 #include <util/random/random.h>
 
@@ -6,7 +6,7 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandlesManager::TDirectoryHandlesManager(
+TDirectoryHandlesCache::TDirectoryHandlesCache(
     TLog log,
     TDirectoryHandlesStatsPtr stats,
     TDirectoryHandlesStoragePtr storage)
@@ -24,7 +24,7 @@ TDirectoryHandlesManager::TDirectoryHandlesManager(
     }
 }
 
-ui64 TDirectoryHandlesManager::CreateHandle(fuse_ino_t ino)
+ui64 TDirectoryHandlesCache::CreateHandle(fuse_ino_t ino)
 {
     ui64 handleId = 0;
     auto handle = std::make_shared<TDirectoryHandle>(ino);
@@ -45,7 +45,7 @@ ui64 TDirectoryHandlesManager::CreateHandle(fuse_ino_t ino)
     return handleId;
 }
 
-std::shared_ptr<TDirectoryHandle> TDirectoryHandlesManager::FindHandle(
+std::shared_ptr<TDirectoryHandle> TDirectoryHandlesCache::FindHandle(
     ui64 handleId)
 {
     with_lock (Lock) {
@@ -54,7 +54,7 @@ std::shared_ptr<TDirectoryHandle> TDirectoryHandlesManager::FindHandle(
     }
 }
 
-void TDirectoryHandlesManager::RemoveHandle(ui64 handleId)
+void TDirectoryHandlesCache::RemoveHandle(ui64 handleId)
 {
     with_lock (Lock) {
         auto it = Handles.find(handleId);
@@ -70,7 +70,7 @@ void TDirectoryHandlesManager::RemoveHandle(ui64 handleId)
     }
 }
 
-bool TDirectoryHandlesManager::RemoveHandle(ui64 handleId, fuse_ino_t ino)
+bool TDirectoryHandlesCache::RemoveHandle(ui64 handleId, fuse_ino_t ino)
 {
     bool isConsistent = true;
 
@@ -92,7 +92,7 @@ bool TDirectoryHandlesManager::RemoveHandle(ui64 handleId, fuse_ino_t ino)
     return isConsistent;
 }
 
-void TDirectoryHandlesManager::ResetHandle(
+void TDirectoryHandlesCache::ResetHandle(
     ui64 handleId,
     const std::shared_ptr<TDirectoryHandle>& handle)
 {
@@ -113,7 +113,7 @@ void TDirectoryHandlesManager::ResetHandle(
     }
 }
 
-void TDirectoryHandlesManager::AppendChunk(
+void TDirectoryHandlesCache::AppendChunk(
     ui64 handleId,
     const TDirectoryHandleChunk& handleChunk)
 {
@@ -125,7 +125,7 @@ void TDirectoryHandlesManager::AppendChunk(
     Stats->IncreaseChunkCount(1);
 }
 
-void TDirectoryHandlesManager::ClearCache()
+void TDirectoryHandlesCache::Clear()
 {
     with_lock (Lock) {
         STORAGE_DEBUG("clear directory cache of size %lu", Handles.size());
@@ -133,10 +133,10 @@ void TDirectoryHandlesManager::ClearCache()
     }
 }
 
-void TDirectoryHandlesManager::Reset()
+void TDirectoryHandlesCache::Reset()
 {
     with_lock (Lock) {
-        STORAGE_DEBUG("clear directory cache of size %lu", Handles.size());
+        STORAGE_DEBUG("reset directory cache of size %lu", Handles.size());
         Handles.clear();
 
         if (Storage) {

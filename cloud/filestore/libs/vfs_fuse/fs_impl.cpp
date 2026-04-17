@@ -51,7 +51,7 @@ TFileSystem::TFileSystem(
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), NODE_CACHE_SHARD_COUNT)
-    , DirectoryHandlesManager(std::make_unique<TDirectoryHandlesManager>(
+    , DirectoryHandlesCache(std::make_unique<TDirectoryHandlesCache>(
           Log,
           std::move(directoryHandlesStats),
           std::move(directoryHandlesStorage)))
@@ -84,7 +84,7 @@ void TFileSystem::Init()
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
-    DirectoryHandlesManager->Reset();
+    DirectoryHandlesCache->Reset();
 }
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
