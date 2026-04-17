@@ -13,7 +13,6 @@
 #include <cloud/blockstore/libs/rdma/iface/log.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/thread.h>
