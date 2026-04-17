@@ -1155,7 +1155,7 @@ public:
     {
         std::optional<TTriggerInfo> info;
 
-        info = TriggerBlobCountCompactionIfNeeded();
+        info = TriggerRangeCompactionIfNeeded();
         if (!info) {
             info = TriggerGarbageCompactionIfNeeded();
         }
@@ -1176,7 +1176,7 @@ private:
     }
 
     [[nodiscard]] std::optional<TTriggerInfo>
-    TriggerBlobCountCompactionIfNeeded() const
+    TriggerRangeCompactionIfNeeded() const
     {
         const auto blobCount =
             State.GetMixedBlobsCount() + State.GetMergedBlobsCount();
@@ -1185,17 +1185,16 @@ private:
             blobCount >
                 State.GetMaxBlobsPerDisk() + State.GetCleanupQueue().GetCount();
 
-        ECompactionTriggerKind triggerKind;
-
         if (TopRangeStat.CompactionScore.Score <= 0 &&
             !diskBlobCountOverThreshold)
         {
             return std::nullopt;
         }
 
-        if (TopRangeStat.CompactionScore.Score <= 0) {
-            triggerKind = ECompactionTriggerKind::ByBlobCountPerDisk;
-        } else {
+        ECompactionTriggerKind triggerKind =
+            ECompactionTriggerKind::ByBlobCountPerDisk;
+
+        if (TopRangeStat.CompactionScore.Score > 0) {
             switch (TopRangeStat.CompactionScore.Type) {
                 case TCompactionScore::EType::BlobCount: {
                     triggerKind = ECompactionTriggerKind::ByBlobCountPerRange;
@@ -1256,8 +1255,6 @@ private:
             }
         }
 
-        ECompactionTriggerKind triggerKind;
-
         ui64 diskGarbage = GetGarbagePercentage();
         ui64 rangeGarbage = GetPercentage(
             TopGarbageRangeStat.UsedBlockCount,
@@ -1265,6 +1262,9 @@ private:
 
         const bool diskGarbageBelowThreshold =
             diskGarbage < Config->GetCompactionGarbageThreshold();
+
+        ECompactionTriggerKind triggerKind =
+            ECompactionTriggerKind::ByGarbageBlocksPerRange;
 
         if (rangeGarbage < Config->GetCompactionRangeGarbageThreshold()) {
             // Not enough garbage in this range.
@@ -1279,8 +1279,6 @@ private:
             }
 
             triggerKind = ECompactionTriggerKind::ByGarbageBlocksPerDisk;
-        } else {
-            triggerKind = ECompactionTriggerKind::ByGarbageBlocksPerRange;
         }
 
         return TTriggerInfo(
