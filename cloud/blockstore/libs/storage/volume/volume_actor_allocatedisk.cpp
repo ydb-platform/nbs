@@ -721,6 +721,7 @@ void TVolumeActor::CompleteUpdateDevices(
         for (const auto* dev: GetAllDevices(State->GetMeta())) {
             currentUUIDs.insert(dev->GetDeviceUUID());
         }
+
         for (auto it = DeviceUUIDToBrokenAt.begin();
              it != DeviceUUIDToBrokenAt.end();)
         {
@@ -737,11 +738,7 @@ void TVolumeActor::CompleteUpdateDevices(
         }
 
         if (DeviceUUIDToBrokenAt.empty()) {
-            VolumeBrokenNotificationSerializer.Notify(
-                ctx,
-                State->GetDiskId(),
-                LogTitle.GetWithTime(),
-                /*broken=*/false);
+            EnqueueHealthNotification(ctx, NProto::VOLUME_HEALTH_HEALTHY);
         }
     }
 

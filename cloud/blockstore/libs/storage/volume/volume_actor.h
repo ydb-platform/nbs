@@ -57,31 +57,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeBrokenNotificationSerializer
-{
-    TDeque<bool> PendingNotifications;
-
-    void Send(
-        const NActors::TActorContext& ctx,
-        const TString& diskId,
-        const TString& logPrefix,
-        bool broken);
-
-public:
-    void Notify(
-        const NActors::TActorContext& ctx,
-        const TString& diskId,
-        const TString& logPrefix,
-        bool broken);
-
-    void OnResponse(
-        const NActors::TActorContext& ctx,
-        const TString& diskId,
-        const TString& logPrefix);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TVolumeActor final
     : public NActors::TActor<TVolumeActor>
     , public TTabletBase<TVolumeActor>
@@ -361,7 +336,7 @@ private:
     bool DiskAllocationScheduled = false;
 
     THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
-    TVolumeBrokenNotificationSerializer VolumeBrokenNotificationSerializer;
+    TDeque<NProto::EVolumeHealth> PendingHealthNotifications;
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
@@ -769,6 +744,14 @@ private:
         const NActors::TActorContext& ctx);
 
     bool IsFreshBlocksWriterEnabled() const;
+
+    void EnqueueHealthNotification(
+        const NActors::TActorContext& ctx,
+        NProto::EVolumeHealth volumeHealth);
+    void ProcessNextHealthNotification(const NActors::TActorContext& ctx);
+    void SendHealthNotification(
+        const NActors::TActorContext& ctx,
+        NProto::EVolumeHealth volumeHealth);
 
 private:
     STFUNC(StateBoot);
