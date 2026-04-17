@@ -662,7 +662,7 @@ void TVolumeProxyActor::HandleBaseDiskDescribeResponse(
     const NProto::TError& error,
     const TActorContext& ctx)
 {
-    if (error.GetCode() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist)) {
+    if (IsDiskNotFoundError(error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME_PROXY,

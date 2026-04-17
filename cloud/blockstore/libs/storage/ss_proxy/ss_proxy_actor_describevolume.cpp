@@ -1,6 +1,7 @@
 #include "ss_proxy_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy_events_private.h>
 
@@ -174,37 +175,31 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-            auto status =
-                static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
-            // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "Describe request error for volume %s %s %s",
+            DiskId.c_str(),
+            GetFullPath().Quote().data(),
+            FormatError(error).c_str());
 
-            LOG_TRACE(
-                ctx,
-                TBlockStoreComponents::SS_PROXY,
-                "Describe request error for volume %s %s %s",
-                DiskId.c_str(),
-                GetFullPath().Quote().data(),
-                FormatError(error).c_str());
-
-            if (status == NKikimrScheme::StatusPathDoesNotExist) {
-                switch (State) {
-                    case EState::DescribePrimaryDeprecated: {
-                        State = EState::DescribePrimary;
-                        DescribeVolume(ctx);
-                        return;
-                    }
-                    case EState::DescribePrimary: {
-                        if (ExactDiskIdMatch || IsSecondaryDiskId(DiskId)) {
-                            break;
-                        }
-                        State = EState::DescribeSecondary;
-                        DescribeVolume(ctx);
-                        return;
-                    }
-                    case EState::DescribeSecondary:
-                        break;
+        if (IsNotFoundSchemeShardError(error)) {
+            switch (State) {
+                case EState::DescribePrimaryDeprecated: {
+                    State = EState::DescribePrimary;
+                    DescribeVolume(ctx);
+                    return;
                 }
+                case EState::DescribePrimary: {
+                    if (ExactDiskIdMatch || IsSecondaryDiskId(DiskId)) {
+                        break;
+                    }
+                    State = EState::DescribeSecondary;
+                    DescribeVolume(ctx);
+                    return;
+                }
+                case EState::DescribeSecondary:
+                    break;
             }
         }
 
