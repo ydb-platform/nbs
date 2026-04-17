@@ -60,6 +60,7 @@ namespace NCloud::NBlockStore {
     xxx(LOCAL_NVME)                                                            \
     BLOCKSTORE_ACTORS(xxx)                                                     \
     xxx(USER_STATS)                                                            \
+    xxx(CELLS)                                                                 \
 // BLOCKSTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////
