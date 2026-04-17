@@ -48,6 +48,7 @@ public:
         const TString& filePath,
         ui64 recordsCount,
         ui64 initialDataAreaSize,
+        ui64 maxDataAreaStepSize,
         ui64 initialDataCompactionBufferSize);
 
     void StoreHandle(
@@ -76,6 +77,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
+    ui64 maxDataAreaStepSize,
     ui64 initialDataCompactionBufferSize);
 
 }   // namespace NCloud::NFileStore::NFuse

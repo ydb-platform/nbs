@@ -13,6 +13,7 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
+    ui64 maxDataAreaStepSize,
     ui64 initialDataCompactionBufferSize)
     : Log(log)
 {
@@ -20,8 +21,13 @@ TDirectoryHandleStorage::TDirectoryHandleStorage(
         filePath,
         recordsCount,
         initialDataAreaSize,
+        maxDataAreaStepSize,
         initialDataCompactionBufferSize,
-        30);
+        TDirectoryHandleTable::DefaultGapSpacePercentageCompactionThreshold,
+        TDirectoryHandleTable::DefaultShrinkLowMemoryOpThreshold,
+        TDirectoryHandleTable::DefaultShrinkTriggerPercent,
+        TDirectoryHandleTable::DefaultShrinkReservePercent,
+        TDirectoryHandleTable::DefaultShrinkMode);
 }
 
 void TDirectoryHandleStorage::StoreHandle(
@@ -272,6 +278,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
     const TString& filePath,
     ui64 recordsCount,
     ui64 initialDataAreaSize,
+    ui64 maxDataAreaStepSize,
     ui64 initialDataCompactionBufferSize)
 {
     return std::make_unique<TDirectoryHandleStorage>(
@@ -279,6 +286,7 @@ TDirectoryHandleStoragePtr CreateDirectoryHandleStorage(
         filePath,
         recordsCount,
         initialDataAreaSize,
+        maxDataAreaStepSize,
         initialDataCompactionBufferSize);
 }
 
