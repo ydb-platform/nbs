@@ -18,7 +18,9 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -29,7 +31,6 @@
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -43,7 +44,6 @@
 #include <util/string/subst.h>
 #include <util/system/env.h>
 #include <util/system/fs.h>
-#include <util/system/hostname.h>
 #include <util/system/sysstat.h>
 
 namespace NCloud::NBlockStore::NClient {
@@ -608,8 +608,15 @@ void TCommand::InitClientConfig()
     if (clientConfig.GetHost() == "localhost" &&
         clientConfig.GetSecurePort() != 0)
     {
-        // With TLS on transform localhost into fully qualified domain name.
-        clientConfig.SetHost(FQDNHostName());
+        // With TLS, we must use a fully qualified domain name instead of
+        // localhost - otherwise, the certificate hostname check will fail
+        clientConfig.SetHost(
+            GetFqdnHostNameWithRetries(
+                [this] (const yexception&) {
+                    GetErrorStream()
+                        << "FQDNHostName failed: " << CurrentExceptionMessage()
+                        << "\n";
+                }));
     }
     if (SkipCertVerification) {
         clientConfig.SetSkipCertVerification(SkipCertVerification);
