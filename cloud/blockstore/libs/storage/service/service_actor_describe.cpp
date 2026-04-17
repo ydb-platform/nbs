@@ -28,6 +28,7 @@ private:
     const TStorageConfigPtr Config;
     const TString DiskId;
     const bool ExactDiskIdMatch = false;
+    const bool IsCellRequest = false;
 
     NProto::TVolume Volume;
 
@@ -36,7 +37,8 @@ public:
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TString diskId,
-        bool exactDiskIdMatch);
+        bool exactDiskIdMatch,
+        bool isCellRequest);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -66,11 +68,13 @@ TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigPtr config,
         TString diskId,
-        bool exactDiskIdMatch)
+        bool exactDiskIdMatch,
+        bool isCellRequest)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
     , ExactDiskIdMatch(exactDiskIdMatch)
+    , IsCellRequest(isCellRequest)
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -113,10 +117,12 @@ void TDescribeVolumeActor::HandleDescribeVolumeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Volume %s: describe failed: %s",
-            DiskId.Quote().data(),
-            FormatError(error).data());
+        if (!IsCellRequest) {
+            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+                "Volume %s: describe failed: %s",
+                DiskId.Quote().data(),
+                FormatError(error).data());
+        }
 
         ReplyAndDie(
             ctx,
@@ -154,10 +160,12 @@ void TDescribeVolumeActor::HandleDescribeDiskResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "Non-replicated volume %s: describe failed: %s",
-            DiskId.Quote().data(),
-            FormatError(error).data());
+        if (!IsCellRequest) {
+            LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+                "Non-replicated volume %s: describe failed: %s",
+                DiskId.Quote().data(),
+                FormatError(error).data());
+        }
 
         ReplyAndDie(
             ctx,
@@ -240,7 +248,8 @@ void TServiceActor::HandleDescribeVolume(
         std::move(requestInfo),
         Config,
         request.GetDiskId(),
-        request.GetHeaders().GetExactDiskIdMatch());
+        request.GetHeaders().GetExactDiskIdMatch(),
+        !request.GetHeaders().GetCellId().empty());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

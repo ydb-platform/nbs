@@ -373,7 +373,7 @@ TDescribeVolumeFuture DescribeVolume(
         cells.emplace_back(std::move(cell));
     }
 
-    TCellInfo localCell("", 1);
+    TCellInfo localCell("local", 1);
     localCell.Hosts.emplace_back("local", service);
     cells.emplace_back(std::move(localCell));
 
