@@ -7187,24 +7187,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             file.Resize(DefaultFileSize);
         }
 
-        const TVector<std::pair<TString, TString>> pathToSerial{
-            {Devices[0], "SN-0"},
-            {Devices[1], "SN-1"},
-            {Devices[2], "SN-2"},
-            {Devices[3], "SN-3"},
-            {newDevice, "SN-NEW"},
-        };
-
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(counters);
         auto mismatch = counters->GetCounter(
             "DiskAgentCriticalEvents/DiskAgentDevicePartlabelMismatch",
             true);
 
-        auto env = TTestEnvBuilder(*Runtime)
-                       .With(CreateDiskAgentConfig())
-                       .With(std::make_shared<TTestNvmeManager>(pathToSerial))
-                       .Build();
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
 
         TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();

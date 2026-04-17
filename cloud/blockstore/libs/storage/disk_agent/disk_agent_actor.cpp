@@ -176,14 +176,15 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
     }
 
     if (!AgentConfig->GetDeviceHealthCheckDisabled()) {
-        HealthCheckActor = NCloud::Register(
-            ctx,
+        HealthCheckActor = ctx.Register(
             NDiskAgent::CreateDeviceIntegrityCheckActor(
                 ctx.SelfID,
                 State->GetEnabledDevices(),
                 UpdateCountersInterval,
-                NvmeManager,
-                NDiskAgent::DefaultPartlabelCheckInterval));
+                NDiskAgent::DefaultPartlabelCheckInterval)
+                .release(),
+            TMailboxType::HTSwap,
+            NKikimr::AppData()->IOPoolId);
     }
 }
 

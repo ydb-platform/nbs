@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
-#include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
@@ -13,7 +12,8 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/datetime/base.h>
-#include <util/generic/hash_set.h>
+#include <util/folder/path.h>
+#include <util/generic/hash.h>
 #include <util/generic/vector.h>
 #include <util/random/fast.h>
 
@@ -65,10 +65,10 @@ private:
     const TActorId DiskAgent;
     const TVector<NProto::TDeviceConfig> Devices;
     const TDuration HealthCheckDelay;
-    const NNvme::INvmeManagerPtr NvmeManager;
     const TDuration PartlabelCheckInterval;
 
     TVector<EDeviceHealthStatus> DevicesHealth;
+    THashMap<TString, TString> SymlinkSnapshot;
     std::optional<TFastRng<ui64>> Rng;
 
     int PendingRequests = 0;
@@ -78,7 +78,6 @@ public:
         const TActorId& diskAgent,
         TVector<NProto::TDeviceConfig> devices,
         TDuration healthCheckDelay,
-        NNvme::INvmeManagerPtr nvmeManager,
         TDuration partlabelCheckInterval);
 
     void Bootstrap(const TActorContext& ctx);
@@ -109,12 +108,10 @@ TDeviceIntegrityCheckActor::TDeviceIntegrityCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
     TDuration healthCheckDelay,
-    NNvme::INvmeManagerPtr nvmeManager,
     TDuration partlabelCheckInterval)
     : DiskAgent{diskAgent}
     , Devices(std::move(devices))
     , HealthCheckDelay(healthCheckDelay)
-    , NvmeManager(std::move(nvmeManager))
     , PartlabelCheckInterval(partlabelCheckInterval)
     , DevicesHealth(Devices.size(), EDeviceHealthStatus::Healthy)
 {}
@@ -122,6 +119,15 @@ TDeviceIntegrityCheckActor::TDeviceIntegrityCheckActor(
 void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
 {
     Rng.emplace(ctx.Now().GetValue());
+
+    for (const auto& device: Devices) {
+        TFsPath path(device.GetDeviceName());
+        if (path.IsSymlink()) {
+            SymlinkSnapshot.emplace(
+                device.GetDeviceName(),
+                path.ReadLink().GetPath());
+        }
+    }
 
     Become(&TThis::StateWork);
     ctx.Schedule(
@@ -139,32 +145,18 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
 
 void TDeviceIntegrityCheckActor::CheckPartlabels()
 {
-    if (!NvmeManager) {
-        return;
-    }
-
-    THashSet<TString> checkedSerials;
-
-    for (const auto& device: Devices) {
-        if (device.GetSerialNumber().empty()) {
-            continue;
+    for (const auto& [configPath, expected]: SymlinkSnapshot) {
+        TString current;
+        TFsPath path(configPath);
+        if (path.IsSymlink()) {
+            current = path.ReadLink().GetPath();
         }
-
-        if (!checkedSerials.insert(device.GetSerialNumber()).second) {
-            continue;
-        }
-
-        auto [currentSerial, error] =
-            NvmeManager->GetSerialNumber(device.GetDeviceName());
-
-        if (HasError(error) || currentSerial != device.GetSerialNumber()) {
+        if (current != expected) {
             ReportDiskAgentDevicePartlabelMismatch(
-                "The partlabel may point to a different physical disk.",
-                {{"deviceId", device.GetDeviceUUID()},
-                 {"path", device.GetDeviceName()},
-                 {"expectedSerial", device.GetSerialNumber()},
-                 {"actualSerial", currentSerial},
-                 {"error", FormatError(error)}});
+                "Partlabel may point to a different physical disk",
+                {{"path", configPath},
+                 {"expected", expected},
+                 {"actual", current}});
         }
     }
 }
@@ -317,14 +309,12 @@ std::unique_ptr<IActor> CreateDeviceIntegrityCheckActor(
     const TActorId& diskAgent,
     TVector<NProto::TDeviceConfig> devices,
     TDuration healthCheckDelay,
-    NNvme::INvmeManagerPtr nvmeManager,
     TDuration partlabelCheckInterval)
 {
     return std::make_unique<TDeviceIntegrityCheckActor>(
         diskAgent,
         std::move(devices),
         healthCheckDelay,
-        std::move(nvmeManager),
         partlabelCheckInterval);
 }
 
