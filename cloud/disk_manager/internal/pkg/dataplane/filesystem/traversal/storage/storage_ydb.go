@@ -11,18 +11,21 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
-	db         *persistence.YDBClient
-	tablesPath string
+	db            *persistence.YDBClient
+	tablesPath    string
+	deletionLimit uint64
 }
 
 func NewStorage(
 	db *persistence.YDBClient,
 	tablesPath string,
+	deletionLimit uint64,
 ) Storage {
 
 	return &storageYDB{
-		db:         db,
-		tablesPath: db.AbsolutePath(tablesPath),
+		db:            db,
+		tablesPath:    db.AbsolutePath(tablesPath),
+		deletionLimit: deletionLimit,
 	}
 }
 
@@ -328,7 +331,6 @@ func (s *storageYDB) ScheduleChildNodesForListing(
 func (s *storageYDB) ClearDirectoryListingQueue(
 	ctx context.Context,
 	snapshotID string,
-	deletionLimit uint64,
 ) error {
 
 	err := s.db.Execute(
@@ -341,7 +343,7 @@ func (s *storageYDB) ClearDirectoryListingQueue(
 					ctx,
 					session,
 					snapshotID,
-					deletionLimit,
+					s.deletionLimit,
 				)
 			}
 			return err
