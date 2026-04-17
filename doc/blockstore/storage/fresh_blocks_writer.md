@@ -64,3 +64,4 @@ Generating a new commit ID and acquiring the commit barrier should be done atomi
 7. part + compaction actor: overwrite fbw data with old data but a higher commit-id - commit-id-2.
 
 On finishing a fresh write we should release all trim and commit barriers and then process the checkpoint and commit queue. During compaction or checkpoint creation we should wait for all in-flight commits to complete, so after finishing a fresh write we execute all waiting transactions.
+
