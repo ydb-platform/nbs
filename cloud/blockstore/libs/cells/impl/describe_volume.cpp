@@ -263,10 +263,12 @@ void TDescribeResponseHandler::Start()
 
     auto req = std::make_shared<NProto::TDescribeVolumeRequest>();
     req->CopyFrom(Request);
+    auto& headers = *req->MutableHeaders();
     if (Cell.CellId) {
-        auto& headers = *req->MutableHeaders();
         headers.ClearInternal();
         headers.SetCellId(Cell.CellId);
+    } else {
+        headers.SetCellId(LocalDescribeLabel);
     }
 
     auto weak = weak_from_this();
@@ -377,7 +379,7 @@ TDescribeVolumeFuture DescribeVolume(
         cells.emplace_back(std::move(cell));
     }
 
-    TCellInfo localCell(LocalDescribeLabel, 1);
+    TCellInfo localCell("", 1);
     localCell.Hosts.emplace_back(LocalDescribeLabel, service);
     cells.emplace_back(std::move(localCell));
 
