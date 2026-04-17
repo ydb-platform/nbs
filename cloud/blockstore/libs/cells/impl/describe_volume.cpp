@@ -26,6 +26,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString LocalDescribeLabel{"local"};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCellHostInfo
 {
     TString Fqdn;
@@ -139,7 +143,7 @@ TFuture<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
     for (auto& cell: Cells) {
         ui32 hostIndex = 0;
         for (auto& host: cell.Hosts) {
-            if (!cell.CellId.empty()) {
+            if (cell.CellId != LocalDescribeLabel) {
                 STORAGE_DEBUG(
                     TStringBuilder()
                     << "Send remote Describe Request to " << host.Fqdn
@@ -373,8 +377,8 @@ TDescribeVolumeFuture DescribeVolume(
         cells.emplace_back(std::move(cell));
     }
 
-    TCellInfo localCell("local", 1);
-    localCell.Hosts.emplace_back("local", service);
+    TCellInfo localCell(LocalDescribeLabel, 1);
+    localCell.Hosts.emplace_back(LocalDescribeLabel, service);
     cells.emplace_back(std::move(localCell));
 
     auto describeHandler = std::make_shared<TMultiCellDescribeHandler>(
