@@ -927,7 +927,7 @@ def test_client_should_not_crash_on_shutdown_while_listing_endpoints():
     # trigger a crash
     try:
         daemon.stop()
-    except Exception as e:
+    except Exception as _:
         pass
 
     assert 1 == daemon.daemon.exit_code
