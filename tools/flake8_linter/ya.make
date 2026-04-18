@@ -1,5 +1,7 @@
-IF (USE_PREBUILT_TOOLS OR OPENSOURCE)
-    INCLUDE(${ARCADIA_ROOT}/build/prebuilt/tools/flake8_linter/ya.make.prebuilt)
+IF (NOT FORCE_BUILD_FLAKE8_LINTER)
+    IF (USE_PREBUILT_TOOLS OR OPENSOURCE)
+        INCLUDE(${ARCADIA_ROOT}/build/prebuilt/tools/flake8_linter/ya.make.prebuilt)
+    ENDIF()
 ENDIF()
 
 IF (NOT PREBUILT)
