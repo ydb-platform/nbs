@@ -60,6 +60,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             .WithAgents({ agent1 })
             .Build();
 
+        auto getTabletGen = [&runtime]
+        {
+            return runtime->GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "disk_registry")
+                ->GetCounter("TabletGeneration")
+                ->Val();
+        };
+
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
@@ -77,8 +86,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.MarkDiskForCleanup("disk-2");
         diskRegistry.DeallocateDisk("disk-2");
 
+        const i64 prevTabletGen = getTabletGen();
+        UNIT_ASSERT_LT(0, prevTabletGen);
+
         diskRegistry.RebootTablet();
         diskRegistry.WaitReady();
+
+        const i64 curTabletGen = getTabletGen();
+        UNIT_ASSERT_VALUES_EQUAL(prevTabletGen + 1, curTabletGen);
 
         diskRegistry.AcquireDisk("disk-1", "session-1");
         diskRegistry.AcquireDisk("disk-3", "session-2");

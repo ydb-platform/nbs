@@ -1,10 +1,10 @@
 import json
 import os
-import time
 
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.common import flush_logs
 from cloud.filestore.tests.python.lib.fs import (
     FsItem,
     fill_fs,
@@ -164,15 +164,7 @@ def test_nonsharded_vs_sharded_fs():
     with open(results_path, "wb") as results_file:
         results_file.write(out)
 
-    #
-    # Sleep for a while to ensure that the profile log is flushed
-    # before we start analyzing it
-    # The default value of ProfileLogTimeThreshold for tests is 100ms
-    # TODO(#568) - here and in other similar places - introduce and use a
-    # private api method which would force profile-log flush
-    #
-
-    time.sleep(2)
+    flush_logs()
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool")

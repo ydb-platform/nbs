@@ -26,6 +26,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString LocalDescribeLabel{"local"};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCellHostInfo
 {
     TString Fqdn;
@@ -259,10 +263,12 @@ void TDescribeResponseHandler::Start()
 
     auto req = std::make_shared<NProto::TDescribeVolumeRequest>();
     req->CopyFrom(Request);
+    auto& headers = *req->MutableHeaders();
     if (Cell.CellId) {
-        auto& headers = *req->MutableHeaders();
         headers.ClearInternal();
         headers.SetCellId(Cell.CellId);
+    } else {
+        headers.SetCellId(LocalDescribeLabel);
     }
 
     auto weak = weak_from_this();
@@ -374,7 +380,7 @@ TDescribeVolumeFuture DescribeVolume(
     }
 
     TCellInfo localCell("", 1);
-    localCell.Hosts.emplace_back("local", service);
+    localCell.Hosts.emplace_back(LocalDescribeLabel, service);
     cells.emplace_back(std::move(localCell));
 
     auto describeHandler = std::make_shared<TMultiCellDescribeHandler>(

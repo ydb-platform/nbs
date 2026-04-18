@@ -56,11 +56,12 @@ func getNbsConfigMap() configurator.ConfigMap {
 		// for kikimr initializer configs used custom protobuf files
 		// from cloud/storage/core/tools/common/go/configurator/kikimr-proto
 		// with a minimum set of parameters to avoid dependencies
-		"nbs-auth.txt":         {Proto: &kikimrProto.TAuthConfig{}, FileName: "auth.txt"},
-		"nbs-ic.txt":           {Proto: &kikimrProto.TInterconnectConfig{}, FileName: "ic.txt"},
-		"nbs-log.txt":          {Proto: &kikimrProto.TLogConfig{}, FileName: "log.txt"},
-		"nbs-shared-cache.txt": {Proto: &kikimrProto.TSharedCacheConfig{}, FileName: "shared-cache.txt"},
-		"nbs-sys.txt":          {Proto: &kikimrProto.TActorSystemConfig{}, FileName: "sys.txt"},
+		"nbs-auth.txt":               {Proto: &kikimrProto.TAuthConfig{}, FileName: "auth.txt"},
+		"nbs-ic.txt":                 {Proto: &kikimrProto.TInterconnectConfig{}, FileName: "ic.txt"},
+		"nbs-immediate-controls.txt": {Proto: &kikimrProto.TImmediateControlsConfig{}, FileName: "immediate-controls.txt"},
+		"nbs-log.txt":                {Proto: &kikimrProto.TLogConfig{}, FileName: "log.txt"},
+		"nbs-shared-cache.txt":       {Proto: &kikimrProto.TSharedCacheConfig{}, FileName: "shared-cache.txt"},
+		"nbs-sys.txt":                {Proto: &kikimrProto.TActorSystemConfig{}, FileName: "sys.txt"},
 	}
 }
 
@@ -77,11 +78,12 @@ func getNfsConfigMap() configurator.ConfigMap {
 		// for kikimr initializer configs used custom protobuf files
 		// from cloud/storage/core/tools/common/go/configurator/kikimr-proto
 		// with a minimum set of parameters to avoid dependencies
-		"nfs-auth.txt":  {Proto: &kikimrProto.TAuthConfig{}, FileName: "auth.txt"},
-		"nfs-ic.txt":    {Proto: &kikimrProto.TInterconnectConfig{}, FileName: "ic.txt"},
-		"nfs-log.txt":   {Proto: &kikimrProto.TLogConfig{}, FileName: "log.txt"},
-		"nfs-sys.txt":   {Proto: &kikimrProto.TActorSystemConfig{}, FileName: "sys.txt"},
-		"vhost-log.txt": {Proto: &kikimrProto.TLogConfig{}, FileName: "vhost-log.txt"},
+		"nfs-auth.txt":               {Proto: &kikimrProto.TAuthConfig{}, FileName: "auth.txt"},
+		"nfs-ic.txt":                 {Proto: &kikimrProto.TInterconnectConfig{}, FileName: "ic.txt"},
+		"nfs-immediate-controls.txt": {Proto: &kikimrProto.TImmediateControlsConfig{}, FileName: "immediate-controls.txt"},
+		"nfs-log.txt":                {Proto: &kikimrProto.TLogConfig{}, FileName: "log.txt"},
+		"nfs-sys.txt":                {Proto: &kikimrProto.TActorSystemConfig{}, FileName: "sys.txt"},
+		"vhost-log.txt":              {Proto: &kikimrProto.TLogConfig{}, FileName: "vhost-log.txt"},
 	}
 }
 

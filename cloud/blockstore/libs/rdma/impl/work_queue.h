@@ -65,6 +65,12 @@ struct TSendWr
     {
         return reinterpret_cast<T*>(wr.sg_list[0].addr);
     }
+
+    template <typename T>
+    const T* Message() const
+    {
+        return const_cast<const T*>(const_cast<TSendWr*>(this)->Message<T>());
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,6 +91,12 @@ struct TRecvWr
     T* Message()
     {
         return reinterpret_cast<T*>(wr.sg_list[0].addr);
+    }
+
+    template <typename T>
+    const T* Message() const
+    {
+        return const_cast<const T*>(const_cast<TRecvWr*>(this)->Message<T>());
     }
 };
 

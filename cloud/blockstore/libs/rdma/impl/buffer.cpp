@@ -24,7 +24,8 @@ private:
 
     void* Address;
     ui32 Length;
-    ui32 Key;
+    ui32 LKey;
+    ui32 RKey;
 
     bool Custom = false;
 
@@ -36,7 +37,8 @@ public:
         : MemoryRegion(std::move(mr))
         , Address(MemoryRegion->addr)
         , Length(MemoryRegion->length)
-        , Key(MemoryRegion->lkey)
+        , LKey(MemoryRegion->lkey)
+        , RKey(MemoryRegion->rkey)
         , Custom(custom)
     {}
 
@@ -45,7 +47,8 @@ public:
         : MemoryRegion(NVerbs::NullPtr)
         , Address(addr)
         , Length(length)
-        , Key(key)
+        , LKey(key)
+        , RKey(key)
         , Custom(custom)
     {}
 
@@ -74,7 +77,8 @@ public:
         TBuffer buffer;
         buffer.Chunk = this;
 
-        buffer.Key = Key;
+        buffer.LKey = LKey;
+        buffer.RKey = RKey;
         buffer.Address = reinterpret_cast<uintptr_t>(Address) + AllocatedBytes;
         buffer.Length = allocSize;
 

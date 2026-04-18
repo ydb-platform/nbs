@@ -294,9 +294,7 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
             msg->ChannelPermissions[channel]);
     }
 
-    CommitIdsState = std::make_unique<TCommitIdsState>();
     FlushState = std::make_unique<TPartitionFlushState>();
-    TrimFreshLogState = std::make_unique<TPartitionTrimFreshLogState>();
 
     SharedState = std::move(msg->SharedState);
 

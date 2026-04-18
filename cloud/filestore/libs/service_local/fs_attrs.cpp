@@ -11,7 +11,7 @@ namespace NCloud::NFileStore {
 NProto::TSetNodeAttrResponse TLocalFileSystem::SetNodeAttr(
     const NProto::TSetNodeAttrRequest& request)
 {
-    STORAGE_TRACE("SetNodeAttr " << DumpMessage(request));
+    STORAGE_TRACE("SetNodeAttr " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -73,7 +73,7 @@ NProto::TSetNodeAttrResponse TLocalFileSystem::SetNodeAttr(
 NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
     const NProto::TGetNodeAttrRequest& request)
 {
-    STORAGE_TRACE("GetNodeAttr " << DumpMessage(request));
+    STORAGE_TRACE("GetNodeAttr " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -119,7 +119,7 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
 NProto::TSetNodeXAttrResponse TLocalFileSystem::SetNodeXAttr(
     const NProto::TSetNodeXAttrRequest& request)
 {
-    STORAGE_TRACE("SetNodeXAttr " << DumpMessage(request));
+    STORAGE_TRACE("SetNodeXAttr " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -137,7 +137,7 @@ NProto::TSetNodeXAttrResponse TLocalFileSystem::SetNodeXAttr(
 NProto::TGetNodeXAttrResponse TLocalFileSystem::GetNodeXAttr(
     const NProto::TGetNodeXAttrRequest& request)
 {
-    STORAGE_TRACE("GetNodeXAttr " << DumpMessage(request));
+    STORAGE_TRACE("GetNodeXAttr " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -154,7 +154,7 @@ NProto::TGetNodeXAttrResponse TLocalFileSystem::GetNodeXAttr(
 NProto::TListNodeXAttrResponse TLocalFileSystem::ListNodeXAttr(
     const NProto::TListNodeXAttrRequest& request)
 {
-    STORAGE_TRACE("ListNodeXAttr " << DumpMessage(request));
+    STORAGE_TRACE("ListNodeXAttr " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -177,7 +177,7 @@ NProto::TListNodeXAttrResponse TLocalFileSystem::ListNodeXAttr(
 NProto::TRemoveNodeXAttrResponse TLocalFileSystem::RemoveNodeXAttr(
     const NProto::TRemoveNodeXAttrRequest& request)
 {
-    STORAGE_TRACE("RemoveNodeXAttr " << DumpMessage(request));
+    STORAGE_TRACE("RemoveNodeXAttr " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());

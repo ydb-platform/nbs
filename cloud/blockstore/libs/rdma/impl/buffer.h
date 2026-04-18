@@ -30,7 +30,7 @@ private:
     std::unique_ptr<TImpl> Impl;
 
 public:
-    TBufferPool(TBufferPoolConfig config = {});
+    explicit TBufferPool(TBufferPoolConfig config);
     ~TBufferPool();
 
     void Init(NVerbs::IVerbsPtr verbs, ibv_pd* pd, int flags);
@@ -38,6 +38,7 @@ public:
     struct TBuffer : TBufferDesc
     {
         TChunk* Chunk;
+        ui32 LKey;
 
         explicit operator TStringBuf() const;
     };

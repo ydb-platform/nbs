@@ -12,6 +12,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+using namespace NActors;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,7 +98,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(CalculateCurrentBackpressure)
     {
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, 0);
+            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
         TPartitionState state(
             DefaultConfig(1, 1000),
             BuildDefaultCompactionPolicy(5),
@@ -166,7 +168,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(CompactionBackpressureShouldBeZeroIfNotRequiredByPolicy)
     {
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, 0);
+            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
         TPartitionState state(
             DefaultConfig(1, 1000),
             std::make_shared<TNoBackpressurePolicy>(),
@@ -202,7 +204,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         config.MutableConfig()->SetBaseDiskCheckpointId("baseDiskCheckpointId");
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, 0);
+            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -288,7 +290,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, 0);
+            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -332,7 +334,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, 0);
+            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -466,7 +468,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto config = DefaultConfig(1, diskSize / DefaultBlockSize);
 
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, 0);
+            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
         TPartitionState state(
             config,
             BuildDefaultCompactionPolicy(5),
@@ -500,7 +502,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
     {
         auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>(0, 0);
+            std::make_shared<TPartitionThreadSafeState>(0, TActorId{}, 0, 0);
         TPartitionState state(
             DefaultConfig(1, 1000),
             BuildDefaultCompactionPolicy(5),

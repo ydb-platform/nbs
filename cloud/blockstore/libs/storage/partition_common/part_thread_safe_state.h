@@ -75,7 +75,11 @@ public:
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
 
 private:
+    const ui64 TabletId = 0;
+
     TAdaptiveLock StateLock;
+
+    NActors::TActorId PartitionActorId;
 
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
@@ -85,12 +89,23 @@ private:
 
     NPartition::TCheckpointsInFlight CheckpointsInFlight;
 
+    std::atomic<ui64> FreshBlocksInFlight = 0;
+
 public:
-    TPartitionThreadSafeState() = default;
+    explicit TPartitionThreadSafeState(ui64 tabletId)
+        : TabletId(tabletId)
+    {}
 
-    TPartitionThreadSafeState(ui32 generation, ui32 lastCommitId);
+    TPartitionThreadSafeState(
+        ui64 tabletId,
+        NActors::TActorId partitionActorId,
+        ui32 generation,
+        ui32 lastCommitId);
 
-    void Init(ui32 generation, ui32 lastCommitId);
+    void Init(
+        NActors::TActorId partitionActorId,
+        ui32 generation,
+        ui32 lastCommitId);
 
     NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
     {
@@ -116,7 +131,11 @@ public:
     ui64 GetLastCommitId() const;
 
     ui64 StartFreshWrite(ui64 blockCount);
-    void FinishFreshWrite(ui64 commitId, ui64 blockCount, bool isError);
+    void FinishFreshWrite(
+        const NActors::TActorContext& ctx,
+        ui64 commitId,
+        ui64 blockCount,
+        bool isError);
 
     auto GetTrimFreshLogBarriers()
     {
@@ -162,9 +181,47 @@ public:
             CheckpointsInFlight);
     }
 
+    void WaitCommitForCompaction(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<ITransactionBase> tx,
+        ui64 commitId);
+
+    void WaitCommitForCheckpoint(
+        const NActors::TActorContext& ctx,
+        std::unique_ptr<ITransactionBase> tx,
+        const TString& checkpointId,
+        ui64 commitId);
+
+    void ProcessCommitQueue(const NActors::TActorContext& ctx);
+
+    void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
+
+    bool ProcessNextCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        const TString& checkpointId);
+
+    void IncrementFreshBlocksInFlight(size_t value);
+    void DecrementFreshBlocksInFlight(size_t value);
+
+    size_t GetFreshBlocksInFlight() const;
+
 private:
     ui64 GenerateCommitIdImpl();
     ui64 GetLastCommitIdImpl() const;
+
+    void ExecuteTxs(
+        const NActors::TActorContext& ctx,
+        TVector<std::unique_ptr<ITransactionBase>> txs);
+
+    void ProcessCommitQueueImpl(
+        TVector<std::unique_ptr<ITransactionBase>>& txs);
+
+    void CollectCheckpointQueueTransactions(
+        TVector<std::unique_ptr<ITransactionBase>>& txs);
+
+    bool CollectNextCheckpointTx(
+        const TString& checkpointId,
+        TVector<std::unique_ptr<ITransactionBase>>& txs);
 };
 
 using TPartitionThreadSafeStatePtr = std::shared_ptr<TPartitionThreadSafeState>;

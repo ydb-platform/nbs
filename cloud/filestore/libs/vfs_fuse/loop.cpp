@@ -1,10 +1,10 @@
 #include "loop.h"
 
 #include "config.h"
+#include "directory_handle_storage.h"
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
-#include "directory_handles_storage.h"
 #include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
@@ -41,10 +41,11 @@
 #include <util/system/thread.h>
 #include <util/thread/factory.h>
 
+#include <pthread.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
-#include <pthread.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -60,7 +61,7 @@ namespace {
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
-static constexpr TStringBuf DirectoryHandlesStorageFileName = "directory_handles_storage";
+static constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage";
 
 NProto::TError CreateAndLockFile(
     const TString& dir,
@@ -710,17 +711,17 @@ private:
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
-    TDirectoryHandlesStatsPtr DirectoryHandlesStats;
+    TDirectoryHandleStatsPtr DirectoryHandleStats;
     TFileSystemConfigPtr FileSystemConfig;
 
     THolder<TFileLock> HandleOpsQueueFileLock;
     THolder<TFileLock> WriteBackCacheFileLock;
-    THolder<TFileLock> DirectoryHandlesStorageFileLock;
+    THolder<TFileLock> DirectoryHandleStorageFileLock;
 
     TWriteBackCache WriteBackCache;
 
     bool HandleOpsQueueInitialized = false;
-    bool DirectoryHandlesStorageInitialized = false;
+    bool DirectoryHandleStorageInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -1068,7 +1069,7 @@ private:
                     Config->GetClientId().Quote().c_str()));
             }
 
-            TDirectoryHandlesStoragePtr directoryHandlesStorage;
+            TDirectoryHandleStoragePtr directoryHandleStorage;
             if (FileSystemConfig->GetDirectoryHandlesStorageEnabled() &&
                 Config->GetDirectoryHandlesStoragePath())
             {
@@ -1077,25 +1078,25 @@ private:
 
                 auto error = CreateAndLockFile(
                     path,
-                    DirectoryHandlesStorageFileName,
-                    DirectoryHandlesStorageFileLock);
+                    DirectoryHandleStorageFileName,
+                    DirectoryHandleStorageFileLock);
 
                 if (HasError(error)) {
                     ReportDirectoryHandlesStorageError(error.GetMessage());
                     return error;
                 }
 
-                directoryHandlesStorage = CreateDirectoryHandlesStorage(
+                directoryHandleStorage = CreateDirectoryHandleStorage(
                     Log,
-                    path / DirectoryHandlesStorageFileName,
+                    path / DirectoryHandleStorageFileName,
                     FileSystemConfig->GetDirectoryHandlesTableSize(),
                     Config->GetDirectoryHandlesInitialDataSize(),
                     FileSystemConfig->GetMaxBufferSize());
 
-                DirectoryHandlesStorageInitialized = true;
+                DirectoryHandleStorageInitialized = true;
             }
 
-            DirectoryHandlesStats = CreateDirectoryHandlesStats(Timer);
+            DirectoryHandleStats = CreateDirectoryHandleStats(Timer);
 
             ModuleStatsRegistry->Register(
                 {.FileSystemId = Config->GetFileSystemId(),
@@ -1103,7 +1104,7 @@ private:
                  .CloudId = response.GetFileStore().GetCloudId(),
                  .FolderId = response.GetFileStore().GetFolderId(),
                  .SessionId = SessionId,
-                 .ModuleStats = DirectoryHandlesStats});
+                 .ModuleStats = DirectoryHandleStats});
 
             FileSystem = CreateFileSystem(
                 Logging,
@@ -1113,10 +1114,10 @@ private:
                 FileSystemConfig,
                 Session,
                 RequestStats,
-                DirectoryHandlesStats,
+                DirectoryHandleStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
-                std::move(directoryHandlesStorage),
+                std::move(directoryHandleStorage),
                 WriteBackCache);
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
@@ -1414,11 +1415,11 @@ private:
             }
         }
 
-        if (DirectoryHandlesStorageInitialized) {
+        if (DirectoryHandleStorageInitialized) {
             auto error = UnlockAndDeleteFile(
                 TFsPath(Config->GetDirectoryHandlesStoragePath()) /
                     Config->GetFileSystemId() / SessionId,
-                DirectoryHandlesStorageFileLock);
+                DirectoryHandleStorageFileLock);
             if (HasError(error)) {
                 ReportDirectoryHandlesStorageError(error.GetMessage());
             }

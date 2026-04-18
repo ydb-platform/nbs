@@ -1480,49 +1480,12 @@ void TPartitionActor::HandleCompaction(
         msg->CompactionOptions,
         std::move(ranges));
 
-    ui64 minCommitId = State->GetCommitQueue()->GetMinCommitId();
-    Y_ABORT_UNLESS(minCommitId <= commitId);
-
-    if (minCommitId == commitId) {
-        // start execution
-        ExecuteTx(ctx, std::move(tx));
-    } else {
-        // delay execution until all previous commits completed
-        State->AccessCommitQueue()->Enqueue(std::move(tx), commitId);
-    }
+    SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
-    TVector<std::unique_ptr<ITransactionBase>> txs;
-
-    {
-        auto commitQueue = State->AccessCommitQueue();
-        ui64 minCommitId = commitQueue->GetMinCommitId();
-
-        while (!commitQueue->Empty()) {
-            ui64 commitId = commitQueue->Peek();
-            Y_ABORT_UNLESS(minCommitId <= commitId);
-
-            if (minCommitId == commitId) {
-                // start execution
-                txs.push_back(commitQueue->Dequeue());
-            } else {
-                // delay execution until all previous commits completed
-                break;
-            }
-        }
-    }
-
-    for (auto& tx: txs) {
-        ExecuteTx(ctx, std::move(tx));
-    }
-
-    // TODO: too many different queues exist
-    // Since create checkpoint operation waits for the last commit to complete
-    // here we force checkpoints queue to try to proceed to the next
-    // create checkpoint request
-    ProcessCheckpointQueue(ctx);
+    SharedState->ProcessCommitQueue(ctx);
 }
 
 void TPartitionActor::HandleCompactionCompleted(

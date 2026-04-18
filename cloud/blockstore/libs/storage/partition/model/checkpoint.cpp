@@ -196,25 +196,35 @@ void TCheckpointQueue::GetCommitIds(TVector<ui64>& commitIds) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCheckpointsInFlight::AddTx(
+bool TCheckpointsInFlight::AddTx(
     const TString& checkpointId,
     TTxPtr transaction)
 {
-    auto& queue = PendingTransactions[checkpointId];
-    queue.emplace_back(std::move(transaction), 0);
+    return AddTx(checkpointId, std::move(transaction), 0);
 }
 
-void TCheckpointsInFlight::AddTx(
+bool TCheckpointsInFlight::AddTx(
     const TString& checkpointId,
     TTxPtr transaction,
     ui64 commitId)
 {
-    auto& queue = PendingTransactions[checkpointId];
-    queue.emplace_back(std::move(transaction), commitId);
+    auto inserted = PendingTransactions
+                        .emplace(
+                            checkpointId,
+                            TCheckpointTransactionToCommitId{
+                                .Transaction = std::move(transaction),
+                                .CommitId = commitId})
+                        .second;
+    if (!inserted) {
+        return false;
+    }
 
-    if (queue.size() == 1) {
+    // CommitId can be 0 if it is a DeleteCheckpoint transaction.
+    if (commitId) {
         CommitIdQueue.Enqueue(checkpointId, commitId);
     }
+
+    return true;
 }
 
 TCheckpointsInFlight::TTxPtr TCheckpointsInFlight::GetTx(
@@ -223,13 +233,10 @@ TCheckpointsInFlight::TTxPtr TCheckpointsInFlight::GetTx(
 {
     auto it = PendingTransactions.find(checkpointId);
     if (it != PendingTransactions.end()) {
-        auto& queue = it->second;
+        auto& [tx, txCommitId] = it->second;
 
-        if (queue) {
-            auto& next = queue.front();
-            if (next.second < commitId) {
-                return std::move(next.first);
-            }
+        if (txCommitId < commitId) {
+            return std::move(tx);
         }
     }
     return {};
@@ -251,20 +258,13 @@ void TCheckpointsInFlight::PopTx(const TString& checkpointId)
 {
     auto it = PendingTransactions.find(checkpointId);
     if (it != PendingTransactions.end()) {
-        auto& queue = it->second;
-
-        Y_ABORT_UNLESS(queue);
-        queue.pop_front();
-
-        if (queue) {
-            auto& next = queue.front();
-            if (next.second) {
-                CommitIdQueue.Enqueue(checkpointId, next.second);
-            }
-        } else {
-            PendingTransactions.erase(it);
-        }
+        PendingTransactions.erase(it);
     }
+}
+
+bool TCheckpointsInFlight::HasCheckpoint(const TString& checkpointId) const
+{
+    return PendingTransactions.contains(checkpointId);
 }
 
 void TCheckpointsInFlight::GetCommitIds(TVector<ui64>& commitIds) const

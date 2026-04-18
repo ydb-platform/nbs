@@ -467,7 +467,8 @@ struct TTestVerbs
         // emulate internal server error
         TRejectMessage reject = {
             .Status = SafeCast<ui16>(status),
-            .QueueSize = connect->QueueSize,
+            .QueueSize =
+                SafeCast<ui16>(connect->SendQueueSize + connect->RecvQueueSize),
             .MaxBufferSize = connect->MaxBufferSize,
         };
         InitMessageHeader(&reject, RDMA_PROTO_VERSION);
@@ -575,8 +576,20 @@ IVerbsPtr CreateTestVerbs(TTestContextPtr context)
 
 void CreateConnection(TTestContextPtr context)
 {
-    TConnectMessage message;
+    CreateConnection(context, 10, 10, 4_MB + 4_KB);
+}
+
+void CreateConnection(
+    TTestContextPtr context,
+    ui16 sendQueueSize,
+    ui16 recvQueueSize,
+    ui32 maxBufferSize)
+{
+    TConnectMessage message = {};
     InitMessageHeader(&message, RDMA_PROTO_VERSION);
+    message.SendQueueSize = sendQueueSize;
+    message.RecvQueueSize = recvQueueSize;
+    message.MaxBufferSize = maxBufferSize;
 
     rdma_conn_param param = {
         .private_data = &message,

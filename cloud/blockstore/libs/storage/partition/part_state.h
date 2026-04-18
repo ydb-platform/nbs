@@ -510,6 +510,21 @@ public:
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
 
+    void IncrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState->IncrementFreshBlocksInFlight(value);
+    }
+
+    void DecrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState->DecrementFreshBlocksInFlight(value);
+    }
+
+    ui64 GetFreshBlocksInFlight() const
+    {
+        return ThreadSafeState->GetFreshBlocksInFlight();
+    }
+
     //
     // TrimFreshLog
     //
@@ -909,7 +924,7 @@ public:
         return CleanupDelay;
     }
 
-    auto GetCheckpointsInFlight()
+    auto GetCheckpointsInFlight() const
     {
         return ThreadSafeState->GetCheckpointsInFlight();
     }

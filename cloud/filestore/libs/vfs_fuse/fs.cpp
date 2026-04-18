@@ -447,10 +447,10 @@ IFileSystemPtr CreateFileSystem(
     TFileSystemConfigPtr config,
     IFileStorePtr session,
     IRequestStatsPtr stats,
-    TDirectoryHandlesStatsPtr directoryHandlesStats,
+    TDirectoryHandleStatsPtr directoryHandleStats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
-    TDirectoryHandlesStoragePtr directoryHandlesStorage,
+    TDirectoryHandleStoragePtr directoryHandleStorage,
     TWriteBackCache writeBackCache)
 {
     return std::make_shared<TFileSystem>(
@@ -461,10 +461,10 @@ IFileSystemPtr CreateFileSystem(
         std::move(config),
         std::move(session),
         std::move(stats),
-        std::move(directoryHandlesStats),
+        std::move(directoryHandleStats),
         std::move(queue),
         std::move(handleOpsQueue),
-        std::move(directoryHandlesStorage),
+        std::move(directoryHandleStorage),
         std::move(writeBackCache));
 }
 

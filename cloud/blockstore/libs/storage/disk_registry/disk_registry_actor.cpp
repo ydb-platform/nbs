@@ -244,6 +244,9 @@ void TDiskRegistryActor::RegisterCounters(const TActorContext& ctx)
                 "host",
                 Config->GetDiskRegistryCountersHost());
         }
+
+        ComponentGroup->GetCounter("TabletGeneration")
+            ->Set(Executor()->Generation());
     }
 }
 

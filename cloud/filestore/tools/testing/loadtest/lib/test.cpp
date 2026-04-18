@@ -824,6 +824,8 @@ private:
 
     IFileStoreServicePtr Client;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TLoadTestController(
             const TAppContext& ctx,
@@ -1045,7 +1047,7 @@ public:
 
             STORAGE_INFO("%s create filestore: %s",
                 MakeTestTag().c_str(),
-                DumpMessage(*request).c_str());
+                ProtoMessagePrinter.ToString(*request).c_str());
 
             TCallContextPtr ctx = MakeIntrusive<TCallContext>();
             auto result = Client->CreateFileStore(ctx, request);

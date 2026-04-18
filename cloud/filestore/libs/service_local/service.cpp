@@ -207,6 +207,8 @@ private:
 
     TLog Log;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TLocalFileStore(
             TLocalFileStoreConfigPtr config,
@@ -579,7 +581,7 @@ void TLocalFileStore::Stop()
 NProto::TCreateFileStoreResponse TLocalFileStore::CreateFileStore(
     const NProto::TCreateFileStoreRequest& request)
 {
-    STORAGE_INFO("CreateFileStore " << DumpMessage(request));
+    STORAGE_INFO("CreateFileStore " << ProtoMessagePrinter.ToString(request));
 
     const auto& id = GetFileSystemId(request);
     if (!id) {
@@ -624,7 +626,7 @@ NProto::TCreateFileStoreResponse TLocalFileStore::CreateFileStore(
 NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
     const NProto::TDestroyFileStoreRequest& request)
 {
-    STORAGE_TRACE("DestroyFileStore " << DumpMessage(request));
+    STORAGE_TRACE("DestroyFileStore " << ProtoMessagePrinter.ToString(request));
 
     const auto& id = GetFileSystemId(request);
     if (!id) {
@@ -654,7 +656,7 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
 NProto::TAlterFileStoreResponse TLocalFileStore::AlterFileStore(
     const NProto::TAlterFileStoreRequest& request)
 {
-    STORAGE_TRACE("AlterFileStore " << DumpMessage(request));
+    STORAGE_TRACE("AlterFileStore " << ProtoMessagePrinter.ToString(request));
 
     const auto& id = GetFileSystemId(request);
     if (!id) {
@@ -686,7 +688,7 @@ NProto::TAlterFileStoreResponse TLocalFileStore::AlterFileStore(
 NProto::TListFileStoresResponse TLocalFileStore::ListFileStores(
     const NProto::TListFileStoresRequest& request)
 {
-    STORAGE_TRACE("ListFileStores " << DumpMessage(request));
+    STORAGE_TRACE("ListFileStores " << ProtoMessagePrinter.ToString(request));
     NProto::TListFileStoresResponse response;
 
     RefreshFileSystems();

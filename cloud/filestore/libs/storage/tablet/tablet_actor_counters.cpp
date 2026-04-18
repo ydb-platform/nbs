@@ -265,6 +265,27 @@ STFUNC(TAggregateStatsActor::StateWork)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeShardList(const TVector<IShardBalancer::TShardDescr>& shards)
+{
+    TStringBuilder sb;
+    for (ui32 i = 0; i < shards.size(); ++i) {
+        if (i) {
+            sb << ", ";
+        }
+
+        const auto& s = shards[i];
+        sb << "id=" << s.ShardId
+            << " blocks=" << s.Stats.UsedBlocksCount
+            << "/" << s.Stats.TotalBlocksCount
+            << " nodes=" << s.Stats.UsedNodesCount
+            << " load=" << s.Stats.CurrentLoad
+            << " suffer=" << s.Stats.Suffer;
+    }
+    return sb;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -814,7 +835,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         backgroundRequestDuration = ctx.Now() - CachedStatsFetchingStartTs;
         LOG_DEBUG(
             ctx,
-            TFileStoreComponents::TABLET_WORKER,
+            TFileStoreComponents::TABLET,
             "%s Background shard stats fetch completed in %s, ShardsCount: %lu",
             LogTag.c_str(),
             backgroundRequestDuration.ToString().c_str(),
@@ -832,6 +853,13 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
         CachedAggregateStats = std::move(msg->AggregateStats);
         CachedShardStats = std::move(msg->ShardStats);
         UpdateShardBalancer(CachedShardStats);
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Updated shard balancer: %s",
+            LogTag.c_str(),
+            DescribeShardList(MakeOrderedShardList()).c_str());
 
         Store(
             Metrics.AggregateUsedBytesCount,

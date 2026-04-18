@@ -42,8 +42,10 @@ struct TClientConfig
     TString SourceInterface;
     bool VerbsQP = false;
     TBufferPoolConfig BufferPool;
+    ui32 SendQueueSize = 0;
+    ui32 RecvQueueSize = 0;
 
-    TClientConfig() = default;
+    TClientConfig();
     TClientConfig(const NProto::TRdmaClient& config);
 
     void Validate(TLog& log);

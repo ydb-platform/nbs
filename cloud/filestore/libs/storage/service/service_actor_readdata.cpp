@@ -1,5 +1,7 @@
 #include "service_actor.h"
+
 #include "rope_utils.h"
+#include "verify.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -10,7 +12,6 @@
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
-#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -360,7 +361,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    TABLET_VERIFY(InFlightRequest);
+    SERVICE_VERIFY(InFlightRequest);
 
     FinalizeProfileLogRequestInfo(
         InFlightRequest->AccessProfileLogRequest(),
@@ -545,11 +546,11 @@ void TReadDataActor::HandleReadBlobResponse(
         return;
     }
 
-    TABLET_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
+    SERVICE_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
     const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        TABLET_VERIFY(i < blobPiece.RangesSize());
+        SERVICE_VERIFY(i < blobPiece.RangesSize());
 
         const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
         const auto& blobRange = blobPiece.GetRanges(i);
@@ -614,7 +615,7 @@ void TReadDataActor::HandleReadBlobResponse(
             DescribeResponse.DebugString().Quote().c_str(),
             i,
             response.Buffer.size());
-        TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
+        SERVICE_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
         const auto blobByteRange =
             TByteRange{blobRange.GetOffset(), blobRange.GetLength(), BlockSize};

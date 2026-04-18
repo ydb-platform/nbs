@@ -50,10 +50,9 @@ func (s *StorageMock) ScheduleChildNodesForListing(
 func (s *StorageMock) ClearDirectoryListingQueue(
 	ctx context.Context,
 	snapshotID string,
-	deletionLimit uint64,
 ) error {
 
-	args := s.Called(ctx, snapshotID, deletionLimit)
+	args := s.Called(ctx, snapshotID)
 	return args.Error(0)
 }
 

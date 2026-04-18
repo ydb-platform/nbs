@@ -1,5 +1,7 @@
 #include "client.h"
 
+#include <cloud/blockstore/config/rdma.pb.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 namespace NCloud::NBlockStore::NRdma {
@@ -29,6 +31,17 @@ NRdma::EWaitMode Convert(NProto::EWaitMode mode)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TClientConfig::TClientConfig()
+{
+    // Compatibility with the old config.
+    if (SendQueueSize == 0 && QueueSize > 0) {
+        SendQueueSize = QueueSize;
+    }
+    if (RecvQueueSize == 0 && QueueSize > 0) {
+        RecvQueueSize = QueueSize;
+    }
+}
+
 #define SET(param, ...) \
     if (const auto& value = config.Get##param()) { \
         param = __VA_ARGS__(value); \
@@ -53,10 +66,20 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
     SET(IpTypeOfService);
     SET(SourceInterface);
     SET(VerbsQP);
+    SET(SendQueueSize);
+    SET(RecvQueueSize);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);
     SET_NESTED(BufferPool, MaxFreeChunks);
+
+    // Compatibility with the old config.
+    if (SendQueueSize == 0 && QueueSize > 0) {
+        SendQueueSize = QueueSize;
+    }
+    if (RecvQueueSize == 0 && QueueSize > 0) {
+        RecvQueueSize = QueueSize;
+    }
 }
 
 #undef SET_NESTED
@@ -90,6 +113,8 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(IpTypeOfService, IpTypeOfService);
                 ENTRY(SourceInterface, SourceInterface);
                 ENTRY(VerbsQP, VerbsQP);
+                ENTRY(SendQueueSize, SendQueueSize);
+                ENTRY(RecvQueueSize, RecvQueueSize);
                 ENTRY(BufferPool.ChunkSize, BufferPool.ChunkSize);
                 ENTRY(BufferPool.MaxChunkAlloc, BufferPool.MaxChunkAlloc);
                 ENTRY(BufferPool.MaxFreeChunks, BufferPool.MaxFreeChunks);

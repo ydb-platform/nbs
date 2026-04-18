@@ -42,6 +42,7 @@ namespace {
 
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Minutes(20);
 constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
+constexpr ui32 INVALID_REQUEST_ID = Max<ui32>();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -112,6 +113,32 @@ TRequestPtr ExtractRequest(TSendWr* send)
     TRequestPtr req(static_cast<TRequest*>(send->context));
     send->context = nullptr;
     return req;
+}
+
+ui32 GetRequestId(const TSendWr& send)
+{
+    if (send.context == nullptr) {
+        return INVALID_REQUEST_ID;
+    }
+    return static_cast<TRequest*>(send.context)->ReqId;
+}
+
+ui32 GetRequestId(const TRecvWr& recv)
+{
+    const auto* msg = recv.Message<TRequestMessage>();
+    const int version = ParseMessageHeader(msg);
+    if (version != RDMA_PROTO_VERSION) {
+        return INVALID_REQUEST_ID;
+    }
+    return recv.Message<TRequestMessage>()->ReqId;
+}
+
+TString
+GetLogTitle(TStringBuf opcode, const TWorkRequestId& id, ui32 reqId)
+{
+    auto req = (reqId == INVALID_REQUEST_ID) ? "null" : ToString(reqId);
+    return TStringBuilder()
+           << opcode << " [wr=" << id << " reqId=" << req << "]: ";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -373,18 +400,18 @@ void TServerSession::CreateQP()
 
     CompletionQueue = Verbs->CreateCompletionQueue(
         Connection->verbs,
-        2 * Config->QueueSize,   // send + recv
+        Config->SendQueueSize + Config->RecvQueueSize,
         this,
         CompletionChannel.get(),
-        0);                      // comp_vector
+        0);   // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
         .send_cq = CompletionQueue.get(),
         .recv_cq = CompletionQueue.get(),
         .cap = {
-            .max_send_wr = Config->QueueSize,
-            .max_recv_wr = Config->QueueSize,
+            .max_send_wr = Config->SendQueueSize,
+            .max_recv_wr = Config->RecvQueueSize,
             .max_send_sge = RDMA_MAX_SEND_SGE,
             .max_recv_sge = RDMA_MAX_RECV_SGE,
             .max_inline_data = 16,
@@ -410,15 +437,15 @@ void TServerSession::CreateQP()
         IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     SendBuffer = SendBuffers.AcquireBuffer(
-        Config->QueueSize * sizeof(TResponseMessage),
+        Config->SendQueueSize * sizeof(TResponseMessage),
         true);
 
     RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config->QueueSize * sizeof(TRequestMessage),
+        Config->RecvQueueSize * sizeof(TRequestMessage),
         true);
 
-    SendWrs.resize(Config->QueueSize);
-    RecvWrs.resize(Config->QueueSize);
+    SendWrs.resize(Config->SendQueueSize);
+    RecvWrs.resize(Config->RecvQueueSize);
 
     ui32 i = 0;
     ui64 responseMsg = SendBuffer.Address;
@@ -429,7 +456,7 @@ void TServerSession::CreateQP()
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
-        wr.sg_list[0].lkey = SendBuffer.Key;
+        wr.sg_list[0].lkey = SendBuffer.LKey;
         wr.sg_list[0].addr = responseMsg;
         wr.sg_list[0].length = sizeof(TResponseMessage);
 
@@ -444,7 +471,7 @@ void TServerSession::CreateQP()
         wr.wr.sg_list = wr.sg_list;
         wr.wr.num_sge = 1;
 
-        wr.sg_list[0].lkey = RecvBuffer.Key;
+        wr.sg_list[0].lkey = RecvBuffer.LKey;
         wr.sg_list[0].addr = requestMsg;
         wr.sg_list[0].length = sizeof(TRequestMessage);
 
@@ -601,8 +628,8 @@ void TServerSession::Flush() noexcept
 bool TServerSession::IsFlushed() const
 {
     return FlushStarted
-        && SendQueue.Size() == Config->QueueSize
-        && RecvQueue.Size() == Config->QueueSize;
+        && SendQueue.Size() == Config->SendQueueSize
+        && RecvQueue.Size() == Config->RecvQueueSize;
 }
 
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
@@ -687,27 +714,42 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
     }
 
     switch (wc->opcode) {
-        case IBV_WC_RECV:
-            RDMA_TRACE("RECV " << id << " completed");
-            RecvRequestCompleted(&RecvWrs[id.Index]);
+        case IBV_WC_RECV: {
+            TRecvWr* recv = &RecvWrs[id.Index];
+            RDMA_TRACE(
+                GetLogTitle("RECV", id, GetRequestId(*recv)) << "completed");
+            RecvRequestCompleted(recv);
             break;
+        }
 
-        case IBV_WC_RDMA_READ:
-            RDMA_TRACE("READ " << id << " completed");
-            ReadRequestDataCompleted(&SendWrs[id.Index]);
+        case IBV_WC_RDMA_READ: {
+            TSendWr* send = &SendWrs[id.Index];
+            RDMA_TRACE(
+                GetLogTitle("READ", id, GetRequestId(*send)) << "completed");
+            ReadRequestDataCompleted(send);
             break;
+        }
 
-        case IBV_WC_RDMA_WRITE:
-            RDMA_TRACE("WRITE " << id << " completed");
-            WriteResponseDataCompleted(&SendWrs[id.Index]);
+        case IBV_WC_RDMA_WRITE: {
+            TSendWr* send = &SendWrs[id.Index];
+            RDMA_TRACE(
+                GetLogTitle("WRITE", id, GetRequestId(*send)) << "completed");
+            WriteResponseDataCompleted(send);
             break;
+        }
 
-        case IBV_WC_SEND:
-            RDMA_TRACE("SEND " << id << " completed");
-            SendResponseCompleted(&SendWrs[id.Index]);
+        case IBV_WC_SEND: {
+            TSendWr* send = &SendWrs[id.Index];
+            RDMA_TRACE(
+                GetLogTitle("SEND", id, GetRequestId(*send)) << "completed");
+            SendResponseCompleted(send);
             break;
+        }
 
         default:
+            RDMA_TRACE(
+                "HandleCompletionEvent: unhandled opcode "
+                << NVerbs::GetOpcodeName(wc->opcode));
             break;
     }
 }
@@ -719,11 +761,20 @@ void TServerSession::RecvRequest(TRecvWr* recv) noexcept
 
     try {
         Verbs->PostRecv(Connection->qp, &recv->wr);
-        RDMA_TRACE("RECV " << TWorkRequestId(recv->wr.wr_id) << " posted");
+        RDMA_TRACE(
+            GetLogTitle(
+                "RECV",
+                TWorkRequestId(recv->wr.wr_id),
+                INVALID_REQUEST_ID)
+            << "posted");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(
-            "RECV " << TWorkRequestId(recv->wr.wr_id) << " " << e.what());
+            GetLogTitle(
+                "RECV",
+                TWorkRequestId(recv->wr.wr_id),
+                GetRequestId(*recv))
+            << e.what());
         Counters->Error();
         return;
     }
@@ -768,9 +819,12 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
 
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR(
-            "RECV " << TWorkRequestId(recv->wr.wr_id)
-                    << " incompatible protocol version " << version
-                    << ", expected " << static_cast<int>(RDMA_PROTO_VERSION));
+            GetLogTitle(
+                "RECV",
+                TWorkRequestId(recv->wr.wr_id),
+                INVALID_REQUEST_ID)
+            << "incompatible protocol version " << version << ", expected "
+            << static_cast<int>(RDMA_PROTO_VERSION));
 
         Counters->RecvRequestCompleted();
         Counters->Error();
@@ -796,9 +850,13 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
     Counters->RequestStarted();
 
     if (req->In.Length > Config->MaxBufferSize) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " request exceeds maximum supported size "
-            << req->In.Length << " > " << Config->MaxBufferSize);
+        RDMA_ERROR(
+            GetLogTitle(
+                "RECV",
+                TWorkRequestId(recv->wr.wr_id),
+                req->ReqId)
+            << " request exceeds maximum supported size " << req->In.Length
+            << " > " << Config->MaxBufferSize);
 
         Counters->Error();
         RejectRequest(
@@ -809,9 +867,13 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
     }
 
     if (req->Out.Length > Config->MaxBufferSize) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " response exceeds maximum supported size "
-            << req->Out.Length << " > " << Config->MaxBufferSize);
+        RDMA_ERROR(
+            GetLogTitle(
+                "RECV",
+                TWorkRequestId(recv->wr.wr_id),
+                req->ReqId)
+            << "response exceeds maximum supported size " << req->Out.Length
+            << " > " << Config->MaxBufferSize);
 
         Counters->Error();
         RejectRequest(
@@ -822,9 +884,15 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
     }
 
     if (MaxInflightBytes < req->In.Length + req->Out.Length) {
-        RDMA_INFO(LogThrottler.Inflight, Log, "reached inflight limit, "
-            << MaxInflightBytes << "/" << Config->MaxInflightBytes
-            << " bytes available");
+        RDMA_INFO(
+            LogThrottler.Inflight,
+            Log,
+            GetLogTitle(
+                "RECV",
+                TWorkRequestId(recv->wr.wr_id),
+                req->ReqId)
+                << "reached inflight limit, " << MaxInflightBytes << "/"
+                << Config->MaxInflightBytes << " bytes available");
 
         Counters->RequestThrottled();
         RejectRequest(std::move(req), RDMA_PROTO_THROTTLED, "throttled");
@@ -844,6 +912,9 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             ReadRequestData(std::move(req), send);
         } else {
             // no more WRs available
+            RDMA_TRACE(
+                GetLogTitle("RECV", TWorkRequestId(recv->wr.wr_id), req->ReqId)
+                << "no more send WRs available");
             Counters->RequestEnqueued();
             QueuedRequests.Enqueue(std::move(req));
         }
@@ -885,7 +956,7 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
     ibv_sge sg_list = {
         .addr = req->InBuffer.Address,
         .length = req->In.Length,
-        .lkey = req->InBuffer.Key,
+        .lkey = req->InBuffer.LKey,
     };
 
     ibv_send_wr wr = {
@@ -895,16 +966,19 @@ void TServerSession::ReadRequestData(TRequestPtr req, TSendWr* send) noexcept
         .opcode = IBV_WR_RDMA_READ,
     };
 
-    wr.wr.rdma.rkey = req->In.Key;
+    wr.wr.rdma.rkey = req->In.RKey;
     wr.wr.rdma.remote_addr = req->In.Address;
 
     try {
         Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE("READ " << TWorkRequestId(wr.wr_id) << " posted");
+        RDMA_TRACE(
+            GetLogTitle("READ", TWorkRequestId(wr.wr_id), req->ReqId)
+            << "posted");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(
-            "READ " << TWorkRequestId(wr.wr_id) << " " << e.what());
+            GetLogTitle("READ", TWorkRequestId(wr.wr_id), req->ReqId)
+            << e.what());
         Counters->Error();
         FreeRequest(std::move(req), send);
         return;
@@ -975,7 +1049,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
     ibv_sge sg_list = {
         .addr = req->OutBuffer.Address,
         .length = req->ResponseBytes,
-        .lkey = req->OutBuffer.Key,
+        .lkey = req->OutBuffer.LKey,
     };
 
     ibv_send_wr wr = {
@@ -985,16 +1059,19 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send) noexcept
         .opcode = IBV_WR_RDMA_WRITE,
     };
 
-    wr.wr.rdma.rkey = req->Out.Key;
+    wr.wr.rdma.rkey = req->Out.RKey;
     wr.wr.rdma.remote_addr = req->Out.Address;
 
     try {
         Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE("WRITE " << TWorkRequestId(wr.wr_id) << " posted");
+        RDMA_TRACE(
+            GetLogTitle("WRITE", TWorkRequestId(wr.wr_id), req->ReqId)
+            << "posted");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(
-            "WRITE " << TWorkRequestId(wr.wr_id) << " " << e.what());
+            GetLogTitle("WRITE", TWorkRequestId(wr.wr_id), req->ReqId)
+            << e.what());
         Counters->Error();
         Counters->RequestAborted();
         FreeRequest(std::move(req), send);
@@ -1049,11 +1126,17 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
 
     try {
         Verbs->PostSend(Connection->qp, &send->wr);
-        RDMA_TRACE("SEND " << TWorkRequestId(send->wr.wr_id) << " posted");
+        RDMA_TRACE(
+            GetLogTitle("SEND", TWorkRequestId(send->wr.wr_id), req->ReqId)
+            << "posted");
 
     } catch (const TServiceError& e) {
         RDMA_ERROR(
-            "SEND " << TWorkRequestId(send->wr.wr_id) << " " << e.what());
+            GetLogTitle(
+                "SEND",
+                TWorkRequestId(send->wr.wr_id),
+                INVALID_REQUEST_ID)
+            << e.what());
         Counters->Error();
         Counters->RequestAborted();
         FreeRequest(std::move(req), send);
@@ -1076,7 +1159,11 @@ void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
 
     if (req == nullptr) {
         RDMA_WARN(
-            "SEND " << TWorkRequestId(send->wr.wr_id) << " request is empty");
+            GetLogTitle(
+                "SEND",
+                TWorkRequestId(send->wr.wr_id),
+                INVALID_REQUEST_ID)
+            << "request is empty");
         return;
     }
 
@@ -1819,9 +1906,28 @@ void TServer::HandleConnectRequest(
         connectParams->private_data);
 
     if (Config->StrictValidation) {
-        if (connectMsg->QueueSize > Config->QueueSize ||
-            connectMsg->MaxBufferSize > Config->MaxBufferSize)
-        {
+        if (connectMsg->SendQueueSize > Config->RecvQueueSize) {
+            RDMA_ERROR(
+                "Failed to validate connect message. Client's send queue size "
+                << connectMsg->SendQueueSize
+                << " is greater than server's recv queue size "
+                << Config->RecvQueueSize);
+            return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
+        }
+        if (Config->SendQueueSize > connectMsg->RecvQueueSize) {
+            RDMA_ERROR(
+                "Failed to validate connect message. Client's recv queue size "
+                << connectMsg->RecvQueueSize
+                << " is less than server's send queue size "
+                << Config->SendQueueSize);
+            return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
+        }
+        if (connectMsg->MaxBufferSize > Config->MaxBufferSize) {
+            RDMA_ERROR(
+                "Failed to validate connect message. Client's max buffer size "
+                << connectMsg->MaxBufferSize
+                << " is greater than server's max buffer size "
+                << Config->MaxBufferSize);
             return Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
         }
     }
@@ -1899,7 +2005,8 @@ void TServer::Reject(rdma_cm_id* id, int status) noexcept
 
     TRejectMessage rejectMsg = {
         .Status = SafeCast<ui16>(status),
-        .QueueSize = SafeCast<ui16>(Config->QueueSize),
+        .QueueSize =
+            SafeCast<ui16>(Config->SendQueueSize + Config->RecvQueueSize),
         .MaxBufferSize = SafeCast<ui32>(Config->MaxBufferSize),
     };
     InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);

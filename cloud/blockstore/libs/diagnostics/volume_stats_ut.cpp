@@ -1245,6 +1245,358 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRemoveVolumeInfoByTimeoutIfNotPinned)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        Mount(
+            volumeStats,
+            "disk-1",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+        }
+
+        Timer->AdvanceTime(inactivityTimeout * 0.5);
+
+        Mount(
+            volumeStats,
+            "disk-2",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-1")
+                             ->GetSubgroup("instance", "instance-1")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-2")
+                             ->GetSubgroup("instance", "instance-2")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotRemoveVolumeInfoByTimeoutIfPinned)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        NProto::TDiagnosticsConfig config;
+        config.SetEnableDurableVolumeInfo(true);
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            std::make_shared<TDiagnosticsConfig>(config),
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        Mount(
+            volumeStats,
+            "disk-1",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+        }
+
+        auto pin1_1 = volumeStats->PinVolumeInfo("disk-1", "client-1");
+
+        Timer->AdvanceTime(inactivityTimeout * 0.5);
+
+        Mount(
+            volumeStats,
+            "disk-2",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        auto pin2_1 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+
+        // Must not remove pinned VolumeInfos by timeout
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must not remove pinned VolumeInfos by timeout
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must not remove pinned VolumeInfos
+        volumeStats->UnmountVolume("disk-1", "client-1");
+        volumeStats->UnmountVolume("disk-2", "client-2");
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must not remove multiple pinned VolumeInfos by timeout
+        auto pin1_2 = volumeStats->PinVolumeInfo("disk-1", "client-1");
+        auto pin1_3 = volumeStats->PinVolumeInfo("disk-1", "client-1");
+        auto pin2_2 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+        auto pin2_3 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Remounts must not affect Pin count (next checks)
+        for (size_t i = 0; i < 10; i++) {
+            Mount(
+                volumeStats,
+                "disk-1",
+                "client-1",
+                "instance-1",
+                NCloud::NProto::STORAGE_MEDIA_SSD);
+            Mount(
+                volumeStats,
+                "disk-2",
+                "client-2",
+                "instance-2",
+                NCloud::NProto::STORAGE_MEDIA_SSD);
+        }
+        Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+        // Must not remove partially unpinned VolumeInfos regardless of
+        // pin/unpin order
+        pin1_1.Reset();
+        pin1_2.Reset();
+        pin2_3.Reset();
+        pin2_2.Reset();
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must remove fully unpinned VolumeInfos by timeout
+        pin1_3.Reset();
+        pin2_1.Reset();
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-1")
+                             ->GetSubgroup("instance", "instance-1")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-2")
+                             ->GetSubgroup("instance", "instance-2")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRespectEnableDurableVolumeInfoConfig)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        NProto::TDiagnosticsConfig config;
+        // false by default until ensured safe
+        UNIT_ASSERT(!config.GetEnableDurableVolumeInfo());
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            std::make_shared<TDiagnosticsConfig>(config),
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        Mount(
+            volumeStats,
+            "disk-1",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+        }
+
+        auto pin = volumeStats->PinVolumeInfo("disk-1", "client-1");
+
+        Timer->AdvanceTime(inactivityTimeout * 0.5);
+        // Timeout not expired - must not remove VolumeInfo
+        volumeStats->TrimVolumes();
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        // Timeout expired - must remove VolumeInfo despite pinned
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-1")
+                             ->GetSubgroup("instance", "instance-1")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+        }
+    }
+
     Y_UNIT_TEST(ShouldMountSeveralClientsOnOneInstance)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);

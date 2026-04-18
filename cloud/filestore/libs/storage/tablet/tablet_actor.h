@@ -180,6 +180,8 @@ private:
 
     TVector<ui32> RangesWithEmptyCompactionScore;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,

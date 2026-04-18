@@ -174,6 +174,8 @@ public:
 
     [[nodiscard]] bool GetPassTraceIdToBlobstorage() const;
 
+    [[nodiscard]] bool GetEnableDurableVolumeInfo() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

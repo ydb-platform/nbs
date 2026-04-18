@@ -11,7 +11,7 @@ namespace NCloud::NFileStore {
 NProto::TAcquireLockResponse TLocalFileSystem::AcquireLock(
     const NProto::TAcquireLockRequest& request)
 {
-    STORAGE_TRACE("AcquireLock " << DumpMessage(request));
+    STORAGE_TRACE("AcquireLock " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());
@@ -50,7 +50,7 @@ NProto::TAcquireLockResponse TLocalFileSystem::AcquireLock(
 NProto::TReleaseLockResponse TLocalFileSystem::ReleaseLock(
     const NProto::TReleaseLockRequest& request)
 {
-    STORAGE_TRACE("ReleaseLock " << DumpMessage(request));
+    STORAGE_TRACE("ReleaseLock " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());
@@ -78,7 +78,7 @@ NProto::TReleaseLockResponse TLocalFileSystem::ReleaseLock(
 NProto::TTestLockResponse TLocalFileSystem::TestLock(
     const NProto::TTestLockRequest& request)
 {
-    STORAGE_TRACE("TestLock " << DumpMessage(request));
+    STORAGE_TRACE("TestLock " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto handle = session->LookupHandle(request.GetHandle());

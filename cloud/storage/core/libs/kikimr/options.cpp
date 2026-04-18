@@ -30,6 +30,10 @@ TOptionsYdbBase::TOptionsYdbBase()
         .OptionalArgument("FILE")
         .StoreResult(&SharedCacheConfig);
 
+    Opts.AddLongOption("immediate-controls-file")
+        .RequiredArgument("FILE")
+        .StoreResult(&ImmediateControlsConfig);
+
     Opts.AddLongOption("sys-file")
         .RequiredArgument("FILE")
         .StoreResult(&SysConfig);

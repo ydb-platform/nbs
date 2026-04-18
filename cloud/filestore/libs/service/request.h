@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <google/protobuf/text_format.h>
+
 #include <util/generic/string.h>
 #include <util/stream/output.h>
 
@@ -206,7 +208,18 @@ TRequestInfo GetRequestInfo(const T& request);
 template <typename T>
 consteval bool HasResponseHeaders();
 
-TString DumpMessage(const google::protobuf::Message& message);
+////////////////////////////////////////////////////////////////////////////////
+
+class TProtoMessagePrinter
+{
+public:
+    TProtoMessagePrinter();
+
+    virtual TString ToString(const google::protobuf::Message& message);
+
+private:
+    google::protobuf::TextFormat::Printer Printer;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

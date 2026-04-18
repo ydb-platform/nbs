@@ -85,7 +85,7 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    SharedState = std::make_shared<TPartitionThreadSafeState>();
+    SharedState = std::make_shared<TPartitionThreadSafeState>(TabletID());
 }
 
 TPartitionActor::~TPartitionActor()
@@ -1155,6 +1155,10 @@ STFUNC(TPartitionActor::StateWork)
 
         HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvExecuteTransactions,
+            HandleExecuteTransactions);
+
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
@@ -1233,6 +1237,8 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvExecuteTransactions);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with
@@ -1369,6 +1375,16 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     FreshBlocksWriter = ev->Sender;
 
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TPartitionActor::HandleExecuteTransactions(
+    const TEvPartitionCommonPrivate::TEvExecuteTransactions::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto& msg = *ev->Get();
+    for (auto& tx: msg.Transactions) {
+        ExecuteTx(ctx, std::move(tx));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

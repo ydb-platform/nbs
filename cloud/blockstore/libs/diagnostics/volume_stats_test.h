@@ -240,6 +240,16 @@ public:
         return TVolumeProcessingPolicy::GetVolumeInfo(diskId, clientId);
     }
 
+    IVolumeInfoPinPtr PinVolumeInfo(
+        const TString& diskId,
+        const TString& clientId) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+
+        return nullptr;
+    }
+
     NProto::EStorageMediaKind GetStorageMediaKind(
         const TString& diskId) const override
     {

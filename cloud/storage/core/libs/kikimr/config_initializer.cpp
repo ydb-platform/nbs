@@ -181,6 +181,14 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
             Options->SharedCacheConfig,
             sharedCacheConfig);
     }
+
+    if (Options->ImmediateControlsConfig) {
+        auto& immediateControlsConfig =
+            *KikimrConfig->MutableImmediateControlsConfig();
+        ParseProtoTextFromFile(
+            Options->ImmediateControlsConfig,
+            immediateControlsConfig);
+    }
 }
 
 NKikimrConfig::TLogConfig TConfigInitializerYdbBase::GetLogConfig() const
