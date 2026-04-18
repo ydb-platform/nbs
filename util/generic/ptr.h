@@ -581,34 +581,6 @@ public:
         return T_ ? Ops::RefCount(T_) : 0;
     }
 
-    // Downcast without refcount dec and inc
-    template <class TT>
-    using TAsOps = std::conditional_t<
-        std::is_same_v<Ops, TDefaultIntrusivePtrOps<T>>,
-        TDefaultIntrusivePtrOps<TT>,
-        Ops>;
-
-    template <class TT>
-    [[nodiscard]] inline TIntrusivePtr<TT, TAsOps<TT>> As() && noexcept
-    {
-        static_assert(
-            std::has_virtual_destructor_v<T>,
-            "Type should have a virtual dtor");
-        static_assert(
-            std::is_base_of_v<T, TT>,
-            "When downcasting from T to TT, T should be a parent of TT");
-
-        if (const auto ttPtr = dynamic_cast<TT*>(T_)) {
-            TIntrusivePtr<TT, TAsOps<TT>> ttIntrusivePtr(
-                ttPtr,
-                typename TIntrusivePtr<TT, TAsOps<TT>>::TNoIncrement());
-            T_ = nullptr;
-            return ttIntrusivePtr;
-        } else {
-            return TIntrusivePtr<TT, TAsOps<TT>>{};
-        }
-    }
-
 #ifdef __cpp_impl_three_way_comparison
     template <class Other>
     inline bool operator==(const Other& p) const noexcept {

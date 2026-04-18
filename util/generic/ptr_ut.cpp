@@ -34,7 +34,6 @@ class TPointerTest: public TTestBase {
     UNIT_TEST(TestComparison);
     UNIT_TEST(TestSimpleIntrusivePtrCtorTsan);
     UNIT_TEST(TestRefCountedPtrsInHashSet);
-    UNIT_TEST(TestIntrusivePtrDowncast);
     UNIT_TEST(TestSharedPtrDowncast);
     UNIT_TEST_SUITE_END();
 
@@ -89,7 +88,6 @@ private:
     template <class T, class TRefCountedPtr>
     void TestRefCountedPtrsInHashSetImpl();
     void TestRefCountedPtrsInHashSet();
-    void TestIntrusivePtrDowncast();
     void TestSharedPtrDowncast();
 };
 
@@ -856,104 +854,6 @@ class TDerivedProbeSibling: public TVirtualProbe {
 public:
     using TVirtualProbe::TVirtualProbe;
 };
-
-class TVirtualRefCountedProbe: public TNonCopyable
-{
-public:
-    struct TExternalCounter
-    {
-        std::atomic<size_t> Counter{0};
-        std::atomic<size_t> Increments{0};
-    };
-
-    explicit TVirtualRefCountedProbe(TExternalCounter& counter)
-        : Counter_(counter)
-    {
-        Counter_.Counter.store(0);
-        Counter_.Increments.store(0);
-    }
-
-    virtual ~TVirtualRefCountedProbe() = default;
-
-    void Ref() noexcept
-    {
-        ++Counter_.Counter;
-        ++Counter_.Increments;
-    }
-
-    void UnRef() noexcept
-    {
-        if (--Counter_.Counter == 0) {
-            TDelete::Destroy(this);
-        }
-    }
-
-    void DecRef() noexcept
-    {
-        Y_ABORT_UNLESS(--Counter_.Counter != 0);
-    }
-
-    long RefCount() const noexcept
-    {
-        return Counter_.Counter.load();
-    }
-
-private:
-    TExternalCounter& Counter_;
-};
-
-class TDerivedRefCountedProbe: public TVirtualRefCountedProbe
-{
-public:
-    using TVirtualRefCountedProbe::TVirtualRefCountedProbe;
-};
-
-class TDerivedRefCountedProbeSibling: public TVirtualRefCountedProbe
-{
-public:
-    using TVirtualRefCountedProbe::TVirtualRefCountedProbe;
-};
-
-void TPointerTest::TestIntrusivePtrDowncast()
-{
-    {
-        TVirtualRefCountedProbe::TExternalCounter counter;
-
-        {
-            TIntrusivePtr<TVirtualRefCountedProbe> base(
-                new TDerivedRefCountedProbe(counter));
-
-            auto derived = std::move(base).As<TDerivedRefCountedProbe>();
-
-            UNIT_ASSERT(!base);
-            UNIT_ASSERT_VALUES_EQUAL(counter.Counter.load(), 1u);
-            UNIT_ASSERT_VALUES_EQUAL(counter.Increments.load(), 1u);
-            UNIT_ASSERT(derived);
-            UNIT_ASSERT_VALUES_EQUAL(derived.RefCount(), 1l);
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(counter.Counter.load(), 0u);
-        UNIT_ASSERT_VALUES_EQUAL(counter.Increments.load(), 1u);
-    }
-    {
-        TVirtualRefCountedProbe::TExternalCounter counter;
-
-        {
-            TIntrusivePtr<TVirtualRefCountedProbe> base(
-                new TDerivedRefCountedProbe(counter));
-
-            auto sibling = std::move(base).As<TDerivedRefCountedProbeSibling>();
-
-            UNIT_ASSERT(!sibling);
-            UNIT_ASSERT(base);
-            UNIT_ASSERT_VALUES_EQUAL(counter.Counter.load(), 1u);
-            UNIT_ASSERT_VALUES_EQUAL(counter.Increments.load(), 1u);
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(counter.Counter.load(), 0u);
-        UNIT_ASSERT_VALUES_EQUAL(counter.Increments.load(), 1u);
-    }
-}
 
 void TPointerTest::TestSharedPtrDowncast() {
     {
