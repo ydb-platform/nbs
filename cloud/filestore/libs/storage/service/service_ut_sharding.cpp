@@ -40,6 +40,13 @@ NProto::TStorageConfig MakeStorageConfigWithShardIdSelectionInLeader()
     return config;
 }
 
+NProto::TStorageConfig MakeStorageConfigWithDirectoryCreationInShards()
+{
+    NProto::TStorageConfig config;
+    config.SetDirectoryCreationInShardsEnabled(true);
+    return config;
+}
+
 NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
     TServiceClient& service,
     const TString& fsId)
@@ -145,6 +152,20 @@ void CheckShardsSize(
     }                                                                          \
     SERVICE_TEST_DECL(name)                                                    \
 // SERVICE_TEST_SID_SELECT_IN_LEADER_ONLY
+
+#define SERVICE_TEST_DIR_CREATION_IN_SHARDS(name)                         \
+    SERVICE_TEST_DECL(name);                                              \
+    Y_UNIT_TEST(name)                                                     \
+    {                                                                     \
+        TestImpl##name(MakeStorageConfig());                              \
+    }                                                                     \
+    Y_UNIT_TEST(name##WithDirectoryCreationInShards)                      \
+    {                                                                     \
+        TestImpl##name(MakeStorageConfigWithDirectoryCreationInShards()); \
+    }                                                                     \
+    SERVICE_TEST_DECL(name)
+
+// SERVICE_TEST_DIR_CREATION_IN_SHARDS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -6731,6 +6752,66 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             "AppCriticalEvents/ReceivedNodeOpErrorFromShard");
 
         UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+    }
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldNotRequireActiveSessionForGetNodeAttrBatchToShard)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
+                ->Record.GetNode()
+                .GetId();
+        const ui64 shardTabletId = ExtractShardNo(nodeId) == 1
+                                       ? fsInfo.Shard1TabletId
+                                       : fsInfo.Shard2TabletId;
+
+        TAutoPtr<IEventHandle> getNodeAttrBatchEvent;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvGetNodeAttrBatchRequest)
+                {
+                    getNodeAttrBatchEvent = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        service.SendListNodesRequest(headers, RootNodeId);
+
+        for (ui32 attempt = 0; attempt < 100 && !getNodeAttrBatchEvent;
+             ++attempt)
+        {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(getNodeAttrBatchEvent);
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        TIndexTabletClient shard(env.GetRuntime(), nodeIdx, shardTabletId);
+        shard.RebootTablet();
+
+        env.GetRuntime().Send(getNodeAttrBatchEvent.Release(), nodeIdx);
+
+        for (ui32 attempt = 0; attempt < 100; ++attempt) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        auto listResponse = service.RecvListNodesResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            listResponse->GetError().GetCode(),
+            listResponse->GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(1, listResponse->Record.NodesSize());
     }
 
     // TODO(2566) get rid of this test after migration

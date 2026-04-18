@@ -158,6 +158,8 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
             auto& batch = batches[node.GetShardFileSystemId()];
             if (batch.Record.GetHeaders().GetSessionId().empty()) {
                 batch.Record.MutableHeaders()->CopyFrom(ListNodesRequest.GetHeaders());
+                batch.Record.MutableHeaders()->SetBehaveAsDirectoryTablet(
+                    false);
                 batch.Record.SetFileSystemId(node.GetShardFileSystemId());
                 batch.Record.SetNodeId(RootNodeId);
             }
