@@ -13,16 +13,10 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/datetime/base.h>
-#include <util/folder/dirut.h>
-#include <util/folder/path.h>
 #include <util/generic/guid.h>
-#include <util/stream/file.h>
-#include <util/string/strip.h>
 #include <util/system/env.h>
 #include <util/system/fs.h>
 #include <util/system/sysstat.h>
-
-#include <filesystem>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -39,36 +33,6 @@ const TString DefaultVhostConfigFile = "/Berkanavt/nfs-vhost/cfg/nfs-client.txt"
 const TString DefaultVhostLocalConfigFile =
     "/Berkanavt/nfs-vhost/cfg/nfs-client-local.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nfs-server/cfg/nfs-iam.txt";
-const TString DefaultIamTokenFile = "~/.nfs-client/iam-token";
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString GetIamTokenFromFile(const TString& iamTokenFile)
-{
-    auto path = TFsPath(iamTokenFile).RealPath();
-    TFile file;
-    try {
-        file = TFile(
-            path.GetPath(),
-            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-    } catch (...) {
-        return {};
-    }
-
-    auto stats = std::filesystem::status(
-            std::filesystem::path(path.GetPath().c_str()));
-    auto perms = stats.permissions();
-
-    Y_ENSURE(
-        (perms & std::filesystem::perms::others_all) == std::filesystem::perms::none,
-        TStringBuilder() << "bad Mode: " << static_cast<ui32>(perms));
-
-    if (!file.IsOpen()) {
-        return {};
-    }
-
-    return Strip(TFileInput(file).ReadAll());
-}
 
 }   // namespace
 
@@ -114,10 +78,6 @@ TCommand::TCommand()
 
     Opts.AddLongOption("skip-cert-verification", "skip server certificate verification")
         .StoreTrue(&SkipCertVerification);
-
-    Opts.AddLongOption("iam-token-file", "path to iam token")
-        .RequiredArgument("STR")
-        .StoreResult(&IamTokenFile);
 
     Opts.AddLongOption("config")
         .Help(TStringBuilder()
@@ -258,21 +218,9 @@ void TCommand::Init()
 
     InitIamTokenClient();
 
-    if (!IamTokenFile) {
-        auto& authConfig = appConfig.GetAuthConfig();
-        if (authConfig.HasIamTokenFile()) {
-            IamTokenFile = authConfig.GetIamTokenFile();
-        } else {
-            IamTokenFile = DefaultIamTokenFile;
-        }
-    }
-
     // Do not send token via insecure channel.
     if (config.GetSecurePort() != 0) {
         auto iamToken = GetEnv("IAM_TOKEN");
-        if (!iamToken) {
-            iamToken = GetIamTokenFromFile(IamTokenFile);
-        }
         if (!iamToken) {
             iamToken = GetIamTokenFromClient();
         }
