@@ -24,6 +24,7 @@ SRCS(
     guarded_sglist.cpp
     helpers.cpp
     history.cpp
+    hostname.cpp
     lru_cache.cpp
     media.cpp
     page_size.cpp
@@ -60,6 +61,7 @@ PEERDIR(
     library/cpp/logger
     library/cpp/lwtrace
     library/cpp/protobuf/util
+    library/cpp/retry
     library/cpp/threading/future
 
     contrib/ydb/library/actors/prof

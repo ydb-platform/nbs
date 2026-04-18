@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/client/probes.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 
+#include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
@@ -19,7 +20,6 @@
 #include <util/string/strip.h>
 #include <util/system/env.h>
 #include <util/system/fs.h>
-#include <util/system/hostname.h>
 #include <util/system/sysstat.h>
 
 #include <filesystem>
@@ -243,7 +243,14 @@ void TCommand::Init()
         config.GetSecurePort() != 0)
     {
         // With TLS on transform localhost into fully qualified domain name.
-        config.SetHost(FQDNHostName());
+        config.SetHost(
+            GetFqdnHostNameWithRetries(
+                [this] (const yexception&) {
+                    STORAGE_ERROR(
+                        "FQDNHostName failed: " << CurrentExceptionMessage()
+                        << "\n");
+                }));
+
     }
     if (SkipCertVerification) {
         config.SetSkipCertVerification(SkipCertVerification);
