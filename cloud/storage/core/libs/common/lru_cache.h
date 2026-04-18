@@ -117,8 +117,8 @@ private:
         }
         while (Base.size() > MaxSize) {
             auto& ole = OrderList.back();
-            Base.erase(ole.Key);
             Index.erase(ole.Key);
+            Base.erase(ole.Key);
             evictedKeys.emplace_back(ole.Key);
             OrderList.pop_back();
         }
@@ -182,10 +182,12 @@ public:
     TValue* FindInIndex(const TKey& key)
     {
         auto indexIt = Index.find(key);
-        if (indexIt) {
+        if (indexIt != Index.end()) {
             Touch(indexIt);
+            return indexIt->second->Value;
         }
-        return indexIt ? indexIt->second->Value : nullptr;
+
+        return nullptr;
     }
 
     iterator find(const TKey& key)
