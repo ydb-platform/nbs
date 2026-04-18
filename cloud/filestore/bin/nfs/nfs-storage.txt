@@ -10,5 +10,10 @@ DirectoryHandlesTableSize: 10000
 TwoStageReadEnabled: true
 TwoStageReadThreshold: 65536
 MaxFuseLoopThreads: 8
-DirectoryCreationInShardsEnabled: true
+DirectoryCreationInShardsEnabled: false
 ShardIdSelectionInLeaderEnabled: true
+InMemoryIndexCacheNodesCapacity: 99999999
+InMemoryIndexCacheNodeRefsCapacity: 99999999
+InMemoryIndexCacheNodeRefsExhaustivenessCapacity: 99999999
+InMemoryIndexCacheEnabled: true
+InMemoryIndexCacheLoadOnTabletStart: true

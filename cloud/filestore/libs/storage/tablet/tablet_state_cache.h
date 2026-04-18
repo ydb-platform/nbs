@@ -8,6 +8,8 @@
 
 #include <cloud/storage/core/libs/common/lru_cache.h>
 
+#include <contrib/restricted/abseil-cpp/absl/container/btree_map.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -296,12 +298,20 @@ private:
         TString ShardNodeName;
     };
 
+    THashMap<
+        TNodeRefsKey,
+        TNodeRefsRow,
+        TNodeRefsKeyHash,
+        TEqualTo<TNodeRefsKey>,
+        TStlAllocator>
+        NodeRefsH;
     NCloud::TLRUCache<
         TNodeRefsKey,
         TNodeRefsRow,
-        true /* UseIndexLookup */,
+        false /* UseIndexLookup */,
         TNodeRefsKeyHash,
-        TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>>
+        // TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>>
+        absl::btree_map<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>>
         NodeRefs;
 
     struct TNodeRefsExhaustivenessInfo

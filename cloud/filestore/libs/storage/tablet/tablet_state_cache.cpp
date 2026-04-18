@@ -7,7 +7,7 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
-    : Nodes(0), NodeAttrs(0), NodeRefs(allocator)
+    : Nodes(0), NodeAttrs(0), NodeRefsH(allocator), NodeRefs(allocator)
 {
 }
 
@@ -231,7 +231,8 @@ bool TInMemoryIndexState::ReadNodeRef(
     const TString& name,
     TMaybe<TNodeRef>& ref)
 {
-    auto* v = NodeRefs.FindInIndex(TNodeRefsKey(nodeId, name));
+    // auto* v = NodeRefs.FindInIndex(TNodeRefsKey(nodeId, name));
+    auto* v = NodeRefsH.FindPtr(TNodeRefsKey(nodeId, name));
     if (!v) {
         // If the cache is exhaustive for the node and we did not find the
         // entry, then we are sure that the entry does not exist and we can
@@ -239,6 +240,8 @@ bool TInMemoryIndexState::ReadNodeRef(
         // set the ref, meaning that the entry does not exist.
         return NodeRefsExhaustivenessInfo.IsExhaustiveForNode(nodeId);
     }
+
+    NodeRefs.TouchKey(TNodeRefsKey(nodeId, name));
 
     ui64 minCommitId = v->CommitId;
     ui64 maxCommitId = InvalidCommitId;
@@ -359,7 +362,8 @@ void TInMemoryIndexState::WriteNodeRef(
     const TString& shardNodeName)
 {
     const auto key = TNodeRefsKey(nodeId, name);
-    auto* v = NodeRefs.FindInIndex(key);
+    // auto* v = NodeRefs.FindInIndex(key);
+    auto* v = NodeRefsH.FindPtr(key);
     TNodeRefsRow value{
         .CommitId = commitId,
         .ChildId = childNode,
@@ -371,15 +375,21 @@ void TInMemoryIndexState::WriteNodeRef(
         if (evicted) {
             NodeRefsExhaustivenessInfo.NodeRefsEvictionObserved(
                 evicted->NodeId);
+            NodeRefsH.erase(*evicted);
         }
+        NodeRefsH[key] = value;
     } else {
         *v = value;
+        auto it = NodeRefs.find(key);
+        Y_ABORT_UNLESS(it != NodeRefs.end());
+        it->second = value;
     }
 }
 
 void TInMemoryIndexState::DeleteNodeRef(ui64 nodeId, const TString& name)
 {
     NodeRefs.erase(TNodeRefsKey(nodeId, name));
+    NodeRefsH.erase(TNodeRefsKey(nodeId, name));
 }
 
 //
