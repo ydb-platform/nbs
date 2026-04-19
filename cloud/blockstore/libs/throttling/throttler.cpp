@@ -361,21 +361,20 @@ private:
                     bytes,
                     std::move(volumeInfo)
                 );
+                ThrottlerTracker->TrackPostponedRequest(
+                    *state->CallContext,
+                    *state->Request);
+                ThrottlerLogger->LogPostponedRequest(
+                    cycles,
+                    *state->CallContext,
+                    state->VolumeInfo.get(),
+                    *state->Request,
+                    delay);
                 PostponedRequests.push_back(state);
             }
         }
 
-        if (state) {
-            ThrottlerTracker->TrackPostponedRequest(
-                *state->CallContext,
-                *state->Request);
-            ThrottlerLogger->LogPostponedRequest(
-                cycles,
-                *state->CallContext,
-                state->VolumeInfo.get(),
-                *state->Request,
-                delay);
-        } else {
+        if (!state) {
             ExecuteRequest<TMethod>(
                 *client,
                 std::move(callContext),
